@@ -1,7 +1,8 @@
 ﻿#include "UI/AnsiText.h"
 
-#include <cmath>
 #include <algorithm>
+#include <climits>
+#include <cmath>
 
 #include <utf8.h>
 
@@ -11,66 +12,87 @@
 #include "StringUtils.h"
 
 namespace AnsiText {
-    // =============================================================================
-    // Global configuration
-    // =============================================================================
-    static Sgr21Policy g_Sgr21Policy = Sgr21Policy::DoubleUnderline;
-    static const AnsiPalette *g_PreResolvePalette = nullptr;
-    static bool g_PreResolveEnabled = false;
-
-    void SetSgr21Policy(Sgr21Policy policy) { g_Sgr21Policy = policy; }
-    Sgr21Policy GetSgr21Policy() { return g_Sgr21Policy; }
-    void SetPreResolvePalette(const AnsiPalette *palette) { g_PreResolvePalette = palette; }
-    const AnsiPalette *GetPreResolvePalette() { return g_PreResolvePalette; }
-    void SetPreResolveEnabled(bool enabled) { g_PreResolveEnabled = enabled; }
-    bool GetPreResolveEnabled() { return g_PreResolveEnabled; }
-
     namespace {
         struct ResolvedTextOptions {
             ImFont *font = nullptr;
             ImFontBaked *baked = nullptr;
             float fontSize = 0.0f;
             float wrapWidth = FLT_MAX;
-            float alpha = 1.0f;
             float lineSpacing = 0.0f;
-            int tabColumns = kDefaultTabColumns;
-            const AnsiPalette *palette = nullptr;
+            int tabColumns = DefaultTabColumns;
             float lineHeight = 0.0f;
         };
 
+        class SgrParameterReader {
+        public:
+            SgrParameterReader(const char *sequence, std::size_t length)
+                : m_Current(sequence), m_End(sequence + length) {}
+
+            bool Read(int &value) {
+                SkipSeparators();
+                if (m_Current >= m_End || *m_Current < '0' || *m_Current > '9')
+                    return false;
+
+                int result = 0;
+                while (m_Current < m_End && *m_Current >= '0' && *m_Current <= '9') {
+                    const int digit = *m_Current - '0';
+                    if (result > (INT_MAX - digit) / 10) {
+                        SkipDigits();
+                        return false;
+                    }
+                    result = result * 10 + digit;
+                    ++m_Current;
+                }
+                value = result;
+                return true;
+            }
+
+        private:
+            void SkipSeparators() {
+                while (m_Current < m_End && (*m_Current == ';' || *m_Current == ' '))
+                    ++m_Current;
+            }
+
+            void SkipDigits() {
+                while (m_Current < m_End && *m_Current >= '0' && *m_Current <= '9')
+                    ++m_Current;
+            }
+
+            const char *m_Current;
+            const char *m_End;
+        };
+
         ResolvedTextOptions ResolveTextOptions(const TextOptions &options) {
-            ResolvedTextOptions r;
-            r.font = options.font ? options.font : ImGui::GetFont();
-            if (!r.font) return r;
+            ResolvedTextOptions resolved;
+            resolved.font = options.font ? options.font : ImGui::GetFont();
+            if (!resolved.font)
+                return resolved;
 
-            // Use GetFontSize() to allow global scaling to affect resolved font size
-            float resolvedFontSize = (options.fontSize > 0.0f) ? options.fontSize : ImGui::GetFontSize();
-            r.fontSize = resolvedFontSize;
+            resolved.fontSize = options.fontSize > 0.0f ? options.fontSize : ImGui::GetFontSize();
+            resolved.baked = resolved.font->GetFontBaked(resolved.fontSize);
+            resolved.wrapWidth = options.wrapWidth > 0.0f && options.wrapWidth < FLT_MAX ? options.wrapWidth : FLT_MAX;
+            resolved.tabColumns = options.tabColumns > 0 ? options.tabColumns : DefaultTabColumns;
 
-            r.baked = r.font->GetFontBaked(r.fontSize);
+            const float ascent = resolved.baked ? std::max(0.0f, resolved.baked->Ascent) : resolved.fontSize * 0.8f;
+            const float descent = resolved.baked ? std::max(0.0f, -resolved.baked->Descent) : resolved.fontSize * 0.2f;
+            resolved.lineHeight = std::max(resolved.fontSize, ascent + descent);
 
-            // wrap width
-            if (options.wrapWidth > 0.0f && options.wrapWidth < FLT_MAX)
-                r.wrapWidth = options.wrapWidth;
-            else
-                r.wrapWidth = FLT_MAX;
-
-            r.alpha = std::clamp(options.alpha, 0.0f, 1.0f);
-            r.tabColumns = options.tabColumns > 0 ? options.tabColumns : kDefaultTabColumns;
-
-            // ascent / descent fallback if baked metrics not available
-            const float ascent = r.baked ? std::max(0.0f, r.baked->Ascent) : r.fontSize * 0.8f;
-            const float descentMag = r.baked ? std::max(0.0f, -r.baked->Descent) : r.fontSize * 0.2f;
-            r.lineHeight = std::max(r.fontSize, ascent + descentMag);
-
-            // compute lineSpacing based on style, scaled
-            float styleFontSize = ImGui::GetFontSize();
-            float scaleFactor = (styleFontSize > 0.0f) ? (r.fontSize / styleFontSize) : 1.0f;
-            r.lineSpacing = (options.lineSpacing >= 0.0f) ? options.lineSpacing : (ImGui::GetStyle().ItemSpacing.y * scaleFactor);
-
-            r.palette = options.palette;
-            return r;
+            const float styleFontSize = ImGui::GetFontSize();
+            const float scale = styleFontSize > 0.0f ? resolved.fontSize / styleFontSize : 1.0f;
+            resolved.lineSpacing = options.lineSpacing >= 0.0f
+                ? options.lineSpacing
+                : ImGui::GetStyle().ItemSpacing.y * scale;
+            return resolved;
         }
+
+        ImU32 ApplyDim(ImU32 color);
+        ImU32 ApplyAlpha(ImU32 color, float alpha);
+        float DecorationThickness(float fontSize);
+        float ComputeItalicShear(float fontSize);
+        void AddTextStyled(ImDrawList *drawList, ImFont *font, ImFontBaked *baked, float fontSize,
+                           float fontScale, float fontAscent, float italicShear,
+                           const ImVec2 &position, ImU32 color,
+                           const char *begin, const char *end, bool italic, bool fauxBold);
     }
 
     // =============================================================================
@@ -117,11 +139,11 @@ namespace AnsiText {
         if (oldBase == newBase) return;
         for (auto &seg : m_Segments) {
             if (seg.begin && seg.end) {
-                ptrdiff_t offB = seg.begin - oldBase;
-                ptrdiff_t offE = seg.end   - oldBase;
-                if (offB >= 0 && offE >= offB) {
-                    seg.begin = newBase + offB;
-                    seg.end   = newBase + offE;
+                const std::ptrdiff_t beginOffset = seg.begin - oldBase;
+                const std::ptrdiff_t endOffset = seg.end - oldBase;
+                if (beginOffset >= 0 && endOffset >= beginOffset) {
+                    seg.begin = newBase + beginOffset;
+                    seg.end = newBase + endOffset;
                 } else {
                     // Fallback safety: if offsets look invalid, clear pointers to avoid UB
                     seg.begin = seg.end = newBase;
@@ -138,6 +160,7 @@ namespace AnsiText {
         m_HasAnsi256BG = other.m_HasAnsi256BG;
         m_HasTrueColorBG = other.m_HasTrueColorBG;
         m_HasReverse = other.m_HasReverse;
+        m_Revision = 1;
         const char *dstBase = m_OriginalText.c_str();
         RebindSegmentsPointers(srcBase, dstBase);
     }
@@ -150,6 +173,7 @@ namespace AnsiText {
         m_HasAnsi256BG = other.m_HasAnsi256BG;
         m_HasTrueColorBG = other.m_HasTrueColorBG;
         m_HasReverse = other.m_HasReverse;
+        ++m_Revision;
         const char *dstBase = m_OriginalText.c_str();
         RebindSegmentsPointers(srcBase, dstBase);
         return *this;
@@ -162,6 +186,7 @@ namespace AnsiText {
         m_HasAnsi256BG = other.m_HasAnsi256BG;
         m_HasTrueColorBG = other.m_HasTrueColorBG;
         m_HasReverse = other.m_HasReverse;
+        m_Revision = 1;
 
         RebindSegmentsPointers(srcBase, m_OriginalText.c_str());
     }
@@ -175,6 +200,7 @@ namespace AnsiText {
         m_HasAnsi256BG = other.m_HasAnsi256BG;
         m_HasTrueColorBG = other.m_HasTrueColorBG;
         m_HasReverse = other.m_HasReverse;
+        ++m_Revision;
 
         RebindSegmentsPointers(srcBase, m_OriginalText.c_str());
         return *this;
@@ -236,6 +262,7 @@ namespace AnsiText {
         m_OriginalText = std::move(text);
         m_Segments.clear();
         ParseAnsiEscapeCodes(initialColor);
+        ++m_Revision;
     }
 
     void AnsiString::Clear() {
@@ -244,6 +271,7 @@ namespace AnsiText {
         m_HasAnsi256BG = false;
         m_HasTrueColorBG = false;
         m_HasReverse = false;
+        ++m_Revision;
     }
 
     void AnsiString::ParseAnsiEscapeCodes(const ConsoleColor &initialColor) {
@@ -268,7 +296,7 @@ namespace AnsiText {
 
         // The input has already been normalized to UTF-8. Treating raw 0x9B as
         // 8-bit CSI here would collide with valid UTF-8 continuation bytes.
-        if (std::memchr(start, 0x1B, (size_t)(end - start)) == nullptr) {
+        if (std::memchr(start, 0x1B, static_cast<std::size_t>(end - start)) == nullptr) {
             m_Segments.emplace_back(start, end, initialColor);
             return;
         }
@@ -311,7 +339,7 @@ namespace AnsiText {
                             m_Segments.emplace_back(segStart, p, currentColor);
                         }
                     }
-                    currentColor = ParseAnsiColorSequence(seqStart, (size_t)(q - seqStart), currentColor, &m_HasAnsi256BG, &m_HasTrueColorBG, &m_HasReverse);
+                    currentColor = ParseAnsiColorSequence(seqStart, static_cast<std::size_t>(q - seqStart), currentColor, &m_HasAnsi256BG, &m_HasTrueColorBG, &m_HasReverse);
                     p = q + 1;      // skip final 'm'
                     segStart = p;
                     continue;
@@ -333,62 +361,16 @@ namespace AnsiText {
         if (m_Segments.empty())
             m_Segments.emplace_back(end, end, ConsoleColor());
 
-        // Optional pre-resolve of ANSI 256-color indices to RGBA using a fixed palette
-        if (g_PreResolveEnabled && g_PreResolvePalette) {
-            const_cast<AnsiPalette *>(g_PreResolvePalette)->EnsureInitialized();
-            const bool active = g_PreResolvePalette->IsActive();
-            if (active) {
-                for (auto &seg : m_Segments) {
-                    ConsoleColor &cc = seg.color;
-                    if (cc.fgIsAnsi256 && cc.fgAnsiIndex >= 0) {
-                        ImU32 col = cc.foreground;
-                        if (g_PreResolvePalette->GetColor(cc.fgAnsiIndex, col)) {
-                            cc.foreground = col;
-                            cc.fgIsAnsi256 = false;
-                            cc.fgAnsiIndex = -1;
-                        }
-                    }
-                    if (cc.bgIsAnsi256 && cc.bgAnsiIndex >= 0) {
-                        ImU32 col = cc.background;
-                        if (g_PreResolvePalette->GetColor(cc.bgAnsiIndex, col)) {
-                            cc.background = col;
-                            cc.bgIsAnsi256 = false;
-                            cc.bgAnsiIndex = -1;
-                        }
-                    }
-                }
-            }
-        }
     }
 
-    ConsoleColor AnsiString::ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
+    ConsoleColor AnsiString::ParseAnsiColorSequence(const char *sequence, std::size_t length, const ConsoleColor &currentColor,
                                                     bool *out_hasAnsi256Bg, bool *out_hasTrueColorBg, bool *out_hasReverse) {
         if (length == 0) return ConsoleColor();
         ConsoleColor color = currentColor;
 
-        const char *p = sequence;
-        const char *const e = sequence + length;
-
-        auto skipSep = [&]() { while (p < e && (*p == ';' || *p == ' ')) ++p; };
-        auto readInt = [&](int &out) -> bool {
-            skipSep();
-            if (p >= e || *p < '0' || *p > '9') return false;
-            int v = 0;
-            while (p < e && *p >= '0' && *p <= '9') {
-                int digit = *p - '0';
-                if (v > (INT_MAX - digit) / 10) {
-                    // Overflow: skip remaining digits and fail
-                    while (p < e && *p >= '0' && *p <= '9') ++p;
-                    return false;
-                }
-                v = v * 10 + digit;
-                ++p;
-            }
-            out = v; return true;
-        };
-
+        SgrParameterReader parameters(sequence, length);
         int code = 0;
-        while (readInt(code)) {
+        while (parameters.Read(code)) {
             if (code == 0) { color = ConsoleColor(); continue; }
 
             if (code >= 30 && code <= 37) { color.fgIsAnsi256 = true; color.fgAnsiIndex = code - 30; continue; }
@@ -399,16 +381,16 @@ namespace AnsiText {
             if (code == 38 || code == 48) {
                 const bool isBg = (code == 48);
                 int mode = -1;
-                if (!readInt(mode)) break;
+                if (!parameters.Read(mode)) break;
                 if (mode == 5) {
-                    int idx = 0; if (!readInt(idx)) break;
+                    int idx = 0; if (!parameters.Read(idx)) break;
                     idx = std::clamp(idx, 0, 255);
                     if (isBg) { color.bgIsAnsi256 = true; color.bgAnsiIndex = idx; if (out_hasAnsi256Bg) *out_hasAnsi256Bg = true; }
                     else      { color.fgIsAnsi256 = true; color.fgAnsiIndex = idx; }
                     continue;
                 }
                 if (mode == 2) {
-                    int r=0,g=0,b=0; if (!readInt(r) || !readInt(g) || !readInt(b)) break;
+                    int r=0,g=0,b=0; if (!parameters.Read(r) || !parameters.Read(g) || !parameters.Read(b)) break;
                     ImU32 v = GetRgbColor(r, g, b);
                     if (isBg) { color.background = v; color.bgIsAnsi256 = false; color.bgAnsiIndex = -1; if (out_hasTrueColorBg) *out_hasTrueColorBg = true; }
                     else      { color.foreground = v; color.fgIsAnsi256 = false; color.fgAnsiIndex = -1; }
@@ -432,8 +414,8 @@ namespace AnsiText {
                 case 8: color.hidden = true; break;
                 case 9: color.strikethrough = true; break;
                 case 21:
-                    if (GetSgr21Policy() == Sgr21Policy::DoubleUnderline) { color.underline = true; color.doubleUnderline = true; }
-                    else { color.bold = false; color.dim = false; }
+                    color.underline = true;
+                    color.doubleUnderline = true;
                     break;
                 case 22: color.bold = false; color.dim = false; break;
                 case 23: color.italic = false; break;
@@ -462,7 +444,7 @@ namespace AnsiText {
     // Layout Implementation
     // =============================================================================
 
-    const char *Layout::Utf8Next(const char *s, const char *end) {
+    static const char *Utf8Next(const char *s, const char *end) {
         if (!s || s >= end) return s;
         utf8_int32_t cp = 0;
         const char *next = (const char *) utf8codepoint((const utf8_int8_t *) s, &cp);
@@ -470,19 +452,20 @@ namespace AnsiText {
         return next > end ? end : next;
     }
 
-    static bool IsCombiningMark(uint32_t c) {
-        return (c >= 0x0300 && c <= 0x036F) ||
-               (c >= 0x1AB0 && c <= 0x1AFF) ||
-               (c >= 0x1DC0 && c <= 0x1DFF) ||
-               (c >= 0x20D0 && c <= 0x20FF) ||
-               (c >= 0xFE20 && c <= 0xFE2F);
+    static bool IsCombiningMark(std::uint32_t codepoint) {
+        return (codepoint >= 0x0300 && codepoint <= 0x036F) ||
+               (codepoint >= 0x1AB0 && codepoint <= 0x1AFF) ||
+               (codepoint >= 0x1DC0 && codepoint <= 0x1DFF) ||
+               (codepoint >= 0x20D0 && codepoint <= 0x20FF) ||
+               (codepoint >= 0xFE20 && codepoint <= 0xFE2F);
     }
-    static bool IsVariationSelector(uint32_t c) {
-        return (c >= 0xFE00 && c <= 0xFE0F) || (c >= 0xE0100 && c <= 0xE01EF);
+    static bool IsVariationSelector(std::uint32_t codepoint) {
+        return (codepoint >= 0xFE00 && codepoint <= 0xFE0F) ||
+               (codepoint >= 0xE0100 && codepoint <= 0xE01EF);
     }
-    static bool IsZWJ(uint32_t c) { return c == 0x200D; }
+    static bool IsZeroWidthJoiner(std::uint32_t codepoint) { return codepoint == 0x200D; }
 
-    const char *Layout::NextGrapheme(const char *s, const char *end) {
+    const char *PreparedText::NextGrapheme(const char *s, const char *end) {
         if (!s || s >= end) return s;
         const char *next = Utf8Next(s, end);
         if (!next || next <= s) return (s + 1 < end) ? s + 1 : end;
@@ -491,8 +474,12 @@ namespace AnsiText {
             if (next >= end) break;
             utf8_int32_t cp2 = 0; const char *p2 = (const char*) utf8codepoint((const utf8_int8_t*) next, &cp2);
             if (!p2 || p2 <= next) { next = next + 1; break; }
-            if (IsVariationSelector((uint32_t)cp2) || IsCombiningMark((uint32_t)cp2)) { next = p2; continue; }
-            if (IsZWJ((uint32_t)cp2)) {
+            if (IsVariationSelector(static_cast<std::uint32_t>(cp2)) ||
+                IsCombiningMark(static_cast<std::uint32_t>(cp2))) {
+                next = p2;
+                continue;
+            }
+            if (IsZeroWidthJoiner(static_cast<std::uint32_t>(cp2))) {
                 // Include ZWJ + following character and its combining marks
                 utf8_int32_t cp3 = 0; const char *p3 = (const char*) utf8codepoint((const utf8_int8_t*) p2, &cp3);
                 if (!p3 || p3 <= p2) { next = p2; break; }
@@ -502,7 +489,11 @@ namespace AnsiText {
                     if (next >= end) break;
                     utf8_int32_t cp4 = 0; const char *p4 = (const char*) utf8codepoint((const utf8_int8_t*) next, &cp4);
                     if (!p4 || p4 <= next) { next = next + 1; break; }
-                    if (IsVariationSelector((uint32_t)cp4) || IsCombiningMark((uint32_t)cp4)) { next = p4; continue; }
+                    if (IsVariationSelector(static_cast<std::uint32_t>(cp4)) ||
+                        IsCombiningMark(static_cast<std::uint32_t>(cp4))) {
+                        next = p4;
+                        continue;
+                    }
                     break;
                 }
                 continue;
@@ -512,12 +503,57 @@ namespace AnsiText {
         return next > end ? end : next;
     }
 
-    float Layout::Measure(ImFont *font, float fontSize, const char *b, const char *e) {
+    float PreparedText::Measure(ImFont *font, float fontSize, const char *b, const char *e) {
         if (!font || b == e) return 0.0f;
         return font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, b, e, nullptr).x;
     }
 
-    void Layout::BuildLines(ImFont *font, const std::vector<TextSegment> &segments, float wrapWidth, int tabColumns, float fontSize, std::vector<Line> &outLines) {
+    float PreparedText::MeasureFast(ImFont *font, ImFontBaked *baked, float fontSize, float scale,
+                                    const char *begin, const char *end) {
+        if (!baked)
+            return Measure(font, fontSize, begin, end);
+
+        float width = 0.0f;
+        const char *current = begin;
+        while (current < end) {
+            utf8_int32_t codepoint = 0;
+            const char *next = reinterpret_cast<const char *>(
+                utf8codepoint(reinterpret_cast<const utf8_int8_t *>(current), &codepoint));
+            if (!next || next <= current)
+                next = current + 1;
+
+            float advance;
+            if (static_cast<unsigned>(codepoint) < static_cast<unsigned>(baked->IndexAdvanceX.Size)) {
+                advance = baked->IndexAdvanceX.Data[codepoint];
+                if (advance < 0.0f)
+                    advance = baked->GetCharAdvance(static_cast<ImWchar>(codepoint));
+            } else {
+                advance = baked->GetCharAdvance(static_cast<ImWchar>(codepoint));
+            }
+            width += advance * scale;
+            current = next;
+        }
+        return width;
+    }
+
+    void PreparedText::FinishLine(Line &line, std::vector<Line> &lines, float &lineWidth) {
+        lines.push_back(std::move(line));
+        line = Line{};
+        line.spans.reserve(8);
+        lineWidth = 0.0f;
+    }
+
+    void PreparedText::AppendSpan(Line &line, float &lineWidth, const TextSegment &segment,
+                                  const char *begin, const char *end, float width, bool tab) {
+        const ConsoleColor color = segment.color.GetRendered();
+        line.spans.push_back(Span{begin, end, color, width, tab});
+        line.hasDecorations |= color.underline || color.doubleUnderline || color.strikethrough;
+        lineWidth += width;
+        line.width = std::max(line.width, lineWidth);
+    }
+
+    void PreparedText::BuildLines(ImFont *font, const std::vector<TextSegment> &segments, float wrapWidth,
+                                  int tabColumns, float fontSize, std::vector<Line> &outLines) {
         outLines.clear();
         if (wrapWidth <= 0.0f) wrapWidth = FLT_MAX;
         if (!font) return;
@@ -527,8 +563,8 @@ namespace AnsiText {
 
         ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
         const float scale = (fontSize > 0.0f && baked) ? (fontSize / baked->Size) : 1.0f;
-        static const char *kSpace = " ";
-        const float spaceW = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, kSpace, kSpace + 1, nullptr).x;
+        static constexpr char SpaceText[] = " ";
+        const float spaceW = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, SpaceText, SpaceText + 1, nullptr).x;
 
         // Fast path: no wrapping requested and text contains no tabs/newlines.
         if (wrapWidth == FLT_MAX) {
@@ -543,7 +579,9 @@ namespace AnsiText {
                 float xsum = 0.0f;
                 for (const TextSegment &seg : segments) {
                     float w = Measure(font, fontSize, seg.begin, seg.end);
-                    lineFast.spans.push_back(Span{&seg, seg.begin, seg.end, w, false});
+                    const ConsoleColor color = seg.color.GetRendered();
+                    lineFast.spans.push_back(Span{seg.begin, seg.end, color, w, false});
+                    lineFast.hasDecorations |= color.underline || color.doubleUnderline || color.strikethrough;
                     xsum += w;
                 }
                 lineFast.width = xsum;
@@ -557,31 +595,22 @@ namespace AnsiText {
         float x = 0.0f;
         bool trimLeadingSpace = false;
 
-        auto NewLine = [&]() {
-            outLines.push_back(std::move(line));
-            line = Line();
-            line.spans.reserve(8); // Reserve space for new line
-            x = 0.0f;
-        };
-        auto EmitSpan = [&](const TextSegment *seg, const char *b, const char *e, float w, bool isTab) {
-            line.spans.push_back(Span{seg, b, e, w, isTab});
-            x += w;
-            if (x > line.width) line.width = x;
-        };
-
         for (const TextSegment &seg : segments) {
             const char *p = seg.begin;
             const char *end = seg.end;
             while (p < end) {
-                if (*p == '\n') { NewLine(); trimLeadingSpace = false; ++p; continue; }
+                if (*p == '\n') { FinishLine(line, outLines, x); trimLeadingSpace = false; ++p; continue; }
                 if (*p == '\r') { x = 0.0f; ++p; continue; }
                 if (*p == '\t') {
-                    const float cols = (tabColumns > 0 ? (float) tabColumns : (float) kDefaultTabColumns);
+                    const float cols = static_cast<float>(tabColumns > 0 ? tabColumns : DefaultTabColumns);
                     const float tabW = spaceW * cols;
                     const float nextTab = (static_cast<int>(x / tabW) + 1) * tabW;
                     const float w = nextTab - x;
-                    if (x > 0.0f && (x + w) > wrapWidth + 0.0001f) { NewLine(); trimLeadingSpace = true; }
-                    EmitSpan(&seg, p, p /*empty*/, w, true);
+                    if (x > 0.0f && (x + w) > wrapWidth + 0.0001f) {
+                        FinishLine(line, outLines, x);
+                        trimLeadingSpace = true;
+                    }
+                    AppendSpan(line, x, seg, p, p, w, true);
                     ++p; continue;
                 }
 
@@ -611,43 +640,31 @@ namespace AnsiText {
 
                 if (x == 0.0f && tokenIsSpace && trimLeadingSpace) { p = q; continue; }
 
-                // Fast measurement of a short UTF-8 range using baked advances
-                auto MeasureRangeFast = [&](const char* b, const char* e) -> float {
-                    if (!baked) return Measure(font, fontSize, b, e);
-                    float sum = 0.0f;
-                    const char* s = b;
-                    while (s < e) {
-                        utf8_int32_t cp = 0;
-                        const char* next = (const char*)utf8codepoint((const utf8_int8_t*)s, &cp);
-                        if (!next || next <= s) next = s + 1;
-                        float adv;
-                        if ((unsigned)cp < (unsigned)baked->IndexAdvanceX.Size) {
-                            adv = baked->IndexAdvanceX.Data[cp];
-                            if (adv < 0.0f) adv = baked->GetCharAdvance((ImWchar)cp);
-                        } else {
-                            adv = baked->GetCharAdvance((ImWchar)cp);
-                        }
-                        sum += adv * scale;
-                        s = next;
-                    }
-                    return sum;
-                };
-
-                auto WrapLine = [&]() { if (!line.spans.empty()) NewLine(); };
                 float avail = wrapWidth - x;
 
                 if (tokenIsSpace) {
-                    float w = MeasureRangeFast(p, q);
-                    if (w <= avail + 0.0001f) { EmitSpan(&seg, p, q, w, false); p = q; continue; }
-                    if (x > 0.0f) { WrapLine(); trimLeadingSpace = true; p = q; continue; }
+                    float w = MeasureFast(font, baked, fontSize, scale, p, q);
+                    if (w <= avail + 0.0001f) { AppendSpan(line, x, seg, p, q, w, false); p = q; continue; }
+                    if (x > 0.0f) {
+                        if (!line.spans.empty())
+                            FinishLine(line, outLines, x);
+                        trimLeadingSpace = true;
+                        p = q;
+                        continue;
+                    }
                     // If avail is too small to fit spaces at line start, just consume them without emitting.
                     p = q; continue;
                 }
                 // Quick width check for whole token to avoid unnecessary grapheme scanning
                 float w = Measure(font, fontSize, p, q);
-                if (w <= avail + 0.0001f) { EmitSpan(&seg, p, q, w, false); p = q; continue; }
+                if (w <= avail + 0.0001f) { AppendSpan(line, x, seg, p, q, w, false); p = q; continue; }
 
-                if (x > 0.0f) { WrapLine(); trimLeadingSpace = true; avail = wrapWidth; }
+                if (x > 0.0f) {
+                    if (!line.spans.empty())
+                        FinishLine(line, outLines, x);
+                    trimLeadingSpace = true;
+                    avail = wrapWidth;
+                }
 
                 // Split long token incrementally by grapheme, accumulate widths without extra allocations
                 const char* slice_b = p;
@@ -656,24 +673,24 @@ namespace AnsiText {
                 while (cur < q) {
                     const char* next = NextGrapheme(cur, q);
                     if (next <= cur) next = cur + 1;
-                    float dw = MeasureRangeFast(cur, next);
+                    float dw = MeasureFast(font, baked, fontSize, scale, cur, next);
                     if (acc + dw <= avail + 0.0001f) {
                         acc += dw;
                         cur = next;
                     } else {
                         if (cur == slice_b) {
                             // Force one grapheme to progress
-                            EmitSpan(&seg, cur, next, dw, false);
+                            AppendSpan(line, x, seg, cur, next, dw, false);
                             cur = next;
                         } else {
-                            EmitSpan(&seg, slice_b, cur, acc, false);
+                            AppendSpan(line, x, seg, slice_b, cur, acc, false);
                         }
-                        NewLine(); trimLeadingSpace = true; avail = wrapWidth;
+                        FinishLine(line, outLines, x); trimLeadingSpace = true; avail = wrapWidth;
                         slice_b = cur; acc = 0.0f;
                     }
                 }
                 if (cur > slice_b) {
-                    EmitSpan(&seg, slice_b, cur, acc, false);
+                    AppendSpan(line, x, seg, slice_b, cur, acc, false);
                 }
                 p = q; continue;
             }
@@ -682,520 +699,414 @@ namespace AnsiText {
         if (!line.spans.empty() || outLines.empty()) outLines.push_back(std::move(line));
     }
 
-    // =============================================================================
-    // Color Implementation
-    // =============================================================================
-
-    ImU32 Color::ApplyDim(ImU32 color) {
-        const ImU32 r = ((color >> IM_COL32_R_SHIFT) & 0xFF) / 2;
-        const ImU32 g = ((color >> IM_COL32_G_SHIFT) & 0xFF) / 2;
-        const ImU32 b = ((color >> IM_COL32_B_SHIFT) & 0xFF) / 2;
-        const ImU32 a = (color >> IM_COL32_A_SHIFT) & 0xFF;
-        return IM_COL32(r, g, b, a);
+    void PreparedText::Clear() {
+        m_Source = nullptr;
+        m_SourceRevision = 0;
+        m_Context = nullptr;
+        m_Font = nullptr;
+        m_Baked = nullptr;
+        m_BakedId = 0;
+        m_FontSize = 0.0f;
+        m_FontScale = 1.0f;
+        m_FontAscent = 0.0f;
+        m_WrapWidth = 0.0f;
+        m_LineSpacing = 0.0f;
+        m_LineHeight = 0.0f;
+        m_LineStep = 0.0f;
+        m_ItalicShear = 0.0f;
+        m_DecorationThickness = 0.0f;
+        m_UnderlineOffset = 0.0f;
+        m_StrikeOffset = 0.0f;
+        m_TabColumns = 0;
+        m_UsesAnsiPalette = false;
+        m_MayHaveBackground = false;
+        m_Size = {};
+        m_Lines.clear();
     }
 
-    ImU32 Color::ApplyAlpha(ImU32 color, float alpha) {
-        const ImU32 originalAlpha = (color >> IM_COL32_A_SHIFT) & 0xFF;
-        if (originalAlpha == 0) return ImU32(0);
-        const ImU32 newAlpha = (ImU32) (std::clamp(alpha, 0.0f, 1.0f) * (float) originalAlpha);
-        constexpr ImU32 alphaMask = (ImU32)0xFF << IM_COL32_A_SHIFT;
-        return (color & ~alphaMask) | (newAlpha << IM_COL32_A_SHIFT);
+    bool PreparedText::Matches(const AnsiString &text, const TextOptions &options) const {
+        if (m_Source != &text || m_SourceRevision != text.m_Revision)
+            return false;
+
+        const ResolvedTextOptions resolved = ResolveTextOptions(options);
+        const ImGuiID bakedId = resolved.baked ? resolved.baked->BakedId : 0;
+        return m_Context == ImGui::GetCurrentContext() && m_Font == resolved.font && m_BakedId == bakedId &&
+               std::abs(m_FontSize - resolved.fontSize) < 1e-3f &&
+               std::abs(m_WrapWidth - resolved.wrapWidth) < 0.5f &&
+               std::abs(m_LineSpacing - resolved.lineSpacing) < 0.5f && m_TabColumns == resolved.tabColumns;
     }
 
-    // =============================================================================
-    // Metrics Implementation
-    // =============================================================================
+    bool PreparedText::Prepare(const AnsiString &text, const TextOptions &options) {
+        if (Matches(text, options))
+            return true;
 
-    float Metrics::UnderlineY(float lineTop, float fontSize) {
-        ImFont *font = ImGui::GetFont();
-        const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
-        ImFontBaked *baked = font ? font->GetFontBaked(usedSize) : nullptr;
+        Clear();
+        const ResolvedTextOptions resolved = ResolveTextOptions(options);
+        if (!resolved.font)
+            return false;
 
-        const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedSize * 0.8f;
-        const float descent_mag = baked ? std::max(0.0f, -baked->Descent) : usedSize * 0.2f;
-        const float baseline = lineTop + ascent;
-        const float offset = std::clamp(descent_mag * 0.5f, 1.0f, std::max(1.0f, descent_mag - 1.0f));
-        return baseline + offset;
-    }
+        m_Source = &text;
+        m_SourceRevision = text.m_Revision;
+        m_Context = ImGui::GetCurrentContext();
+        m_Font = resolved.font;
+        m_Baked = resolved.baked;
+        m_BakedId = resolved.baked ? resolved.baked->BakedId : 0;
+        m_FontSize = resolved.fontSize;
+        m_FontScale = resolved.baked && resolved.baked->Size > 0.0f ? m_FontSize / resolved.baked->Size : 1.0f;
+        m_WrapWidth = resolved.wrapWidth;
+        m_LineSpacing = resolved.lineSpacing;
+        m_LineHeight = resolved.lineHeight;
+        m_LineStep = m_LineHeight + m_LineSpacing;
+        m_ItalicShear = ComputeItalicShear(m_FontSize);
+        const float ascent = resolved.baked ? std::max(0.0f, resolved.baked->Ascent) : m_FontSize * 0.8f;
+        const float descent = resolved.baked ? std::max(0.0f, -resolved.baked->Descent) : m_FontSize * 0.2f;
+        m_FontAscent = ascent;
+        m_DecorationThickness = DecorationThickness(m_FontSize);
+        m_UnderlineOffset = ascent + std::clamp(descent * 0.5f, 1.0f, std::max(1.0f, descent - 1.0f));
+        m_StrikeOffset = ascent * 0.6f;
+        m_TabColumns = resolved.tabColumns;
+        m_MayHaveBackground = text.m_HasAnsi256BG || text.m_HasTrueColorBG || text.m_HasReverse;
 
-    float Metrics::StrikeY(float lineTop, float fontSize) {
-        ImFont *font = ImGui::GetFont();
-        const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
-        ImFontBaked *baked = font ? font->GetFontBaked(usedSize) : nullptr;
-        const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedSize * 0.8f;
-        return lineTop + ascent * 0.6f;
-    }
-
-    float Metrics::Thickness(float fontSize) {
-        const float t = std::round(fontSize * 0.0555555556f); // 1/18 = 0.0555555556
-        return t < 1.0f ? 1.0f : (t > 4.0f ? 4.0f : t);
-    }
-
-    float CalcTextHeight(const AnsiString &text, const TextOptions &options) {
         if (text.IsEmpty()) {
-            return ImGui::GetTextLineHeightWithSpacing();
+            m_Size = ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing());
+            return true;
         }
 
-        ResolvedTextOptions resolved = ResolveTextOptions(options);
-        if (!resolved.font) return 0.0f;
+        BuildLines(m_Font, text.GetSegments(), m_WrapWidth, m_TabColumns, m_FontSize, m_Lines);
+        float width = 0.0f;
+        for (const Line &line : m_Lines) {
+            width = std::max(width, line.width);
+            if (!m_UsesAnsiPalette) {
+                for (const Span &span : line.spans) {
+                    if (span.color.fgIsAnsi256 || span.color.bgIsAnsi256) {
+                        m_UsesAnsiPalette = true;
+                        break;
+                    }
+                }
+            }
+        }
+        const float lineCount = m_Lines.empty() ? 1.0f : static_cast<float>(m_Lines.size());
+        m_Size = ImVec2(width, m_LineHeight * lineCount + m_LineSpacing * std::max(0.0f, lineCount - 1.0f));
+        return true;
+    }
 
-        std::vector<Layout::Line> lines;
-        Layout::BuildLines(resolved.font, text.GetSegments(), resolved.wrapWidth, resolved.tabColumns, resolved.fontSize, lines);
+    namespace {
+        ImU32 ApplyDim(ImU32 color) {
+            const ImU32 red = ((color >> IM_COL32_R_SHIFT) & 0xFF) / 2;
+            const ImU32 green = ((color >> IM_COL32_G_SHIFT) & 0xFF) / 2;
+            const ImU32 blue = ((color >> IM_COL32_B_SHIFT) & 0xFF) / 2;
+            const ImU32 alpha = (color >> IM_COL32_A_SHIFT) & 0xFF;
+            return IM_COL32(red, green, blue, alpha);
+        }
 
-        const float lineCount = lines.empty() ? 1.0f : static_cast<float>(lines.size());
-        const float totalSpacing = resolved.lineSpacing * std::max(0.0f, lineCount - 1.0f);
-        return resolved.lineHeight * lineCount + totalSpacing;
+        ImU32 ApplyAlpha(ImU32 color, float alpha) {
+            const ImU32 originalAlpha = (color >> IM_COL32_A_SHIFT) & 0xFF;
+            if (originalAlpha == 0)
+                return 0;
+            const ImU32 resolvedAlpha = static_cast<ImU32>(
+                std::clamp(alpha, 0.0f, 1.0f) * static_cast<float>(originalAlpha));
+            constexpr ImU32 AlphaMask = static_cast<ImU32>(0xFF) << IM_COL32_A_SHIFT;
+            return (color & ~AlphaMask) | (resolvedAlpha << IM_COL32_A_SHIFT);
+        }
+
+        float DecorationThickness(float fontSize) {
+            return std::clamp(std::round(fontSize / 18.0f), 1.0f, 4.0f);
+        }
     }
 
     ImVec2 CalcTextSize(const AnsiString &text, const TextOptions &options) {
-        if (text.IsEmpty()) {
-            return ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing());
-        }
-
-        ResolvedTextOptions resolved = ResolveTextOptions(options);
-        if (!resolved.font) return ImVec2(0.0f, 0.0f);
-
-        std::vector<Layout::Line> lines;
-        Layout::BuildLines(resolved.font, text.GetSegments(), resolved.wrapWidth, resolved.tabColumns, resolved.fontSize, lines);
-
-        float maxWidth = 0.0f;
-        for (const auto &line : lines) {
-            maxWidth = std::max(maxWidth, line.width);
-        }
-
-        const float lineCount = lines.empty() ? 1.0f : static_cast<float>(lines.size());
-        const float totalSpacing = resolved.lineSpacing * std::max(0.0f, lineCount - 1.0f);
-        const float height = resolved.lineHeight * lineCount + totalSpacing;
-        return ImVec2(maxWidth, height);
-    }
-
-    float CalcTextHeight(const char *text, const TextOptions &options) {
-        if (!text) return 0.0f;
-        AnsiString ansi(text);
-        return CalcTextHeight(ansi, options);
-    }
-
-    float CalcTextHeight(const std::string &text, const TextOptions &options) {
-        AnsiString ansi(text);
-        return CalcTextHeight(ansi, options);
-    }
-
-    ImVec2 CalcTextSize(const char *text, const TextOptions &options) {
-        if (!text) return {0.0f, 0.0f};
-        AnsiString ansi(text);
-        return CalcTextSize(ansi, options);
-    }
-
-    ImVec2 CalcTextSize(const std::string &text, const TextOptions &options) {
-        AnsiString ansi(text);
-        return CalcTextSize(ansi, options);
-    }
-
-    void RenderText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &pos, const TextOptions &options) {
-        if (!drawList) return;
-        Renderer::DrawText(drawList, text, pos, options);
-    }
-
-    void RenderText(ImDrawList *drawList, const char *text, const ImVec2 &pos, const TextOptions &options) {
-        if (!text) return;
-        AnsiString ansi(text);
-        RenderText(drawList, ansi, pos, options);
-    }
-
-    void RenderText(ImDrawList *drawList, const std::string &text, const ImVec2 &pos, const TextOptions &options) {
-        AnsiString ansi(text);
-        RenderText(drawList, ansi, pos, options);
-    }
-
-    void TextAnsi(const AnsiString &text, const TextOptions &options) {
-        ImGuiWindow *window = ImGui::GetCurrentWindow();
-        if (!window || window->SkipItems) return;
-
-        TextOptions effective = options;
-        if (effective.wrapWidth == FLT_MAX) {
-            float wrapWidth = ImGui::CalcWrapWidthForPos(window->DC.CursorPos, window->DC.TextWrapPos);
-            if (wrapWidth < FLT_MAX)
-                effective.wrapWidth = wrapWidth;
-        }
-
-        const ImVec2 size = CalcTextSize(text, effective);
-        const ImVec2 min(window->DC.CursorPos);
-        const ImVec2 max(min.x + size.x, min.y + size.y);
-        const ImRect bb(min, max);
-        ImGui::ItemSize(size, 0.0f);
-        if (!ImGui::ItemAdd(bb, 0))
-            return;
-
-        RenderText(window->DrawList, text, bb.Min, effective);
-    }
-
-    void TextUnformatted(const char *text, const TextOptions &options) {
-        if (!text) return;
-        AnsiString ansi(text);
-        TextAnsi(ansi, options);
-    }
-
-    void TextUnformatted(const std::string &text, const TextOptions &options) {
-        AnsiString ansi(text);
-        TextAnsi(ansi, options);
-    }
-
-    void TextV(const char *fmt, va_list args, const TextOptions &options) {
-        if (!fmt) return;
-        const char *textBegin = nullptr;
-        const char *textEnd = nullptr;
-        ImFormatStringToTempBufferV(&textBegin, &textEnd, fmt, args);
-        if (!textBegin || textBegin == textEnd) {
-            AnsiString empty;
-            TextAnsi(empty, options);
-            return;
-        }
-        AnsiString ansi(std::string(textBegin, textEnd));
-        TextAnsi(ansi, options);
-    }
-
-    void Text(const char *fmt, ...) {
-        if (!fmt) return;
-        va_list args;
-        va_start(args, fmt);
-        TextV(fmt, args);
-        va_end(args);
+        PreparedText prepared;
+        return prepared.Prepare(text, options) ? prepared.GetSize() : ImVec2();
     }
 
     // =============================================================================
     // Renderer Implementation
     // =============================================================================
 
-    constexpr float kItalicShearBase = 0.16f;
-    constexpr float kItalicShearSizeMin = 12.0f;
-    constexpr float kItalicShearSizeMax = 36.0f;
-    constexpr float kItalicShearFactorMin = 0.85f;
-    constexpr float kItalicShearFactorMax = 1.20f;
-
-    Renderer::BoldParams &Renderer::DefaultBold() {
-        static BoldParams k;
-        return k;
-    }
+    namespace {
+        constexpr float ItalicShearBase = 0.16f;
+        constexpr float ItalicShearSizeMin = 12.0f;
+        constexpr float ItalicShearSizeMax = 36.0f;
+        constexpr float ItalicShearFactorMin = 0.85f;
+        constexpr float ItalicShearFactorMax = 1.20f;
+        constexpr float BoldBaseOffset = 0.35f;
+        constexpr float BoldAlphaScale = 0.30f;
+        constexpr float BoldSizeMin = 12.0f;
+        constexpr float BoldSizeMax = 36.0f;
+        constexpr float BoldOffsetScaleMin = 0.6f;
+        constexpr float BoldOffsetScaleMax = 1.0f;
+        constexpr float SmallFontThreshold = 14.0f;
+        constexpr float SmallFontScale = 0.85f;
+    } // namespace
 
     AnsiPalette &Renderer::DefaultPalette() {
         static AnsiPalette palette;
         return palette;
     }
 
-    float Renderer::ComputeItalicShear(float fontSize) {
-        const float fs = std::clamp(fontSize, kItalicShearSizeMin, kItalicShearSizeMax);
-        const float t = (fs - kItalicShearSizeMin) / (kItalicShearSizeMax - kItalicShearSizeMin);
-        const float factor = kItalicShearFactorMin + (kItalicShearFactorMax - kItalicShearFactorMin) * t;
-        return kItalicShearBase * factor;
-    }
-
-    float Renderer::ComputeBoldOffsetScale(float fontSize, const BoldParams &bp) {
-        const float fs = std::clamp(fontSize, bp.sizeMinPx, bp.sizeMaxPx);
-        const float t = (fs - bp.sizeMinPx) / (bp.sizeMaxPx - bp.sizeMinPx + 1e-5f);
-        return bp.offsetScaleMin + (bp.offsetScaleMax - bp.offsetScaleMin) * t;
-    }
-
-    static void BuildBoldOffsets(float pixelOffset, int rings, bool includeDiag, std::vector<ImVec2> &out) {
-        out.clear();
-        auto push4 = [&](float d) {
-            out.emplace_back(+d, 0.0f);
-            out.emplace_back(-d, 0.0f);
-            out.emplace_back(0.0f, +d);
-            out.emplace_back(0.0f, -d);
-        };
-        auto pushDiag = [&](float d) {
-            const float dd = d * 0.70710678f;
-            out.emplace_back(+dd, +dd);
-            out.emplace_back(-dd, +dd);
-            out.emplace_back(+dd, -dd);
-            out.emplace_back(-dd, -dd);
-        };
-        for (int r = 1; r <= std::max(1, rings); ++r) {
-            float d = pixelOffset * r;
-            push4(d);
-            if (includeDiag) pushDiag(d);
+    namespace {
+        float ComputeItalicShear(float fontSize) {
+            const float clampedSize = std::clamp(fontSize, ItalicShearSizeMin, ItalicShearSizeMax);
+            const float position = (clampedSize - ItalicShearSizeMin) / (ItalicShearSizeMax - ItalicShearSizeMin);
+            const float factor = ItalicShearFactorMin + (ItalicShearFactorMax - ItalicShearFactorMin) * position;
+            return ItalicShearBase * factor;
         }
-    }
 
-    void Renderer::AddTextStyled(ImDrawList *drawList, ImFont *font, float fontSize, const ImVec2 &pos, ImU32 col,
-                                 const char *begin, const char *end, bool italic, bool fauxBold) {
-        AddTextStyledEx(drawList, font, fontSize, pos, col, begin, end, italic, fauxBold, DefaultBold());
-    }
+        static float ComputeBoldOffsetScale(float fontSize) {
+            const float clampedSize = std::clamp(fontSize, BoldSizeMin, BoldSizeMax);
+            const float position = (clampedSize - BoldSizeMin) / (BoldSizeMax - BoldSizeMin);
+            return BoldOffsetScaleMin + (BoldOffsetScaleMax - BoldOffsetScaleMin) * position;
+        }
 
-    void Renderer::AddTextStyledEx(ImDrawList *drawList, ImFont *font, float fontSize, const ImVec2 &pos, ImU32 col,
-                                   const char *begin, const char *end, bool italic, bool fauxBold, const BoldParams &bp) {
-        const float resolvedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
-
-        auto drawOncePlain = [&](const ImVec2 &p, ImU32 c) {
-            drawList->AddText(font, resolvedSize, p, c, begin, end);
+        struct ItalicTextMetrics {
+            ImFontBaked *baked = nullptr;
+            float scale = 1.0f;
+            float shear = 0.0f;
+            float ascent = 0.0f;
         };
 
-        auto drawOnceItalic = [&](const ImVec2 &p, ImU32 c) {
-            if ((c & IM_COL32_A_MASK) == 0) return;
-            ImFontBaked *baked = font ? font->GetFontBaked(resolvedSize) : nullptr;
-            if (!baked) {
-                drawOncePlain(p, c);
-                return;
-            }
+        static void DrawItalicText(ImDrawList *drawList, const ItalicTextMetrics &metrics, const ImVec2 &position,
+                                   ImU32 color, const char *begin, const char *end) {
+            if ((color & IM_COL32_A_MASK) == 0) return;
 
-            const float scale = (resolvedSize >= 0.0f) ? (resolvedSize / baked->Size) : 1.0f;
-            const float x0 = p.x, y0 = p.y;
-            const float shear = ComputeItalicShear(resolvedSize);
-            const float ascent = std::max(0.0f, baked->Ascent);
-            const float anchorY = y0 + ascent;
+            ImFontBaked &baked = *metrics.baked;
+            const float anchorY = position.y + metrics.ascent;
+            const char *current = begin;
+            float x = position.x;
+            while (current < end) {
+                utf8_int32_t codepoint = 0;
+                const char *next = reinterpret_cast<const char *>(
+                    utf8codepoint(reinterpret_cast<const utf8_int8_t *>(current), &codepoint));
+                if (!next || next <= current) next = current + 1;
 
-            ImFontAtlas *atlas = font ? font->OwnerAtlas : nullptr;
-            if (atlas)
-                drawList->PushTextureID(atlas->TexRef);
-
-            const char *s = begin;
-            float x = x0;
-            while (s < end) {
-                utf8_int32_t code = 0;
-                const char *next = (const char *) utf8codepoint((const utf8_int8_t *) s, &code);
-                if (!next || next <= s) next = s + 1;
-                const ImFontGlyph *g = baked->FindGlyph((ImWchar) code);
-                if (g && g->Visible) {
-                    float x1 = x + g->X0 * scale, x2 = x + g->X1 * scale;
-                    float y1 = y0 + g->Y0 * scale, y2 = y0 + g->Y1 * scale;
-                    float u1 = g->U0, v1 = g->V0, u2 = g->U1, v2 = g->V1;
-                    const float dx1 = shear * (anchorY - y1);
-                    const float dx2 = shear * (anchorY - y2);
+                const ImFontGlyph *glyph = baked.FindGlyph(static_cast<ImWchar>(codepoint));
+                if (glyph && glyph->Visible) {
+                    const float x1 = x + glyph->X0 * metrics.scale;
+                    const float x2 = x + glyph->X1 * metrics.scale;
+                    const float y1 = position.y + glyph->Y0 * metrics.scale;
+                    const float y2 = position.y + glyph->Y1 * metrics.scale;
+                    const float topOffset = metrics.shear * (anchorY - y1);
+                    const float bottomOffset = metrics.shear * (anchorY - y2);
                     drawList->PrimReserve(6, 4);
-                    drawList->PrimQuadUV(
-                        ImVec2(x1 + dx1, y1), ImVec2(x2 + dx1, y1),
-                        ImVec2(x2 + dx2, y2), ImVec2(x1 + dx2, y2),
-                        ImVec2(u1, v1), ImVec2(u2, v1), ImVec2(u2, v2), ImVec2(u1, v2), c);
-                    x += g->AdvanceX * scale;
+                    drawList->PrimQuadUV(ImVec2(x1 + topOffset, y1), ImVec2(x2 + topOffset, y1),
+                                         ImVec2(x2 + bottomOffset, y2), ImVec2(x1 + bottomOffset, y2),
+                                         ImVec2(glyph->U0, glyph->V0), ImVec2(glyph->U1, glyph->V0),
+                                         ImVec2(glyph->U1, glyph->V1), ImVec2(glyph->U0, glyph->V1), color);
+                    x += glyph->AdvanceX * metrics.scale;
                 } else {
-                    x += baked->GetCharAdvance((ImWchar) code) * scale;
+                    x += baked.GetCharAdvance(static_cast<ImWchar>(codepoint)) * metrics.scale;
                 }
-                s = next;
+                current = next;
+            }
+        }
+
+        static void DrawStyledTextPass(ImDrawList *drawList, ImFont *font, float fontSize,
+                                       const ItalicTextMetrics &italicMetrics, const ImVec2 &position, ImU32 color,
+                                       const char *begin, const char *end) {
+            if (italicMetrics.baked)
+                DrawItalicText(drawList, italicMetrics, position, color, begin, end);
+            else
+                drawList->AddText(font, fontSize, position, color, begin, end);
+        }
+
+        void AddTextStyled(ImDrawList *drawList, ImFont *font, ImFontBaked *baked, float fontSize, float fontScale,
+                           float fontAscent, float italicShear, const ImVec2 &position, ImU32 color, const char *begin,
+                           const char *end, bool italic, bool fauxBold) {
+            if (!drawList || !font || !begin || begin >= end || (color & IM_COL32_A_MASK) == 0) return;
+
+            ItalicTextMetrics italicMetrics;
+            if (italic && baked) {
+                italicMetrics.baked = baked;
+                italicMetrics.scale = fontScale;
+                italicMetrics.shear = italicShear;
+                italicMetrics.ascent = fontAscent;
             }
 
-            if (atlas)
-                drawList->PopTextureID();
-        };
+            DrawStyledTextPass(drawList, font, fontSize, italicMetrics, position, color, begin, end);
+            if (!fauxBold) return;
 
-        auto draw_once = [&](const ImVec2 &p, ImU32 c) {
-            if (!italic) drawOncePlain(p, c);
-            else drawOnceItalic(p, c);
-        };
+            float pixelOffset = std::clamp(BoldBaseOffset * ComputeBoldOffsetScale(fontSize), 0.30f, 0.60f);
+            if (fontSize <= SmallFontThreshold) pixelOffset = std::max(BoldBaseOffset, pixelOffset * SmallFontScale);
+            const float baseAlpha = ((color >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
+            float boldAlpha = std::clamp(baseAlpha * BoldAlphaScale, 0.0f, 1.0f);
+            if (fontSize <= SmallFontThreshold) boldAlpha *= SmallFontScale;
 
-        draw_once(pos, col);
-
-        if (!fauxBold) return;
-
-        const float ofsScale = ComputeBoldOffsetScale(resolvedSize, bp);
-        float pxOffset = bp.baseOffsetPx * ofsScale;
-        pxOffset = std::clamp(pxOffset, 0.30f, 0.60f);
-        if (resolvedSize <= 14.0f) // Small font, reduce bold offset
-            pxOffset = std::max(0.35f, pxOffset * 0.85f);
-        std::vector<ImVec2> offsets;
-        BuildBoldOffsets(pxOffset, bp.rings, bp.includeDiagonals, offsets);
-
-        const float baseAlpha = ((col >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
-        float ringAlpha = std::clamp(baseAlpha * bp.alphaScale, 0.0f, 1.0f);
-        if (resolvedSize <= 14.0f) // Small font, reduce bold alpha
-            ringAlpha *= 0.85f;
-        int perRing = bp.includeDiagonals ? 8 : 4;
-        if (perRing <= 0) perRing = 4;
-
-        for (int i = 0; i < (int) offsets.size(); ++i) {
-            const int ringIndex = i / perRing;
-            float alphaForThis = ringAlpha * std::pow(std::max(0.0f, bp.alphaDecay), (float) ringIndex);
-            ImU32 a = (ImU32) std::round(std::clamp(alphaForThis, 0.0f, 1.0f) * 255.0f);
-            ImU32 colHalf = (col & ~IM_COL32_A_MASK) | (a << IM_COL32_A_SHIFT);
-            draw_once(ImVec2(pos.x + offsets[i].x, pos.y + offsets[i].y), colHalf);
+            const ImU32 alpha = static_cast<ImU32>(std::round(boldAlpha * 255.0f));
+            if (alpha == 0) return;
+            const ImU32 boldColor = (color & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT);
+            DrawStyledTextPass(drawList, font, fontSize, italicMetrics, ImVec2(position.x + pixelOffset, position.y),
+                               boldColor, begin, end);
+            DrawStyledTextPass(drawList, font, fontSize, italicMetrics, ImVec2(position.x - pixelOffset, position.y),
+                               boldColor, begin, end);
+            DrawStyledTextPass(drawList, font, fontSize, italicMetrics, ImVec2(position.x, position.y + pixelOffset),
+                               boldColor, begin, end);
+            DrawStyledTextPass(drawList, font, fontSize, italicMetrics, ImVec2(position.x, position.y - pixelOffset),
+                               boldColor, begin, end);
         }
+
+        static ImU32 ResolveBackgroundColor(const ConsoleColor &color, const AnsiPalette *palette, float alpha) {
+            ImU32 background = color.background;
+            if (color.bgIsAnsi256 && color.bgAnsiIndex >= 0 && palette->IsActive())
+                palette->GetColor(color.bgAnsiIndex, background);
+            return ApplyAlpha(background, alpha);
+        }
+    } // namespace
+
+    void PreparedText::DrawBackgroundRuns(ImDrawList *drawList, const Line &line, float startX,
+                                          float lineTop, float lineBottom, float italicShear,
+                                          const AnsiPalette *palette, float alpha) {
+        bool hasRun = false;
+        float runStart = 0.0f;
+        float runEnd = 0.0f;
+        ImU32 runColor = 0;
+        float x = startX;
+        for (const Span &span : line.spans) {
+            const ImU32 background = ResolveBackgroundColor(span.color, palette, alpha);
+            const bool visible = !span.tab && span.begin < span.end && (background & IM_COL32_A_MASK) != 0;
+            if (visible) {
+                const float italicPadding = span.color.italic
+                    ? std::max(0.0f, italicShear * (lineBottom - lineTop))
+                    : 0.0f;
+                const float spanEnd = x + span.width + italicPadding;
+                if (hasRun && runColor == background && std::abs(runEnd - x) <= 0.25f) {
+                    runEnd = spanEnd;
+                } else {
+                    if (hasRun)
+                        drawList->AddRectFilled(ImVec2(runStart, lineTop), ImVec2(runEnd, lineBottom), runColor);
+                    runStart = x;
+                    runEnd = spanEnd;
+                    runColor = background;
+                    hasRun = true;
+                }
+            } else if (hasRun) {
+                drawList->AddRectFilled(ImVec2(runStart, lineTop), ImVec2(runEnd, lineBottom), runColor);
+                hasRun = false;
+            }
+            x += span.width;
+        }
+        if (hasRun)
+            drawList->AddRectFilled(ImVec2(runStart, lineTop), ImVec2(runEnd, lineBottom), runColor);
     }
 
-    void Renderer::DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, const TextOptions &options) {
-        if (!drawList) return;
-        if (text.IsEmpty()) return;
+    void PreparedText::Draw(ImDrawList *drawList, const ImVec2 &startPos, float alpha,
+                            const AnsiPalette *palette) const {
+        if (!drawList || !m_Source || m_Source->m_Revision != m_SourceRevision || m_Source->IsEmpty() || !m_Font)
+            return;
 
-        ResolvedTextOptions resolved = ResolveTextOptions(options);
-        if (!resolved.font) return;
+        alpha = std::clamp(alpha, 0.0f, 1.0f);
+        palette = palette ? palette : &Renderer::DefaultPalette();
 
-        ImFont *font = resolved.font;
-        ImFontBaked *baked = resolved.baked;
-        const float resolvedFontSize = resolved.fontSize;
-        const float wrapWidth = resolved.wrapWidth;
-        const float alpha = resolved.alpha;
-        const float spacing = resolved.lineSpacing;
-        const float lineHeight = resolved.lineHeight;
-        const float lineStep = lineHeight + spacing;
-        const float italicShear = ComputeItalicShear(resolvedFontSize);
-        const int tabColumns = resolved.tabColumns;
-        const AnsiPalette *palette = resolved.palette ? resolved.palette : &DefaultPalette();
-
-        if (alpha <= 0.0f) return;
+        if (alpha <= 0.0f)
+            return;
 
         bool pushedFontTex = false;
-        if (font && font->OwnerAtlas) {
-            drawList->PushTextureID(font->OwnerAtlas->TexRef);
+        if (m_Font->OwnerAtlas) {
+            drawList->PushTextureID(m_Font->OwnerAtlas->TexRef);
             pushedFontTex = true;
         }
 
-        std::vector<Layout::Line> lines;
-        Layout::BuildLines(font, text.GetSegments(), wrapWidth, tabColumns, resolvedFontSize, lines);
-
         int displayStart = 0;
-        int displayEnd = static_cast<int>(lines.size());
-        if (lineStep > 0.0f && displayEnd > 0) {
+        int displayEnd = static_cast<int>(m_Lines.size());
+        if (m_LineStep > 0.0f && displayEnd > 0) {
             const ImVec2 clipMin = drawList->GetClipRectMin();
             const ImVec2 clipMax = drawList->GetClipRectMax();
-            displayStart = static_cast<int>(std::floor((clipMin.y - startPos.y - lineHeight) / lineStep)) + 1;
-            displayEnd = static_cast<int>(std::ceil((clipMax.y - startPos.y) / lineStep));
-            displayStart = std::clamp(displayStart, 0, static_cast<int>(lines.size()));
-            displayEnd = std::clamp(displayEnd, displayStart, static_cast<int>(lines.size()));
+            displayStart = static_cast<int>(std::floor((clipMin.y - startPos.y - m_LineHeight) / m_LineStep)) + 1;
+            displayEnd = static_cast<int>(std::ceil((clipMax.y - startPos.y) / m_LineStep));
+            displayStart = std::clamp(displayStart, 0, static_cast<int>(m_Lines.size()));
+            displayEnd = std::clamp(displayEnd, displayStart, static_cast<int>(m_Lines.size()));
         }
 
+        if (m_UsesAnsiPalette)
+            const_cast<AnsiPalette *>(palette)->EnsureInitialized();
+
         for (int lineIndex = displayStart; lineIndex < displayEnd; ++lineIndex) {
-            const auto &line = lines[(size_t)lineIndex];
-            const float lineTop = startPos.y + lineIndex * lineStep;
-            const float lineBottom = lineTop + lineHeight;
+            const Line &line = m_Lines[static_cast<std::size_t>(lineIndex)];
+            const float lineTop = startPos.y + lineIndex * m_LineStep;
+            const float lineBottom = lineTop + m_LineHeight;
 
-            // Background pass (optional pre-scan fast path only when no wrap requested)
-            auto draw_background_runs = [&]() {
-                struct BgRun { float x0, x1; ImU32 col; };
-                std::vector<BgRun> runs; runs.reserve(line.spans.size() / 2);
-                float xForBg = startPos.x; bool hasOpenRun = false; BgRun cur{};
-                for (const auto &sp : line.spans) {
-                    const TextSegment *seg = sp.seg;
-                    if (!seg) { xForBg += sp.width; continue; }
-                    ConsoleColor rc = seg->color.GetRendered();
-                    ImU32 bgBase = rc.background;
-                    if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
-                        const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                        if (palette->IsActive()) palette->GetColor(rc.bgAnsiIndex, bgBase);
-                    }
-                    ImU32 bg = Color::ApplyAlpha(bgBase, alpha);
-                    const bool drawBg = (!sp.isTab) && (((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) && (sp.b < sp.e);
-                    if (drawBg) {
-                        const float x0 = xForBg;
-                        float italicPad = 0.0f;
-                        if (rc.italic) { const float pad = italicShear * (lineBottom - lineTop); italicPad = pad > 0.0f ? pad : 0.0f; }
-                        const float x1 = xForBg + sp.width + italicPad;
-                        if (hasOpenRun && cur.col == bg && std::abs(cur.x1 - x0) <= 0.25f) cur.x1 = x1;
-                        else { if (hasOpenRun) runs.push_back(cur); cur = BgRun{x0, x1, bg}; hasOpenRun = true; }
-                    } else { if (hasOpenRun) { runs.push_back(cur); hasOpenRun = false; } }
-                    xForBg += sp.width;
-                }
-                if (hasOpenRun) runs.push_back(cur);
-                for (const BgRun &r : runs) drawList->AddRectFilled(ImVec2(r.x0, lineTop), ImVec2(r.x1, lineBottom), r.col);
-            };
-
-            if (wrapWidth == FLT_MAX) {
-                if (text.HasAnsi256Background()) {
-                    const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                }
-
-                // If palette inactive and text has no true-color backgrounds, all backgrounds render as transparent -> skip entirely
-                const bool paletteInactive = !palette->IsActive();
-                if (paletteInactive && !text.HasAnsi256Background() && !text.HasTrueColorBackground() && !text.HasReverse()) {
-                    // nothing to draw for backgrounds on this line
-                } else {
-                    // Per-line fast-path: if all backgrounds are fully transparent, skip building runs
-                    bool any_bg = false;
-                    for (const auto &sp_check : line.spans) {
-                        const TextSegment *seg_check = sp_check.seg;
-                        if (!seg_check) continue;
-                        if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
-                        ConsoleColor rc_check = seg_check->color.GetRendered();
-                        ImU32 bgBaseCheck = rc_check.background;
-                        if (rc_check.bgIsAnsi256 && rc_check.bgAnsiIndex >= 0) {
-                            const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                            if (palette->IsActive()) palette->GetColor(rc_check.bgAnsiIndex, bgBaseCheck);
-                        }
-                        ImU32 bgCheck = Color::ApplyAlpha(bgBaseCheck, alpha);
-                        if (((bgCheck >> IM_COL32_A_SHIFT) & 0xFF) != 0) { any_bg = true; break; }
-                    }
-                    if (any_bg) draw_background_runs();
-                }
-            } else {
-                // With wrapping, always build runs (cost amortized by fewer long lines)
-                draw_background_runs();
-            }
+            if (m_MayHaveBackground)
+                DrawBackgroundRuns(drawList, line, startPos.x, lineTop, lineBottom, m_ItalicShear, palette, alpha);
 
             // Pass 2: Text and decoration lines
-            bool any_decor = false;
-            for (const auto &sp_check : line.spans) {
-                const TextSegment *seg_check = sp_check.seg;
-                if (!seg_check) continue;
-                if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
-                ConsoleColor rc_check = seg_check->color.GetRendered();
-                if (rc_check.underline || rc_check.doubleUnderline || rc_check.strikethrough) { any_decor = true; break; }
+            float underlineY = lineTop + m_UnderlineOffset;
+            float strikeY = lineTop + m_StrikeOffset;
+            if (line.hasDecorations) {
+                if ((static_cast<int>(m_DecorationThickness) & 1) != 0) {
+                    underlineY = std::floor(underlineY) + 0.5f;
+                    strikeY = std::floor(strikeY) + 0.5f;
+                } else {
+                    underlineY = std::round(underlineY);
+                    strikeY = std::round(strikeY);
+                }
             }
             float x = startPos.x;
-            for (const auto &sp : line.spans) {
-                const TextSegment *seg = sp.seg;
-                if (!seg) {
-                    x += sp.width;
-                    continue;
-                }
+            for (const Span &span : line.spans) {
+                const ConsoleColor &color = span.color;
 
-                ConsoleColor rc = seg->color.GetRendered();
-
-                ImU32 fg = rc.foreground;
-                if (rc.fgIsAnsi256 && rc.fgAnsiIndex >= 0) {
-                    const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                    if (palette->IsActive()) palette->GetColor(rc.fgAnsiIndex, fg);
+                ImU32 foreground = color.foreground;
+                if (color.fgIsAnsi256 && color.fgAnsiIndex >= 0) {
+                    if (palette->IsActive())
+                        palette->GetColor(color.fgAnsiIndex, foreground);
                 }
-                if (rc.dim) fg = Color::ApplyDim(fg);
-                if (rc.hidden) {
-                    ImU32 bgBase2 = rc.background;
-                    if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
-                        const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                        if (palette->IsActive()) palette->GetColor(rc.bgAnsiIndex, bgBase2);
+                if (color.dim)
+                    foreground = ApplyDim(foreground);
+                if (color.hidden) {
+                    ImU32 background = color.background;
+                    if (color.bgIsAnsi256 && color.bgAnsiIndex >= 0) {
+                        if (palette->IsActive())
+                            palette->GetColor(color.bgAnsiIndex, background);
                     }
-                    // Use background color as text color; alpha will be applied once below.
-                    fg = bgBase2;
+                    foreground = background;
                 }
 
-                fg = Color::ApplyAlpha(fg, alpha);
-                const bool fauxBold = rc.bold;
-                const bool italic = rc.italic;
+                foreground = ApplyAlpha(foreground, alpha);
 
-                if (!sp.isTab && sp.b < sp.e) {
-                    AddTextStyled(drawList, font, resolvedFontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
+                if (!span.tab && span.begin < span.end) {
+                    AddTextStyled(drawList, m_Font, m_Baked, m_FontSize, m_FontScale, m_FontAscent,
+                                  m_ItalicShear, ImVec2(x, lineTop), foreground,
+                                  span.begin, span.end, color.italic, color.bold);
 
-                    if (any_decor) {
-                        // Calculate italic padding once if needed for decorations
+                    if (line.hasDecorations) {
                         float italicPadForDecorations = 0.0f;
-                        if (rc.italic && (rc.underline || rc.strikethrough)) {
-                            const float pad = italicShear * (lineBottom - lineTop);
+                        if (color.italic && (color.underline || color.strikethrough)) {
+                            const float pad = m_ItalicShear * (lineBottom - lineTop);
                             italicPadForDecorations = pad > 0.0f ? pad : 0.0f;
                         }
 
-                        if (rc.underline) {
-                            float y = Metrics::UnderlineY(lineTop, resolvedFontSize);
-                            float th = Metrics::Thickness(resolvedFontSize);
-                            if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
-                            else y = roundf(y);
-                            drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
-                            if (rc.doubleUnderline) {
-                                float y2 = y + th + 1.0f;
-                                if ((static_cast<int>(th) & 1) != 0) y2 = floorf(y2) + 0.5f;
-                                else y2 = roundf(y2);
-                                drawList->AddLine(ImVec2(x, y2), ImVec2(x + sp.width + italicPadForDecorations, y2), fg, th);
+                        if (color.underline) {
+                            drawList->AddLine(ImVec2(x, underlineY),
+                                              ImVec2(x + span.width + italicPadForDecorations, underlineY),
+                                              foreground, m_DecorationThickness);
+                            if (color.doubleUnderline) {
+                                float secondUnderlineY = underlineY + m_DecorationThickness + 1.0f;
+                                if ((static_cast<int>(m_DecorationThickness) & 1) != 0)
+                                    secondUnderlineY = std::floor(secondUnderlineY) + 0.5f;
+                                else
+                                    secondUnderlineY = std::round(secondUnderlineY);
+                                drawList->AddLine(ImVec2(x, secondUnderlineY),
+                                                  ImVec2(x + span.width + italicPadForDecorations, secondUnderlineY),
+                                                  foreground, m_DecorationThickness);
                             }
                         }
-                        if (rc.strikethrough) {
-                            float y = Metrics::StrikeY(lineTop, resolvedFontSize);
-                            float th = Metrics::Thickness(resolvedFontSize);
-                            if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
-                            else y = roundf(y);
-                            drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
+                        if (color.strikethrough) {
+                            drawList->AddLine(ImVec2(x, strikeY),
+                                              ImVec2(x + span.width + italicPadForDecorations, strikeY),
+                                              foreground, m_DecorationThickness);
                         }
                     }
                 }
 
-                x += sp.width;
+                x += span.width;
             }
         }
 
         if (pushedFontTex)
             drawList->PopTextureID();
+    }
+
+    void Renderer::DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, const TextOptions &options) {
+        PreparedText prepared;
+        if (prepared.Prepare(text, options))
+            prepared.Draw(drawList, startPos, options.alpha, options.palette);
     }
 } // namespace AnsiText
