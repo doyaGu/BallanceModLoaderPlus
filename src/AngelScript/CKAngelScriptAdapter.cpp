@@ -5,10 +5,18 @@
 #endif
 #include <Windows.h>
 
+#include <cstring>
 #include <sstream>
 
 static constexpr const char *kModuleName = "AngelScript.dll";
 static CKAngelScriptAdapter::GetStatusNameFn g_GetStatusName = nullptr;
+
+// BML's required public surface (module fingerprint/graph/bytecode, source
+// sections, object-handle args, ...) landed in CKAngelScript API 6. Current
+// CKAngelScript headers may define CKAS_API_VERSION 7 for an async host-call
+// flag BML does not use; do not treat the compile-time header version as the
+// runtime floor.
+static constexpr CKDWORD MinimumCkAngelScriptApiVersion = 6;
 
 static constexpr CKAS_FEATURE kRequiredFeatures[] = {
     CKAS_FEATURE_MODULE_LIFECYCLE,
@@ -104,10 +112,11 @@ bool CKAngelScriptAdapter::Refresh(CKContext *context) {
         g_GetStatusName = m_Api.GetStatusName;
 
         m_ApiVersion = m_Api.GetApiVersion();
-        if (m_ApiVersion < CKAS_API_VERSION) {
+        if (m_ApiVersion < MinimumCkAngelScriptApiVersion) {
             std::ostringstream message;
             message << "CKAngelScript API version " << m_ApiVersion
-                    << " is too old; BML requires version " << CKAS_API_VERSION << ".";
+                    << " is too old; BML requires version "
+                    << MinimumCkAngelScriptApiVersion << " or newer.";
             SetUnavailable(State::VersionTooOld, message.str());
             return false;
         }
@@ -311,6 +320,7 @@ bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
         Resolve(module, "CKAngelScriptReleaseObject", m_Api.ReleaseObject, missing) &&
         Resolve(module, "CKAngelScriptFindObjectMethod", m_Api.FindObjectMethod, missing) &&
         Resolve(module, "CKAngelScriptReleaseMethod", m_Api.ReleaseMethod, missing) &&
+        Resolve(module, "CKAngelScriptBorrowEngine", m_Api.BorrowEngine, missing) &&
         Resolve(module, "CKAngelScriptBorrowActiveContext", m_Api.BorrowActiveContext, missing) &&
         Resolve(module, "CKAngelScriptSetActiveContextException", m_Api.SetActiveContextException, missing) &&
         Resolve(module, "CKAngelScriptAssignObjectHandle", m_Api.AssignObjectHandle, missing) &&
@@ -376,4 +386,33 @@ bool CKAngelScriptAdapter::ValidateFeatures() {
 void CKAngelScriptAdapter::SetUnavailable(State state, const std::string &diagnostic) {
     m_State = state;
     m_Diagnostic = diagnostic;
+}
+
+bool CKAngelScriptAdapter::IsArrayOf(const Api &api, const void *array, const char *elementName,
+                                     const char *elementNamespace) {
+    if (!array || !elementName || !api.ArrayGetArrayType)
+        return false;
+
+    asITypeInfo *type = nullptr;
+    if (api.ArrayGetArrayType(const_cast<void *>(array), &type) != CKAS_OK ||
+        !type) {
+        return false;
+    }
+
+    const char *typeName = type->GetName();
+    if (!typeName || std::strcmp(typeName, "array") != 0)
+        return false;
+
+    asITypeInfo *element = type->GetSubType(0);
+    if (!element)
+        return false;
+
+    const char *gotName = element->GetName();
+    if (!gotName || std::strcmp(gotName, elementName) != 0)
+        return false;
+
+    const char *gotNamespace = element->GetNamespace();
+    if (!elementNamespace || elementNamespace[0] == '\0')
+        return !gotNamespace || gotNamespace[0] == '\0';
+    return gotNamespace && std::strcmp(gotNamespace, elementNamespace) == 0;
 }

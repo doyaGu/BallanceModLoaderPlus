@@ -598,7 +598,9 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
 }
 
 bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic) {
-    if (!m_Object && (!m_ModuleLoaded || m_ModuleName.empty())) {
+    const bool hasObject = m_Object != nullptr;
+    bool moduleMayExist = m_ModuleLoaded && !m_ModuleName.empty();
+    if (!hasObject && m_ModuleName.empty()) {
         m_ModuleLoaded = false;
         return true;
     }
@@ -608,6 +610,10 @@ bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic)
     if (!api || api != &m_Adapter.GetApi() || !angelScript) {
         ScriptDiagnostic localDiagnostic;
         if (!Refresh(context, localDiagnostic)) {
+            if (!hasObject && !moduleMayExist) {
+                m_ModuleLoaded = false;
+                return true;
+            }
             if (diagnostic)
                 *diagnostic = localDiagnostic;
             return false;
@@ -616,6 +622,15 @@ bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic)
         angelScript = m_Adapter.GetAngelScript();
         m_Api = api;
         m_AngelScript = angelScript;
+    }
+
+    if (!moduleMayExist && api->HasModule && angelScript && !m_ModuleName.empty())
+        moduleMayExist = api->HasModule(angelScript, m_ModuleName.c_str()) != 0;
+    if (!hasObject && !moduleMayExist) {
+        m_ModuleLoaded = false;
+        m_AngelScript = nullptr;
+        m_Api = nullptr;
+        return true;
     }
 
     CKAngelScriptResult result = {};
@@ -636,10 +651,12 @@ bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic)
             }
         }
     }
-    if (ok && !m_ModuleName.empty() && m_ModuleLoaded) {
+    if (moduleMayExist && !m_ModuleName.empty()) {
         api->InitResult(&result);
         const CKAS_STATUS status = api->UnloadModule(angelScript, m_ModuleName.c_str(), &result);
-        if (status != CKAS_OK) {
+        if (status == CKAS_OK || status == CKAS_NOTFOUND) {
+            m_ModuleLoaded = false;
+        } else {
             ok = false;
             if (diagnostic) {
                 *diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Unload,

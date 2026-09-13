@@ -19,7 +19,11 @@ class BMLBindingsSmokeMod {
         : host.CreateObject(CKCID_OBJECT, "__BML_RawHandleValidityProbe");
     bool rawLive = BML::CK::IsValid(raw);
     if (host !is null && raw !is null) {
-      host.DestroyObject(raw);
+      // Older supported CKAngelScript builds expose this as one declaration
+      // with a non-compilable reference default. Supplying all arguments also
+      // exercises the same API on newer builds that publish explicit overloads.
+      CKDependencies dependencies;
+      host.DestroyObject(raw, 0, dependencies);
     }
     bool rawDeleted = !BML::CK::IsValid(raw);
     ctx.LogInfo("BML raw handle validity smoke: live=" + (rawLive ? "true" : "false") +

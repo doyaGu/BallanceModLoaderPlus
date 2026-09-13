@@ -100,6 +100,7 @@ public:
                                                      CKAngelScriptMethod **,
                                                      CKAngelScriptResult *);
     typedef CKAS_STATUS(__cdecl *ReleaseMethodFn)(CKAngelScript *, CKAngelScriptMethod *, CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *BorrowEngineFn)(CKAngelScript *, asIScriptEngine **, CKAngelScriptResult *);
     typedef CKAS_STATUS(__cdecl *BorrowActiveContextFn)(CKAngelScript *, asIScriptContext **, CKAngelScriptResult *);
     typedef CKAS_STATUS(__cdecl *SetActiveContextExceptionFn)(CKAngelScript *, const char *, CKAngelScriptResult *);
     typedef CKAS_STATUS(__cdecl *AssignObjectHandleFn)(void **, void *, asITypeInfo *);
@@ -180,6 +181,7 @@ public:
         ReleaseObjectFn ReleaseObject = nullptr;
         FindObjectMethodFn FindObjectMethod = nullptr;
         ReleaseMethodFn ReleaseMethod = nullptr;
+        BorrowEngineFn BorrowEngine = nullptr;
         BorrowActiveContextFn BorrowActiveContext = nullptr;
         SetActiveContextExceptionFn SetActiveContextException = nullptr;
         AssignObjectHandleFn AssignObjectHandle = nullptr;
@@ -231,6 +233,7 @@ public:
     static const char *StatusName(CKAS_STATUS status);
     static const char *FeatureName(CKAS_FEATURE feature);
     static std::string FormatResult(CKAS_STATUS status, const CKAngelScriptResult &result);
+    static bool IsArrayOf(const Api &api, const void *array, const char *elementName, const char *elementNamespace);
 
 private:
     bool ResolveRequiredExports(void *module);

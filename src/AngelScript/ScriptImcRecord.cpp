@@ -89,6 +89,13 @@ int CopyObjectsFromScriptArray(const void *array, std::vector<BML_ObjectRef> &ou
     }
 }
 
+bool IsExpectedArray(const void *array, const char *bmlElementName) {
+    if (!bmlElementName)
+        return true;
+    const CKAngelScriptAdapter::Api *api = CurrentArrayApi();
+    return api && CKAngelScriptAdapter::IsArrayOf(*api, array, bmlElementName, "BML");
+}
+
 int CopyObjectsToScriptArray(void *array, const std::vector<BML_ObjectRef> &values) {
     const CKAngelScriptAdapter::Api *api = CurrentArrayApi();
     ModContext *context = BML_GetModContext();
@@ -165,23 +172,27 @@ void ScriptImcRecord::WriteVec2(unsigned int id, const BML_Vec2 &value) { Write(
 void ScriptImcRecord::WriteVec3(unsigned int id, const BML_Vec3 &value) { Write(id, value); }
 void ScriptImcRecord::WriteMat4(unsigned int id, const BML_Mat4 &value) { Write(id, value); }
 
-#define BML_SCRIPT_IMC_WRITE_ARRAY(Name, Value, ScriptValue) \
+#define BML_SCRIPT_IMC_WRITE_ARRAY(Name, Value, ScriptValue, Element) \
     void ScriptImcRecord::Write##Name##Array(unsigned int id, const void *values) { \
+        if (!IsExpectedArray(values, Element)) { \
+            SetError(BML_ERROR_INVALID_PARAMETER); \
+            return; \
+        } \
         std::vector<Value> copied; \
         const int status = CopyFromScriptArray<Value, ScriptValue>(values, copied); \
         if (status == BML_OK) Write(id, std::move(copied)); else SetError(status); \
     }
 
-BML_SCRIPT_IMC_WRITE_ARRAY(Bool, bool, asBYTE)
-BML_SCRIPT_IMC_WRITE_ARRAY(Int, int, int)
-BML_SCRIPT_IMC_WRITE_ARRAY(Float, float, float)
-BML_SCRIPT_IMC_WRITE_ARRAY(Int64, std::int64_t, std::int64_t)
-BML_SCRIPT_IMC_WRITE_ARRAY(UInt64, std::uint64_t, std::uint64_t)
-BML_SCRIPT_IMC_WRITE_ARRAY(Double, double, double)
-BML_SCRIPT_IMC_WRITE_ARRAY(String, std::string, std::string)
-BML_SCRIPT_IMC_WRITE_ARRAY(Vec2, BML_Vec2, BML_Vec2)
-BML_SCRIPT_IMC_WRITE_ARRAY(Vec3, BML_Vec3, BML_Vec3)
-BML_SCRIPT_IMC_WRITE_ARRAY(Mat4, BML_Mat4, BML_Mat4)
+BML_SCRIPT_IMC_WRITE_ARRAY(Bool, bool, asBYTE, nullptr)
+BML_SCRIPT_IMC_WRITE_ARRAY(Int, int, int, nullptr)
+BML_SCRIPT_IMC_WRITE_ARRAY(Float, float, float, nullptr)
+BML_SCRIPT_IMC_WRITE_ARRAY(Int64, std::int64_t, std::int64_t, nullptr)
+BML_SCRIPT_IMC_WRITE_ARRAY(UInt64, std::uint64_t, std::uint64_t, nullptr)
+BML_SCRIPT_IMC_WRITE_ARRAY(Double, double, double, nullptr)
+BML_SCRIPT_IMC_WRITE_ARRAY(String, std::string, std::string, nullptr)
+BML_SCRIPT_IMC_WRITE_ARRAY(Vec2, BML_Vec2, BML_Vec2, "Vec2")
+BML_SCRIPT_IMC_WRITE_ARRAY(Vec3, BML_Vec3, BML_Vec3, "Vec3")
+BML_SCRIPT_IMC_WRITE_ARRAY(Mat4, BML_Mat4, BML_Mat4, "Mat4")
 
 #undef BML_SCRIPT_IMC_WRITE_ARRAY
 
@@ -260,8 +271,10 @@ int ScriptImcRecord::ReadObject(unsigned int id, CKObject *&value) const {
     return value ? BML_OK : BML_ERROR_OBJECT_INVALID;
 }
 
-#define BML_SCRIPT_IMC_READ_ARRAY(Name, Value, ScriptValue) \
+#define BML_SCRIPT_IMC_READ_ARRAY(Name, Value, ScriptValue, Element) \
     int ScriptImcRecord::Read##Name##Array(unsigned int id, void *values) const { \
+        if (!IsExpectedArray(values, Element)) \
+            return BML_ERROR_INVALID_PARAMETER; \
         FieldSlice slice; \
         int status = Find(id, slice); \
         std::vector<Value> decoded; \
@@ -273,16 +286,16 @@ int ScriptImcRecord::ReadObject(unsigned int id, CKObject *&value) const {
         return status == BML_OK ? CopyToScriptArray<Value, ScriptValue>(values, decoded) : status; \
     }
 
-BML_SCRIPT_IMC_READ_ARRAY(Bool, bool, asBYTE)
-BML_SCRIPT_IMC_READ_ARRAY(Int, int, int)
-BML_SCRIPT_IMC_READ_ARRAY(Float, float, float)
-BML_SCRIPT_IMC_READ_ARRAY(Int64, std::int64_t, std::int64_t)
-BML_SCRIPT_IMC_READ_ARRAY(UInt64, std::uint64_t, std::uint64_t)
-BML_SCRIPT_IMC_READ_ARRAY(Double, double, double)
-BML_SCRIPT_IMC_READ_ARRAY(String, std::string, std::string)
-BML_SCRIPT_IMC_READ_ARRAY(Vec2, BML_Vec2, BML_Vec2)
-BML_SCRIPT_IMC_READ_ARRAY(Vec3, BML_Vec3, BML_Vec3)
-BML_SCRIPT_IMC_READ_ARRAY(Mat4, BML_Mat4, BML_Mat4)
+BML_SCRIPT_IMC_READ_ARRAY(Bool, bool, asBYTE, nullptr)
+BML_SCRIPT_IMC_READ_ARRAY(Int, int, int, nullptr)
+BML_SCRIPT_IMC_READ_ARRAY(Float, float, float, nullptr)
+BML_SCRIPT_IMC_READ_ARRAY(Int64, std::int64_t, std::int64_t, nullptr)
+BML_SCRIPT_IMC_READ_ARRAY(UInt64, std::uint64_t, std::uint64_t, nullptr)
+BML_SCRIPT_IMC_READ_ARRAY(Double, double, double, nullptr)
+BML_SCRIPT_IMC_READ_ARRAY(String, std::string, std::string, nullptr)
+BML_SCRIPT_IMC_READ_ARRAY(Vec2, BML_Vec2, BML_Vec2, "Vec2")
+BML_SCRIPT_IMC_READ_ARRAY(Vec3, BML_Vec3, BML_Vec3, "Vec3")
+BML_SCRIPT_IMC_READ_ARRAY(Mat4, BML_Mat4, BML_Mat4, "Mat4")
 
 #undef BML_SCRIPT_IMC_READ_ARRAY
 

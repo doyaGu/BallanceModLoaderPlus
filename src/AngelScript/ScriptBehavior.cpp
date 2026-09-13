@@ -203,8 +203,8 @@ void ConstructValueRect(const VxRect &value, ScriptBehaviorValue *self) {
 void ConstructValueMatrix(const VxMatrix &value, ScriptBehaviorValue *self) {
     new (self) ScriptBehaviorValue(Authoring::Value(value));
 }
-void ConstructValueString(const std::string &value,
-                          ScriptBehaviorValue *self) {
+void ConstructValueString(ScriptBehaviorValue *self,
+                          const std::string &value) {
     new (self) ScriptBehaviorValue(Authoring::Value(value));
 }
 void ConstructValueQuaternion(const VxQuaternion &value,
@@ -253,9 +253,9 @@ void ConstructSlotValueAt(const ScriptBehaviorSelector &slot,
                           ScriptBehaviorSlotValue *self) {
     new (self) ScriptBehaviorSlotValue(slot.Value, value.Value);
 }
-void ConstructSlotValueNamed(const std::string &slot,
-                             const ScriptBehaviorValue &value,
-                             ScriptBehaviorSlotValue *self) {
+void ConstructSlotValueNamed(ScriptBehaviorSlotValue *self,
+                             const std::string &slot,
+                             const ScriptBehaviorValue &value) {
     new (self) ScriptBehaviorSlotValue(
         Authoring::Selector::Unique(slot), value.Value);
 }
@@ -474,6 +474,11 @@ bool ReadSlotValues(const std::shared_ptr<ScriptBehaviorState> &state,
             "Cannot read Behavior SlotValue array size.");
         return false;
     }
+    if (!CKAngelScriptAdapter::IsArrayOf(api, array, "SlotValue", "BML::Behavior")) {
+        ScriptStringInterop::RaiseActiveException(
+            "Behavior SlotValue array expected array<SlotValue>.");
+        return false;
+    }
     try {
         std::vector<Authoring::SlotValue> copied;
         copied.reserve(count);
@@ -588,8 +593,8 @@ void ConstructNodePatternSelector(const ScriptBehaviorSelector &selector,
                                   ScriptBehaviorNodePattern *self) {
     new (self) ScriptBehaviorNodePattern(selector.Value);
 }
-void ConstructNodePatternName(const std::string &name,
-                              ScriptBehaviorNodePattern *self) {
+void ConstructNodePatternName(ScriptBehaviorNodePattern *self,
+                              const std::string &name) {
     new (self) ScriptBehaviorNodePattern(Authoring::Selector::Unique(name));
 }
 void CopyNodePattern(const ScriptBehaviorNodePattern &other,

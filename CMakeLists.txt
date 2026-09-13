@@ -99,8 +99,11 @@ if (BML_ENABLE_ANGELSCRIPT)
         endif ()
         string(REGEX REPLACE ".*CKAS_API_VERSION[ \t]+([0-9]+).*" "\\1"
                 CKANGELSCRIPT_API_VERSION "${CKANGELSCRIPT_API_VERSION_LINE}")
-        if (CKANGELSCRIPT_API_VERSION LESS 7)
-            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript API version 7 or newer")
+        # BML's required public surface landed in API 6. Current CKAngelScript
+        # headers may be 7 (async host-call flag only); do not treat the header
+        # version as BML's runtime floor.
+        if (CKANGELSCRIPT_API_VERSION LESS 6)
+            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript API version 6 or newer")
         endif ()
 
         file(STRINGS "${CKANGELSCRIPT_INCLUDE_DIR}/CKAngelScript.h"

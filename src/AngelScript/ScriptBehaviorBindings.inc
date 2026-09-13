@@ -19,7 +19,7 @@ void RegisterRefBehaviors(asIScriptEngine *engine, const char *name,
 
 bool RequireType(asIScriptEngine *engine, const char *type,
                  const char **errorMessage) {
-    if (engine->GetTypeIdByDecl(type) >= 0)
+    if (engine->GetTypeInfoByName(type))
         return true;
     RegistrationError = "BML Behavior bindings require CKAngelScript type ";
     RegistrationError += type;
@@ -73,13 +73,18 @@ bool Registered(asIScriptEngine *engine, int code, const char *what,
         scriptType, declaration, asMETHOD(type, method), asCALL_THISCALL),         \
         "BML::Behavior::" scriptType "::" declaration)
 
+#define BML_BEHAVIOR_GENERIC_CONSTRUCTOR(scriptType, declaration, function, what) \
+    BML_BEHAVIOR_REGISTER(engine->RegisterObjectBehaviour(                        \
+        scriptType, asBEHAVE_CONSTRUCT, declaration,                              \
+        BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(function), asCALL_GENERIC), what)
+
 int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
     if (!engine)
         return asINVALID_ARG;
     const char *required[] = {
         "CKGUID", "CKObject", "CKBeObject", "CKBehavior", "Vx2DVector",
         "VxVector", "VxQuaternion", "VxRect", "VxColor", "VxBbox",
-        "VxMatrix", "array<int>"};
+        "VxMatrix", "array"};
     for (const char *type : required) {
         if (!RequireType(engine, type, errorMessage)) {
             engine->SetDefaultNamespace("BML");
@@ -339,8 +344,11 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
                             "BML::Behavior::Value int constructor");
     BML_REGISTER_VALUE_CTOR("void f(float value)", ConstructValueFloat,
                             "BML::Behavior::Value float constructor");
-    BML_REGISTER_VALUE_CTOR("void f(const string &in value)", ConstructValueString,
-                            "BML::Behavior::Value string constructor");
+    // Script strings are CKAngelScript-owned objects. Marshal them through the
+    // generic boundary instead of treating them as native std::string values.
+    BML_BEHAVIOR_GENERIC_CONSTRUCTOR(
+        "Value", "void f(const string &in value)", &ConstructValueString,
+        "BML::Behavior::Value string constructor");
     BML_REGISTER_VALUE_CTOR("void f(const Vx2DVector &in value)", ConstructValueVec2,
                             "BML::Behavior::Value Vec2 constructor");
     BML_REGISTER_VALUE_CTOR("void f(const VxVector &in value)", ConstructValueVec3,
@@ -387,10 +395,10 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
         "void f(const Selector &in slot, const Value &in value)",
         asFUNCTION(ConstructSlotValueAt), asCALL_CDECL_OBJLAST),
         "BML::Behavior::SlotValue selector constructor");
-    BML_BEHAVIOR_REGISTER(engine->RegisterObjectBehaviour(
-        "SlotValue", asBEHAVE_CONSTRUCT,
+    BML_BEHAVIOR_GENERIC_CONSTRUCTOR(
+        "SlotValue",
         "void f(const string &in slot, const Value &in value)",
-        asFUNCTION(ConstructSlotValueNamed), asCALL_CDECL_OBJLAST),
+        &ConstructSlotValueNamed,
         "BML::Behavior::SlotValue name constructor");
     BML_BEHAVIOR_REGISTER(engine->RegisterObjectBehaviour(
         "SlotValue", asBEHAVE_CONSTRUCT, "void f(const SlotValue &in other)",
@@ -418,9 +426,9 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
         "void f(const Selector &in selector)",
         asFUNCTION(ConstructNodePatternSelector), asCALL_CDECL_OBJLAST),
         "BML::Behavior::NodePattern selector constructor");
-    BML_BEHAVIOR_REGISTER(engine->RegisterObjectBehaviour(
-        "NodePattern", asBEHAVE_CONSTRUCT, "void f(const string &in name)",
-        asFUNCTION(ConstructNodePatternName), asCALL_CDECL_OBJLAST),
+    BML_BEHAVIOR_GENERIC_CONSTRUCTOR(
+        "NodePattern", "void f(const string &in name)",
+        &ConstructNodePatternName,
         "BML::Behavior::NodePattern name constructor");
     BML_BEHAVIOR_REGISTER(engine->RegisterObjectBehaviour(
         "NodePattern", asBEHAVE_CONSTRUCT,
@@ -570,15 +578,15 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
                         &ScriptBehaviorBlock::NullTarget);
     BML_BEHAVIOR_METHOD(
         ScriptBehaviorBlock, "Block",
-        "Block@ Settings(const array<SlotValue> &in values)",
+        "Block@ Settings(const ? &in values)",
         &ScriptBehaviorBlock::Settings);
     BML_BEHAVIOR_METHOD(
         ScriptBehaviorBlock, "Block",
-        "Block@ Pins(const array<SlotValue> &in values)",
+        "Block@ Pins(const ? &in values)",
         &ScriptBehaviorBlock::Pins);
     BML_BEHAVIOR_METHOD(
         ScriptBehaviorBlock, "Block",
-        "Block@ Locals(const array<SlotValue> &in values)",
+        "Block@ Locals(const ? &in values)",
         &ScriptBehaviorBlock::Locals);
     BML_BEHAVIOR_METHOD(ScriptBehaviorBlock, "Block",
                         "Block@ Setting(const Selector &in slot, const Value &in value)",
@@ -803,7 +811,7 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
             BML_AS_GENERIC_METHOD(&ScriptBehaviorRun::SettingValue), asCALL_GENERIC),
             "BML::Behavior Run::Setting Value");
         BML_BEHAVIOR_REGISTER(engine->RegisterObjectMethod(
-            type, "bool Settings(const array<SlotValue> &in values)",
+            type, "bool Settings(const ? &in values)",
             BML_AS_GENERIC_METHOD(&ScriptBehaviorRun::Settings), asCALL_GENERIC),
             "BML::Behavior Run::Settings");
         BML_BEHAVIOR_REGISTER(engine->RegisterObjectMethod(
@@ -1622,6 +1630,7 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
     return asSUCCESS;
 }
 
+#undef BML_BEHAVIOR_GENERIC_CONSTRUCTOR
 #undef BML_BEHAVIOR_DIRECT_METHOD
 #undef BML_BEHAVIOR_METHOD
 #undef BML_BEHAVIOR_REF

@@ -656,6 +656,8 @@ class ImcRecord {
   void WriteDoubleArray(uint id, const array<double> &in value);
   void WriteStringArray(uint id, const array<string> &in value);
   void WriteObjectArray(uint id, const array<CKObject@> &in value);
+  // Host registrations take ? so AngelScript does not instantiate array<VecN>
+  // inside the BML config group. Pass array<BML::Vec2/Vec3/Mat4>.
   void WriteVec2Array(uint id, const array<BML::Vec2> &in value);
   void WriteVec3Array(uint id, const array<BML::Vec3> &in value);
   void WriteMat4Array(uint id, const array<BML::Mat4> &in value);
@@ -1369,6 +1371,8 @@ class Block {
   bool get_IsValid() const; Block@ Clone() const; Block@ TargetOwner();
   Block@ Target(const CKGUID &in type, CKObject@ object);
   Block@ NullTarget(const CKGUID &in type);
+  // Host registrations take ? so AngelScript does not instantiate
+  // array<SlotValue> inside the BML config group. Pass array<SlotValue>.
   Block@ Settings(const array<SlotValue> &in values);
   Block@ Pins(const array<SlotValue> &in values);
   Block@ Locals(const array<SlotValue> &in values);

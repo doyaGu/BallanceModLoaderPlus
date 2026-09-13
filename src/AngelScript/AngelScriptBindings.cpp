@@ -19,6 +19,7 @@
 #include <cstring>
 #include <iterator>
 #include <new>
+#include <string_view>
 #include <vector>
 #include <utility>
 
@@ -3654,9 +3655,24 @@ int RegisterScriptImcBridge(asIScriptEngine *engine, const char **errorMessage) 
     BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteDoubleArray(uint id, const array<double> &in values)", asMETHOD(BML::ScriptImcRecord, WriteDoubleArray));
     BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteStringArray(uint id, const array<string> &in values)", asMETHOD(BML::ScriptImcRecord, WriteStringArray));
     BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteObjectArray(uint id, const array<CKObject@> &in values)", asMETHOD(BML::ScriptImcRecord, WriteObjectArray));
-    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteVec2Array(uint id, const array<BML::Vec2> &in values)", asMETHOD(BML::ScriptImcRecord, WriteVec2Array));
-    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteVec3Array(uint id, const array<BML::Vec3> &in values)", asMETHOD(BML::ScriptImcRecord, WriteVec3Array));
-    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteMat4Array(uint id, const array<BML::Mat4> &in values)", asMETHOD(BML::ScriptImcRecord, WriteMat4Array));
+    // AngelScript 2.38 config groups cannot be removed if they instantiated
+    // array<BML::T> during registration. These methods take ? and still expect
+    // array<Vec2/Vec3/Mat4> at the call site.
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "void WriteVec2Array(uint id, const ? &in values)",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcRecord::WriteVec2Array),
+                        asCALL_GENERIC),
+                    "void BML::Detail::ImcRecord::WriteVec2Array(uint, const ? &in)");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "void WriteVec3Array(uint id, const ? &in values)",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcRecord::WriteVec3Array),
+                        asCALL_GENERIC),
+                    "void BML::Detail::ImcRecord::WriteVec3Array(uint, const ? &in)");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "void WriteMat4Array(uint id, const ? &in values)",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcRecord::WriteMat4Array),
+                        asCALL_GENERIC),
+                    "void BML::Detail::ImcRecord::WriteMat4Array(uint, const ? &in)");
 
     BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadBool(uint id, bool &out value) const", asMETHOD(BML::ScriptImcRecord, ReadBool));
     BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadInt(uint id, int &out value) const", asMETHOD(BML::ScriptImcRecord, ReadInt));
@@ -3682,9 +3698,21 @@ int RegisterScriptImcBridge(asIScriptEngine *engine, const char **errorMessage) 
     BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadDoubleArray(uint id, array<double> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadDoubleArray));
     BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadStringArray(uint id, array<string> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadStringArray));
     BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadObjectArray(uint id, array<CKObject@> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadObjectArray));
-    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadVec2Array(uint id, array<BML::Vec2> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadVec2Array));
-    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadVec3Array(uint id, array<BML::Vec3> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadVec3Array));
-    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadMat4Array(uint id, array<BML::Mat4> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadMat4Array));
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "int ReadVec2Array(uint id, ? &out values) const",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcRecord::ReadVec2Array),
+                        asCALL_GENERIC),
+                    "int BML::Detail::ImcRecord::ReadVec2Array(uint, ? &out) const");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "int ReadVec3Array(uint id, ? &out values) const",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcRecord::ReadVec3Array),
+                        asCALL_GENERIC),
+                    "int BML::Detail::ImcRecord::ReadVec3Array(uint, ? &out) const");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "int ReadMat4Array(uint id, ? &out values) const",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcRecord::ReadMat4Array),
+                        asCALL_GENERIC),
+                    "int BML::Detail::ImcRecord::ReadMat4Array(uint, ? &out) const");
 
 #undef BML_AS_REGISTER_IMC_RECORD_METHOD
 
@@ -3878,9 +3906,6 @@ int RegisterScriptFacade(asIScriptEngine *engine, const char **errorMessage) {
     const int behavioursResult = RegisterScriptObjectBehaviours(engine, errorMessage);
     if (behavioursResult < 0)
         return behavioursResult;
-    // The IMC bridge declares array<Vec2/Vec3/Mat4> parameters. AngelScript
-    // validates those template instances immediately, after the value types
-    // have their construction behaviours.
     const int imcResult = RegisterScriptImcBridge(engine, errorMessage);
     if (imcResult < 0)
         return imcResult;
@@ -4075,6 +4100,113 @@ bool BML_TryRegisterAngelScriptBindings(ModContext *context) {
     return false;
 }
 
+static constexpr std::string_view ScriptModulePrefix = "bml.script.entry.";
+static constexpr std::string_view ReplacementModulePrefix =
+    "__ckas_replace_candidate_";
+static constexpr int MaximumGarbageCollectionPasses = 8;
+static constexpr asDWORD GarbageCollectionFlags =
+    asGC_FULL_CYCLE | asGC_DESTROY_GARBAGE | asGC_DETECT_GARBAGE;
+
+static bool IsBmlOwnedScriptModuleName(std::string_view moduleName) {
+    return moduleName.starts_with(ScriptModulePrefix) ||
+           (moduleName.starts_with(ReplacementModulePrefix) &&
+            moduleName.find(ScriptModulePrefix) != std::string_view::npos);
+}
+
+static void CollectScriptModuleNames(asIScriptEngine *engine,
+                                     std::vector<std::string> &names) {
+    names.clear();
+    if (!engine)
+        return;
+    const asUINT count = engine->GetModuleCount();
+    names.reserve(count);
+    for (asUINT index = 0; index < count; ++index) {
+        asIScriptModule *module = engine->GetModuleByIndex(index);
+        const char *name = module ? module->GetName() : nullptr;
+        if (name && name[0])
+            names.emplace_back(name);
+    }
+}
+
+static void CollectGarbage(asIScriptEngine *engine) {
+    if (!engine)
+        return;
+    for (int pass = 0; pass < MaximumGarbageCollectionPasses; ++pass) {
+        if (engine->GarbageCollect(GarbageCollectionFlags) == 0)
+            break;
+    }
+}
+
+static bool ReleaseBmlOwnedScriptModules(const CKAngelScriptAdapter::Api &api,
+                                         CKAngelScript *angelScript,
+                                         asIScriptEngine *engine,
+                                         ModContext *context) {
+    if (!engine || !api.InitResult || !api.UnloadModule || !angelScript)
+        return false;
+
+    bool released = true;
+    std::vector<std::string> names;
+    CollectScriptModuleNames(engine, names);
+    for (const std::string &name : names) {
+        if (!IsBmlOwnedScriptModuleName(name))
+            continue;
+
+        CKAngelScriptResult result = {};
+        api.InitResult(&result);
+        const CKAS_STATUS status = api.UnloadModule(
+            angelScript, name.c_str(), &result);
+        if (status == CKAS_OK || status == CKAS_NOTFOUND)
+            continue;
+
+        // A failed public unload means CKAngelScript still owns live handles,
+        // imports, components, or async work for this module. Bypassing that
+        // state machine with asIScriptModule::Discard would leave its registry
+        // pointing at discarded code.
+        released = false;
+        if (context && context->GetLogger()) {
+            context->GetLogger()->Warn(
+                "Failed to release BML AngelScript module '%s': %s",
+                name.c_str(),
+                CKAngelScriptAdapter::FormatResult(status, result).c_str());
+        }
+    }
+    return released;
+}
+
+static bool ReleaseAngelScriptBindingConsumers(
+    const CKAngelScriptAdapter::Api &api,
+    CKAngelScript *angelScript,
+    ModContext *context) {
+    if (!api.InitResult || !api.BorrowEngine || !angelScript) {
+        if (context && context->GetLogger()) {
+            context->GetLogger()->Warn(
+                "Cannot release BML AngelScript modules: "
+                "cleanup API is unavailable.");
+        }
+        return false;
+    }
+
+    asIScriptEngine *engine = nullptr;
+    CKAngelScriptResult result = {};
+    api.InitResult(&result);
+    const CKAS_STATUS status = api.BorrowEngine(
+        angelScript, &engine, &result);
+    if (status != CKAS_OK || !engine) {
+        if (context && context->GetLogger()) {
+            context->GetLogger()->Warn(
+                "Failed to borrow the AngelScript engine for BML cleanup: %s",
+                CKAngelScriptAdapter::FormatResult(status, result).c_str());
+        }
+        return false;
+    }
+
+    CollectGarbage(engine);
+    const bool released = ReleaseBmlOwnedScriptModules(
+        api, angelScript, engine, context);
+    CollectGarbage(engine);
+    return released;
+}
+
 void BML_UnregisterAngelScriptBindings(ModContext *context) {
     if (!context || !context->IsAngelScriptExtensionRegistered())
         return;
@@ -4083,6 +4215,8 @@ void BML_UnregisterAngelScriptBindings(ModContext *context) {
     if (g_AngelScriptHost.Refresh(context->GetCKContext())) {
         const CKAngelScriptAdapter::Api &api = g_AngelScriptHost.GetApi();
         CKAngelScript *angelScript = g_AngelScriptHost.GetAngelScript();
+        if (!ReleaseAngelScriptBindingConsumers(api, angelScript, context))
+            return;
 
         CKAngelScriptResult result = {};
         if (api.InitResult)

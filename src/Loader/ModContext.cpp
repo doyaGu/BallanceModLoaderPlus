@@ -334,6 +334,7 @@ void ModContext::Shutdown() {
 #if BML_ENABLE_ANGELSCRIPT
         if (m_ScriptHotReload)
             m_ScriptHotReload->Stop();
+        ProcessScriptModFailureCleanup();
 #endif
         ShutdownMods();
         UnloadMods();
@@ -344,9 +345,9 @@ void ModContext::Shutdown() {
     m_GameFonts.Reset();
 
 #if BML_ENABLE_ANGELSCRIPT
-    BML_UnregisterAngelScriptBindings(this);
     if (m_ScriptDevTools)
         m_ScriptDevTools->Hide();
+    BML_UnregisterAngelScriptBindings(this);
 #endif
 
     m_Logger->Info("Releasing Mod Loader");
