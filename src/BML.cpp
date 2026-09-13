@@ -10,7 +10,6 @@
 #include "Behavior/HookBlock.h"
 #include "Loader/ModManager.h"
 #include "Hooks/RenderHook.h"
-#include "UI/Overlay.h"
 #include "HookUtils.h"
 
 CKERROR CreateModManager(CKContext *context) {
@@ -60,7 +59,6 @@ void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
 static LPVOID g_CreateCKBehaviorPrototypeRunTimeTarget = nullptr;
 static bool g_MinHookInitialized = false;
 static bool g_RenderEngineHooked = false;
-static bool g_ImGuiWin32HooksInstalled = false;
 
 static bool HookCreateCKBehaviorPrototypeRuntime() {
     HMODULE handle = ::GetModuleHandleA("CK2.dll");
@@ -85,12 +83,6 @@ static void UnhookCreateCKBehaviorPrototypeRuntime() {
 }
 void BML_ShutdownProcessHooks() {
     UnhookCreateCKBehaviorPrototypeRuntime();
-
-    if (g_ImGuiWin32HooksInstalled) {
-        if (!Overlay::ImGuiUninstallWin32Hooks())
-            utils::OutputDebugA("Fatal: Unable to uninstall Win32 hooks for ImGui.\n");
-        g_ImGuiWin32HooksInstalled = false;
-    }
 
     if (g_RenderEngineHooked) {
         RenderHook::UnhookRenderEngine();
@@ -118,12 +110,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             return FALSE;
         }
         g_RenderEngineHooked = true;
-        if (!Overlay::ImGuiInstallWin32Hooks()) {
-            utils::OutputDebugA("Fatal: Unable to install Win32 hooks for ImGui.\n");
-            BML_ShutdownProcessHooks();
-            return FALSE;
-        }
-        g_ImGuiWin32HooksInstalled = true;
         if (!HookCreateCKBehaviorPrototypeRuntime()) {
             utils::OutputDebugA("Fatal: Unable to hook CKBehaviorPrototypeRuntime.\n");
             BML_ShutdownProcessHooks();
