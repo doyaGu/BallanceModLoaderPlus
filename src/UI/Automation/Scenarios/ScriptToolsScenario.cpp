@@ -13,6 +13,7 @@ void RegisterScriptToolsScenario(ImGuiTestEngine *engine) {
     test->TestFunc = [](ImGuiTestContext *ctx) {
         IM_CHECK(EnterLevelOneFromModList(ctx));
         IM_CHECK(SubmitConsoleCommand(ctx, "script panel"));
+        IM_CHECK(WaitForItem(ctx, "**/Script Developer Tools"));
         IM_CHECK(WaitForItem(ctx, "**/Diag"));
         IM_CHECK(WaitForItem(ctx, "**/Reload"));
         IM_CHECK(WaitForItem(ctx, "**/Res"));

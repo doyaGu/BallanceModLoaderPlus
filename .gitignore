@@ -26,6 +26,7 @@ dist-install/
 site/
 .codex-cache/
 logs/
+/imgui.ini
 
 ## Local documentation drafts and private notes
 docs/internal/
