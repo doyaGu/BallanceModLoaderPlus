@@ -1,6 +1,26 @@
 #include "UI/GameFontCatalog.h"
 
+#include <utility>
+
 namespace BML {
+
+namespace {
+
+constexpr std::array<std::pair<std::string_view, GameFont>, 7> RuntimeFonts = {{
+    {"GameFont_01", GameFont::Normal},
+    {"GameFont_02", GameFont::Large},
+    {"GameFont_03", GameFont::Small},
+    {"GameFont_03a", GameFont::SmallGray},
+    {"GameFont_04", GameFont::Huge},
+    {"GameFont_Credits_Small", GameFont::CreditsSmall},
+    {"GameFont_Credits_Big", GameFont::CreditsBig},
+}};
+
+static_assert(RuntimeFonts.size() + 1 ==
+                  static_cast<std::size_t>(GameFont::Count),
+              "Every Game Font role except None needs one runtime name");
+
+} // namespace
 
 GameFontCatalog::GameFontCatalog() {
     Reset();
@@ -17,6 +37,20 @@ bool GameFontCatalog::Bind(GameFont font, int virtoolsIndex) {
         return false;
     m_Fonts[index] = virtoolsIndex;
     return true;
+}
+
+bool GameFontCatalog::Bind(std::string_view runtimeName, int virtoolsIndex,
+                           GameFont *boundRole) {
+    for (const auto &[name, font] : RuntimeFonts) {
+        if (runtimeName == name) {
+            if (!Bind(font, virtoolsIndex))
+                return false;
+            if (boundRole)
+                *boundRole = font;
+            return true;
+        }
+    }
+    return false;
 }
 
 int GameFontCatalog::Resolve(GameFont font) const {

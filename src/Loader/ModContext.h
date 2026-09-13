@@ -42,6 +42,10 @@ class BMLMod;
 class NewBallTypeMod;
 
 namespace BML {
+namespace UI {
+class FontRuntime;
+}
+
 #if BML_ENABLE_ANGELSCRIPT
 class ScriptMod;
 struct ScriptModDefinition;
@@ -310,6 +314,12 @@ public:
         const std::string &ownerId);
     BML::GameFontCatalog &GetGameFonts() noexcept { return m_GameFonts; }
     const BML::GameFontCatalog &GetGameFonts() const noexcept { return m_GameFonts; }
+    BML::UI::FontRuntime *GetUiFontRuntime() noexcept {
+        return m_UiFonts.get();
+    }
+    const BML::UI::FontRuntime *GetUiFontRuntime() const noexcept {
+        return m_UiFonts.get();
+    }
     bool IsIngame() override { return ReadGameSession().IsInGame(); }
     bool IsInLevel() const { return ReadGameSession().IsInLevel(); }
     bool IsPaused() override { return ReadGameSession().IsPaused(); }
@@ -518,6 +528,7 @@ private:
     BML::Behavior::Internal::PhysicsForce::Sessions m_PhysicsForce;
     BML::ExecuteBBAdapter m_ExecuteBB;
     BML::GameFontCatalog m_GameFonts;
+    std::unique_ptr<BML::UI::FontRuntime> m_UiFonts;
 #if BML_ENABLE_ANGELSCRIPT
     bool m_AngelScriptExtensionRegistered = false;
     bool m_AngelScriptBindingsRegistered = false;

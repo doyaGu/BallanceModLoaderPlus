@@ -1,6 +1,8 @@
 #ifndef BML_MODMANAGER_H
 #define BML_MODMANAGER_H
 
+#include <cstdint>
+
 #include "CKBaseManager.h"
 #include "CKContext.h"
 
@@ -56,8 +58,11 @@ public:
     }
 
 protected:
+    void SynchronizeUiFonts();
+
     ModContext *m_ModContext;
     CKRenderContext *m_RenderContext = nullptr;
+    std::uint64_t m_ReportedUiFontGeneration = 0;
 };
 
 #endif // BML_MODMANAGER_H

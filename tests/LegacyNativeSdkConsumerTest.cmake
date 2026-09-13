@@ -150,10 +150,17 @@ set(behavior_facade_probe [=[
 #include <BML/Behavior.hpp>
 #include <BML/Interface.hpp>
 #include <BML/ModInterface.hpp>
+#include <imgui.h>
 
 #include <type_traits>
 
 namespace {
+static_assert(sizeof(ImWchar) == sizeof(ImWchar32),
+              "The installed BML target must propagate its ImGui codepoint ABI");
+#ifndef IMGUI_USE_BGRA_PACKED_COLOR
+#error "The installed BML target must propagate its ImGui packed-color ABI"
+#endif
+
 struct InstalledInterface {
     BML_InterfaceHeader Header;
     int(BML_CDECL *Read)(int input, int *outValue);

@@ -4,6 +4,7 @@
 
 #include "BML/InputHook.h"
 #include "UI/Overlay.h"
+#include "UI/FontRuntime.h"
 #if BML_ENABLE_UI_AUTOMATION
 #include "UI/UiAutomation.h"
 #endif
@@ -45,6 +46,7 @@ CKERROR ModManager::OnCKPlay() {
         m_ModContext->LoadMods();
         m_ModContext->InitMods();
 
+        SynchronizeUiFonts();
         Overlay::ImGuiNewFrame();
     }
 
@@ -87,9 +89,36 @@ CKERROR ModManager::PreProcess() {
 
     Overlay::ImGuiContextScope scope;
 
+    SynchronizeUiFonts();
     Overlay::ImGuiNewFrame();
 
     return CK_OK;
+}
+
+void ModManager::SynchronizeUiFonts() {
+    if (!m_ModContext || !m_RenderContext)
+        return;
+
+    BML::UI::FontRuntime *fonts = m_ModContext->GetUiFontRuntime();
+    ImGuiContext *imgui = Overlay::GetImGuiContext();
+    if (!fonts || !imgui)
+        return;
+
+    fonts->Synchronize(*imgui, static_cast<float>(m_RenderContext->GetHeight()));
+    const BML::UI::FontRuntimeSnapshot &snapshot = fonts->Inspect();
+    if (snapshot.Generation == 0 || snapshot.Generation == m_ReportedUiFontGeneration)
+        return;
+
+    m_ReportedUiFontGeneration = snapshot.Generation;
+    m_ModContext->GetLogger()->Info(
+        "Applied UI font generation %llu "
+        "(Unicode scalars: %s, common emoji: %s, color emoji: %s)",
+        static_cast<unsigned long long>(snapshot.Generation),
+        snapshot.SupportsUnicodeScalars ? "yes" : "no",
+        snapshot.SupportsCommonEmoji ? "yes" : "no",
+        snapshot.SupportsColorEmoji ? "yes" : "no");
+    for (const std::string &diagnostic : snapshot.Diagnostics)
+        m_ModContext->GetLogger()->Warn("UI font: %s", diagnostic.c_str());
 }
 
 extern void PhysicsPostProcess();

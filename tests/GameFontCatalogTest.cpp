@@ -22,6 +22,17 @@ TEST(GameFontCatalogTest, BindsAndIdentifiesRuntimeFontIndices) {
     EXPECT_EQ(fonts.Identify(999), GameFont::None);
 }
 
+TEST(GameFontCatalogTest, BindsKnownRuntimeNamesOnly) {
+    GameFontCatalog fonts;
+    GameFont boundRole = GameFont::None;
+
+    EXPECT_TRUE(fonts.Bind("GameFont_03a", 37, &boundRole));
+    EXPECT_EQ(boundRole, GameFont::SmallGray);
+    EXPECT_EQ(fonts.Resolve(GameFont::SmallGray), 37);
+    EXPECT_FALSE(fonts.Bind("GameFont_Unknown", 88));
+    EXPECT_EQ(fonts.Identify(88), GameFont::None);
+}
+
 TEST(GameFontCatalogTest, ResetRestoresStableLegacyFallbacks) {
     GameFontCatalog fonts;
     ASSERT_TRUE(fonts.Bind(GameFont::Huge, 61));

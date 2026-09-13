@@ -1,7 +1,7 @@
 #include "Mods/BMLMod.h"
 
-#include <map>
 #include <algorithm>
+#include <bitset>
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"
@@ -10,8 +10,11 @@
 #include "BML/Guids/TT_Toolbox_RT.h"
 
 #include "Loader/ModContext.h"
+#include "Config/Config.h"
 #include "Hooks/RenderHook.h"
+#include "Console/FontCommand.h"
 #include "UI/AnsiPalette.h"
+#include "UI/FontRuntime.h"
 #include "UI/GameFontCatalog.h"
 #if BML_ENABLE_UI_AUTOMATION
 #include "UI/UiAutomation.h"
@@ -25,6 +28,38 @@
 #endif
 
 using namespace ScriptHelper;
+namespace Ui = BML::UI;
+
+namespace {
+constexpr std::size_t GameFontRoleCount = static_cast<std::size_t>(BML::GameFont::Count);
+constexpr unsigned long GameFontAcquireDelay = 1;
+
+using BoundGameFontRoles = std::bitset<GameFontRoleCount>;
+
+class GameFontCollector final {
+public:
+    GameFontCollector(BML::GameFontCatalog &catalog, BoundGameFontRoles &boundRoles)
+        : m_Catalog(catalog), m_BoundRoles(boundRoles) {}
+
+    bool operator()(CKBehavior *behavior) const {
+        if (!behavior || behavior->GetInputParameterCount() < 1 || behavior->GetOutputParameterCount() < 1)
+            return true;
+
+        const auto *runtimeName = static_cast<const char *>(behavior->GetInputParameterReadDataPtr(0));
+        int font = 0;
+        BML::GameFont role = BML::GameFont::None;
+        if (runtimeName &&
+            behavior->GetOutputParameterValue(0, &font) == CK_OK &&
+            m_Catalog.Bind(runtimeName, font, &role))
+            m_BoundRoles.set(static_cast<std::size_t>(role));
+        return true;
+    }
+
+private:
+    BML::GameFontCatalog &m_Catalog;
+    BoundGameFontRoles &m_BoundRoles;
+};
+} // namespace
 
 ModContext *BMLMod::GetRuntimeContext() const {
     return dynamic_cast<ModContext *>(m_BML);
@@ -32,35 +67,18 @@ ModContext *BMLMod::GetRuntimeContext() const {
 
 const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
     static const Setting settings[] = {
-        {"GUI", "FontFilename", &BMLMod::m_FontFilename, nullptr, OnDemand, false},
-        {"GUI", "FontSize", &BMLMod::m_FontSize, nullptr, OnDemand, false},
-        {"GUI", "FontRanges", &BMLMod::m_FontRanges, nullptr, OnDemand, false},
-        {"GUI", "EnableSecondaryFont", &BMLMod::m_EnableSecondaryFont, nullptr, OnDemand, false},
-        {"GUI", "SecondaryFontFilename", &BMLMod::m_SecondaryFontFilename, nullptr, OnDemand, false},
-        {"GUI", "SecondaryFontSize", &BMLMod::m_SecondaryFontSize, nullptr, OnDemand, false},
-        {"GUI", "SecondaryFontRanges", &BMLMod::m_SecondaryFontRanges, nullptr, OnDemand, false},
+        {"GUI", "FontFilename", &BMLMod::m_FontFilename, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
+        {"GUI", "FontSize", &BMLMod::m_FontSize, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
+        {"GUI", "FontFallbacks", &BMLMod::m_FontFallbacks, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
+        {"GUI", "UseSystemFontFallbacks", &BMLMod::m_UseSystemFontFallbacks, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
         {"GUI", "EnableIniSettings", &BMLMod::m_EnableIniSettings, nullptr, OnDemand, false},
 
-        {"Graphics", "UnlockFrameRate", &BMLMod::m_UnlockFPS,
-         [](BMLMod &mod, IProperty *) { mod.ApplyFrameRateSettings(); },
-         OnChange | OnLevelInit, false},
-        {"Graphics", "SetMaxFrameRate", &BMLMod::m_FPSLimit,
-         [](BMLMod &mod, IProperty *property) {
-             if (mod.m_UnlockFPS->GetBoolean())
-                 return;
-             const int limit = property->GetInteger();
-             if (limit > 0)
-                 mod.AdjustFrameRate(false, static_cast<float>(limit));
-             else
-                 mod.AdjustFrameRate(true);
-         },
-         OnChange, false},
-        {"Graphics", "WidescreenFix", &BMLMod::m_WidescreenFix,
-         [](BMLMod &, IProperty *property) { RenderHook::EnableWidescreenFix(property->GetBoolean()); },
-         Startup | OnChange, false},
+        {"Graphics", "UnlockFrameRate", &BMLMod::m_UnlockFPS, &BMLMod::ApplyUnlockFrameRateSetting, OnChange | OnLevelInit, false},
+        {"Graphics", "SetMaxFrameRate", &BMLMod::m_FPSLimit, &BMLMod::ApplyFrameRateLimitSetting, OnChange, false},
+        {"Graphics", "WidescreenFix", &BMLMod::m_WidescreenFix, &BMLMod::ApplyWidescreenSetting, Startup | OnChange, false},
 
     };
-    static_assert(sizeof(settings) / sizeof(settings[0]) == 11,
+    static_assert(sizeof(settings) / sizeof(settings[0]) == 8,
                   "Every BMLMod-owned config property must have one settings-table entry");
 
     count = sizeof(settings) / sizeof(settings[0]);
@@ -94,73 +112,9 @@ void BMLMod::ApplySettings(ApplyWhen when) {
     }
 }
 
-static ImFont *LoadFont(const char *filename, float size, const char *ranges, bool merge = false) {
-    ImGuiIO &io = ImGui::GetIO();
-
-    // Normalize size and defaults
-    if (size <= 0)
-        size = 32.0f;
-
-    auto AddDefaultFont = [&]() -> ImFont * {
-        ImFontConfig cfg;
-        cfg.SizePixels = size;
-        cfg.MergeMode = false;
-        return io.Fonts->AddFontDefault(&cfg);
-    };
-
-    if (!filename || filename[0] == '\0') {
-        return AddDefaultFont();
-    }
-
-    std::string path = filename;
-    if (!utils::FileExistsUtf8(path)) {
-        path = BML_GetModContext()->GetDirectoryUtf8(BML_DIR_LOADER);
-        path.append("\\Fonts\\").append(filename);
-    }
-
-    if (!utils::FileExistsUtf8(path)) {
-        return AddDefaultFont();
-    }
-
-    const ImWchar *glyphRanges = nullptr;
-    if (strnicmp(ranges, "ChineseFull", 11) == 0) {
-        glyphRanges = io.Fonts->GetGlyphRangesChineseFull();
-    } else if (strnicmp(ranges, "Chinese", 7) == 0) {
-        glyphRanges = io.Fonts->GetGlyphRangesChineseSimplifiedCommon();
-    } else if (strnicmp(ranges, "Cyrillic", 8) == 0) {
-        glyphRanges = io.Fonts->GetGlyphRangesCyrillic();
-    } else if (strnicmp(ranges, "Greek", 5) == 0) {
-        glyphRanges = io.Fonts->GetGlyphRangesGreek();
-    } else if (strnicmp(ranges, "Korean", 6) == 0) {
-        glyphRanges = io.Fonts->GetGlyphRangesKorean();
-    } else if (strnicmp(ranges, "Japanese", 8) == 0) {
-        glyphRanges = io.Fonts->GetGlyphRangesJapanese();
-    } else if (strnicmp(ranges, "Thai", 4) == 0) {
-        glyphRanges = io.Fonts->GetGlyphRangesThai();
-    } else if (strnicmp(ranges, "Vietnamese", 10) == 0) {
-        glyphRanges = io.Fonts->GetGlyphRangesVietnamese();
-    }
-
-    ImFontConfig config;
-    config.SizePixels = size;
-    config.MergeMode = merge;
-
-    // Safety: if asked to merge but no base font exists, disable merge so we don't end up merging into "nothing".
-    if (config.MergeMode && io.Fonts->Fonts.empty())
-        config.MergeMode = false;
-
-    ImFont *font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
-    if (!font)
-        return AddDefaultFont();
-
-    return font;
-}
-
 void BMLMod::OnLoad() {
     m_CKContext = m_BML->GetCKContext();
-    m_RenderContext = m_BML->GetRenderContext();
     m_TimeManager = m_BML->GetTimeManager();
-    m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
 
     // Configure AnsiPalette to use the ModLoader directory for config/themes
     AnsiPalette::SetLoaderDirProvider([]() -> std::wstring {
@@ -175,7 +129,7 @@ void BMLMod::OnLoad() {
     InitGUI();
     m_GameEventHooks.OnLoad(*m_BML, *GetLogger());
     m_GameplayTweaks.OnLoad(*m_BML, *GetLogger());
-    m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), m_HUD);
+    m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), m_HUD, GetFontCommandContext());
 
     m_HUD.OnLoad(*m_BML);
 
@@ -204,11 +158,6 @@ void BMLMod::OnUnload() {
 
     // Reset pointers to prevent use-after-free
     m_TimeManager = nullptr;
-    m_RenderContext = nullptr;
-
-    // Clear containers
-    m_WindowRect = VxRect();
-    m_OldWindowRect = VxRect();
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
@@ -233,12 +182,6 @@ void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
 }
 
 void BMLMod::OnProcess() {
-    m_OldWindowRect = m_WindowRect;
-    m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
-    if (m_WindowRect != m_OldWindowRect) {
-        OnResize();
-    }
-
     m_HUD.OnProcess(ImGui::GetIO().DeltaTime, m_TimeManager->GetLastDeltaTime());
     OnProcess_Menu();
     m_Console.OnProcess();
@@ -417,6 +360,32 @@ void BMLMod::SetHUD(int mode) {
 }
 
 void BMLMod::InitConfigs() {
+    Config *config = dynamic_cast<Config *>(GetConfig());
+    const bool hadFallbackList = config && config->HasKey("GUI", "FontFallbacks");
+    std::string migratedFallback;
+    if (config && !hadFallbackList &&
+        config->HasKey("GUI", "EnableSecondaryFont")) {
+        IProperty *enabled = config->GetProperty("GUI", "EnableSecondaryFont");
+        if (enabled && enabled->GetBoolean() &&
+            config->HasKey("GUI", "SecondaryFontFilename")) {
+            IProperty *filename = config->GetProperty("GUI", "SecondaryFontFilename");
+            if (filename)
+                migratedFallback = filename->GetString();
+        }
+    }
+
+    if (config) {
+        static const char *legacyFontKeys[] = {
+            "FontRanges",
+            "EnableSecondaryFont",
+            "SecondaryFontFilename",
+            "SecondaryFontSize",
+            "SecondaryFontRanges",
+        };
+        for (const char *key : legacyFontKeys)
+            config->RemoveProperty("GUI", key);
+    }
+
     BindSettings();
     m_HUD.InitConfig(*GetConfig());
     m_Console.InitConfig(*GetConfig());
@@ -425,28 +394,21 @@ void BMLMod::InitConfigs() {
 
     GetConfig()->SetCategoryComment("GUI", "GUI Settings");
 
-    m_FontFilename->SetComment("The filename of TrueType font (the font filename should end with .ttf or .otf)");
+    m_FontFilename->SetComment("Primary UI font. Use a filename from ModLoader\\Fonts or an explicit TTF/OTF/TTC path.");
     m_FontFilename->SetDefaultString("unifont.otf");
 
-    m_FontSize->SetComment("The size of font (pixel).");
+    m_FontSize->SetComment("Logical UI font size at a 1200-pixel viewport height (8-96).");
     m_FontSize->SetDefaultFloat(32.0f);
 
-    m_FontRanges->SetComment("The Unicode ranges of font glyph."
-                             " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
-    m_FontRanges->SetDefaultString("ChineseFull");
+    m_FontFallbacks->SetComment(
+        "Optional fallback UI fonts, separated by semicolons. Each entry may be a filename from "
+        "ModLoader\\Fonts or an explicit TTF/OTF/TTC path.");
+    m_FontFallbacks->SetDefaultString("");
+    if (!hadFallbackList && !migratedFallback.empty())
+        m_FontFallbacks->SetString(migratedFallback.c_str());
 
-    m_EnableSecondaryFont->SetComment("Enable secondary font.");
-    m_EnableSecondaryFont->SetDefaultBoolean(false);
-
-    m_SecondaryFontFilename->SetComment("The filename of secondary font (the font filename should end with .ttf or .otf)");
-    m_SecondaryFontFilename->SetDefaultString("unifont.otf");
-
-    m_SecondaryFontSize->SetComment("The size of secondary font (pixel).");
-    m_SecondaryFontSize->SetDefaultFloat(32.0f);
-
-    m_SecondaryFontRanges->SetComment("The Unicode ranges of secondary font glyph."
-                                      " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
-    m_SecondaryFontRanges->SetDefaultString("ChineseFull");
+    m_UseSystemFontFallbacks->SetComment("Use Windows symbol and emoji fonts after configured fonts.");
+    m_UseSystemFontFallbacks->SetDefaultBoolean(true);
 
     m_EnableIniSettings->SetComment("Enable loading and saving ImGui settings.");
     m_EnableIniSettings->SetDefaultBoolean(true);
@@ -462,6 +424,52 @@ void BMLMod::InitConfigs() {
     m_WidescreenFix->SetComment("Improve widescreen resolutions support");
     m_WidescreenFix->SetDefaultBoolean(false);
 
+}
+
+void BMLMod::ConfigureUiFonts() {
+    ModContext *context = GetRuntimeContext();
+    if (!context)
+        return;
+
+    Ui::FontRuntime *runtime = context->GetUiFontRuntime();
+    if (!runtime)
+        return;
+
+    runtime->Configure(GetFontCommandContext().ReadProfile());
+}
+
+FontCommandContext BMLMod::GetFontCommandContext() const {
+    FontCommandContext commandContext;
+    ModContext *modContext = GetRuntimeContext();
+    commandContext.Runtime = modContext ? modContext->GetUiFontRuntime() : nullptr;
+    commandContext.PrimaryFace = m_FontFilename;
+    commandContext.ReferenceSize = m_FontSize;
+    commandContext.FallbackFaces = m_FontFallbacks;
+    commandContext.UseWindowsFallbacks = m_UseSystemFontFallbacks;
+    return commandContext;
+}
+
+void BMLMod::ApplyUiFontSetting(BMLMod &mod, IProperty *) {
+    mod.ConfigureUiFonts();
+}
+
+void BMLMod::ApplyUnlockFrameRateSetting(BMLMod &mod, IProperty *) {
+    mod.ApplyFrameRateSettings();
+}
+
+void BMLMod::ApplyFrameRateLimitSetting(BMLMod &mod, IProperty *property) {
+    if (mod.m_UnlockFPS->GetBoolean())
+        return;
+
+    const int limit = property->GetInteger();
+    if (limit > 0)
+        mod.AdjustFrameRate(false, static_cast<float>(limit));
+    else
+        mod.AdjustFrameRate(true);
+}
+
+void BMLMod::ApplyWidescreenSetting(BMLMod &, IProperty *property) {
+    RenderHook::EnableWidescreenFix(property->GetBoolean());
 }
 
 void BMLMod::InitGUI() {
@@ -481,18 +489,6 @@ void BMLMod::InitGUI() {
         }
     }
 
-    // 1.92: FontGlobalScale moved to style.FontScaleMain
-    ImGui::GetStyle().FontScaleMain = m_WindowRect.GetHeight() / 1200.0f;
-
-    LoadFont(m_FontFilename->GetString(), m_FontSize->GetFloat(), m_FontRanges->GetString());
-    if (m_EnableSecondaryFont->GetBoolean()) {
-        if (strcmp(m_FontFilename->GetString(), m_SecondaryFontFilename->GetString()) != 0 ||
-            strcmp(m_FontRanges->GetString(), m_SecondaryFontRanges->GetString()) != 0) {
-            LoadFont(m_SecondaryFontFilename->GetString(), m_SecondaryFontSize->GetFloat(), m_SecondaryFontRanges->GetString(), true);
-        }
-    }
-    io.Fonts->Build();
-
     Bui::InitTextures(m_CKContext);
     Bui::InitMaterials(m_CKContext);
 
@@ -507,35 +503,44 @@ void BMLMod::InitGUI() {
 }
 
 void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {
-    m_BML->AddTimer(1ul, [this]() {
-        GetLogger()->Info("Acquire Game Fonts");
-        CKBehavior *script = m_BML->GetScriptByName("Menu_Init");
-        CKBehavior *fonts = FindFirstBB(script, "Fonts");
-        CKBehavior *bbs[7] = {nullptr};
-        int cnt = 0;
-        FindBB(fonts, [&bbs, &cnt](CKBehavior *beh) {
-            bbs[cnt++] = beh;
-            return true;
-        }, "TT CreateFontEx");
+    (void) script;
+    m_BML->AddTimer(GameFontAcquireDelay, [this]() { AcquireGameFonts(); });
+}
 
-        std::map<std::string, BML::GameFont> fontid;
-        fontid["GameFont_01"] = BML::GameFont::Normal;
-        fontid["GameFont_02"] = BML::GameFont::Large;
-        fontid["GameFont_03"] = BML::GameFont::Small;
-        fontid["GameFont_03a"] = BML::GameFont::SmallGray;
-        fontid["GameFont_04"] = BML::GameFont::Huge;
-        fontid["GameFont_Credits_Small"] = BML::GameFont::CreditsSmall;
-        fontid["GameFont_Credits_Big"] = BML::GameFont::CreditsBig;
+void BMLMod::AcquireGameFonts() {
+    GetLogger()->Info("Acquire Game Fonts");
+    ModContext *context = GetRuntimeContext();
+    if (!context) {
+        GetLogger()->Warn("Cannot acquire Game Fonts without the loader runtime context");
+        return;
+    }
 
-        for (int i = 0; i < 7; i++) {
-            int font = 0;
-            bbs[i]->GetOutputParameterValue(0, &font);
-            if (ModContext *context = GetRuntimeContext()) {
-                context->GetGameFonts().Bind(
-                    fontid[static_cast<const char *>(bbs[i]->GetInputParameterReadDataPtr(0))], font);
-            }
-        }
-    });
+    BML::GameFontCatalog &catalog = context->GetGameFonts();
+    catalog.Reset();
+
+    CKBehavior *menuInit = m_BML->GetScriptByName("Menu_Init");
+    if (!menuInit) {
+        GetLogger()->Warn("Cannot acquire Game Fonts: Menu_Init was not found");
+        return;
+    }
+
+    CKBehavior *fonts = FindFirstBB(menuInit, "Fonts");
+    if (!fonts) {
+        GetLogger()->Warn("Cannot acquire Game Fonts: Menu_Init/Fonts was not found");
+        return;
+    }
+
+    BoundGameFontRoles boundRoles;
+    FindBB(fonts, GameFontCollector(catalog, boundRoles), "TT CreateFontEx");
+
+    constexpr std::size_t ExpectedFontCount = GameFontRoleCount - 1;
+    const std::size_t boundCount = boundRoles.count();
+    if (boundCount != ExpectedFontCount) {
+        GetLogger()->Warn(
+            "Acquired %d of %d Game Fonts; missing roles use legacy indices",
+            static_cast<int>(boundCount),
+            static_cast<int>(ExpectedFontCount));
+    }
 }
 
 void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
@@ -652,11 +657,6 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
 void BMLMod::OnProcess_Menu() {
     m_ModMenu.Render();
     m_CustomMaps.OnProcess();
-}
-
-void BMLMod::OnResize() {
-    ImGuiStyle &style = ImGui::GetStyle();
-    style.FontScaleMain = m_WindowRect.GetHeight() / 1200.0f;
 }
 
 void BMLMod::ShowTitle(bool show) {

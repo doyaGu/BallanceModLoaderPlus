@@ -121,6 +121,7 @@ public:
 
     bool HasCategory(const char *category) override;
     bool HasKey(const char *category, const char *key) override;
+    bool RemoveProperty(const char *category, const char *key);
 
     IProperty *GetProperty(const char *category, const char *key) override;
     const char *GetCategoryComment(const char *category);
@@ -135,6 +136,7 @@ public:
 private:
     void MarkDirty() { m_Dirty = true; }
     void QueueNotification(Property *property, const std::string &category, const std::string &key);
+    void DiscardNotificationsFor(const Property *property);
 
     IMod *m_Mod;
     std::string m_ModID;
