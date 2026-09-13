@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "UI/Overlay.h"
+#include "UI/ScriptImGui.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 

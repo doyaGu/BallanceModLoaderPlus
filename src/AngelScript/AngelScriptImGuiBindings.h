@@ -1,7 +1,7 @@
 #ifndef BML_ANGELSCRIPT_IMGUI_BINDINGS_H
 #define BML_ANGELSCRIPT_IMGUI_BINDINGS_H
 
-#include "UI/Overlay.h"
+#include "UI/ScriptImGui.h"
 
 struct ImDrawList;
 struct ImGuiContext;
