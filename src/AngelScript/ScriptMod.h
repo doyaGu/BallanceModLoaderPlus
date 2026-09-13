@@ -11,7 +11,7 @@
 
 #include "BML/ICommand.h"
 #include "BML/IMod.h"
-#include "UI/Overlay.h"
+#include "UI/ScriptImGui.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptDiagnostic.h"
 #include "ScriptCommandService.h"
