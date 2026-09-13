@@ -11,6 +11,7 @@ class IBML;
 class IConfig;
 class ILogger;
 class IProperty;
+struct FontCommandContext;
 
 namespace BML {
     class CommandContext;
@@ -22,7 +23,8 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, HUDRuntime &hud);
+    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, HUDRuntime &hud,
+                const FontCommandContext &fontContext);
     void OnUnload();
     void OnProcess();
 
@@ -44,7 +46,7 @@ private:
     void ApplySetting(const Setting &setting, IProperty *property);
 
     static void OnCommandOutput(const char *message, void *userdata);
-    void RegisterCommands(IBML &bml, HUDRuntime &hud);
+    void RegisterCommands(IBML &bml, HUDRuntime &hud, const FontCommandContext &fontContext);
 
     BML::CommandContext *m_Commands = nullptr;
     ILogger *m_Logger = nullptr;
