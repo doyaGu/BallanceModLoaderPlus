@@ -332,25 +332,25 @@ deactivate Sektor
 
 这就是为什么玩的时候，经过检查点后远处的路面突然出现而身后的路面消失。行为图按照 IngameParameter 表里的编号控制 Sector 组的显示和隐藏。
 
-## 选择只读观察还是 Native Mod 编辑
+## 选择只读观察还是编辑行为图
 
-本章使用只读观察，因为它对原版流程影响最小。当前 `bml.behavior` 只提供给 Win32
-Native C++ Mod，尚未投射为 AngelScript interface。脚本 Mod 可以使用的能力与 Native
-Mod 不相同：
+本章使用只读观察，因为它对原版流程影响最小。启用 CKAngelScript 时，每个脚本
+Mod 都会得到一份 owner-scoped 的 `BML::Behavior` 投影，和 Native C++ 使用同一套
+Graph / Edit / Patch / Plan 模型。本章不走那条路：先从 DataArray、游戏事件和对象
+状态读出行为图已经造成的结果。
 
 | 能力 | 说明 |
 | --- | --- |
 | 读 DataArray | 可以。观察行为图写入的结果 |
 | 监听游戏事件 | 可以。知道行为图执行到了哪个阶段 |
 | 查看对象状态 | 可以。看到行为图设置的位置、可见性 |
-| 修改行为图 | 当前脚本 interface 不提供通用 graph authoring |
-| 插入执行回调 | 可选 AngelScript 构建保留 legacy HookBlock；它不是 `bml.behavior` projection |
-| 使用完整 Graph/Edit/Patch/Plan | 仅 Native C++ Mod；见 [Behavior 编写](../behavior-authoring.md) |
+| 检查或修改行为图 | 使用 `BML::Behavior` 的 `Inspect` / `Edit` / `Patch` / `Plan`。脚本每次一个 Graph、一条 Plan 规则；要在一个 handle 里原子组合多个 Graph 或多条规则时仍用 Native C++。见 [Behavior 编写](../behavior-authoring.md) 第 10 节 |
+| 插入执行回调 | 优先 `BML::Behavior` 的 Hook / Before / After。`InsertHookBlock*` 是 legacy splice，卸载时会清，但没有 Patch journal |
 
 优先通过事件、DataArray 和对象状态观察原版流程。能够在公开状态层完成的功能，
 不需要编辑行为图。只有目标行为确实由某段图控制，而且修改范围、回滚方式和冲突
-策略都明确时，才考虑改用 Native C++ Behavior authoring。不要把 optional legacy
-HookBlock 当作完整 graph-edit interface。
+策略都明确时，才使用 `BML::Behavior`。不要把 legacy HookBlock 当作完整
+graph-edit interface。
 
 ## 用脚本观察行为图的执行效果
 
@@ -460,9 +460,9 @@ DataArray（第 11 章）
 **Q：我的脚本能在行为图之前执行吗？**
 
 脚本层没有 `OnPreProcess` 固定回调。常规脚本主要在 `OnProcess` 中观察本帧
-状态，或通过 `GameEvent` 响应关卡阶段变化。当前脚本 interface 没有通用行为图编辑；
-需要改变执行路径时，应使用 Native C++ Behavior authoring，或在启用 AngelScript 的构建中
-谨慎使用功能有限的 legacy HookBlock，而不是依赖未定义的回调顺序。
+状态，或通过 `GameEvent` 响应关卡阶段变化。需要改变执行路径时，使用
+`BML::Behavior` 的 Patch 或 Plan，而不是依赖未定义的回调顺序。`InsertHookBlock*`
+只适合插入一次性回调，不是可逆的 graph edit。
 
 **Q：行为图里的 Send Message 会触发 BML 事件吗？**
 

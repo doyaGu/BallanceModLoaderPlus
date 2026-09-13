@@ -2,9 +2,9 @@
 
 A BML+ script mod is an AngelScript class loaded through CKAngelScript. BML+
 adds mod identity, dependency ordering, lifecycle callbacks, resources,
-configuration, commands, logging, timers, loader UI, DataShare, and typed
-built-in services. CKAngelScript continues to own scene, behavior graph,
-component, message, async, and raw CK/Vx APIs.
+configuration, commands, logging, timers, loader UI, DataShare, typed
+built-in services, and `BML::Behavior` authoring. CKAngelScript continues to
+own scene, raw Behavior/BB/Param, component, message, async, and CK/Vx APIs.
 
 Use a native mod instead when the feature needs unsafe engine hooks,
 performance-critical native loops, caller-thread RPC handlers, or direct native
