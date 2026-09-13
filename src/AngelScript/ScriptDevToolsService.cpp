@@ -1514,9 +1514,14 @@ void ScriptDevToolsService::OnPreBegin() {
     BlockGameInput();
 
     const ImVec2 viewportSize = ImGui::GetMainViewport()->Size;
-    ImGui::SetNextWindowPos(ImVec2(viewportSize.x * 0.06f, viewportSize.y * 0.11f), ImGuiCond_Appearing);
-    ImGui::SetNextWindowSize(ImVec2(viewportSize.x * 0.88f, viewportSize.y * 0.78f), ImGuiCond_Appearing);
-    ImGui::SetNextWindowSizeConstraints(ImVec2(720.0f, 420.0f), ImGui::GetMainViewport()->Size);
+    const ImVec2 size(std::min(viewportSize.x * 0.88f, std::max(16.0f, viewportSize.x - 24.0f)),
+                      std::min(viewportSize.y * 0.78f, std::max(16.0f, viewportSize.y - 24.0f)));
+    ImGui::SetNextWindowPos(ImVec2((viewportSize.x - size.x) * 0.5f, viewportSize.y * 0.08f),
+                            ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(std::min(640.0f, viewportSize.x * 0.92f), std::min(360.0f, viewportSize.y * 0.70f)),
+        viewportSize);
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);

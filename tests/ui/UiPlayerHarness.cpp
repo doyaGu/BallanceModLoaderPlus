@@ -12,12 +12,17 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
+
+#ifndef PW_RENDERFULLCONTENT
+#define PW_RENDERFULLCONTENT 0x00000002
+#endif
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -354,6 +359,34 @@ HWND FindVisibleWindow(DWORD processId, const wchar_t *title) {
     return search.Found;
 }
 
+class TopMostGuard {
+  public:
+    void Hold(HWND window) {
+        if (!window)
+            return;
+        if (m_Window && m_Window != window)
+            Release();
+        m_Window = window;
+        SetWindowPos(m_Window, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    }
+
+    void Release() {
+        if (!m_Window)
+            return;
+        if (IsWindow(m_Window)) {
+            SetWindowPos(m_Window, HWND_NOTOPMOST, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+        m_Window = nullptr;
+    }
+
+    ~TopMostGuard() { Release(); }
+
+  private:
+    HWND m_Window = nullptr;
+};
+
 bool ActivateWindow(HWND window) {
     if (!window)
         return false;
@@ -373,8 +406,7 @@ bool ActivateWindow(HWND window) {
     keybd_event(VK_MENU, 0, 0, 0);
     ShowWindowAsync(window, SW_RESTORE);
     BringWindowToTop(window);
-    SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    SetWindowPos(window, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     SetForegroundWindow(window);
     SetActiveWindow(window);
     SetFocus(window);
@@ -390,8 +422,8 @@ bool ActivateWindow(HWND window) {
     return GetForegroundWindow() == window;
 }
 
-bool IsForegroundClientVisible(HWND window) {
-    if (!window || !IsWindowVisible(window) || IsIconic(window) || GetForegroundWindow() != window)
+bool ClientIsUnobstructed(HWND window) {
+    if (!window || !IsWindowVisible(window) || IsIconic(window))
         return false;
 
     RECT client{};
@@ -418,7 +450,11 @@ bool IsForegroundClientVisible(HWND window) {
             IntersectRect(&overlap, &client, &candidateRect))
             return false;
     }
-    return false;
+    return true;
+}
+
+bool IsForegroundClientVisible(HWND window) {
+    return GetForegroundWindow() == window && ClientIsUnobstructed(window);
 }
 
 bool EnsureForegroundClientVisible(HWND window, std::chrono::milliseconds timeout = 1500ms) {
@@ -485,8 +521,18 @@ std::vector<InputSequence> MakeInputSequences(InputProfile profile) {
     return sequences;
 }
 
+bool ReadBitmapPixels(HDC memory, HBITMAP bitmap, int height,
+                      std::vector<unsigned char> &pixels,
+                      BITMAPINFO &info) {
+    return GetDIBits(memory, bitmap, 0, height, pixels.data(), &info,
+                     DIB_RGB_COLORS) == height;
+}
+
 bool SaveClientBitmap(HWND window, const fs::path &path, int &width, int &height) {
-    if (!IsForegroundClientVisible(window))
+    // Captures only need an unobstructed client. The runner itself is often the
+    // foreground process (ctest / Cursor), so requiring GetForegroundWindow()
+    // == Ballance deadlocks the first checkpoint until the 180s test timeout.
+    if (!ClientIsUnobstructed(window))
         return false;
     const DPI_AWARENESS_CONTEXT previous =
         SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -501,10 +547,13 @@ bool SaveClientBitmap(HWND window, const fs::path &path, int &width, int &height
     height = client.bottom;
     HDC screen = GetDC(nullptr);
     HDC memory = screen ? CreateCompatibleDC(screen) : nullptr;
-    HBITMAP bitmap = memory ? CreateCompatibleBitmap(screen, width, height) : nullptr;
+    HBITMAP bitmap = memory
+        ? CreateCompatibleBitmap(screen, width, height)
+        : nullptr;
     HGDIOBJ old = bitmap ? SelectObject(memory, bitmap) : nullptr;
-    const bool copied = bitmap && BitBlt(memory, 0, 0, width, height, screen, origin.x, origin.y,
-                                         SRCCOPY | CAPTUREBLT);
+    const bool blit = bitmap &&
+        BitBlt(memory, 0, 0, width, height, screen, origin.x, origin.y,
+               SRCCOPY | CAPTUREBLT);
 
     BITMAPINFO info{};
     info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -515,8 +564,15 @@ bool SaveClientBitmap(HWND window, const fs::path &path, int &width, int &height
     info.bmiHeader.biCompression = BI_RGB;
     const DWORD rowBytes = (width * 3u + 3u) & ~3u;
     std::vector<unsigned char> pixels(static_cast<std::size_t>(rowBytes) * height);
-    const bool read = copied && GetDIBits(memory, bitmap, 0, height, pixels.data(), &info,
-                                          DIB_RGB_COLORS) == height;
+    bool read = blit && ReadBitmapPixels(
+        memory, bitmap, height, pixels, info);
+    if (!read && bitmap) {
+        const bool printed =
+            PrintWindow(window, memory, PW_RENDERFULLCONTENT) ||
+            PrintWindow(window, memory, 0);
+        read = printed && ReadBitmapPixels(
+            memory, bitmap, height, pixels, info);
+    }
     if (old)
         SelectObject(memory, old);
     if (bitmap)
@@ -527,7 +583,7 @@ bool SaveClientBitmap(HWND window, const fs::path &path, int &width, int &height
         ReleaseDC(nullptr, screen);
     if (previous)
         SetThreadDpiAwarenessContext(previous);
-    if (!read || !IsForegroundClientVisible(window))
+    if (!read || !ClientIsUnobstructed(window))
         return false;
 
     fs::create_directories(path.parent_path());
@@ -615,7 +671,10 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
         }
         processStarted = true;
         CloseHandle(processInfo.hThread);
+        AllowSetForegroundWindow(ASFW_ANY);
+        AllowSetForegroundWindow(processInfo.dwProcessId);
 
+        TopMostGuard topMost;
         HWND ballanceWindow = nullptr;
         const auto startupDeadline = std::chrono::steady_clock::now() + 15s;
         while (std::chrono::steady_clock::now() < startupDeadline &&
@@ -626,6 +685,7 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
             }
             ballanceWindow = FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
             if (ballanceWindow) {
+                topMost.Hold(ballanceWindow);
                 result.WindowActivated = EnsureForegroundClientVisible(ballanceWindow);
                 break;
             }
@@ -650,24 +710,40 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
 
         const auto deadline =
             std::chrono::steady_clock::now() + std::chrono::seconds(request.TimeoutSeconds);
+        constexpr auto checkpointAckTimeout = 20s;
+        std::uint32_t checkpointAttemptSequence = 0;
+        auto checkpointAttemptStarted = std::chrono::steady_clock::now();
+        bool checkpointFailureLogged = false;
         auto nextForeground = std::chrono::steady_clock::now();
         while (WaitForSingleObject(processInfo.hProcess, 0) == WAIT_TIMEOUT &&
                std::chrono::steady_clock::now() < deadline) {
             if (std::chrono::steady_clock::now() >= nextForeground) {
                 ballanceWindow = FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
-                if (ballanceWindow)
-                    result.WindowActivated = EnsureForegroundClientVisible(ballanceWindow, 500ms) ||
-                                             result.WindowActivated;
+                if (ballanceWindow) {
+                    topMost.Hold(ballanceWindow);
+                    result.WindowActivated =
+                        EnsureForegroundClientVisible(ballanceWindow, 500ms) ||
+                        result.WindowActivated || ClientIsUnobstructed(ballanceWindow);
+                }
                 nextForeground = std::chrono::steady_clock::now() + 1s;
             }
             const std::optional<UiAutomationSession::Checkpoint> checkpoint = session.ReceiveNext();
             if (!session.LastError().empty())
                 throw std::runtime_error("UI automation session: " + session.LastError());
             if (checkpoint) {
+                if (checkpoint->Sequence != checkpointAttemptSequence) {
+                    checkpointAttemptSequence = checkpoint->Sequence;
+                    checkpointAttemptStarted = std::chrono::steady_clock::now();
+                    checkpointFailureLogged = false;
+                }
                 bool recognized = false;
                 bool completed = false;
                 bool succeeded = false;
                 std::string failureReason = "unsupported-checkpoint";
+
+                ballanceWindow = FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
+                if (ballanceWindow)
+                    topMost.Hold(ballanceWindow);
 
                 if (checkpoint->Kind == UiAutomationSession::CheckpointKind::Input) {
                     const auto input = std::find_if(
@@ -679,23 +755,24 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
                         if (input->Injected) {
                             completed = true;
                             failureReason = "duplicate-checkpoint";
+                        } else if (!ballanceWindow) {
+                            failureReason = "window-not-found";
+                        } else if (!EnsureForegroundClientVisible(ballanceWindow)) {
+                            failureReason = "window-obstructed";
                         } else {
-                            ballanceWindow =
-                                FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
-                            if (ballanceWindow && EnsureForegroundClientVisible(ballanceWindow)) {
-                                succeeded = true;
-                                for (BYTE key : input->Keys) {
-                                    if (!EnsureForegroundClientVisible(ballanceWindow)) {
-                                        succeeded = false;
-                                        break;
-                                    }
-                                    SendKey(key);
+                            succeeded = true;
+                            for (BYTE key : input->Keys) {
+                                if (!EnsureForegroundClientVisible(ballanceWindow)) {
+                                    succeeded = false;
+                                    failureReason = "window-obstructed";
+                                    break;
                                 }
-                                if (succeeded) {
-                                    input->Injected = true;
-                                    ++result.InjectedInputSequences;
-                                    completed = true;
-                                }
+                                SendKey(key);
+                            }
+                            if (succeeded) {
+                                input->Injected = true;
+                                ++result.InjectedInputSequences;
+                                completed = true;
                             }
                         }
                     }
@@ -711,14 +788,20 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
                         if (capture.Captured) {
                             completed = true;
                             failureReason = "duplicate-checkpoint";
+                        } else if (!ballanceWindow) {
+                            failureReason = "window-not-found";
                         } else {
-                            ballanceWindow =
-                                FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
-                            if (ballanceWindow && EnsureForegroundClientVisible(ballanceWindow)) {
-                                succeeded = SaveClientBitmap(ballanceWindow, capture.Path,
-                                                             capture.Width, capture.Height);
-                                capture.Captured = succeeded;
-                                completed = succeeded;
+                            ActivateWindow(ballanceWindow);
+                            if (!ClientIsUnobstructed(ballanceWindow) &&
+                                !EnsureForegroundClientVisible(ballanceWindow)) {
+                                failureReason = "window-obstructed";
+                            } else if (!SaveClientBitmap(ballanceWindow, capture.Path,
+                                                         capture.Width, capture.Height)) {
+                                failureReason = "capture-failed";
+                            } else {
+                                capture.Captured = true;
+                                succeeded = true;
+                                completed = true;
                             }
                         }
                     }
@@ -726,7 +809,20 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
 
                 if (!recognized)
                     completed = true;
+                if (!completed && std::chrono::steady_clock::now() - checkpointAttemptStarted >=
+                                      checkpointAckTimeout) {
+                    completed = true;
+                }
+                if (!completed && !checkpointFailureLogged) {
+                    std::cerr << "UI automation: waiting for " << checkpoint->Name
+                              << " reason=" << failureReason << '\n';
+                    checkpointFailureLogged = true;
+                }
                 if (completed) {
+                    if (!succeeded) {
+                        std::cerr << "UI automation: " << checkpoint->Name
+                                  << " failed reason=" << failureReason << '\n';
+                    }
                     if (!session.Acknowledge(*checkpoint, succeeded,
                                              succeeded ? std::string_view{}
                                                        : std::string_view{failureReason})) {
