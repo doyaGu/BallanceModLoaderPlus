@@ -199,6 +199,8 @@ set(BML_CONSOLE_PRIVATE_HEADERS
         Console/CommandContext.h
         Console/Commands.h
         Console/Console.h
+        Console/ConsoleLayout.h
+        Console/FontCommand.h
         Console/MessageBoard.h
 )
 
@@ -207,6 +209,8 @@ set(BML_CONSOLE_SOURCES
         Console/CommandContext.cpp
         Console/Commands.cpp
         Console/Console.cpp
+        Console/ConsoleLayout.cpp
+        Console/FontCommand.cpp
         Console/MessageBoard.cpp
 )
 
@@ -265,25 +269,45 @@ set(BML_UI_PRIVATE_HEADERS
         UI/AnsiPalette.h
         UI/AnsiText.h
         UI/BuiInternal.h
+        UI/Ime/Presentation.h
+        UI/Ime/NativePresentation.h
+        UI/Ime/RailLayout.h
+        UI/Ime/Runtime.h
+        UI/Ime/State.h
+        UI/Ime/Tsf.h
+        UI/InputSurfaceStyle.h
+        UI/FontRuntime.h
         UI/GameFontCatalog.h
+        UI/Gui/LegacyTextFont.h
         UI/ModMenu.h
         UI/Overlay.h
+        UI/OverlayPlatformInput.h
+        UI/ScriptImGui.h
 )
 
 set(BML_UI_SOURCES
         UI/AnsiPalette.cpp
         UI/AnsiText.cpp
         UI/Bui.cpp
+        UI/Ime/Presentation.cpp
+        UI/Ime/NativePresentation.cpp
+        UI/Ime/RailLayout.cpp
+        UI/Ime/Runtime.cpp
+        UI/Ime/State.cpp
+        UI/Ime/Tsf.cpp
+        UI/FontRuntime.cpp
         UI/GameFontCatalog.cpp
         UI/ModMenu.cpp
         UI/Overlay.cpp
-        UI/OverlayScriptImGui.cpp
+        UI/OverlayPlatformInput.cpp
+        UI/ScriptImGui.cpp
         UI/Gui/Button.cpp
         UI/Gui/Element.cpp
         UI/Gui/Gui.cpp
         UI/Gui/Input.cpp
         UI/Gui/KeyInput.cpp
         UI/Gui/Label.cpp
+        UI/Gui/LegacyTextFont.cpp
         UI/Gui/Panel.cpp
         UI/Gui/Text.cpp
 )
@@ -600,13 +624,18 @@ target_link_libraries(BML
         VirtoolsSDK::CK2 VirtoolsSDK::VxMath
         PRIVATE
         BMLUtils
-        minhook onig
+        minhook onig imm32 comctl32 ole32 oleaut32 uuid
 )
 
 add_dependencies(BML BML_VersionHeader)
 
-target_compile_definitions(BML PRIVATE
-        BML_EXPORTS IMGUI_EXPORT IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\"
+target_compile_definitions(BML
+        PUBLIC
+        "$<BUILD_INTERFACE:IMGUI_USER_CONFIG=\"${CMAKE_CURRENT_SOURCE_DIR}/BMLImGuiConfig.h\">"
+        "$<INSTALL_INTERFACE:IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\">"
+        PRIVATE
+        BML_EXPORTS IMGUI_EXPORT
+        _WIN32_WINNT=0x0A00 WINVER=0x0A00
         BML_ENABLE_ANGELSCRIPT=$<BOOL:${BML_WITH_ANGELSCRIPT}>
         BML_ENABLE_BEHAVIOR_TEST_INTERFACE=$<BOOL:${BML_BUILD_TESTS}>
         BML_ENABLE_UI_AUTOMATION=$<BOOL:${BML_BUILD_UI_AUTOMATION}>

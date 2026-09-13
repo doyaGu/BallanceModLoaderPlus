@@ -74,6 +74,49 @@ add_bml_test(BehaviorAuthoringTest
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
+add_bml_test(ImeStateTest
+        SOURCES
+        ImeStateTest.cpp
+        ${BML_SOURCE_DIR}/UI/Ime/NativePresentation.cpp
+        ${BML_SOURCE_DIR}/UI/Ime/State.cpp
+)
+
+add_bml_test(ImePresentationTest
+        SOURCES
+        ImePresentationTest.cpp
+        ${BML_SOURCE_DIR}/UI/Ime/RailLayout.cpp
+)
+
+add_bml_test(ConsoleLayoutTest
+        SOURCES
+        ConsoleLayoutTest.cpp
+        ${BML_SOURCE_DIR}/Console/ConsoleLayout.cpp
+)
+
+add_bml_test(FontRuntimeTest
+        SOURCES
+        FontRuntimeTest.cpp
+        ${BML_SOURCE_DIR}/UI/FontRuntime.cpp
+        ${IMGUI_SOURCE_DIR}/imgui.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+        DEPENDENCIES
+        BMLUtils
+)
+target_include_directories(FontRuntimeTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
+target_compile_definitions(FontRuntimeTest PRIVATE
+        IMGUI_EXPORT
+        BML_TEST_FONT_DIRECTORY="${PROJECT_SOURCE_DIR}/packaging/runtime/ModLoader/Fonts"
+)
+
+# This target deliberately does not use add_bml_test(): its ImGui configuration
+# must arrive through BML's public usage requirements, exactly as it does for a
+# Native Mod built against the build-tree package.
+add_library(ImGuiAbiConsumerCompile OBJECT ImGuiAbiConsumerCompile.cpp)
+target_link_libraries(ImGuiAbiConsumerCompile PRIVATE BML)
+set_target_properties(ImGuiAbiConsumerCompile PROPERTIES FOLDER "Tests")
+
 # Every public C++ Behavior domain header must compile on its own. The umbrella
 # remains the convenient include, not a hidden ordering requirement.
 set(BML_BEHAVIOR_HEADER_COMPILE_SOURCES)
@@ -610,6 +653,14 @@ add_bml_test(GameFontCatalogTest
         SOURCES
         GameFontCatalogTest.cpp
         ${BML_SOURCE_DIR}/UI/GameFontCatalog.cpp
+)
+
+add_bml_test(LegacyTextFontTest
+        SOURCES
+        LegacyTextFontTest.cpp
+        ${BML_SOURCE_DIR}/UI/Gui/LegacyTextFont.cpp
+        DEPENDENCIES
+        VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
 add_bml_test(AnsiTextTest
