@@ -120,11 +120,13 @@ set(BML_ROOT_SOURCES
 
 set(BML_MODS_PRIVATE_HEADERS
         Mods/BMLMod.h
+        Mods/ModsMenuEntry.h
         Mods/NewBallTypeMod.h
 )
 
 set(BML_MODS_SOURCES
         Mods/BMLMod.cpp
+        Mods/ModsMenuEntry.cpp
         Mods/NewBallTypeMod.cpp
 )
 

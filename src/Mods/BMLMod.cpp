@@ -5,9 +5,6 @@
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"
-#include "BML/ScriptHelper.h"
-#include "BML/Guids/Interface.h"
-#include "BML/Guids/TT_Toolbox_RT.h"
 
 #include "Loader/ModContext.h"
 #include "Config/Config.h"
@@ -19,7 +16,6 @@
 #if BML_ENABLE_UI_AUTOMATION
 #include "UI/UiAutomation.h"
 #endif
-#include "Behavior/HookBlock.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
 #include "Api/BuiltinCapabilities.h"
@@ -27,8 +23,8 @@
 #include "AngelScript/ScriptDevToolsService.h"
 #endif
 
-using namespace ScriptHelper;
 namespace Ui = BML::UI;
+namespace Behavior = BML::Behavior;
 
 namespace {
 constexpr std::size_t GameFontRoleCount = static_cast<std::size_t>(BML::GameFont::Count);
@@ -36,36 +32,39 @@ constexpr unsigned long GameFontAcquireDelay = 1;
 
 using BoundGameFontRoles = std::bitset<GameFontRoleCount>;
 
-class GameFontCollector final {
-public:
-    GameFontCollector(BML::GameFontCatalog &catalog, BoundGameFontRoles &boundRoles)
-        : m_Catalog(catalog), m_BoundRoles(boundRoles) {}
+void CollectGameFontRoles(const Behavior::Graph &graph,
+                          BML::GameFontCatalog &catalog,
+                          BoundGameFontRoles &boundRoles) {
+    for (const Behavior::Node node : graph.Nodes()) {
+        if (node.Index() < 0)
+            continue;
+        if (node.Name() == "TT CreateFontEx") {
+            auto runtimeName = graph.Read(node.Pin(0));
+            auto font = graph.Read(node.Pout(0));
+            const auto *name = runtimeName
+                ? std::get_if<std::string>(&runtimeName->Data) : nullptr;
+            const auto *handle = font
+                ? std::get_if<std::int32_t>(&font->Data) : nullptr;
+            BML::GameFont role = BML::GameFont::None;
+            if (name && handle && catalog.Bind(*name, *handle, &role))
+                boundRoles.set(static_cast<std::size_t>(role));
+        }
 
-    bool operator()(CKBehavior *behavior) const {
-        if (!behavior || behavior->GetInputParameterCount() < 1 || behavior->GetOutputParameterCount() < 1)
-            return true;
-
-        const auto *runtimeName = static_cast<const char *>(behavior->GetInputParameterReadDataPtr(0));
-        int font = 0;
-        BML::GameFont role = BML::GameFont::None;
-        if (runtimeName &&
-            behavior->GetOutputParameterValue(0, &font) == CK_OK &&
-            m_Catalog.Bind(runtimeName, font, &role))
-            m_BoundRoles.set(static_cast<std::size_t>(role));
-        return true;
+        if (!node.IsGraph())
+            continue;
+        auto nested = graph.Inspect(node);
+        if (nested)
+            CollectGameFontRoles(nested.Value(), catalog, boundRoles);
     }
+}
 
-private:
-    BML::GameFontCatalog &m_Catalog;
-    BoundGameFontRoles &m_BoundRoles;
-};
 } // namespace
 
 ModContext *BMLMod::GetRuntimeContext() const {
     return dynamic_cast<ModContext *>(m_BML);
 }
 
-const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
+const BMLMod::Setting *BMLMod::GetSettings(std::size_t &count) {
     static const Setting settings[] = {
         {"GUI", "FontFilename", &BMLMod::m_FontFilename, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
         {"GUI", "FontSize", &BMLMod::m_FontSize, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
@@ -86,10 +85,10 @@ const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
 }
 
 void BMLMod::BindSettings() {
-    size_t count = 0;
+    std::size_t count = 0;
     const Setting *settings = GetSettings(count);
     IConfig *config = GetConfig();
-    for (size_t i = 0; i < count; ++i)
+    for (std::size_t i = 0; i < count; ++i)
         this->*settings[i].property = config->GetProperty(settings[i].category, settings[i].key);
 }
 
@@ -103,9 +102,9 @@ void BMLMod::ApplySetting(const Setting &setting, IProperty *property) {
 }
 
 void BMLMod::ApplySettings(ApplyWhen when) {
-    size_t count = 0;
+    std::size_t count = 0;
     const Setting *settings = GetSettings(count);
-    for (size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < count; ++i) {
         if ((settings[i].when & static_cast<unsigned>(when)) == 0)
             continue;
         ApplySetting(settings[i], this->*settings[i].property);
@@ -115,6 +114,15 @@ void BMLMod::ApplySettings(ApplyWhen when) {
 void BMLMod::OnLoad() {
     m_CKContext = m_BML->GetCKContext();
     m_TimeManager = m_BML->GetTimeManager();
+
+    auto behavior = Behavior::Session::Open(GetID());
+    if (behavior)
+        m_Behavior = behavior.Take();
+    else
+        GetLogger()->Warn("Behavior authoring is unavailable to the built-in Mod: %s",
+                          behavior.GetStatus().Message.empty()
+                              ? "could not open the BML session"
+                              : behavior.GetStatus().Message.c_str());
 
     // Configure AnsiPalette to use the ModLoader directory for config/themes
     AnsiPalette::SetLoaderDirProvider([]() -> std::wstring {
@@ -148,6 +156,8 @@ void BMLMod::OnUnload() {
     m_CustomMaps.OnUnload();
     m_GameplayTweaks.OnUnload();
     m_GameEventHooks.OnUnload();
+    m_ModsMenuEntry.Unload();
+    m_Behavior.Reset();
 
     Bui::CleanupResources(m_CKContext);
 
@@ -178,10 +188,11 @@ void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
         OnEditScript_Menu_MenuInit(script);
 
     if (!strcmp(script->GetName(), "Menu_Options"))
-        OnEditScript_Menu_OptionsMenu(script);
+        m_ModsMenuEntry.Load(m_Behavior, script, *m_BML, *GetLogger());
 }
 
 void BMLMod::OnProcess() {
+    m_ModsMenuEntry.OnProcess();
     m_HUD.OnProcess(ImGui::GetIO().DeltaTime, m_TimeManager->GetLastDeltaTime());
     OnProcess_Menu();
     m_Console.OnProcess();
@@ -217,9 +228,9 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
     if (m_GameplayTweaks.OnModifyConfig(category, key, prop))
         return;
 
-    size_t count = 0;
+    std::size_t count = 0;
     const Setting *settings = GetSettings(count);
-    for (size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < count; ++i) {
         const Setting &setting = settings[i];
         if ((setting.when & OnChange) == 0 || this->*setting.property != prop)
             continue;
@@ -292,7 +303,8 @@ void BMLMod::ClearIngameMessages() {
 }
 
 void BMLMod::OpenModsMenu() {
-    m_ModMenu.Open("Mod List");
+    if (!m_ModMenu.Open("Mod List"))
+        GetLogger()->Error("Cannot open the Mods menu route");
 }
 
 void BMLMod::CloseModsMenu() {
@@ -524,14 +536,31 @@ void BMLMod::AcquireGameFonts() {
         return;
     }
 
-    CKBehavior *fonts = FindFirstBB(menuInit, "Fonts");
-    if (!fonts) {
+    if (!m_Behavior) {
+        GetLogger()->Warn("Cannot acquire Game Fonts: Behavior authoring is unavailable");
+        return;
+    }
+
+    auto menu = m_Behavior.Inspect(menuInit, Behavior::View::Live);
+    if (!menu) {
+        GetLogger()->Warn("Cannot inspect Menu_Init while acquiring Game Fonts: %s",
+                          menu.GetStatus().Message.c_str());
+        return;
+    }
+    auto fontsNode = menu->Find(Behavior::Named("Fonts", 0));
+    if (!fontsNode) {
         GetLogger()->Warn("Cannot acquire Game Fonts: Menu_Init/Fonts was not found");
+        return;
+    }
+    auto fonts = menu->Inspect(fontsNode.Value());
+    if (!fonts) {
+        GetLogger()->Warn("Cannot inspect Menu_Init/Fonts while acquiring Game Fonts: %s",
+                          fonts.GetStatus().Message.c_str());
         return;
     }
 
     BoundGameFontRoles boundRoles;
-    FindBB(fonts, GameFontCollector(catalog, boundRoles), "TT CreateFontEx");
+    CollectGameFontRoles(fonts.Value(), catalog, boundRoles);
 
     constexpr std::size_t ExpectedFontCount = GameFontRoleCount - 1;
     const std::size_t boundCount = boundRoles.count();
@@ -543,119 +572,11 @@ void BMLMod::AcquireGameFonts() {
     }
 }
 
-void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
-    GetLogger()->Info("Start to insert Mods Button into Options Menu");
-
-    char but_name[] = "M_Options_But_X";
-    CK2dEntity *buttons[6] = {nullptr};
-    buttons[0] = m_BML->Get2dEntityByName("M_Options_Title");
-    for (int i = 1; i < 4; i++) {
-        but_name[14] = '0' + i;
-        buttons[i] = m_BML->Get2dEntityByName(but_name);
-    }
-
-    buttons[5] = m_BML->Get2dEntityByName("M_Options_But_Back");
-    buttons[4] = (CK2dEntity *) m_CKContext->CopyObject(buttons[1]);
-    buttons[4]->SetName("M_Options_But_4");
-    for (int i = 0; i < 5; i++) {
-        Vx2DVector pos;
-        buttons[i]->GetPosition(pos, true);
-        pos.y = 0.1f + 0.14f * i;
-        buttons[i]->SetPosition(pos, true);
-    }
-
-    CKDataArray *array = m_BML->GetArrayByName("Menu_Options_ShowHide");
-    array->InsertRow(3);
-    array->SetElementObject(3, 0, buttons[4]);
-    CKBOOL show = 1;
-    array->SetElementValue(3, 1, &show, sizeof(show));
-    m_BML->SetIC(array);
-
-    CKBehavior *graph = FindFirstBB(script, "Options Menu");
-    CKBehavior *up_sop = nullptr, *down_sop = nullptr, *up_ps = nullptr, *down_ps = nullptr;
-    FindBB(graph, [graph, &up_sop, &down_sop](CKBehavior *beh) {
-        CKBehavior *previous = FindPreviousBB(graph, beh);
-        const char *name = previous->GetName();
-        if (!strcmp(name, "Set 2D Material"))
-            up_sop = beh;
-        if (!strcmp(name, "Send Message"))
-            down_sop = beh;
-        return !(up_sop && down_sop);
-    }, "Switch On Parameter");
-    FindBB(graph, [graph, &up_ps, &down_ps](CKBehavior *beh) {
-        CKBehavior *previous = FindNextBB(graph, beh);
-        const char *name = previous->GetName();
-        if (!strcmp(name, "Keyboard"))
-            up_ps = beh;
-        if (!strcmp(name, "Send Message"))
-            down_ps = beh;
-        return !(up_ps && down_ps);
-    }, "Parameter Selector");
-
-    CKParameterLocal *pin = CreateParamValue(graph, "Pin 5", CKPGUID_INT, 4);
-    up_sop->CreateInputParameter("Pin 5", CKPGUID_INT)->SetDirectSource(pin);
-    up_sop->AddOutput("Out 5");
-    down_sop->CreateInputParameter("Pin 5", CKPGUID_INT)->SetDirectSource(pin);
-    down_sop->AddOutput("Out 5");
-    up_ps->CreateInputParameter("pIn 4", CKPGUID_INT)->SetDirectSource(pin);
-    up_ps->AddInput("In 4");
-    down_ps->CreateInputParameter("pIn 4", CKPGUID_INT)->SetDirectSource(pin);
-    down_ps->AddInput("In 4");
-
-    CKBehavior *text2d = CreateBB(graph, VT_INTERFACE_2DTEXT, true);
-    CKBehavior *pushbutton = CreateBB(graph, TT_TOOLBOX_RT_TTPUSHBUTTON2, true);
-    CKBehavior *text2dref = FindFirstBB(graph, "2D Text");
-    CKBehavior *nop = FindFirstBB(graph, "Nop");
-    CKParameterLocal *entity2d = CreateParamObject(graph, "Button", CKPGUID_2DENTITY, buttons[4]);
-    CKParameterLocal *buttonname = CreateParamString(graph, "Text", "Mods");
-    int textflags;
-    text2dref->GetLocalParameterValue(0, &textflags);
-    text2d->SetLocalParameterValue(0, &textflags, sizeof(textflags));
-
-    text2d->GetTargetParameter()->SetDirectSource(entity2d);
-    pushbutton->GetTargetParameter()->SetDirectSource(entity2d);
-    text2d->GetInputParameter(0)->ShareSourceWith(text2dref->GetInputParameter(0));
-    text2d->GetInputParameter(1)->SetDirectSource(buttonname);
-    for (int i = 2; i < 6; i++)
-        text2d->GetInputParameter(i)->ShareSourceWith(text2dref->GetInputParameter(i));
-
-    FindNextLink(graph, up_sop, nullptr, 4, 0)->SetInBehaviorIO(up_sop->GetOutput(5));
-    CreateLink(graph, up_sop, text2d, 4, 0);
-    CreateLink(graph, text2d, nop, 0, 0);
-    CreateLink(graph, text2d, pushbutton, 0, 0);
-    FindPreviousLink(graph, up_ps, nullptr, 1, 3)->SetOutBehaviorIO(up_ps->GetInput(4));
-    FindPreviousLink(graph, down_ps, nullptr, 2, 3)->SetOutBehaviorIO(down_ps->GetInput(4));
-    CreateLink(graph, pushbutton, up_ps, 1, 3);
-    CreateLink(graph, pushbutton, down_ps, 2, 3);
-    graph->AddOutput("Button 5 Pressed");
-    CreateLink(graph, down_sop, graph->GetOutput(4), 5);
-    FindNextLink(script, graph, nullptr, 3, 0)->SetInBehaviorIO(graph->GetOutput(4));
-
-    BML::Behavior::Internal::AttachResult hook = GetRuntimeContext()->Behaviors().AddToGraph(
-        script, BML::Behavior::Internal::HookBlock::Make([](const CKBehaviorContext *, void *) -> int {
-            BML_GetModContext()->OpenModsMenu();
-            return CKBR_OK;
-        }));
-    CKBehavior *modsmenu = hook ? hook.Block : nullptr;
-    CKBehavior *exit = FindFirstBB(script, "Exit", false, 1, 0);
-    CreateLink(script, graph, modsmenu, 3, 0);
-    CreateLink(script, modsmenu, exit, 0, 0);
-    CKBehavior *keyboard = FindFirstBB(graph, "Keyboard");
-    FindBB(keyboard, [keyboard](CKBehavior *beh) {
-        CKParameter *endpoint = beh->GetInputParameter(0)->GetRealSource();
-        if (GetParamValue<CKKEYBOARD>(endpoint) == CKKEY_ESCAPE) {
-            CKBehavior *id = FindNextBB(keyboard, beh);
-            SetParamValue(id->GetInputParameter(0)->GetRealSource(), 4);
-            return false;
-        }
-        return true;
-    }, "Secure Key");
-
-    GetLogger()->Info("Mods Button inserted");
-}
-
 void BMLMod::OnProcess_Menu() {
-    m_ModMenu.Render();
+    if (!m_ModMenu.Render()) {
+        GetLogger()->Error("Cannot render the Mods menu route");
+        (void) m_ModMenu.Close();
+    }
     m_CustomMaps.OnProcess();
 }
 

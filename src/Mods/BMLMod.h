@@ -5,12 +5,14 @@
 
 #include "BML/IMod.h"
 #include "BML/IBML.h"
+#include "BML/Behavior.hpp"
 
 #include "Console/Console.h"
 #include "CustomMaps/CustomMaps.h"
 #include "Gameplay/GameEventHooks.h"
 #include "Gameplay/GameplayTweaks.h"
 #include "HUD/HUDRuntime.h"
+#include "Mods/ModsMenuEntry.h"
 #include "UI/ModMenu.h"
 
 class ModContext;
@@ -103,7 +105,7 @@ private:
         bool requiresIngame;
     };
 
-    static const Setting *GetSettings(size_t &count);
+    static const Setting *GetSettings(std::size_t &count);
     void BindSettings();
     void ApplySettings(ApplyWhen when);
     void ApplySetting(const Setting &setting, IProperty *property);
@@ -118,7 +120,6 @@ private:
     static void ApplyWidescreenSetting(BMLMod &mod, IProperty *property);
 
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
-    void OnEditScript_Menu_OptionsMenu(CKBehavior *script);
     void AcquireGameFonts();
 
     void OnProcess_Menu();
@@ -132,6 +133,8 @@ private:
     GameEventHooks m_GameEventHooks;
     GameplayTweaks m_GameplayTweaks;
     Console m_Console;
+    BML::Behavior::Session m_Behavior;
+    ModsMenuEntry m_ModsMenuEntry;
 
     std::string m_ImGuiIniFilename;
     std::string m_ImGuiLogFilename;
