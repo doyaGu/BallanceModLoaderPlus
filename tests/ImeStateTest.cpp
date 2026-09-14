@@ -69,16 +69,14 @@ std::vector<std::byte> MakeCandidateList(
 }
 } // namespace
 
-TEST(ImePolicyTest,
-     ContextActivationSuppressesSystemUiBeforeFirstTextFrame) {
+TEST(ImePolicyTest, ContextActivationKeepsSystemUiWhenPresentationIsUnowned) {
     const std::intptr_t original =
         ISC_SHOWUICOMPOSITIONWINDOW | ISC_SHOWUICANDIDATEWINDOW;
     const auto disposition =
         Overlay::Ime::NativePresentation::Decide(
             WM_IME_SETCONTEXT, TRUE, original, false);
 
-    ASSERT_TRUE(disposition.replaceLParam);
-    EXPECT_EQ(disposition.lParam & ISC_SHOWUIALL, 0);
+    EXPECT_FALSE(disposition.replaceLParam);
     EXPECT_FALSE(disposition.suppress);
 }
 
@@ -96,7 +94,7 @@ TEST(ImePolicyTest, ContextActivationPreservesNonUiFlags) {
     static_assert((privateFlag & ISC_SHOWUIALL) == 0);
     const auto disposition =
         Overlay::Ime::NativePresentation::Decide(
-            WM_IME_SETCONTEXT, TRUE, ISC_SHOWUIALL | privateFlag, false);
+            WM_IME_SETCONTEXT, TRUE, ISC_SHOWUIALL | privateFlag, true);
 
     ASSERT_TRUE(disposition.replaceLParam);
     EXPECT_EQ(disposition.lParam & ISC_SHOWUIALL, 0);
@@ -311,7 +309,44 @@ TEST(ImeStateTest, ParsesCandidatePageAndNormalizesBounds) {
     EXPECT_EQ(list.selection, 1u);
     EXPECT_TRUE(list.hasSelection);
     EXPECT_EQ(list.pageStart, 1u);
+    EXPECT_EQ(list.pageSize, 3u);
+}
+
+TEST(ImeStateTest, PreservesCandidatePageCapacityOnPartialFinalPage) {
+    const std::vector<std::byte> bytes =
+        MakeCandidateList({u"one", u"two", u"three", u"four", u"five"},
+                          4, 4, 2);
+
+    CandidateListSnapshot list;
+    ASSERT_TRUE(ParseCandidateList(bytes, list));
+    EXPECT_EQ(list.pageStart, 4u);
     EXPECT_EQ(list.pageSize, 2u);
+}
+
+TEST(ImeStateTest, PreservesIndexedCandidatePageMetadata) {
+    CandidateListSnapshot list;
+    const std::vector<std::uint32_t> pageStarts{0, 5, 10};
+    const std::uint32_t pageIndex = static_cast<std::uint32_t>(pageStarts.size() - 1);
+    list.items.resize(pageStarts.back() + 2, u"candidate");
+
+    ASSERT_TRUE(list.SetIndexedPage(pageStarts, pageIndex));
+    EXPECT_EQ(list.pageStart, pageStarts[pageIndex]);
+    EXPECT_EQ(list.pageSize, list.items.size() - pageStarts[pageIndex]);
+    ASSERT_TRUE(list.pagePosition.has_value());
+    EXPECT_EQ(list.pagePosition->index, pageIndex);
+    EXPECT_EQ(list.pagePosition->count, pageStarts.size());
+}
+
+TEST(ImeStateTest, RejectsInvalidIndexedCandidatePagesWithoutChangingState) {
+    CandidateListSnapshot list;
+    list.items = {u"one", u"two", u"three"};
+    list.pageStart = 1;
+    list.pageSize = 2;
+    const CandidateListSnapshot original = list;
+    const std::uint32_t duplicateStarts[] = {0, 2, 2};
+
+    EXPECT_FALSE(list.SetIndexedPage(duplicateStarts, 1));
+    EXPECT_EQ(list, original);
 }
 
 TEST(ImeStateTest, PreservesCandidateStyleAndRejectsLegacyCodeEntry) {

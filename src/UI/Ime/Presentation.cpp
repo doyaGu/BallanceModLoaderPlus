@@ -49,14 +49,15 @@ namespace Overlay::Ime::Presentation {
             if (!ImGui::GetCurrentContext() || !snapshot.HasCandidates())
                 return false;
 
+            static const ImGuiID owner = ImHashStr("##BML IME candidate navigation");
             constexpr ImGuiInputFlags route = ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverActive;
-            ImGui::Shortcut(ImGuiMod_Shift | ImGuiKey_Tab, route);
-            ImGui::Shortcut(ImGuiKey_Tab, route);
-            const ImGuiIO &io = ImGui::GetIO();
-            if (!ImGui::IsKeyPressed(ImGuiKey_Tab, false) || io.KeyCtrl || io.KeyAlt || io.KeySuper)
-                return false;
-
-            return Runtime::MoveCandidate(io.KeyShift ? CandidateDirection::Previous : CandidateDirection::Next);
+            const bool previous = ImGui::Shortcut(ImGuiMod_Shift | ImGuiKey_Tab, route, owner);
+            const bool next = ImGui::Shortcut(ImGuiKey_Tab, route, owner);
+            if (previous)
+                return Runtime::MoveCandidate(CandidateDirection::Previous);
+            if (next)
+                return Runtime::MoveCandidate(CandidateDirection::Next);
+            return false;
         }
 
         void AppendUtf8(std::string &output, std::uint32_t codepoint) {

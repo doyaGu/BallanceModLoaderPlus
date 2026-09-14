@@ -15,10 +15,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 #include <new>
 #include <optional>
-#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -28,6 +28,7 @@ namespace Overlay::Ime::Tsf {
 
         std::atomic_uint64_t g_CandidateRevision{1};
         std::atomic_bool g_HasCandidates{false};
+        std::atomic_bool g_PresentationOwned{false};
 
         void PublishCandidateState(bool hasCandidates) noexcept {
             g_HasCandidates.store(hasCandidates, std::memory_order_release);
@@ -139,10 +140,8 @@ namespace Overlay::Ime::Tsf {
                         continue;
 
                     UINT count = 0;
-                    if (behavior->GetCount(&count) != S_OK || count == 0 ||
-                        count > MaxCandidateCount) {
+                    if (behavior->GetCount(&count) != S_OK || count == 0 || count > MaxCandidateCount)
                         continue;
-                    }
 
                     UINT selected = 0;
                     const HRESULT selectionResult = behavior->GetSelection(&selected);
@@ -192,6 +191,9 @@ namespace Overlay::Ime::Tsf {
             HRESULT STDMETHODCALLTYPE BeginUIElement(DWORD elementId, BOOL *show) override {
                 if (!show)
                     return E_INVALIDARG;
+                *show = TRUE;
+                if (!g_PresentationOwned.load(std::memory_order_acquire))
+                    return S_OK;
 
                 ComPtr<ITfCandidateListUIElement> candidate;
                 if (!GetCandidate(elementId, candidate))
@@ -339,9 +341,10 @@ namespace Overlay::Ime::Tsf {
                     return;
 
                 UINT pageCount = 0;
-                candidate->GetPageIndex(nullptr, 0, &pageCount);
-                if (pageCount == 0 || pageCount > count)
+                if (candidate->GetPageIndex(nullptr, 0, &pageCount) != S_OK ||
+                    pageCount == 0 || pageCount > count) {
                     return;
+                }
 
                 std::vector<UINT> starts(pageCount);
                 UINT copiedPageCount = pageCount;
@@ -358,14 +361,7 @@ namespace Overlay::Ime::Tsf {
                     return;
                 }
 
-                const UINT begin = starts[currentPage];
-                const UINT end = currentPage + 1 < starts.size()
-                    ? starts[currentPage + 1]
-                    : count;
-                if (begin >= count || end <= begin || end > count)
-                    return;
-                list.pageStart = begin;
-                list.pageSize = end - begin;
+                list.SetIndexedPage(starts, currentPage);
             }
 
             std::atomic_ulong m_References{1};
@@ -405,6 +401,7 @@ namespace Overlay::Ime::Tsf {
     }
 
     void Detach() {
+        g_PresentationOwned.store(false, std::memory_order_release);
         ComPtr<CandidateController> controller;
         {
             std::lock_guard lock(g_ControllerMutex);
@@ -412,6 +409,10 @@ namespace Overlay::Ime::Tsf {
         }
         if (controller)
             controller->Shutdown();
+    }
+
+    void SetPresentationOwned(bool owned) noexcept {
+        g_PresentationOwned.store(owned, std::memory_order_release);
     }
 
     void ClearCandidates() {

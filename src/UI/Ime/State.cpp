@@ -329,8 +329,40 @@ namespace Overlay::Ime {
         parsed.selection = selection;
         parsed.hasSelection = selection < count;
         parsed.pageStart = count == 0 ? 0 : std::min(pageStart, count - 1);
-        parsed.pageSize = std::min(pageSize, count - parsed.pageStart);
+        parsed.pageSize = std::min(pageSize, count);
         output = std::move(parsed);
+        return true;
+    }
+
+    bool CandidateListSnapshot::SetIndexedPage(
+        std::span<const std::uint32_t> pageStarts,
+        std::uint32_t pageIndex) noexcept {
+        const std::size_t itemCount = items.size();
+        if (itemCount == 0 || pageStarts.empty() ||
+            itemCount > std::numeric_limits<std::uint32_t>::max() ||
+            pageStarts.size() > itemCount ||
+            pageStarts.size() > std::numeric_limits<std::uint32_t>::max() ||
+            pageIndex >= pageStarts.size() || pageStarts.front() != 0) {
+            return false;
+        }
+
+        for (std::size_t index = 0; index < pageStarts.size(); ++index) {
+            if (pageStarts[index] >= itemCount ||
+                (index != 0 && pageStarts[index] <= pageStarts[index - 1])) {
+                return false;
+            }
+        }
+
+        const std::uint32_t begin = pageStarts[pageIndex];
+        const std::uint32_t end = pageIndex + 1 < pageStarts.size()
+            ? pageStarts[pageIndex + 1]
+            : static_cast<std::uint32_t>(itemCount);
+        pageStart = begin;
+        pageSize = end - begin;
+        pagePosition = CandidatePagePosition{
+            pageIndex,
+            static_cast<std::uint32_t>(pageStarts.size()),
+        };
         return true;
     }
 
@@ -373,8 +405,9 @@ namespace Overlay::Ime {
         return CandidateSelectionRequest{activeListIndex, *itemIndex};
     }
 
-    std::optional<std::uint32_t> StepCandidateIndex(std::uint32_t count, std::optional<std::uint32_t> selection,
-                                               CandidateDirection direction) noexcept {
+    std::optional<std::uint32_t> StepCandidateIndex(
+        std::uint32_t count, std::optional<std::uint32_t> selection,
+        CandidateDirection direction) noexcept {
         if (count == 0)
             return std::nullopt;
         if (!selection || *selection >= count)

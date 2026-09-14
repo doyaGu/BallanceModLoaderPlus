@@ -11,7 +11,7 @@ namespace Overlay::Ime::NativePresentation {
     };
 
     MessageDisposition Decide(std::uint32_t message, std::uintptr_t wParam,
-                              std::intptr_t lParam, bool presentationWanted) noexcept;
+                              std::intptr_t lParam, bool ownsPresentation) noexcept;
 }
 
 #endif // BML_UI_IME_NATIVE_PRESENTATION_H
