@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "BML/Behavior.hpp"
 #include "CustomMaps/MapMenu.h"
 
 class CK2dEntity;
@@ -44,6 +45,8 @@ private:
     bool LoadMap(const std::wstring &path);
     std::string CreateTempMapFile(const std::wstring &path) const;
     void PatchLevelLoader(CKBehavior *script);
+    void ResolveLevelLoaderBindings();
+    void ResetLevelLoaderPatch();
     void ClearLoadMetadata();
     void ReleaseDataShare();
     void ResetScriptBindings();
@@ -56,6 +59,9 @@ private:
     std::wstring m_TempDirectory;
 
     MapMenu m_Menu;
+    BML::Behavior::Session m_Behavior;
+    BML::Behavior::Patch m_LevelLoaderPatch;
+    BML::Behavior::Edit::Node m_LevelSwitch;
 
     IProperty *m_LevelNumber = nullptr;
     IProperty *m_ShowTooltip = nullptr;
