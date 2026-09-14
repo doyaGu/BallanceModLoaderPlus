@@ -2,16 +2,14 @@
 
 #include "UI/BuiInternal.h"
 
+#include <cstddef>
 #include <oniguruma.h>
 
 #include "BML/InputHook.h"
 #include "BML/ILogger.h"
-#include "BML/ScriptHelper.h"
 
 #include "StringUtils.h"
 #include "PathUtils.h"
-
-using namespace ScriptHelper;
 
 MapMenu::MapMenu(MapMenuState::MapLoader loader)
     : m_State(std::move(loader)),
@@ -156,7 +154,7 @@ Bui::PageAction MapListPage::OnFrame() {
         const int n = m_Pagination.GetFirstItem();
 
         if (IsSearching()) {
-            Bui::Entries([&](size_t index) {
+            Bui::Entries([&](std::size_t index) {
                 if (n + index >= m_MapSearchResult.size())
                     return false;
                 return OnDrawEntry(m_MapSearchResult[n + index], &v, action);
@@ -165,7 +163,7 @@ Bui::PageAction MapListPage::OnFrame() {
             MapEntry *currentMaps = m_State.GetCurrentMaps();
             if (currentMaps) {
                 const auto &entries = currentMaps->children;
-                Bui::Entries([&](size_t index) {
+                Bui::Entries([&](std::size_t index) {
                     if (n + index >= entries.size())
                         return false;
                     return OnDrawEntry(entries[n + index], &v, action);
