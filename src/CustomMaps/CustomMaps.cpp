@@ -1,9 +1,11 @@
 #include "CustomMaps/CustomMaps.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
 #include <exception>
 #include <random>
+#include <vector>
 
 #include "BML/Bui.h"
 #include "BML/DataShare.h"
@@ -11,15 +13,81 @@
 #include "BML/IBML.h"
 #include "BML/IConfig.h"
 #include "BML/ILogger.h"
-#include "BML/ScriptHelper.h"
 
+#include "Api/ObjectRefs.h"
+#include "Loader/ModContext.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
 
-using namespace ScriptHelper;
+namespace Behavior = BML::Behavior;
 
 namespace {
-constexpr const char *CUSTOM_MAP_NAME_KEY = "CustomMapName";
+constexpr char CustomMapNameKey[] = "CustomMapName";
+
+template <class T>
+T *Resolve(ModContext *context, Behavior::ObjectRef reference) {
+    CKObject *object = context ? context->ObjectRefs().Resolve(reference) : nullptr;
+    return object ? T::Cast(object) : nullptr;
+}
+
+template <class T>
+bool WriteParameter(CKParameter *parameter, const T &value) {
+    T copy = value;
+    return parameter && parameter->SetValue(&copy, sizeof(copy)) == CK_OK;
+}
+
+bool WriteString(CKParameter *parameter, const char *value) {
+    std::string copy = value ? value : "";
+    return parameter && parameter->SetStringValue(copy.data()) == CK_OK;
+}
+
+template <class T>
+bool ReadParameter(CKParameter *parameter, T &value) {
+    return parameter && parameter->GetValue(&value, FALSE) == CK_OK;
+}
+
+bool ReadString(CKParameter *parameter, std::string &value) {
+    if (!parameter)
+        return false;
+    const int size = parameter->GetStringValue(nullptr, FALSE);
+    if (size < 0)
+        return false;
+    std::vector<char> buffer(static_cast<std::size_t>(size) + 1u, '\0');
+    if (size > 0 && parameter->GetStringValue(buffer.data(), FALSE) < 0)
+        return false;
+    value.assign(buffer.data());
+    return true;
+}
+
+struct LoadStateSnapshot {
+    std::string MapFile;
+    int CurrentLevel = 0;
+    int LevelRow = 0;
+    CKBOOL LoadCustom = FALSE;
+};
+
+bool CaptureLoadState(CKParameter *mapFile, CKDataArray *currentLevel,
+                      CKParameter *levelRow, CKParameter *loadCustom,
+                      LoadStateSnapshot &snapshot) {
+    return ReadString(mapFile, snapshot.MapFile) && currentLevel &&
+        currentLevel->GetElementValue(0, 0, &snapshot.CurrentLevel) != 0 &&
+        ReadParameter(levelRow, snapshot.LevelRow) &&
+        ReadParameter(loadCustom, snapshot.LoadCustom);
+}
+
+bool RestoreLoadState(CKParameter *mapFile, CKDataArray *currentLevel,
+                      CKParameter *levelRow, CKParameter *loadCustom,
+                      const LoadStateSnapshot &snapshot) {
+    int currentLevelValue = snapshot.CurrentLevel;
+    bool restored = true;
+    restored = WriteParameter(loadCustom, snapshot.LoadCustom) && restored;
+    restored = WriteParameter(levelRow, snapshot.LevelRow) && restored;
+    restored = currentLevel &&
+        currentLevel->SetElementValue(0, 0, &currentLevelValue) != 0 &&
+        restored;
+    restored = WriteString(mapFile, snapshot.MapFile.c_str()) && restored;
+    return restored;
+}
 }
 
 CustomMaps::CustomMaps()
@@ -76,6 +144,14 @@ void CustomMaps::OnLoad(IBML &bml, ILogger &logger,
     m_CKContext = bml.GetCKContext();
     m_Logger = &logger;
     m_TempDirectory = tempDirectory;
+    auto behavior = Behavior::Session::Open("BML");
+    if (behavior)
+        m_Behavior = behavior.Take();
+    else
+        m_Logger->Warn("Custom maps cannot use Behavior authoring: %s",
+                       behavior.GetStatus().Message.empty()
+                           ? "could not open the BML session"
+                           : behavior.GetStatus().Message.c_str());
     ReleaseDataShare();
     m_DataShare = BML_GetDataShare(nullptr);
     if (!m_DataShare)
@@ -89,6 +165,7 @@ void CustomMaps::OnUnload() {
     ReleaseDataShare();
 
     ResetScriptBindings();
+    m_Behavior.Reset();
     m_TempDirectory.clear();
     m_Logger = nullptr;
     m_CKContext = nullptr;
@@ -101,7 +178,17 @@ void CustomMaps::OnLoadObject(const char *filename) {
 
     m_LevelButton = m_BML->Get2dEntityByName("M_Start_But_01");
     CKBehavior *menuStart = m_BML->GetScriptByName("Menu_Start");
-    m_ExitStart = menuStart ? FindFirstBB(menuStart, "Exit") : nullptr;
+    m_ExitStart = nullptr;
+    if (menuStart && m_Behavior) {
+        auto menu = m_Behavior.Inspect(menuStart, Behavior::View::Logical);
+        if (menu) {
+            auto exit = menu->Find(Behavior::Named("Exit", 0));
+            if (exit) {
+                m_ExitStart = Resolve<CKBehavior>(
+                    dynamic_cast<ModContext *>(m_BML), exit->Object());
+            }
+        }
+    }
 
     if ((!m_LevelButton || !m_ExitStart) && m_Logger)
         m_Logger->Warn("Custom map menu entry is unavailable in the current Menu.nmo");
@@ -123,6 +210,8 @@ void CustomMaps::OnLoadScript(CKBehavior *script) {
 }
 
 void CustomMaps::OnProcess() {
+    ResolveLevelLoaderBindings();
+
     if (m_LevelButton && m_ExitStart && m_LevelButton->IsVisible()) {
         const ImVec2 &viewportSize = ImGui::GetMainViewport()->Size;
 
@@ -155,8 +244,10 @@ void CustomMaps::OnProcess() {
 }
 
 void CustomMaps::OnStartLevel() {
-    if (m_LoadCustom)
-        SetParamValue(m_LoadCustom, FALSE);
+    if (m_LoadCustom) {
+        const CKBOOL disabled = FALSE;
+        (void) WriteParameter(m_LoadCustom, disabled);
+    }
     ClearLoadMetadata();
 }
 
@@ -174,7 +265,8 @@ bool CustomMaps::Close() {
 }
 
 bool CustomMaps::LoadMap(const std::wstring &path) {
-    bool loadMutationStarted = false;
+    LoadStateSnapshot previousState;
+    bool stateChanged = false;
     try {
         if (path.empty()) {
             if (m_Logger)
@@ -219,7 +311,7 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
         }
 
         const std::string mapPath = utils::ToString(path);
-        if (!BML_DataShare_Set(m_DataShare, CUSTOM_MAP_NAME_KEY,
+        if (!BML_DataShare_Set(m_DataShare, CustomMapNameKey,
                                mapPath.c_str(), mapPath.size() + 1)) {
             if (m_Logger)
                 m_Logger->Error("Failed to publish custom map load metadata");
@@ -234,11 +326,34 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
             level = std::uniform_int_distribution<int>(2, 11)(rng);
         }
 
-        loadMutationStarted = true;
-        SetParamString(m_MapFile, filename.c_str());
-        SetParamValue(m_LoadCustom, TRUE);
-        m_CurrentLevel->SetElementValue(0, 0, &level);
-        SetParamValue(m_LevelRow, level - 1);
+        if (!CaptureLoadState(m_MapFile, m_CurrentLevel, m_LevelRow,
+                              m_LoadCustom, previousState)) {
+            if (m_Logger)
+                m_Logger->Error("Failed to capture the custom map runtime state");
+            ClearLoadMetadata();
+            return false;
+        }
+
+        stateChanged = true;
+        const CKBOOL enabled = TRUE;
+        const int row = level - 1;
+        const bool stateReady =
+            WriteString(m_MapFile, filename.c_str()) &&
+            m_CurrentLevel->SetElementValue(0, 0, &level) != 0 &&
+            WriteParameter(m_LevelRow, row) &&
+            WriteParameter(m_LoadCustom, enabled);
+        if (!stateReady) {
+            if (m_Logger)
+                m_Logger->Error("Failed to prepare the custom map runtime state");
+            const bool restored = RestoreLoadState(
+                m_MapFile, m_CurrentLevel, m_LevelRow, m_LoadCustom,
+                previousState);
+            stateChanged = !restored;
+            if (!restored && m_Logger)
+                m_Logger->Error("Failed to restore the custom map runtime state");
+            ClearLoadMetadata();
+            return false;
+        }
 
         const CKMessageType loadLevel = messageManager->AddMessageType((CKSTRING) "Load Level");
         const CKMessageType loadMenu = messageManager->AddMessageType((CKSTRING) "Menu_Load");
@@ -247,6 +362,7 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
         blackScreen->Show(CKHIDE);
         m_ExitStart->ActivateInput(0);
         m_ExitStart->Activate();
+        stateChanged = false;
         return true;
     } catch (const std::exception &exception) {
         if (m_Logger)
@@ -256,9 +372,12 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
             m_Logger->Error("Unknown exception loading custom map");
     }
 
-    if (loadMutationStarted && m_LoadCustom) {
+    if (stateChanged) {
         try {
-            SetParamValue(m_LoadCustom, FALSE);
+            if (!RestoreLoadState(m_MapFile, m_CurrentLevel, m_LevelRow,
+                                  m_LoadCustom, previousState) && m_Logger) {
+                m_Logger->Error("Failed to restore the custom map runtime state");
+            }
         } catch (...) {
         }
     }
@@ -273,7 +392,7 @@ std::string CustomMaps::CreateTempMapFile(const std::wstring &path) const {
     const std::wstring fileName = utils::GetFileNameW(path);
     const std::wstring fileNameWithoutExtension = utils::RemoveExtensionW(fileName);
     const std::wstring extension = utils::GetExtensionW(path);
-    const size_t hash = utils::HashString(fileNameWithoutExtension);
+    const std::size_t hash = utils::HashString(fileNameWithoutExtension);
     const std::wstring mapsDirectory = utils::CombinePathW(m_TempDirectory, L"Maps");
 
     if (!utils::DirectoryExistsW(mapsDirectory) && !utils::CreateDirectoryW(mapsDirectory))
@@ -291,58 +410,147 @@ std::string CustomMaps::CreateTempMapFile(const std::wstring &path) const {
 }
 
 void CustomMaps::PatchLevelLoader(CKBehavior *script) {
-    CKBehavior *loadLevel = FindFirstBB(script, "Load LevelXX");
-    CKBehaviorLink *inputLink = loadLevel && loadLevel->GetInputCount() > 0
-                                    ? FindNextLink(loadLevel, loadLevel->GetInput(0))
-                                    : nullptr;
-    CKBehaviorIO *target = inputLink ? inputLink->GetOutBehaviorIO() : nullptr;
-    CKBehavior *operation = target ? FindNextBB(loadLevel, target->GetOwner()) : nullptr;
-    auto *levelRowSource = operation && operation->GetOutputParameterCount() > 0
-                               ? operation->GetOutputParameter(0)
-                               : nullptr;
-    CKParameter *levelRow = levelRowSource ? levelRowSource->GetDestination(0) : nullptr;
-    CKBehavior *objectLoad = loadLevel ? FindFirstBB(loadLevel, "Object Load") : nullptr;
-    auto *mapFileInput = objectLoad && objectLoad->GetInputParameterCount() > 0
-                             ? objectLoad->GetInputParameter(0)
-                             : nullptr;
+    ResetLevelLoaderPatch();
+
+    if (!m_Behavior) {
+        if (m_Logger)
+            m_Logger->Error("Custom map script patch requires Behavior authoring");
+        return;
+    }
+
+    auto outer = m_Behavior.Inspect(script, Behavior::View::Logical);
+    if (!outer) {
+        if (m_Logger)
+            m_Logger->Error("Cannot inspect Levelinit_build: %s",
+                            outer.GetStatus().Message.c_str());
+        return;
+    }
+    auto loadLevel = outer->Find(Behavior::Named("Load LevelXX", 0));
+    if (!loadLevel) {
+        if (m_Logger)
+            m_Logger->Error("Cannot find Levelinit_build/Load LevelXX: %s",
+                            loadLevel.GetStatus().Message.c_str());
+        return;
+    }
+    auto graph = outer->Inspect(loadLevel.Value());
+    if (!graph) {
+        if (m_Logger)
+            m_Logger->Error("Cannot inspect Levelinit_build/Load LevelXX: %s",
+                            graph.GetStatus().Message.c_str());
+        return;
+    }
+
+    auto inputLink = graph->Leaving(graph->Root().In(0));
+    auto first = graph->Next(graph->Root().In(0));
+    if (!inputLink || !first) {
+        if (m_Logger)
+            m_Logger->Error("Cannot identify the Levelinit_build entry path");
+        return;
+    }
+
+    auto operation = graph->Next(first.Value());
+    auto objectLoad = graph->Find(Behavior::Named("Object Load", 0));
+    if (!operation || !objectLoad) {
+        if (m_Logger)
+            m_Logger->Error("Cannot identify the Levelinit_build loader path");
+        return;
+    }
+
+    ModContext *context = dynamic_cast<ModContext *>(m_BML);
+    CKBehavior *operationBlock = Resolve<CKBehavior>(context, operation->Object());
+    CKParameterOut *levelRowSource = operationBlock &&
+        operationBlock->GetOutputParameterCount() > 0
+            ? operationBlock->GetOutputParameter(0) : nullptr;
+    CKParameter *levelRow = levelRowSource &&
+        levelRowSource->GetDestinationCount() > 0
+            ? levelRowSource->GetDestination(0) : nullptr;
+    CKBehavior *objectLoadBlock = Resolve<CKBehavior>(context, objectLoad->Object());
+    CKParameterIn *mapFileInput = objectLoadBlock &&
+        objectLoadBlock->GetInputParameterCount() > 0
+            ? objectLoadBlock->GetInputParameter(0) : nullptr;
     CKParameter *mapFile = mapFileInput ? mapFileInput->GetDirectSource() : nullptr;
 
-    if (!loadLevel || !inputLink || !levelRow || !objectLoad || !mapFile) {
+    if (!levelRow || !mapFile) {
         if (m_Logger)
             m_Logger->Error("Custom map script patch is unavailable in the current Levelinit_build graph");
-        m_LoadCustom = nullptr;
-        m_MapFile = nullptr;
-        m_LevelRow = nullptr;
         return;
     }
 
-    CKBehavior *binarySwitch = CreateBB(loadLevel, VT_LOGICS_BINARYSWITCH);
-    CKParameter *loadCustom = CreateLocalParameter(loadLevel, "Custom Level", CKPGUID_BOOL);
-    if (!binarySwitch || !loadCustom) {
+    Behavior::Edit edit;
+    auto level = edit.Root().Require(loadLevel.Value()).Graph();
+    const auto entry = level.Require(inputLink.Value());
+    const auto originalFirst = level.Require(first.Value());
+    const auto loader = level.Require(objectLoad.Value());
+    const auto selector = level.Add(m_Behavior.Use(VT_LOGICS_BINARYSWITCH));
+    const auto custom = level.AppendLocal("Custom Level", CKPGUID_BOOL);
+    level.Bind(selector.Pin(0, CKPGUID_BOOL), custom);
+    level.Flow(level.Root().In(0), selector.In(0));
+    level.Reconnect(entry, selector.Out(1),
+                    originalFirst.In(inputLink->Target().Index()));
+    level.Flow(selector.Out(0), loader.In(0));
+
+    auto applied = outer->Apply("Custom map level loader", edit);
+    if (!applied) {
         if (m_Logger)
-            m_Logger->Error("Failed to allocate the custom map script patch");
-        m_LoadCustom = nullptr;
-        m_MapFile = nullptr;
-        m_LevelRow = nullptr;
+            m_Logger->Error("Failed to apply the custom map script patch: %s",
+                            applied.GetStatus().Message.empty()
+                                ? "Behavior Patch creation failed"
+                                : applied.GetStatus().Message.c_str());
         return;
     }
 
-    CreateLink(loadLevel, loadLevel->GetInput(0), binarySwitch, 0);
-    binarySwitch->GetInputParameter(0)->SetDirectSource(loadCustom);
-    inputLink->SetInBehaviorIO(binarySwitch->GetOutput(1));
-    CreateLink(loadLevel, binarySwitch, objectLoad);
-
-    m_LoadCustom = loadCustom;
+    m_LevelLoaderPatch = applied.Take();
+    m_LevelSwitch = selector;
     m_MapFile = mapFile;
     m_LevelRow = levelRow;
+    ResolveLevelLoaderBindings();
+}
+
+void CustomMaps::ResolveLevelLoaderBindings() {
+    if (m_LoadCustom || !m_LevelLoaderPatch)
+        return;
+
+    auto resolved = m_LevelLoaderPatch.Resolve(m_LevelSwitch);
+    if (!resolved) {
+        if (resolved.Code() == BML_ERROR_BUSY)
+            return;
+        if (m_Logger) {
+            m_Logger->Error(
+                "The custom map selector could not be resolved: %s",
+                resolved.GetStatus().Message.empty()
+                    ? "the Behavior Patch did not become active"
+                    : resolved.GetStatus().Message.c_str());
+        }
+        ResetLevelLoaderPatch();
+        return;
+    }
+    CKBehavior *selector = Resolve<CKBehavior>(
+        dynamic_cast<ModContext *>(m_BML), resolved.Value());
+    CKParameterIn *flag = selector && selector->GetInputParameterCount() > 0
+        ? selector->GetInputParameter(0) : nullptr;
+    m_LoadCustom = flag ? flag->GetDirectSource() : nullptr;
+    if (!m_LoadCustom) {
+        if (m_Logger)
+            m_Logger->Error("The custom map selector did not retain its Custom Level parameter");
+        ResetLevelLoaderPatch();
+    }
+}
+
+void CustomMaps::ResetLevelLoaderPatch() {
+    (void) m_LevelLoaderPatch.Close();
+    m_LevelLoaderPatch = {};
+    m_LevelSwitch = {};
+    m_LoadCustom = nullptr;
+    m_MapFile = nullptr;
+    m_LevelRow = nullptr;
 }
 
 void CustomMaps::ClearLoadMetadata() {
     if (!m_MetadataPublished)
         return;
 
-    if (m_DataShare && BML_DataShare_Has(m_DataShare, CUSTOM_MAP_NAME_KEY))
-        BML_DataShare_Remove(m_DataShare, CUSTOM_MAP_NAME_KEY);
+    if (m_DataShare && BML_DataShare_Has(m_DataShare, CustomMapNameKey))
+        BML_DataShare_Remove(m_DataShare, CustomMapNameKey);
     m_MetadataPublished = false;
 }
 
@@ -356,10 +564,8 @@ void CustomMaps::ReleaseDataShare() {
 }
 
 void CustomMaps::ResetScriptBindings() {
+    ResetLevelLoaderPatch();
     m_LevelButton = nullptr;
     m_ExitStart = nullptr;
-    m_LoadCustom = nullptr;
-    m_MapFile = nullptr;
-    m_LevelRow = nullptr;
     m_CurrentLevel = nullptr;
 }
