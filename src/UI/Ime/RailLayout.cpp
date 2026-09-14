@@ -186,11 +186,17 @@ namespace Overlay::Ime::Presentation::Layout {
             page.end = begin + pageSize;
             page.selection = list.selection;
             page.hasSelection = list.hasSelection && list.selection >= page.begin && list.selection < page.end;
-            const std::uint32_t numberingSize = list.pageSize == 0
-                ? std::max(count, std::uint32_t{1})
-                : list.pageSize;
-            page.pageNumber = begin / numberingSize + 1;
-            page.pageCount = (count + numberingSize - 1) / numberingSize;
+            if (list.pagePosition &&
+                list.pagePosition->index < list.pagePosition->count) {
+                page.pageNumber = list.pagePosition->index + 1;
+                page.pageCount = list.pagePosition->count;
+            } else {
+                const std::uint32_t numberingSize = list.pageSize == 0
+                    ? std::max(count, std::uint32_t{1})
+                    : list.pageSize;
+                page.pageNumber = begin / numberingSize + 1;
+                page.pageCount = (count + numberingSize - 1) / numberingSize;
+            }
             pages.push_back(page);
         }
         return pages;

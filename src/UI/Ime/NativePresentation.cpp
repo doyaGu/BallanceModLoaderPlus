@@ -17,20 +17,16 @@ namespace Overlay::Ime::NativePresentation {
     }
 
     MessageDisposition Decide(std::uint32_t message, std::uintptr_t wParam,
-                              std::intptr_t lParam, bool presentationWanted) noexcept {
+                              std::intptr_t lParam, bool ownsPresentation) noexcept {
         MessageDisposition disposition;
-        // WM_IME_SETCONTEXT normally arrives when the Player window gains
-        // focus, before an ImGui text field can publish WantVisible. Once this
-        // root is attached, reserve IME presentation for the in-game rail so
-        // windowed mode cannot enable a second, native candidate window.
+        if (!ownsPresentation)
+            return disposition;
+
         if (message == WM_IME_SETCONTEXT && wParam != 0) {
             disposition.replaceLParam = true;
             disposition.lParam = lParam & ~static_cast<std::intptr_t>(ISC_SHOWUIALL);
             return disposition;
         }
-
-        if (!presentationWanted)
-            return disposition;
 
         switch (message) {
         case WM_IME_STARTCOMPOSITION:

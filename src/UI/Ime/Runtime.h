@@ -8,8 +8,9 @@
 
 namespace Overlay::Ime::Runtime {
     // Overlay Platform Input owns these calls and invokes them only on the
-    // Player UI thread which owns the root-window tree.
-    void Attach(void *rootWindow);
+    // Player UI thread. The root window bounds message observation; the
+    // presentation window is the exact HWND used by the ImGui backend.
+    void Attach(void *rootWindow, void *presentationWindow);
     void Detach();
     NativePresentation::MessageDisposition HandleNativeMessage(void *messageWindow, std::uint32_t message,
                                                                std::uintptr_t wParam, std::intptr_t lParam);

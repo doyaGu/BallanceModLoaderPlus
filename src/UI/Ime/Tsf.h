@@ -14,6 +14,9 @@ namespace Overlay::Ime::Tsf {
     // Attachment is best-effort; unavailable TSF support leaves IMM active.
     void Attach();
     void Detach();
+    // Only the focused ImGui backend window owns in-game candidate
+    // presentation. Other controls on the Player UI thread keep native TSF UI.
+    void SetPresentationOwned(bool owned) noexcept;
     void ClearCandidates();
     std::uint64_t Revision() noexcept;
     bool HasCandidates() noexcept;

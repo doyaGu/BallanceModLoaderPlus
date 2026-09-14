@@ -3,8 +3,10 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
     float MeasureCodepoints(std::u16string_view text, const void *) {
@@ -123,4 +125,40 @@ TEST(ImePresentationTest, CandidatePageDoesNotSelectAnItemOutsideTheVisiblePage)
     const auto pages = Overlay::Ime::Presentation::Layout::BuildCandidatePages(snapshot);
     ASSERT_EQ(pages.size(), 1u);
     EXPECT_FALSE(pages[0].hasSelection);
+}
+
+TEST(ImePresentationTest, CandidatePageUsesAuthoritativePositionOnShortFinalPage) {
+    Overlay::Ime::Snapshot snapshot;
+    Overlay::Ime::CandidateListSnapshot candidates;
+    const std::vector<std::uint32_t> pageStarts{0, 5, 10};
+    const std::uint32_t pageIndex = static_cast<std::uint32_t>(pageStarts.size() - 1);
+    candidates.items.resize(pageStarts.back() + 2, u"candidate");
+    candidates.pageStart = pageStarts[pageIndex];
+    candidates.pageSize = static_cast<std::uint32_t>(candidates.items.size()) - candidates.pageStart;
+    candidates.pagePosition = Overlay::Ime::CandidatePagePosition{
+        pageIndex,
+        static_cast<std::uint32_t>(pageStarts.size()),
+    };
+    snapshot.candidateLists[0] = std::move(candidates);
+
+    const auto pages = Overlay::Ime::Presentation::Layout::BuildCandidatePages(snapshot);
+    ASSERT_EQ(pages.size(), 1u);
+    EXPECT_EQ(pages[0].pageNumber, pageIndex + 1);
+    EXPECT_EQ(pages[0].pageCount, pageStarts.size());
+}
+
+TEST(ImePresentationTest, CandidatePageKeepsImeCapacityOnShortFinalPage) {
+    Overlay::Ime::Snapshot snapshot;
+    Overlay::Ime::CandidateListSnapshot candidates;
+    candidates.items = {u"one", u"two", u"three", u"four", u"five"};
+    candidates.pageStart = 4;
+    candidates.pageSize = 2;
+    snapshot.candidateLists[0] = std::move(candidates);
+
+    const auto pages = Overlay::Ime::Presentation::Layout::BuildCandidatePages(snapshot);
+    ASSERT_EQ(pages.size(), 1u);
+    EXPECT_EQ(pages[0].begin, 4u);
+    EXPECT_EQ(pages[0].end, 5u);
+    EXPECT_EQ(pages[0].pageNumber, 3u);
+    EXPECT_EQ(pages[0].pageCount, 3u);
 }

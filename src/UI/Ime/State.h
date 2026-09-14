@@ -21,14 +21,24 @@ namespace Overlay::Ime {
         bool operator==(const TextRange &) const = default;
     };
 
+    struct CandidatePagePosition {
+        std::uint32_t index = 0;
+        std::uint32_t count = 0;
+
+        bool operator==(const CandidatePagePosition &) const = default;
+    };
+
     struct CandidateListSnapshot {
         std::vector<std::u16string> items;
         std::uint32_t style = 0;
         std::uint32_t selection = 0;
         std::uint32_t pageStart = 0;
         std::uint32_t pageSize = 0;
+        std::optional<CandidatePagePosition> pagePosition;
         bool hasSelection = false;
 
+        bool SetIndexedPage(std::span<const std::uint32_t> pageStarts,
+                            std::uint32_t pageIndex) noexcept;
         bool operator==(const CandidateListSnapshot &) const = default;
     };
 
@@ -97,8 +107,9 @@ namespace Overlay::Ime {
     bool ParseClauses(std::span<const std::byte> bytes, std::size_t compositionLength,
                       std::vector<std::uint32_t> &output);
     bool ParseCandidateList(std::span<const std::byte> bytes, CandidateListSnapshot &output);
-    std::optional<std::uint32_t> StepCandidateIndex(std::uint32_t count, std::optional<std::uint32_t> selection,
-                                               CandidateDirection direction) noexcept;
+    std::optional<std::uint32_t> StepCandidateIndex(
+        std::uint32_t count, std::optional<std::uint32_t> selection,
+        CandidateDirection direction) noexcept;
     std::optional<CandidateSelectionRequest> PlanCandidateSelection(
         const Snapshot &snapshot, CandidateDirection direction) noexcept;
 }

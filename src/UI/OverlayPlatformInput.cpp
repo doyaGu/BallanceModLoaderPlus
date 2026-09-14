@@ -21,11 +21,53 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace Overlay::PlatformInput {
     namespace {
+        class MessageRoute final {
+        public:
+            void Enable(HWND rootWindow, HWND backendWindow) noexcept {
+                m_BackendWindow.store(backendWindow, std::memory_order_release);
+                m_RootWindow.store(rootWindow, std::memory_order_release);
+            }
+
+            void Disable() noexcept {
+                m_RootWindow.store(nullptr, std::memory_order_release);
+                m_BackendWindow.store(nullptr, std::memory_order_release);
+            }
+
+            HWND RootWindow() const noexcept {
+                return m_RootWindow.load(std::memory_order_acquire);
+            }
+
+            HWND BackendWindow() const noexcept {
+                return m_BackendWindow.load(std::memory_order_acquire);
+            }
+
+            bool Contains(HWND window) const noexcept {
+                const HWND rootWindow = RootWindow();
+                if (!rootWindow || !window)
+                    return false;
+
+                HWND windowRoot = ::GetAncestor(window, GA_ROOT);
+                if (!windowRoot)
+                    windowRoot = window;
+                return windowRoot == rootWindow;
+            }
+
+            bool DeliversTo(HWND window) const noexcept {
+                return RootWindow() && window == BackendWindow();
+            }
+
+        private:
+            std::atomic<HWND> m_RootWindow{nullptr};
+            std::atomic<HWND> m_BackendWindow{nullptr};
+        };
+
         DWORD g_MessageThreadId = 0;
-        std::atomic<HWND> g_MessageRoot{nullptr};
+        MessageRoute g_MessageRoute;
         HHOOK g_ImeProcessKeyHook = nullptr;
+        UINT g_CandidateMoveMessage = 0;
         std::vector<HWND> g_SubclassedWindows;
         constexpr UINT_PTR OverlayInputSubclassId = 0x424d4c49;
+        constexpr wchar_t CandidateMoveMessageName[] = L"BMLPlus.Ime.CandidateMove";
 
         LRESULT CALLBACK OverlayInputSubclass(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
                                                UINT_PTR subclassId, DWORD_PTR referenceData);
@@ -38,14 +80,7 @@ namespace Overlay::PlatformInput {
         }
 
         bool IsOverlayMessageWindow(HWND window) {
-            const HWND messageRoot = g_MessageRoot.load(std::memory_order_acquire);
-            if (!messageRoot || !window)
-                return false;
-
-            HWND windowRoot = ::GetAncestor(window, GA_ROOT);
-            if (!windowRoot)
-                windowRoot = window;
-            return windowRoot == messageRoot;
+            return g_MessageRoute.Contains(window);
         }
 
         bool IsImeProcessKeyMessage(const MSG &message) {
@@ -54,13 +89,16 @@ namespace Overlay::PlatformInput {
                    IsOverlayMessageWindow(message.hwnd);
         }
 
-        void FeedImeProcessKey(const MSG &message, UINT key) {
-            if (key != VK_TAB)
+        void RouteImeProcessKey(UINT key, bool reverse) {
+            if (key != VK_TAB || !Ime::Runtime::WantsCandidateNavigation())
                 return;
 
-            if (Ime::Runtime::WantsCandidateNavigation()) {
-                FeedImGui(message.hwnd, message.message, key, message.lParam);
-            }
+            const Ime::CandidateDirection direction = reverse
+                ? Ime::CandidateDirection::Previous
+                : Ime::CandidateDirection::Next;
+            const HWND backendWindow = g_MessageRoute.BackendWindow();
+            if (backendWindow && g_CandidateMoveMessage != 0)
+                ::PostMessageW(backendWindow, g_CandidateMoveMessage, static_cast<WPARAM>(direction), 0);
         }
 
         LRESULT CALLBACK ImeProcessKeyHook(int code, WPARAM removeMode, LPARAM messageAddress) {
@@ -71,9 +109,10 @@ namespace Overlay::PlatformInput {
             const UINT key = processKey
                 ? ::ImmGetVirtualKey(message->hwnd)
                 : VK_PROCESSKEY;
+            const bool reverse = processKey && (::GetKeyState(VK_SHIFT) & 0x8000) != 0;
             const LRESULT next = ::CallNextHookEx(g_ImeProcessKeyHook, code, removeMode, messageAddress);
             if (processKey)
-                FeedImeProcessKey(*message, key);
+                RouteImeProcessKey(key, reverse);
             return next;
         }
 
@@ -142,9 +181,20 @@ namespace Overlay::PlatformInput {
             if (message == WM_PARENTNOTIFY && LOWORD(wParam) == WM_CREATE)
                 InstallOverlayInputSubclass(reinterpret_cast<HWND>(lParam));
 
+            if (g_CandidateMoveMessage != 0 && message == g_CandidateMoveMessage) {
+                if (wParam == static_cast<WPARAM>(Ime::CandidateDirection::Previous)) {
+                    Ime::Runtime::MoveCandidate(Ime::CandidateDirection::Previous);
+                } else if (wParam == static_cast<WPARAM>(Ime::CandidateDirection::Next)) {
+                    Ime::Runtime::MoveCandidate(Ime::CandidateDirection::Next);
+                }
+                return 0;
+            }
+
             const Ime::NativePresentation::MessageDisposition disposition =
                 Ime::Runtime::HandleNativeMessage(window, message, wParam, lParam);
-            const LRESULT backendResult = FeedImGui(window, message, wParam, lParam);
+            const LRESULT backendResult = g_MessageRoute.DeliversTo(window)
+                ? FeedImGui(window, message, wParam, lParam)
+                : 0;
 
             if (disposition.replaceLParam)
                 return ::DefSubclassProc(window, message, wParam, static_cast<LPARAM>(disposition.lParam));
@@ -155,51 +205,63 @@ namespace Overlay::PlatformInput {
     }
 
     bool Attach(void *window) {
-        HWND nativeWindow = static_cast<HWND>(window);
-        if (!nativeWindow || !::IsWindow(nativeWindow))
+        const HWND backendWindow = static_cast<HWND>(window);
+        if (!backendWindow || !::IsWindow(backendWindow))
+            return false;
+
+        const UINT candidateMoveMessage = ::RegisterWindowMessageW(CandidateMoveMessageName);
+        if (candidateMoveMessage == 0)
             return false;
 
         DWORD processId = 0;
-        const DWORD threadId = ::GetWindowThreadProcessId(nativeWindow, &processId);
+        const DWORD threadId = ::GetWindowThreadProcessId(backendWindow, &processId);
         if (!threadId || processId != ::GetCurrentProcessId() ||
             threadId != ::GetCurrentThreadId()) {
             return false;
         }
 
-        HWND messageRoot = ::GetAncestor(nativeWindow, GA_ROOT);
-        if (!messageRoot)
-            messageRoot = nativeWindow;
+        HWND rootWindow = ::GetAncestor(backendWindow, GA_ROOT);
+        if (!rootWindow)
+            rootWindow = backendWindow;
 
         if (g_MessageThreadId != 0 || g_ImeProcessKeyHook ||
             !g_SubclassedWindows.empty()) {
             const bool rootSubclassed = std::find(
                 g_SubclassedWindows.begin(), g_SubclassedWindows.end(),
-                messageRoot) != g_SubclassedWindows.end();
-            if (g_MessageThreadId == threadId && g_ImeProcessKeyHook && rootSubclassed &&
-                g_MessageRoot.load(std::memory_order_acquire) == messageRoot) {
+                rootWindow) != g_SubclassedWindows.end();
+            const bool backendSubclassed = backendWindow == rootWindow || std::find(
+                g_SubclassedWindows.begin(), g_SubclassedWindows.end(),
+                backendWindow) != g_SubclassedWindows.end();
+            if (g_MessageThreadId == threadId && g_ImeProcessKeyHook &&
+                rootSubclassed && backendSubclassed &&
+                g_MessageRoute.RootWindow() == rootWindow &&
+                g_MessageRoute.BackendWindow() == backendWindow) {
                 return true;
             }
             if (!Detach())
                 return false;
         }
 
-        g_MessageRoot.store(messageRoot, std::memory_order_release);
         g_MessageThreadId = threadId;
-        Ime::Runtime::Attach(messageRoot);
+        g_CandidateMoveMessage = candidateMoveMessage;
+        Ime::Runtime::Attach(rootWindow, backendWindow);
+        g_MessageRoute.Enable(rootWindow, backendWindow);
         g_ImeProcessKeyHook = ::SetWindowsHookExW(WH_GETMESSAGE, &ImeProcessKeyHook, nullptr, threadId);
-        if (g_ImeProcessKeyHook && InstallOverlayInputSubclasses(messageRoot)) {
+        if (g_ImeProcessKeyHook && InstallOverlayInputSubclasses(rootWindow)) {
             return true;
         }
 
+        g_MessageRoute.Disable();
         Ime::Runtime::Detach();
-        g_MessageRoot.store(nullptr, std::memory_order_release);
         RemoveOverlayInputSubclasses();
         if (g_ImeProcessKeyHook &&
             ::UnhookWindowsHookEx(g_ImeProcessKeyHook)) {
             g_ImeProcessKeyHook = nullptr;
         }
-        if (g_SubclassedWindows.empty())
+        if (!g_ImeProcessKeyHook && g_SubclassedWindows.empty())
             g_MessageThreadId = 0;
+        if (g_MessageThreadId == 0)
+            g_CandidateMoveMessage = 0;
         return false;
     }
 
@@ -209,10 +271,10 @@ namespace Overlay::PlatformInput {
             return false;
         }
 
-        Ime::Runtime::Detach();
         // Disable new routing first. A subclass that cannot be removed is then
         // dormant and cannot reach the ImGui backend during its shutdown.
-        g_MessageRoot.store(nullptr, std::memory_order_release);
+        g_MessageRoute.Disable();
+        Ime::Runtime::Detach();
         const bool subclassesRemoved = RemoveOverlayInputSubclasses();
         const bool hookRemoved = !g_ImeProcessKeyHook ||
             ::UnhookWindowsHookEx(g_ImeProcessKeyHook) != FALSE;
@@ -222,6 +284,7 @@ namespace Overlay::PlatformInput {
             return false;
 
         g_MessageThreadId = 0;
+        g_CandidateMoveMessage = 0;
         return true;
     }
 }

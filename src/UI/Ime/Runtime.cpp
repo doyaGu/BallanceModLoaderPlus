@@ -33,10 +33,64 @@ namespace Overlay::Ime {
             std::uint64_t candidateRevision = 0;
         };
 
+        class PresentationTarget final {
+        public:
+            void Attach(HWND window) noexcept {
+                m_Visible.store(false, std::memory_order_release);
+                m_Focused.store(false, std::memory_order_release);
+                m_Window.store(window, std::memory_order_release);
+                m_Focused.store(window && ::GetFocus() == window, std::memory_order_release);
+            }
+
+            void Detach() noexcept {
+                m_Window.store(nullptr, std::memory_order_release);
+                m_Focused.store(false, std::memory_order_release);
+                m_Visible.store(false, std::memory_order_release);
+            }
+
+            HWND Window() const noexcept {
+                return m_Window.load(std::memory_order_acquire);
+            }
+
+            bool Owns(HWND messageWindow = nullptr) const noexcept {
+                const HWND window = Window();
+                return window && (!messageWindow || messageWindow == window) &&
+                       m_Focused.load(std::memory_order_acquire);
+            }
+
+            bool ObserveFocus(HWND messageWindow, std::uint32_t message,
+                              std::uintptr_t wParam) noexcept {
+                const HWND window = Window();
+                if (message == WM_SETFOCUS ||
+                    (message == WM_IME_SETCONTEXT && wParam != 0)) {
+                    const bool focused = messageWindow == window;
+                    return m_Focused.exchange(focused, std::memory_order_acq_rel) != focused;
+                } else if (messageWindow == window &&
+                           (message == WM_KILLFOCUS || message == WM_NCDESTROY ||
+                            (message == WM_IME_SETCONTEXT && wParam == 0))) {
+                    return m_Focused.exchange(false, std::memory_order_acq_rel);
+                }
+                return false;
+            }
+
+            bool ExchangeVisible(bool visible) noexcept {
+                return m_Visible.exchange(visible, std::memory_order_acq_rel);
+            }
+
+            bool IsVisible() const noexcept {
+                return m_Visible.load(std::memory_order_acquire) && Owns();
+            }
+
+        private:
+            std::atomic<HWND> m_Window{nullptr};
+            std::atomic_bool m_Focused{false};
+            std::atomic_bool m_Visible{false};
+        };
+
         std::mutex g_StateMutex;
         State g_State;
         HWND g_RootWindow = nullptr;
-        std::atomic_bool g_WantsPresentation{false};
+        PresentationTarget g_PresentationTarget;
         PresentationSnapshotCache g_PresentationCache;
 
         class ImmContext final {
@@ -89,6 +143,70 @@ namespace Overlay::Ime {
                    NormalizeRoot(window) == root;
         }
 
+        HWND CopyRootWindow() {
+            std::lock_guard lock(g_StateMutex);
+            return g_RootWindow;
+        }
+
+        bool IsCompatibilityNavigationLanguage(HKL layout) noexcept {
+            const LANGID language = LOWORD(reinterpret_cast<ULONG_PTR>(layout));
+            switch (PRIMARYLANGID(language)) {
+            case LANG_CHINESE:
+            case LANG_JAPANESE:
+            case LANG_KOREAN:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        bool HasConflictingNavigationModifier() noexcept {
+            return (::GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 ||
+                   (::GetAsyncKeyState(VK_MENU) & 0x8000) != 0 ||
+                   (::GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
+                   (::GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
+        }
+
+        bool CanUseCompatibilityNavigation(HWND root, HWND owner) {
+            const HWND foreground = ::GetForegroundWindow();
+            if (!root || NormalizeRoot(foreground) != root)
+                return false;
+
+            const HWND focus = ::GetFocus();
+            if (!owner || focus != owner || !BelongsToRoot(owner, root) ||
+                HasConflictingNavigationModifier())
+                return false;
+
+            const DWORD focusThread = ::GetWindowThreadProcessId(focus, nullptr);
+            return focusThread == ::GetCurrentThreadId() &&
+                   IsCompatibilityNavigationLanguage(::GetKeyboardLayout(focusThread));
+        }
+
+        bool SendCompatibilityNavigation(CandidateDirection direction) {
+            const HWND root = CopyRootWindow();
+            const HWND owner = g_PresentationTarget.Window();
+            if (!CanUseCompatibilityNavigation(root, owner))
+                return false;
+
+            // IMM compatibility IMEs can expose a readable candidate list while
+            // rejecting NI_SELECTCANDIDATESTR. Re-enter their normal keyboard
+            // path with the CJK candidate navigation keys instead. Keep this
+            // fallback local to the focused Player thread: SendInput is not a
+            // vendor-neutral candidate control interface.
+            const WORD key = direction == CandidateDirection::Previous ? VK_UP : VK_DOWN;
+            INPUT inputs[2]{};
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].ki.wVk = key;
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].ki.wVk = key;
+            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+            const UINT inserted = ::SendInput(2, inputs, sizeof(INPUT));
+            if (inserted == 1)
+                return ::SendInput(1, &inputs[1], sizeof(INPUT)) == 1;
+            return inserted == 2;
+        }
+
         struct ContextWindowOrder {
             std::array<HWND, 3> windows{};
             std::size_t count = 0;
@@ -116,11 +234,7 @@ namespace Overlay::Ime {
         }
 
         ImmContext AcquireImmContext(HWND messageWindow) {
-            HWND root = nullptr;
-            {
-                std::lock_guard lock(g_StateMutex);
-                root = g_RootWindow;
-            }
+            const HWND root = CopyRootWindow();
             if (!root)
                 return {};
 
@@ -350,67 +464,83 @@ namespace Overlay::Ime {
 
             const std::optional<CandidateSelectionRequest> request =
                 PlanCandidateSelection(snapshot, direction);
-            if (!request)
-                return false;
-
-            bool accepted = false;
-            {
-                ImmContext context = AcquireImmContext(window);
-                if (context) {
-                    accepted = ::ImmNotifyIME(context.Get(), NI_SELECTCANDIDATESTR,
-                                              static_cast<DWORD>(request->listIndex), request->itemIndex) != FALSE;
+            if (request) {
+                bool accepted = false;
+                {
+                    ImmContext context = AcquireImmContext(window);
+                    if (context) {
+                        accepted = ::ImmNotifyIME(context.Get(), NI_SELECTCANDIDATESTR,
+                                                  static_cast<DWORD>(request->listIndex),
+                                                  request->itemIndex) != FALSE;
+                    }
+                }
+                if (accepted) {
+                    RefreshCandidateLists(window, std::uint32_t{1} << request->listIndex);
+                    return true;
                 }
             }
-            if (!accepted)
-                return false;
 
-            RefreshCandidateLists(window, std::uint32_t{1} << request->listIndex);
-            return true;
+            return SendCompatibilityNavigation(direction);
         }
 
     }
 }
 
 namespace Overlay::Ime::Runtime {
-    void Attach(void *rootWindow) {
+    void Attach(void *rootWindow, void *presentationWindow) {
         const HWND root = NormalizeRoot(static_cast<HWND>(rootWindow));
+        HWND owner = static_cast<HWND>(presentationWindow);
+        if (!BelongsToRoot(owner, root))
+            owner = nullptr;
         {
             std::lock_guard lock(g_StateMutex);
             g_RootWindow = root;
             g_State.Reset();
         }
-        g_WantsPresentation.store(false, std::memory_order_release);
+        g_PresentationTarget.Attach(owner);
         Tsf::Attach();
+        Tsf::SetPresentationOwned(g_PresentationTarget.Owns());
     }
 
     void Detach() {
+        g_PresentationTarget.Detach();
+        Tsf::SetPresentationOwned(false);
         Tsf::Detach();
         std::lock_guard lock(g_StateMutex);
         g_State.Reset();
         g_RootWindow = nullptr;
-        g_WantsPresentation.store(false, std::memory_order_release);
     }
 
     NativePresentation::MessageDisposition HandleNativeMessage(void *messageWindow, std::uint32_t message,
                                                                std::uintptr_t wParam, std::intptr_t lParam) {
         const HWND window = static_cast<HWND>(messageWindow);
-        HWND root = nullptr;
-        {
-            std::lock_guard lock(g_StateMutex);
-            root = g_RootWindow;
-        }
+        const HWND root = CopyRootWindow();
+        const HWND owner = g_PresentationTarget.Window();
         if (!BelongsToRoot(window, root))
             return {};
 
+        const bool focusChanged = g_PresentationTarget.ObserveFocus(window, message, wParam);
+        const bool presentationOwned = g_PresentationTarget.Owns();
+        const bool ownsPresentation = presentationOwned && window == owner;
+        if (focusChanged) {
+            Tsf::SetPresentationOwned(presentationOwned);
+            if (!presentationOwned)
+                ResetState();
+        }
         switch (message) {
         case WM_IME_STARTCOMPOSITION: {
+            if (!ownsPresentation) {
+                ResetState();
+                break;
+            }
             Tsf::ClearCandidates();
             std::lock_guard lock(g_StateMutex);
             g_State.StartComposition();
             break;
         }
         case WM_IME_COMPOSITION:
-            ObserveComposition(window, static_cast<LPARAM>(lParam));
+            if (ownsPresentation)
+                ObserveComposition(window, static_cast<LPARAM>(lParam));
             break;
         case WM_IME_ENDCOMPOSITION:
         case WM_INPUTLANGCHANGE:
@@ -418,7 +548,7 @@ namespace Overlay::Ime::Runtime {
             ResetState();
             break;
         case WM_NCDESTROY:
-            if (window == root)
+            if (window == root || window == owner)
                 ResetState();
             break;
         case WM_IME_SETCONTEXT:
@@ -426,6 +556,8 @@ namespace Overlay::Ime::Runtime {
                 ResetState();
             break;
         case WM_IME_NOTIFY:
+            if (!ownsPresentation)
+                break;
             if (wParam == IMN_OPENCANDIDATE ||
                 wParam == IMN_CHANGECANDIDATE) {
                 RefreshCandidateLists(window, static_cast<std::uint32_t>(lParam));
@@ -442,20 +574,19 @@ namespace Overlay::Ime::Runtime {
             break;
         }
 
-        const bool presentationOwned = g_WantsPresentation.load(std::memory_order_acquire) ||
-                                       StateIsActive() || Tsf::HasCandidates();
-        return NativePresentation::Decide(message, wParam, lParam, presentationOwned);
+        return NativePresentation::Decide(message, wParam, lParam, ownsPresentation);
     }
 
     bool WantsCandidateNavigation() {
-        if (!g_WantsPresentation.load(std::memory_order_acquire))
+        if (!g_PresentationTarget.IsVisible())
             return false;
         return StateHasCandidates() || Tsf::HasCandidates();
     }
 
     bool PreparePresentationFrame(bool visible, PresentationFrame &frame) {
-        const bool wasVisible = g_WantsPresentation.exchange(visible, std::memory_order_acq_rel);
-        if (!visible) {
+        const bool presentationVisible = visible && g_PresentationTarget.Owns();
+        const bool wasVisible = g_PresentationTarget.ExchangeVisible(presentationVisible);
+        if (!presentationVisible) {
             if (wasVisible)
                 ResetState();
             return false;
@@ -471,12 +602,14 @@ namespace Overlay::Ime::Runtime {
     }
 
     bool IsPresentationActive() {
-        if (!g_WantsPresentation.load(std::memory_order_acquire))
+        if (!g_PresentationTarget.IsVisible())
             return false;
         return StateIsActive() || Tsf::HasCandidates();
     }
 
     bool MoveCandidate(CandidateDirection direction) {
+        if (!g_PresentationTarget.IsVisible())
+            return false;
         const PresentationSnapshotCache &cache = RefreshPresentationSnapshot();
         return cache.combined.HasCandidates() && NavigateCandidate(nullptr, cache.combined, direction);
     }
