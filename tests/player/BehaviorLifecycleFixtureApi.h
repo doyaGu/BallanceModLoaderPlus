@@ -21,6 +21,7 @@ enum class BMLLifecycleFixtureMode : std::uint32_t {
     InsertPinOnSettingsEdited = 5,
     RemoveFromParentOnEdited = 6,
     NormalizeBindingsOnEdited = 7,
+    ReconcileOutputPinOnEdited = 8,
 };
 
 struct BMLLifecycleFixtureEvent {

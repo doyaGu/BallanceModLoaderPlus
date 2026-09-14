@@ -263,9 +263,13 @@ inline Edit::Node Edit::Graph::Require(const Behavior::Node &node) const {
         return Root();
     Detail::EditStep &step = Edit::Define(
         *edit, m_Scope, BML_BEHAVIOR_EDIT_REQUIRE_NODE);
-    NodePattern pattern(node.Name().empty()
-                            ? Behavior::Selector::Only()
-                            : Behavior::Unique(node.Name()));
+    // A snapshot Node is identified by its native child position. Its name,
+    // prototype, kind, and port shape are independent checks that protect the
+    // author from binding that position to a different Behavior in a later
+    // world. A name occurrence cannot serve as the position: occurrences are
+    // evaluated after the other Pattern conditions have filtered candidates.
+    NodePattern pattern(Behavior::At(node.Index()));
+    step.Name.assign(node.Name());
     pattern.m_Prototype = node.Prototype();
     pattern.m_Kind = node.Kind();
     pattern.m_PortShape = Edit::Shape(node);
@@ -292,8 +296,11 @@ inline Edit::Link Edit::Graph::Require(const Behavior::Link &link) const {
             ? Behavior::At(port.Index())
             : Behavior::Named(port.Name(), port.Occurrence());
     };
-    return Between(from.Out(slot(source)), to.In(slot(sink)),
-                   link.InitialDelay());
+    const Port sourcePort = source.Kind() == Behavior::SlotKind::In
+        ? from.In(slot(source)) : from.Out(slot(source));
+    const Port sinkPort = sink.Kind() == Behavior::SlotKind::In
+        ? to.In(slot(sink)) : to.Out(slot(sink));
+    return Between(sourcePort, sinkPort, link.InitialDelay());
 }
 
 inline Edit::Node Edit::Graph::Use(const Behavior::Node &node) const {
@@ -686,6 +693,48 @@ inline Edit::Graph Edit::Graph::FlowCycle(Ports sources, Port sink,
 inline Edit::Graph Edit::Graph::FlowCycle(Port source, Ports sinks,
                                           std::int32_t delay) const {
     return FlowCycle(std::move(source), std::move(sinks.m_Port), delay);
+}
+
+inline Edit::Graph Edit::Graph::Flow(Port source, Hook hook,
+                                     Port sink) const {
+    const auto edit = Program();
+    if (!Edit::Require(*edit, m_Scope, source, "Hook source") ||
+        !Edit::Require(*edit, m_Scope, sink, "Hook sink")) {
+        return *this;
+    }
+    Detail::EditStep &step = Edit::Define(
+        *edit, m_Scope, BML_BEHAVIOR_EDIT_FLOW_HOOK, 0);
+    step.Source = std::move(source);
+    step.Sink = std::move(sink);
+    step.Hook = std::move(hook.m_Record);
+    return *this;
+}
+
+inline Edit::Graph Edit::Graph::Set(Port target,
+                                    Behavior::Value value) const {
+    const auto edit = Program();
+    if (!Edit::Require(*edit, m_Scope, target, "Set target"))
+        return *this;
+    Detail::EditStep &step = Edit::Define(
+        *edit, m_Scope, BML_BEHAVIOR_EDIT_SET_VALUE, 0);
+    step.Sink = std::move(target);
+    step.Value.emplace(std::move(value));
+    return *this;
+}
+
+inline Edit::Graph Edit::Graph::Set(Ports targets,
+                                    Behavior::Value value) const {
+    return Set(std::move(targets.m_Port), std::move(value));
+}
+
+template <class T, class>
+inline Edit::Graph Edit::Graph::Set(Port target, T &&value) const {
+    return Set(std::move(target), Behavior::Value(std::forward<T>(value)));
+}
+
+template <class T, class>
+inline Edit::Graph Edit::Graph::Set(Ports targets, T &&value) const {
+    return Set(std::move(targets), Behavior::Value(std::forward<T>(value)));
 }
 
 inline Edit::Graph Edit::Graph::Bind(Port sink, Behavior::Value value) const {

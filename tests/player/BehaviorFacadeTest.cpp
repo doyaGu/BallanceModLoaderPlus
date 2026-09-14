@@ -1218,7 +1218,8 @@ private:
             return;
         }
         m_Parked = parked.Take();
-        if (!ExistingBlockEdits() || !FailedExistingBlockEdit()) {
+        if (!ExistingBlockEdits() || !CallbackOwnedInterfaceEdits() ||
+            !FailedExistingBlockEdit()) {
             (void) m_Parked->Close();
             m_Parked.reset();
             Finish(false, "existing-block-edits");
@@ -1474,6 +1475,82 @@ private:
         const auto unlinked = linked->Close();
         return unlinked && fixture.ReadTrace(&trace) &&
             CountFixtureEvents(trace, behavior, CKM_BEHAVIOREDITED) == 0;
+    }
+
+    bool CallbackOwnedInterfaceEdits() {
+        const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
+        auto graph = m_Session.Inspect(m_Graph);
+        if (!fixture || !graph)
+            return false;
+        const auto found = std::find_if(
+            graph->Nodes().begin(), graph->Nodes().end(),
+            [](const BML::Behavior::Node &node) {
+                return node.Prototype() == CKGUID(BML_LIFECYCLE_FIXTURE_GUID);
+            });
+        if (found == graph->Nodes().end())
+            return false;
+        const std::uint32_t behavior = static_cast<std::uint32_t>(found->Id());
+
+        struct RestoreMode {
+            BMLLifecycleFixtureSetModeFn Set = nullptr;
+            ~RestoreMode() {
+                if (Set)
+                    Set(BMLLifecycleFixtureMode::Normal);
+            }
+        } restoreMode{fixture.SetMode};
+
+        fixture.ResetTrace();
+        fixture.SetMode(BMLLifecycleFixtureMode::ReconcileOutputPinOnEdited);
+        BML::Behavior::Edit edit;
+        const auto existing = edit.Root().Use(*found);
+        (void) edit.Root().AppendOut(existing, "Branch");
+        edit.Root().Bind(existing.Pin("Branch Value", CKPGUID_INT), 47);
+        auto applied = graph->Apply("player-callback-owned-interface", edit);
+        if (!applied)
+            return false;
+
+        BMLLifecycleFixtureTrace trace;
+        if (!fixture.ReadTrace(&trace))
+            return false;
+        const BMLLifecycleFixtureEvent *reconciliation = FindFixtureEvent(
+            trace, behavior, CKM_BEHAVIOREDITED, 0);
+        const BMLLifecycleFixtureEvent *installed = FindFixtureEvent(
+            trace, behavior, CKM_BEHAVIOREDITED, 1);
+        const bool installVisible = CountFixtureEvents(
+                trace, behavior, CKM_BEHAVIOREDITED) == 2 &&
+            reconciliation && reconciliation->OutputCount == 2 &&
+            reconciliation->PinCount == 1 &&
+            installed && installed->OutputCount == 2 &&
+            installed->PinCount == 2 && installed->BoundSourceCount == 2;
+
+        const auto closed = applied->Close();
+        auto restoredGraph = m_Session.Inspect(m_Graph);
+        if (!installVisible || !closed || !restoredGraph ||
+            !fixture.ReadTrace(&trace)) {
+            return false;
+        }
+        const auto restoredNode = std::find_if(
+            restoredGraph->Nodes().begin(), restoredGraph->Nodes().end(),
+            [behavior](const BML::Behavior::Node &node) {
+                return node.Id() == behavior;
+            });
+        int outputCount = 0;
+        int pinCount = 0;
+        if (restoredNode != restoredGraph->Nodes().end()) {
+            for (const BML::Behavior::Port port : restoredNode->Ports()) {
+                if (port.Kind() == BML::Behavior::SlotKind::Out)
+                    ++outputCount;
+                else if (port.Kind() == BML::Behavior::SlotKind::Pin)
+                    ++pinCount;
+            }
+        }
+        const BMLLifecycleFixtureEvent *restoring = FindFixtureEvent(
+            trace, behavior, CKM_BEHAVIOREDITED, 2);
+        return CountFixtureEvents(trace, behavior, CKM_BEHAVIOREDITED) == 3 &&
+            restoring && restoring->OutputCount == 1 &&
+            restoring->PinCount == 2 && restoring->BoundSourceCount == 1 &&
+            restoredNode != restoredGraph->Nodes().end() &&
+            outputCount == 1 && pinCount == 1;
     }
 
     bool FailedExistingBlockEdit() {
@@ -1830,16 +1907,36 @@ private:
             std::holds_alternative<std::int32_t>(restored->Data) &&
             std::get<std::int32_t>(restored->Data) == 17;
 
+        BML::Behavior::Edit setEdit;
+        const auto setBlock = setEdit.Root().Use(block);
+        setEdit.Root().Set(setBlock.Pin("Source", CKPGUID_INT), 31);
+        auto setApplied = graph.Apply("player-set-existing-value", setEdit);
+        const auto setValue = graph.Read(block.Pin("Source"));
+        const bool setChanged = setApplied && setValue &&
+            std::holds_alternative<std::int32_t>(setValue->Data) &&
+            std::get<std::int32_t>(setValue->Data) == 31;
+        bool setValueRestored = false;
+        if (setApplied) {
+            const auto setClosed = setApplied->Close();
+            const auto setRestored = graph.Read(block.Pin("Source"));
+            setValueRestored = setClosed && setRestored &&
+                std::holds_alternative<std::int32_t>(setRestored->Data) &&
+                std::get<std::int32_t>(setRestored->Data) == 3;
+        }
+
         GetLogger()->Info(
-            "Behavior EDITED context: status=%s apply=%s close=%s value=%s",
+            "Behavior EDITED context: status=%s apply=%s close=%s value=%s set=%s",
             applyContextRestored && closeContextRestored && valueChanged &&
-                    valueRestored && closed && !patch
+                    valueRestored && closed && !patch && setChanged &&
+                    setValueRestored
                 ? "pass" : "fail",
             applyContextRestored ? "restored" : "changed",
             closeContextRestored ? "restored" : "changed",
-            valueChanged && valueRestored ? "restored" : "wrong");
+            valueChanged && valueRestored ? "restored" : "wrong",
+            setChanged && setValueRestored ? "restored" : "wrong");
         return applyContextRestored && closeContextRestored && valueChanged &&
-            valueRestored && closed && !patch;
+            valueRestored && closed && !patch && setChanged &&
+            setValueRestored;
     }
 
     bool IdentityViews(BML_ObjectRef block) {

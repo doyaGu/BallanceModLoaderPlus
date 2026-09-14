@@ -499,6 +499,17 @@ public:
                         std::int32_t delay = 0) const;
         Graph FlowCycle(Port source, Ports sinks,
                         std::int32_t delay = 0) const;
+        Graph Flow(Port source, Hook hook, Port sink) const;
+        Graph Set(Port target, Behavior::Value value) const;
+        Graph Set(Ports targets, Behavior::Value value) const;
+        template <class T,
+                  class = std::enable_if_t<
+                      !std::is_same_v<std::decay_t<T>, Behavior::Value>>>
+        Graph Set(Port target, T &&value) const;
+        template <class T,
+                  class = std::enable_if_t<
+                      !std::is_same_v<std::decay_t<T>, Behavior::Value>>>
+        Graph Set(Ports targets, T &&value) const;
         Graph Bind(Port sink, Behavior::Value value) const;
         Graph Bind(Ports sinks, Behavior::Value value) const;
         template <class T,

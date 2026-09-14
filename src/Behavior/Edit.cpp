@@ -63,6 +63,11 @@ bool IsLiteralTarget(SlotKind kind) {
     return IsBindTarget(kind) || kind == SlotKind::Local;
 }
 
+bool IsSetTarget(SlotKind kind) {
+    return IsBindTarget(kind) || kind == SlotKind::OutputParameter ||
+        kind == SlotKind::Local;
+}
+
 bool IsDirectSource(SlotKind kind) {
     return kind == SlotKind::OutputParameter || kind == SlotKind::Local;
 }
@@ -80,14 +85,16 @@ bool OrderLess(const Order &left, const Order &right) {
            std::tie(right.Other.Owner, right.Other.Name, right.Kind);
 }
 
-CKDWORD InterfaceFlag(SlotKind kind) {
+CKDWORD ManagedInterfaceFlag(SlotKind kind) {
     switch (kind) {
-    case SlotKind::Input: return CKBEHAVIOR_VARIABLEINPUTS;
-    case SlotKind::Output: return CKBEHAVIOR_VARIABLEOUTPUTS;
+    case SlotKind::Input: return CKBEHAVIOR_INTERNALLYCREATEDINPUTS;
+    case SlotKind::Output: return CKBEHAVIOR_INTERNALLYCREATEDOUTPUTS;
     case SlotKind::InputParameter:
-        return CKBEHAVIOR_VARIABLEPARAMETERINPUTS;
+        return CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS;
     case SlotKind::OutputParameter:
-        return CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS;
+        return CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS;
+    case SlotKind::Local:
+        return CKBEHAVIOR_INTERNALLYCREATEDLOCALPARAMS;
     default: return 0;
     }
 }
@@ -394,6 +401,11 @@ void Edit::Flow(Port source, Port sink, int delay, Cycle cycle) {
         {std::move(source), std::move(sink), delay, cycle, NextOrdinal()});
 }
 
+void Edit::Set(Port target, Parameter::Binding value) {
+    m_Sets.push_back(
+        {std::move(target), std::move(value), NextOrdinal()});
+}
+
 void Edit::Bind(Port target, Parameter::Binding value) {
     EditBind bind;
     bind.Target = std::move(target);
@@ -683,6 +695,12 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
                     Error::InvalidState,
                     "A parked Node cannot participate in Bind.");
         }
+        for (const EditSet &item : m_Sets) {
+            if (parkedPort(item.Target))
+                return Failure(
+                    Error::InvalidState,
+                    "A parked Node cannot participate in Set.");
+        }
         for (const EditPush &item : m_Pushes) {
             if (parkedPort(item.Source) || parkedPort(item.Destination))
                 return Failure(
@@ -707,16 +725,14 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         if (!node)
             return Failure(Error::InvalidState,
                            "A dynamic interface action names an unknown Node.");
-        // CK2 appends Ins, Outs, and parameters to any Behavior without
-        // consulting the variable-interface flags: those flags declare intent
-        // to an editor, they do not gate CreateInput and friends. So an
-        // appended port is allowed everywhere, and the flag only tells the
-        // author whether the block's own code will read it. A Local is private
-        // state, so an Edit may append one only to its graph root or to a Block
-        // the same Edit owns.
+        // CK2's CreateInput/CreateOutput/Create*Parameter methods append to
+        // any Behavior. VARIABLE* flags describe editor intent; they do not
+        // gate those methods. A Local is different because it is private
+        // implementation state, so an Edit may add one only to its graph root
+        // or to a Block owned by the same Edit.
         const bool ownedLocal = item.Slot.Kind == SlotKind::Local &&
             (item.Owner == Graph() || node->Authored());
-        if (!InterfaceFlag(item.Slot.Kind) && !ownedLocal) {
+        if (item.Slot.Kind == SlotKind::Local && !ownedLocal) {
             return Failure(
                 Error::InterfaceUnsupported,
                 "A Local can be appended only to the graph root or a Block added by this Edit.");
@@ -795,8 +811,28 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
             resolved.Appended = true;
         } else {
             Status status = Resolve(node->Shape, port.Selector, resolved.Slot);
-            if (!status)
-                return status;
+            if (!status) {
+                const CKDWORD managed = ManagedInterfaceFlag(
+                    port.Selector.Kind);
+                const bool callbackOwned =
+                    status.Code == Error::SlotNotFound && managed != 0 &&
+                    (node->Shape.BehaviorFlags & managed) != 0 &&
+                    std::any_of(m_Interface.begin(), m_Interface.end(),
+                                [&](const InterfacePort &candidate) {
+                                    return candidate.Owner == resolved.Owner;
+                                });
+                if (!callbackOwned)
+                    return status;
+                resolved.Slot.Kind = port.Selector.Kind;
+                resolved.Slot.Index = port.Selector.Index;
+                resolved.Slot.NativeIndex = port.Selector.Index;
+                resolved.Slot.Name = port.Selector.Name;
+                resolved.Slot.Type = port.Selector.ExpectedType;
+                resolved.Slot.Occurrence = port.Selector.Occurrence;
+                resolved.Appended = true;
+                resolved.Deferred = true;
+                return Status{};
+            }
             resolved.Appended = std::any_of(
                 m_Interface.begin(), m_Interface.end(),
                 [&](const InterfacePort &item) {
@@ -864,6 +900,21 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
             }
         }
         out.Binds.push_back(std::move(checked));
+    }
+
+    for (const EditSet &set : m_Sets) {
+        CheckedSet checked;
+        Status status = resolve(set.Target, checked.Target);
+        if (!status)
+            return status;
+        if (!IsSetTarget(checked.Target.Slot.Kind)) {
+            return Failure(
+                Error::TypeMismatch,
+                "Set requires a Pin, Pout, Local, or Target value.");
+        }
+        checked.Value = set.Value;
+        checked.Ordinal = set.Ordinal;
+        out.Sets.push_back(std::move(checked));
     }
 
     for (const EditPush &push : m_Pushes) {
@@ -1175,6 +1226,13 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         }
         if (bind.Kind == BindKind::Shared)
             shares.emplace_back(DataKey(bind.Target), DataKey(bind.Source));
+    }
+    for (const CheckedSet &set : out.Sets) {
+        if (!bound.insert(DataKey(set.Target)).second) {
+            return Failure(
+                Error::InvalidState,
+                "A parameter can have only one Set or Bind in an Edit.");
+        }
     }
     const auto operationInputKey = [](ParameterOperation operation,
                                       int index) {

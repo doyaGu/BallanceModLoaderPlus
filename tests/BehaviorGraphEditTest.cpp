@@ -189,12 +189,27 @@ public:
         return {};
     }
 
+    Status Interpose(Edit &edit, Port source, Port sink,
+                     const HookBlock::Hook &hook) override {
+        if (!hook)
+            return {Error::CallbackFailed, CKERR_INVALIDPARAMETER,
+                    CKBR_PARAMETERERROR, "missing hook"};
+        ++HookFlows;
+        Node block = edit.Add(
+            BlockSpec(CKGUID(0x19038c0, 0x663902da)), Shape(),
+            NodeRole::Infrastructure);
+        edit.Flow(std::move(source), block.In());
+        edit.Flow(block.Out(), std::move(sink));
+        return {};
+    }
+
     GraphModel Base;
     std::vector<std::vector<BlockSpec::Binding>> AddedSettings;
     int Begins = 0;
     int Adds = 0;
     int Taps = 0;
     int Afters = 0;
+    int HookFlows = 0;
     int ValueReads = 0;
     std::map<std::tuple<std::uint64_t, SlotKind, int>, GraphValue> Values;
     CKDWORD NodeFlags = 0;
@@ -703,6 +718,43 @@ TEST(BehaviorGraphEdit, ReplaysRootAndNodeFlowWithSymbolicHandles) {
     ASSERT_TRUE(edit.Validate(compiler.Base, checked));
     ASSERT_EQ(checked.Flows.size(), 2u);
     EXPECT_EQ(checked.Flows[1].Delay, 2);
+}
+
+TEST(BehaviorGraphEdit, PlacesACallbackInsideANewFlow) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message"});
+    const Node sink = plan.RequireOne({"set Resetpoint"});
+    plan.Flow(wait.Out(), HookBlock::Hook(Noop), sink.In());
+
+    Edit edit;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "callback-flow"}, compiler.Base.Root, compiler, edit));
+    EXPECT_EQ(compiler.HookFlows, 1);
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(compiler.Base, checked));
+    ASSERT_EQ(checked.Flows.size(), 2u);
+    EXPECT_EQ(checked.Flows[0].Source.Owner.Value, 2u);
+    EXPECT_EQ(checked.Flows[1].Sink.Owner.Value, 3u);
+}
+
+TEST(BehaviorGraphEdit, CompilesAStoredValueUpdate) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message"});
+    plan.Set(wait.Pin("Value"), Value::From(CKPGUID_INT, 42));
+
+    Edit edit;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "set-value"}, compiler.Base.Root, compiler, edit));
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(compiler.Base, checked));
+    ASSERT_EQ(checked.Sets.size(), 1u);
+    EXPECT_EQ(checked.Sets[0].Target.Owner.Value, 2u);
+    EXPECT_EQ(checked.Sets[0].Target.Slot.Kind, SlotKind::InputParameter);
+    EXPECT_EQ(checked.Sets[0].Value.Literal(),
+              Value::From(CKPGUID_INT, 42));
 }
 
 TEST(BehaviorGraphEdit, KeepsControlDataAndSpliceDeclarationOrder) {

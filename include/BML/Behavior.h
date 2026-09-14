@@ -1045,7 +1045,15 @@ typedef enum BML_BehaviorEditKind {
     // Moves the existing Link named by Target to Source and Sink. The Link
     // object and its current activation delay are preserved. Like FLOW, a
     // newly introduced same-frame cycle requires CONFIRM_CYCLE.
-    BML_BEHAVIOR_EDIT_RECONNECT = 32
+    BML_BEHAVIOR_EDIT_RECONNECT = 32,
+    // Writes Value through the parameter currently read by Sink without
+    // changing its direct/shared source relation. The previous value is
+    // restored when the Patch closes.
+    BML_BEHAVIOR_EDIT_SET_VALUE = 33,
+    // Inserts Hook in a new control-flow route from Source to Sink. The
+    // callback runs after Source fires and before Sink is activated. The Hook
+    // Block and both connecting Links are hidden from the Logical view.
+    BML_BEHAVIOR_EDIT_FLOW_HOOK = 34
 } BML_BehaviorEditKind;
 
 typedef enum BML_BehaviorEditFlags {
@@ -1076,7 +1084,9 @@ typedef struct BML_BehaviorEditStep {
     int32_t Delay;
     // Priority of a graph-backed Node created by ADD_GRAPH.
     int32_t Priority;
-    // Node name to require, or the name of an appended slot.
+    // Expected Node name copied from a snapshot REQUIRE_NODE, or the name of
+    // an appended slot/graph. For other Node Patterns the selector carries
+    // the name.
     BML_BehaviorString Name;
     // Node selector used by REQUIRE_NODE. Name above remains the interface or
     // graph name used by other step kinds.

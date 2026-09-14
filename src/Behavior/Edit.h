@@ -110,6 +110,14 @@ struct EditBind {
     friend bool operator==(const EditBind &, const EditBind &) = default;
 };
 
+struct EditSet {
+    Port Target;
+    Parameter::Binding Value;
+    std::uint32_t Ordinal = 0;
+
+    friend bool operator==(const EditSet &, const EditSet &) = default;
+};
+
 struct EditPush {
     Port Source;
     Port Destination;
@@ -196,6 +204,10 @@ struct ResolvedPort {
     std::uint32_t Interface = 0;
     NativeRef Native;
     bool Appended = false;
+    // The BB creates this port from a related interface change when
+    // it receives CKM_BEHAVIOREDITED. It is resolved against the reflected
+    // layout after that callback, before any data relation is installed.
+    bool Deferred = false;
     bool Operation = false;
 };
 
@@ -221,6 +233,12 @@ struct CheckedBind {
     BindKind Kind = BindKind::Literal;
     Parameter::Binding Value;
     ResolvedPort Source;
+    std::uint32_t Ordinal = 0;
+};
+
+struct CheckedSet {
+    ResolvedPort Target;
+    Parameter::Binding Value;
     std::uint32_t Ordinal = 0;
 };
 
@@ -261,6 +279,7 @@ struct CheckedReconnect {
 
 struct CheckedEdit {
     std::vector<CheckedFlow> Flows;
+    std::vector<CheckedSet> Sets;
     std::vector<CheckedBind> Binds;
     std::vector<CheckedPush> Pushes;
     std::vector<CheckedTap> Taps;
@@ -305,6 +324,7 @@ public:
 
     void Flow(Port source, Port sink, int delay = 0,
               Cycle cycle = Cycle::Reject);
+    void Set(Port target, Parameter::Binding value);
     void Bind(Port target, Parameter::Binding value);
     void Bind(Port target, Port source);
     void Share(Port target, Port source);
@@ -361,6 +381,7 @@ private:
     std::vector<EditOperation> m_Operations;
     std::vector<InterfacePort> m_Interface;
     std::vector<EditFlow> m_Flows;
+    std::vector<EditSet> m_Sets;
     std::vector<EditBind> m_Binds;
     std::vector<EditPush> m_Pushes;
     std::vector<EditTap> m_Taps;

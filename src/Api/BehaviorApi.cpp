@@ -2935,6 +2935,18 @@ Status ReadNodePattern(const BML_BehaviorEditStep &step,
         return InvalidValue("A Node Pattern selector is unknown.");
     }
 
+    std::string expectedName;
+    if (!ReadString(step.Name, expectedName))
+        return InvalidValue("A Node Pattern expected name is invalid.");
+    if (!expectedName.empty()) {
+        if (out.Selector == NodePattern::SelectorKind::Name &&
+            out.Name != expectedName) {
+            return InvalidValue(
+                "A Node Pattern names two different Behaviors.");
+        }
+        out.Name = std::move(expectedName);
+    }
+
     out.Prototype = prototype;
     if (step.ExpectedKind) {
         switch (step.ExpectedKind) {
@@ -3285,6 +3297,15 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         edit.Bind(sink, std::move(binding));
         break;
     }
+    case BML_BEHAVIOR_EDIT_SET_VALUE: {
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        Parameter::Binding binding;
+        if (!ReadValue(step.Value, context, binding, status))
+            return status;
+        edit.Set(sink, std::move(binding));
+        break;
+    }
     case BML_BEHAVIOR_EDIT_BIND_PORT:
     case BML_BEHAVIOR_EDIT_SHARE:
     case BML_BEHAVIOR_EDIT_PUSH:
@@ -3306,6 +3327,17 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         if (status = ReadHook(step.Hook, hook); !status)
             return status;
         edit.Tap(source, std::move(hook));
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_FLOW_HOOK: {
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        HookBlock::Hook hook;
+        if (status = ReadHook(step.Hook, hook); !status)
+            return status;
+        edit.Flow(source, std::move(hook), sink);
         break;
     }
     case BML_BEHAVIOR_EDIT_AFTER: {

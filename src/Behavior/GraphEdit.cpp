@@ -276,6 +276,16 @@ void GraphEdit::Flow(Port source, Port sink, int delay, Cycle cycle) {
         std::move(source), std::move(sink), delay, cycle, m_NextAction++});
 }
 
+void GraphEdit::Flow(Port source, HookBlock::Hook hook, Port sink) {
+    m_Actions.emplace_back(EditHookFlow{
+        std::move(source), std::move(sink), std::move(hook), m_NextAction++});
+}
+
+void GraphEdit::Set(Port target, Parameter::Binding value) {
+    m_Actions.emplace_back(EditSet{
+        std::move(target), std::move(value), m_NextAction++});
+}
+
 void GraphEdit::Bind(Port target, Parameter::Binding value) {
     EditBind bind;
     bind.Target = std::move(target);
@@ -502,10 +512,15 @@ Status GraphEdit::Validate() const {
             const Status compatible = std::visit(
                 [&](const auto &item) -> Status {
                     using T = std::decay_t<decltype(item)>;
-                    if constexpr (std::is_same_v<T, EditFlow>) {
+                    if constexpr (std::is_same_v<T, EditFlow> ||
+                                  std::is_same_v<T, EditHookFlow>) {
                         if (usesParked(item.Source) || usesParked(item.Sink))
                             return Failure(Error::InvalidState,
                                            "A parked Node cannot participate in Flow.");
+                    } else if constexpr (std::is_same_v<T, EditSet>) {
+                        if (usesParked(item.Target))
+                            return Failure(Error::InvalidState,
+                                           "A parked Node cannot participate in Set.");
                     } else if constexpr (std::is_same_v<T, EditBind>) {
                         if (usesParked(item.Target) ||
                             (item.Kind != BindKind::Literal &&
@@ -658,6 +673,23 @@ Status GraphEdit::Validate() const {
                 if (!port(item.Source) || !port(item.Sink))
                     return Failure(Error::InvalidState,
                                    "A Flow names an unknown Node.");
+            } else if constexpr (std::is_same_v<T, EditHookFlow>) {
+                if (!port(item.Source) || !port(item.Sink) || !item.Hook) {
+                    return Failure(
+                        Error::InvalidState,
+                        "A callback Flow requires a source, sink, and callback.");
+                }
+            } else if constexpr (std::is_same_v<T, EditSet>) {
+                if (!port(item.Target))
+                    return Failure(Error::InvalidState,
+                                   "A Set names an unknown Node.");
+                if (item.Value.Kind() == Parameter::BindingKind::Value &&
+                    item.Value.Literal().IsNull() &&
+                    !item.Value.Type().IsValid()) {
+                    return Failure(
+                        Error::TypeMismatch,
+                        "A null Value requires a Virtools type GUID.");
+                }
             } else if constexpr (std::is_same_v<T, EditBind>) {
                 if (!port(item.Target) ||
                     (item.Kind != BindKind::Literal && !port(item.Source))) {
@@ -773,6 +805,9 @@ bool GraphEdit::UsesIdentity() const noexcept {
                     }) ||
         std::any_of(m_Actions.begin(), m_Actions.end(),
                     [](const Action &action) {
+                        if (const auto *set = std::get_if<EditSet>(&action))
+                            return set->Value.Kind() !=
+                                Parameter::BindingKind::Value;
                         const auto *bind = std::get_if<EditBind>(&action);
                         return bind && bind->Kind == BindKind::Literal &&
                             bind->Value.Kind() != Parameter::BindingKind::Value;
@@ -1465,6 +1500,30 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                         resolved.Flow(std::move(source), std::move(sink),
                                       item.Delay, item.SameFrameCycle);
                     });
+            } else if constexpr (std::is_same_v<T, EditHookFlow>) {
+                std::vector<Port> sources;
+                std::vector<Port> sinks;
+                Status current = ports(item.Source, sources);
+                if (current)
+                    current = ports(item.Sink, sinks);
+                if (!current)
+                    return current;
+                Status shape = paired(sources, sinks,
+                    [&](Port source, Port sink) {
+                        if (current) {
+                            current = compiler.Interpose(
+                                resolved, std::move(source), std::move(sink),
+                                item.Hook);
+                        }
+                    });
+                return shape ? current : shape;
+            } else if constexpr (std::is_same_v<T, EditSet>) {
+                std::vector<Port> targets;
+                Status current = ports(item.Target, targets);
+                if (!current)
+                    return current;
+                for (Port target : targets)
+                    resolved.Set(std::move(target), item.Value);
             } else if constexpr (std::is_same_v<T, EditBind>) {
                 std::vector<Port> targets;
                 Status current = ports(item.Target, targets);
