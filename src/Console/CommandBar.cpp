@@ -447,12 +447,8 @@ void CommandBar::OnDraw() {
     ImGuiInputTextFlags inputTextFlags = ImGuiInputTextFlags_EscapeClearsAll |
                                         ImGuiInputTextFlags_CallbackAlways |
                                         ImGuiInputTextFlags_CallbackEdit;
-    if (!m_TextCompositionActive) {
-        inputTextFlags |= ImGuiInputTextFlags_CallbackCompletion;
-        if (!completionVisible) {
-            inputTextFlags |= ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory;
-        }
-    }
+    if (!m_TextCompositionActive && !m_Candidates.AreHintsVisible())
+        inputTextFlags |= ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory;
     const bool submitted = ImGui::InputTextWithHint("##CmdBar", "Enter a command", &m_Buffer, inputTextFlags,
                                                     &TextEditCallback, this);
     ImGui::PopStyleColor(4);
@@ -469,7 +465,14 @@ void CommandBar::OnDraw() {
     }
 
     if (!submitted && !m_TextCompositionActive && m_Candidates.AreHintsVisible()) {
-        DrawCompletionSurface(acceptCompletion, dismissCompletion);
+        if (acceptCompletion) {
+            m_Candidates.SelectCurrent();
+            m_FocusInputNextFrame = true;
+        } else if (dismissCompletion) {
+            InvalidateCandidates();
+            m_FocusInputNextFrame = true;
+        }
+        DrawCompletionSurface();
     } else if (!m_TextCompositionActive) {
         if (!m_Candidates.Empty()) {
             m_Candidates.ShowHints();
@@ -482,7 +485,7 @@ void CommandBar::OnDraw() {
     m_VisiblePrev = true;
 }
 
-void CommandBar::DrawCompletionSurface(bool acceptSelection, bool dismissCompletion) {
+void CommandBar::DrawCompletionSurface() {
     ImGui::SetCursorScreenPos(m_TransientPos);
     constexpr ImGuiWindowFlags ChildFlags = ImGuiWindowFlags_NoScrollbar |
                                             ImGuiWindowFlags_NoScrollWithMouse |
@@ -530,6 +533,7 @@ void CommandBar::DrawCompletionSurface(bool acceptSelection, bool dismissComplet
 
             const ImVec2 chipMin(contentX, railMin.y + 2.0f);
             const ImVec2 chipMax(contentX + width, railMax.y - 2.0f);
+            const bool selected = i == m_Candidates.CurrentIndex();
             ImGui::PushID(i);
             ImGui::SetCursorScreenPos(chipMin);
             const bool pressed = ImGui::InvisibleButton(
@@ -542,7 +546,6 @@ void CommandBar::DrawCompletionSurface(bool acceptSelection, bool dismissComplet
                 ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
             ImGui::PopID();
 
-            const bool selected = i == m_Candidates.CurrentIndex();
             if (selected || hovered) {
                 const ImU32 color = hovered ? (active ? colors.active : colors.hover) : colors.selection;
                 drawList->AddRectFilled(chipMin, chipMax, color, InputSurfaceStyle::Rounding);
@@ -601,23 +604,6 @@ void CommandBar::DrawCompletionSurface(bool acceptSelection, bool dismissComplet
     }
     ImGui::EndChild();
 
-    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow) ||
-        ImGui::IsKeyPressed(ImGuiKey_PageUp)) {
-        PrevPageOfCandidates();
-    } else if (ImGui::IsKeyPressed(ImGuiKey_DownArrow) ||
-               ImGui::IsKeyPressed(ImGuiKey_PageDown)) {
-        NextPageOfCandidates();
-    }
-
-    if (acceptSelection) {
-        m_Candidates.SelectCurrent();
-        m_FocusInputNextFrame = true;
-    }
-
-    if (dismissCompletion) {
-        InvalidateCandidates();
-        m_FocusInputNextFrame = true;
-    }
 }
 
 void CommandBar::OnPostEnd() {
@@ -631,6 +617,7 @@ void CommandBar::OnShow() {
 void CommandBar::OnHide() {
     m_InputActive = false;
     m_VisiblePrev = true;
+    InvalidateCandidates();
 }
 
 void CommandBar::PrintHistory() {
@@ -795,7 +782,7 @@ void CommandBar::RefreshTextMetrics() {
     m_NextPageLabelSize = ImGui::CalcTextSize(">");
 }
 
-std::size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
+void CommandBar::BuildCompletionCandidates(const char *lineStart, const char *lineEnd) {
     const char *wordStart = lineStart;
     const int wordLength = LastToken(wordStart, lineEnd);
 
@@ -803,36 +790,85 @@ std::size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd)
     const char *rawLineEnd = lineEnd;
     StripLine(lineStart, lineEnd);
 
-    if (m_Candidates.Empty()) {
-        bool completeCmd = true;
-        const char *cmdEnd = lineEnd;
-        const char *cmdStart;
+    if (!m_Candidates.Empty())
+        return;
 
-        if (wordStart == lineStart) {
-            // If the cursor is at the beginning of the line, complete the command
-            cmdStart = wordStart;
-        } else {
-            // Otherwise, complete the argument
-            cmdStart = lineStart;
-            completeCmd = false;
-        }
-        const int cmdLength = FirstToken(cmdStart, cmdEnd);
+    bool completeCmd = true;
+    const char *cmdEnd = lineEnd;
+    const char *cmdStart;
 
-        if (completeCmd) {
-            CollectCommandCandidates(cmdStart, cmdLength);
-        } else {
-            CollectArgumentCandidates(wordStart, wordLength, cmdStart, rawLineEnd);
-        }
-
-        GenerateCandidatePages();
+    if (wordStart == lineStart) {
+        // If the cursor is at the beginning of the line, complete the command
+        cmdStart = wordStart;
     } else {
-        if (ImGui::GetIO().KeyShift)
+        // Otherwise, complete the argument
+        cmdStart = lineStart;
+        completeCmd = false;
+    }
+    const int cmdLength = FirstToken(cmdStart, cmdEnd);
+
+    if (completeCmd)
+        CollectCommandCandidates(cmdStart, cmdLength);
+    else
+        CollectArgumentCandidates(wordStart, wordLength, cmdStart, rawLineEnd);
+
+    GenerateCandidatePages();
+}
+
+void CommandBar::BeginCompletion(ImGuiInputTextCallbackData *data, bool selectPrevious) {
+    BuildCompletionCandidates(data->Buf, data->Buf + data->CursorPos);
+
+    if (m_Candidates.Size() == 1) {
+        ReplaceCurrentToken(data, m_Candidates[0].c_str());
+        InvalidateCandidates();
+    } else if (m_Candidates.Size() > 1) {
+        const std::size_t commonLength = m_Candidates.CommonPrefixLength();
+        if (commonLength > 0)
+            ReplaceCurrentToken(data, m_Candidates[0].c_str(), static_cast<int>(commonLength));
+        if (selectPrevious)
             PrevCandidate();
-        else
-            NextCandidate();
     }
 
-    return m_Candidates.Size();
+    m_CursorPos = data->CursorPos;
+}
+
+bool CommandBar::HandleCompletionShortcuts(ImGuiInputTextCallbackData *data) {
+    if (!data)
+        return false;
+
+    constexpr ImGuiInputFlags ShortcutFlags = ImGuiInputFlags_RouteAlways;
+    constexpr ImGuiInputFlags RepeatShortcutFlags = ShortcutFlags | ImGuiInputFlags_Repeat;
+    if (!m_Candidates.AreHintsVisible()) {
+        if (ImGui::Shortcut(ImGuiMod_Shift | ImGuiKey_Tab, ShortcutFlags, data->ID)) {
+            BeginCompletion(data, true);
+            return true;
+        }
+        if (ImGui::Shortcut(ImGuiKey_Tab, ShortcutFlags, data->ID)) {
+            BeginCompletion(data, false);
+            return true;
+        }
+        return false;
+    }
+
+    if (ImGui::Shortcut(ImGuiMod_Shift | ImGuiKey_Tab, ShortcutFlags, data->ID) ||
+        ImGui::Shortcut(ImGuiKey_UpArrow, RepeatShortcutFlags, data->ID)) {
+        PrevCandidate();
+        return true;
+    }
+    if (ImGui::Shortcut(ImGuiKey_Tab, ShortcutFlags, data->ID) ||
+        ImGui::Shortcut(ImGuiKey_DownArrow, RepeatShortcutFlags, data->ID)) {
+        NextCandidate();
+        return true;
+    }
+    if (ImGui::Shortcut(ImGuiKey_PageUp, RepeatShortcutFlags, data->ID)) {
+        PrevPageOfCandidates();
+        return true;
+    }
+    if (ImGui::Shortcut(ImGuiKey_PageDown, RepeatShortcutFlags, data->ID)) {
+        NextPageOfCandidates();
+        return true;
+    }
+    return false;
 }
 
 int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
@@ -843,19 +879,10 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         return 0;
     }
 
-    switch (data->EventFlag) {
-        case ImGuiInputTextFlags_CallbackCompletion: {
-            OnCompletion(data->Buf, data->Buf + data->CursorPos);
+    if (HandleCompletionShortcuts(data))
+        return 0;
 
-            if (m_Candidates.Size() == 1) {
-                ReplaceCurrentToken(data, m_Candidates[0].c_str());
-            } else if (m_Candidates.Size() > 1) {
-                const std::size_t commonLength = m_Candidates.CommonPrefixLength();
-                if (commonLength > 0)
-                    ReplaceCurrentToken(data, m_Candidates[0].c_str(), static_cast<int>(commonLength));
-            }
-        }
-        break;
+    switch (data->EventFlag) {
         case ImGuiInputTextFlags_CallbackHistory: {
             if (!m_Candidates.Empty()) {
                 InvalidateCandidates();
