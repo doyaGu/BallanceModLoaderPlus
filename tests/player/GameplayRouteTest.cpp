@@ -1,8 +1,8 @@
+#include <BML/Behavior.hpp>
 #include <BML/IBML.h>
 #include <BML/ILogger.h>
 #include <BML/IMod.h>
 #include <BML/InputHook.h>
-#include <BML/ScriptHelper.h>
 
 #include "GameplayInputDriver.h"
 #include "GameplayPilot.h"
@@ -17,6 +17,56 @@
 #include <vector>
 
 namespace {
+
+struct LocatedGraph {
+    BML::Behavior::Graph Graph;
+    CKBehavior *Native = nullptr;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return Native != nullptr;
+    }
+};
+
+CKBehavior *NativeChild(CKBehavior *parent,
+                        const BML::Behavior::Node &node) {
+    const int index = node.Index();
+    return parent && index >= 0 && index < parent->GetSubBehaviorCount()
+        ? parent->GetSubBehavior(index) : nullptr;
+}
+
+LocatedGraph FindGraph(BML::Behavior::Session &session, CKBehavior *root,
+                       std::string_view name) {
+    auto inspected = session.Inspect(root);
+    if (!inspected)
+        return {};
+    BML::Behavior::Graph graph = inspected.Take();
+    for (BML::Behavior::Node node : graph.Nodes()) {
+        CKBehavior *native = NativeChild(root, node);
+        if (!native)
+            continue;
+        if (node.IsGraph()) {
+            LocatedGraph nested = FindGraph(session, native, name);
+            if (nested)
+                return nested;
+        }
+        if (node.Name() == name && node.IsGraph()) {
+            auto child = graph.Inspect(node);
+            if (child)
+                return {child.Take(), native};
+        }
+    }
+    return {};
+}
+
+int PortCount(const BML::Behavior::Node &node,
+              BML::Behavior::SlotKind kind) {
+    int count = 0;
+    for (BML::Behavior::Port port : node.Ports()) {
+        if (port.Kind() == kind)
+            ++count;
+    }
+    return count;
+}
 
 std::vector<BML::PlayerTest::GameplayWaypoint> LevelOneSectorOneRoute() {
     using BML::PlayerTest::GameplayWaypoint;
@@ -76,6 +126,14 @@ public:
 
     void OnLoad() override {
         BML::PlayerTest::ProbeReport::Reset();
+        auto opened = BML::Behavior::Session::Open(GetID());
+        if (opened) {
+            m_Behavior = opened.Take();
+        } else {
+            GetLogger()->Error(
+                "Gameplay graph navigation: session=false code=%d",
+                opened.Code());
+        }
         CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
         auto *input = context ? static_cast<CKInputManager *>(
             context->GetManagerByGuid(INPUT_MANAGER_GUID)) : nullptr;
@@ -307,8 +365,8 @@ private:
     CK3dEntity *ResolveBallDirectionReference() {
         CKBehavior *script = m_BML ?
             m_BML->GetScriptByName("Gameplay_Ingame") : nullptr;
-        CKBehavior *navigation = script ? ScriptHelper::FindFirstBB(
-            script, "Ball Navigation", true) : nullptr;
+        LocatedGraph navigation = script ? FindGraph(
+            m_Behavior, script, "Ball Navigation") : LocatedGraph{};
         if (!navigation)
             return nullptr;
 
@@ -316,27 +374,35 @@ private:
         CK3dEntity *reference = nullptr;
         int forceCount = 0;
         bool mismatch = false;
-        ScriptHelper::FindBB(
-            navigation,
-            [&](CKBehavior *force) {
-                ++forceCount;
-                CKParameterIn *input = force->GetInputParameter(3);
-                CKParameter *source = input ? input->GetRealSource() : nullptr;
-                CK3dEntity *candidate = source ?
-                    CK3dEntity::Cast(source->GetValueObject()) : nullptr;
-                if (!source || !candidate) {
-                    mismatch = true;
-                    return true;
-                }
-                if (!commonSource) {
-                    commonSource = source;
-                    reference = candidate;
-                } else if (source != commonSource || candidate != reference) {
-                    mismatch = true;
-                }
-                return true;
-            },
-            "SetPhysicsForce", false, 2, 2, 5, 0);
+        for (BML::Behavior::Node node : navigation.Graph.Nodes()) {
+            if (node.Name() != "SetPhysicsForce" ||
+                PortCount(node, BML::Behavior::SlotKind::In) != 2 ||
+                PortCount(node, BML::Behavior::SlotKind::Out) != 2 ||
+                PortCount(node, BML::Behavior::SlotKind::Pin) != 5 ||
+                PortCount(node, BML::Behavior::SlotKind::Pout) != 0) {
+                continue;
+            }
+            CKBehavior *force = NativeChild(navigation.Native, node);
+            if (!force) {
+                mismatch = true;
+                continue;
+            }
+            ++forceCount;
+            CKParameterIn *input = force->GetInputParameter(3);
+            CKParameter *source = input ? input->GetRealSource() : nullptr;
+            CK3dEntity *candidate = source ?
+                CK3dEntity::Cast(source->GetValueObject()) : nullptr;
+            if (!source || !candidate) {
+                mismatch = true;
+                continue;
+            }
+            if (!commonSource) {
+                commonSource = source;
+                reference = candidate;
+            } else if (source != commonSource || candidate != reference) {
+                mismatch = true;
+            }
+        }
 
         if (!m_DirectionReferenceLogged) {
             m_DirectionReferenceLogged = true;
@@ -441,6 +507,7 @@ private:
     }
 
     std::unique_ptr<BML::PlayerTest::GameplayPilot> m_Pilot;
+    BML::Behavior::Session m_Behavior;
     BML::PlayerTest::GameplayInputDriver m_GameplayInput;
     int m_TotalFrames = 0;
     int m_ExtraPointsReached = 0;
