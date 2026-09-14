@@ -1,6 +1,5 @@
 #include "Config/Config.h"
 
-#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
@@ -276,16 +275,6 @@ void Config::QueueNotification(Property *property, const std::string &category, 
     m_PendingNotifications.push_back({category, key, property});
 }
 
-void Config::DiscardNotificationsFor(const Property *property) {
-    auto notification = m_PendingNotifications.begin();
-    while (notification != m_PendingNotifications.end()) {
-        if (notification->ChangedProperty == property)
-            notification = m_PendingNotifications.erase(notification);
-        else
-            ++notification;
-    }
-}
-
 bool Config::HasCategory(const char *category) {
     if (!category)
         return false;
@@ -302,31 +291,6 @@ bool Config::HasKey(const char *category, const char *key) {
         return false;
 
     return catIt->second->HasKey(key);
-}
-
-bool Config::RemoveProperty(const char *category, const char *key) {
-    if (!category || !key)
-        return false;
-
-    const auto categoryIt = m_CategoryMap.find(category);
-    if (categoryIt == m_CategoryMap.end() || !categoryIt->second)
-        return false;
-
-    Category *owner = categoryIt->second;
-    const auto propertyIt = owner->m_PropertyMap.find(key);
-    if (propertyIt == owner->m_PropertyMap.end() || !propertyIt->second)
-        return false;
-
-    Property *property = propertyIt->second;
-    DiscardNotificationsFor(property);
-    owner->m_PropertyMap.erase(propertyIt);
-    owner->m_Properties.erase(
-        std::remove(owner->m_Properties.begin(), owner->m_Properties.end(),
-                    property),
-        owner->m_Properties.end());
-    delete property;
-    MarkDirty();
-    return true;
 }
 
 IProperty *Config::GetProperty(const char *category, const char *key) {
