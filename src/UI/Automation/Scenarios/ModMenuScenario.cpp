@@ -1,7 +1,5 @@
 #include "UI/Automation/UiTestFramework.h"
 
-#include <initializer_list>
-
 #include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"
 
@@ -12,25 +10,21 @@ using namespace UiAutomation::Test;
 void RegisterModMenuScenario(ImGuiTestEngine *engine) {
     ImGuiTest *test = IM_REGISTER_TEST(engine, ScenarioCategory, "mod_menu_all_pages");
     test->TestFunc = [](ImGuiTestContext *ctx) {
-        const auto hasAll = [ctx](std::initializer_list<const char *> paths) {
-            for (const char *path : paths) {
-                if (!WaitForItem(ctx, path))
-                    return false;
-            }
-            return true;
-        };
         IM_CHECK(ObserveModList(ctx));
+        IM_CHECK(MenuPagesMatch(ctx, {"Ballance Mod Loader", "New Ball Type"}));
         ctx->ItemClick("**/Ballance Mod Loader");
+        IM_CHECK(WaitForItem(ctx, "**/Back"));
+        IM_CHECK(MenuPagesMatch(ctx, {"GUI", "Graphics", "HUD", "CommandBar",
+                                      "CustomMap", "Tweak"}));
 
         IM_CHECK(OpenConfigCategory(ctx, "GUI", "**/FontFilename"));
-        IM_CHECK(hasAll({"**/FontSize", "**/FontFallbacks",
-                         "**/UseSystemFontFallbacks", "**/NextPage"}));
-        ctx->ItemClick("**/NextPage");
-        IM_CHECK(WaitForItem(ctx, "**/EnableIniSettings"));
+        IM_CHECK(MenuPagesMatch(ctx, {"FontFilename", "FontSize", "FontFallbacks",
+                                      "UseSystemFontFallbacks", "EnableIniSettings"}));
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "Graphics", "**/UnlockFrameRate"));
-        IM_CHECK(hasAll({"**/SetMaxFrameRate", "**/WidescreenFix"}));
+        IM_CHECK(MenuPagesMatch(ctx,
+                                {"UnlockFrameRate", "SetMaxFrameRate", "WidescreenFix"}));
         ctx->ItemInputValue("**/SetMaxFrameRate/##InputInt", 17);
         IM_CHECK(WaitForItem(ctx, "**/Revert"));
         IM_CHECK(CaptureSurface(ctx, SurfaceCapture::ModMenu));
@@ -39,27 +33,30 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "HUD", "**/ShowTitle"));
-        IM_CHECK(hasAll({"**/ShowFPS", "**/ShowSRTimer", "**/FPSUpdateFrequency"}));
+        IM_CHECK(MenuPagesMatch(ctx,
+                                {"ShowTitle", "ShowFPS", "ShowSRTimer", "FPSUpdateFrequency"}));
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "CommandBar", "**/MessageDuration"));
-        IM_CHECK(hasAll(
-            {"**/TabColumns", "**/LineSpacing", "**/MessageBackgroundAlpha", "**/NextPage"}));
-        ctx->ItemClick("**/NextPage");
-        IM_CHECK(hasAll({"**/WindowBackgroundAlpha", "**/FadeMaxAlpha"}));
+        IM_CHECK(MenuPagesMatch(ctx,
+                                {"MessageDuration", "TabColumns", "LineSpacing",
+                                 "MessageBackgroundAlpha", "WindowBackgroundAlpha",
+                                 "FadeMaxAlpha"}));
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "CustomMap", "**/LevelNumber"));
-        IM_CHECK(hasAll({"**/ShowTooltip", "**/MaxDepth"}));
+        IM_CHECK(MenuPagesMatch(ctx, {"LevelNumber", "ShowTooltip", "MaxDepth"}));
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "Tweak", "**/LanternAlphaTest"));
-        IM_CHECK(hasAll({"**/FixLifeBallFreeze", "**/Overclock"}));
+        IM_CHECK(MenuPagesMatch(ctx,
+                                {"LanternAlphaTest", "FixLifeBallFreeze", "Overclock"}));
         ctx->ItemClick("**/Back");
 
         ctx->ItemClick("**/Back");
         IM_CHECK(WaitForItem(ctx, "**/Ballance Mod Loader"));
         IM_CHECK(WaitForItem(ctx, "**/New Ball Type"));
+        IM_CHECK(MenuPagesMatch(ctx, {"Ballance Mod Loader", "New Ball Type"}));
         ctx->ItemClick("**/New Ball Type");
         IM_CHECK(WaitForItem(ctx, "**/Back"));
         ctx->ItemClick("**/Back");

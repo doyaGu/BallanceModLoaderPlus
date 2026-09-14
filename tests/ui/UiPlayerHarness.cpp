@@ -16,6 +16,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -495,30 +496,92 @@ void SendKey(BYTE key) {
     DWORD flags = key >= VK_PRIOR && key <= VK_DOWN ? KEYEVENTF_EXTENDEDKEY : 0;
     const BYTE scan = static_cast<BYTE>(MapVirtualKeyW(key, MAPVK_VK_TO_VSC));
     keybd_event(key, scan, flags, 0);
-    std::this_thread::sleep_for(120ms);
+    std::this_thread::sleep_for(35ms);
     keybd_event(key, scan, flags | KEYEVENTF_KEYUP, 0);
     std::this_thread::sleep_for(180ms);
 }
 
+enum class InputSequenceKind {
+    Fixed,
+    Menu,
+};
+
 struct InputSequence {
     std::string CheckpointName;
+    InputSequenceKind Kind = InputSequenceKind::Fixed;
     std::vector<BYTE> Keys;
     bool Injected = false;
 };
 
 std::vector<InputSequence> MakeInputSequences(InputProfile profile) {
     std::vector<InputSequence> sequences = {
-        {"input-main-to-options", {VK_DOWN, VK_DOWN, VK_RETURN}},
-        {"input-options-to-imgui", {VK_DOWN, VK_DOWN, VK_DOWN, VK_RETURN}},
+        {"input-main-to-options", InputSequenceKind::Menu, {}},
+        {"input-options-to-imgui", InputSequenceKind::Menu, {}},
     };
     if (profile != InputProfile::ModList) {
-        sequences.push_back({"input-options-to-main", {VK_DOWN, VK_RETURN}});
-        sequences.push_back({"input-main-to-start", {VK_UP, VK_UP, VK_RETURN}});
+        sequences.push_back({"input-options-to-main", InputSequenceKind::Menu, {}});
+        sequences.push_back({"input-main-to-start", InputSequenceKind::Menu, {}});
         if (profile == InputProfile::LevelOne)
-            sequences.push_back({"input-start-to-level-1", {VK_RETURN}});
-        sequences.push_back({"input-dismiss-tutorial", {'Q'}});
+            sequences.push_back({"input-start-to-level-1", InputSequenceKind::Fixed, {VK_RETURN}});
+        sequences.push_back({"input-dismiss-tutorial", InputSequenceKind::Fixed, {'Q'}});
     }
     return sequences;
+}
+
+bool IsDecimal(std::string_view value) {
+    if (value.empty())
+        return false;
+    for (char character : value) {
+        if (character < '0' || character > '9')
+            return false;
+    }
+    return true;
+}
+
+bool IsMenuMove(std::string_view suffix, std::string_view direction) {
+    if (suffix.substr(0, direction.size()) != direction)
+        return false;
+    suffix.remove_prefix(direction.size());
+    constexpr std::string_view separatorText = "-to-";
+    const std::size_t separator = suffix.find(separatorText);
+    return separator != std::string_view::npos &&
+        IsDecimal(suffix.substr(0, separator)) &&
+        IsDecimal(suffix.substr(separator + separatorText.size()));
+}
+
+bool ResolveInput(const InputSequence &sequence, const std::string &checkpoint,
+                  std::vector<BYTE> &keys, bool &completesSequence) {
+    if (sequence.Kind == InputSequenceKind::Fixed) {
+        if (checkpoint != sequence.CheckpointName)
+            return false;
+        keys = sequence.Keys;
+        completesSequence = true;
+        return true;
+    }
+
+    const std::string prefix = sequence.CheckpointName + "-";
+    if (checkpoint.compare(0, prefix.size(), prefix) != 0)
+        return false;
+    const std::string_view suffix(checkpoint.data() + prefix.size(),
+                                  checkpoint.size() - prefix.size());
+    if (IsMenuMove(suffix, "down-from-")) {
+        keys = {VK_DOWN};
+        completesSequence = false;
+        return true;
+    }
+    if (IsMenuMove(suffix, "up-from-")) {
+        keys = {VK_UP};
+        completesSequence = false;
+        return true;
+    }
+    constexpr std::string_view activate = "activate-";
+    if (suffix.substr(0, activate.size()) == activate &&
+        IsDecimal(suffix.substr(activate.size()))) {
+        keys = {VK_RETURN};
+        completesSequence = true;
+        return true;
+    }
+    return false;
 }
 
 bool ReadBitmapPixels(HDC memory, HBITMAP bitmap, int height,
@@ -746,11 +809,17 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
                     topMost.Hold(ballanceWindow);
 
                 if (checkpoint->Kind == UiAutomationSession::CheckpointKind::Input) {
-                    const auto input = std::find_if(
-                        inputs.begin(), inputs.end(), [&](const InputSequence &candidate) {
-                            return candidate.CheckpointName == checkpoint->Name;
-                        });
-                    if (input != inputs.end()) {
+                    std::vector<BYTE> keys;
+                    bool completesSequence = false;
+                    InputSequence *input = nullptr;
+                    for (InputSequence &candidate : inputs) {
+                        if (ResolveInput(candidate, checkpoint->Name, keys,
+                                         completesSequence)) {
+                            input = &candidate;
+                            break;
+                        }
+                    }
+                    if (input) {
                         recognized = true;
                         if (input->Injected) {
                             completed = true;
@@ -761,7 +830,7 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
                             failureReason = "window-obstructed";
                         } else {
                             succeeded = true;
-                            for (BYTE key : input->Keys) {
+                            for (BYTE key : keys) {
                                 if (!EnsureForegroundClientVisible(ballanceWindow)) {
                                     succeeded = false;
                                     failureReason = "window-obstructed";
@@ -770,8 +839,10 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
                                 SendKey(key);
                             }
                             if (succeeded) {
-                                input->Injected = true;
-                                ++result.InjectedInputSequences;
+                                if (completesSequence) {
+                                    input->Injected = true;
+                                    ++result.InjectedInputSequences;
+                                }
                                 completed = true;
                             }
                         }

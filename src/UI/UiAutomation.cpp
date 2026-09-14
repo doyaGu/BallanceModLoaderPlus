@@ -1,12 +1,17 @@
 #include "UI/UiAutomation.h"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "BML/Bui.h"
@@ -37,6 +42,38 @@ enum class PlayerAction : int {
     CaptureScriptTools,
 };
 
+struct NativeMenuRoute {
+    const char *Checkpoint;
+    const char *Script;
+    const char *Menu;
+    const char *EntityPrefix;
+    const char *TargetEntity;
+};
+
+struct NativeMenuItem {
+    CK2dEntity *Entity = nullptr;
+    float Position = 0.0f;
+    float Size = 0.0f;
+};
+
+struct NativeMenuLayout {
+    std::vector<NativeMenuItem> Items;
+    int TargetRow = -1;
+};
+
+constexpr NativeMenuRoute OptionsToMainRoute = {
+    "input-options-to-main", "Menu_Options", "Options Menu",
+    "M_Options_But_", "M_Options_But_Back"};
+constexpr NativeMenuRoute MainToStartRoute = {
+    "input-main-to-start", "Menu_Main", "Main Menu",
+    "M_Main_But_", "M_Main_But_1"};
+constexpr NativeMenuRoute MainToOptionsRoute = {
+    "input-main-to-options", "Menu_Main", "Main Menu",
+    "M_Main_But_", "M_Main_But_3"};
+constexpr NativeMenuRoute OptionsToImGuiRoute = {
+    "input-options-to-imgui", "Menu_Options", "Options Menu",
+    "M_Options_But_", "M_Options_But_4"};
+
 ImGuiTestEngine *g_Engine = nullptr;
 BMLMod *g_Mod = nullptr;
 ILogger *g_Logger = nullptr;
@@ -52,6 +89,8 @@ bool g_QueueFinished = false;
 bool g_ExitPending = false;
 bool g_Armed = false;
 bool g_QueueStarted = false;
+bool g_NativeOptionsLayoutValid = false;
+bool g_ImGuiNativeSurfacesHidden = false;
 unsigned int g_FrameCount = 0;
 unsigned int g_NativeFrameCount = 0;
 unsigned int g_ExitFrameCount = 0;
@@ -69,6 +108,7 @@ std::atomic_int g_PlayerAction = static_cast<int>(PlayerAction::None);
 std::atomic_uint g_PlayerActionCompleted = 0;
 std::atomic_bool g_PlayerActionSucceeded = false;
 PlayerAction g_ActivePlayerAction = PlayerAction::None;
+std::string g_ActivePlayerCheckpoint;
 
 enum class NativeEntryPhase {
     SettleMainMenu,
@@ -141,6 +181,145 @@ bool IsEntityVisible(const char *name) {
     return entity && entity->IsVisible();
 }
 
+CKBehavior *DirectBehavior(CKBehavior *graph, const char *name) {
+    if (!graph || !name)
+        return nullptr;
+    CKBehavior *match = nullptr;
+    for (int i = 0; i < graph->GetSubBehaviorCount(); ++i) {
+        CKBehavior *candidate = graph->GetSubBehavior(i);
+        if (!candidate || !candidate->GetName() ||
+            std::strcmp(candidate->GetName(), name) != 0) {
+            continue;
+        }
+        if (match)
+            return nullptr;
+        match = candidate;
+    }
+    return match;
+}
+
+std::optional<int> MenuRow(const char *scriptName, const char *menuName) {
+    CKBehavior *script = g_Runtime ? g_Runtime->GetScriptByName(scriptName) : nullptr;
+    CKBehavior *menu = DirectBehavior(script, menuName);
+    CKBehavior *keyboard = DirectBehavior(menu, "Keyboard");
+    if (!keyboard)
+        return std::nullopt;
+    for (int i = 0; i < keyboard->GetLocalParameterCount(); ++i) {
+        CKParameterLocal *parameter = keyboard->GetLocalParameter(i);
+        if (!parameter || !parameter->GetName() ||
+            std::strcmp(parameter->GetName(), "Active Row") != 0) {
+            continue;
+        }
+        int row = -1;
+        if (keyboard->GetLocalParameterValue(i, &row) != CK_OK)
+            return std::nullopt;
+        return row;
+    }
+    return std::nullopt;
+}
+
+bool IsMenuItemBefore(const NativeMenuItem &left, const NativeMenuItem &right) {
+    return left.Position < right.Position;
+}
+
+NativeMenuLayout ReadNativeMenuLayout(const NativeMenuRoute &route) {
+    NativeMenuLayout layout;
+    CKContext *context = g_Runtime ? g_Runtime->GetCKContext() : nullptr;
+    if (!context)
+        return layout;
+
+    const std::string_view prefix(route.EntityPrefix);
+    const XObjectPointerArray &objects = context->GetObjectListByType(CKCID_2DENTITY, TRUE);
+    for (XObjectPointerArray::ConstIterator iterator = objects.Begin(); iterator != objects.End(); ++iterator) {
+        CK2dEntity *entity = CK2dEntity::Cast(*iterator);
+        const char *name = entity ? entity->GetName() : nullptr;
+        if (!entity || !entity->IsVisible() || !name ||
+            std::string_view(name).substr(0, prefix.size()) != prefix) {
+            continue;
+        }
+
+        Vx2DVector position;
+        Vx2DVector size;
+        entity->GetPosition(position, TRUE);
+        entity->GetSize(size, TRUE);
+        layout.Items.push_back({entity, position.y, size.y});
+    }
+
+    std::sort(layout.Items.begin(), layout.Items.end(), IsMenuItemBefore);
+    for (std::size_t i = 0; i < layout.Items.size(); ++i) {
+        const char *name = layout.Items[i].Entity->GetName();
+        if (!name || std::strcmp(name, route.TargetEntity) != 0)
+            continue;
+        if (layout.TargetRow >= 0) {
+            layout.TargetRow = -1;
+            return layout;
+        }
+        layout.TargetRow = static_cast<int>(i);
+    }
+    return layout;
+}
+
+CheckpointProgress AdvanceMenuInput(const NativeMenuRoute &route) {
+    std::string checkpoint;
+    if (g_Session && g_Session->HasPendingCheckpoint()) {
+        checkpoint = g_ActiveCheckpointName;
+    } else {
+        const NativeMenuLayout layout = ReadNativeMenuLayout(route);
+        const int rowCount = static_cast<int>(layout.Items.size());
+        const int targetRow = layout.TargetRow;
+        const std::optional<int> row = MenuRow(route.Script, route.Menu);
+        if (!row || *row < 0 || *row >= rowCount) {
+            g_SessionFailure = std::string(route.Checkpoint) + "-row-unavailable";
+            return CheckpointProgress::Failed;
+        }
+        if (targetRow < 0 || targetRow >= rowCount) {
+            g_SessionFailure = std::string(route.Checkpoint) + "-target-unavailable";
+            return CheckpointProgress::Failed;
+        }
+        if (g_Logger) {
+            g_Logger->Info("UI automation: native_transition=%s requested=true input=keyboard "
+                           "row=%d target=%d rows=%d",
+                           route.Checkpoint, *row, targetRow, rowCount);
+        }
+        if (*row == targetRow) {
+            checkpoint = std::string(route.Checkpoint) + "-activate-" +
+                std::to_string(targetRow);
+        } else {
+            const int down = (targetRow - *row + rowCount) % rowCount;
+            const int up = (*row - targetRow + rowCount) % rowCount;
+            checkpoint = std::string(route.Checkpoint) +
+                (down <= up ? "-down-from-" : "-up-from-") +
+                std::to_string(*row) + "-to-" + std::to_string(targetRow);
+        }
+    }
+
+    const bool activates = checkpoint.find("-activate-") != std::string::npos;
+    const CheckpointProgress progress =
+        AdvanceCheckpoint(UiAutomationSession::CheckpointKind::Input, checkpoint.c_str());
+    if (progress == CheckpointProgress::Succeeded && !activates)
+        return CheckpointProgress::Waiting;
+    return progress;
+}
+
+bool OptionsMenuRowsAreSeparated(float &rowStep, float &minimumGap) {
+    const NativeMenuLayout layout = ReadNativeMenuLayout(OptionsToImGuiRoute);
+    if (layout.Items.size() < 2 || layout.TargetRow < 0)
+        return false;
+
+    rowStep = layout.Items[1].Position - layout.Items[0].Position;
+    minimumGap = rowStep;
+    if (rowStep <= 0.0f)
+        return false;
+    for (std::size_t i = 1; i < layout.Items.size(); ++i) {
+        const float step = layout.Items[i].Position - layout.Items[i - 1].Position;
+        const float gap = step - layout.Items[i - 1].Size;
+        minimumGap = std::min(minimumGap, gap);
+        if (std::fabs(step - rowStep) > 0.002f || gap < 0.02f)
+            return false;
+    }
+    return true;
+}
+
 bool HasExpectedNativeVisibility(PlayerAction action) {
     const bool mainVisible = IsEntityVisible("M_Main_But_1");
     const bool optionsVisible = IsEntityVisible("M_Options_But_4");
@@ -162,6 +341,7 @@ bool HasExpectedNativeVisibility(PlayerAction action) {
 
 void CompletePlayerAction(PlayerAction action, bool succeeded) {
     g_ActivePlayerAction = PlayerAction::None;
+    g_ActivePlayerCheckpoint.clear();
     g_PlayerActionSucceeded.store(succeeded, std::memory_order_release);
     g_PlayerActionCompleted.fetch_add(1, std::memory_order_acq_rel);
     if (g_Logger) {
@@ -172,10 +352,6 @@ void CompletePlayerAction(PlayerAction action, bool succeeded) {
 
 const char *PlayerActionCheckpoint(PlayerAction action) {
     switch (action) {
-    case PlayerAction::OptionsToMain:
-        return "input-options-to-main";
-    case PlayerAction::MainToStart:
-        return "input-main-to-start";
     case PlayerAction::StartToLevelOne:
         return "input-start-to-level-1";
     case PlayerAction::CaptureModMenu:
@@ -197,6 +373,11 @@ bool IsCaptureAction(PlayerAction action) {
     return action == PlayerAction::CaptureModMenu || action == PlayerAction::CaptureHud ||
            action == PlayerAction::CaptureCustomMaps || action == PlayerAction::CaptureConsole ||
            action == PlayerAction::CaptureScriptTools;
+}
+
+bool IsMenuAction(PlayerAction action) {
+    return action == PlayerAction::OptionsToMain ||
+        action == PlayerAction::MainToStart;
 }
 
 const char *SurfaceName(PlayerAction action) {
@@ -227,25 +408,20 @@ void ProcessPlayerAction() {
         switch (action) {
         case PlayerAction::OptionsToMain:
             if (IsEntityVisible("M_Options_But_Back")) {
-                if (g_Logger) {
-                    g_Logger->Info("UI automation: native_transition=options-to-main "
-                                   "requested=true input=keyboard");
-                }
-                succeeded = true;
+                const std::optional<int> row = MenuRow("Menu_Options", "Options Menu");
+                succeeded = row.has_value();
             }
             break;
         case PlayerAction::MainToStart:
             if (IsEntityVisible("M_Main_But_1") && !IsEntityVisible("M_Options_But_4") &&
                 !IsEntityVisible("M_Start_But_01")) {
-                if (g_Logger) {
-                    g_Logger->Info("UI automation: native_transition=main-to-start "
-                                   "requested=true input=keyboard");
-                }
-                succeeded = true;
+                const std::optional<int> row = MenuRow("Menu_Main", "Main Menu");
+                succeeded = row.has_value();
             }
             break;
         case PlayerAction::StartToLevelOne:
             if (IsEntityVisible("M_Start_But_01")) {
+                g_ActivePlayerCheckpoint = PlayerActionCheckpoint(action);
                 if (g_Logger) {
                     g_Logger->Info("UI automation: native_transition=start-to-level-1 "
                                    "requested=true input=keyboard");
@@ -254,18 +430,23 @@ void ProcessPlayerAction() {
             }
             break;
         case PlayerAction::CaptureModMenu:
+            g_ActivePlayerCheckpoint = PlayerActionCheckpoint(action);
             succeeded = HasExpectedNativeVisibility(action);
             break;
         case PlayerAction::CaptureHud:
+            g_ActivePlayerCheckpoint = PlayerActionCheckpoint(action);
             succeeded = HasExpectedNativeVisibility(action);
             break;
         case PlayerAction::CaptureCustomMaps:
+            g_ActivePlayerCheckpoint = PlayerActionCheckpoint(action);
             succeeded = HasExpectedNativeVisibility(action);
             break;
         case PlayerAction::CaptureConsole:
+            g_ActivePlayerCheckpoint = PlayerActionCheckpoint(action);
             succeeded = HasExpectedNativeVisibility(action);
             break;
         case PlayerAction::CaptureScriptTools:
+            g_ActivePlayerCheckpoint = PlayerActionCheckpoint(action);
             succeeded = HasExpectedNativeVisibility(action);
             break;
         case PlayerAction::None:
@@ -282,19 +463,25 @@ void ProcessPlayerAction() {
                            IsEntityVisible("M_Start_But_01") ? "true" : "false",
                            succeeded ? "true" : "false");
         }
-        const char *checkpoint = PlayerActionCheckpoint(action);
-        if (!checkpoint || !succeeded) {
+        if ((!IsMenuAction(action) && g_ActivePlayerCheckpoint.empty()) || !succeeded) {
             CompletePlayerAction(action, succeeded);
             return;
         }
         g_ActivePlayerAction = action;
     }
 
-    const char *checkpoint = PlayerActionCheckpoint(g_ActivePlayerAction);
-    const UiAutomationSession::CheckpointKind kind =
-        IsCaptureAction(g_ActivePlayerAction) ? UiAutomationSession::CheckpointKind::Capture
-                                              : UiAutomationSession::CheckpointKind::Input;
-    const CheckpointProgress progress = AdvanceCheckpoint(kind, checkpoint);
+    CheckpointProgress progress = CheckpointProgress::Failed;
+    if (g_ActivePlayerAction == PlayerAction::OptionsToMain) {
+        progress = AdvanceMenuInput(OptionsToMainRoute);
+    } else if (g_ActivePlayerAction == PlayerAction::MainToStart) {
+        progress = AdvanceMenuInput(MainToStartRoute);
+    } else {
+        const UiAutomationSession::CheckpointKind kind =
+            IsCaptureAction(g_ActivePlayerAction)
+                ? UiAutomationSession::CheckpointKind::Capture
+                : UiAutomationSession::CheckpointKind::Input;
+        progress = AdvanceCheckpoint(kind, g_ActivePlayerCheckpoint.c_str());
+    }
     if (progress != CheckpointProgress::Waiting)
         CompletePlayerAction(g_ActivePlayerAction, progress == CheckpointProgress::Succeeded);
 }
@@ -317,12 +504,7 @@ bool AdvanceNativeEntry() {
         return false;
     }
     case NativeEntryPhase::RequestMainToOptions: {
-        if (g_Logger && !g_Session->HasPendingCheckpoint()) {
-            g_Logger->Info("UI automation: native_transition=main-to-options "
-                           "requested=true input=keyboard");
-        }
-        const CheckpointProgress progress =
-            AdvanceCheckpoint(UiAutomationSession::CheckpointKind::Input, "input-main-to-options");
+        const CheckpointProgress progress = AdvanceMenuInput(MainToOptionsRoute);
         if (progress == CheckpointProgress::Succeeded) {
             g_NativeEntryPhase = NativeEntryPhase::WaitForOptionsMenu;
             g_NativeFrameCount = 0;
@@ -331,29 +513,43 @@ bool AdvanceNativeEntry() {
     }
     case NativeEntryPhase::WaitForOptionsMenu:
         if (IsEntityVisible("M_Options_But_4")) {
+            float rowStep = 0.0f;
+            float minimumGap = 0.0f;
+            g_NativeOptionsLayoutValid =
+                OptionsMenuRowsAreSeparated(rowStep, minimumGap);
             if (g_Logger) {
                 g_Logger->Info("UI automation: native_transition=main-to-options "
-                               "observed=true");
+                               "observed=true rows_separated=%s row_step=%.4f "
+                               "minimum_gap=%.4f",
+                               g_NativeOptionsLayoutValid ? "true" : "false",
+                               rowStep, minimumGap);
             }
             g_NativeEntryPhase = NativeEntryPhase::RequestOptionsToImGui;
             g_NativeFrameCount = 0;
         }
         return false;
     case NativeEntryPhase::RequestOptionsToImGui: {
-        if (g_Logger && !g_Session->HasPendingCheckpoint()) {
-            g_Logger->Info("UI automation: native_transition=options-to-imgui "
-                           "requested=true input=keyboard");
-        }
-        const CheckpointProgress progress =
-            AdvanceCheckpoint(UiAutomationSession::CheckpointKind::Input, "input-options-to-imgui");
+        const CheckpointProgress progress = AdvanceMenuInput(OptionsToImGuiRoute);
         if (progress == CheckpointProgress::Succeeded) {
             g_NativeEntryPhase = NativeEntryPhase::WaitForImGuiMenu;
             g_NativeFrameCount = 0;
         }
         return false;
     }
-    case NativeEntryPhase::WaitForImGuiMenu:
-        return g_NativeFrameCount >= 2 && !IsEntityVisible("M_Options_But_4");
+    case NativeEntryPhase::WaitForImGuiMenu: {
+        const bool hidden = g_NativeFrameCount >= 2 &&
+            !IsEntityVisible("M_Options_But_4") &&
+            !IsEntityVisible("M_Main_But_1") &&
+            !IsEntityVisible("M_Start_But_01");
+        if (hidden && !g_ImGuiNativeSurfacesHidden) {
+            g_ImGuiNativeSurfacesHidden = true;
+            if (g_Logger) {
+                g_Logger->Info("UI automation: native_transition=options-to-imgui "
+                               "observed=true native_surfaces=hidden");
+            }
+        }
+        return hidden;
+    }
     }
     return false;
 }
@@ -549,6 +745,85 @@ bool OpenModConfigCategory(ImGuiTestContext *ctx, const char *modName, const cha
     return OpenConfigCategory(ctx, category, firstProperty);
 }
 
+bool MenuPagesMatch(ImGuiTestContext *ctx,
+                    std::initializer_list<const char *> rowLabels) {
+    if (!WaitForItem(ctx, "**/Back") || rowLabels.size() == 0)
+        return false;
+    for (int page = 0; page < 16 && ctx->ItemExists("**/PrevPage"); ++page) {
+        ctx->ItemClick("**/PrevPage");
+        ctx->Yield();
+    }
+
+    std::vector<const char *> labels(rowLabels);
+    std::vector<bool> seen(labels.size(), false);
+    float minimumGap = -1.0f;
+    int pageCount = 0;
+    for (int page = 0; page < 16; ++page) {
+        ++pageCount;
+        const ImGuiTestItemInfo back = ctx->ItemInfo("**/Back");
+        if (!back.Window)
+            return false;
+
+        ImGuiTestItemList items;
+        ctx->GatherItems(&items, back.Window->ID, -1);
+        struct Row {
+            std::size_t Label = 0;
+            ImRect Rect;
+        };
+        std::vector<Row> rows;
+        for (const ImGuiTestItemInfo &item : items) {
+            if (!item.DebugLabel)
+                continue;
+            for (std::size_t label = 0; label < labels.size(); ++label) {
+                if (std::strcmp(item.DebugLabel, labels[label]) == 0) {
+                    if (seen[label])
+                        return false;
+                    rows.push_back({label, item.RectFull});
+                    break;
+                }
+            }
+        }
+        if (rows.empty())
+            return false;
+        std::sort(rows.begin(), rows.end(), [](const Row &left, const Row &right) {
+            return left.Rect.Min.y < right.Rect.Min.y;
+        });
+        const float rowWidth = rows.front().Rect.Max.x - rows.front().Rect.Min.x;
+        const float rowHeight = rows.front().Rect.Max.y - rows.front().Rect.Min.y;
+        float rowStep = 0.0f;
+        for (std::size_t row = 0; row < rows.size(); ++row) {
+            const ImRect &rect = rows[row].Rect;
+            if (std::fabs((rect.Max.x - rect.Min.x) - rowWidth) > 2.0f ||
+                std::fabs((rect.Max.y - rect.Min.y) - rowHeight) > 2.0f) {
+                return false;
+            }
+            if (row > 0) {
+                const float step = rect.Min.y - rows[row - 1].Rect.Min.y;
+                const float gap = rect.Min.y - rows[row - 1].Rect.Max.y;
+                minimumGap = minimumGap < 0.0f ? gap : std::min(minimumGap, gap);
+                if (gap < 8.0f ||
+                    (rowStep > 0.0f && std::fabs(step - rowStep) > 2.0f)) {
+                    return false;
+                }
+                rowStep = step;
+            }
+            seen[rows[row].Label] = true;
+        }
+
+        if (!ctx->ItemExists("**/NextPage"))
+            break;
+        ctx->ItemClick("**/NextPage");
+        ctx->Yield(2);
+    }
+    const bool matched =
+        std::all_of(seen.begin(), seen.end(), [](bool value) { return value; });
+    if (matched && g_Logger) {
+        g_Logger->Info("UI automation: imgui_rows=%u pages=%d minimum_gap=%.1f",
+                       static_cast<unsigned int>(labels.size()), pageCount, minimumGap);
+    }
+    return matched;
+}
+
 bool ToggleConfigBoolean(ImGuiTestContext *ctx, const char *path) {
     if (!WaitForItem(ctx, path))
         return false;
@@ -675,11 +950,24 @@ bool WriteResult(bool passed, int failures) {
 bool WriteScenarioResult() {
     ImGuiTestEngineResultSummary summary;
     ImGuiTestEngine_GetResultSummary(g_Engine, &summary);
-    const bool passed =
-        summary.CountTested == 1 && summary.CountSuccess == 1 && summary.CountInQueue == 0;
+    const bool nativeUiValid =
+        g_NativeOptionsLayoutValid && g_ImGuiNativeSurfacesHidden;
+    const bool passed = summary.CountTested == 1 && summary.CountSuccess == 1 &&
+        summary.CountInQueue == 0 && nativeUiValid;
     int failures = summary.CountTested - summary.CountSuccess + summary.CountInQueue;
+    if (!nativeUiValid)
+        ++failures;
     if (!passed && failures < 1)
         failures = 1;
+    if (!passed && g_Logger) {
+        for (ImGuiTest *test : g_Engine->TestsAll) {
+            if (!test || std::strcmp(test->Category,
+                                     UiAutomation::Test::ScenarioCategory) != 0)
+                continue;
+            g_Logger->Error("UI automation test log:\n%s",
+                            test->Output.Log.GetText());
+        }
+    }
     return WriteResult(passed, failures);
 }
 
@@ -752,6 +1040,8 @@ void Start(BMLMod &mod) {
     g_ExitPending = false;
     g_Armed = true;
     g_QueueStarted = false;
+    g_NativeOptionsLayoutValid = false;
+    g_ImGuiNativeSurfacesHidden = false;
     g_FrameCount = 0;
     g_NativeFrameCount = 0;
     g_ExitFrameCount = 0;
@@ -768,6 +1058,7 @@ void Start(BMLMod &mod) {
     g_PlayerActionCompleted.store(0, std::memory_order_relaxed);
     g_PlayerActionSucceeded.store(false, std::memory_order_relaxed);
     g_ActivePlayerAction = PlayerAction::None;
+    g_ActivePlayerCheckpoint.clear();
     if (g_Logger)
         g_Logger->Info("UI automation: gate=game-menu state=armed");
 }

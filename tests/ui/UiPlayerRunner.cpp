@@ -41,10 +41,14 @@ bool Contains(const std::string &text, const std::string &marker) {
 }
 
 bool HasCheckpoint(const UiTest::PlayerRunResult &run, UiAutomationSession::CheckpointKind kind,
-                   const std::string &name) {
+                   const std::string &name, bool menuState = false) {
     return std::any_of(run.HandledCheckpoints.begin(), run.HandledCheckpoints.end(),
                        [&](const UiAutomationSession::Checkpoint &checkpoint) {
-                           return checkpoint.Kind == kind && checkpoint.Name == name;
+                           if (checkpoint.Kind != kind)
+                               return false;
+                           if (!menuState)
+                               return checkpoint.Name == name;
+                           return checkpoint.Name.rfind(name + "-", 0) == 0;
                        });
 }
 
@@ -96,7 +100,7 @@ int main(int argc, char **argv) {
                 failures);
         Require(run.SessionFailures.empty(), "session-acknowledgements", failures);
         Require(HasContinuousCheckpointSequence(run), "session-checkpoint-sequence", failures);
-        Require(run.HandledCheckpoints.size() ==
+        Require(run.HandledCheckpoints.size() >=
                     static_cast<std::size_t>(run.ExpectedInputSequences + 3),
                 "session-checkpoint-count", failures);
 
@@ -112,17 +116,17 @@ int main(int argc, char **argv) {
         }
 
         Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
-                              "input-main-to-options") &&
+                              "input-main-to-options", true) &&
                     HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
-                                  "input-options-to-imgui") &&
+                                  "input-options-to-imgui", true) &&
                     HasCheckpoint(run, UiAutomationSession::CheckpointKind::Capture,
                                   "capture-native-options"),
                 "native-imgui-round-trip", failures);
         if (selected->Input != UiTest::InputProfile::ModList) {
             Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
-                                  "input-options-to-main") &&
+                                  "input-options-to-main", true) &&
                         HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
-                                      "input-main-to-start") &&
+                                      "input-main-to-start", true) &&
                         HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
                                       "input-dismiss-tutorial"),
                     "level-entry-flow", failures);
