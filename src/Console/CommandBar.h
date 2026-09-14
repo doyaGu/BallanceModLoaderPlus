@@ -89,7 +89,7 @@ private:
     void CollectCommandCandidates(const char *cmdStart, int cmdLength);
     void CollectArgumentCandidates(const char *wordStart, int wordLength, const char *cmdStart, const char *lineEnd);
     void ReplaceCurrentToken(ImGuiInputTextCallbackData *data, const char *replacement, int replacementLength = -1);
-    void DrawCompletionSurface(bool acceptSelection, bool dismissCompletion);
+    void DrawCompletionSurface();
     void NextCandidate();
     void PrevCandidate();
     void NextPageOfCandidates();
@@ -97,7 +97,9 @@ private:
     void InvalidateCandidates();
     void GenerateCandidatePages();
     void RefreshTextMetrics();
-    std::size_t OnCompletion(const char *lineStart, const char *lineEnd);
+    void BuildCompletionCandidates(const char *lineStart, const char *lineEnd);
+    void BeginCompletion(ImGuiInputTextCallbackData *data, bool selectPrevious);
+    bool HandleCompletionShortcuts(ImGuiInputTextCallbackData *data);
     int OnTextEdit(ImGuiInputTextCallbackData *data);
 
     static int TextEditCallback(ImGuiInputTextCallbackData *data);
