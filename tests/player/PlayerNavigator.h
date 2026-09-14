@@ -1,5 +1,7 @@
 #pragma once
 
+#include <BML/Behavior.hpp>
+
 #include "CKAll.h"
 
 #include <chrono>
@@ -78,8 +80,8 @@ private:
     static constexpr auto kTutorialInputResponseTime =
         std::chrono::milliseconds(1500);
 
-    static void CollectBehaviorsByName(CKBehavior *root, const char *name,
-                                       std::vector<CKBehavior *> &found);
+    void CollectBehaviorsByName(CKBehavior *root, const char *name,
+                                std::vector<CKBehavior *> &found);
 
     void DiscoverTutorialKeys();
     void ObserveTutorialInput(InputHook *input);
@@ -87,6 +89,7 @@ private:
 
     IBML *m_BML = nullptr;
     ILogger *m_Logger = nullptr;
+    Behavior::Session m_Behavior;
     const char *m_Error = "menu-timeout";
     int m_MenuFrames = 0;
     bool m_MenuReady = false;

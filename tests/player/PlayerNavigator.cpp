@@ -3,16 +3,100 @@
 #include <BML/IBML.h>
 #include <BML/ILogger.h>
 #include <BML/InputHook.h>
-#include <BML/ScriptHelper.h>
 
-#include <cstring>
 #include <utility>
 
 namespace BML::PlayerTest {
 
+namespace {
+
+struct LocatedNode {
+    Behavior::Graph Graph;
+    Behavior::Node Node;
+    CKBehavior *Native = nullptr;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return Native != nullptr && static_cast<bool>(Node);
+    }
+};
+
+CKBehavior *NativeChild(CKBehavior *parent, const Behavior::Node &node) {
+    const int index = node.Index();
+    return parent && index >= 0 && index < parent->GetSubBehaviorCount()
+        ? parent->GetSubBehavior(index) : nullptr;
+}
+
+int PortCount(const Behavior::Node &node, Behavior::SlotKind kind) {
+    int count = 0;
+    for (Behavior::Port port : node.Ports()) {
+        if (port.Kind() == kind)
+            ++count;
+    }
+    return count;
+}
+
+bool Matches(const Behavior::Node &node, const char *name,
+             int inputCount, int outputCount,
+             int pinCount, int poutCount) {
+    return (!name || node.Name() == name) &&
+        (inputCount < 0 ||
+         PortCount(node, Behavior::SlotKind::In) == inputCount) &&
+        (outputCount < 0 ||
+         PortCount(node, Behavior::SlotKind::Out) == outputCount) &&
+        (pinCount < 0 ||
+         PortCount(node, Behavior::SlotKind::Pin) == pinCount) &&
+        (poutCount < 0 ||
+         PortCount(node, Behavior::SlotKind::Pout) == poutCount);
+}
+
+LocatedNode FindFirst(Behavior::Session &session, CKBehavior *root,
+                      const char *name, bool recursively,
+                      int inputCount = -1, int outputCount = -1,
+                      int pinCount = -1, int poutCount = -1) {
+    auto inspected = session.Inspect(root);
+    if (!inspected)
+        return {};
+    Behavior::Graph graph = inspected.Take();
+    for (Behavior::Node node : graph.Nodes()) {
+        CKBehavior *native = NativeChild(root, node);
+        if (!native)
+            continue;
+        if (recursively && node.IsGraph()) {
+            LocatedNode nested = FindFirst(
+                session, native, name, true, inputCount, outputCount,
+                pinCount, poutCount);
+            if (nested)
+                return nested;
+        }
+        if (Matches(node, name, inputCount, outputCount, pinCount, poutCount))
+            return {graph, node, native};
+    }
+    return {};
+}
+
+Behavior::Node NodeById(const Behavior::Graph &graph, std::uint64_t id) {
+    for (Behavior::Node node : graph.Nodes()) {
+        if (node.Id() == id)
+            return node;
+    }
+    return {};
+}
+
+} // namespace
+
 void PlayerNavigator::Attach(IBML *bml, ILogger *logger) {
     m_BML = bml;
     m_Logger = logger;
+    auto opened = Behavior::Session::Open();
+    if (opened) {
+        m_Behavior = opened.Take();
+    } else {
+        m_Error = "behavior-session-unavailable";
+        if (m_Logger) {
+            m_Logger->Error("Player graph navigation: session=false code=%d",
+                            opened.Code());
+        }
+    }
 }
 
 void PlayerNavigator::OnPostStartMenu() {
@@ -52,8 +136,7 @@ PlayerNavigator::Step PlayerNavigator::OpenLevelMenu() {
         return Step::Pending;
     }
 
-    CKBehavior *start = ScriptHelper::FindFirstBB(
-        menuMain, "Start", false, 1, 1);
+    LocatedNode start = FindFirst(m_Behavior, menuMain, "Start", false, 1, 1);
     if (!start) {
         m_Error = "menu-start-path-not-found";
         return Step::Failed;
@@ -62,8 +145,8 @@ PlayerNavigator::Step PlayerNavigator::OpenLevelMenu() {
     // Menu.nmo: Main Menu.Button 1 pressed -> Menu_Main/Start.In 0.
     // Activate the click's proven downstream seam and leave the original
     // Activate Script graph to open Menu_Start.
-    start->ActivateInput(0);
-    start->Activate();
+    start.Native->ActivateInput(0);
+    start.Native->Activate();
     m_MenuOpened = true;
     m_Logger->Info("Player menu: opened=true path=Menu_Main/Start.In0");
     return Step::Done;
@@ -77,19 +160,19 @@ PlayerNavigator::Step PlayerNavigator::ChooseLevel() {
         return Step::Pending;
     }
 
-    CKBehavior *levelMenu = ScriptHelper::FindFirstBB(
-        menuScript, "Start Menu", false, 1, 2);
+    LocatedNode levelMenu = FindFirst(
+        m_Behavior, menuScript, "Start Menu", false, 1, 2);
     if (!levelMenu) {
         m_Error = "level-menu-path-not-found";
         return Step::Failed;
     }
 
     CKBehavior *buttonBehavior = nullptr;
-    for (int i = 0; i < levelMenu->GetSubBehaviorCount(); ++i) {
-        CKBehavior *candidate = levelMenu->GetSubBehavior(i);
-        if (!candidate || !candidate->GetName() ||
-            std::strcmp(candidate->GetName(), "TT PushButton2") != 0 ||
-            candidate->GetOutputCount() <= 2 ||
+    Behavior::Node buttonNode;
+    for (Behavior::Node node : levelMenu.Graph.Nodes()) {
+        CKBehavior *candidate = NativeChild(levelMenu.Native, node);
+        if (!candidate || node.Name() != "TT PushButton2" ||
+            !node.Out(2) ||
             !candidate->GetTargetParameter()) {
             continue;
         }
@@ -97,6 +180,7 @@ PlayerNavigator::Step PlayerNavigator::ChooseLevel() {
             candidate->GetTargetParameter()->GetRealSource();
         if (targetSource && targetSource->GetValueObject() == levelButton) {
             buttonBehavior = candidate;
+            buttonNode = node;
             break;
         }
     }
@@ -105,21 +189,19 @@ PlayerNavigator::Step PlayerNavigator::ChooseLevel() {
         return Step::Failed;
     }
 
-    CKBehaviorLink *mouseDown = ScriptHelper::FindNextLink(
-        levelMenu, buttonBehavior, "Parameter Selector", 2);
-    CKBehaviorIO *selectorInput =
-        mouseDown ? mouseDown->GetOutBehaviorIO() : nullptr;
-    CKBehavior *selector = selectorInput ? selectorInput->GetOwner() : nullptr;
-    int selectorInputIndex = -1;
-    if (selector) {
-        for (int i = 0; i < selector->GetInputCount(); ++i) {
-            if (selector->GetInput(i) == selectorInput) {
-                selectorInputIndex = i;
-                break;
-            }
+    Behavior::Node selectorNode;
+    Behavior::Port selectorInput;
+    for (Behavior::Link link : levelMenu.Graph.Outgoing(buttonNode.Out(2))) {
+        Behavior::Port target = link.Target();
+        Behavior::Node candidate = NodeById(levelMenu.Graph, target.Node());
+        if (candidate && candidate.Name() == "Parameter Selector") {
+            selectorNode = candidate;
+            selectorInput = target;
+            break;
         }
     }
-    if (!selector || selectorInputIndex != 0) {
+    CKBehavior *selector = NativeChild(levelMenu.Native, selectorNode);
+    if (!selector || !selectorInput || selectorInput.Index() != 0) {
         m_Error = "level-button-link-mismatch";
         return Step::Failed;
     }
@@ -127,7 +209,7 @@ PlayerNavigator::Step PlayerNavigator::ChooseLevel() {
     // Menu.nmo: M_Start_But_01.Mouse Down -> Parameter Selector.In 0.
     // Deliver exactly that link's effect; the selector and every following
     // message/test/load block remain the shipped graph's responsibility.
-    selector->ActivateInput(selectorInputIndex);
+    selector->ActivateInput(selectorInput.Index());
     selector->Activate();
     m_LevelChosen = true;
     m_Logger->Info(
@@ -139,26 +221,30 @@ void PlayerNavigator::DiscoverTutorialKeys() {
     if (m_TutorialKeysInspected)
         return;
     m_TutorialRoot = m_BML->GetScriptByName("Gameplay_Tutorial");
-    m_TutorialAction = m_TutorialRoot ? ScriptHelper::FindFirstBB(
-        m_TutorialRoot, "Tut continue/exit", true) : nullptr;
-    if (!m_TutorialAction)
+    LocatedNode action = m_TutorialRoot ? FindFirst(
+        m_Behavior, m_TutorialRoot, "Tut continue/exit", true) : LocatedNode{};
+    m_TutorialAction = action.Native;
+    if (!action)
         return;
 
     m_TutorialKeysInspected = true;
     std::vector<std::pair<CKBehavior *, CKKEYBOARD>> keys;
-    for (int index = 0; index < m_TutorialAction->GetSubBehaviorCount();
-         ++index) {
-        CKBehavior *child = m_TutorialAction->GetSubBehavior(index);
-        if (!child || !child->GetName() ||
-            std::strcmp(child->GetName(), "Key") != 0 ||
-            child->GetInputParameterCount() < 1) {
+    auto actionGraphResult = m_Behavior.Inspect(m_TutorialAction);
+    if (!actionGraphResult)
+        return;
+    Behavior::Graph actionGraph = actionGraphResult.Take();
+    for (Behavior::Node node : actionGraph.Nodes()) {
+        CKBehavior *child = NativeChild(m_TutorialAction, node);
+        Behavior::Port keyPin = node.Pin(0);
+        if (!child || node.Name() != "Key" || !keyPin) {
             continue;
         }
-        CKParameterIn *parameter = child->GetInputParameter(0);
-        CKParameter *source = parameter ? parameter->GetRealSource() : nullptr;
+        auto observed = actionGraph.Read(keyPin);
         CKKEYBOARD key = static_cast<CKKEYBOARD>(0);
-        if (source && source->GetGUID() == CKPGUID_KEY &&
-            source->GetValue(&key) == CK_OK) {
+        const std::int32_t *value = observed
+            ? std::get_if<std::int32_t>(&observed->Data) : nullptr;
+        if (observed && observed->Type == CKPGUID_KEY && value) {
+            key = static_cast<CKKEYBOARD>(*value);
             keys.emplace_back(child, key);
         }
     }
@@ -171,13 +257,13 @@ void PlayerNavigator::DiscoverTutorialKeys() {
         CollectBehaviorsByName(
             m_TutorialExitBlock, "Key Event", m_TutorialExitEvents);
     }
-    m_TutorialWait = ScriptHelper::FindFirstBB(
-        m_TutorialAction, "wait for continue", true);
+    m_TutorialWait = FindFirst(
+        m_Behavior, m_TutorialAction, "wait for continue", true).Native;
     m_TutorialChapter = m_TutorialAction->GetParent();
-    m_TutorialText = ScriptHelper::FindFirstBB(
-        m_TutorialRoot, "Tutorial Text", true);
-    m_TutorialTextBlock = m_TutorialText ? ScriptHelper::FindFirstBB(
-        m_TutorialText, "2D Text", true) : nullptr;
+    m_TutorialText = FindFirst(
+        m_Behavior, m_TutorialRoot, "Tutorial Text", true).Native;
+    m_TutorialTextBlock = m_TutorialText ? FindFirst(
+        m_Behavior, m_TutorialText, "2D Text", true).Native : nullptr;
     m_Logger->Info(
         "Gameplay tutorial keys: count=%d exit_declared=%s "
         "continue=%u exit=%u",
@@ -191,13 +277,18 @@ void PlayerNavigator::CollectBehaviorsByName(
     CKBehavior *root, const char *name, std::vector<CKBehavior *> &found) {
     if (!root || !name)
         return;
-    for (int index = 0; index < root->GetSubBehaviorCount(); ++index) {
-        CKBehavior *child = root->GetSubBehavior(index);
+    auto inspected = m_Behavior.Inspect(root);
+    if (!inspected)
+        return;
+    Behavior::Graph graph = inspected.Take();
+    for (Behavior::Node node : graph.Nodes()) {
+        CKBehavior *child = NativeChild(root, node);
         if (!child)
             continue;
-        if (child->GetName() && std::strcmp(child->GetName(), name) == 0)
+        if (node.Name() == name)
             found.push_back(child);
-        CollectBehaviorsByName(child, name, found);
+        if (node.IsGraph())
+            CollectBehaviorsByName(child, name, found);
     }
 }
 
