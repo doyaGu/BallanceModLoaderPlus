@@ -7,7 +7,6 @@
 #include "BML/Gui.h"
 
 #include "Loader/ModContext.h"
-#include "Config/Config.h"
 #include "Hooks/RenderHook.h"
 #include "Console/FontCommand.h"
 #include "UI/AnsiPalette.h"
@@ -372,32 +371,6 @@ void BMLMod::SetHUD(int mode) {
 }
 
 void BMLMod::InitConfigs() {
-    Config *config = dynamic_cast<Config *>(GetConfig());
-    const bool hadFallbackList = config && config->HasKey("GUI", "FontFallbacks");
-    std::string migratedFallback;
-    if (config && !hadFallbackList &&
-        config->HasKey("GUI", "EnableSecondaryFont")) {
-        IProperty *enabled = config->GetProperty("GUI", "EnableSecondaryFont");
-        if (enabled && enabled->GetBoolean() &&
-            config->HasKey("GUI", "SecondaryFontFilename")) {
-            IProperty *filename = config->GetProperty("GUI", "SecondaryFontFilename");
-            if (filename)
-                migratedFallback = filename->GetString();
-        }
-    }
-
-    if (config) {
-        static const char *legacyFontKeys[] = {
-            "FontRanges",
-            "EnableSecondaryFont",
-            "SecondaryFontFilename",
-            "SecondaryFontSize",
-            "SecondaryFontRanges",
-        };
-        for (const char *key : legacyFontKeys)
-            config->RemoveProperty("GUI", key);
-    }
-
     BindSettings();
     m_HUD.InitConfig(*GetConfig());
     m_Console.InitConfig(*GetConfig());
@@ -416,8 +389,6 @@ void BMLMod::InitConfigs() {
         "Optional fallback UI fonts, separated by semicolons. Each entry may be a filename from "
         "ModLoader\\Fonts or an explicit TTF/OTF/TTC path.");
     m_FontFallbacks->SetDefaultString("");
-    if (!hadFallbackList && !migratedFallback.empty())
-        m_FontFallbacks->SetString(migratedFallback.c_str());
 
     m_UseSystemFontFallbacks->SetComment("Use Windows symbol and emoji fonts after configured fonts.");
     m_UseSystemFontFallbacks->SetDefaultBoolean(true);
