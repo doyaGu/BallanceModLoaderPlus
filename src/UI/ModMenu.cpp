@@ -1,5 +1,7 @@
 #include "UI/ModMenu.h"
 
+#include <cstddef>
+
 #include "BML/InputHook.h"
 
 #include "UI/BuiInternal.h"
@@ -82,7 +84,7 @@ Bui::PageAction ModListPage::OnFrame() {
     Bui::PageAction action;
     const int n = m_Pagination.GetFirstItem();
 
-    Bui::Entries([&](size_t index) {
+    Bui::Entries([&](std::size_t index) {
         IMod *mod = BML_GetModContext()->GetMod(static_cast<int>(n + index));
         if (!mod)
             return false;
@@ -152,7 +154,7 @@ Bui::PageAction ModPage::OnFrame() {
     const int n = m_Pagination.GetFirstItem();
 
     if (m_Config) {
-        Bui::Entries([&](size_t index) {
+        Bui::Entries([&](std::size_t index) {
             Category *category = m_Config->GetCategory(static_cast<int>(n + index));
             if (!category)
                 return false;
@@ -238,7 +240,7 @@ Bui::PageAction ModOptionPage::OnFrame() {
 
     const int n = m_Pagination.GetFirstItem();
 
-    Bui::Entries([&](size_t index) {
+    Bui::Entries([&](std::size_t index) {
         Property *property = m_Category->GetProperty(static_cast<int>(n + index));
         if (!property)
             return false;
