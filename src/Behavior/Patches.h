@@ -259,6 +259,8 @@ private:
                const HookBlock::Hook &hook) override;
     Status Interpose(Edit &edit, Link link,
                      const HookBlock::Hook &hook) override;
+    Status Interpose(Edit &edit, Port source, Port sink,
+                     const HookBlock::Hook &hook) override;
 
     CKEdit m_Edit;
     GraphSource &m_Graph;

@@ -37,6 +37,7 @@ Layout Shape(CKDWORD flags = 0) {
 
 Layout RootShape() {
     Layout layout = Shape();
+    layout.Kind = BehaviorKind::Graph;
     layout.Slots[0].Name = "Start";
     layout.Slots[1].Name = "Done";
     return layout;
@@ -267,12 +268,14 @@ TEST(BehaviorEdit, RejectsATapOnAGraphEntryBeforeMutation) {
     EXPECT_EQ(status.Code, Error::TypeMismatch);
 }
 
-TEST(BehaviorEdit, AppendsPortsWithoutAskingForAVariableFlag) {
-    // CK2 appends ports to any Behavior, so a missing variable-interface flag
-    // is not a refusal. Only a Local, which the block addresses as private
-    // state, stays out of reach.
+TEST(BehaviorEdit, AppendsPortsWithoutTreatingVariableFlagsAsPermissions) {
     Edit accepted = MakeEdit();
-    const Node node = accepted.Use(Native(101), Shape());
+    const Node node = accepted.Use(
+        Native(101),
+        Shape(CKBEHAVIOR_VARIABLEINPUTS |
+              CKBEHAVIOR_VARIABLEOUTPUTS |
+              CKBEHAVIOR_VARIABLEPARAMETERINPUTS |
+              CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS));
     const Port input = accepted.AppendIn(node, "Again");
     const Port output = accepted.AppendPout(node, "Other", CKPGUID_INT);
     ASSERT_TRUE(input);
@@ -285,12 +288,59 @@ TEST(BehaviorEdit, AppendsPortsWithoutAskingForAVariableFlag) {
     CheckedEdit checked;
     EXPECT_TRUE(accepted.Validate(Base(), checked));
 
+    Edit fixed = MakeEdit();
+    const Node fixedNode = fixed.Use(Native(101), Shape());
+    fixed.AppendOut(fixedNode, "Done");
+    Status status = fixed.Validate(Base(), checked);
+    EXPECT_TRUE(status) << status.Message;
+
+    Edit managedAlone = MakeEdit();
+    const Node managedNode = managedAlone.Use(
+        Native(101),
+        Shape(CKBEHAVIOR_VARIABLEOUTPUTS |
+              CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS));
+    managedAlone.AppendPin(managedNode, "Other", CKPGUID_INT);
+    status = managedAlone.Validate(Base(), checked);
+    EXPECT_TRUE(status) << status.Message;
+
+    Edit paired = MakeEdit();
+    const Node pairedNode = paired.Use(
+        Native(101),
+        Shape(CKBEHAVIOR_VARIABLEOUTPUTS |
+              CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS));
+    paired.AppendOut(pairedNode, "Done");
+    paired.AppendPin(pairedNode, "Other", CKPGUID_INT);
+    status = paired.Validate(Base(), checked);
+    EXPECT_TRUE(status) << status.Message;
+
     Edit local = MakeEdit();
     const Node everyFlag = local.Use(Native(101), Shape(0xffffffffu));
     local.AppendLocal(everyFlag, "Again", CKPGUID_INT);
-    Status status = local.Validate(Base(), checked);
+    status = local.Validate(Base(), checked);
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::InterfaceUnsupported);
+}
+
+TEST(BehaviorEdit, DefersCallbackOwnedPortsUntilInterfaceReconciliation) {
+    Edit edit = MakeEdit();
+    const Node node = edit.Use(
+        Native(101),
+        Shape(CKBEHAVIOR_VARIABLEOUTPUTS |
+              CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS));
+    (void) edit.AppendOut(node, "Out 2");
+    const Port pin{
+        node.Value,
+        Slot::Named(SlotKind::InputParameter, "Pin 2", CKPGUID_INT)};
+    edit.Bind(pin, Value::From(CKPGUID_INT, 7));
+
+    CheckedEdit checked;
+    const Status status = edit.Validate(Base(), checked);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_EQ(checked.Binds.size(), 1u);
+    EXPECT_TRUE(checked.Binds[0].Target.Appended);
+    EXPECT_TRUE(checked.Binds[0].Target.Deferred);
+    EXPECT_EQ(checked.Binds[0].Target.Interface, 0u);
+    EXPECT_EQ(checked.Binds[0].Target.Selector.Name, "Pin 2");
 }
 
 TEST(BehaviorEdit, DistinguishesExistingAndAppendedDynamicPorts) {
@@ -353,6 +403,30 @@ TEST(BehaviorEdit, WritesAValueIntoALocalButNeverIntoASetting) {
     status = relation.Validate(Base(), checked);
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::TypeMismatch);
+}
+
+TEST(BehaviorEdit, SetsTheValueReadByAnExistingParameter) {
+    Edit edit = MakeEdit();
+    const Node node = edit.Use(Native(101), Shape());
+    edit.Set(node.Pin("Value"), Value::From(CKPGUID_INT, 1));
+    edit.Set(node.Pout("Result"), Value::From(CKPGUID_INT, 2));
+    edit.Set(node.Local("State"), Value::From(CKPGUID_INT, 3));
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(Base(), checked));
+    ASSERT_EQ(checked.Sets.size(), 3u);
+    EXPECT_TRUE(checked.Binds.empty());
+    EXPECT_EQ(checked.Sets[0].Target.Slot.Kind, SlotKind::InputParameter);
+    EXPECT_EQ(checked.Sets[1].Target.Slot.Kind, SlotKind::OutputParameter);
+    EXPECT_EQ(checked.Sets[2].Target.Slot.Kind, SlotKind::Local);
+
+    Edit conflicting = MakeEdit();
+    const Node target = conflicting.Use(Native(101), Shape());
+    conflicting.Set(target.Pin("Value"), Value::From(CKPGUID_INT, 1));
+    conflicting.Bind(target.Pin("Value"), Value::From(CKPGUID_INT, 2));
+    const Status status = conflicting.Validate(Base(), checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::InvalidState);
 }
 
 TEST(BehaviorEdit, RefusesAWrittenValueAndAPushOnOneParameter) {

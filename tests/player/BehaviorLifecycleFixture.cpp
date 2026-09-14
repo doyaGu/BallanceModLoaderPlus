@@ -123,7 +123,25 @@ CKERROR LifecycleCallback(const CKBehaviorContext &context) {
             if (result != CK_OK)
                 return result;
         }
-        if ((g_Mode == BMLLifecycleFixtureMode::NormalizeOnEdited ||
+        if (g_Mode == BMLLifecycleFixtureMode::ReconcileOutputPinOnEdited) {
+            int companion = -1;
+            for (int index = 0; index < behavior->GetInputParameterCount(); ++index) {
+                CKParameterIn *pin = behavior->GetInputParameter(index);
+                if (pin && pin->GetName() &&
+                    std::strcmp(pin->GetName(), "Branch Value") == 0) {
+                    companion = index;
+                    break;
+                }
+            }
+            if (behavior->GetOutputCount() > 1 && companion < 0) {
+                if (!behavior->CreateInputParameter(
+                        const_cast<CKSTRING>("Branch Value"), CKPGUID_INT)) {
+                    return CKERR_OUTOFMEMORY;
+                }
+            } else if (behavior->GetOutputCount() == 1 && companion >= 0) {
+                CKDestroyObject(behavior->RemoveInputParameter(companion));
+            }
+        } else if ((g_Mode == BMLLifecycleFixtureMode::NormalizeOnEdited ||
              g_Mode == BMLLifecycleFixtureMode::NormalizeBindingsOnEdited) &&
             g_Trace.EditedCount == 1) {
             const int normalized = 91;
@@ -206,7 +224,8 @@ CKERROR CreatePrototype(CKBehaviorPrototype **prototype) {
     created->SetBehaviorFlags(static_cast<CK_BEHAVIOR_FLAGS>(
         CKBEHAVIOR_VARIABLEINPUTS | CKBEHAVIOR_VARIABLEOUTPUTS |
         CKBEHAVIOR_VARIABLEPARAMETERINPUTS |
-        CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS));
+        CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS |
+        CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS));
     created->SetFlags(CK_BEHAVIORPROTOTYPE_NORMAL);
     *prototype = created;
     return CK_OK;

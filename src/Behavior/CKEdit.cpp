@@ -39,6 +39,12 @@ struct Stamp {
     friend bool operator==(const Stamp &, const Stamp &) = default;
 };
 
+struct PreparedSet {
+    const CheckedSet *Edit = nullptr;
+    CKParameter *Parameter = nullptr;
+    CKBehavior *Receiver = nullptr;
+};
+
 Stamp Capture(CKObject *object) {
     return {object ? object->GetID() : 0, object};
 }
@@ -345,7 +351,7 @@ struct Patch::Journal {
         Stamp Target;
     };
 
-    // A value written straight into a Local. Before and Expected are ordinary
+    // A value written through a graph port. Before and Expected are ordinary
     // CKParameterLocal objects so the registered Virtools value semantics own
     // every non-trivial representation kept by the journal.
     struct Written {
@@ -474,7 +480,9 @@ struct Patch::Journal {
     std::vector<Stamp> InfrastructureNodes;
     std::vector<Stamp> InfrastructureLinks;
     // Existing Blocks whose parameter state or relations this Patch changes.
-    // Apply and successful teardown each send exactly one EDITED callback.
+    // Every changed Block receives a final EDITED after relations are ready and
+    // one more after successful teardown. A callback-owned port may require an
+    // earlier reconciliation EDITED before that port exists.
     std::vector<Stamp> EditedNodes;
     // Apply can fail after only part of EditedNodes has observed the proposed
     // graph. Those Blocks alone observe the checked inverse.
@@ -1696,6 +1704,11 @@ Status CKEdit::ApplyNow(const Edit &edit,
             if (!current)
                 return current;
         }
+        for (CheckedSet &set : checked.Sets) {
+            Status current = visitor(set.Target);
+            if (!current)
+                return current;
+        }
         for (CheckedPush &push : checked.Pushes) {
             Status current = visitor(push.Source);
             if (current)
@@ -1735,7 +1748,8 @@ Status CKEdit::ApplyNow(const Edit &edit,
     // a peer Port with a same-shaped object and redirect this Edit silently.
     status = visitPorts([&](ResolvedPort &port) -> Status {
         const Edit::EditNode *node = edit.Find(port.Owner);
-        if (!node || node->Block || port.Interface != 0 || port.Native)
+        if (!node || node->Block || port.Interface != 0 || port.Deferred ||
+            port.Native)
             return {};
         CKBehavior *behavior = behaviorFor(port.Owner);
         SlotInfo live;
@@ -1825,6 +1839,14 @@ Status CKEdit::ApplyNow(const Edit &edit,
                 ? bind.Value.Type() : bind.Source.Slot.Type;
             status = compatible(bind.Target.Slot.Type, source, "Bind");
         }
+        if (!status)
+            return fail(std::move(status));
+    }
+    for (const CheckedSet &set : checked.Sets) {
+        status = selectorType(set.Target);
+        if (status)
+            status = compatible(set.Target.Slot.Type,
+                                set.Value.Type(), "Set");
         if (!status)
             return fail(std::move(status));
     }
@@ -2144,6 +2166,13 @@ Status CKEdit::ApplyNow(const Edit &edit,
                       stamp) == patch->EditedNodes.end())
             patch->EditedNodes.push_back(stamp);
     };
+    const auto rememberObserved = [&](Stamp behavior) {
+        if (std::find(patch->ObservedEditedNodes.begin(),
+                      patch->ObservedEditedNodes.end(), behavior) ==
+            patch->ObservedEditedNodes.end()) {
+            patch->ObservedEditedNodes.push_back(behavior);
+        }
+    };
     std::unordered_map<std::uint32_t, Stamp> interfacePorts;
     for (const InterfacePort &item : edit.m_Interface) {
         if (item.InBlockSpec)
@@ -2187,8 +2216,94 @@ Status CKEdit::ApplyNow(const Edit &edit,
             {item.Identity, Capture(behavior), Capture(created),
              item.Slot.Kind});
         interfacePorts.emplace(item.Identity, Capture(created));
-        if (!isAdded(item.Owner))
+        if (!isAdded(item.Owner)) {
             rememberEdited(behavior);
+        }
+    }
+
+    const auto exactSlot = [&](CKBehavior *behavior, Stamp exact,
+                               SlotKind kind, SlotInfo &slot) -> Status {
+        CKObject *object = m_Context && exact.Id
+            ? m_Context->GetObject(exact.Id) : nullptr;
+        if (!behavior || !object || object != exact.Address ||
+            object->IsToBeDeleted()) {
+            return Failure(Error::GraphChanged,
+                           "A selected Behavior Port changed identity during Apply.",
+                           CKERR_INVALIDOBJECT);
+        }
+        const Layout layout = m_Runtime.Describe(behavior);
+        for (const SlotInfo &candidate : layout.Slots) {
+            if (candidate.Kind == kind &&
+                m_Runtime.ResolveSlotObject(behavior, candidate) == object) {
+                slot = candidate;
+                return {};
+            }
+        }
+        return Failure(Error::GraphChanged,
+                       "A selected Behavior Port left its owning Block during Apply.",
+                       CKERR_INVALIDOBJECT);
+    };
+
+    // Most interface edits need only the final EDITED callback after their
+    // relations are installed. A callback-owned port is different: it does
+    // not exist until the BB has reconciled a related interface family. Only
+    // nodes with a still-unresolved deferred endpoint receive this preliminary
+    // callback; the final callback below remains mandatory.
+    std::vector<Stamp> reconciliationNeeded;
+    status = visitPorts([&](ResolvedPort &port) -> Status {
+        if (!port.Deferred)
+            return {};
+        CKBehavior *behavior = behaviorFor(port.Owner);
+        if (!behavior) {
+            return Failure(
+                Error::GraphChanged,
+                "A Block with a deferred port disappeared before reconciliation.",
+                CKERR_INVALIDOBJECT);
+        }
+        SlotInfo live;
+        Status current = m_Runtime.Resolve(behavior, port.Selector, live);
+        if (current)
+            return {};
+        if (current.Code != Error::SlotNotFound)
+            return current;
+        const Stamp stamp = Capture(behavior);
+        if (std::find(reconciliationNeeded.begin(),
+                      reconciliationNeeded.end(), stamp) ==
+            reconciliationNeeded.end()) {
+            reconciliationNeeded.push_back(stamp);
+        }
+        return {};
+    });
+    if (!status)
+        return fail(std::move(status));
+
+    for (Stamp edited : reconciliationNeeded) {
+        CKBehavior *behavior = Resolve<CKBehavior>(
+            m_Context, edited, CKCID_BEHAVIOR);
+        if (!behavior)
+            return fail(Failure(
+                Error::GraphChanged,
+                "A Block disappeared before reconciling its variable interface.",
+                CKERR_INVALIDOBJECT));
+        rememberObserved(edited);
+        const int result = NotifyEdited(m_Context, behavior);
+        if (result != CK_OK) {
+            return fail(Failure(
+                Error::CallbackFailed,
+                "A Block rejected its variable interface.", result));
+        }
+        status = validateNodes();
+        if (!status)
+            return fail(std::move(status));
+        for (const Patch::Journal::Interface &item : patch->Ports) {
+            CKBehavior *owner = Resolve<CKBehavior>(
+                m_Context, item.Behavior, CKCID_BEHAVIOR);
+            SlotInfo live;
+            status = exactSlot(owner, item.Port, item.Kind, live);
+            if (!status)
+                return fail(std::move(status));
+        }
+        graph = graphFor();
     }
 
     std::unordered_map<std::uint32_t, Stamp> operations;
@@ -2232,29 +2347,6 @@ Status CKEdit::ApplyNow(const Edit &edit,
         operations.emplace(item.Handle.Value, stamp);
     }
 
-    const auto exactSlot = [&](CKBehavior *behavior, Stamp exact,
-                               SlotKind kind, SlotInfo &slot) -> Status {
-        CKObject *object = m_Context && exact.Id
-            ? m_Context->GetObject(exact.Id) : nullptr;
-        if (!behavior || !object || object != exact.Address ||
-            object->IsToBeDeleted()) {
-            return Failure(Error::GraphChanged,
-                           "A selected Behavior Port changed identity during Apply.",
-                           CKERR_INVALIDOBJECT);
-        }
-        const Layout layout = m_Runtime.Describe(behavior);
-        for (const SlotInfo &candidate : layout.Slots) {
-            if (candidate.Kind == kind &&
-                m_Runtime.ResolveSlotObject(behavior, candidate) == object) {
-                slot = candidate;
-                return {};
-            }
-        }
-        return Failure(Error::GraphChanged,
-                       "A selected Behavior Port left its owning Block during Apply.",
-                       CKERR_INVALIDOBJECT);
-    };
-
     const auto liveSlot = [&](const ResolvedPort &port, SlotInfo &slot) {
         CKBehavior *behavior = behaviorFor(port.Owner);
         if (!behavior)
@@ -2280,7 +2372,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
         const bool changedKind = slot.Kind != port.Slot.Kind;
         const bool changedType = port.Slot.Type.IsValid() &&
                                  slot.Type != port.Slot.Type;
-        const bool changedIndexedSlot = !port.Native &&
+        const bool changedIndexedSlot = !port.Native && !port.Deferred &&
             port.Interface == 0 && !port.Selector.UsesName() &&
             !port.Selector.RequireOnly &&
             (slot.Name != port.Slot.Name ||
@@ -2339,6 +2431,8 @@ Status CKEdit::ApplyNow(const Edit &edit,
                            "A selected Behavior Port disappeared before publication.",
                            CKERR_INVALIDOBJECT);
         port.Native = Native(Capture(object));
+        if (port.Deferred)
+            port.Slot = std::move(live);
         return {};
     });
     if (!status)
@@ -3101,12 +3195,12 @@ Status CKEdit::ApplyNow(const Edit &edit,
         for (Patch::Journal::Written &change : patch->Values) {
             if (change.Slot.Node != behaviorId)
                 continue;
-            CKParameterLocal *stored = Resolve<CKParameterLocal>(
-                m_Context, change.Parameter, CKCID_PARAMETERLOCAL);
+            CKParameter *stored = Resolve<CKParameter>(
+                m_Context, change.Parameter, CKCID_PARAMETER);
             if (!stored) {
                 return Failure(
                     Error::GraphChanged,
-                    "An EDITED callback replaced a Local owned by the Patch.",
+                    "An EDITED callback replaced a value written by the Patch.",
                     CKERR_INVALIDOBJECT);
             }
             CKParameterLocal *expected = nullptr;
@@ -3141,14 +3235,14 @@ Status CKEdit::ApplyNow(const Edit &edit,
 
     const auto validateRelations = [&]() -> Status {
         for (const Patch::Journal::Written &change : patch->Values) {
-            CKParameterLocal *stored = Resolve<CKParameterLocal>(
-                m_Context, change.Parameter, CKCID_PARAMETERLOCAL);
+            CKParameter *stored = Resolve<CKParameter>(
+                m_Context, change.Parameter, CKCID_PARAMETER);
             CKParameterLocal *expected = Resolve<CKParameterLocal>(
                 m_Context, change.Expected, CKCID_PARAMETERLOCAL);
             if (!stored || !expected) {
                 return Failure(
                     Error::GraphChanged,
-                    "A written Local changed identity during an EDITED callback.",
+                    "A written value changed identity during an EDITED callback.",
                     CKERR_INVALIDOBJECT);
             }
             bool equal = false;
@@ -3159,7 +3253,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
             if (!equal) {
                 return Failure(
                     Error::GraphChanged,
-                    "A different Block changed a written Local during an EDITED callback.");
+                    "A different Block changed a written value during an EDITED callback.");
             }
         }
         for (const Patch::Journal::Binding &change : patch->Binds) {
@@ -3537,7 +3631,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
         if (!behavior)
             return fail(Failure(Error::GraphChanged,
                                 "A changed Block disappeared before EDITED."));
-        patch->ObservedEditedNodes.push_back(edited);
+        rememberObserved(edited);
         const int result = NotifyEdited(m_Context, behavior);
         if (result != CK_OK)
             return fail(Failure(Error::CallbackFailed,
@@ -3630,16 +3724,25 @@ Status CKEdit::ApplyNow(const Edit &edit,
 
     // Control Flow is installed last, after every Block has observed and
     // validated its final parameter relations.
+    const auto infrastructure = [&](Node node) {
+        const Edit::EditNode *value = edit.Find(node);
+        return value && value->Role == NodeRole::Infrastructure;
+    };
     for (const CheckedFlow &flow : checked.Flows) {
         CKBehaviorIO *source = nullptr;
         CKBehaviorIO *sink = nullptr;
         status = control(flow.Source, source);
         if (status)
             status = control(flow.Sink, sink);
+        Stamp link;
         if (status)
-            status = addLink(source, sink, flow.Delay);
+            status = addLink(source, sink, flow.Delay, &link);
         if (!status)
             return fail(std::move(status));
+        if (infrastructure(flow.Source.Owner) ||
+            infrastructure(flow.Sink.Owner)) {
+            patch->InfrastructureLinks.push_back(link);
+        }
     }
 
     for (const CheckedTap &tap : checked.Taps) {
@@ -3844,6 +3947,71 @@ Status CKEdit::ApplyNow(const Edit &edit,
             Error::GraphChanged,
             "The graph changed identity during its EDITED callback.",
             CKERR_INVALIDOBJECT));
+
+    // Set changes the value currently read by an existing graph parameter;
+    // it does not edit a Block interface or a parameter relation. Apply it
+    // after all EDITED callbacks so those callbacks cannot normalize away the
+    // author's requested runtime value.
+    std::vector<PreparedSet> preparedSets;
+    preparedSets.reserve(checked.Sets.size());
+    std::vector<Stamp> writtenParameters;
+    writtenParameters.reserve(patch->Values.size() + checked.Sets.size());
+    for (const Patch::Journal::Written &change : patch->Values)
+        writtenParameters.push_back(change.Parameter);
+
+    for (const CheckedSet &set : checked.Sets) {
+        CKObject *targetObject = nullptr;
+        status = parameter(set.Target, targetObject);
+        if (!status)
+            return fail(std::move(status));
+        CKParameter *stored = CKParameter::Cast(targetObject);
+        if (auto *input = CKParameterIn::Cast(targetObject))
+            stored = input->GetRealSource();
+        if (!stored || CKParameterOperation::Cast(stored->GetOwner())) {
+            return fail(Failure(
+                Error::SourceInvalid,
+                "Set requires a stored parameter behind the selected graph port."));
+        }
+
+        CKBehavior *receiver = behaviorFor(set.Target.Owner);
+        if (!receiver)
+            return fail(Failure(
+                Error::GraphChanged,
+                "The Block receiving Set disappeared before Apply.",
+                CKERR_INVALIDOBJECT));
+
+        const Stamp identity = Capture(stored);
+        if (std::find(writtenParameters.begin(), writtenParameters.end(), identity) !=
+            writtenParameters.end()) {
+            return fail(Failure(
+                Error::SourceConflict,
+                "Two value edits resolve to the same stored parameter."));
+        }
+        writtenParameters.push_back(identity);
+        preparedSets.push_back({&set, stored, receiver});
+    }
+
+    for (const PreparedSet &set : preparedSets) {
+        Patch::Journal::Written change;
+        change.Parameter = Capture(set.Parameter);
+        change.Slot = {
+            static_cast<std::uint32_t>(set.Receiver->GetID()),
+            set.Edit->Target.Slot.Kind, set.Edit->Target.Slot.NativeIndex};
+        CKParameterLocal *before = nullptr;
+        status = Parameter::Clone(m_Context, set.Parameter, before);
+        if (!status)
+            return fail(std::move(status));
+        change.Before = Capture(before);
+        patch->Values.push_back(std::move(change));
+        status = Parameter::Write(m_Context, set.Parameter, set.Edit->Value);
+        if (!status)
+            return fail(std::move(status));
+        CKParameterLocal *expected = nullptr;
+        status = Parameter::Clone(m_Context, set.Parameter, expected);
+        if (!status)
+            return fail(std::move(status));
+        patch->Values.back().Expected = Capture(expected);
+    }
 
     for (const Patch::Journal::Link &item : patch->Links) {
         CKBehaviorLink *link = Resolve<CKBehaviorLink>(
@@ -4217,8 +4385,8 @@ Status CKEdit::Undo(Patch::Journal &patch) {
     for (auto item = patch.Values.rbegin(); item != patch.Values.rend(); ++item) {
         if (item->Reverted)
             continue;
-        auto *stored = Resolve<CKParameterLocal>(
-            m_Context, item->Parameter, CKCID_PARAMETERLOCAL);
+        auto *stored = Resolve<CKParameter>(
+            m_Context, item->Parameter, CKCID_PARAMETER);
         auto *before = Resolve<CKParameterLocal>(
             m_Context, item->Before, CKCID_PARAMETERLOCAL);
         auto *expected = Resolve<CKParameterLocal>(
@@ -4241,7 +4409,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         if (!before) {
             Status conflict = Failure(
                 Error::RevertConflict,
-                "The previous Local value disappeared from the Patch journal.",
+                "The previous value disappeared from the Patch journal.",
                 CKERR_INVALIDOBJECT);
             conflict.Details.Stage = Phase::Teardown;
             noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
@@ -4252,7 +4420,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         if (item->Expected.Id && !expected) {
             Status conflict = Failure(
                 Error::RevertConflict,
-                "The installed Local value disappeared from the Patch journal.",
+                "The installed value disappeared from the Patch journal.",
                 CKERR_INVALIDOBJECT);
             conflict.Details.Stage = Phase::Teardown;
             noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
@@ -4268,7 +4436,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         if (!compared) {
             Status conflict = Failure(
                 Error::RevertConflict,
-                "The written Local value could not be compared through its Virtools type.",
+                "The written value could not be compared through its Virtools type.",
                 compared.CkError);
             conflict.Details.Stage = Phase::Teardown;
             noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
@@ -4279,7 +4447,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         if (!unchanged) {
             Status conflict = Failure(
                 Error::RevertConflict,
-                "A written Local changed after the Patch was published.");
+                "A written value changed after the Patch was published.");
             conflict.Details.Stage = Phase::Teardown;
             noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
                           conflict});
@@ -4290,7 +4458,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         if (error != CK_OK) {
             Status conflict = Failure(
                 Error::RevertConflict,
-                "Virtools rejected the previous Local value.", error);
+                "Virtools rejected the previous value.", error);
             conflict.Details.Stage = Phase::Teardown;
             noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
                           conflict});

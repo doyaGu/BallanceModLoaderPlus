@@ -160,6 +160,7 @@ struct FakeState {
     bool DuplicateGraphSourceOrder = false;
     bool GraphLinkUsesNodeId = false;
     bool GraphLinkUsesNodeObject = false;
+    bool RootEntryLink = false;
     bool InvalidGraphObject = false;
     bool InvalidGraphLinkKind = false;
     bool InvalidGraphPortFlag = false;
@@ -868,10 +869,13 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
         ? node.Object : BML_ObjectRef{31, 32, 33};
     link.SourceNode = g_State.MissingGraphEndpoint ? 999u : node.Id;
     link.SourceKind = g_State.InvalidGraphLinkKind
-        ? BML_BEHAVIOR_SLOT_PIN : BML_BEHAVIOR_SLOT_OUT;
+        ? BML_BEHAVIOR_SLOT_PIN
+        : (g_State.RootEntryLink ? BML_BEHAVIOR_SLOT_IN
+                                 : BML_BEHAVIOR_SLOT_OUT);
     link.SourceIndex = 0;
     link.TargetNode = node.Id;
-    link.TargetKind = BML_BEHAVIOR_SLOT_IN;
+    link.TargetKind = g_State.RootEntryLink
+        ? BML_BEHAVIOR_SLOT_OUT : BML_BEHAVIOR_SLOT_IN;
     link.TargetIndex = 0;
     link.SourceOrder = g_State.ReverseGraphSourceOrder ? 1 : 0;
     link.InitialDelay = 2;
@@ -2618,7 +2622,34 @@ TEST(BehaviorAuthoring, PreservesSelectorCardinalityOnSnapshotNodes) {
     EXPECT_FALSE(node.In());
 }
 
-TEST(BehaviorAuthoring, RequiresSnapshotNodesByUniqueStructure) {
+TEST(BehaviorAuthoring, PreservesRootPortDirectionsOnSnapshotLinks) {
+    g_State = {};
+    g_State.RootEntryLink = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    ASSERT_EQ(inspected->Links().size(), 1u);
+    ASSERT_EQ(inspected->Links()[0].Source().Kind(), SlotKind::In);
+    ASSERT_EQ(inspected->Links()[0].Target().Kind(), SlotKind::Out);
+
+    Edit edit;
+    (void) edit.Root().Require(inspected->Links()[0]);
+    auto submitted = session.Plan(
+        "root-link", Scripts::One("Gameplay_Events"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    ASSERT_EQ(g_State.PlanSteps.size(), 1u);
+    EXPECT_EQ(g_State.PlanSteps[0].Kind,
+              static_cast<std::uint32_t>(
+                  BML_BEHAVIOR_EDIT_REQUIRE_LINK));
+    EXPECT_EQ(g_State.PlanSteps[0].Source.Handle, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(g_State.PlanSteps[0].Source.Kind, BML_BEHAVIOR_SLOT_IN);
+    EXPECT_EQ(g_State.PlanSteps[0].Sink.Handle, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(g_State.PlanSteps[0].Sink.Kind, BML_BEHAVIOR_SLOT_OUT);
+}
+
+TEST(BehaviorAuthoring, RequiresSnapshotNodesByRecordedStructure) {
     g_State = {};
     g_State.SingleGraphChild = true;
     auto opened = Session::Open();
@@ -2640,12 +2671,38 @@ TEST(BehaviorAuthoring, RequiresSnapshotNodesByUniqueStructure) {
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REQUIRE_NODE));
     EXPECT_EQ(required.SelectorKind,
               static_cast<std::uint32_t>(
-                  BML_BEHAVIOR_SELECTOR_UNIQUE_NAME));
-    EXPECT_EQ(required.SelectorName, "Root");
+                  BML_BEHAVIOR_SELECTOR_INDEX));
+    EXPECT_EQ(required.SelectorName, "");
+    EXPECT_EQ(required.Name, "Root");
     EXPECT_EQ(required.SelectorIndex, 0);
     EXPECT_EQ(required.Prototype.Prototype.Data1, 21u);
     EXPECT_EQ(required.ExpectedKind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_KIND_FUNCTION));
+}
+
+TEST(BehaviorAuthoring, UsesChildPositionWhenRequiringASnapshotNode) {
+    g_State = {};
+    g_State.DuplicateGraphNames = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    const auto matches = inspected->FindAll("Root");
+    ASSERT_EQ(matches.size(), 2u);
+
+    Edit edit;
+    (void) edit.Root().Require(matches[1]);
+    auto submitted = session.Plan(
+        "snapshot-occurrence", Scripts::One("Gameplay_Events"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    ASSERT_EQ(g_State.PlanSteps.size(), 1u);
+    EXPECT_EQ(g_State.PlanSteps[0].SelectorKind,
+              static_cast<std::uint32_t>(
+                  BML_BEHAVIOR_SELECTOR_INDEX));
+    EXPECT_EQ(g_State.PlanSteps[0].SelectorIndex, 1);
+    EXPECT_EQ(g_State.PlanSteps[0].Name, "Root");
+    EXPECT_EQ(g_State.PlanSteps[0].SelectorName, "");
 }
 
 TEST(BehaviorAuthoring, RejectsIncoherentGraphSnapshots) {
@@ -4319,6 +4376,59 @@ TEST(BehaviorAuthoring, PutsACallbackOnALinkItNamed) {
         EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
     }
     EXPECT_EQ(alive.use_count(), 1);
+}
+
+TEST(BehaviorAuthoring, PutsACallbackInsideANewFlow) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    auto alive = std::make_shared<int>(0);
+    Edit edit;
+    auto root = edit.Root();
+    const auto source = root.Require("Source");
+    const auto sink = root.Require("Sink");
+    root.Flow(source.Out(), [alive] {}, sink.In());
+
+    auto submitted = session.Plan(
+        "callback-flow", Scripts::One("Gameplay_Events"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    ASSERT_EQ(g_State.PlanSteps.size(), 3u);
+    const CapturedStep &flow = g_State.PlanSteps[2];
+    EXPECT_EQ(flow.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_FLOW_HOOK));
+    EXPECT_EQ(flow.Source.Handle, g_State.PlanSteps[0].Result);
+    EXPECT_EQ(flow.Sink.Handle, g_State.PlanSteps[1].Result);
+    EXPECT_TRUE(flow.HasHook);
+    EXPECT_EQ(alive.use_count(), 2);
+}
+
+TEST(BehaviorAuthoring, EncodesAStoredValueUpdate) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit edit;
+    auto root = edit.Root();
+    const auto keyboard = root.Require("Keyboard");
+    root.Set(keyboard.Pin("Active Row", CKPGUID_INT), std::int32_t{4});
+
+    auto submitted = session.Plan(
+        "active-row", Scripts::One("Menu_Options"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    ASSERT_EQ(g_State.PlanSteps.size(), 2u);
+    const CapturedStep &set = g_State.PlanSteps[1];
+    EXPECT_EQ(set.Kind, static_cast<std::uint32_t>(
+                            BML_BEHAVIOR_EDIT_SET_VALUE));
+    EXPECT_EQ(set.Sink.Handle, g_State.PlanSteps[0].Result);
+    EXPECT_EQ(set.Sink.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_PIN));
+    EXPECT_EQ(set.SinkSlot, "Active Row");
+    EXPECT_EQ(set.Value.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_INT32));
+    EXPECT_EQ(set.Value.Data.Int32, 4);
 }
 
 TEST(BehaviorAuthoring, RejectsPlanWithoutAScriptBeforeCallingTheLoader) {

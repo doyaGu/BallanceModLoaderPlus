@@ -64,6 +64,8 @@ public:
         // Link.
         virtual Status Interpose(Edit &edit, Link link,
                                  const HookBlock::Hook &hook) = 0;
+        virtual Status Interpose(Edit &edit, Port source, Port sink,
+                                 const HookBlock::Hook &hook) = 0;
     };
 
     [[nodiscard]] Node Graph() const noexcept { return {1}; }
@@ -101,6 +103,8 @@ public:
 
     void Flow(Port source, Port sink, int delay = 0,
               Cycle cycle = Cycle::Reject);
+    void Flow(Port source, HookBlock::Hook hook, Port sink);
+    void Set(Port target, Parameter::Binding value);
     void Bind(Port target, Parameter::Binding value);
     void Bind(Port target, Port source);
     void Share(Port target, Port source);
@@ -255,6 +259,16 @@ private:
         friend bool operator==(const EditTap &, const EditTap &) = default;
     };
 
+    struct EditHookFlow {
+        Port Source;
+        Port Sink;
+        HookBlock::Hook Hook;
+        std::uint32_t Ordinal = 0;
+
+        friend bool operator==(const EditHookFlow &,
+                               const EditHookFlow &) = default;
+    };
+
     struct EditAfter {
         PathRef Target;
         HookBlock::Hook Hook;
@@ -307,7 +321,8 @@ private:
                                const EditReconnect &) = default;
     };
 
-    using Action = std::variant<EditFlow, EditBind, EditPush, EditSplice,
+    using Action = std::variant<EditFlow, EditHookFlow, EditSet, EditBind,
+                                EditPush, EditSplice,
                                 EditRedirect, EditInterface, EditTap,
                                 EditAfter, EditBefore, EditRedirectLink,
                                 EditReconnect>;

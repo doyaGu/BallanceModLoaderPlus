@@ -1348,6 +1348,24 @@ Status Patches::Interpose(Edit &edit, Link link,
     return status;
 }
 
+Status Patches::Interpose(Edit &edit, Port source, Port sink,
+                          const HookBlock::Hook &hook) {
+    std::shared_ptr<HookBlock::Binding> binding = hook.Bind();
+    if (!binding) {
+        return Failure(Error::CallbackFailed,
+                       "The control-flow callback is no longer available.");
+    }
+    Node block;
+    Status status = m_Edit.Add(
+        edit, HookBlock::Make(std::move(binding), 1, 1), block,
+        NodeRole::Infrastructure);
+    if (status) {
+        edit.Flow(std::move(source), block.In());
+        edit.Flow(block.Out(), std::move(sink));
+    }
+    return status;
+}
+
 Status Patches::Read(const SessionOwner &owner, PatchId patch,
                      PatchInfo &out) const {
     Status ready = Ready();
