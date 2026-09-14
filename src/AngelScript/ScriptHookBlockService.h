@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "CKAll.h"
 #include "ScriptDiagnostic.h"
@@ -99,10 +100,11 @@ public:
                                       int targetInput);
     void Release(ScriptDiagnostic *diagnostic = nullptr);
     void ProcessFrame();
-    size_t GetActiveCount() const;
+    std::size_t GetActiveCount() const;
 
 private:
     std::shared_ptr<ScriptHookBlockServiceState> m_State;
+    std::vector<std::shared_ptr<ScriptHookBlockServiceState>> m_RetiredStates;
 };
 
 } // namespace BML
