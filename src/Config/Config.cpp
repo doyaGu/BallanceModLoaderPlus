@@ -2,9 +2,21 @@
 
 #include <cstdio>
 #include <cstring>
+#include <iterator>
+#include <memory>
 #include <sstream>
+#include <unordered_set>
+#include <utility>
 
 #include "StringUtils.h"
+
+namespace {
+    struct PreparedConfigEdit {
+        Property *property = nullptr;
+        Property::Value value = 0;
+        std::size_t hash = 0;
+    };
+}
 
 Config::Config(IMod *mod) : m_Mod(mod) {
     if (mod) {
@@ -48,20 +60,16 @@ bool Config::Load(const wchar_t *path) {
         return false;
     }
 
-    size_t sz = static_cast<size_t>(rawSize);
-    auto *buf = new char[sz + 1];
-    size_t read = fread(buf, sizeof(char), sz, fp);
+    const std::size_t size = static_cast<std::size_t>(rawSize);
+    std::vector<char> buffer(size + 1);
+    const std::size_t read = fread(buffer.data(), sizeof(char), size, fp);
     fclose(fp);
 
-    if (read != sz) {
-        delete[] buf;
+    if (read != size)
         return false;
-    }
 
-    buf[sz] = '\0';
-
-    std::wstring wBuf = utils::Utf8ToUtf16(buf);
-    delete[] buf;
+    buffer[size] = '\0';
+    std::wstring wBuf = utils::Utf8ToUtf16(buffer.data());
 
     std::wistringstream in(wBuf);
     std::wstring wToken, wComment, wCategory;
@@ -82,7 +90,7 @@ bool Config::Load(const wchar_t *path) {
             if (!(in >> wPropName)) break;
 
             std::string propName = utils::Utf16ToUtf8(wPropName);
-            auto *prop = new Property(this, category, propName);
+            auto prop = std::make_unique<Property>(nullptr, category, propName);
 
             bool parseSuccess = false;
 
@@ -133,7 +141,6 @@ bool Config::Load(const wchar_t *path) {
             }
 
             if (!parseSuccess) {
-                delete prop;
                 continue;
             }
 
@@ -142,19 +149,34 @@ bool Config::Load(const wchar_t *path) {
 
             Category *cate = GetCategory(category.c_str());
             if (cate) {
-                cate->m_Properties.push_back(prop);
-                cate->m_PropertyMap[propName] = prop;
-            } else {
-                delete prop;
+                Property *target = nullptr;
+                const auto existing = cate->m_PropertyMap.find(propName);
+                if (existing == cate->m_PropertyMap.end() || !existing->second) {
+                    target = cate->GetProperty(propName.c_str());
+                } else {
+                    target = existing->second;
+                    const bool schemaChanged = target->m_Type != prop->m_Type ||
+                                               target->m_Comment != prop->m_Comment;
+                    const bool valueChanged = !ConfigValuesEqual(
+                        prop->m_Type, target->m_Value, prop->m_Value);
+                    if (schemaChanged)
+                        TouchSchema();
+                    else if (valueChanged)
+                        TouchValue();
+                }
+
+                target->m_Type = prop->m_Type;
+                target->m_Value = std::move(prop->m_Value);
+                target->m_Hash = prop->m_Hash;
+                target->m_Comment = std::move(prop->m_Comment);
             }
         } else {
             wCategory = wToken;
             category = utils::Utf16ToUtf8(wCategory);
 
             Category *cate = GetCategory(category.c_str());
-            if (cate) {
-                cate->m_Comment = comment;
-            }
+            if (cate)
+                cate->SetComment(comment.c_str());
             comment.clear();
         }
     }
@@ -173,6 +195,7 @@ bool Config::Save(const wchar_t *path) {
     std::ostringstream out;
 
     // Clean up properties without a config
+    bool removedProperty = false;
     for (auto *category : m_Categories) {
         if (!category) continue;
 
@@ -184,11 +207,14 @@ bool Config::Save(const wchar_t *path) {
                     delete *it;
                 }
                 it = props.erase(it);
+                removedProperty = true;
             } else {
                 ++it;
             }
         }
     }
+    if (removedProperty)
+        TouchSchema();
 
     out << "# Configuration File for Mod: " << m_ModName
         << " - " << m_ModVersion << std::endl << std::endl;
@@ -264,6 +290,81 @@ std::vector<Config::PendingNotification> Config::TakePendingNotifications() {
     return pending;
 }
 
+Config::ApplyResult Config::ApplyEdits(const IMod *expectedOwner,
+                                       std::uint64_t expectedSchemaRevision,
+                                       const std::vector<Edit> &edits) {
+    if (expectedOwner != m_Mod)
+        return {ApplyError::OwnerChanged};
+    if (expectedSchemaRevision != m_SchemaRevision)
+        return {ApplyError::SchemaChanged};
+
+    std::vector<PreparedConfigEdit> prepared;
+    prepared.reserve(edits.size());
+    std::vector<PendingNotification> notifications;
+    notifications.reserve(edits.size());
+    std::unordered_set<Property *> targets;
+    targets.reserve(edits.size());
+
+    for (std::size_t i = 0; i < edits.size(); ++i) {
+        const Edit &edit = edits[i];
+        const auto category = m_CategoryMap.find(edit.Category);
+        if (category == m_CategoryMap.end())
+            return {ApplyError::PropertyMissing, i};
+
+        const auto propertyEntry = category->second->m_PropertyMap.find(edit.Key);
+        if (propertyEntry == category->second->m_PropertyMap.end() || !propertyEntry->second)
+            return {ApplyError::PropertyMissing, i};
+
+        Property *property = propertyEntry->second;
+        if (!targets.emplace(property).second)
+            return {ApplyError::DuplicateTarget, i};
+        if (property->m_Type != edit.ExpectedType)
+            return {ApplyError::TypeChanged, i};
+        if (!ConfigValueMatchesType(edit.ExpectedType, edit.BaseValue) ||
+            !ConfigValueMatchesType(edit.ExpectedType, edit.NewValue)) {
+            return {ApplyError::InvalidValue, i};
+        }
+        if (!ConfigValuesEqual(edit.ExpectedType, property->m_Value, edit.BaseValue))
+            return {ApplyError::BaseChanged, i};
+        if (ConfigValuesEqual(edit.ExpectedType, property->m_Value, edit.NewValue))
+            continue;
+
+        PreparedConfigEdit preparedEdit;
+        preparedEdit.property = property;
+        preparedEdit.value = edit.NewValue;
+        if (edit.ExpectedType == IProperty::STRING)
+            preparedEdit.hash = utils::HashString(std::get<std::string>(preparedEdit.value).c_str());
+        prepared.push_back(std::move(preparedEdit));
+
+        bool alreadyQueued = false;
+        for (const PendingNotification &pending : m_PendingNotifications) {
+            if (pending.ChangedProperty == property) {
+                alreadyQueued = true;
+                break;
+            }
+        }
+        if (!alreadyQueued)
+            notifications.push_back({edit.Category, edit.Key, property});
+    }
+
+    m_PendingNotifications.reserve(m_PendingNotifications.size() + notifications.size());
+
+    for (PreparedConfigEdit &edit : prepared) {
+        edit.property->m_Value.swap(edit.value);
+        if (edit.property->m_Type == IProperty::STRING)
+            edit.property->m_Hash = edit.hash;
+        TouchValue();
+    }
+
+    if (!prepared.empty()) {
+        MarkDirty();
+        m_PendingNotifications.insert(m_PendingNotifications.end(),
+                                      std::make_move_iterator(notifications.begin()),
+                                      std::make_move_iterator(notifications.end()));
+    }
+    return {ApplyError::None, ApplyResult::NoEdit, prepared.size()};
+}
+
 void Config::QueueNotification(Property *property, const std::string &category, const std::string &key) {
     if (!property)
         return;
@@ -312,7 +413,7 @@ IProperty *Config::GetProperty(const char *category, const char *key) {
     return prop;
 }
 
-Category *Config::GetCategory(size_t i) {
+Category *Config::GetCategory(std::size_t i) {
     if (i >= m_Categories.size())
         return nullptr;
     return m_Categories[i];
@@ -327,10 +428,14 @@ Category *Config::GetCategory(const char *name) {
     if (it != m_CategoryMap.end())
         return it->second;
 
-    auto *cate = new Category(this, name);
-    m_Categories.push_back(cate);
-    m_CategoryMap[n] = cate;
-    return cate;
+    auto category = std::make_unique<Category>(this, name);
+    m_Categories.reserve(m_Categories.size() + 1);
+    const auto inserted = m_CategoryMap.emplace(n, category.get());
+    if (!inserted.second)
+        return inserted.first->second;
+    m_Categories.push_back(category.release());
+    TouchSchema();
+    return m_Categories.back();
 }
 
 const char *Config::GetCategoryComment(const char *category) {
@@ -359,7 +464,16 @@ Category::~Category() {
     m_PropertyMap.clear();
 }
 
-Property *Category::GetProperty(size_t i) {
+void Category::SetComment(const char *comment) {
+    const std::string value = comment ? comment : "";
+    if (m_Comment == value)
+        return;
+    m_Comment = value;
+    if (m_Config)
+        m_Config->TouchSchema();
+}
+
+Property *Category::GetProperty(std::size_t i) {
     if (i >= m_Properties.size())
         return nullptr;
     return m_Properties[i];
@@ -371,22 +485,28 @@ Property *Category::GetProperty(const char *key) {
 
     std::string k = key;
     auto it = m_PropertyMap.find(k);
-    if (it != m_PropertyMap.end() && it->second) {
-        return it->second;
+    if (it != m_PropertyMap.end()) {
+        if (it->second)
+            return it->second;
+        m_PropertyMap.erase(it);
     }
 
-    auto *prop = new Property(m_Config, m_Name, k);
-    if (prop) {
-        m_Properties.push_back(prop);
-        m_PropertyMap[k] = prop;
-    }
-    return prop;
+    auto property = std::make_unique<Property>(m_Config, m_Name, k);
+    m_Properties.reserve(m_Properties.size() + 1);
+    const auto inserted = m_PropertyMap.emplace(k, property.get());
+    if (!inserted.second)
+        return inserted.first->second;
+    m_Properties.push_back(property.release());
+    if (m_Config)
+        m_Config->TouchSchema();
+    return m_Properties.back();
 }
 
 bool Category::HasKey(const char *key) const {
     if (!key)
         return false;
-    return m_PropertyMap.find(key) != m_PropertyMap.end();
+    const auto property = m_PropertyMap.find(key);
+    return property != m_PropertyMap.end() && property->second;
 }
 
 Property::Property(Config *config, std::string category, std::string key) {
@@ -397,60 +517,55 @@ Property::Property(Config *config, std::string category, std::string key) {
     m_Key = std::move(key);
 }
 
-const char *Property::GetString() {
-    try {
-        return m_Type == STRING ? std::get<std::string>(m_Value).c_str() : "";
-    } catch (const std::bad_variant_access &) {
-        m_Value = std::string(""); // Reset to empty string
-        m_Type = STRING;
-        return "";
-    }
+void Property::SetComment(const char *comment) {
+    const std::string value = comment ? comment : "";
+    if (m_Comment == value)
+        return;
+    m_Comment = value;
+    if (m_Config)
+        m_Config->TouchSchema();
 }
 
-size_t Property::GetStringSize() {
+const char *Property::GetString() {
+    if (m_Type != STRING)
+        return "";
+    const auto *value = std::get_if<std::string>(&m_Value);
+    return value ? value->c_str() : "";
+}
+
+std::size_t Property::GetStringSize() {
     if (GetType() != STRING)
         return 0;
-    return std::get<std::string>(m_Value).size();
+    const auto *value = std::get_if<std::string>(&m_Value);
+    return value ? value->size() : 0;
 }
 
 bool Property::GetBoolean() {
-    try {
-        return m_Type == BOOLEAN ? std::get<bool>(m_Value) : false;
-    } catch (const std::bad_variant_access &) {
-        m_Value = false; // Reset to false
-        m_Type = BOOLEAN;
+    if (m_Type != BOOLEAN)
         return false;
-    }
+    const auto *value = std::get_if<bool>(&m_Value);
+    return value ? *value : false;
 }
 
 int Property::GetInteger() {
-    try {
-        return m_Type == INTEGER ? std::get<int>(m_Value) : 0;
-    } catch (const std::bad_variant_access &) {
-        m_Value = 0;
-        m_Type = INTEGER;
+    if (m_Type != INTEGER)
         return 0;
-    }
+    const auto *value = std::get_if<int>(&m_Value);
+    return value ? *value : 0;
 }
 
 float Property::GetFloat() {
-    try {
-        return m_Type == FLOAT ? std::get<float>(m_Value) : 0.0f;
-    } catch (const std::bad_variant_access &) {
-        m_Value = 0.0f;
-        m_Type = FLOAT;
+    if (m_Type != FLOAT)
         return 0.0f;
-    }
+    const auto *value = std::get_if<float>(&m_Value);
+    return value ? *value : 0.0f;
 }
 
 CKKEYBOARD Property::GetKey() {
-    try {
-        return m_Type == KEY ? static_cast<CKKEYBOARD>(std::get<int>(m_Value)) : static_cast<CKKEYBOARD>(0);
-    } catch (const std::bad_variant_access &) {
-        m_Value = 0;
-        m_Type = KEY;
+    if (m_Type != KEY)
         return static_cast<CKKEYBOARD>(0);
-    }
+    const auto *value = std::get_if<int>(&m_Value);
+    return value ? static_cast<CKKEYBOARD>(*value) : static_cast<CKKEYBOARD>(0);
 }
 
 void Property::SetString(const char *value) {
@@ -458,63 +573,88 @@ void Property::SetString(const char *value) {
         value = "";
     std::string newValue = value;
 
-    if (m_Type != STRING || std::get<std::string>(m_Value) != newValue) {
+    const PropertyType previousType = m_Type;
+    const auto *current = std::get_if<std::string>(&m_Value);
+    if (m_Type != STRING || !current || *current != newValue) {
         m_Value = newValue;
         m_Type = STRING;
         m_Hash = utils::HashString(value);
-        SetModified();
+        SetModified(previousType);
     }
 }
 
 void Property::SetBoolean(bool value) {
-    if (m_Type != BOOLEAN || std::get<bool>(m_Value) != value) {
+    const PropertyType previousType = m_Type;
+    const auto *current = std::get_if<bool>(&m_Value);
+    if (m_Type != BOOLEAN || !current || *current != value) {
         m_Value = value;
         m_Type = BOOLEAN;
-        SetModified();
+        SetModified(previousType);
     }
 }
 
 void Property::SetInteger(int value) {
-    if (m_Type != INTEGER || std::get<int>(m_Value) != value) {
+    const PropertyType previousType = m_Type;
+    const auto *current = std::get_if<int>(&m_Value);
+    if (m_Type != INTEGER || !current || *current != value) {
         m_Value = value;
         m_Type = INTEGER;
-        SetModified();
+        SetModified(previousType);
     }
 }
 
 void Property::SetFloat(float value) {
-    if (m_Type != FLOAT || std::get<float>(m_Value) != value) {
+    const PropertyType previousType = m_Type;
+    if (m_Type != FLOAT || !ConfigValuesEqual(FLOAT, m_Value, ConfigValue(value))) {
         m_Value = value;
         m_Type = FLOAT;
-        SetModified();
+        SetModified(previousType);
     }
 }
 
 void Property::SetKey(CKKEYBOARD value) {
-    if (m_Type != KEY || std::get<int>(m_Value) != static_cast<int>(value)) {
-        m_Value = static_cast<int>(value);
+    const PropertyType previousType = m_Type;
+    const int newValue = static_cast<int>(value);
+    const auto *current = std::get_if<int>(&m_Value);
+    if (m_Type != KEY || !current || *current != newValue) {
+        m_Value = newValue;
         m_Type = KEY;
-        SetModified();
+        SetModified(previousType);
     }
 }
 
 void Property::SetValue(const Value &value) {
     switch (m_Type) {
-    case STRING:
-        SetString(std::get<std::string>(value).c_str());
+    case STRING: {
+        const auto *typed = std::get_if<std::string>(&value);
+        if (typed)
+            SetString(typed->c_str());
         break;
-    case BOOLEAN:
-        SetBoolean(std::get<bool>(value));
+    }
+    case BOOLEAN: {
+        const auto *typed = std::get_if<bool>(&value);
+        if (typed)
+            SetBoolean(*typed);
         break;
+    }
     case INTEGER:
-        SetInteger(std::get<int>(value));
+    case KEY: {
+        const auto *typed = std::get_if<int>(&value);
+        if (!typed)
+            break;
+        if (m_Type == INTEGER)
+            SetInteger(*typed);
+        else
+            SetKey(static_cast<CKKEYBOARD>(*typed));
         break;
-    case KEY:
-        SetKey(static_cast<CKKEYBOARD>(std::get<int>(value)));
+    }
+    case FLOAT: {
+        const auto *typed = std::get_if<float>(&value);
+        if (typed)
+            SetFloat(*typed);
         break;
-    case FLOAT:
-        SetFloat(std::get<float>(value));
-        break;
+    }
+    case NONE:
     default:
         break;
     }
@@ -528,6 +668,8 @@ void Property::SetDefaultString(const char *value) {
         m_Type = STRING;
         m_Hash = utils::HashString(value);
         m_Value = value;
+        if (m_Config)
+            m_Config->TouchSchema();
     }
 }
 
@@ -535,6 +677,8 @@ void Property::SetDefaultBoolean(bool value) {
     if (m_Type != BOOLEAN) {
         m_Type = BOOLEAN;
         m_Value = value;
+        if (m_Config)
+            m_Config->TouchSchema();
     }
 }
 
@@ -542,6 +686,8 @@ void Property::SetDefaultInteger(int value) {
     if (m_Type != INTEGER) {
         m_Type = INTEGER;
         m_Value = value;
+        if (m_Config)
+            m_Config->TouchSchema();
     }
 }
 
@@ -549,6 +695,8 @@ void Property::SetDefaultFloat(float value) {
     if (m_Type != FLOAT) {
         m_Type = FLOAT;
         m_Value = value;
+        if (m_Config)
+            m_Config->TouchSchema();
     }
 }
 
@@ -556,23 +704,25 @@ void Property::SetDefaultKey(CKKEYBOARD value) {
     if (m_Type != KEY) {
         m_Type = KEY;
         m_Value = static_cast<int>(value);
+        if (m_Config)
+            m_Config->TouchSchema();
     }
 }
 
-size_t Property::GetHash() const {
+std::size_t Property::GetHash() const {
     switch (m_Type) {
     case STRING:
         return m_Hash;
     case INTEGER:
     case KEY:
-        return static_cast<size_t>(std::get<int>(m_Value));
+        return static_cast<std::size_t>(std::get<int>(m_Value));
     case BOOLEAN:
         return std::get<bool>(m_Value) ? 1 : 0;
     case FLOAT: {
         float f = std::get<float>(m_Value);
-        uint32_t bits;
+        std::uint32_t bits;
         std::memcpy(&bits, &f, sizeof(bits));
-        return static_cast<size_t>(bits);
+        return static_cast<std::size_t>(bits);
     }
     default:
         return 0;
@@ -599,44 +749,19 @@ void Property::CopyValue(Property *o) {
         SetString(o->GetString());
         break;
     case NONE:
-        // Nothing to copy for NONE type
-        break;
     default:
-        // Handle unexpected type
-        m_Type = NONE;
-        m_Value = 0;
         break;
     }
 }
 
-bool *Property::GetBooleanPtr() {
-    if (GetType() != BOOLEAN)
-        return nullptr;
-    return &std::get<bool>(m_Value);
-}
-
-int *Property::GetIntegerPtr() {
-    if (GetType() != INTEGER)
-        return nullptr;
-    return &std::get<int>(m_Value);
-}
-
-float *Property::GetFloatPtr() {
-    if (GetType() != FLOAT)
-        return nullptr;
-    return &std::get<float>(m_Value);
-}
-
-CKKEYBOARD *Property::GetKeyPtr() {
-    if (GetType() != KEY)
-        return nullptr;
-    return reinterpret_cast<CKKEYBOARD *>(&std::get<int>(m_Value));
-}
-
-void Property::SetModified() {
+void Property::SetModified(PropertyType previousType) {
     if (!m_Config)
         return;
 
+    if (previousType == m_Type)
+        m_Config->TouchValue();
+    else
+        m_Config->TouchSchema();
     m_Config->MarkDirty();
     m_Config->QueueNotification(this, m_Category, m_Key);
 }

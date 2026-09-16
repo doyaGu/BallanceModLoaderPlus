@@ -2,6 +2,8 @@
 #include <gmock/gmock.h>
 
 #include <chrono>
+#include <fstream>
+#include <limits>
 
 #include <windows.h>
 
@@ -349,6 +351,192 @@ TEST_F(ConfigTest, DefaultValues) {
     EXPECT_STREQ("New Value", strProp->GetString());
 }
 
+TEST_F(ConfigTest, RevisionsDistinguishSchemaAndValueChanges) {
+    const std::uint64_t initialSchema = config->GetSchemaRevision();
+    const std::uint64_t initialValue = config->GetValueRevision();
+
+    Category *category = config->GetCategory("Revision");
+    ASSERT_NE(nullptr, category);
+    EXPECT_GT(config->GetSchemaRevision(), initialSchema);
+    EXPECT_EQ(initialValue, config->GetValueRevision());
+
+    const std::uint64_t categorySchema = config->GetSchemaRevision();
+    auto *property = static_cast<Property *>(config->GetProperty("Revision", "Value"));
+    ASSERT_NE(nullptr, property);
+    EXPECT_GT(config->GetSchemaRevision(), categorySchema);
+    EXPECT_EQ(initialValue, config->GetValueRevision());
+
+    const std::uint64_t propertySchema = config->GetSchemaRevision();
+    property->SetDefaultInteger(10);
+    EXPECT_GT(config->GetSchemaRevision(), propertySchema);
+    EXPECT_EQ(initialValue, config->GetValueRevision());
+
+    const std::uint64_t typedSchema = config->GetSchemaRevision();
+    property->SetDefaultInteger(20);
+    EXPECT_EQ(typedSchema, config->GetSchemaRevision());
+    EXPECT_EQ(initialValue, config->GetValueRevision());
+
+    property->SetInteger(11);
+    EXPECT_EQ(typedSchema, config->GetSchemaRevision());
+    EXPECT_EQ(initialValue + 1, config->GetValueRevision());
+
+    property->SetString("changed type");
+    EXPECT_GT(config->GetSchemaRevision(), typedSchema);
+    EXPECT_EQ(initialValue + 1, config->GetValueRevision());
+
+    const std::uint64_t typeSchema = config->GetSchemaRevision();
+    category->SetComment("Category help");
+    EXPECT_GT(config->GetSchemaRevision(), typeSchema);
+    const std::uint64_t categoryCommentSchema = config->GetSchemaRevision();
+    property->SetComment("Property help");
+    EXPECT_GT(config->GetSchemaRevision(), categoryCommentSchema);
+    const std::uint64_t propertyCommentSchema = config->GetSchemaRevision();
+    property->SetComment("Property help");
+    EXPECT_EQ(propertyCommentSchema, config->GetSchemaRevision());
+}
+
+TEST_F(ConfigTest, ReassigningNanDoesNotCreateAValueChange) {
+    auto *property = static_cast<Property *>(config->GetProperty("Revision", "Nan"));
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    property->SetDefaultFloat(nan);
+    const std::uint64_t valueRevision = config->GetValueRevision();
+
+    property->SetFloat(nan);
+
+    EXPECT_EQ(valueRevision, config->GetValueRevision());
+    EXPECT_FALSE(config->IsDirty());
+    EXPECT_TRUE(config->TakePendingNotifications().empty());
+}
+
+TEST_F(ConfigTest, ApplyEditsCommitsInCallerOrderAndCoalescesNotifications) {
+    auto *first = static_cast<Property *>(config->GetProperty("Batch", "First"));
+    auto *second = static_cast<Property *>(config->GetProperty("Batch", "Second"));
+    first->SetDefaultInteger(1);
+    second->SetDefaultInteger(2);
+
+    const std::uint64_t schemaRevision = config->GetSchemaRevision();
+    const std::uint64_t valueRevision = config->GetValueRevision();
+    const std::vector<Config::Edit> edits = {
+        {"Batch", "Second", IProperty::INTEGER, 2, 20},
+        {"Batch", "First", IProperty::INTEGER, 1, 10},
+    };
+
+    const Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, edits);
+    ASSERT_TRUE(result.Succeeded());
+    EXPECT_EQ(2u, result.ChangedCount);
+    EXPECT_EQ(10, first->GetInteger());
+    EXPECT_EQ(20, second->GetInteger());
+    EXPECT_EQ(schemaRevision, config->GetSchemaRevision());
+    EXPECT_EQ(valueRevision + 2, config->GetValueRevision());
+    EXPECT_TRUE(config->IsDirty());
+
+    std::vector<Config::PendingNotification> notifications = config->TakePendingNotifications();
+    ASSERT_EQ(2u, notifications.size());
+    EXPECT_EQ("Second", notifications[0].Key);
+    EXPECT_EQ(second, notifications[0].ChangedProperty);
+    EXPECT_EQ("First", notifications[1].Key);
+    EXPECT_EQ(first, notifications[1].ChangedProperty);
+
+    second->SetInteger(21);
+    const std::vector<Config::Edit> coalesced = {
+        {"Batch", "Second", IProperty::INTEGER, 21, 22},
+    };
+    const Config::ApplyResult coalescedResult = config->ApplyEdits(mockMod, schemaRevision, coalesced);
+    ASSERT_TRUE(coalescedResult.Succeeded());
+    EXPECT_EQ(22, second->GetInteger());
+
+    notifications = config->TakePendingNotifications();
+    ASSERT_EQ(1u, notifications.size());
+    EXPECT_EQ(second, notifications[0].ChangedProperty);
+}
+
+TEST_F(ConfigTest, ApplyEditsRejectsStaleOwnerAndSchema) {
+    auto *property = static_cast<Property *>(config->GetProperty("Batch", "Value"));
+    property->SetDefaultInteger(1);
+    const std::uint64_t schemaRevision = config->GetSchemaRevision();
+    const std::vector<Config::Edit> edits = {
+        {"Batch", "Value", IProperty::INTEGER, 1, 2},
+    };
+
+    MockMod otherOwner(nullptr);
+    Config::ApplyResult result = config->ApplyEdits(&otherOwner, schemaRevision, edits);
+    EXPECT_EQ(Config::ApplyError::OwnerChanged, result.Error);
+    EXPECT_EQ(1, property->GetInteger());
+
+    config->GetProperty("Batch", "AddedAfterSnapshot")->SetDefaultBoolean(false);
+    result = config->ApplyEdits(mockMod, schemaRevision, edits);
+    EXPECT_EQ(Config::ApplyError::SchemaChanged, result.Error);
+    EXPECT_EQ(1, property->GetInteger());
+    EXPECT_EQ(0u, config->GetValueRevision());
+    EXPECT_TRUE(config->TakePendingNotifications().empty());
+}
+
+TEST_F(ConfigTest, ApplyEditsUsesPerPropertyBaselinesInsteadOfGlobalValueRevision) {
+    auto *edited = static_cast<Property *>(config->GetProperty("Batch", "Edited"));
+    auto *external = static_cast<Property *>(config->GetProperty("Batch", "External"));
+    edited->SetDefaultInteger(1);
+    external->SetDefaultInteger(2);
+    const std::uint64_t schemaRevision = config->GetSchemaRevision();
+
+    external->SetInteger(3);
+    ASSERT_EQ(1u, config->GetValueRevision());
+
+    const Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, {
+        {"Batch", "Edited", IProperty::INTEGER, 1, 10},
+    });
+
+    EXPECT_TRUE(result.Succeeded());
+    EXPECT_EQ(10, edited->GetInteger());
+    EXPECT_EQ(3, external->GetInteger());
+    EXPECT_EQ(2u, config->GetValueRevision());
+}
+
+TEST_F(ConfigTest, ApplyEditsRejectsTypeBaseAndDuplicateConflicts) {
+    auto *property = static_cast<Property *>(config->GetProperty("Batch", "Value"));
+    property->SetDefaultInteger(1);
+    const std::uint64_t schemaRevision = config->GetSchemaRevision();
+
+    Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, {
+        {"Batch", "Value", IProperty::STRING, std::string("1"), std::string("2")},
+    });
+    EXPECT_EQ(Config::ApplyError::TypeChanged, result.Error);
+
+    result = config->ApplyEdits(mockMod, schemaRevision, {
+        {"Batch", "Value", IProperty::INTEGER, 0, 2},
+    });
+    EXPECT_EQ(Config::ApplyError::BaseChanged, result.Error);
+
+    result = config->ApplyEdits(mockMod, schemaRevision, {
+        {"Batch", "Value", IProperty::INTEGER, 1, 2},
+        {"Batch", "Value", IProperty::INTEGER, 1, 3},
+    });
+    EXPECT_EQ(Config::ApplyError::DuplicateTarget, result.Error);
+    EXPECT_EQ(1u, result.EditIndex);
+    EXPECT_EQ(1, property->GetInteger());
+    EXPECT_EQ(0u, config->GetValueRevision());
+    EXPECT_TRUE(config->TakePendingNotifications().empty());
+}
+
+TEST_F(ConfigTest, ApplyEditsValidatesEntireBatchBeforeWriting) {
+    auto *first = static_cast<Property *>(config->GetProperty("Batch", "First"));
+    auto *second = static_cast<Property *>(config->GetProperty("Batch", "Second"));
+    first->SetDefaultInteger(1);
+    second->SetDefaultInteger(2);
+    const std::uint64_t schemaRevision = config->GetSchemaRevision();
+
+    const Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, {
+        {"Batch", "First", IProperty::INTEGER, 1, 10},
+        {"Batch", "Second", IProperty::INTEGER, 99, 20},
+    });
+
+    EXPECT_EQ(Config::ApplyError::BaseChanged, result.Error);
+    EXPECT_EQ(1u, result.EditIndex);
+    EXPECT_EQ(1, first->GetInteger());
+    EXPECT_EQ(2, second->GetInteger());
+    EXPECT_EQ(0u, config->GetValueRevision());
+    EXPECT_TRUE(config->TakePendingNotifications().empty());
+}
+
 // Modification notification
 TEST_F(ConfigTest, ModificationNotification) {
     mockMod->modifiedCount = 0;
@@ -415,26 +603,6 @@ TEST_F(ConfigTest, PropertyUtilityFunctions) {
     strProp->SetString("Different String");
     EXPECT_NE(hash1, strProp->GetHash());
 
-    // Test GetXXXPtr functions
-    Property *boolProp = static_cast<Property *>(config->GetProperty("TestCategory", "BoolProp"));
-    boolProp->SetBoolean(true);
-    bool *boolPtr = boolProp->GetBooleanPtr();
-    ASSERT_NE(nullptr, boolPtr);
-    EXPECT_TRUE(*boolPtr);
-    *boolPtr = false;
-    EXPECT_FALSE(boolProp->GetBoolean());
-
-    Property *intProp = static_cast<Property *>(config->GetProperty("TestCategory", "IntProp"));
-    intProp->SetInteger(42);
-    int *intPtr = intProp->GetIntegerPtr();
-    ASSERT_NE(nullptr, intPtr);
-    EXPECT_EQ(42, *intPtr);
-    *intPtr = 24;
-    EXPECT_EQ(24, intProp->GetInteger());
-
-    // Test wrong type returns nullptr
-    EXPECT_EQ(nullptr, boolProp->GetIntegerPtr());
-    EXPECT_EQ(nullptr, intProp->GetBooleanPtr());
 }
 
 // Property value copying
@@ -510,6 +678,39 @@ TEST_F(ConfigTest, FileIO) {
     EXPECT_FALSE(config->Load(nullptr));
     EXPECT_FALSE(config->Load(L""));
     EXPECT_FALSE(config->Load(L"nonexistent_file.cfg"));
+}
+
+TEST_F(ConfigTest, LoadingDuplicateEntriesUpdatesOneStableProperty) {
+    const wchar_t *filename = L"test_config_duplicates.cfg";
+    {
+        std::ofstream output("test_config_duplicates.cfg", std::ios::binary);
+        output << "# First category\n"
+                  "General {\n"
+                  "# First value\n"
+                  "I Count 1\n"
+                  "}\n"
+                  "# Updated category\n"
+                  "General {\n"
+                  "# Updated value\n"
+                  "I Count 2\n"
+                  "}\n";
+    }
+
+    ASSERT_TRUE(config->Load(filename));
+    ASSERT_EQ(config->GetCategoryCount(), 1U);
+    Category *category = config->GetCategory(static_cast<std::size_t>(0));
+    ASSERT_NE(category, nullptr);
+    EXPECT_STREQ(category->GetComment(), "Updated category");
+    ASSERT_EQ(category->GetPropertyCount(), 1U);
+    Property *property = category->GetProperty(static_cast<std::size_t>(0));
+    ASSERT_NE(property, nullptr);
+    EXPECT_EQ(property, category->GetProperty("Count"));
+    EXPECT_EQ(property->GetInteger(), 2);
+    EXPECT_STREQ(property->GetComment(), "Updated value");
+    EXPECT_TRUE(config->TakePendingNotifications().empty());
+    EXPECT_FALSE(config->IsDirty());
+
+    _wremove(filename);
 }
 
 TEST_F(ConfigTest, SaveUsesSnapshottedModMetadata) {

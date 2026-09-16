@@ -190,6 +190,7 @@ set(BML_LOGGING_SOURCES
 set(BML_CONFIG_PRIVATE_HEADERS
         Config/Config.h
         Config/ConfigStore.h
+        Config/ConfigValue.h
 )
 
 set(BML_CONFIG_SOURCES

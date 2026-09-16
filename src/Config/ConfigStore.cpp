@@ -11,7 +11,7 @@ Config *ConfigStore::Add(const std::string &modId, IMod *owner, std::unique_ptr<
         return nullptr;
 
     Config *rawConfig = config.get();
-    const size_t position = m_Configs.size();
+    const std::size_t position = m_Configs.size();
     m_Configs.push_back(std::move(config));
     try {
         const bool inserted = m_Index.emplace(modId, position).second;
@@ -35,7 +35,7 @@ std::unique_ptr<Config> ConfigStore::Remove(
         return nullptr;
     }
 
-    const size_t position = it->second;
+    const std::size_t position = it->second;
     std::unique_ptr<Config> removed = std::move(m_Configs[position]);
     m_Configs.erase(m_Configs.begin() + static_cast<std::ptrdiff_t>(position));
     m_Index.erase(it);
