@@ -88,7 +88,19 @@ Behavior::Result<Behavior::Node> FindFirstNeighbor(
 
 void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
                          IBML &bml, ILogger &logger) {
-    Unload();
+    if (m_Patch || m_Retiring) {
+        m_PendingLoad = {&behavior, script ? script->GetID() : 0,
+                         &bml, &logger};
+        m_CloseBlocked = false;
+        Retire(true);
+        return;
+    }
+    BeginLoad(behavior, script, bml, logger);
+}
+
+void ModsMenuEntry::BeginLoad(Behavior::Session &behavior,
+                              CKBehavior *script, IBML &bml,
+                              ILogger &logger) {
     m_Context = bml.GetCKContext();
     m_BML = &bml;
     m_Logger = &logger;
@@ -161,23 +173,24 @@ void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
         downSelectorNode.Value(), Behavior::SlotKind::In);
     const int menuOutputs = CountPorts(
         optionsNode.Value(), Behavior::SlotKind::Out);
-    if (upSwitchOutputs != downSwitchOutputs ||
+    if (upSelectorInputs < 1 ||
         upSelectorInputs != downSelectorInputs ||
-        upSwitchOutputs != upSelectorInputs + 1 ||
-        upSelectorInputs < 1 || menuOutputs < 1) {
+        menuOutputs != upSelectorInputs ||
+        downSwitchOutputs != upSelectorInputs + 1 ||
+        upSwitchOutputs != downSwitchOutputs + 1) {
         logger.Error("Cannot edit the Options menu because its selection interfaces are inconsistent");
         return;
     }
 
     m_ModsRow = upSelectorInputs - 1;
     m_BackRow = upSelectorInputs;
-    const int previousBackBranch = upSwitchOutputs - 1;
-    const int appendedBackBranch = upSwitchOutputs;
+    const int previousBackBranch = downSwitchOutputs - 1;
+    const int backBranch = upSwitchOutputs - 1;
     const int previousBackOutput = menuOutputs - 1;
     const std::string switchOutputName = "Out " +
-        std::to_string(appendedBackBranch);
+        std::to_string(backBranch);
     const std::string switchPinName = "Pin " +
-        std::to_string(appendedBackBranch);
+        std::to_string(backBranch);
     const std::string selectorInputName = "In " +
         std::to_string(m_BackRow);
     const std::string selectorPinName = "pIn " +
@@ -263,16 +276,14 @@ void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
     const auto textReferenceEdit = menu.Require(textReference.Value());
     const auto nop = menu.Require(nopNode.Value());
 
-    const auto selected = menu.AppendLocal("Mods Row", CKPGUID_INT);
-    menu.Bind(selected, static_cast<std::int32_t>(m_BackRow));
-    const auto upSwitchOut = menu.AppendOut(upSwitch, switchOutputName);
-    menu.Bind(upSwitch.Pin(switchPinName, CKPGUID_INT), selected);
+    const auto backRow = menu.AppendLocal("Back Row", CKPGUID_INT);
+    menu.Bind(backRow, static_cast<std::int32_t>(m_BackRow));
     const auto downSwitchOut = menu.AppendOut(downSwitch, switchOutputName);
-    menu.Bind(downSwitch.Pin(switchPinName, CKPGUID_INT), selected);
+    menu.Bind(downSwitch.Pin(switchPinName, CKPGUID_INT), backRow);
     const auto upSelectorIn = menu.AppendIn(upSelector, selectorInputName);
-    menu.Bind(upSelector.Pin(selectorPinName, CKPGUID_INT), selected);
+    menu.Bind(upSelector.Pin(selectorPinName, CKPGUID_INT), backRow);
     const auto downSelectorIn = menu.AppendIn(downSelector, selectorInputName);
-    menu.Bind(downSelector.Pin(selectorPinName, CKPGUID_INT), selected);
+    menu.Bind(downSelector.Pin(selectorPinName, CKPGUID_INT), backRow);
 
     const auto textNode = menu.Add(text);
     const auto pushButtonNode = menu.Add(pushButton);
@@ -281,7 +292,7 @@ void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
     for (int i = 2; i < 6; ++i)
         menu.Share(textNode.Pin(i), textReferenceEdit.Pin(i));
 
-    menu.Reconnect(menu.Leaving(upSwitch, previousBackBranch), upSwitchOut,
+    menu.Reconnect(menu.Leaving(upSwitch, previousBackBranch), upSwitch.Out(backBranch),
                    menu.Next(upSwitch, previousBackBranch).In(0));
     // The native Options menu is a same-frame interaction loop. These edges
     // add one more branch to that existing loop; confirm that intent at the
@@ -332,9 +343,23 @@ void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
 
 void ModsMenuEntry::OnProcess() {
     if (m_Retiring) {
+        if (m_CloseBlocked)
+            return;
         const auto closed = m_Patch.Close();
-        if (closed && closed.Value() == Behavior::CloseState::Closed)
-            Clear(true);
+        if (!closed) {
+            if (!m_CloseFailureReported && m_Logger) {
+                m_Logger->Error(
+                    "The Mods menu Patch could not be restored: %s",
+                    closed.GetStatus().Message.empty()
+                        ? "Behavior Patch close failed"
+                        : closed.GetStatus().Message.c_str());
+                m_CloseFailureReported = true;
+            }
+            m_CloseBlocked = true;
+            return;
+        }
+        if (closed.Value() == Behavior::CloseState::Closed)
+            ResumePendingLoad();
         return;
     }
     if (!m_Patch || m_Published)
@@ -448,21 +473,65 @@ void ModsMenuEntry::Fail(const Behavior::Status &status) {
 }
 
 void ModsMenuEntry::Unload() {
+    m_PendingLoad = {};
     Retire(false);
 }
 
 void ModsMenuEntry::Retire(bool deferCleanup) {
     Restore();
+    if (!m_Patch) {
+        ResumePendingLoad();
+        return;
+    }
+
     const auto closed = m_Patch.Close();
-    const bool canDestroy = !m_Patch ||
-        (closed && closed.Value() == Behavior::CloseState::Closed);
+    const bool canDestroy = closed &&
+        closed.Value() == Behavior::CloseState::Closed;
     if (canDestroy || !deferCleanup) {
-        Clear(canDestroy);
+        if (!canDestroy && !closed && m_Logger) {
+            m_Logger->Error(
+                "The Mods menu Patch could not be restored during unload: %s",
+                closed.GetStatus().Message.empty()
+                    ? "Behavior Patch close failed"
+                    : closed.GetStatus().Message.c_str());
+        }
+        if (canDestroy)
+            ResumePendingLoad();
+        else
+            Clear(false);
         return;
     }
 
     HideButton();
     m_Retiring = true;
+    m_CloseBlocked = !closed;
+    if (!closed && !m_CloseFailureReported && m_Logger) {
+        m_Logger->Error(
+            "The Mods menu Patch could not be restored: %s",
+            closed.GetStatus().Message.empty()
+                ? "Behavior Patch close failed"
+                : closed.GetStatus().Message.c_str());
+        m_CloseFailureReported = true;
+    }
+}
+
+void ModsMenuEntry::ResumePendingLoad() {
+    const PendingLoad pending = m_PendingLoad;
+    m_PendingLoad = {};
+    Clear(true);
+    if (!pending.Behavior || !pending.Script ||
+        !pending.Bml || !pending.Logger) {
+        return;
+    }
+
+    CKContext *context = pending.Bml->GetCKContext();
+    CKBehavior *script = Live<CKBehavior>(context, pending.Script);
+    if (!script) {
+        pending.Logger->Error(
+            "Cannot replace the Mods menu Patch because Menu_Options is no longer live");
+        return;
+    }
+    BeginLoad(*pending.Behavior, script, *pending.Bml, *pending.Logger);
 }
 
 void ModsMenuEntry::HideButton() {
@@ -485,6 +554,8 @@ void ModsMenuEntry::Clear(bool destroyButton) {
     m_BackRow = -1;
     m_Published = false;
     m_Retiring = false;
+    m_CloseBlocked = false;
+    m_CloseFailureReported = false;
     m_Context = nullptr;
     m_BML = nullptr;
     m_Logger = nullptr;

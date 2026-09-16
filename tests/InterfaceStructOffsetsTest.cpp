@@ -6,6 +6,7 @@
 #include "BML/Gameplay.h"
 #include "BML/Behavior.h"
 #include "BML/Interface.h"
+#include "BML/ModMenu.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
 #include "BML/Speedrun.h"
@@ -232,6 +233,27 @@ TEST(InterfaceStructOffsets, UIInterface) {
     EXPECT_GOLDEN_OFFSET(BML_UIInterface, ShowTitle, 44);
     EXPECT_GOLDEN_OFFSET(BML_UIInterface, ShowFPS, 48);
     ExpectGrowthRules<BML_UIInterface>("bml.ui", 52, 0, BML_UI_INTERFACE_MINOR);
+}
+
+TEST(InterfaceStructOffsets, ModMenuPageAndInterface) {
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPageFrame, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPageFrame, Action, 4);
+    EXPECT_EQ(sizeof(BML_ModMenuPageFrame), static_cast<std::size_t>(8));
+
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Id, 4);
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Label, 8);
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Description, 12);
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, UserData, 16);
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Draw, 20);
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Enter, 24);
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Leave, 28);
+    EXPECT_EQ(sizeof(BML_ModMenuPage), static_cast<std::size_t>(32));
+
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuInterface, RegisterPage, 12);
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuInterface, UnregisterPage, 16);
+    ExpectGrowthRules<BML_ModMenuInterface>("bml.mod-menu", 20, 0,
+                                            BML_MOD_MENU_INTERFACE_MINOR);
 }
 
 TEST(InterfaceStructOffsets, SpeedrunInterface) {

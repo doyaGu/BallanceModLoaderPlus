@@ -59,6 +59,8 @@ void CollectGameFontRoles(const Behavior::Graph &graph,
 
 } // namespace
 
+BMLMod::BMLMod(ModContext *context) : IMod(context), m_ModMenu(*context) {}
+
 ModContext *BMLMod::GetRuntimeContext() const {
     return dynamic_cast<ModContext *>(m_BML);
 }
@@ -302,7 +304,7 @@ void BMLMod::ClearIngameMessages() {
 }
 
 void BMLMod::OpenModsMenu() {
-    if (!m_ModMenu.Open("Mod List"))
+    if (!m_ModMenu.Open())
         GetLogger()->Error("Cannot open the Mods menu route");
 }
 
@@ -475,7 +477,6 @@ void BMLMod::InitGUI() {
     Bui::InitTextures(m_CKContext);
     Bui::InitMaterials(m_CKContext);
 
-    m_ModMenu.Init();
     if (ModContext *context = GetRuntimeContext()) {
         m_CustomMaps.OnLoad(*m_BML, *GetLogger(),
                             context->GetDirectory(BML_DIR_LOADER),
@@ -544,10 +545,7 @@ void BMLMod::AcquireGameFonts() {
 }
 
 void BMLMod::OnProcess_Menu() {
-    if (!m_ModMenu.Render()) {
-        GetLogger()->Error("Cannot render the Mods menu route");
-        (void) m_ModMenu.Close();
-    }
+    m_ModMenu.OnProcess();
     m_CustomMaps.OnProcess();
 }
 

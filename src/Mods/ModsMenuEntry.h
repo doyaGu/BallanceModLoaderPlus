@@ -20,6 +20,16 @@ public:
     void Unload();
 
 private:
+    struct PendingLoad {
+        BML::Behavior::Session *Behavior = nullptr;
+        CK_ID Script = 0;
+        IBML *Bml = nullptr;
+        ILogger *Logger = nullptr;
+    };
+
+    void BeginLoad(BML::Behavior::Session &behavior, CKBehavior *script,
+                   IBML &bml, ILogger &logger);
+    void ResumePendingLoad();
     void Publish();
     void Restore();
     void Fail(const BML::Behavior::Status &status);
@@ -38,6 +48,9 @@ private:
     int m_BackRow = -1;
     bool m_Published = false;
     bool m_Retiring = false;
+    bool m_CloseBlocked = false;
+    bool m_CloseFailureReported = false;
+    PendingLoad m_PendingLoad;
 };
 
 #endif // BML_MODSMENUENTRY_H

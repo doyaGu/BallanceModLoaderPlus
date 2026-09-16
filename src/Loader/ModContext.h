@@ -1,6 +1,7 @@
 #ifndef BML_MODCONTEXT_H
 #define BML_MODCONTEXT_H
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <shared_mutex>
@@ -24,6 +25,7 @@
 #include "Loader/ModInvocationGate.h"
 #include "Gameplay/GameSession.h"
 #include "UI/GameFontCatalog.h"
+#include "ModMenu/ModMenuPages.h"
 #include "Behavior/Runtime.h"
 #include "Behavior/Script.h"
 #include "Behavior/Sessions.h"
@@ -146,6 +148,8 @@ public:
 
     int GetModCount() override;
     IMod *GetMod(int index) override;
+    std::uint64_t GetModGeneration(const IMod *mod) const;
+    std::uint64_t GetModRegistryRevision() const;
     IMod *FindMod(const char *id) const override;
     std::string GetNativeImcOwnerId(
         const void *callerAddress,
@@ -162,6 +166,8 @@ public:
     bool IsMainThread() const { return std::this_thread::get_id() == m_MainThreadId; }
     BML::ImcRuntime &GetImcRuntime() { return m_ImcRuntime; }
     const BML::ImcRuntime &GetImcRuntime() const { return m_ImcRuntime; }
+    ModMenuPages &GetModMenuPages() { return m_ModMenuPages; }
+    const ModMenuPages &GetModMenuPages() const { return m_ModMenuPages; }
     int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
     int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
     int CheckDependencies(IMod *mod) const override;
@@ -511,6 +517,9 @@ private:
     void SnapshotConfigMetadata();
     void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
     BML::Behavior::Internal::Status RetireBehaviorEdits(const std::string &ownerId);
+    void RetireModBehaviorState(const std::string &ownerId) noexcept;
+    void CleanupModRegistrations(const std::string &ownerId) noexcept;
+    void CleanupModState(const std::string &ownerId) noexcept;
     void DeactivateActiveMods(bool dispatchPendingNotifications);
     void RollbackModActivation();
 
@@ -528,6 +537,7 @@ private:
     BML::Behavior::Internal::PhysicsForce::Sessions m_PhysicsForce;
     BML::ExecuteBBAdapter m_ExecuteBB;
     BML::GameFontCatalog m_GameFonts;
+    ModMenuPages m_ModMenuPages;
     std::unique_ptr<BML::UI::FontRuntime> m_UiFonts;
 #if BML_ENABLE_ANGELSCRIPT
     bool m_AngelScriptExtensionRegistered = false;
@@ -581,6 +591,9 @@ private:
     std::vector<IMod *> m_Mods;
     std::vector<IMod *> m_ActiveMods;
     std::unordered_map<std::string, size_t> m_ModIndex;
+    std::unordered_map<const IMod *, std::uint64_t> m_ModGenerations;
+    std::uint64_t m_NextModGeneration = 1;
+    std::uint64_t m_ModRegistryRevision = 0;
 
     std::unordered_map<IMod*, std::vector<ModDependency>> m_ModDependencies;
 

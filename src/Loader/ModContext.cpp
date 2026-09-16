@@ -786,22 +786,12 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
                 m_Logger->Error("Unknown exception in a Mod unload callback.");
         }
         try {
-            const BML::Behavior::Internal::Status edits =
-                RetireBehaviorEdits(mod->GetID());
-            if (!edits && m_Logger)
-                m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
-                                mod->GetID(), edits.Message.c_str());
-            const BML::Behavior::Internal::Status scripts =
-                m_BehaviorScripts.RetireOwner(mod->GetID());
-            if (!scripts && m_Logger)
-                m_Logger->Error(
-                    "Failed to retire Behavior Scripts for Mod %s: %s",
-                    mod->GetID(), scripts.Message.c_str());
-            m_BehaviorSessions.RetireOwner(mod->GetID());
+            const char *ownerId = mod ? mod->GetID() : nullptr;
+            if (ownerId && ownerId[0] != '\0')
+                RetireModBehaviorState(ownerId);
         } catch (...) {
             if (m_Logger)
-                m_Logger->Error(
-                    "Failed to retire Behavior state for a Mod during shutdown.");
+                m_Logger->Error("Failed to resolve a Mod id during Behavior cleanup.");
         }
     }
 
@@ -813,13 +803,12 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
     for (auto rit = m_ActiveMods.rbegin(); rit != m_ActiveMods.rend(); ++rit) {
         IMod *mod = *rit;
         try {
-            m_ImcRuntime.CleanupOwner(mod->GetID());
-            (void) RetireBehaviorEdits(mod->GetID());
-            (void) m_BehaviorScripts.RetireOwner(mod->GetID());
-            m_BehaviorSessions.RetireOwner(mod->GetID());
+            const char *ownerId = mod ? mod->GetID() : nullptr;
+            if (ownerId && ownerId[0] != '\0')
+                CleanupModState(ownerId);
         } catch (...) {
             if (m_Logger)
-                m_Logger->Error("Failed to clean IMC state for a Mod during shutdown.");
+                m_Logger->Error("Failed to resolve a Mod id during owner-state cleanup.");
         }
     }
 
@@ -852,14 +841,17 @@ void ModContext::RollbackModActivation() {
     auto invocationLock = m_ModInvocationGate.LockMutation();
     DeactivateActiveMods(false);
 
-    // A throwing OnLoad may leave an IMC client behind before the Mod becomes
-    // active. Active owners were already cleaned by DeactivateActiveMods.
+    // A throwing OnLoad may publish owner-scoped state before the Mod becomes
+    // active. Retire every owner because only completed activations reached the
+    // active list cleaned by DeactivateActiveMods.
     for (IMod *mod : m_Mods) {
         try {
-            m_ImcRuntime.CleanupOwner(mod->GetID());
+            const char *ownerId = mod ? mod->GetID() : nullptr;
+            if (ownerId && ownerId[0] != '\0')
+                CleanupModState(ownerId);
         } catch (...) {
             if (m_Logger)
-                m_Logger->Error("Failed to clean IMC state during Mod activation rollback.");
+                m_Logger->Error("Failed to resolve a Mod id during activation rollback.");
         }
     }
     ClearFlags(BML_MODS_INITED);
@@ -875,6 +867,20 @@ IMod *ModContext::GetMod(int index) {
     if (index < 0 || index >= (int) m_Mods.size())
         return nullptr;
     return m_Mods[index];
+}
+
+std::uint64_t ModContext::GetModGeneration(const IMod *mod) const {
+    if (!mod)
+        return 0;
+
+    std::shared_lock<std::shared_mutex> lock(m_ModRegistryMutex);
+    const auto generation = m_ModGenerations.find(mod);
+    return generation == m_ModGenerations.end() ? 0 : generation->second;
+}
+
+std::uint64_t ModContext::GetModRegistryRevision() const {
+    std::shared_lock<std::shared_mutex> lock(m_ModRegistryMutex);
+    return m_ModRegistryRevision;
 }
 
 IMod *ModContext::FindMod(const char *id) const {
@@ -2663,6 +2669,7 @@ bool ModContext::PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
             const size_t index = oldIt->second;
             m_ModIndex.erase(oldIt);
             m_ModIndex.emplace(candidate.Id, index);
+            ++m_ModRegistryRevision;
         }
     }
 
@@ -2692,6 +2699,8 @@ void ModContext::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
 
         if (!oldDefinition.Id.empty())
             m_ModIndex[oldDefinition.Id] = index;
+        if (currentId != oldDefinition.Id)
+            ++m_ModRegistryRevision;
     }
 
     ClearDependencies(mod);
@@ -2783,9 +2792,29 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
     // Record the mod in our registries.  Roll the vector back if allocating
     // the index entry fails so both views keep the same membership.
     m_Mods.push_back(mod);
+    bool indexed = false;
     try {
-        m_ModIndex.emplace(modId, m_Mods.size() - 1);
+        const auto indexResult = m_ModIndex.emplace(modId, m_Mods.size() - 1);
+        if (!indexResult.second) {
+            m_Mods.pop_back();
+            m_Logger->Error("Mod registration failed: inconsistent id index for %s.",
+                            modId.c_str());
+            return false;
+        }
+        indexed = true;
+
+        const auto generationResult = m_ModGenerations.emplace(mod, m_NextModGeneration);
+        if (!generationResult.second) {
+            m_ModIndex.erase(modId);
+            m_Mods.pop_back();
+            m_Logger->Error("Mod registration failed: inconsistent generation index for %s.",
+                            modId.c_str());
+            return false;
+        }
     } catch (...) {
+        if (indexed)
+            m_ModIndex.erase(modId);
+        m_ModGenerations.erase(mod);
         m_Mods.pop_back();
         throw;
     }
@@ -2796,6 +2825,7 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         try {
             if (!m_NativeModRegistry.Add(dllHandle, modId)) {
                 m_ModIndex.erase(modId);
+                m_ModGenerations.erase(mod);
                 m_Mods.pop_back();
                 m_Logger->Error("Mod registration failed: inconsistent native DLL ownership for %s.",
                                 modId.c_str());
@@ -2803,21 +2833,36 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
             }
         } catch (...) {
             m_ModIndex.erase(modId);
+            m_ModGenerations.erase(mod);
             m_Mods.pop_back();
             throw;
         }
     }
 
-    if (!m_BehaviorSessions.RegisterOwner(modId)) {
+    std::uint64_t behaviorOwner = 0;
+    try {
+        behaviorOwner = m_BehaviorSessions.RegisterOwner(modId);
+    } catch (...) {
         if (dllHandle)
             (void) m_NativeModRegistry.Remove(modId);
         m_ModIndex.erase(modId);
+        m_ModGenerations.erase(mod);
+        m_Mods.pop_back();
+        throw;
+    }
+    if (behaviorOwner == 0) {
+        if (dllHandle)
+            (void) m_NativeModRegistry.Remove(modId);
+        m_ModIndex.erase(modId);
+        m_ModGenerations.erase(mod);
         m_Mods.pop_back();
         m_Logger->Error("Mod registration failed: cannot register Behavior owner %s.",
                         modId.c_str());
         return false;
     }
 
+    ++m_NextModGeneration;
+    ++m_ModRegistryRevision;
     return true;
 }
 
@@ -2891,6 +2936,62 @@ bool ModContext::NativeModOwnsAddress(
     return m_NativeModRegistry.Owns(module, ownerId);
 }
 
+void ModContext::CleanupModRegistrations(const std::string &ownerId) noexcept {
+    try {
+        m_ImcRuntime.CleanupOwner(ownerId);
+    } catch (...) {
+        if (m_Logger)
+            m_Logger->Error("Failed to clean IMC state for Mod %s.", ownerId.c_str());
+    }
+
+    try {
+        m_ModMenuPages.RemoveOwner(ownerId);
+    } catch (...) {
+        if (m_Logger) {
+            m_Logger->Error("Failed to clean Mod Menu state for Mod %s.",
+                            ownerId.c_str());
+        }
+    }
+
+    BML::Api::UnregisterInterfacesForOwner(ownerId);
+}
+
+void ModContext::RetireModBehaviorState(const std::string &ownerId) noexcept {
+    try {
+        const BML::Behavior::Internal::Status edits = RetireBehaviorEdits(ownerId);
+        if (!edits && m_Logger) {
+            m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
+                            ownerId.c_str(), edits.Message.c_str());
+        }
+    } catch (...) {
+        if (m_Logger)
+            m_Logger->Error("Failed to retire Behavior edits for Mod %s.", ownerId.c_str());
+    }
+
+    try {
+        const BML::Behavior::Internal::Status scripts = m_BehaviorScripts.RetireOwner(ownerId);
+        if (!scripts && m_Logger) {
+            m_Logger->Error("Failed to retire Behavior Scripts for Mod %s: %s",
+                            ownerId.c_str(), scripts.Message.c_str());
+        }
+    } catch (...) {
+        if (m_Logger)
+            m_Logger->Error("Failed to retire Behavior Scripts for Mod %s.", ownerId.c_str());
+    }
+
+    try {
+        m_BehaviorSessions.RetireOwner(ownerId);
+    } catch (...) {
+        if (m_Logger)
+            m_Logger->Error("Failed to retire Behavior sessions for Mod %s.", ownerId.c_str());
+    }
+}
+
+void ModContext::CleanupModState(const std::string &ownerId) noexcept {
+    RetireModBehaviorState(ownerId);
+    CleanupModRegistrations(ownerId);
+}
+
 bool ModContext::UnregisterMod(IMod *mod) {
     if (!mod) {
         return false;
@@ -2935,8 +3036,7 @@ bool ModContext::UnregisterMod(IMod *mod) {
             return false;
         }
         m_BehaviorSessions.RetireOwner(modIdCopy);
-        m_ImcRuntime.CleanupOwner(modIdCopy);
-        BML::Api::UnregisterInterfacesForOwner(modIdCopy);
+        CleanupModRegistrations(modIdCopy);
 #if BML_ENABLE_ANGELSCRIPT
         if (m_ScriptHotReload) {
             if (auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod))
@@ -2979,6 +3079,8 @@ bool ModContext::UnregisterMod(IMod *mod) {
             const size_t removedIndex = registeredId->second;
             m_Mods.erase(m_Mods.begin() + static_cast<std::ptrdiff_t>(removedIndex));
             m_ModIndex.erase(registeredId);
+            m_ModGenerations.erase(mod);
+            ++m_ModRegistryRevision;
             for (auto &entry : m_ModIndex) {
                 if (entry.second > removedIndex)
                     --entry.second;
