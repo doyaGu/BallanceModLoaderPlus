@@ -193,7 +193,7 @@ runners.
 | Building Block Prototype configuration, execution, or graph insertion | `src/Behavior/Runtime.*`, the affected `src/Behavior/<BuildingBlock>.*` module, `src/Api/ExecuteBB.cpp` | Dependency test, exported ABI test, Win32 build, and affected Player test |
 | CK lifecycle and callback timing | `src/Loader/ModManager.*` | Focused lifecycle tests and Player smoke test |
 | Mod discovery, dependency order, services, or shutdown | `src/Loader/ModContext.*` | Relevant loader/dependency tests and native/script smoke coverage |
-| HUD, menus, command bar, or built-in behavior | `src/Mods/BMLMod.*`, `src/HUD/`, `src/Console/`, `src/CustomMaps/`, `src/Gameplay/`, `src/UI/` | Focused UI/service tests and Player visual/input smoke test |
+| HUD, menus, command bar, or built-in behavior | `src/Mods/BMLMod.*`, `src/HUD/`, `src/Console/`, `src/CustomMaps/`, `src/ModMenu/`, `src/Gameplay/`, `src/UI/` | Focused UI/service tests and Player visual/input smoke test |
 | Legacy native SDK or CMake consumer behavior | `include/BML/`, `cmake/` | ABI/compile tests, template configure/build, and installed SDK check |
 | IMC runtime | `src/Imc/ImcApi.cpp`, `src/Imc/ImcRuntime.*` | IMC runtime/compatibility tests and native IMC smoke test |
 | Built-in interface struct or the reads behind it | `include/BML/Interface.h`, `src/Api/Interfaces.cpp`, `src/Api/BuiltinCapabilities.*` | Focused interface tests, the C ABI compile test, and native smoke test |
