@@ -381,7 +381,7 @@ int BML_BEHAVIOR_CALL ReadPlan(
             break;
         }
         *matches = static_cast<std::uint32_t>(info.Matches);
-        *installations = static_cast<std::uint32_t>(info.Installations);
+        *installations = static_cast<std::uint32_t>(info.Instances);
         *world = info.World;
         return BML_OK;
     } catch (...) {

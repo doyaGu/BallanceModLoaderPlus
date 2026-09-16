@@ -21,6 +21,9 @@ private:
     void ApplyLanternAlphaTest(bool enabled);
     bool ApplyLanternScript(bool enabled, bool warnIfUnavailable);
     bool ApplyOverclock(bool enabled, bool warnIfUnavailable);
+    bool SetPlanEnabled(BML::Behavior::Plan &plan, bool enabled,
+                        const char *name, bool warnIfUnavailable);
+    void ClosePlan(BML::Behavior::Plan &plan, const char *name);
 
     IBML *m_BML = nullptr;
     ILogger *m_Logger = nullptr;

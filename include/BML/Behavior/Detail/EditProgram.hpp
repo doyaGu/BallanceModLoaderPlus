@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iterator>
+#include <limits>
 #include <new>
 #include <stdexcept>
 #include <type_traits>
@@ -60,8 +62,15 @@ struct EditProgram {
 // These records only connect the public On(...) syntax to wire compilation.
 // Their concrete shape is deliberately kept out of the domain headers.
 struct PatchSymbols {
-    std::weak_ptr<EditProgram> Edit;
-    std::uint32_t HandleBase = 0;
+    std::shared_ptr<EditProgram> Edit;
+    std::uint64_t Binding = 0;
+    std::uint32_t HandleLimit = 0;
+};
+
+struct PlanSymbols {
+    std::shared_ptr<EditProgram> Edit;
+    std::uint64_t Binding = 0;
+    std::uint32_t HandleLimit = 0;
 };
 
 struct PatchTarget {
@@ -69,7 +78,7 @@ struct PatchTarget {
     BML_ObjectRef Graph{};
     std::uint64_t Fingerprint = 0;
     std::shared_ptr<const BML::Behavior::Edit> Body;
-    std::weak_ptr<EditProgram> Symbols;
+    std::shared_ptr<EditProgram> Symbols;
     int Code = BML_OK;
     Status Failure;
 };
@@ -78,6 +87,7 @@ struct PlanRule {
     std::uint32_t Targets = BML_BEHAVIOR_TARGETS_EACH;
     std::string Script;
     std::shared_ptr<const BML::Behavior::Edit> Body;
+    std::shared_ptr<EditProgram> Symbols;
     int Code = BML_OK;
     Status Failure;
 };
@@ -1194,13 +1204,17 @@ inline Plan::~Plan() {
 
 inline Plan::Plan(Plan &&other) noexcept
     : m_Session(std::move(other.m_Session)),
-      m_Handle(std::exchange(other.m_Handle, nullptr)) {}
+      m_Handle(std::exchange(other.m_Handle, nullptr)),
+      m_Rules(std::move(other.m_Rules)),
+      m_NextBinding(std::exchange(other.m_NextBinding, 1)) {}
 
 inline Plan &Plan::operator=(Plan &&other) noexcept {
     if (this != &other) {
         Plan previous(std::move(*this));
         m_Session = std::move(other.m_Session);
         m_Handle = std::exchange(other.m_Handle, nullptr);
+        m_Rules = std::move(other.m_Rules);
+        m_NextBinding = std::exchange(other.m_NextBinding, 1);
     }
     return *this;
 }
@@ -1244,6 +1258,8 @@ inline Result<PlanInfo> Plan::Info() const {
 inline Result<CloseState> Plan::Close() noexcept {
     if (!m_Handle) {
         m_Session.reset();
+        m_Rules.clear();
+        m_NextBinding = 1;
         return Result<CloseState>::Success(CloseState::Closed);
     }
     if (!m_Session || !m_Session->Api || !m_Session->Handle)
@@ -1252,6 +1268,8 @@ inline Result<CloseState> Plan::Close() noexcept {
     if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
         m_Handle = nullptr;
         m_Session.reset();
+        m_Rules.clear();
+        m_NextBinding = 1;
         return Result<CloseState>::Success(CloseState::Closed);
     }
     if (code == BML_ERROR_BUSY)
@@ -1273,8 +1291,18 @@ inline Result<CloseState> Plan::Close() noexcept {
 }
 
 inline Plan::Plan(std::shared_ptr<Detail::SessionState> session,
-                  BML_BehaviorPlan handle)
-    : m_Session(std::move(session)), m_Handle(handle) {}
+                  BML_BehaviorPlan handle,
+                  std::vector<Detail::PlanSymbols> rules)
+    : m_Session(std::move(session)), m_Handle(handle),
+      m_Rules(std::move(rules)) {
+    for (const Detail::PlanSymbols &rule : m_Rules) {
+        if (rule.Binding == (std::numeric_limits<std::uint64_t>::max)()) {
+            m_NextBinding = 0;
+            break;
+        }
+        m_NextBinding = (std::max)(m_NextBinding, rule.Binding + 1);
+    }
+}
 
 inline Patch::~Patch() {
     (void) Close();
@@ -1283,7 +1311,8 @@ inline Patch::~Patch() {
 inline Patch::Patch(Patch &&other) noexcept
     : m_Session(std::move(other.m_Session)),
       m_Handle(std::exchange(other.m_Handle, nullptr)),
-      m_Edits(std::move(other.m_Edits)) {}
+      m_Edits(std::move(other.m_Edits)),
+      m_NextBinding(std::exchange(other.m_NextBinding, 1)) {}
 
 inline Patch &Patch::operator=(Patch &&other) noexcept {
     if (this != &other) {
@@ -1291,6 +1320,7 @@ inline Patch &Patch::operator=(Patch &&other) noexcept {
         m_Session = std::move(other.m_Session);
         m_Handle = std::exchange(other.m_Handle, nullptr);
         m_Edits = std::move(other.m_Edits);
+        m_NextBinding = std::exchange(other.m_NextBinding, 1);
     }
     return *this;
 }
@@ -1331,7 +1361,8 @@ inline Result<PatchInfo> Patch::Info() const {
     return Detail::CompletePatchInfo(m_Session, m_Handle, wire, status);
 }
 
-inline Result<BML_ObjectRef> Patch::ResolveHandle(std::uint32_t node) const {
+inline Result<BML_ObjectRef> Patch::ResolveHandle(
+    const BML_BehaviorNodeRef &node) const {
     if (!*this)
         return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
     if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface,
@@ -1341,7 +1372,7 @@ inline Result<BML_ObjectRef> Patch::ResolveHandle(std::uint32_t node) const {
     BML_BehaviorStatus status = Detail::EmptyStatus();
     const int code = Detail::WireCode(
         m_Session->Api->ResolvePatchNode(
-            m_Session->Handle, m_Handle, node, &reference, &status),
+            m_Session->Handle, m_Handle, &node, &reference, &status),
         status);
     if (code != BML_OK)
         return Result<BML_ObjectRef>::Failure(
@@ -1357,6 +1388,7 @@ inline Result<CloseState> Patch::Close() noexcept {
     if (!m_Handle) {
         m_Session.reset();
         m_Edits.clear();
+        m_NextBinding = 1;
         return Result<CloseState>::Success(CloseState::Closed);
     }
     if (!m_Session || !m_Session->Api || !m_Session->Handle)
@@ -1366,6 +1398,7 @@ inline Result<CloseState> Patch::Close() noexcept {
         m_Handle = nullptr;
         m_Session.reset();
         m_Edits.clear();
+        m_NextBinding = 1;
         return Result<CloseState>::Success(CloseState::Closed);
     }
     if (code == BML_ERROR_BUSY)
@@ -1390,7 +1423,15 @@ inline Patch::Patch(std::shared_ptr<Detail::SessionState> session,
                     BML_BehaviorPatch handle,
                     std::vector<Detail::PatchSymbols> edits)
     : m_Session(std::move(session)), m_Handle(handle),
-      m_Edits(std::move(edits)) {}
+      m_Edits(std::move(edits)) {
+    for (const Detail::PatchSymbols &edit : m_Edits) {
+        if (edit.Binding == (std::numeric_limits<std::uint64_t>::max)()) {
+            m_NextBinding = 0;
+            break;
+        }
+        m_NextBinding = (std::max)(m_NextBinding, edit.Binding + 1);
+    }
+}
 
 inline auto On(const Graph &graph, const Edit &edit) {
     Detail::PatchTarget target;
@@ -1427,6 +1468,7 @@ inline auto On(const Scripts &scripts, const Edit &edit) {
     Detail::PlanRule target;
     target.Targets = scripts.m_Count;
     target.Script = scripts.m_Name;
+    target.Symbols = edit.m_Program;
     if (!edit.m_Program) {
         target.Code = BML_ERROR_INVALID_PARAMETER;
         target.Failure.Error = Error::GraphLocalityInvalid;
@@ -1454,18 +1496,23 @@ struct PatchWire {
     [[nodiscard]] static Result<PatchWire> Compile(
         const std::shared_ptr<SessionState> &session,
         const std::vector<PatchTarget> &targets,
-        bool verifySnapshots) {
+        bool verifySnapshots, std::uint64_t firstBinding = 1) {
+        if (!firstBinding || static_cast<std::uint64_t>(targets.size()) >
+                (std::numeric_limits<std::uint64_t>::max)() - firstBinding + 1)
+            return Result<PatchWire>::Failure(BML_ERROR_INVALID_PARAMETER);
         PatchWire wire;
         wire.Programs.reserve(targets.size());
         wire.Targets.reserve(targets.size());
         wire.Symbols.reserve(targets.size());
 
-        std::uint32_t handleBase = 0;
-        for (const PatchTarget &target : targets) {
+        std::uint64_t binding = firstBinding;
+        for (std::size_t targetIndex = 0; targetIndex < targets.size();
+             ++targetIndex) {
+            const PatchTarget &target = targets[targetIndex];
             if (target.Code != BML_OK)
                 return Result<PatchWire>::Failure(
                     target.Code, target.Failure);
-            if (!target.Body || target.Session != session ||
+            if (!target.Body || !target.Symbols || target.Session != session ||
                 !target.Graph.Domain)
                 return Result<PatchWire>::Failure(
                     BML_ERROR_INVALID_PARAMETER);
@@ -1499,19 +1546,17 @@ struct PatchWire {
             edit.StructSize = sizeof(edit);
             edit.Graph = target.Graph;
             edit.Fingerprint = target.Fingerprint;
+            edit.Binding = binding;
             edit.Steps = wire.Programs.back().Steps.empty()
                 ? nullptr : wire.Programs.back().Steps.data();
             edit.StepCount = static_cast<std::uint32_t>(
                 wire.Programs.back().Steps.size());
-            edit.HandleBase = handleBase;
             wire.Targets.push_back(edit);
-            wire.Symbols.push_back({target.Symbols, handleBase});
-
-            const std::uint32_t span = target.Body->m_Program->NextHandle;
-            if (span > UINT32_MAX - handleBase)
-                return Result<PatchWire>::Failure(
-                    BML_ERROR_INVALID_PARAMETER);
-            handleBase += span;
+            wire.Symbols.push_back(
+                {target.Symbols, binding,
+                 target.Body->m_Program->NextHandle});
+            if (targetIndex + 1 < targets.size())
+                ++binding;
         }
         return Result<PatchWire>::Success(std::move(wire));
     }
@@ -1520,18 +1565,27 @@ struct PatchWire {
 struct PlanWire {
     std::vector<EditWire> Programs;
     std::vector<BML_BehaviorScriptEdit> Rules;
+    std::vector<PlanSymbols> Symbols;
 
     [[nodiscard]] static Result<PlanWire> Compile(
         const std::shared_ptr<SessionState> &session,
-        const std::vector<PlanRule> &rules) {
+        const std::vector<PlanRule> &rules,
+        std::uint64_t firstBinding = 1) {
+        if (!firstBinding || static_cast<std::uint64_t>(rules.size()) >
+                (std::numeric_limits<std::uint64_t>::max)() - firstBinding + 1)
+            return Result<PlanWire>::Failure(BML_ERROR_INVALID_PARAMETER);
         PlanWire wire;
         wire.Programs.reserve(rules.size());
         wire.Rules.reserve(rules.size());
-        for (const PlanRule &rule : rules) {
+        wire.Symbols.reserve(rules.size());
+        std::uint64_t binding = firstBinding;
+        for (std::size_t ruleIndex = 0; ruleIndex < rules.size();
+             ++ruleIndex) {
+            const PlanRule &rule = rules[ruleIndex];
             if (rule.Code != BML_OK)
                 return Result<PlanWire>::Failure(
                     rule.Code, rule.Failure);
-            if (!rule.Body || rule.Script.empty())
+            if (!rule.Body || !rule.Symbols || rule.Script.empty())
                 return Result<PlanWire>::Failure(
                     BML_ERROR_INVALID_PARAMETER);
 
@@ -1547,11 +1601,17 @@ struct PlanWire {
             edit.StructSize = sizeof(edit);
             edit.Targets = rule.Targets;
             edit.Script = Detail::Text(rule.Script);
+            edit.Binding = binding;
             edit.Steps = wire.Programs.back().Steps.empty()
                 ? nullptr : wire.Programs.back().Steps.data();
             edit.StepCount = static_cast<std::uint32_t>(
                 wire.Programs.back().Steps.size());
             wire.Rules.push_back(edit);
+            wire.Symbols.push_back(
+                {rule.Symbols, binding,
+                 rule.Body->m_Program->NextHandle});
+            if (ruleIndex + 1 < rules.size())
+                ++binding;
         }
         return Result<PlanWire>::Success(std::move(wire));
     }
@@ -1572,16 +1632,199 @@ Result<BML_ObjectRef> Patch::Resolve(const Handle &node) const {
                    !before(node.m_Edit, item.Edit);
         });
     if (symbols == m_Edits.end() || !node.m_Id ||
-        node.m_Id > UINT32_MAX - symbols->HandleBase) {
+        node.m_Id >= symbols->HandleLimit ||
+        node.m_Scope >= symbols->HandleLimit) {
         Status status;
         status.Error = Behavior::Error::GraphLocalityInvalid;
         status.Phase = Behavior::Phase::Edit;
         status.Message =
-            "The symbolic Node belongs to a different Behavior Edit.";
+            "The symbolic Node is not part of this submitted Behavior Edit.";
         return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_PARAMETER,
                                                std::move(status));
     }
-    return ResolveHandle(node.m_Id + symbols->HandleBase);
+    BML_BehaviorNodeRef wire{};
+    wire.StructSize = sizeof(wire);
+    wire.Graph = node.m_Scope;
+    wire.Handle = node.m_Id;
+    wire.Binding = symbols->Binding;
+    return ResolveHandle(wire);
+}
+
+template <class Handle>
+Result<BML_BehaviorPortRef> Patch::ResolvePort(const Handle &port) const {
+    static_assert(std::is_same_v<std::decay_t<Handle>, Edit::Port>,
+                  "A Behavior Patch reads and writes only an Edit::Port.");
+    if (!*this)
+        return Result<BML_BehaviorPortRef>::Failure(BML_ERROR_INVALID_HANDLE);
+    const std::owner_less<std::weak_ptr<Detail::EditProgram>> before;
+    const auto symbols = std::find_if(
+        m_Edits.begin(), m_Edits.end(), [&](const Detail::PatchSymbols &item) {
+            return !before(item.Edit, port.m_Edit) &&
+                   !before(port.m_Edit, item.Edit);
+        });
+    if (symbols == m_Edits.end() || !port.m_Id ||
+        port.m_Id >= symbols->HandleLimit ||
+        port.m_Scope >= symbols->HandleLimit) {
+        Status status;
+        status.Error = Behavior::Error::GraphLocalityInvalid;
+        status.Phase = Behavior::Phase::Edit;
+        status.Message =
+            "The symbolic Port is not part of this submitted Behavior Edit.";
+        return Result<BML_BehaviorPortRef>::Failure(
+            BML_ERROR_INVALID_PARAMETER, std::move(status));
+    }
+    BML_BehaviorPortRef wire{};
+    wire.StructSize = sizeof(wire);
+    wire.Graph = port.m_Scope;
+    wire.Handle = port.m_Id;
+    wire.Kind = port.m_Kind;
+    wire.Binding = symbols->Binding;
+    wire.Type = Detail::WireGuid(port.m_Type);
+    wire.Slot = Detail::Wire::From(port.m_Slot);
+    return Result<BML_BehaviorPortRef>::Success(wire);
+}
+
+inline Plan::Instance::operator bool() const noexcept {
+    return m_Session && m_Session->Api && m_Session->Handle && m_Plan &&
+        m_Wire.StructSize >= sizeof(m_Wire) && m_Edit && m_HandleLimit;
+}
+
+inline Result<BML_BehaviorPortRef> Plan::Instance::ResolvePort(
+    const Edit::Port &port) const {
+    if (!*this)
+        return Result<BML_BehaviorPortRef>::Failure(BML_ERROR_INVALID_HANDLE);
+    const std::weak_ptr<Detail::EditProgram> definition = m_Edit;
+    const std::owner_less<std::weak_ptr<Detail::EditProgram>> before;
+    if (!port.m_Id || port.m_Id >= m_HandleLimit ||
+        port.m_Scope >= m_HandleLimit || before(definition, port.m_Edit) ||
+        before(port.m_Edit, definition)) {
+        Status status;
+        status.Error = Behavior::Error::GraphLocalityInvalid;
+        status.Phase = Behavior::Phase::Edit;
+        status.Message =
+            "The symbolic Port is not part of this installed Behavior Plan rule.";
+        return Result<BML_BehaviorPortRef>::Failure(
+            BML_ERROR_INVALID_PARAMETER, std::move(status));
+    }
+    BML_BehaviorPortRef wire{};
+    wire.StructSize = sizeof(wire);
+    wire.Graph = port.m_Scope;
+    wire.Handle = port.m_Id;
+    wire.Kind = port.m_Kind;
+    wire.Binding = m_Wire.Binding;
+    wire.Type = Detail::WireGuid(port.m_Type);
+    wire.Slot = Detail::Wire::From(port.m_Slot);
+    return Result<BML_BehaviorPortRef>::Success(wire);
+}
+
+inline Result<ObjectRef> Plan::Instance::Resolve(
+    const Edit::Node &node) const {
+    if (!*this)
+        return Result<ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface,
+                       ResolvePlanInstanceNode))
+        return Result<ObjectRef>::Failure(BML_ERROR_VERSION_MISMATCH);
+    const std::weak_ptr<Detail::EditProgram> definition = m_Edit;
+    const std::owner_less<std::weak_ptr<Detail::EditProgram>> before;
+    if (!node.m_Id || node.m_Id >= m_HandleLimit ||
+        node.m_Scope >= m_HandleLimit || before(definition, node.m_Edit) ||
+        before(node.m_Edit, definition)) {
+        Status status;
+        status.Error = Behavior::Error::GraphLocalityInvalid;
+        status.Phase = Behavior::Phase::Edit;
+        status.Message =
+            "The symbolic Node is not part of this installed Behavior Plan rule.";
+        return Result<ObjectRef>::Failure(BML_ERROR_INVALID_PARAMETER,
+                                           std::move(status));
+    }
+    ObjectRef reference{};
+    BML_BehaviorNodeRef wire{};
+    wire.StructSize = sizeof(wire);
+    wire.Graph = node.m_Scope;
+    wire.Handle = node.m_Id;
+    wire.Binding = m_Wire.Binding;
+    BML_BehaviorStatus status = Detail::EmptyStatus();
+    const int code = Detail::WireCode(
+        m_Session->Api->ResolvePlanInstanceNode(
+            m_Session->Handle, m_Plan, &m_Wire, &wire,
+            &reference, &status),
+        status);
+    if (code != BML_OK)
+        return Result<ObjectRef>::Failure(code, Detail::ReadStatus(status));
+    if (!Detail::ValidObjectRef(reference) || !reference.Domain)
+        return Result<ObjectRef>::Failure(
+            BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
+    return Result<ObjectRef>::Success(reference, Detail::ReadStatus(status));
+}
+
+inline Result<std::vector<Plan::Instance>> Plan::Instances() const {
+    if (!*this)
+        return Result<std::vector<Plan::Instance>>::Failure(
+            BML_ERROR_INVALID_HANDLE);
+    if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface,
+                       ReadPlanInstances))
+        return Result<std::vector<Plan::Instance>>::Failure(
+            BML_ERROR_VERSION_MISMATCH);
+    try {
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        std::uint32_t count = 0;
+        int code = Detail::WireCode(
+            m_Session->Api->ReadPlanInstances(
+                m_Session->Handle, m_Handle, nullptr, 0,
+                sizeof(BML_BehaviorPlanInstance), &count, &status),
+            status);
+        if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
+            return Result<std::vector<Plan::Instance>>::Failure(
+                code, Detail::ReadStatus(status));
+
+        std::vector<BML_BehaviorPlanInstance> records(count);
+        if (count) {
+            status = Detail::EmptyStatus();
+            std::uint32_t written = 0;
+            code = Detail::WireCode(
+                m_Session->Api->ReadPlanInstances(
+                    m_Session->Handle, m_Handle, records.data(), count,
+                    sizeof(BML_BehaviorPlanInstance), &written, &status),
+                status);
+            if (code != BML_OK)
+                return Result<std::vector<Plan::Instance>>::Failure(
+                    code, Detail::ReadStatus(status));
+            if (written != records.size())
+                return Result<std::vector<Plan::Instance>>::Failure(
+                    BML_ERROR_MALFORMED_MESSAGE,
+                    Detail::ReadStatus(status));
+        }
+
+        std::vector<Plan::Instance> instances;
+        instances.reserve(records.size());
+        for (const BML_BehaviorPlanInstance &record : records) {
+            const auto symbols = std::find_if(
+                m_Rules.begin(), m_Rules.end(),
+                [&](const Detail::PlanSymbols &rule) {
+                    return rule.Binding == record.Binding;
+                });
+            if (record.StructSize < sizeof(record) ||
+                symbols == m_Rules.end() || !record.PlanRevision ||
+                !record.Binding ||
+                !record.World || !record.Revision || !record.Identity ||
+                !Detail::ValidObjectRef(record.Script) ||
+                !record.Script.Domain) {
+                return Result<std::vector<Plan::Instance>>::Failure(
+                    BML_ERROR_MALFORMED_MESSAGE,
+                    Detail::ReadStatus(status));
+            }
+            instances.push_back(Plan::Instance(
+                m_Session, m_Handle, record, symbols->Edit,
+                symbols->HandleLimit));
+        }
+        return Result<std::vector<Plan::Instance>>::Success(
+            std::move(instances), Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<std::vector<Plan::Instance>>::Failure(
+            BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<std::vector<Plan::Instance>>::Failure(BML_ERROR_FAIL);
+    }
 }
 
 template <class First, class... More>
@@ -1717,7 +1960,7 @@ inline Result<Plan> Session::Plan(
             m_State->Api->SubmitPlan(
                 m_State->Handle, &spec, &handle, nullptr, &status),
             status);
-        Behavior::Plan owned(m_State, handle);
+        Behavior::Plan owned(m_State, handle, std::move(wire.Symbols));
         if (code != BML_OK || !handle) {
             return Result<Behavior::Plan>::Failure(
                 code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
@@ -1762,11 +2005,13 @@ inline Result<PatchInfo> Patch::Replace(
                           : BML_ERROR_VERSION_MISMATCH);
     try {
         Result<Detail::PatchWire> compiled =
-            Detail::PatchWire::Compile(m_Session, targets, false);
+            Detail::PatchWire::Compile(
+                m_Session, targets, false, m_NextBinding);
         if (!compiled)
             return Result<PatchInfo>::Failure(
                 compiled.Code(), compiled.GetStatus());
         Detail::PatchWire program = compiled.Take();
+        m_Edits.reserve(m_Edits.size() + program.Symbols.size());
 
         BML_BehaviorPatchInfo info{};
         info.StructSize = sizeof(info);
@@ -1777,9 +2022,20 @@ inline Result<PatchInfo> Patch::Replace(
                 static_cast<std::uint32_t>(program.Targets.size()),
                 &info, &status),
             status);
+        const std::uint64_t lastBinding = program.Symbols.back().Binding;
+        m_NextBinding = lastBinding == (std::numeric_limits<std::uint64_t>::max)()
+            ? 0 : lastBinding + 1;
+        const bool retained = code == BML_OK ||
+            info.State == BML_BEHAVIOR_PATCH_PENDING ||
+            info.State == BML_BEHAVIOR_PATCH_CONFLICTED;
+        if (retained) {
+            m_Edits.insert(
+                m_Edits.end(),
+                std::make_move_iterator(program.Symbols.begin()),
+                std::make_move_iterator(program.Symbols.end()));
+        }
         if (code != BML_OK)
             return Result<PatchInfo>::Failure(code, Detail::ReadStatus(status));
-        m_Edits = std::move(program.Symbols);
         return Detail::CompletePatchInfo(m_Session, m_Handle, info, status);
     } catch (const std::bad_alloc &) {
         return Result<PatchInfo>::Failure(BML_ERROR_OUT_OF_MEMORY);
@@ -1818,11 +2074,12 @@ inline Result<PlanInfo> Plan::Replace(
                           : BML_ERROR_VERSION_MISMATCH);
     try {
         Result<Detail::PlanWire> compiled =
-            Detail::PlanWire::Compile(m_Session, rules);
+            Detail::PlanWire::Compile(m_Session, rules, m_NextBinding);
         if (!compiled)
             return Result<PlanInfo>::Failure(
                 compiled.Code(), compiled.GetStatus());
         Detail::PlanWire program = compiled.Take();
+        m_Rules.reserve(m_Rules.size() + program.Symbols.size());
 
         BML_BehaviorPlanInfo info{};
         info.StructSize = sizeof(info);
@@ -1833,6 +2090,19 @@ inline Result<PlanInfo> Plan::Replace(
                 static_cast<std::uint32_t>(program.Rules.size()),
                 &info, &status),
             status);
+        const std::uint64_t lastBinding = program.Symbols.back().Binding;
+        m_NextBinding = lastBinding == (std::numeric_limits<std::uint64_t>::max)()
+            ? 0 : lastBinding + 1;
+        const bool retained = code == BML_OK ||
+            info.State == BML_BEHAVIOR_PLAN_RECONCILING ||
+            info.State == BML_BEHAVIOR_PLAN_PARTIAL ||
+            info.State == BML_BEHAVIOR_PLAN_CONFLICTED;
+        if (retained) {
+            m_Rules.insert(
+                m_Rules.end(),
+                std::make_move_iterator(program.Symbols.begin()),
+                std::make_move_iterator(program.Symbols.end()));
+        }
         if (code != BML_OK)
             return Result<PlanInfo>::Failure(code, Detail::ReadStatus(status));
         return Detail::CompletePlanInfo(m_Session, m_Handle, info, status);

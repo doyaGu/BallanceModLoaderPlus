@@ -152,9 +152,19 @@ static bool PlaceHookBlock(
         ? session->Reference(target)
         : Behavior::Result<Behavior::ObjectRef>::Failure(BML_ERROR_NOT_FOUND);
     if (!graph || !blockRef || (source && !sourceRef) || (target && !targetRef)) {
-        RecordHookBlockDiagnostic(
-            state, std::string(operation) +
-                " could not inspect the requested Behavior graph.");
+        const Behavior::Status &failure = !graph
+            ? graph.GetStatus()
+            : !blockRef ? blockRef.GetStatus()
+            : source && !sourceRef ? sourceRef.GetStatus()
+                                   : targetRef.GetStatus();
+        std::string message = std::string(operation) +
+            " could not inspect the requested Behavior graph";
+        if (!failure.Message.empty()) {
+            message += ": " + failure.Message;
+        } else {
+            message += ".";
+        }
+        RecordHookBlockDiagnostic(state, message);
         return false;
     }
 

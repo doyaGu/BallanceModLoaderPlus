@@ -976,6 +976,7 @@ private:
         spec.Name = {name, static_cast<std::uint32_t>(std::strlen(name))};
         BML_BehaviorGraphEdit target{};
         target.StructSize = sizeof(target);
+        target.Binding = 1;
         target.Graph = graph;
         target.Steps = steps;
         target.StepCount = 3;

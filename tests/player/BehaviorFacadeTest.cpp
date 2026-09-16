@@ -659,6 +659,73 @@ private:
             logical->Fingerprint() != live->Fingerprint();
     }
 
+    bool VerifyPlanInstance() {
+        auto instances = m_Plan.Instances();
+        if (!instances || instances->size() != 1) {
+            GetLogger()->Error(
+                "Behavior plan instance read failed: code=%d count=%u",
+                instances.Code(), instances
+                    ? static_cast<unsigned>(instances->size()) : 0u);
+            return false;
+        }
+
+        BML::Behavior::Plan::Instance instance =
+            std::move(instances->front());
+        auto resolved = instance.Resolve(m_PlanBlock);
+        auto before = instance.Read(m_PlanLiteral);
+        const std::int32_t *beforeValue = before
+            ? std::get_if<std::int32_t>(&before->Data) : nullptr;
+        if (instance.Rule() != 0 ||
+            instance.Script().Slot !=
+                static_cast<std::uint32_t>(m_AuthoredRootId) ||
+            !resolved || !beforeValue || *beforeValue != 41) {
+            GetLogger()->Error(
+                "Behavior plan instance resolve failed: rule=%u script=%u resolve=%d read=%d value=%d",
+                instance.Rule(), instance.Script().Slot,
+                resolved.Code(), before.Code(),
+                beforeValue ? *beforeValue : -1);
+            return false;
+        }
+
+        auto written = instance.Set(m_PlanLiteral, std::int32_t{73});
+        if (!written) {
+            GetLogger()->Error(
+                "Behavior plan instance write failed: code=%d",
+                written.Code());
+            return false;
+        }
+        auto after = instance.Read(m_PlanLiteral);
+        const std::int32_t *afterValue = after
+            ? std::get_if<std::int32_t>(&after->Data) : nullptr;
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        CKBehavior *block = context && resolved
+            ? CKBehavior::Cast(context->GetObject(resolved->Slot)) : nullptr;
+        int literalIndex = -1;
+        for (int index = 0; block &&
+             index < block->GetInputParameterCount(); ++index) {
+            CKParameterIn *pin = block->GetInputParameter(index);
+            if (pin && pin->GetName() &&
+                std::strcmp(pin->GetName(), "Literal") == 0) {
+                literalIndex = index;
+                break;
+            }
+        }
+        int nativeValue = 0;
+        const bool nativeMatches = literalIndex >= 0 &&
+            block->GetInputParameterValue(literalIndex, &nativeValue) == CK_OK &&
+            nativeValue == 73;
+        if (!written || !afterValue || *afterValue != 73 || !nativeMatches) {
+            GetLogger()->Error(
+                "Behavior plan instance value failed: write=%d read=%d value=%d native=%d",
+                written.Code(), after.Code(),
+                afterValue ? *afterValue : -1, nativeValue);
+            return false;
+        }
+
+        m_PlanInstance = std::move(instance);
+        return true;
+    }
+
     // The whole authoring program, written the way an author would write it.
     // Nothing here reaches the live graph until Submit accepts all of it.
     void SubmitPlan() {
@@ -715,12 +782,14 @@ private:
             return;
         }
         m_Plan = submitted.Take();
+        m_PlanBlock = block;
+        m_PlanLiteral = literal;
 
         // A Plan the Loader accepted reconciles on the next frame, so it is
         // not installed yet and reads Reconciling with no matches.
         const auto pending = m_Plan.Info();
         m_SubmitPassed = pending && pending->State == PlanState::Reconciling &&
-            pending->Matches == 0 && pending->Installations == 0 &&
+            pending->Matches == 0 && pending->Instances == 0 &&
             !pending->Active();
         if (!m_SubmitPassed) {
             Finish(false, "submit-state");
@@ -733,7 +802,7 @@ private:
     void WaitActive() {
         const auto info = m_Plan.Info();
         if (info && info->Active() && info->Matches == 1 &&
-            info->Installations == 1 && info->World != 0) {
+            info->Instances == 1 && info->World != 0) {
             if (!Installed()) {
                 Finish(false, "install-shape");
                 return;
@@ -742,6 +811,11 @@ private:
                 Finish(false, "graph-views");
                 return;
             }
+            if (!VerifyPlanInstance()) {
+                Finish(false, "installation-binding");
+                return;
+            }
+            m_PlanInstancePassed = true;
             m_InstallPassed = true;
             if (!RunGraph()) {
                 Finish(false, "script-activate");
@@ -755,7 +829,7 @@ private:
                 "Behavior plan install timed out: read=%d state=%u matches=%u installations=%u",
                 info.Code(),
                 info ? static_cast<unsigned>(info->State) : 0u,
-                info ? info->Matches : 0u, info ? info->Installations : 0u);
+                info ? info->Matches : 0u, info ? info->Instances : 0u);
             Finish(false, "install");
         }
     }
@@ -807,6 +881,11 @@ private:
                 Finish(false, "restore");
             return;
         }
+        if (!m_PlanInstance || m_PlanInstance->Read(m_PlanLiteral)) {
+            Finish(false, "instance-stale");
+            return;
+        }
+        m_InstanceStalePassed = true;
         const auto closed = m_Plan.Close();
         if (!closed || closed.Value() != BML::Behavior::CloseState::Closed ||
             m_Plan) {
@@ -860,7 +939,7 @@ private:
     void WaitSelfActive() {
         const auto info = m_SelfPlan.Info();
         if (info && info->Active() && info->Matches == 1 &&
-            info->Installations == 1) {
+            info->Instances == 1) {
             if (!RunGraph()) {
                 Finish(false, "script-reset");
                 return;
@@ -2750,6 +2829,7 @@ private:
                      static_cast<std::uint32_t>(sizeof(patchName) - 1)};
         BML_BehaviorGraphEdit target{};
         target.StructSize = sizeof(target);
+        target.Binding = 1;
         target.Graph = graph;
         target.Steps = steps;
         target.StepCount = 2;
@@ -3423,10 +3503,12 @@ private:
             DestroyGraph();
         }
         GetLogger()->Info(
-            "Behavior plan: status=%s reason=%s submit=%s install=%s hooks=%s close=%s release=%s taps=%u afters=%u frames=%d",
+            "Behavior plan: status=%s reason=%s submit=%s install=%s binding=%s stale=%s hooks=%s close=%s release=%s taps=%u afters=%u frames=%d",
             passed ? "pass" : "fail", reason,
             m_SubmitPassed ? "true" : "false",
             m_InstallPassed ? "true" : "false",
+            m_PlanInstancePassed ? "true" : "false",
+            m_InstanceStalePassed ? "true" : "false",
             m_HookPassed ? "true" : "false",
             m_ClosePassed ? "true" : "false",
             m_ReleasePassed ? "true" : "false",
@@ -3516,6 +3598,9 @@ private:
     int m_PlanInstallLinks = 0;
     BML::Behavior::Script m_AuthoredScript;
     BML::Behavior::Plan m_Plan;
+    std::optional<BML::Behavior::Plan::Instance> m_PlanInstance;
+    BML::Behavior::Edit::Node m_PlanBlock;
+    BML::Behavior::Edit::Port m_PlanLiteral;
     BML::Behavior::Plan m_SelfPlan;
     BML::Behavior::Patch m_Patch;
     BML::Behavior::Patch m_IdentityPatch;
@@ -3587,6 +3672,8 @@ private:
     bool m_LevelStarted = false;
     bool m_SubmitPassed = false;
     bool m_InstallPassed = false;
+    bool m_PlanInstancePassed = false;
+    bool m_InstanceStalePassed = false;
     bool m_HookPassed = false;
     bool m_ClosePassed = false;
     bool m_ReleasePassed = false;

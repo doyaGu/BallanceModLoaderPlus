@@ -842,10 +842,10 @@ bool GraphEdit::SameAs(const GraphEdit &other) const noexcept {
 
 Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                           Compiler &compiler, Edit &out,
-                          std::map<std::uint32_t, Node> *nodeHandles,
+                          CompiledSymbols *symbols,
                           bool rootInterfaceExists) const {
-    if (nodeHandles)
-        nodeHandles->clear();
+    if (symbols)
+        *symbols = {};
     out = {};
     if (patch.Owner.empty() || patch.Name.empty() || graph.IsNull())
         return Failure(Error::InvalidState,
@@ -1715,8 +1715,20 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
             return status;
     }
 
-    if (nodeHandles)
-        *nodeHandles = liveNodes;
+    if (symbols) {
+        symbols->Nodes = liveNodes;
+        for (const Action &action : m_Actions) {
+            const auto *item = std::get_if<EditInterface>(&action);
+            if (!item)
+                continue;
+            Port live;
+            status = port(item->Handle, live);
+            if (!status)
+                return status;
+            symbols->Ports.emplace(item->Handle.Selector.Index,
+                                   std::move(live));
+        }
+    }
 
     resolved.m_ExpectedFingerprint = base.Fingerprint;
     out = std::move(resolved);

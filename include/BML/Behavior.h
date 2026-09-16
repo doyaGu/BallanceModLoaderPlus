@@ -772,7 +772,7 @@ typedef struct BML_BehaviorWatchSpec {
 } BML_BehaviorWatchSpec;
 
 // A Plan owns a symbolic edit selected by an exact script name and applies it
-// to every matching live installation. The
+// to every matching live instance. The
 // Loader owns the installed edits and reconciles them as scripts load, reload,
 // or are deleted, so a Plan outlives a level change while a Run does not.
 typedef enum BML_BehaviorTargetSet {
@@ -797,7 +797,7 @@ typedef enum BML_BehaviorPlanState {
     // reconciling or unsatisfied.
     BML_BEHAVIOR_PLAN_PARTIAL = 4,
     BML_BEHAVIOR_PLAN_DISABLED = 5,
-    // An installation could not be reverted. The Plan keeps its Hook state
+    // An instance could not be reverted. The Plan keeps its Hook state
     // alive because the game graph still refers to it.
     BML_BEHAVIOR_PLAN_CONFLICTED = 6,
     BML_BEHAVIOR_PLAN_RETIRING = 7
@@ -819,12 +819,28 @@ typedef struct BML_BehaviorPlanInfo {
     // The world epoch this Plan was last reconciled against.
     uint64_t World;
     uint32_t Matches;
-    uint32_t Installations;
+    uint32_t Instances;
     // Result of the most recent reconciliation pass, not why ReadPlan failed.
     // ReadPlanFailures preserves the rejected definition separately from a
     // later restoration conflict.
     BML_BehaviorStatus LastStatus;
 } BML_BehaviorPlanInfo;
+
+// A revisioned view of one live instance owned by a Plan rule. The
+// record is opaque outside this Interface: pass it back unchanged when
+// resolving a Node or reading/writing a Port. Any Plan replacement, world
+// change, or instance rebuild makes an older record stale.
+typedef struct BML_BehaviorPlanInstance {
+    uint32_t StructSize;
+    uint32_t Rule;
+    uint64_t PlanRevision;
+    // Opaque identity of the Edit definition installed for Rule.
+    uint64_t Binding;
+    uint64_t World;
+    uint64_t Revision;
+    uint64_t Identity;
+    BML_ObjectRef Script;
+} BML_BehaviorPlanInstance;
 
 // State of one Patch applied to a specific live graph. Unlike a Plan, a Patch
 // is not matched again after its graph is deleted or the world is reset.
@@ -888,7 +904,7 @@ typedef int (BML_BEHAVIOR_CALL *BML_BehaviorHookCallback)(
 // One author callback occurrence in an edit. Retain runs once while a Patch or
 // Plan accepts the Hook, so the caller may drop its own reference as soon as
 // the call returns, and Release runs once the Loader has retired the occurrence
-// and dropped every installation of it. A rejected edit retains nothing it has
+// and dropped every instance of it. A rejected edit retains nothing it has
 // not already released. Invoke runs on the game thread inside the behavior
 // execution the game itself drives. It may close the Patch, Plan, or Session
 // that owns it: admission closes immediately, the request never waits for the
@@ -932,6 +948,16 @@ typedef struct BML_BehaviorOperationSpec {
 // must be defined by an earlier step before a later step reads it.
 #define BML_BEHAVIOR_EDIT_GRAPH 1u
 
+// A node named by one Edit graph scope. Handle 1 names that scope's root, so
+// Graph is part of the identity rather than optional context.
+typedef struct BML_BehaviorNodeRef {
+    uint32_t StructSize;
+    uint32_t Graph;
+    uint32_t Handle;
+    // Opaque identity assigned to the Edit that owns Handle.
+    uint64_t Binding;
+} BML_BehaviorNodeRef;
+
 // A port of a node. Kind is a BML_BehaviorSlotKind naming which interface of
 // Handle to address. A zero Kind means Handle is itself a port defined by an
 // earlier BML_BEHAVIOR_EDIT_APPEND_SLOT, which is the only way to address an
@@ -943,6 +969,8 @@ typedef struct BML_BehaviorPortRef {
     uint32_t Graph;
     uint32_t Handle;
     uint32_t Kind;
+    // Opaque identity assigned to the Edit that owns Handle.
+    uint64_t Binding;
     // The Virtools parameter type expected of a Pin, Pout, or Local port. A
     // zero type accepts whatever the live slot declares.
     BML_BehaviorGuid Type;
@@ -1125,11 +1153,11 @@ typedef struct BML_BehaviorGraphEdit {
     uint32_t Reserved;
     BML_ObjectRef Graph;
     uint64_t Fingerprint;
+    // Nonzero caller identity copied into Node/Port bindings. It must not be
+    // reused while the resulting Patch handle is alive.
+    uint64_t Binding;
     const BML_BehaviorEditStep *Steps;
     uint32_t StepCount;
-    // Added to Result handles when ResolvePatchNode addresses this Edit.
-    // Handle ranges must not overlap within one Patch.
-    uint32_t HandleBase;
 } BML_BehaviorGraphEdit;
 
 // One Script rule and its owned Edit program.
@@ -1137,6 +1165,9 @@ typedef struct BML_BehaviorScriptEdit {
     uint32_t StructSize;
     uint32_t Targets;
     BML_BehaviorString Script;
+    // Nonzero caller identity copied into Plan instance snapshots. It must not
+    // be reused while the resulting Plan handle is alive.
+    uint64_t Binding;
     const BML_BehaviorEditStep *Steps;
     uint32_t StepCount;
     uint32_t Reserved;
@@ -1315,7 +1346,7 @@ typedef struct BML_BehaviorInterface {
                                       BML_BehaviorPlan plan,
                                       BML_BehaviorPlanInfo *info,
                                       BML_BehaviorStatus *status);
-    // May be called from any thread. Retires every installation the Plan still
+    // May be called from any thread. Retires every instance the Plan still
     // owns. BML_ERROR_BUSY means an inverse is waiting for the next safe point.
     // A graph conflict returns an error and leaves the Plan readable. Once
     // ClosePlan has been accepted, the Loader retries unfinished inverses at
@@ -1398,7 +1429,7 @@ typedef struct BML_BehaviorInterface {
     // safe point yet, so no live node exists to name.
     int (BML_BEHAVIOR_CALL *ResolvePatchNode)(BML_BehaviorSession session,
                                               BML_BehaviorPatch patch,
-                                              uint32_t handle,
+                                              const BML_BehaviorNodeRef *node,
                                               BML_ObjectRef *outNode,
                                               BML_BehaviorStatus *status);
     // Parks a Block inside the live graph Graph names and returns a Run for
@@ -1484,19 +1515,72 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorPlan plan,
         BML_BehaviorFailures *failures,
         BML_BehaviorStatus *status);
+    // Snapshots every current Plan instance in rule order and then
+    // script-reference order. The caller-buffer protocol is all-or-nothing:
+    // BML_ERROR_BUFFER_TOO_SMALL reports the full count and writes no record.
+    int (BML_BEHAVIOR_CALL *ReadPlanInstances)(
+        BML_BehaviorSession session,
+        BML_BehaviorPlan plan,
+        BML_BehaviorPlanInstance *instances,
+        uint32_t instanceCapacity,
+        uint32_t instanceStride,
+        uint32_t *outInstanceCount,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ResolvePlanInstanceNode)(
+        BML_BehaviorSession session,
+        BML_BehaviorPlan plan,
+        const BML_BehaviorPlanInstance *instance,
+        const BML_BehaviorNodeRef *node,
+        BML_ObjectRef *outNode,
+        BML_BehaviorStatus *status);
+    // Instance value reads are non-forcing. Writes replace only the
+    // current stored value behind the selected parameter and never change its
+    // direct/shared source relation. Control-flow In/Out ports are rejected.
+    int (BML_BEHAVIOR_CALL *ReadPatchValue)(
+        BML_BehaviorSession session,
+        BML_BehaviorPatch patch,
+        const BML_BehaviorPortRef *port,
+        BML_BehaviorGraphValue *value,
+        void *payload,
+        uint32_t payloadCapacity,
+        uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *WritePatchValue)(
+        BML_BehaviorSession session,
+        BML_BehaviorPatch patch,
+        const BML_BehaviorPortRef *port,
+        const BML_BehaviorValue *value,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReadPlanInstanceValue)(
+        BML_BehaviorSession session,
+        BML_BehaviorPlan plan,
+        const BML_BehaviorPlanInstance *instance,
+        const BML_BehaviorPortRef *port,
+        BML_BehaviorGraphValue *value,
+        void *payload,
+        uint32_t payloadCapacity,
+        uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *WritePlanInstanceValue)(
+        BML_BehaviorSession session,
+        BML_BehaviorPlan plan,
+        const BML_BehaviorPlanInstance *instance,
+        const BML_BehaviorPortRef *port,
+        const BML_BehaviorValue *value,
+        BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 // The complete function table for bml.behavior 1.0. Use
 // BML_IFACE_HAS on a function a later minor appends.
 #define BML_BEHAVIOR_INTERFACE_1_0_SIZE                                      \
-    (offsetof(BML_BehaviorInterface, ReadPlanFailures) +                      \
-     sizeof(((BML_BehaviorInterface *) 0)->ReadPlanFailures))
+    (offsetof(BML_BehaviorInterface, WritePlanInstanceValue) +                \
+     sizeof(((BML_BehaviorInterface *) 0)->WritePlanInstanceValue))
 
 // The single capability checkpoint for the complete 1.0 surface. A Mod may
 // accept a later minor when this is true, then probe later additions with
 // BML_IFACE_HAS before calling them.
 #define BML_BEHAVIOR_HAS_1_0(iface)                                          \
-    BML_IFACE_HAS((iface), BML_BehaviorInterface, ReadPlanFailures)
+    BML_IFACE_HAS((iface), BML_BehaviorInterface, WritePlanInstanceValue)
 
 #pragma pack(pop)
 

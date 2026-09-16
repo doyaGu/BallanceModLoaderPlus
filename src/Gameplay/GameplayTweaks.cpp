@@ -84,11 +84,12 @@ bool GameplayTweaks::OnModifyConfig(const char *category, const char *key,
     }
     if (property == m_FixLifeBall &&
         std::strcmp(key ? key : "", "FixLifeBallFreeze") == 0) {
-        if (m_ExtraLifePlan) {
-            if (property->GetBoolean())
-                (void) m_ExtraLifePlan.Enable();
-            else
-                (void) m_ExtraLifePlan.Disable();
+        const bool enabled = property->GetBoolean();
+        if (SetPlanEnabled(m_ExtraLifePlan, enabled,
+                           "Life-ball freeze fix", true) && m_Logger) {
+            m_Logger->Info(enabled
+                ? "Requested the Life-ball freeze fix Plan"
+                : "Requested restoration of the Life-ball freeze fix Plan");
         }
         return true;
     }
@@ -134,8 +135,10 @@ void GameplayTweaks::OnLoad(IBML &bml, ILogger &logger) {
                      energy));
     if (overclock) {
         m_OverclockPlan = overclock.Take();
-        if (!m_Overclock || !m_Overclock->GetBoolean())
-            (void) m_OverclockPlan.Disable();
+        if (!m_Overclock || !m_Overclock->GetBoolean()) {
+            (void) SetPlanEnabled(m_OverclockPlan, false,
+                                  "Overclock", true);
+        }
     } else {
         m_Logger->Warn("Overclock Plan is unavailable: %s",
             overclock.GetStatus().Message.empty()
@@ -162,8 +165,10 @@ void GameplayTweaks::OnLoad(IBML &bml, ILogger &logger) {
             lifeBall));
     if (extraLife) {
         m_ExtraLifePlan = extraLife.Take();
-        if (!m_FixLifeBall || !m_FixLifeBall->GetBoolean())
-            (void) m_ExtraLifePlan.Disable();
+        if (!m_FixLifeBall || !m_FixLifeBall->GetBoolean()) {
+            (void) SetPlanEnabled(m_ExtraLifePlan, false,
+                                  "Life-ball freeze fix", true);
+        }
     } else {
         m_Logger->Warn("Life-ball freeze Plan is unavailable: %s",
             extraLife.GetStatus().Message.empty()
@@ -173,12 +178,9 @@ void GameplayTweaks::OnLoad(IBML &bml, ILogger &logger) {
 }
 
 void GameplayTweaks::OnUnload() {
-    (void) m_ExtraLifePlan.Close();
-    const bool overclockOwned = static_cast<bool>(m_OverclockPlan);
-    (void) m_OverclockPlan.Close();
-    if (overclockOwned && m_Logger)
-        m_Logger->Info("Restore the Overclock Behavior Plan");
-    (void) m_LanternPlan.Close();
+    ClosePlan(m_ExtraLifePlan, "Life-ball freeze fix");
+    ClosePlan(m_OverclockPlan, "Overclock");
+    ClosePlan(m_LanternPlan, "Lantern alpha test");
     m_Behavior.Reset();
     m_Logger = nullptr;
     m_BML = nullptr;
@@ -219,30 +221,59 @@ bool GameplayTweaks::ApplyLanternScript(bool enabled,
     }
     if (m_Logger)
         m_Logger->Info(
-            "Configure the lantern alpha-test through a Behavior Plan");
+            "Requested a lantern alpha-test Plan update");
     return true;
 }
 
 bool GameplayTweaks::ApplyOverclock(bool enabled, bool warnIfUnavailable) {
     if (!m_OverclockPlan) {
         if (enabled && warnIfUnavailable && m_Logger)
-            m_Logger->Warn(
-                "Overclock is unavailable for the current gameplay scripts");
+            m_Logger->Warn("Overclock Plan is unavailable");
         return !enabled;
     }
-    auto changed = enabled ? m_OverclockPlan.Enable()
-                           : m_OverclockPlan.Disable();
-    if (!changed) {
-        if (warnIfUnavailable && m_Logger)
-            m_Logger->Warn("Overclock Plan could not change state: %s",
-                changed.GetStatus().Message.empty()
-                    ? "Behavior Plan state change failed"
-                    : changed.GetStatus().Message.c_str());
+    if (!SetPlanEnabled(m_OverclockPlan, enabled, "Overclock",
+                        warnIfUnavailable)) {
         return false;
     }
     if (m_Logger)
         m_Logger->Info(enabled
-            ? "Enable Overclock through one Behavior Plan"
-            : "Restore the Overclock Behavior Plan");
+            ? "Requested the Overclock Behavior Plan"
+            : "Requested restoration of the Overclock Behavior Plan");
     return true;
+}
+
+bool GameplayTweaks::SetPlanEnabled(Behavior::Plan &plan, bool enabled,
+                                    const char *name,
+                                    bool warnIfUnavailable) {
+    if (!plan) {
+        if (enabled && warnIfUnavailable && m_Logger) {
+            m_Logger->Warn("%s Plan is unavailable", name);
+        }
+        return false;
+    }
+
+    auto changed = enabled ? plan.Enable() : plan.Disable();
+    if (changed)
+        return true;
+
+    if (warnIfUnavailable && m_Logger) {
+        m_Logger->Warn("%s Plan could not change state: %s", name,
+                       changed.GetStatus().Message.empty()
+                           ? "Behavior Plan state change failed"
+                           : changed.GetStatus().Message.c_str());
+    }
+    return false;
+}
+
+void GameplayTweaks::ClosePlan(Behavior::Plan &plan, const char *name) {
+    if (!plan)
+        return;
+
+    auto closed = plan.Close();
+    if (!closed && m_Logger) {
+        m_Logger->Error("Failed to restore the %s Plan: %s", name,
+                        closed.GetStatus().Message.empty()
+                            ? "Behavior Plan close failed"
+                            : closed.GetStatus().Message.c_str());
+    }
 }

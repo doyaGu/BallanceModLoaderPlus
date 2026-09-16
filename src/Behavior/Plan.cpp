@@ -45,6 +45,19 @@ bool Plan::Contains(const ObjectRef &target) const noexcept {
     return m_Installed.contains(target);
 }
 
+std::vector<InstallationInfo> Plan::Installations() const {
+    std::vector<InstallationInfo> result;
+    result.reserve(m_Installed.size());
+    for (const auto &[target, installation] : m_Installed)
+        result.push_back({target, installation, m_Epoch, m_Revision});
+    return result;
+}
+
+void Plan::Touch() noexcept {
+    m_Revision = m_Revision == (std::numeric_limits<std::uint64_t>::max)()
+        ? 1 : m_Revision + 1;
+}
+
 Status Plan::Applied(Status status) {
     m_LastStatus = status;
     if (!status && m_ApplyFailure)
@@ -77,6 +90,7 @@ Status Plan::CloseAll(World &world) {
             continue;
         }
         item = m_Installed.erase(item);
+        Touch();
     }
     if (!first) {
         m_State = m_Retiring && first.Code == Error::Busy
@@ -118,7 +132,10 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
         if (!status)
             return Restored(std::move(status));
     }
-    m_Epoch = epoch;
+    if (m_Epoch != epoch) {
+        m_Epoch = epoch;
+        Touch();
+    }
 
     // Only an ambiguous target set is a cardinality failure. A world with no
     // matching script yet, or one whose only script was just deleted, leaves
@@ -148,6 +165,7 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
             continue;
         }
         item = m_Installed.erase(item);
+        Touch();
     }
     if (!closeFailure) {
         m_State = PlanState::Conflicted;
@@ -182,6 +200,7 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
                     continue;
                 }
                 m_Installed.erase(installed);
+                Touch();
             }
             if (!rollbackFailure) {
                 m_State = PlanState::Conflicted;
@@ -192,6 +211,7 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
             return status;
         }
         m_Installed.emplace(target, installation);
+        Touch();
         added.push_back(target);
     }
 
@@ -200,11 +220,14 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
 }
 
 Status Plan::LeaveWorld(World &world) {
+    const bool hadWorld = m_Epoch != 0;
     Status status = CloseAll(world);
     // The old world is no longer a revert target. Even when an inverse cannot
     // be applied, no Installation identity may cross the epoch boundary.
     m_Installed.clear();
     m_Epoch = 0;
+    if (hadWorld)
+        Touch();
     m_State = m_Retiring ? PlanState::Retiring : PlanState::Unsatisfied;
     m_ApplyFailure = {};
     return status ? Settled() : Restored(std::move(status));
@@ -323,7 +346,7 @@ Status Plans::Read(PlanId id, PlanInfo &out) const {
         ? PlanState::Retiring : found->second->Value.State();
     out.World = found->second->Value.WorldEpoch();
     out.Matches = found->second->Matches;
-    out.Installations = found->second->Value.Size();
+    out.Instances = found->second->Value.Size();
     out.LastStatus = found->second->Value.LastStatus();
     out.ApplyFailure = found->second->Value.ApplyFailure();
     out.RestoreFailure = found->second->Value.RestoreFailure();
@@ -347,10 +370,33 @@ Status Plans::Read(std::string_view owner, std::uint64_t ownerGeneration,
         ? PlanState::Retiring : found->second->Value.State();
     out.World = found->second->Value.WorldEpoch();
     out.Matches = found->second->Matches;
-    out.Installations = found->second->Value.Size();
+    out.Instances = found->second->Value.Size();
     out.LastStatus = found->second->Value.LastStatus();
     out.ApplyFailure = found->second->Value.ApplyFailure();
     out.RestoreFailure = found->second->Value.RestoreFailure();
+    return {};
+}
+
+Status Plans::ReadInstallations(
+    std::string_view owner, std::uint64_t ownerGeneration, PlanId id,
+    std::vector<InstallationInfo> &out) const {
+    out.clear();
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    const auto found = m_Plans.find(id);
+    if (found == m_Plans.end() ||
+        found->second->Value.Key().Owner != owner ||
+        found->second->OwnerGeneration != ownerGeneration) {
+        return Failure(Error::OwnerInvalid,
+                       "The Behavior Plan belongs to another Mod generation.");
+    }
+    try {
+        out = found->second->Value.Installations();
+    } catch (...) {
+        return Failure(Error::CreateFailed,
+                       "The Loader could not snapshot Behavior Plan installations.");
+    }
     return {};
 }
 

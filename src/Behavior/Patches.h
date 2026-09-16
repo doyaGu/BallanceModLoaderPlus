@@ -6,8 +6,10 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -19,6 +21,7 @@
 namespace BML::Behavior::Internal {
 
 using PatchId = std::uintptr_t;
+inline constexpr std::uint32_t RootGraphScope = 1;
 
 struct PatchInfo {
     PatchState State = PatchState::Closed;
@@ -34,25 +37,62 @@ class Patches final : private GraphEdit::Compiler {
 public:
     using ResolveObject = std::function<CKObject *(const ObjectRef &)>;
     using IssueObject = std::function<ObjectRef(CKObject *)>;
-    // Maps the handle an author's own edit program used for a Node onto the
-    // handle the symbolic intent gave it, so a Patch can be read back through
-    // the names its author chose.
-    struct Symbol {
-        std::uint32_t Scope = 1;
-        std::uint32_t Node = 0;
+    enum class SymbolKind {
+        Node,
+        Port,
     };
-    using HandleMap = std::map<std::uint32_t, Symbol>;
+
+    struct SymbolRef {
+        std::uint64_t Binding = 0;
+        std::uint32_t Scope = RootGraphScope;
+        std::uint32_t Handle = 0;
+
+        friend bool operator<(const SymbolRef &left,
+                              const SymbolRef &right) noexcept {
+            return std::tie(left.Binding, left.Scope, left.Handle) <
+                std::tie(right.Binding, right.Scope, right.Handle);
+        }
+        friend bool operator==(const SymbolRef &, const SymbolRef &) = default;
+    };
+
+    // Maps one handle in an author's edit program onto the symbol compiled in
+    // the canonical Graph Edit. Scope keeps nested Graph symbols local.
+    struct Symbol {
+        SymbolKind Kind = SymbolKind::Node;
+        Node NodeValue;
+        Port PortValue;
+
+        friend bool operator==(const Symbol &, const Symbol &) = default;
+    };
+    using SymbolMap = std::map<SymbolRef, Symbol>;
+
+    struct PortQuery {
+        std::uint64_t Binding = 0;
+        std::uint32_t Scope = RootGraphScope;
+        std::uint32_t Handle = 0;
+        std::optional<Slot> Selector;
+    };
+
+    struct PlanInstance {
+        std::uint32_t Rule = 0;
+        std::uint64_t PlanRevision = 0;
+        std::uint64_t Binding = 0;
+        InstallationInfo Value;
+    };
 
     struct Target {
         ObjectRef Graph;
         std::uint64_t Fingerprint = 0;
+        std::uint64_t Binding = 0;
         std::shared_ptr<const GraphEdit> Body;
-        HandleMap Handles;
+        SymbolMap Symbols;
     };
 
     struct Rule {
         ScriptSelection Scripts;
+        std::uint64_t Binding = 0;
         std::shared_ptr<const GraphEdit> Body;
+        SymbolMap Symbols;
     };
 
     Patches(CKContext *context, Runtime &runtime, PrototypeCatalog *catalog,
@@ -74,13 +114,18 @@ public:
                  const std::map<std::uint32_t, Node> *handles = nullptr);
     Status Apply(const SessionOwner &owner, const ObjectRef &graph,
                  std::string name, GraphEdit edit, PatchId &out,
-                 const HandleMap *authorNodes = nullptr);
+                 const SymbolMap *authorSymbols = nullptr);
     Status Apply(const SessionOwner &owner, std::string name,
                  std::vector<Target> targets, PatchId &out);
     // Issues a reference for a Node this Patch named. Busy while the Patch is
     // still waiting for its safe point.
     Status ResolveNode(const SessionOwner &owner, PatchId patch,
-                       std::uint32_t handle, ObjectRef &out) const;
+                       const SymbolRef &node, ObjectRef &out) const;
+    Status ReadValue(const SessionOwner &owner, PatchId patch,
+                     const PortQuery &port, GraphValue &out) const;
+    Status WriteValue(const SessionOwner &owner, PatchId patch,
+                      const PortQuery &port,
+                      const Parameter::Binding &value);
     Status Submit(Plans &plans, const SessionOwner &owner,
                   ScriptSelection target,
                   std::string name, GraphEdit edit, PlanId &out);
@@ -88,6 +133,21 @@ public:
                   std::string name, std::vector<Rule> rules, PlanId &out);
     Status ReadPlan(Plans &plans, const SessionOwner &owner,
                     PlanId plan, PlanInfo &out) const;
+    Status ReadPlanInstances(
+        Plans &plans, const SessionOwner &owner, PlanId plan,
+        std::vector<PlanInstance> &out) const;
+    Status ResolvePlanNode(
+        Plans &plans, const SessionOwner &owner, PlanId plan,
+        const PlanInstance &instance, const SymbolRef &node,
+        ObjectRef &out) const;
+    Status ReadPlanValue(
+        Plans &plans, const SessionOwner &owner, PlanId plan,
+        const PlanInstance &instance, const PortQuery &port,
+        GraphValue &out) const;
+    Status WritePlanValue(
+        Plans &plans, const SessionOwner &owner, PlanId plan,
+        const PlanInstance &instance, const PortQuery &port,
+        const Parameter::Binding &value);
     Status SetPlanActive(Plans &plans, const SessionOwner &owner,
                          PlanId plan, bool active);
     Status ReplacePlan(Plans &plans, const SessionOwner &owner,
@@ -152,6 +212,9 @@ private:
         std::optional<std::size_t> RestoreAt;
         std::string ApplyScript;
         std::string RestoreScript;
+        // Definition bindings are never reused while this Plan handle lives;
+        // retired tokens keep stale symbols from aliasing later definitions.
+        std::set<std::uint64_t> DefinitionBindings;
         std::vector<Rule> RequestedRules;
         std::vector<Rule> PreviousRules;
         std::optional<std::size_t> RestoreFrom;
@@ -159,12 +222,27 @@ private:
     };
 
     struct OwnedPatch {
+        struct ResolvedSymbol {
+            ResolvedSymbol() = default;
+            ResolvedSymbol(std::size_t scopeIndex, Node node)
+                : ScopeIndex(scopeIndex), Kind(SymbolKind::Node),
+                  NodeValue(node) {}
+            ResolvedSymbol(std::size_t scopeIndex, Port port)
+                : ScopeIndex(scopeIndex), Kind(SymbolKind::Port),
+                  PortValue(std::move(port)) {}
+
+            std::size_t ScopeIndex = 0;
+            SymbolKind Kind = SymbolKind::Node;
+            Node NodeValue;
+            Port PortValue;
+        };
+
         struct Scope {
             std::uint32_t Id = 0;
             std::size_t Target = 0;
             CK_ID Graph = 0;
             Patch Value;
-            std::map<std::uint32_t, Node> Handles;
+            GraphEdit::CompiledSymbols Symbols;
         };
 
         PatchId Id = 0;
@@ -181,6 +259,8 @@ private:
         Status RecoveryFailure;
         std::optional<std::size_t> ApplyAt;
         std::optional<std::size_t> RestoreAt;
+        // See OwnedPlan::DefinitionBindings.
+        std::set<std::uint64_t> DefinitionBindings;
         // RequestedDefinition is the last requested content.
         // AppliedDefinition describes the installed prefix while a
         // replacement is being reconciled;
@@ -191,8 +271,8 @@ private:
         std::vector<Target> PreviousDefinition;
         std::optional<std::size_t> RestoreFrom;
         std::vector<Scope> Scopes;
-        // Public handle -> (scope index, resolved Edit Node).
-        std::map<std::uint32_t, std::pair<std::size_t, Node>> Handles;
+        // Public handle -> resolved symbol in one installed scope.
+        std::map<SymbolRef, ResolvedSymbol> Symbols;
     };
 
     [[nodiscard]] Status Ready() const;
@@ -217,14 +297,14 @@ private:
                         const ObjectRef &graph, const GraphEdit &edit,
                         std::uint32_t scope, std::size_t target,
                         OwnedPatch &out,
-                        const HandleMap *authorNodes);
+                        const SymbolMap *authorSymbols);
     Status PublishScope(const SessionOwner &owner, const PatchKey &patch,
                         const ObjectRef &graph, const GraphEdit &edit,
                         Edit resolved,
-                        std::map<std::uint32_t, Node> compiled,
+                        GraphEdit::CompiledSymbols compiled,
                         std::uint32_t scope, std::size_t target,
                         OwnedPatch &out,
-                        const HandleMap *authorNodes);
+                        const SymbolMap *authorSymbols);
     Status Reconcile(OwnedPatch &patch);
     Status Activate(Plans &plans, OwnedPlan &plan);
     Status Deactivate(Plans &plans, OwnedPlan &plan);
@@ -246,7 +326,12 @@ private:
     [[nodiscard]] Status RestoreFailure(const OwnedPatch &patch) const;
     [[nodiscard]] static bool HasPendingChange(const OwnedPlan &plan);
     [[nodiscard]] static bool HasPendingChange(const OwnedPatch &patch);
-    void RebuildHandles(OwnedPatch &patch);
+    void RebuildSymbols(OwnedPatch &patch);
+    Status ResolvePort(const OwnedPatch &patch, const PortQuery &query,
+                       Port &out) const;
+    Status ValidatePlanInstance(
+        Plans &plans, const OwnedPlan &plan,
+        const PlanInstance &instance, PatchId &out) const;
     void Collect();
 
     Status Begin(const PatchKey &patch, const ObjectRef &graph,

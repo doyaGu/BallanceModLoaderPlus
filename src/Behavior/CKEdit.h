@@ -98,6 +98,12 @@ public:
     // the Patch is still waiting for its safe point.
     Status ResolveNode(const Patch &patch, Node handle,
                        CKBehavior *&out) const;
+    // Resolves an installation-owned symbolic Port for one access. No native
+    // parameter pointer escapes the adapter, and every call revalidates the
+    // Patch state and live Layout.
+    Status ReadValue(const Patch &patch, Port port, GraphValue &out) const;
+    Status WriteValue(const Patch &patch, Port port,
+                      const Parameter::Binding &value) const;
     // Ends ownership for a journal whose graph is being deleted by CK. There
     // is no graph left to restore; callback admission is still closed before
     // the native identities are forgotten.
@@ -128,6 +134,8 @@ private:
                     const std::shared_ptr<Patch::Journal> &journal);
     Status CloseNow(const std::shared_ptr<Patch::Journal> &journal);
     Status Undo(Patch::Journal &journal);
+    Status ResolvePort(const Patch &patch, Port port,
+                       CKBehavior *&behavior, SlotInfo &slot) const;
     Status Materialize(std::uint64_t graphId, CKBehavior *graph);
     Status PublishLogicalGraph(std::uint64_t graphId);
     void AdoptGraph(CKBehavior *graph);

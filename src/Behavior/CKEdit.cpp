@@ -4064,6 +4064,131 @@ Status CKEdit::ResolveNode(const Patch &patch, Node handle,
     return {};
 }
 
+Status CKEdit::ResolvePort(const Patch &patch, Port port,
+                           CKBehavior *&behavior, SlotInfo &slot) const {
+    behavior = nullptr;
+    slot = SlotInfo();
+    if (!port)
+        return Failure(Error::InvalidState, "An Edit handle names no Port.");
+
+    Status status = ResolveNode(patch, Node{port.Owner}, behavior);
+    if (!status)
+        return status;
+
+    if (port.Interface == 0)
+        return m_Runtime.Resolve(behavior, port.Selector, slot);
+
+    if (!patch.m_Journal)
+        return Failure(Error::InvalidState, "The Patch is closed.");
+    const Patch::Journal &journal = *patch.m_Journal;
+    std::lock_guard<std::mutex> lock(journal.Mutex);
+    const auto found = std::find_if(
+        journal.Ports.begin(), journal.Ports.end(),
+        [&](const Patch::Journal::Interface &item) {
+            return item.Identity == port.Interface &&
+                item.Behavior.Id == behavior->GetID() &&
+                item.Behavior.Address == behavior;
+        });
+    if (found == journal.Ports.end())
+        return Failure(Error::GraphChanged,
+                       "The appended Port this Edit handle named is gone.");
+    CKObject *object = Resolve<CKObject>(m_Context, found->Port, CKCID_OBJECT);
+    if (!object)
+        return Failure(Error::GraphChanged,
+                       "The appended Port this Edit handle named is gone.");
+
+    int index = -1;
+    CKGUID type;
+    switch (found->Kind) {
+    case SlotKind::InputParameter: {
+        auto *parameter = CKParameterIn::Cast(object);
+        index = behavior->GetInputParameterPosition(parameter);
+        if (parameter)
+            type = parameter->GetGUID();
+        break;
+    }
+    case SlotKind::OutputParameter: {
+        auto *parameter = CKParameterOut::Cast(object);
+        index = behavior->GetOutputParameterPosition(parameter);
+        if (parameter)
+            type = parameter->GetGUID();
+        break;
+    }
+    case SlotKind::Local: {
+        auto *parameter = CKParameterLocal::Cast(object);
+        index = behavior->GetLocalParameterPosition(parameter);
+        if (parameter)
+            type = parameter->GetGUID();
+        break;
+    }
+    default:
+        return Failure(Error::SlotNotFound,
+                       "Only parameter Ports expose installation values.");
+    }
+    if (index < 0)
+        return Failure(Error::GraphChanged,
+                       "The appended parameter changed identity.");
+    slot.Kind = found->Kind;
+    slot.Index = index;
+    slot.NativeIndex = index;
+    slot.Name = object->GetName() ? object->GetName() : "";
+    slot.Type = type;
+    return {};
+}
+
+Status CKEdit::ReadValue(const Patch &patch, Port port, GraphValue &out) const {
+    out = {};
+    CKBehavior *behavior = nullptr;
+    SlotInfo slot;
+    Status status = ResolvePort(patch, std::move(port), behavior, slot);
+    if (!status)
+        return status;
+    return m_Graph.ReadValue(
+        {static_cast<std::uint64_t>(static_cast<std::uint32_t>(behavior->GetID())),
+         behavior},
+        0, Slot::At(slot.Kind, slot.NativeIndex, slot.Type),
+        ReadMode::NonForcing, out);
+}
+
+Status CKEdit::WriteValue(const Patch &patch, Port port,
+                          const Parameter::Binding &value) const {
+    CKBehavior *behavior = nullptr;
+    SlotInfo slot;
+    Status status = ResolvePort(patch, std::move(port), behavior, slot);
+    if (!status)
+        return status;
+
+    CKParameter *parameter = nullptr;
+    switch (slot.Kind) {
+    case SlotKind::InputParameter: {
+        CKParameterIn *input = behavior->GetInputParameter(slot.NativeIndex);
+        parameter = input ? input->GetRealSource() : nullptr;
+        break;
+    }
+    case SlotKind::Target: {
+        CKParameterIn *input = behavior->GetTargetParameter();
+        parameter = input ? input->GetRealSource() : nullptr;
+        break;
+    }
+    case SlotKind::OutputParameter:
+        parameter = behavior->GetOutputParameter(slot.NativeIndex);
+        break;
+    case SlotKind::Setting:
+    case SlotKind::Local:
+        parameter = behavior->GetLocalParameter(slot.NativeIndex);
+        break;
+    default:
+        return Failure(Error::SlotNotFound,
+                       "Only Target, Pin, Pout, Setting, or Local values can be written.");
+    }
+    if (!parameter || CKParameterOperation::Cast(parameter->GetOwner())) {
+        return Failure(
+            Error::SourceInvalid,
+            "An installation value requires a stored parameter behind the selected Port.");
+    }
+    return Parameter::Write(m_Context, parameter, value);
+}
+
 Status CKEdit::Undo(Patch::Journal &patch) {
     Status first;
     {

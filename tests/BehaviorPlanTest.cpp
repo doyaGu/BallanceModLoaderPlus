@@ -243,14 +243,14 @@ TEST(BehaviorPlans, AFreshlySubmittedPlanIsReconcilingNotUnsatisfied) {
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.State, PlanState::Reconciling);
     EXPECT_EQ(info.Matches, 0u);
-    EXPECT_EQ(info.Installations, 0u);
+    EXPECT_EQ(info.Instances, 0u);
     EXPECT_EQ(info.World, 0u);
     EXPECT_TRUE(world->Live.empty());
 
     ASSERT_TRUE(plans.ProcessFrame());
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.State, PlanState::Active);
-    EXPECT_EQ(info.Installations, 1u);
+    EXPECT_EQ(info.Instances, 1u);
 }
 
 TEST(BehaviorPlans, MatchesExactScriptNamesAtTheSafePoint) {
@@ -273,8 +273,37 @@ TEST(BehaviorPlans, MatchesExactScriptNamesAtTheSafePoint) {
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.State, PlanState::Active);
     EXPECT_EQ(info.Matches, 1u);
-    EXPECT_EQ(info.Installations, 1u);
+    EXPECT_EQ(info.Instances, 1u);
     EXPECT_EQ(info.World, plans.WorldEpoch());
+}
+
+TEST(BehaviorPlans, InstallationSnapshotsChangeWhenTheirWorldBindingChanges) {
+    Plans plans;
+    auto world = std::make_shared<FakeWorld>();
+    PlanId plan = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 1, {"Gameplay_Events"}, world, plan));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(2)));
+    ASSERT_TRUE(plans.ProcessFrame());
+
+    std::vector<InstallationInfo> first;
+    ASSERT_TRUE(plans.ReadInstallations("mod", 1, plan, first));
+    ASSERT_EQ(first.size(), 1u);
+    EXPECT_EQ(first[0].Target, Target(2));
+    EXPECT_EQ(first[0].World, plans.WorldEpoch());
+    EXPECT_NE(first[0].Id, 0u);
+    EXPECT_NE(first[0].Revision, 0u);
+
+    plans.Remove(Target(2));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(3)));
+    ASSERT_TRUE(plans.ProcessFrame());
+
+    std::vector<InstallationInfo> second;
+    ASSERT_TRUE(plans.ReadInstallations("mod", 1, plan, second));
+    ASSERT_EQ(second.size(), 1u);
+    EXPECT_EQ(second[0].Target, Target(3));
+    EXPECT_NE(second[0].Id, first[0].Id);
+    EXPECT_NE(second[0].Revision, first[0].Revision);
 }
 
 TEST(BehaviorPlans, ReconcilesContinuousSingleInstanceCardinality) {
@@ -297,7 +326,7 @@ TEST(BehaviorPlans, ReconcilesContinuousSingleInstanceCardinality) {
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.State, PlanState::Unsatisfied);
     EXPECT_EQ(info.Matches, 2u);
-    EXPECT_EQ(info.Installations, 0u);
+    EXPECT_EQ(info.Instances, 0u);
     EXPECT_EQ(info.LastStatus.Code, Error::TargetCardinality);
     EXPECT_EQ(info.ApplyFailure.Code, Error::TargetCardinality);
     EXPECT_TRUE(info.RestoreFailure);
@@ -329,7 +358,7 @@ TEST(BehaviorPlans, RemovingTheOnlyScriptLeavesASingleTargetPlanUnsatisfied) {
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.State, PlanState::Unsatisfied);
     EXPECT_EQ(info.Matches, 0u);
-    EXPECT_EQ(info.Installations, 0u);
+    EXPECT_EQ(info.Instances, 0u);
 }
 
 TEST(BehaviorPlans, LeavesTheOldWorldAndReinstallsAfterScriptLoad) {
@@ -350,7 +379,7 @@ TEST(BehaviorPlans, LeavesTheOldWorldAndReinstallsAfterScriptLoad) {
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.State, PlanState::Unsatisfied);
     EXPECT_EQ(info.World, 0u);
-    EXPECT_EQ(info.Installations, 0u);
+    EXPECT_EQ(info.Instances, 0u);
 
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1, 2)));
     ASSERT_TRUE(plans.ProcessFrame());
@@ -447,7 +476,7 @@ TEST(BehaviorPlans, FinishesAClosingPlanAtALaterSafePoint) {
     PlanInfo info;
     ASSERT_TRUE(plans.Read("mod", 4, plan, info));
     EXPECT_EQ(info.State, PlanState::Retiring);
-    EXPECT_EQ(info.Installations, 1u);
+    EXPECT_EQ(info.Instances, 1u);
 
     world->BusyClose.clear();
     ASSERT_TRUE(plans.ProcessFrame());
@@ -475,7 +504,7 @@ TEST(BehaviorPlans, RetriesABusyTargetRemovalAtTheNextSafePoint) {
     PlanInfo info;
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.State, PlanState::Unsatisfied);
-    EXPECT_EQ(info.Installations, 0u);
+    EXPECT_EQ(info.Instances, 0u);
     EXPECT_TRUE(world->Live.empty());
 }
 
@@ -526,7 +555,7 @@ TEST(BehaviorPlans, KeepsItsWorldOnTheGameThread) {
     PlanInfo info;
     ASSERT_TRUE(plans.Read("mod", 4, plan, info));
     EXPECT_EQ(info.State, PlanState::Active);
-    EXPECT_EQ(info.Installations, 1u);
+    EXPECT_EQ(info.Instances, 1u);
 
     ASSERT_TRUE(plans.Close("mod", 4, plan));
     EXPECT_TRUE(world->Live.empty());
@@ -579,7 +608,7 @@ TEST(BehaviorPlans, PreservesAScriptChangeObservedWhileInstalling) {
     PlanInfo info;
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.Matches, 2u);
-    EXPECT_EQ(info.Installations, 2u);
+    EXPECT_EQ(info.Instances, 2u);
 }
 
 TEST(BehaviorPlans, RetriesAConflictedRetirementWithoutTheCallerHandle) {
@@ -626,7 +655,7 @@ TEST(BehaviorPlans, KeepsThePreviousPlanWhenReplacementCannotRetireIt) {
     PlanInfo old;
     ASSERT_TRUE(plans.Read(oldId, old));
     EXPECT_EQ(old.State, PlanState::Conflicted);
-    EXPECT_EQ(old.Installations, 1u);
+    EXPECT_EQ(old.Instances, 1u);
     EXPECT_TRUE(replacement->Live.empty());
 }
 
@@ -648,7 +677,7 @@ TEST(BehaviorPlans, ObjectDeletionRemovesEveryGenerationForThatIdentity) {
     PlanInfo info;
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.Matches, 0u);
-    EXPECT_EQ(info.Installations, 0u);
+    EXPECT_EQ(info.Instances, 0u);
 }
 
 TEST(BehaviorPlans, WorldResetDropsOldInstallationIdentityAfterAConflict) {
@@ -667,7 +696,7 @@ TEST(BehaviorPlans, WorldResetDropsOldInstallationIdentityAfterAConflict) {
     ASSERT_TRUE(plans.Read(plan, info));
     EXPECT_EQ(info.State, PlanState::Unsatisfied);
     EXPECT_EQ(info.World, 0u);
-    EXPECT_EQ(info.Installations, 0u);
+    EXPECT_EQ(info.Instances, 0u);
     EXPECT_EQ(info.LastStatus.Code, Error::RevertConflict);
     EXPECT_TRUE(info.ApplyFailure);
     EXPECT_EQ(info.RestoreFailure.Code, Error::RevertConflict);

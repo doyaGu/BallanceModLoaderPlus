@@ -18,11 +18,37 @@ Status Failure(Error error, std::string message,
     return status;
 }
 
+template <class Definition>
+Status ExtendDefinitionBindings(
+    const std::set<std::uint64_t> &current,
+    const std::vector<Definition> &definitions,
+    std::set<std::uint64_t> &extended) {
+    try {
+        extended = current;
+        for (const Definition &definition : definitions) {
+            if (definition.Binding &&
+                !extended.insert(definition.Binding).second) {
+                return Failure(
+                    Error::InvalidGraphLocality,
+                    "A Behavior definition binding cannot be reused by one handle.");
+            }
+        }
+    } catch (...) {
+        extended.clear();
+        return Failure(
+            Error::CreateFailed,
+            "The Loader could not retain Behavior definition bindings.");
+    }
+    return {};
+}
+
 bool SameTarget(const Patches::Target &left,
                 const Patches::Target &right) noexcept {
     return left.Graph == right.Graph &&
         left.Fingerprint == right.Fingerprint &&
-        left.Body && right.Body && left.Body->SameAs(*right.Body);
+        left.Binding == right.Binding &&
+        left.Body && right.Body && left.Body->SameAs(*right.Body) &&
+        left.Symbols == right.Symbols;
 }
 
 std::size_t CommonPrefix(const std::vector<Patches::Target> &left,
@@ -37,7 +63,9 @@ std::size_t CommonPrefix(const std::vector<Patches::Target> &left,
 bool SameRule(const Patches::Rule &left,
               const Patches::Rule &right) noexcept {
     return left.Scripts == right.Scripts &&
-        left.Body && right.Body && left.Body->SameAs(*right.Body);
+        left.Binding == right.Binding &&
+        left.Body && right.Body && left.Body->SameAs(*right.Body) &&
+        left.Symbols == right.Symbols;
 }
 
 Status PatchStatus(Status status, const std::string &name,
@@ -189,15 +217,16 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
         owned.Admission = admission;
         owned.Graph = static_cast<CK_ID>(graph.Id);
         OwnedPatch::Scope scope;
-        scope.Id = 1;
+        scope.Id = RootGraphScope;
         scope.Graph = static_cast<CK_ID>(graph.Id);
         if (handles)
-            scope.Handles = *handles;
+            scope.Symbols.Nodes = *handles;
         owned.Scopes.push_back(std::move(scope));
         if (handles) {
             for (const auto &[handle, node] : *handles)
-                owned.Handles.emplace(
-                    handle, std::make_pair(std::size_t{0}, node));
+                owned.Symbols.emplace(
+                    SymbolRef{0, RootGraphScope, handle},
+                    OwnedPatch::ResolvedSymbol{0, node});
         }
         const auto [stored, inserted] =
             m_Patches.emplace(id, std::move(owned));
@@ -253,13 +282,13 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
 
 Status Patches::Apply(const SessionOwner &owner, const ObjectRef &graph,
                       std::string name, GraphEdit edit, PatchId &out,
-                      const HandleMap *authorNodes) {
+                      const SymbolMap *authorSymbols) {
     try {
         Target target;
         target.Graph = graph;
         target.Body = std::make_shared<GraphEdit>(std::move(edit));
-        if (authorNodes)
-            target.Handles = *authorNodes;
+        if (authorSymbols)
+            target.Symbols = *authorSymbols;
         std::vector<Target> targets;
         targets.push_back(std::move(target));
         return Apply(owner, std::move(name), std::move(targets), out);
@@ -300,6 +329,10 @@ Status Patches::Apply(
             return Failure(Error::InvalidGraphLocality,
                            "A Graph may appear only once in one Behavior Patch.");
     }
+    std::set<std::uint64_t> definitionBindings;
+    status = ExtendDefinitionBindings({}, targets, definitionBindings);
+    if (!status)
+        return status;
 
     const PatchId id = NextId();
     if (!id)
@@ -312,6 +345,7 @@ Status Patches::Apply(
     patch.Admission = RegisterAdmission(
         false, id, owner, std::move(parentAdmission));
     patch.Name = std::move(name);
+    patch.DefinitionBindings = std::move(definitionBindings);
     patch.RequestedDefinition = std::move(targets);
     if (m_Edit.CanPublish()) {
         status = Install(patch);
@@ -362,7 +396,7 @@ Status Patches::Apply(
 }
 
 Status Patches::ResolveNode(const SessionOwner &owner, PatchId patch,
-                            std::uint32_t handle, ObjectRef &out) const {
+                            const SymbolRef &node, ObjectRef &out) const {
     out = {};
     Status status = Ready();
     if (!status)
@@ -373,17 +407,29 @@ Status Patches::ResolveNode(const SessionOwner &owner, PatchId patch,
         found->second.Owner.Generation != owner.Generation)
         return Failure(Error::InvalidState,
                        "The Behavior Patch handle is stale.");
-    const auto named = found->second.Handles.find(handle);
-    if (named == found->second.Handles.end())
+    const PatchState state = State(found->second);
+    if (state == PatchState::Pending) {
+        return Failure(
+            Error::Busy,
+            "The Behavior Patch has not reached its safe point yet.");
+    }
+    if (state != PatchState::Active) {
+        return Failure(
+            Error::InvalidState,
+            "Only an active Behavior Patch names live Nodes.");
+    }
+    const auto named = found->second.Symbols.find(node);
+    if (named == found->second.Symbols.end() ||
+        named->second.Kind != SymbolKind::Node)
         return Failure(Error::QueryNotFound,
                        "The Behavior Patch names no Node under this handle.");
-    if (named->second.first >= found->second.Scopes.size())
+    if (named->second.ScopeIndex >= found->second.Scopes.size())
         return Failure(Error::InvalidState,
                        "The Behavior Patch Node scope is unavailable.");
     CKBehavior *native = nullptr;
     status = m_Edit.ResolveNode(
-        found->second.Scopes[named->second.first].Value,
-        named->second.second, native);
+        found->second.Scopes[named->second.ScopeIndex].Value,
+        named->second.NodeValue, native);
     if (!status)
         return status;
     if (!m_IssueObject)
@@ -396,13 +442,94 @@ Status Patches::ResolveNode(const SessionOwner &owner, PatchId patch,
     return {};
 }
 
+Status Patches::ResolvePort(const OwnedPatch &patch, const PortQuery &query,
+                            Port &out) const {
+    out = Port();
+    if (patch.TargetDeleted)
+        return Failure(Error::InvalidState,
+                       "The Behavior Patch installation is gone.");
+    const PatchState state = State(patch);
+    if (state == PatchState::Pending)
+        return Failure(Error::Busy,
+                       "The Behavior Patch has not reached its safe point yet.");
+    if (state != PatchState::Active)
+        return Failure(Error::InvalidState,
+                       "Only an active Behavior Patch exposes values.");
+
+    const auto named = patch.Symbols.find(
+        {query.Binding, query.Scope, query.Handle});
+    if (named == patch.Symbols.end())
+        return Failure(Error::QueryNotFound,
+                       "The Behavior Patch names no symbol under this handle.");
+    if (named->second.ScopeIndex >= patch.Scopes.size())
+        return Failure(Error::InvalidState,
+                       "The Behavior Patch symbol scope is unavailable.");
+    if (!query.Selector) {
+        if (named->second.Kind != SymbolKind::Port)
+            return Failure(Error::QueryNotFound,
+                           "The Behavior Patch handle does not name a Port.");
+        out = named->second.PortValue;
+        return {};
+    }
+    if (named->second.Kind != SymbolKind::Node)
+        return Failure(Error::QueryNotFound,
+                       "A Port selector requires a Node handle.");
+    out.Owner = named->second.NodeValue.Value;
+    out.Selector = *query.Selector;
+    return {};
+}
+
+Status Patches::ReadValue(const SessionOwner &owner, PatchId id,
+                          const PortQuery &query, GraphValue &out) const {
+    out = {};
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto found = m_Patches.find(id);
+    if (found == m_Patches.end() || found->second.Owner.Id != owner.Id ||
+        found->second.Owner.Generation != owner.Generation)
+        return Failure(Error::OwnerInvalid,
+                       "The Behavior Patch handle is stale.");
+    Port port;
+    status = ResolvePort(found->second, query, port);
+    if (!status)
+        return status;
+    const auto named = found->second.Symbols.find(
+        {query.Binding, query.Scope, query.Handle});
+    return m_Edit.ReadValue(found->second.Scopes[named->second.ScopeIndex].Value,
+                            std::move(port), out);
+}
+
+Status Patches::WriteValue(const SessionOwner &owner, PatchId id,
+                           const PortQuery &query,
+                           const Parameter::Binding &value) {
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto found = m_Patches.find(id);
+    if (found == m_Patches.end() || found->second.Owner.Id != owner.Id ||
+        found->second.Owner.Generation != owner.Generation)
+        return Failure(Error::OwnerInvalid,
+                       "The Behavior Patch handle is stale.");
+    Port port;
+    status = ResolvePort(found->second, query, port);
+    if (!status)
+        return status;
+    const auto named = found->second.Symbols.find(
+        {query.Binding, query.Scope, query.Handle});
+    return m_Edit.WriteValue(found->second.Scopes[named->second.ScopeIndex].Value,
+                             std::move(port), value);
+}
+
 class Patches::PlanWorld final : public Plan::World {
 public:
     PlanWorld(Patches &patches, SessionOwner owner, PatchKey patch,
               std::shared_ptr<const GraphEdit> edit,
+              SymbolMap symbols,
               std::shared_ptr<const CallbackAdmission> admission = {})
         : m_Patches(patches), m_Owner(std::move(owner)),
           m_Patch(std::move(patch)), m_Edit(std::move(edit)),
+          m_Symbols(std::move(symbols)),
           m_Admission(std::move(admission)) {}
 
     Status Install(const PatchKey &, const ObjectRef &target, Epoch,
@@ -414,6 +541,7 @@ public:
             Target graph;
             graph.Graph = target;
             graph.Body = m_Edit;
+            graph.Symbols = m_Symbols;
             std::vector<Target> targets;
             targets.push_back(std::move(graph));
 
@@ -440,6 +568,7 @@ private:
     SessionOwner m_Owner;
     PatchKey m_Patch;
     std::shared_ptr<const GraphEdit> m_Edit;
+    SymbolMap m_Symbols;
     std::shared_ptr<const CallbackAdmission> m_Admission;
 };
 
@@ -467,7 +596,8 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
     try {
         auto body = std::make_shared<GraphEdit>(std::move(edit));
         auto world = std::make_shared<PlanWorld>(
-            *this, owner, PatchKey{owner.Id, name}, std::move(body));
+            *this, owner, PatchKey{owner.Id, name}, std::move(body),
+            SymbolMap{});
         return plans.Submit(
             {owner.Id, std::move(name)}, owner.Generation, std::move(target),
             std::move(world), out);
@@ -506,6 +636,10 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
                 "A Script selection may appear only once in one Behavior Plan.");
         }
     }
+    std::set<std::uint64_t> definitionBindings;
+    status = ExtendDefinitionBindings({}, rules, definitionBindings);
+    if (!status)
+        return status;
 
     const PlanId id = NextPlanId();
     if (!id)
@@ -516,6 +650,7 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
     plan.Owner = owner;
     plan.Admission = RegisterAdmission(true, id, owner);
     plan.Name = std::move(name);
+    plan.DefinitionBindings = std::move(definitionBindings);
     plan.RequestedRules = std::move(rules);
     status = Activate(plans, plan);
     plan.LastStatus = status;
@@ -573,7 +708,7 @@ Status Patches::ActivateFrom(Plans &plans, OwnedPlan &plan,
             OwnedPlan::MaintainedRule maintained{rule, 0};
             auto world = std::make_shared<PlanWorld>(
                 *this, plan.Owner, PatchKey{plan.Owner.Id, plan.Name},
-                rule.Body, plan.Admission);
+                rule.Body, rule.Symbols, plan.Admission);
             status = plans.Submit(
                 {plan.Owner.Id, plan.Name + "/" + std::to_string(plan.Id) +
                                       "/" + std::to_string(index)},
@@ -839,7 +974,7 @@ Status Patches::ReadPlan(Plans &plans, const SessionOwner &owner,
             continue;
         }
         out.Matches += info.Matches;
-        out.Installations += info.Installations;
+        out.Instances += info.Instances;
         if (!info.LastStatus && out.LastStatus) {
             out.LastStatus = info.LastStatus;
             lastRule = index;
@@ -884,6 +1019,140 @@ Status Patches::ReadPlan(Plans &plans, const SessionOwner &owner,
         restoreRule,
         restoreScript.empty() ? scriptAt(restoreRule) : restoreScript);
     return {};
+}
+
+Status Patches::ReadPlanInstances(
+    Plans &plans, const SessionOwner &owner, PlanId id,
+    std::vector<PlanInstance> &out) const {
+    out.clear();
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto found = m_Plans.find(id);
+    if (found == m_Plans.end() || found->second.Owner.Id != owner.Id ||
+        found->second.Owner.Generation != owner.Generation)
+        return Failure(Error::OwnerInvalid,
+                       "The Behavior Plan handle is stale.");
+
+    const OwnedPlan &plan = found->second;
+    try {
+        for (std::size_t index = 0; index < plan.Rules.size(); ++index) {
+            std::vector<InstallationInfo> installations;
+            status = plans.ReadInstallations(
+                owner.Id, owner.Generation, plan.Rules[index].Id,
+                installations);
+            if (!status) {
+                out.clear();
+                return status;
+            }
+            for (InstallationInfo &installation : installations) {
+                out.push_back({static_cast<std::uint32_t>(index),
+                               plan.Revision,
+                               plan.Rules[index].Definition.Binding,
+                               std::move(installation)});
+            }
+        }
+    } catch (...) {
+        out.clear();
+        return Failure(
+            Error::CreateFailed,
+            "The Loader could not snapshot Behavior Plan instances.");
+    }
+    return {};
+}
+
+Status Patches::ValidatePlanInstance(
+    Plans &plans, const OwnedPlan &plan,
+    const PlanInstance &instance, PatchId &out) const {
+    out = 0;
+    if (instance.PlanRevision != plan.Revision ||
+        instance.Rule >= plan.Rules.size() ||
+        instance.Binding != plan.Rules[instance.Rule].Definition.Binding) {
+        return Failure(Error::GraphChanged,
+                       "The Behavior Plan instance snapshot is stale.");
+    }
+
+    std::vector<InstallationInfo> current;
+    Status status = plans.ReadInstallations(
+        plan.Owner.Id, plan.Owner.Generation,
+        plan.Rules[instance.Rule].Id, current);
+    if (!status)
+        return status;
+    const auto found = std::find_if(
+        current.begin(), current.end(),
+        [&](const InstallationInfo &candidate) {
+            return candidate.Id == instance.Value.Id &&
+                candidate.Target == instance.Value.Target &&
+                candidate.World == instance.Value.World &&
+                candidate.Revision == instance.Value.Revision;
+        });
+    if (found == current.end())
+        return Failure(Error::GraphChanged,
+                       "The Behavior Plan instance snapshot is stale.");
+    out = static_cast<PatchId>(found->Id);
+    return {};
+}
+
+Status Patches::ResolvePlanNode(
+    Plans &plans, const SessionOwner &owner, PlanId id,
+    const PlanInstance &instance, const SymbolRef &node,
+    ObjectRef &out) const {
+    out = {};
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto found = m_Plans.find(id);
+    if (found == m_Plans.end() || found->second.Owner.Id != owner.Id ||
+        found->second.Owner.Generation != owner.Generation)
+        return Failure(Error::OwnerInvalid,
+                       "The Behavior Plan handle is stale.");
+    PatchId patch = 0;
+    status = ValidatePlanInstance(plans, found->second, instance, patch);
+    if (status && node.Binding != instance.Binding)
+        status = Failure(Error::InvalidGraphLocality,
+                         "The Node belongs to another Behavior Plan definition.");
+    return status ? ResolveNode(owner, patch, node, out) : status;
+}
+
+Status Patches::ReadPlanValue(
+    Plans &plans, const SessionOwner &owner, PlanId id,
+    const PlanInstance &instance, const PortQuery &port,
+    GraphValue &out) const {
+    out = {};
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto found = m_Plans.find(id);
+    if (found == m_Plans.end() || found->second.Owner.Id != owner.Id ||
+        found->second.Owner.Generation != owner.Generation)
+        return Failure(Error::OwnerInvalid,
+                       "The Behavior Plan handle is stale.");
+    PatchId patch = 0;
+    status = ValidatePlanInstance(plans, found->second, instance, patch);
+    if (status && port.Binding != instance.Binding)
+        status = Failure(Error::InvalidGraphLocality,
+                         "The Port belongs to another Behavior Plan definition.");
+    return status ? ReadValue(owner, patch, port, out) : status;
+}
+
+Status Patches::WritePlanValue(
+    Plans &plans, const SessionOwner &owner, PlanId id,
+    const PlanInstance &instance, const PortQuery &port,
+    const Parameter::Binding &value) {
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto found = m_Plans.find(id);
+    if (found == m_Plans.end() || found->second.Owner.Id != owner.Id ||
+        found->second.Owner.Generation != owner.Generation)
+        return Failure(Error::OwnerInvalid,
+                       "The Behavior Plan handle is stale.");
+    PatchId patch = 0;
+    status = ValidatePlanInstance(plans, found->second, instance, patch);
+    if (status && port.Binding != instance.Binding)
+        status = Failure(Error::InvalidGraphLocality,
+                         "The Port belongs to another Behavior Plan definition.");
+    return status ? WriteValue(owner, patch, port, value) : status;
 }
 
 Status Patches::SetPlanActive(Plans &plans, const SessionOwner &owner,
@@ -971,8 +1240,14 @@ Status Patches::ReplacePlan(Plans &plans, const SessionOwner &owner,
     if (plan.Goal == PlanGoal::Closed || !plan.Admission->IsOpen())
         return Failure(Error::InvalidState,
                        "A retiring Behavior Plan cannot be replaced.");
+    std::set<std::uint64_t> definitionBindings;
+    Status bindingsStatus = ExtendDefinitionBindings(
+        plan.DefinitionBindings, rules, definitionBindings);
+    if (!bindingsStatus)
+        return bindingsStatus;
     if (plan.Goal == PlanGoal::Enabled && plan.PreviousRules.empty())
         plan.PreviousRules = CurrentRules(plan);
+    plan.DefinitionBindings = std::move(definitionBindings);
     plan.RequestedRules = std::move(rules);
     ++plan.Revision;
     plan.Recovery = PlanRecovery::None;
@@ -1054,7 +1329,7 @@ Status Patches::InstallFrom(OwnedPatch &patch,
     struct Prepared {
         const Target *TargetValue = nullptr;
         Edit Value;
-        std::map<std::uint32_t, Node> Nodes;
+        GraphEdit::CompiledSymbols Symbols;
     };
 
     const PatchKey key{patch.Owner.Id, patch.Name};
@@ -1106,7 +1381,7 @@ Status Patches::InstallFrom(OwnedPatch &patch,
         Prepared item;
         item.TargetValue = &target;
         status = target.Body->Compile(
-            key, target.Graph, *this, item.Value, &item.Nodes);
+            key, target.Graph, *this, item.Value, &item.Symbols);
         if (!status) {
             rememberFailure(index);
             break;
@@ -1122,8 +1397,8 @@ Status Patches::InstallFrom(OwnedPatch &patch,
         status = PublishScope(
             patch.Owner, key, item.TargetValue->Graph,
             *item.TargetValue->Body, std::move(item.Value),
-            std::move(item.Nodes), 1, index, patch,
-            &item.TargetValue->Handles);
+            std::move(item.Symbols), 1, index, patch,
+            &item.TargetValue->Symbols);
         if (!status) {
             rememberFailure(index);
             break;
@@ -1151,20 +1426,21 @@ Status Patches::InstallScope(const SessionOwner &owner,
                              std::uint32_t scopeId,
                              std::size_t targetIndex,
                              OwnedPatch &out,
-                             const HandleMap *authorNodes) {
+                             const SymbolMap *authorSymbols) {
     Edit resolved;
-    std::map<std::uint32_t, Node> compiled;
+    GraphEdit::CompiledSymbols compiled;
     PatchKey scopedKey = patch;
-    if (scopeId != 1)
+    if (scopeId != RootGraphScope)
         scopedKey.Name += "/" + std::to_string(scopeId);
     Status status = edit.Compile(
-        scopedKey, graph, *this, resolved, &compiled, scopeId != 1);
+        scopedKey, graph, *this, resolved, &compiled,
+        scopeId != RootGraphScope);
     if (!status)
         return status;
 
     return PublishScope(owner, patch, graph, edit, std::move(resolved),
                         std::move(compiled), scopeId, targetIndex, out,
-                        authorNodes);
+                        authorSymbols);
 }
 
 Status Patches::PublishScope(const SessionOwner &owner,
@@ -1172,11 +1448,11 @@ Status Patches::PublishScope(const SessionOwner &owner,
                              const ObjectRef &graph,
                              const GraphEdit &edit,
                              Edit resolved,
-                             std::map<std::uint32_t, Node> compiled,
+                             GraphEdit::CompiledSymbols compiled,
                              std::uint32_t scopeId,
                              std::size_t targetIndex,
                              OwnedPatch &out,
-                             const HandleMap *authorNodes) {
+                             const SymbolMap *authorSymbols) {
     Status status;
 
     Patch value;
@@ -1206,24 +1482,39 @@ Status Patches::PublishScope(const SessionOwner &owner,
         }
         applied.Graph = graphBehavior->GetID();
         applied.Value = std::move(value);
-        applied.Handles = compiled;
+        applied.Symbols = compiled;
         const std::size_t scopeIndex = out.Scopes.size();
         out.Scopes.push_back(std::move(applied));
         retained = true;
 
-        if (authorNodes) {
-            for (const auto &[author, symbol] : *authorNodes) {
-                if (symbol.Scope != scopeId)
+        if (authorSymbols) {
+            for (const auto &[author, symbol] : *authorSymbols) {
+                if (author.Scope != scopeId)
                     continue;
-                const auto found = compiled.find(symbol.Node);
-                if (found != compiled.end())
-                    out.Handles.emplace(
-                        author, std::make_pair(scopeIndex, found->second));
+                if (symbol.Kind == SymbolKind::Node) {
+                    const auto found = compiled.Nodes.find(
+                        symbol.NodeValue.Value);
+                    if (found != compiled.Nodes.end()) {
+                        out.Symbols.emplace(
+                            author, OwnedPatch::ResolvedSymbol{
+                                        scopeIndex, found->second});
+                    }
+                } else {
+                    const auto found = compiled.Ports.find(
+                        symbol.PortValue.Selector.Index);
+                    if (found != compiled.Ports.end()) {
+                        out.Symbols.emplace(
+                            author, OwnedPatch::ResolvedSymbol{
+                                        scopeIndex, found->second});
+                    }
+                }
             }
-        } else if (scopeId == 1) {
-            for (const auto &[handle, node] : compiled)
-                out.Handles.emplace(
-                    handle, std::make_pair(scopeIndex, node));
+        } else if (scopeId == RootGraphScope) {
+            for (const auto &[handle, node] : compiled.Nodes) {
+                out.Symbols.emplace(
+                    SymbolRef{0, RootGraphScope, handle},
+                    OwnedPatch::ResolvedSymbol{scopeIndex, node});
+            }
         }
 
         if (!status)
@@ -1233,8 +1524,8 @@ Status Patches::PublishScope(const SessionOwner &owner,
             if (!nested.Body)
                 return Failure(Error::InvalidState,
                                "A nested Graph Edit has no body.");
-            const auto parent = compiled.find(nested.Parent.Value);
-            if (parent == compiled.end())
+            const auto parent = compiled.Nodes.find(nested.Parent.Value);
+            if (parent == compiled.Nodes.end())
                 return Failure(Error::InvalidState,
                                "A nested Graph Edit lost its parent Node.");
             CKBehavior *native = nullptr;
@@ -1255,7 +1546,7 @@ Status Patches::PublishScope(const SessionOwner &owner,
                     Error::CreateFailed,
                     "The Loader could not retain the nested graph identity.");
             status = InstallScope(owner, patch, nestedGraph, *nested.Body,
-                                  nested.Scope, targetIndex, out, authorNodes);
+                                  nested.Scope, targetIndex, out, authorSymbols);
             if (!status)
                 return status;
         }
@@ -1488,21 +1779,34 @@ bool Patches::HasPendingChange(const OwnedPatch &patch) {
         : !patch.Scopes.empty();
 }
 
-void Patches::RebuildHandles(OwnedPatch &patch) {
-    patch.Handles.clear();
+void Patches::RebuildSymbols(OwnedPatch &patch) {
+    patch.Symbols.clear();
     for (std::size_t scopeIndex = 0; scopeIndex < patch.Scopes.size();
          ++scopeIndex) {
         const OwnedPatch::Scope &scope = patch.Scopes[scopeIndex];
         if (scope.Target >= patch.RequestedDefinition.size())
             continue;
         for (const auto &[author, symbol] :
-             patch.RequestedDefinition[scope.Target].Handles) {
-            if (symbol.Scope != scope.Id)
+             patch.RequestedDefinition[scope.Target].Symbols) {
+            if (author.Scope != scope.Id)
                 continue;
-            const auto found = scope.Handles.find(symbol.Node);
-            if (found != scope.Handles.end())
-                patch.Handles.emplace(
-                    author, std::make_pair(scopeIndex, found->second));
+            if (symbol.Kind == SymbolKind::Node) {
+                const auto found = scope.Symbols.Nodes.find(
+                    symbol.NodeValue.Value);
+                if (found != scope.Symbols.Nodes.end()) {
+                    patch.Symbols.emplace(
+                        author, OwnedPatch::ResolvedSymbol{
+                                    scopeIndex, found->second});
+                }
+            } else {
+                const auto found = scope.Symbols.Ports.find(
+                    symbol.PortValue.Selector.Index);
+                if (found != scope.Symbols.Ports.end()) {
+                    patch.Symbols.emplace(
+                        author, OwnedPatch::ResolvedSymbol{
+                                    scopeIndex, found->second});
+                }
+            }
         }
     }
 }
@@ -1562,12 +1866,12 @@ Status Patches::RestoreFrom(OwnedPatch &patch, std::size_t target) {
                        state == PatchState::Failed;
             })) {
         patch.Scopes.resize(firstIndex);
-        for (auto handle = patch.Handles.begin();
-             handle != patch.Handles.end();) {
-            if (handle->second.first >= firstIndex)
-                handle = patch.Handles.erase(handle);
+        for (auto symbol = patch.Symbols.begin();
+             symbol != patch.Symbols.end();) {
+            if (symbol->second.ScopeIndex >= firstIndex)
+                symbol = patch.Symbols.erase(symbol);
             else
-                ++handle;
+                ++symbol;
         }
     }
     return result;
@@ -1647,7 +1951,7 @@ Status Patches::Reconcile(OwnedPatch &patch) {
         prefix == patch.AppliedDefinition.size()) {
         patch.PreviousDefinition.clear();
         patch.Recovery = PatchRecovery::None;
-        RebuildHandles(patch);
+        RebuildSymbols(patch);
         return {};
     }
 
@@ -1665,7 +1969,7 @@ Status Patches::Reconcile(OwnedPatch &patch) {
     }
     if (status) {
         patch.AppliedDefinition = requested;
-        RebuildHandles(patch);
+        RebuildSymbols(patch);
         if (revision == patch.Revision) {
             patch.PreviousDefinition.clear();
             patch.RecoveryFailure = {};
@@ -1800,11 +2104,17 @@ Status Patches::Replace(const SessionOwner &owner, PatchId patch,
     if (value.Goal == PatchGoal::Closed || !value.Admission->IsOpen())
         return Failure(Error::InvalidState,
                         "A retiring Behavior Patch cannot be replaced.");
+    std::set<std::uint64_t> definitionBindings;
+    Status bindingsStatus = ExtendDefinitionBindings(
+        value.DefinitionBindings, targets, definitionBindings);
+    if (!bindingsStatus)
+        return bindingsStatus;
 
     // Retain the new definition before touching CK. A callback can replace it
     // again, in which case the next safe point sees only the final request.
     if (value.Goal == PatchGoal::Enabled && value.PreviousDefinition.empty())
         value.PreviousDefinition = value.AppliedDefinition;
+    value.DefinitionBindings = std::move(definitionBindings);
     value.RequestedDefinition = std::move(targets);
     ++value.Revision;
     value.Recovery = PatchRecovery::None;

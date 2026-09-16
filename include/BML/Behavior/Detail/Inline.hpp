@@ -694,6 +694,61 @@ inline bool ReadObserved(const BML_BehaviorGraphValue &source,
     return true;
 }
 
+inline Result<ObservedValue> ReadInstalledValue(
+    const std::shared_ptr<SessionState> &session,
+    BML_BehaviorPatch patch, BML_BehaviorPlan plan,
+    const BML_BehaviorPlanInstance *instance,
+    const BML_BehaviorPortRef &port) {
+    try {
+        BML_BehaviorGraphValue wire{};
+        wire.StructSize = sizeof(wire);
+        BML_BehaviorStatus status = EmptyStatus();
+        std::uint32_t payloadSize = 0;
+        int code = patch
+            ? session->Api->ReadPatchValue(
+                  session->Handle, patch, &port, &wire, nullptr, 0,
+                  &payloadSize, &status)
+            : session->Api->ReadPlanInstanceValue(
+                  session->Handle, plan, instance, &port, &wire,
+                  nullptr, 0, &payloadSize, &status);
+        code = WireCode(code, status);
+        if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
+            return Result<ObservedValue>::Failure(code, ReadStatus(status));
+
+        std::vector<std::uint8_t> payload(payloadSize);
+        if (payloadSize) {
+            wire = {};
+            wire.StructSize = sizeof(wire);
+            status = EmptyStatus();
+            std::uint32_t written = 0;
+            code = patch
+                ? session->Api->ReadPatchValue(
+                      session->Handle, patch, &port, &wire, payload.data(),
+                      payloadSize, &written, &status)
+                : session->Api->ReadPlanInstanceValue(
+                      session->Handle, plan, instance, &port, &wire,
+                      payload.data(), payloadSize, &written, &status);
+            code = WireCode(code, status);
+            if (code != BML_OK)
+                return Result<ObservedValue>::Failure(
+                    code, ReadStatus(status));
+            if (written != payload.size())
+                return Result<ObservedValue>::Failure(
+                    BML_ERROR_MALFORMED_MESSAGE, ReadStatus(status));
+        }
+        ObservedValue observed;
+        if (!ReadObserved(wire, payload, observed))
+            return Result<ObservedValue>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, ReadStatus(status));
+        return Result<ObservedValue>::Success(
+            std::move(observed), ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<ObservedValue>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<ObservedValue>::Failure(BML_ERROR_FAIL);
+    }
+}
+
 inline bool ReadWatchValue(const BML_BehaviorWatchValue &source,
                            ObservedValue &out) {
     if (source.StructSize < sizeof(source) ||
@@ -797,6 +852,84 @@ struct WatchFunction {
 };
 
 } // namespace Detail
+
+template <class Handle>
+inline Result<ObservedValue> Patch::Read(const Handle &port) const {
+    static_assert(std::is_same_v<std::decay_t<Handle>, Edit::Port>,
+                  "A Behavior Patch reads only an Edit::Port.");
+    if (!*this)
+        return Result<ObservedValue>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface,
+                       ReadPatchValue))
+        return Result<ObservedValue>::Failure(BML_ERROR_VERSION_MISMATCH);
+    const Result<BML_BehaviorPortRef> resolved = ResolvePort(port);
+    if (!resolved)
+        return Result<ObservedValue>::Failure(
+            resolved.Code(), resolved.GetStatus());
+    return Detail::ReadInstalledValue(
+        m_Session, m_Handle, nullptr, nullptr, resolved.Value());
+}
+
+template <class Handle>
+inline Result<void> Patch::Set(const Handle &port,
+                               const Value &value) const {
+    static_assert(std::is_same_v<std::decay_t<Handle>, Edit::Port>,
+                  "A Behavior Patch writes only an Edit::Port.");
+    if (!*this)
+        return Result<void>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface,
+                       WritePatchValue))
+        return Result<void>::Failure(BML_ERROR_VERSION_MISMATCH);
+    const Result<BML_BehaviorPortRef> resolved = ResolvePort(port);
+    if (!resolved)
+        return Result<void>::Failure(resolved.Code(), resolved.GetStatus());
+    const BML_BehaviorValue wire = Detail::Wire::From(value);
+    BML_BehaviorStatus status = Detail::EmptyStatus();
+    const int code = Detail::WireCode(
+        m_Session->Api->WritePatchValue(
+            m_Session->Handle, m_Handle, &resolved.Value(), &wire, &status),
+        status);
+    return code == BML_OK
+        ? Result<void>::Success(Detail::ReadStatus(status))
+        : Result<void>::Failure(code, Detail::ReadStatus(status));
+}
+
+inline Result<ObservedValue> Plan::Instance::Read(
+    const Edit::Port &port) const {
+    if (!*this)
+        return Result<ObservedValue>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface,
+                       ReadPlanInstanceValue))
+        return Result<ObservedValue>::Failure(BML_ERROR_VERSION_MISMATCH);
+    const Result<BML_BehaviorPortRef> resolved = ResolvePort(port);
+    if (!resolved)
+        return Result<ObservedValue>::Failure(
+            resolved.Code(), resolved.GetStatus());
+    return Detail::ReadInstalledValue(
+        m_Session, nullptr, m_Plan, &m_Wire, resolved.Value());
+}
+
+inline Result<void> Plan::Instance::Set(
+    const Edit::Port &port, const Value &value) const {
+    if (!*this)
+        return Result<void>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface,
+                       WritePlanInstanceValue))
+        return Result<void>::Failure(BML_ERROR_VERSION_MISMATCH);
+    const Result<BML_BehaviorPortRef> resolved = ResolvePort(port);
+    if (!resolved)
+        return Result<void>::Failure(resolved.Code(), resolved.GetStatus());
+    const BML_BehaviorValue wire = Detail::Wire::From(value);
+    BML_BehaviorStatus status = Detail::EmptyStatus();
+    const int code = Detail::WireCode(
+        m_Session->Api->WritePlanInstanceValue(
+            m_Session->Handle, m_Plan, &m_Wire, &resolved.Value(),
+            &wire, &status),
+        status);
+    return code == BML_OK
+        ? Result<void>::Success(Detail::ReadStatus(status))
+        : Result<void>::Failure(code, Detail::ReadStatus(status));
+}
 
 inline Result<Graph> Graph::Read(
     std::shared_ptr<Detail::SessionState> session,

@@ -43,6 +43,11 @@ struct PathRef {
 // reports that, and a Plan refuses such an edit.
 class GraphEdit final {
 public:
+    struct CompiledSymbols {
+        std::map<std::uint32_t, Node> Nodes;
+        std::map<int, Port> Ports;
+    };
+
     class Compiler : public PatternValues {
     public:
         virtual ~Compiler() = default;
@@ -162,11 +167,12 @@ public:
     // This lets Patch and Plan replacements retain an unchanged prefix.
     [[nodiscard]] bool SameAs(const GraphEdit &other) const noexcept;
 
-    // Nodes reports which live Edit Node each handle of this intent compiled
-    // to, so a caller can read the result back after the Edit is applied.
+    // Symbols reports which live Edit Node or appended Port each handle of
+    // this intent compiled to, so an installation can resolve author symbols
+    // without retaining a native CK pointer.
     Status Compile(const PatchKey &patch, const ObjectRef &graph,
                    Compiler &compiler, Edit &out,
-                   std::map<std::uint32_t, Node> *nodes = nullptr,
+                   CompiledSymbols *symbols = nullptr,
                    bool rootInterfaceExists = false) const;
 
 private:

@@ -211,12 +211,15 @@ struct FakeState {
     std::uint32_t PatchTargetCount = 0;
     std::vector<BML_ObjectRef> PatchGraphs;
     std::vector<std::uint64_t> PatchFingerprints;
-    std::vector<std::uint32_t> PatchHandleBases;
     int PatchActivityChanges = 0;
     int PlanActivityChanges = 0;
     int PlanFailureReads = 0;
     int PatchReplaces = 0;
     int PlanReplaces = 0;
+    int PatchReplaceCode = BML_OK;
+    int PlanReplaceCode = BML_OK;
+    std::uint32_t PatchReplaceState = BML_BEHAVIOR_PATCH_ACTIVE;
+    std::uint32_t PlanReplaceState = BML_BEHAVIOR_PLAN_ACTIVE;
     int PatchFailureReads = 0;
     std::uint32_t PlanLastError = BML_BEHAVIOR_ERROR_NONE;
     std::uint32_t PlanApplyError = BML_BEHAVIOR_ERROR_NONE;
@@ -240,9 +243,26 @@ struct FakeState {
     int ReferenceCode = BML_OK;
     bool MalformedReference = false;
     int NodeResolves = 0;
+    std::uint32_t ResolvedScope = 0;
     std::uint32_t ResolvedHandle = 0;
     int ResolveNodeCode = BML_OK;
     bool MalformedResolvedNode = false;
+    int InstanceReads = 0;
+    int InstanceNodeResolves = 0;
+    int PatchValueReads = 0;
+    int PatchValueWrites = 0;
+    int InstanceValueReads = 0;
+    int InstanceValueWrites = 0;
+    std::uint64_t InstanceBinding = 0;
+    std::uint64_t ResolvedBinding = 0;
+    std::uint64_t ActivePatchBinding = 0;
+    std::vector<std::uint64_t> PlanBindings;
+    std::vector<std::uint64_t> PatchBindings;
+    BML_BehaviorPortRef ValuePort{};
+    BML_BehaviorValue WrittenValue{};
+    std::string WrittenText;
+    std::int32_t ObservedValue = 47;
+    bool MalformedInstance = false;
     bool MalformedObservedObject = false;
     bool MalformedInfoDiagnostic = false;
     bool MalformedPatchReserved = false;
@@ -1280,8 +1300,11 @@ int BML_BEHAVIOR_CALL SubmitPlan(
     ++g_State.PlanSubmits;
     g_State.PlanName = Copy(spec->Name);
     g_State.PlanRuleCount = spec->EditCount;
-    for (std::uint32_t index = 0; index < spec->EditCount; ++index)
+    g_State.PlanBindings.clear();
+    for (std::uint32_t index = 0; index < spec->EditCount; ++index) {
         g_State.PlanScripts.push_back(Copy(spec->Edits[index].Script));
+        g_State.PlanBindings.push_back(spec->Edits[index].Binding);
+    }
     if (spec->EditCount != 0 && spec->Edits) {
         g_State.PlanScript = Copy(spec->Edits[0].Script);
         g_State.PlanTargets = spec->Edits[0].Targets;
@@ -1317,7 +1340,7 @@ int BML_BEHAVIOR_CALL ReadPlan(BML_BehaviorSession, BML_BehaviorPlan plan,
     info->State = g_State.PlanState;
     info->World = 12;
     info->Matches = 1;
-    info->Installations = 1;
+    info->Instances = 1;
     SetError(&info->LastStatus, g_State.PlanLastError,
              "plan reconciliation failed");
     if (g_State.MalformedInfoDiagnostic)
@@ -1345,11 +1368,14 @@ int BML_BEHAVIOR_CALL ApplyPatch(
     ++g_State.PatchApplies;
     g_State.PatchName = Copy(spec->Name);
     g_State.PatchTargetCount = spec->EditCount;
+    g_State.PatchBindings.clear();
     for (std::uint32_t index = 0; index < spec->EditCount; ++index) {
         g_State.PatchGraphs.push_back(spec->Edits[index].Graph);
         g_State.PatchFingerprints.push_back(spec->Edits[index].Fingerprint);
-        g_State.PatchHandleBases.push_back(spec->Edits[index].HandleBase);
+        g_State.PatchBindings.push_back(spec->Edits[index].Binding);
     }
+    if (!g_State.PatchBindings.empty())
+        g_State.ActivePatchBinding = g_State.PatchBindings.front();
     if (spec->EditCount != 0 && spec->Edits) {
         g_State.PatchGraph = spec->Edits[0].Graph;
         CaptureSteps(spec->Edits[0].Steps, spec->Edits[0].StepCount,
@@ -1417,16 +1443,18 @@ int BML_BEHAVIOR_CALL Reference(BML_BehaviorSession, std::uint32_t object,
 }
 
 int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession, BML_BehaviorPatch,
-                                       std::uint32_t handle,
+                                       const BML_BehaviorNodeRef *resolved,
                                        BML_ObjectRef *outNode,
                                        BML_BehaviorStatus *status) {
     Success(status);
     ++g_State.NodeResolves;
-    g_State.ResolvedHandle = handle;
+    g_State.ResolvedBinding = resolved->Binding;
+    g_State.ResolvedScope = resolved->Graph;
+    g_State.ResolvedHandle = resolved->Handle;
     if (g_State.ResolveNodeCode != BML_OK)
         return g_State.ResolveNodeCode;
     outNode->Domain = 11;
-    outNode->Slot = g_State.MalformedResolvedNode ? 0u : handle;
+    outNode->Slot = g_State.MalformedResolvedNode ? 0u : resolved->Handle;
     outNode->Generation = g_State.MalformedResolvedNode ? 0u : 4u;
     return BML_OK;
 }
@@ -1536,8 +1564,23 @@ int BML_BEHAVIOR_CALL ReplacePatch(
     ++g_State.PatchReplaces;
     g_State.PatchTargetCount = count;
     g_State.PatchGraphs.clear();
-    for (std::uint32_t index = 0; index < count; ++index)
+    g_State.PatchBindings.clear();
+    for (std::uint32_t index = 0; index < count; ++index) {
         g_State.PatchGraphs.push_back(edits[index].Graph);
+        g_State.PatchBindings.push_back(edits[index].Binding);
+    }
+    if (!g_State.PatchBindings.empty())
+        g_State.ActivePatchBinding = g_State.PatchBindings.front();
+    if (g_State.PatchReplaceCode != BML_OK) {
+        SetError(status, BML_BEHAVIOR_ERROR_STATE_INVALID,
+                 "The replacement was rejected.");
+        if (info) {
+            Init(info);
+            info->State = g_State.PatchReplaceState;
+            Init(&info->LastStatus);
+        }
+        return g_State.PatchReplaceCode;
+    }
     return SetPatchActive(nullptr, nullptr, 1, info, status);
 }
 
@@ -1562,8 +1605,21 @@ int BML_BEHAVIOR_CALL ReplacePlan(
     ++g_State.PlanReplaces;
     g_State.PlanRuleCount = count;
     g_State.PlanScripts.clear();
-    for (std::uint32_t index = 0; index < count; ++index)
+    g_State.PlanBindings.clear();
+    for (std::uint32_t index = 0; index < count; ++index) {
         g_State.PlanScripts.push_back(Copy(edits[index].Script));
+        g_State.PlanBindings.push_back(edits[index].Binding);
+    }
+    if (g_State.PlanReplaceCode != BML_OK) {
+        SetError(status, BML_BEHAVIOR_ERROR_STATE_INVALID,
+                 "The replacement was rejected.");
+        if (info) {
+            Init(info);
+            info->State = g_State.PlanReplaceState;
+            Init(&info->LastStatus);
+        }
+        return g_State.PlanReplaceCode;
+    }
     return SetPlanActive(nullptr, nullptr, 1, info, status);
 }
 
@@ -1598,6 +1654,136 @@ int BML_BEHAVIOR_CALL ReadPlanFailures(
              "plan restore failed");
     if (g_State.MalformedFailures)
         failures->Apply.StructSize = 0;
+    return BML_OK;
+}
+
+BML_BehaviorPlanInstance InstanceRecord() {
+    BML_BehaviorPlanInstance instance{};
+    Init(&instance);
+    instance.Rule = 0;
+    instance.PlanRevision = 7;
+    instance.Binding = g_State.InstanceBinding;
+    if (!instance.Binding)
+        instance.Binding = g_State.PlanBindings.empty()
+            ? 1 : g_State.PlanBindings.front();
+    instance.World = 12;
+    instance.Revision = 3;
+    instance.Identity = 29;
+    instance.Script = {13, 37, 2};
+    if (g_State.MalformedInstance)
+        instance.Identity = 0;
+    return instance;
+}
+
+int BML_BEHAVIOR_CALL ReadPlanInstances(
+    BML_BehaviorSession, BML_BehaviorPlan,
+    BML_BehaviorPlanInstance *instances,
+    std::uint32_t capacity, std::uint32_t stride,
+    std::uint32_t *count, BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.InstanceReads;
+    *count = 1;
+    if (capacity < 1)
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    const BML_BehaviorPlanInstance instance = InstanceRecord();
+    std::memcpy(instances, &instance,
+                (std::min)(stride, static_cast<std::uint32_t>(
+                    sizeof(instance))));
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ResolvePlanInstanceNode(
+    BML_BehaviorSession, BML_BehaviorPlan,
+    const BML_BehaviorPlanInstance *instance,
+    const BML_BehaviorNodeRef *resolved,
+    BML_ObjectRef *node, BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.InstanceNodeResolves;
+    if (resolved->Binding != instance->Binding)
+        return BML_ERROR_INVALID_PARAMETER;
+    g_State.ResolvedBinding = resolved->Binding;
+    g_State.ResolvedScope = resolved->Graph;
+    g_State.ResolvedHandle = resolved->Handle;
+    *node = {17, resolved->Handle, 5};
+    return BML_OK;
+}
+
+int ReadInstanceValue(const BML_BehaviorPortRef *port,
+                          BML_BehaviorGraphValue *value,
+                          void *payload, std::uint32_t capacity,
+                          std::uint32_t *size,
+                          BML_BehaviorStatus *status) {
+    Success(status);
+    g_State.ValuePort = *port;
+    Init(value);
+    value->State = BML_BEHAVIOR_VALUE_AVAILABLE;
+    value->Relation = BML_BEHAVIOR_VALUE_STORED;
+    value->Type = {CKPGUID_INT.d1, CKPGUID_INT.d2};
+    value->Kind = BML_BEHAVIOR_VALUE_INT32;
+    value->ValueOffset = 0;
+    value->ValueSize = sizeof(std::int32_t);
+    *size = sizeof(std::int32_t);
+    if (capacity < sizeof(std::int32_t))
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    std::memcpy(payload, &g_State.ObservedValue,
+                sizeof(g_State.ObservedValue));
+    return BML_OK;
+}
+
+void CaptureWrittenValue(const BML_BehaviorPortRef *port,
+                         const BML_BehaviorValue *value) {
+    g_State.ValuePort = *port;
+    g_State.WrittenValue = *value;
+    g_State.WrittenText.clear();
+    if (value->Kind == BML_BEHAVIOR_VALUE_UTF8)
+        g_State.WrittenText = Copy(value->Data.Utf8);
+}
+
+int BML_BEHAVIOR_CALL ReadPatchValue(
+    BML_BehaviorSession, BML_BehaviorPatch,
+    const BML_BehaviorPortRef *port, BML_BehaviorGraphValue *value,
+    void *payload, std::uint32_t capacity, std::uint32_t *size,
+    BML_BehaviorStatus *status) {
+    ++g_State.PatchValueReads;
+    if (port->Binding != g_State.ActivePatchBinding)
+        return BML_ERROR_NOT_FOUND;
+    return ReadInstanceValue(port, value, payload, capacity, size, status);
+}
+
+int BML_BEHAVIOR_CALL WritePatchValue(
+    BML_BehaviorSession, BML_BehaviorPatch,
+    const BML_BehaviorPortRef *port, const BML_BehaviorValue *value,
+    BML_BehaviorStatus *status) {
+    Success(status);
+    if (port->Binding != g_State.ActivePatchBinding)
+        return BML_ERROR_NOT_FOUND;
+    ++g_State.PatchValueWrites;
+    CaptureWrittenValue(port, value);
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ReadPlanInstanceValue(
+    BML_BehaviorSession, BML_BehaviorPlan,
+    const BML_BehaviorPlanInstance *instance,
+    const BML_BehaviorPortRef *port,
+    BML_BehaviorGraphValue *value, void *payload, std::uint32_t capacity,
+    std::uint32_t *size, BML_BehaviorStatus *status) {
+    ++g_State.InstanceValueReads;
+    if (port->Binding != instance->Binding)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ReadInstanceValue(port, value, payload, capacity, size, status);
+}
+
+int BML_BEHAVIOR_CALL WritePlanInstanceValue(
+    BML_BehaviorSession, BML_BehaviorPlan,
+    const BML_BehaviorPlanInstance *instance,
+    const BML_BehaviorPortRef *port,
+    const BML_BehaviorValue *value, BML_BehaviorStatus *status) {
+    Success(status);
+    if (port->Binding != instance->Binding)
+        return BML_ERROR_INVALID_PARAMETER;
+    ++g_State.InstanceValueWrites;
+    CaptureWrittenValue(port, value);
     return BML_OK;
 }
 
@@ -1647,6 +1833,12 @@ BML_BehaviorInterface g_Interface = {
     &ReplacePlan,
     &ReadPatchFailures,
     &ReadPlanFailures,
+    &ReadPlanInstances,
+    &ResolvePlanInstanceNode,
+    &ReadPatchValue,
+    &WritePatchValue,
+    &ReadPlanInstanceValue,
+    &WritePlanInstanceValue,
 };
 
 } // namespace
@@ -1714,6 +1906,7 @@ static_assert(std::is_constructible_v<Value, float>);
 static_assert(!std::is_constructible_v<Value, std::uint32_t>);
 static_assert(!std::is_constructible_v<Value, std::uint64_t>);
 static_assert(!std::is_constructible_v<Value, double>);
+static_assert(std::is_same_v<Result<int>, BML::Result<int, Status>>);
 static_assert(CanReadMovedResult<Result<std::string>>);
 static_assert(!CanReadMovedResult<Result<std::unique_ptr<int>>>);
 
@@ -4086,6 +4279,7 @@ TEST(BehaviorAuthoring, ReadsBackTheLiveNodeAnAppliedEditNamed) {
     auto resolved = patch.Resolve(added);
     ASSERT_TRUE(resolved) << resolved.GetStatus().Message;
     EXPECT_EQ(g_State.NodeResolves, 1);
+    EXPECT_EQ(g_State.ResolvedScope, BML_BEHAVIOR_EDIT_GRAPH);
     ASSERT_FALSE(g_State.PatchSteps.empty());
     EXPECT_EQ(g_State.ResolvedHandle, g_State.PatchSteps.front().Result);
     EXPECT_EQ(resolved->Domain, 11u);
@@ -4109,6 +4303,225 @@ TEST(BehaviorAuthoring, ReadsBackTheLiveNodeAnAppliedEditNamed) {
     EXPECT_FALSE(closed);
     EXPECT_EQ(closed.Code(), BML_ERROR_INVALID_HANDLE);
     EXPECT_EQ(g_State.NodeResolves, 3);
+}
+
+TEST(BehaviorAuthoring, ReadsAndWritesValuesThroughAnAppliedEdit) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit::Port state;
+    Graph graph;
+    Patch patch;
+    {
+        Edit edit;
+        state = edit.Root().AppendLocal("State", CKPGUID_INT);
+        auto inspected = session.Inspect({41, 42, 43});
+        ASSERT_TRUE(inspected);
+        graph = inspected.Take();
+        auto applied = graph.Apply("state-binding", edit);
+        ASSERT_TRUE(applied) << applied.GetStatus().Message;
+        patch = applied.Take();
+    }
+
+    auto observed = patch.Read(state);
+    ASSERT_TRUE(observed) << observed.GetStatus().Message;
+    ASSERT_TRUE(observed->Kind.has_value());
+    EXPECT_EQ(*observed->Kind, ValueKind::Int32);
+    EXPECT_EQ(std::get<std::int32_t>(observed->Data),
+              g_State.ObservedValue);
+    EXPECT_EQ(g_State.PatchValueReads, 2);
+    EXPECT_EQ(g_State.ValuePort.Kind, 0u);
+    EXPECT_EQ(g_State.ValuePort.Handle, g_State.PatchSteps.front().Result);
+    ASSERT_EQ(g_State.PatchBindings.size(), 1u);
+    const std::uint64_t originalBinding = g_State.PatchBindings.front();
+    EXPECT_NE(originalBinding, 0u);
+    EXPECT_EQ(g_State.ValuePort.Binding, originalBinding);
+
+    ASSERT_TRUE(patch.Set(state, std::int32_t{19}));
+    EXPECT_EQ(g_State.PatchValueWrites, 1);
+    EXPECT_EQ(g_State.WrittenValue.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_INT32));
+    EXPECT_EQ(g_State.WrittenValue.Data.Int32, 19);
+
+    Edit::Port replacementState;
+    {
+        Edit replacement;
+        replacementState = replacement.Root().AppendLocal(
+            "Replacement State", CKPGUID_INT);
+        auto replaced = patch.Replace(On(graph, replacement));
+        ASSERT_TRUE(replaced) << replaced.GetStatus().Message;
+    }
+    ASSERT_EQ(g_State.PatchBindings.size(), 1u);
+    EXPECT_NE(g_State.PatchBindings.front(), originalBinding);
+
+    // A queued replacement can fail and restore the previous definition.
+    // The old symbol must remain addressable while the rejected symbol must
+    // not alias the old handle range.
+    g_State.ActivePatchBinding = originalBinding;
+    EXPECT_TRUE(patch.Read(state));
+    EXPECT_FALSE(patch.Read(replacementState));
+}
+
+TEST(BehaviorAuthoring, UsesRevisionedPlanInstances) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit::Node loader;
+    Edit::Port row;
+    Edit::Port custom;
+    Plan plan;
+    {
+        Edit edit;
+        auto level = edit.Root().Require("Load LevelXX").Graph();
+        loader = level.Require("Object Load");
+        row = level.Root().Local("AllLevel row", CKPGUID_INT);
+        custom = level.AppendLocal("Custom Level", CKPGUID_BOOL);
+        auto submitted = session.Plan(
+            "level-loader", Scripts::One("Levelinit_build"), edit);
+        ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+        plan = submitted.Take();
+    }
+
+    auto instances = plan.Instances();
+    ASSERT_TRUE(instances) << instances.GetStatus().Message;
+    ASSERT_EQ(instances->size(), 1u);
+    EXPECT_EQ(g_State.InstanceReads, 2);
+    Plan::Instance &instance = instances->front();
+    EXPECT_EQ(instance.Rule(), 0u);
+    EXPECT_EQ(instance.World(), InstanceRecord().World);
+    EXPECT_EQ(instance.Script().Slot, InstanceRecord().Script.Slot);
+    const std::uint64_t originalBinding = InstanceRecord().Binding;
+    EXPECT_NE(originalBinding, 0u);
+
+    auto resolved = instance.Resolve(loader);
+    ASSERT_TRUE(resolved) << resolved.GetStatus().Message;
+    EXPECT_EQ(g_State.InstanceNodeResolves, 1);
+    EXPECT_EQ(g_State.ResolvedBinding, originalBinding);
+    EXPECT_EQ(resolved->Domain, 17u);
+    EXPECT_EQ(resolved->Slot, g_State.ResolvedHandle);
+
+    auto observed = instance.Read(row);
+    ASSERT_TRUE(observed) << observed.GetStatus().Message;
+    EXPECT_EQ(std::get<std::int32_t>(observed->Data),
+              g_State.ObservedValue);
+    EXPECT_EQ(g_State.InstanceValueReads, 2);
+    EXPECT_EQ(g_State.ValuePort.Graph, g_State.ResolvedScope);
+    EXPECT_EQ(g_State.ValuePort.Handle, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(g_State.ValuePort.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_LOCAL));
+
+    ASSERT_TRUE(instance.Set(custom, true));
+    EXPECT_EQ(g_State.InstanceValueWrites, 1);
+    EXPECT_EQ(g_State.ValuePort.Kind, 0u);
+    EXPECT_EQ(g_State.WrittenValue.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_BOOL));
+    EXPECT_EQ(g_State.WrittenValue.Data.Bool, 1u);
+
+    const std::string mapPath = "3D Entities\\Maps\\custom.nmo";
+    ASSERT_TRUE(instance.Set(
+        loader.Pin("File", CKPGUID_STRING), mapPath));
+    EXPECT_EQ(g_State.InstanceValueWrites, 2);
+    EXPECT_EQ(g_State.ValuePort.Graph, g_State.ResolvedScope);
+    EXPECT_EQ(g_State.ValuePort.Handle, g_State.ResolvedHandle);
+    EXPECT_EQ(g_State.ValuePort.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_PIN));
+    EXPECT_EQ(g_State.WrittenValue.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_UTF8));
+    EXPECT_EQ(g_State.WrittenText, mapPath);
+
+    Edit::Port replacementRow;
+    {
+        Edit replacement;
+        auto replacementLevel = replacement.Root()
+            .Require("Load LevelXX").Graph();
+        replacementRow = replacementLevel.Root().Local(
+            "AllLevel row", CKPGUID_INT);
+        auto replaced = plan.Replace(On(
+            Scripts::One("Levelinit_build"), replacement));
+        ASSERT_TRUE(replaced) << replaced.GetStatus().Message;
+    }
+    ASSERT_EQ(g_State.PlanBindings.size(), 1u);
+    EXPECT_NE(g_State.PlanBindings.front(), originalBinding);
+
+    // Simulate the native Plan rolling a queued replacement back to its
+    // previous rule. Instance.Binding selects the retained symbol program.
+    g_State.InstanceBinding = originalBinding;
+    auto restoredInstances = plan.Instances();
+    ASSERT_TRUE(restoredInstances);
+    ASSERT_EQ(restoredInstances->size(), 1u);
+    EXPECT_TRUE(restoredInstances->front().Read(row));
+    EXPECT_FALSE(restoredInstances->front().Read(replacementRow));
+
+    g_State.MalformedInstance = true;
+    auto malformed = plan.Instances();
+    EXPECT_FALSE(malformed);
+    EXPECT_EQ(malformed.Code(), BML_ERROR_MALFORMED_MESSAGE);
+}
+
+TEST(BehaviorAuthoring, DoesNotReusePatchBindingsAfterARejectedReplacement) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    Graph graph = inspected.Take();
+
+    Edit initial;
+    auto applied = graph.Apply("binding-sequence", initial);
+    ASSERT_TRUE(applied);
+    Patch patch = applied.Take();
+
+    g_State.PatchReplaceCode = BML_ERROR_FAIL;
+    Edit rejected;
+    (void) rejected.Root().AppendLocal("Rejected", CKPGUID_INT);
+    auto failed = patch.Replace(On(graph, rejected));
+    EXPECT_FALSE(failed);
+    ASSERT_EQ(g_State.PatchBindings.size(), 1u);
+    const std::uint64_t rejectedBinding = g_State.PatchBindings.front();
+
+    g_State.PatchReplaceCode = BML_OK;
+    Edit accepted;
+    (void) accepted.Root().AppendLocal("Accepted", CKPGUID_INT);
+    auto replaced = patch.Replace(On(graph, accepted));
+    ASSERT_TRUE(replaced);
+    ASSERT_EQ(g_State.PatchBindings.size(), 1u);
+    EXPECT_GT(g_State.PatchBindings.front(), rejectedBinding);
+}
+
+TEST(BehaviorAuthoring, DoesNotReusePlanBindingsAfterARejectedReplacement) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit initial;
+    auto submitted = session.Plan(
+        "binding-sequence", Scripts::One("Levelinit_build"), initial);
+    ASSERT_TRUE(submitted);
+    Plan plan = submitted.Take();
+
+    g_State.PlanReplaceCode = BML_ERROR_FAIL;
+    Edit rejected;
+    (void) rejected.Root().AppendLocal("Rejected", CKPGUID_INT);
+    auto failed = plan.Replace(
+        On(Scripts::One("Levelinit_build"), rejected));
+    EXPECT_FALSE(failed);
+    ASSERT_EQ(g_State.PlanBindings.size(), 1u);
+    const std::uint64_t rejectedBinding = g_State.PlanBindings.front();
+
+    g_State.PlanReplaceCode = BML_OK;
+    Edit accepted;
+    (void) accepted.Root().AppendLocal("Accepted", CKPGUID_INT);
+    auto replaced = plan.Replace(
+        On(Scripts::One("Levelinit_build"), accepted));
+    ASSERT_TRUE(replaced);
+    ASSERT_EQ(g_State.PlanBindings.size(), 1u);
+    EXPECT_GT(g_State.PlanBindings.front(), rejectedBinding);
 }
 
 TEST(BehaviorAuthoring, RejectsSymbolsFromAnotherEditBeforeSubmission) {
@@ -4157,6 +4570,53 @@ TEST(BehaviorAuthoring, PatchRejectsANodeFromAnotherEdit) {
 
     EXPECT_TRUE(patch.Resolve(local));
     EXPECT_EQ(g_State.NodeResolves, 1);
+}
+
+TEST(BehaviorAuthoring, PatchRejectsSymbolsAuthoredAfterItsSnapshot) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+
+    Edit edit;
+    const auto included = edit.Root().AppendLocal("Included", CKPGUID_INT);
+    auto target = On(*inspected, edit);
+    const auto late = edit.Root().AppendLocal("Late", CKPGUID_INT);
+    auto applied = session.Apply("snapshot-boundary", std::move(target));
+    ASSERT_TRUE(applied);
+
+    EXPECT_TRUE(applied->Read(included));
+    const int reads = g_State.PatchValueReads;
+    auto rejected = applied->Read(late);
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.Code(), BML_ERROR_INVALID_PARAMETER);
+    EXPECT_EQ(g_State.PatchValueReads, reads);
+}
+
+TEST(BehaviorAuthoring, PlanRejectsSymbolsAuthoredAfterItsSnapshot) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit edit;
+    const auto included = edit.Root().AppendLocal("Included", CKPGUID_INT);
+    auto rule = On(Scripts::One("Levelinit_build"), edit);
+    const auto late = edit.Root().AppendLocal("Late", CKPGUID_INT);
+    auto submitted = session.Plan("snapshot-boundary", std::move(rule));
+    ASSERT_TRUE(submitted);
+    auto instances = submitted->Instances();
+    ASSERT_TRUE(instances);
+    ASSERT_EQ(instances->size(), 1u);
+
+    EXPECT_TRUE(instances->front().Read(included));
+    const int reads = g_State.InstanceValueReads;
+    auto rejected = instances->front().Read(late);
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.Code(), BML_ERROR_INVALID_PARAMETER);
+    EXPECT_EQ(g_State.InstanceValueReads, reads);
 }
 
 TEST(BehaviorAuthoring, ParksABlockInsideAGraphAndDrivesIt) {
@@ -4850,14 +5310,15 @@ TEST(BehaviorAuthoring, ComposesGraphTargetsUnderOnePatchHandle) {
     ASSERT_EQ(g_State.PatchFingerprints.size(), 2u);
     EXPECT_EQ(g_State.PatchFingerprints[0], firstGraph->Fingerprint());
     EXPECT_EQ(g_State.PatchFingerprints[1], secondGraph->Fingerprint());
-    ASSERT_EQ(g_State.PatchHandleBases.size(), 2u);
-    EXPECT_EQ(g_State.PatchHandleBases[0], 0u);
-    EXPECT_GT(g_State.PatchHandleBases[1], 0u);
+    ASSERT_EQ(g_State.PatchBindings.size(), 2u);
+    EXPECT_NE(g_State.PatchBindings[0], 0u);
+    EXPECT_NE(g_State.PatchBindings[1], 0u);
+    EXPECT_NE(g_State.PatchBindings[0], g_State.PatchBindings[1]);
 
     auto resolved = applied->Resolve(secondNode);
     ASSERT_TRUE(resolved);
-    EXPECT_EQ(g_State.ResolvedHandle,
-              2u + g_State.PatchHandleBases[1]);
+    EXPECT_EQ(g_State.ResolvedHandle, 2u);
+    EXPECT_EQ(g_State.ResolvedBinding, g_State.PatchBindings[1]);
     EXPECT_FALSE(applied->Disable().Value().Active());
     EXPECT_TRUE(applied->Enable().Value().Active());
     EXPECT_EQ(g_State.PatchActivityChanges, 2);
@@ -4911,6 +5372,11 @@ TEST(BehaviorAuthoring, ReconcilesSeveralScriptRulesUnderOnePlanHandle) {
     ASSERT_EQ(g_State.PlanScripts.size(), 2u);
     EXPECT_EQ(g_State.PlanScripts[0], "Event_handler");
     EXPECT_EQ(g_State.PlanScripts[1], "Gameplay_Ingame");
+    ASSERT_EQ(g_State.PlanBindings.size(), 2u);
+    EXPECT_NE(g_State.PlanBindings[0], 0u);
+    EXPECT_NE(g_State.PlanBindings[1], 0u);
+    EXPECT_NE(g_State.PlanBindings[0], g_State.PlanBindings[1]);
+    const std::uint64_t lastBinding = g_State.PlanBindings[1];
     EXPECT_EQ(submitted->Disable()->State, PlanState::Disabled);
     EXPECT_EQ(submitted->Enable()->State, PlanState::Active);
 
@@ -4922,6 +5388,8 @@ TEST(BehaviorAuthoring, ReconcilesSeveralScriptRulesUnderOnePlanHandle) {
     EXPECT_EQ(g_State.PlanReplaces, 1);
     ASSERT_EQ(g_State.PlanScripts.size(), 1u);
     EXPECT_EQ(g_State.PlanScripts[0], "Gameplay_Energy");
+    ASSERT_EQ(g_State.PlanBindings.size(), 1u);
+    EXPECT_GT(g_State.PlanBindings[0], lastBinding);
 }
 
 TEST(BehaviorAuthoring, RejectsAWorldBoundPlanReplacementBeforeTheSeam) {

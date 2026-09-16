@@ -506,10 +506,11 @@ TEST(BehaviorGraphEdit, ResolvesNodesAndLinksByTopology) {
     (void) plan.To(wait.Out(), sink);
 
     Edit edit;
-    std::map<std::uint32_t, Node> nodes;
+    GraphEdit::CompiledSymbols symbols;
     const Status status = plan.Compile(
-        {"mod", "topology"}, compiler.Base.Root, compiler, edit, &nodes);
+        {"mod", "topology"}, compiler.Base.Root, compiler, edit, &symbols);
     ASSERT_TRUE(status) << status.Message;
+    const auto &nodes = symbols.Nodes;
     ASSERT_TRUE(nodes.contains(wait.Value));
     ASSERT_TRUE(nodes.contains(sink.Value));
     ASSERT_TRUE(nodes.contains(back.Value));
@@ -542,11 +543,12 @@ TEST(BehaviorGraphEdit, ConstrainsRelatedNodesWithoutGlobalNameUniqueness) {
     (void) plan.To(wait.Out(), sink);
 
     Edit edit;
-    std::map<std::uint32_t, Node> nodes;
+    GraphEdit::CompiledSymbols symbols;
     const Status status = plan.Compile(
         {"mod", "related-pattern"}, compiler.Base.Root, compiler, edit,
-        &nodes);
+        &symbols);
     ASSERT_TRUE(status) << status.Message;
+    const auto &nodes = symbols.Nodes;
     ASSERT_TRUE(nodes.contains(sink.Value));
     EXPECT_EQ(compiler.UsedNodes,
               (std::vector<ObjectRef>{Ref(101), Ref(102)}));
@@ -583,10 +585,11 @@ TEST(BehaviorGraphEdit, ResolvesTopologyAtTheGraphEntryAndExit) {
     (void) plan.Entering(plan.Exit("Done"));
 
     Edit edit;
-    std::map<std::uint32_t, Node> nodes;
+    GraphEdit::CompiledSymbols symbols;
     const Status status = plan.Compile(
-        {"mod", "graph-ends"}, compiler.Base.Root, compiler, edit, &nodes);
+        {"mod", "graph-ends"}, compiler.Base.Root, compiler, edit, &symbols);
     ASSERT_TRUE(status) << status.Message;
+    const auto &nodes = symbols.Nodes;
     EXPECT_NE(nodes.at(first.Value), nodes.at(last.Value));
     EXPECT_EQ(compiler.UsedNodes,
               (std::vector<ObjectRef>{Ref(101), Ref(102)}));
@@ -853,12 +856,19 @@ TEST(BehaviorGraphEdit, AppendsPrivateStateToTheGraphOrAnAddedBlock) {
     rootState.Bind(enabled, Value::From(CKPGUID_BOOL, TRUE));
     ASSERT_TRUE(rootState.Validate());
     Edit rootEdit;
+    GraphEdit::CompiledSymbols rootSymbols;
     ASSERT_TRUE(rootState.Compile(
-        {"mod", "root-local"}, compiler.Base.Root, compiler, rootEdit));
+        {"mod", "root-local"}, compiler.Base.Root, compiler, rootEdit,
+        &rootSymbols));
     ASSERT_TRUE(rootEdit.Validate(compiler.Base, checked));
     ASSERT_EQ(checked.Binds.size(), 1u);
     EXPECT_EQ(checked.Binds[0].Target.Owner, rootEdit.Graph());
     EXPECT_EQ(checked.Binds[0].Target.Slot.Kind, SlotKind::Local);
+    EXPECT_EQ(rootSymbols.Nodes.at(rootState.Graph().Value), rootEdit.Graph());
+    ASSERT_EQ(rootSymbols.Ports.size(), 1u);
+    EXPECT_EQ(rootSymbols.Ports.begin()->second.Owner, rootEdit.Graph().Value);
+    EXPECT_EQ(rootSymbols.Ports.begin()->second.Selector.Kind,
+              SlotKind::Local);
 
     GraphEdit borrowed;
     const Node existing = borrowed.RequireOne({"Wait Message"});
@@ -1182,18 +1192,18 @@ TEST(BehaviorGraphEdit, NamesANodeAndALinkTheAuthorAlreadyHolds) {
     EXPECT_TRUE(plan.UsesIdentity());
 
     Edit edit;
-    std::map<std::uint32_t, Node> handles;
+    GraphEdit::CompiledSymbols symbols;
     const Status status = plan.Compile(
-        {"mod", "by-reference"}, compiler.Base.Root, compiler, edit, &handles);
+        {"mod", "by-reference"}, compiler.Base.Root, compiler, edit, &symbols);
     ASSERT_TRUE(status) << status.Message;
     EXPECT_EQ(compiler.UsedNodes, (std::vector<ObjectRef>{Ref(101)}));
     EXPECT_EQ(compiler.UsedLinks, (std::vector<ObjectRef>{Ref(201)}));
     EXPECT_EQ(compiler.Adds, 1);
 
     // Every named Node is reported back, including the graph itself.
-    EXPECT_EQ(handles.count(wait.Value), 1u);
-    EXPECT_EQ(handles.count(hook.Value), 1u);
-    EXPECT_EQ(handles.count(plan.Graph().Value), 1u);
+    EXPECT_EQ(symbols.Nodes.count(wait.Value), 1u);
+    EXPECT_EQ(symbols.Nodes.count(hook.Value), 1u);
+    EXPECT_EQ(symbols.Nodes.count(plan.Graph().Value), 1u);
 
     CheckedEdit checked;
     ASSERT_TRUE(edit.Validate(compiler.Base, checked));
@@ -1208,10 +1218,10 @@ TEST(BehaviorGraphEdit, ReportsAQueriedNodeUnderItsOwnHandle) {
     EXPECT_FALSE(plan.UsesIdentity());
 
     Edit edit;
-    std::map<std::uint32_t, Node> handles;
+    GraphEdit::CompiledSymbols symbols;
     ASSERT_TRUE(plan.Compile(
-        {"mod", "queried"}, compiler.Base.Root, compiler, edit, &handles));
-    EXPECT_EQ(handles.count(wait.Value), 1u);
+        {"mod", "queried"}, compiler.Base.Root, compiler, edit, &symbols));
+    EXPECT_EQ(symbols.Nodes.count(wait.Value), 1u);
 }
 
 TEST(BehaviorGraphEdit, RejectsANodeReferenceOutsideTheTargetGraph) {

@@ -107,6 +107,7 @@ private:
     void OnLoadLevelinit(XObjectArray *objArray);
     void OnLoadSounds(XObjectArray *objArray);
     void InstallBallBehaviorPatch();
+    void CloseBallBehaviorPatch(const char *operation);
 
     BML::Behavior::Session m_Behavior;
     BML::Behavior::Patch m_BallPatch;
