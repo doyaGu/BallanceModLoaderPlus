@@ -93,6 +93,21 @@ add_bml_test(ConsoleLayoutTest
         ${BML_SOURCE_DIR}/Console/ConsoleLayout.cpp
 )
 
+add_bml_test(ModMenuSessionTest
+        SOURCES
+        ModMenuSessionTest.cpp
+        ${BML_SOURCE_DIR}/ModMenu/ModMenuSession.cpp
+)
+target_include_directories(ModMenuSessionTest PRIVATE
+        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+)
+
+add_bml_test(ModMenuPagesTest
+        SOURCES
+        ModMenuPagesTest.cpp
+        ${BML_SOURCE_DIR}/ModMenu/ModMenuPages.cpp
+)
+
 add_bml_test(FontRuntimeTest
         SOURCES
         FontRuntimeTest.cpp

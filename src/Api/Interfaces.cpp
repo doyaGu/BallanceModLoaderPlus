@@ -7,6 +7,7 @@
 #include "BML/Gameplay.h"
 #include "BML/Behavior.h"
 #include "BML/Interface.h"
+#include "BML/ModMenu.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
 #include "BML/Speedrun.h"
@@ -308,6 +309,70 @@ int UIShowFPS(int visible) {
     });
 }
 
+int BML_CDECL ModMenuRegisterPage(
+    const char *ownerId, const BML_ModMenuPage *page) {
+    const void *const callerAddress = _ReturnAddress();
+    try {
+        if (!page || page->StructSize <
+                         offsetof(BML_ModMenuPage, Draw) + sizeof(BML_ModMenuPageDraw) ||
+            !page->Draw) {
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+
+        ModContext *context = BML_GetModContext();
+        if (!context || !context->AreModsLoaded())
+            return BML_ERROR_FAIL;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+
+        const std::string owner = context->GetNativeModOwnerId(callerAddress, ownerId);
+        if (owner.empty() || (ownerId && owner != ownerId))
+            return BML_ERROR_ACCESS_DENIED;
+        if (!context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Draw)))
+            return BML_ERROR_ACCESS_DENIED;
+        const bool hasEnter = page->StructSize >=
+            offsetof(BML_ModMenuPage, Enter) + sizeof(BML_ModMenuPageEnter);
+        const bool hasLeave = page->StructSize >=
+            offsetof(BML_ModMenuPage, Leave) + sizeof(BML_ModMenuPageLeave);
+        if (hasEnter && page->Enter &&
+            !context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Enter))) {
+            return BML_ERROR_ACCESS_DENIED;
+        }
+        if (hasLeave && page->Leave &&
+            !context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Leave))) {
+            return BML_ERROR_ACCESS_DENIED;
+        }
+        return context->GetModMenuPages().Register(owner, *page);
+    } catch (const std::bad_alloc &) {
+        return BML_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
+}
+
+int BML_CDECL ModMenuUnregisterPage(const char *ownerId, const char *pageId) {
+    const void *const callerAddress = _ReturnAddress();
+    try {
+        if (!pageId || pageId[0] == '\0')
+            return BML_ERROR_INVALID_PARAMETER;
+
+        ModContext *context = BML_GetModContext();
+        if (!context || !context->AreModsLoaded())
+            return BML_ERROR_FAIL;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+
+        const std::string owner = context->GetNativeModOwnerId(callerAddress, ownerId);
+        if (owner.empty() || (ownerId && owner != ownerId))
+            return BML_ERROR_ACCESS_DENIED;
+        return context->GetModMenuPages().Unregister(owner, pageId);
+    } catch (const std::bad_alloc &) {
+        return BML_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
+}
+
 const BML_RuntimeInterface kRuntimeInterface = {
     BML_IFACE_HEADER(BML_RuntimeInterface, BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR,
                      BML_RUNTIME_INTERFACE_MINOR),
@@ -363,6 +428,13 @@ const BML_UIInterface kUIInterface = {
     &UIShowFPS,
 };
 
+const BML_ModMenuInterface ModMenuInterface = {
+    BML_IFACE_HEADER(BML_ModMenuInterface, BML_MOD_MENU_INTERFACE_ID,
+                     BML_MOD_MENU_INTERFACE_MAJOR, BML_MOD_MENU_INTERFACE_MINOR),
+    &ModMenuRegisterPage,
+    &ModMenuUnregisterPage,
+};
+
 struct InterfaceEntry {
     const char *Id;
     uint16_t MajorVersion;
@@ -377,6 +449,7 @@ const InterfaceEntry kInterfaces[] = {
     {BML_BEHAVIOR_INTERFACE_ID, BML_BEHAVIOR_INTERFACE_MAJOR,
      &BML::Api::BehaviorInterface()},
     {BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &kGameplayInterface},
+    {BML_MOD_MENU_INTERFACE_ID, BML_MOD_MENU_INTERFACE_MAJOR, &ModMenuInterface},
     {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},
     {BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR, &kSceneInterface},
     {BML_SPEEDRUN_INTERFACE_ID, BML_SPEEDRUN_INTERFACE_MAJOR, &kSpeedrunInterface},

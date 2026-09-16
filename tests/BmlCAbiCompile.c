@@ -1,6 +1,7 @@
 #include "BML/BML.h"
 #include "BML/Behavior.h"
 #include "BML/Gameplay.h"
+#include "BML/ModMenu.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
 #include "BML/Speedrun.h"
@@ -58,6 +59,10 @@ BML_C_ABI_ASSERT(BmlBehaviorScriptInfoSize,
                  sizeof(BML_BehaviorScriptInfo) == 352u);
 
 #if UINTPTR_MAX == UINT32_MAX
+BML_C_ABI_ASSERT(BmlModMenuPageFrameSize,
+                 sizeof(BML_ModMenuPageFrame) == 8u);
+BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 32u);
+BML_C_ABI_ASSERT(BmlModMenuInterfaceSize, sizeof(BML_ModMenuInterface) == 20u);
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 24u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 108u);
 BML_C_ABI_ASSERT(BmlBehaviorParameterTypeSize,
@@ -99,6 +104,10 @@ BML_C_ABI_ASSERT(BmlBehaviorGraphEditSize,
 BML_C_ABI_ASSERT(BmlBehaviorScriptEditSize,
                  sizeof(BML_BehaviorScriptEdit) == 40u);
 #else
+BML_C_ABI_ASSERT(BmlModMenuPageFrameSize,
+                 sizeof(BML_ModMenuPageFrame) == 16u);
+BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 64u);
+BML_C_ABI_ASSERT(BmlModMenuInterfaceSize, sizeof(BML_ModMenuInterface) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
 BML_C_ABI_ASSERT(BmlBehaviorParameterTypeSize,
@@ -300,6 +309,38 @@ int BML_TestCAbiUIInterface(const char *message) {
     if (ui->SetHUDMode(hud.Mode | BML_UI_HUD_TITLE | BML_UI_HUD_FPS | BML_UI_HUD_SR) != BML_OK)
         return 0;
     return ui->ShowTitle(0) == BML_OK && ui->ShowFPS(1) == BML_OK;
+}
+
+static int BML_CDECL BML_TestCAbiDrawModMenuPage(
+    void *userData, BML_ModMenuPageFrame *frame) {
+    if (userData == NULL || frame == NULL ||
+        frame->StructSize < BML_MOD_MENU_PAGE_FRAME_1_0_SIZE) {
+        return BML_ERROR_INVALID_PARAMETER;
+    }
+    frame->Action = BML_MOD_MENU_PAGE_NONE;
+    return BML_OK;
+}
+
+int BML_TestCAbiModMenuInterface(void *userData) {
+    const void *found = NULL;
+    const BML_ModMenuInterface *menu = NULL;
+    BML_ModMenuPage page = {
+        sizeof(BML_ModMenuPage),
+        "diagnostics",
+        "Diagnostics",
+        "Runtime details",
+        userData,
+        &BML_TestCAbiDrawModMenuPage,
+        NULL,
+        NULL,
+    };
+
+    if (BML_GetInterface(BML_MOD_MENU_INTERFACE_ID, BML_MOD_MENU_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    menu = (const BML_ModMenuInterface *) found;
+    if (!BML_IFACE_HAS(menu, BML_ModMenuInterface, UnregisterPage))
+        return 0;
+    return menu->RegisterPage(NULL, &page) == BML_OK;
 }
 
 int BML_TestCAbiBehaviorInterface(BML_BehaviorRun run) {

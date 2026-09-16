@@ -12,15 +12,15 @@
 #include "Gameplay/GameEventHooks.h"
 #include "Gameplay/GameplayTweaks.h"
 #include "HUD/HUDRuntime.h"
+#include "ModMenu/ModMenu.h"
 #include "Mods/ModsMenuEntry.h"
-#include "UI/ModMenu.h"
 
 class ModContext;
 struct FontCommandContext;
 
 class BMLMod : public IMod {
 public:
-    explicit BMLMod(IBML *bml) : IMod(bml) {}
+    explicit BMLMod(ModContext *context);
 
     // The builtin capabilities read the BML mod's bound runtime, never the
     // ambient BML_GetModContext() singleton.

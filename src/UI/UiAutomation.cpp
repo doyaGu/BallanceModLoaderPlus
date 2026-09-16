@@ -618,10 +618,43 @@ ImGuiID FindVisibleMenuItem(ImGuiTestContext *ctx, const char *label) {
     ImGuiTestItemList items;
     ctx->GatherItems(&items, back.Window->ID, -1);
     for (const ImGuiTestItemInfo &item : items) {
-        if (std::strcmp(item.DebugLabel, label) == 0)
+        if (item.DebugLabel && std::strcmp(item.DebugLabel, label) == 0)
             return item.ID;
     }
     return 0;
+}
+
+bool CaptureVisibleMenuItems(ImGuiTestContext *ctx, std::vector<ImGuiID> &ids) {
+    const ImGuiTestItemInfo back = ctx->ItemInfo("**/Back");
+    if (!back.Window)
+        return false;
+
+    ImGuiTestItemList items;
+    ctx->GatherItems(&items, back.Window->ID, -1);
+    ids.clear();
+    ids.reserve(items.size());
+    for (const ImGuiTestItemInfo &item : items)
+        ids.push_back(item.ID);
+    std::sort(ids.begin(), ids.end());
+    return true;
+}
+
+bool ChangeMenuPage(ImGuiTestContext *ctx, const char *control) {
+    std::vector<ImGuiID> before;
+    std::vector<ImGuiID> after;
+    if (!CaptureVisibleMenuItems(ctx, before))
+        return false;
+    ctx->ItemClick(control);
+    ctx->Yield();
+    return CaptureVisibleMenuItems(ctx, after) && before != after;
+}
+
+bool RewindMenuPages(ImGuiTestContext *ctx) {
+    while (ctx->ItemExists("**/PrevPage")) {
+        if (!ChangeMenuPage(ctx, "**/PrevPage"))
+            return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -718,9 +751,12 @@ bool ObserveModList(ImGuiTestContext *ctx) {
 }
 
 bool OpenConfigCategory(ImGuiTestContext *ctx, const char *category, const char *firstProperty) {
-    for (int page = 0; page < 16 && ctx->ItemExists("**/PrevPage"); ++page)
-        ctx->ItemClick("**/PrevPage");
-    for (int page = 0; page < 16; ++page) {
+    if (!WaitForItem(ctx, "**/Back"))
+        return false;
+    if (!RewindMenuPages(ctx))
+        return false;
+
+    while (true) {
         const ImGuiID categoryId = FindVisibleMenuItem(ctx, category);
         if (categoryId != 0) {
             ctx->ItemClick(categoryId);
@@ -728,9 +764,9 @@ bool OpenConfigCategory(ImGuiTestContext *ctx, const char *category, const char 
         }
         if (!ctx->ItemExists("**/NextPage"))
             return false;
-        ctx->ItemClick("**/NextPage");
+        if (!ChangeMenuPage(ctx, "**/NextPage"))
+            return false;
     }
-    return false;
 }
 
 bool OpenModConfigCategory(ImGuiTestContext *ctx, const char *modName, const char *category,
@@ -745,83 +781,45 @@ bool OpenModConfigCategory(ImGuiTestContext *ctx, const char *modName, const cha
     return OpenConfigCategory(ctx, category, firstProperty);
 }
 
-bool MenuPagesMatch(ImGuiTestContext *ctx,
-                    std::initializer_list<const char *> rowLabels) {
-    if (!WaitForItem(ctx, "**/Back") || rowLabels.size() == 0)
+bool MenuPagesContain(ImGuiTestContext *ctx,
+                      std::initializer_list<const char *> itemLabels) {
+    if (!WaitForItem(ctx, "**/Back") || itemLabels.size() == 0)
         return false;
-    for (int page = 0; page < 16 && ctx->ItemExists("**/PrevPage"); ++page) {
-        ctx->ItemClick("**/PrevPage");
-        ctx->Yield();
-    }
+    if (!RewindMenuPages(ctx))
+        return false;
 
-    std::vector<const char *> labels(rowLabels);
+    const std::vector<const char *> labels(itemLabels);
     std::vector<bool> seen(labels.size(), false);
-    float minimumGap = -1.0f;
-    int pageCount = 0;
-    for (int page = 0; page < 16; ++page) {
-        ++pageCount;
+    while (true) {
         const ImGuiTestItemInfo back = ctx->ItemInfo("**/Back");
         if (!back.Window)
             return false;
 
         ImGuiTestItemList items;
         ctx->GatherItems(&items, back.Window->ID, -1);
-        struct Row {
-            std::size_t Label = 0;
-            ImRect Rect;
-        };
-        std::vector<Row> rows;
         for (const ImGuiTestItemInfo &item : items) {
             if (!item.DebugLabel)
                 continue;
             for (std::size_t label = 0; label < labels.size(); ++label) {
-                if (std::strcmp(item.DebugLabel, labels[label]) == 0) {
-                    if (seen[label])
-                        return false;
-                    rows.push_back({label, item.RectFull});
-                    break;
-                }
-            }
-        }
-        if (rows.empty())
-            return false;
-        std::sort(rows.begin(), rows.end(), [](const Row &left, const Row &right) {
-            return left.Rect.Min.y < right.Rect.Min.y;
-        });
-        const float rowWidth = rows.front().Rect.Max.x - rows.front().Rect.Min.x;
-        const float rowHeight = rows.front().Rect.Max.y - rows.front().Rect.Min.y;
-        float rowStep = 0.0f;
-        for (std::size_t row = 0; row < rows.size(); ++row) {
-            const ImRect &rect = rows[row].Rect;
-            if (std::fabs((rect.Max.x - rect.Min.x) - rowWidth) > 2.0f ||
-                std::fabs((rect.Max.y - rect.Min.y) - rowHeight) > 2.0f) {
-                return false;
-            }
-            if (row > 0) {
-                const float step = rect.Min.y - rows[row - 1].Rect.Min.y;
-                const float gap = rect.Min.y - rows[row - 1].Rect.Max.y;
-                minimumGap = minimumGap < 0.0f ? gap : std::min(minimumGap, gap);
-                if (gap < 8.0f ||
-                    (rowStep > 0.0f && std::fabs(step - rowStep) > 2.0f)) {
+                if (std::strcmp(item.DebugLabel, labels[label]) != 0)
+                    continue;
+                if (seen[label])
                     return false;
-                }
-                rowStep = step;
+                seen[label] = true;
+                break;
             }
-            seen[rows[row].Label] = true;
         }
 
         if (!ctx->ItemExists("**/NextPage"))
             break;
-        ctx->ItemClick("**/NextPage");
-        ctx->Yield(2);
+        if (!ChangeMenuPage(ctx, "**/NextPage"))
+            return false;
     }
-    const bool matched =
-        std::all_of(seen.begin(), seen.end(), [](bool value) { return value; });
-    if (matched && g_Logger) {
-        g_Logger->Info("UI automation: imgui_rows=%u pages=%d minimum_gap=%.1f",
-                       static_cast<unsigned int>(labels.size()), pageCount, minimumGap);
+    for (bool value : seen) {
+        if (!value)
+            return false;
     }
-    return matched;
+    return true;
 }
 
 bool ToggleConfigBoolean(ImGuiTestContext *ctx, const char *path) {

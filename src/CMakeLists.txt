@@ -100,6 +100,8 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Scene.h
         ${BML_INCLUDE_DIR}/BML/Gameplay.h
         ${BML_INCLUDE_DIR}/BML/UI.h
+        ${BML_INCLUDE_DIR}/BML/ModMenu.h
+        ${BML_INCLUDE_DIR}/BML/ModMenu.hpp
         ${BML_INCLUDE_DIR}/BML/Speedrun.h
 
         ${BML_INCLUDE_DIR}/BML/Bui.h
@@ -274,9 +276,26 @@ set(BML_IMC_SOURCES
         Imc/ImcRuntime.cpp
 )
 
+set(BML_MOD_MENU_PRIVATE_HEADERS
+        ModMenu/ModMenu.h
+        ModMenu/ModMenuPages.h
+        ModMenu/ModMenuModel.h
+        ModMenu/ModMenuPresentation.h
+        ModMenu/ModMenuSession.h
+)
+
+set(BML_MOD_MENU_SOURCES
+        ModMenu/ModMenu.cpp
+        ModMenu/ModMenuPages.cpp
+        ModMenu/ModMenuModel.cpp
+        ModMenu/ModMenuPresentation.cpp
+        ModMenu/ModMenuSession.cpp
+)
+
 set(BML_UI_PRIVATE_HEADERS
         UI/AnsiPalette.h
         UI/AnsiText.h
+        UI/BallancePalette.h
         UI/BuiInternal.h
         UI/Ime/Presentation.h
         UI/Ime/NativePresentation.h
@@ -288,7 +307,6 @@ set(BML_UI_PRIVATE_HEADERS
         UI/FontRuntime.h
         UI/GameFontCatalog.h
         UI/Gui/LegacyTextFont.h
-        UI/ModMenu.h
         UI/Overlay.h
         UI/OverlayPlatformInput.h
         UI/ScriptImGui.h
@@ -306,7 +324,6 @@ set(BML_UI_SOURCES
         UI/Ime/Tsf.cpp
         UI/FontRuntime.cpp
         UI/GameFontCatalog.cpp
-        UI/ModMenu.cpp
         UI/Overlay.cpp
         UI/OverlayPlatformInput.cpp
         UI/ScriptImGui.cpp
@@ -419,6 +436,7 @@ set(BML_PRIVATE_HEADERS
         ${BML_CUSTOM_MAPS_PRIVATE_HEADERS}
         ${BML_GAMEPLAY_PRIVATE_HEADERS}
         ${BML_IMC_PRIVATE_HEADERS}
+        ${BML_MOD_MENU_PRIVATE_HEADERS}
         ${BML_UI_PRIVATE_HEADERS}
         ${BML_HOOK_PRIVATE_HEADERS}
         ${BML_BEHAVIOR_PRIVATE_HEADERS}
@@ -438,6 +456,7 @@ set(BML_SOURCES
         ${BML_CUSTOM_MAPS_SOURCES}
         ${BML_GAMEPLAY_SOURCES}
         ${BML_IMC_SOURCES}
+        ${BML_MOD_MENU_SOURCES}
         ${BML_UI_SOURCES}
         ${BML_HOOK_SOURCES}
         ${BML_BEHAVIOR_SOURCES}
@@ -451,6 +470,7 @@ if (BML_BUILD_UI_AUTOMATION)
     set(BML_UI_AUTOMATION_SOURCES
             UI/UiAutomation.cpp
             UI/Automation/UiAutomationSession.cpp
+            ModMenu/Automation/ModMenuScenario.cpp
             ${BML_UI_AUTOMATION_SCENARIO_SOURCES}
     )
     list(APPEND BML_PRIVATE_HEADERS

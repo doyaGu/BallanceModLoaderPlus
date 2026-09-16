@@ -38,6 +38,8 @@
 #include "BML/Scene.h"
 #include "BML/Gameplay.h"
 #include "BML/UI.h"
+#include "BML/ModMenu.h"
+#include "BML/ModMenu.hpp"
 #include "BML/Speedrun.h"
 
 #include "BML/Bui.h"

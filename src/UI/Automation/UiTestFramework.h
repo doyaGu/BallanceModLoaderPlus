@@ -37,8 +37,8 @@ bool ObserveModList(ImGuiTestContext *ctx);
 bool OpenConfigCategory(ImGuiTestContext *ctx, const char *category, const char *firstProperty);
 bool OpenModConfigCategory(ImGuiTestContext *ctx, const char *modName, const char *category,
                            const char *firstProperty);
-bool MenuPagesMatch(ImGuiTestContext *ctx,
-                    std::initializer_list<const char *> rowLabels);
+bool MenuPagesContain(ImGuiTestContext *ctx,
+                      std::initializer_list<const char *> itemLabels);
 bool ToggleConfigBoolean(ImGuiTestContext *ctx, const char *path);
 bool SubmitConsoleCommand(ImGuiTestContext *ctx, const char *command);
 bool LeaveModListForOptions(ImGuiTestContext *ctx);
