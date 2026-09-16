@@ -69,6 +69,14 @@ add_library(BehaviorCAbiCompile OBJECT BehaviorCAbiCompile.c)
 target_include_directories(BehaviorCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(BehaviorCAbiCompile PROPERTIES FOLDER "Tests")
 
+add_bml_test(ResultTest
+        SOURCES ResultTest.cpp
+)
+
+add_bml_test(CursorVisibilityPolicyTest
+        SOURCES CursorVisibilityPolicyTest.cpp
+)
+
 add_bml_test(BehaviorAuthoringTest
         SOURCES BehaviorAuthoringTest.cpp
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath

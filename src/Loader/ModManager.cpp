@@ -58,6 +58,9 @@ CKERROR ModManager::OnCKReset() {
         Overlay::ImGuiContextScope scope;
         Overlay::ImGuiEndFrame();
 
+        if (auto *input = m_ModContext->GetInputManager())
+            input->SetOverlayCursorVisible(false);
+
         m_ModContext->ShutdownMods();
         m_ModContext->UnloadMods();
 
@@ -149,24 +152,10 @@ CKERROR ModManager::PostProcess() {
     }
 
     if (scope.IsActive()) {
-        ImGuiIO &io = ImGui::GetIO();
-
-        static bool cursorVisibilityChanged = false;
-        if (io.WantCaptureMouse) {
-            if (!inputHook->GetCursorVisibility()) {
-                inputHook->ShowCursor(TRUE);
-                cursorVisibilityChanged = true;
-            }
-        } else {
-            if (cursorVisibilityChanged) {
-                if (inputHook->GetCursorVisibility()) {
-                    inputHook->ShowCursor(FALSE);
-                    cursorVisibilityChanged = false;
-                }
-            }
-        }
-
+        inputHook->SetOverlayCursorVisible(ImGui::GetIO().WantCaptureMouse);
         Overlay::ImGuiRender();
+    } else {
+        inputHook->SetOverlayCursorVisible(false);
     }
 
     inputHook->Process();

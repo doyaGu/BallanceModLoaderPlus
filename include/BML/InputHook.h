@@ -129,10 +129,8 @@ public:
     // whoever pauses is responsible for unpausing. Prefer AcquireBlock.
     void Pause(CKBOOL pause);
 
-    // The system cursor, which Ballance hides during play. The loader shows it
-    // again by itself whenever ImGui wants the mouse and hides it when ImGui is
-    // done, so a Mod that leaves the cursor in a state of its own choosing will
-    // see the loader override it on the next frame.
+    // The system cursor. The loader's UI may temporarily make it visible, but
+    // releasing that request preserves the game's or a Mod's last ShowCursor call.
     void ShowCursor(CKBOOL iShow);
     CKBOOL GetCursorVisibility();
     VXCURSOR_POINTER GetSystemCursor();
@@ -207,6 +205,8 @@ public:
     void Process();
 
 private:
+    friend class ModManager;
+    void SetOverlayCursorVisible(bool visible);
     static bool IsValid();
     struct Impl;
     Impl *m_Impl;
