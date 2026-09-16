@@ -92,6 +92,7 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Level state, energy, checkpoints, reset points, level catalog | `GetArrayByName` plus `CKDataArray` column reads | `Gameplay::ReadLevel`, `ReadEnergy`, `ReadCheckpoints`, `ReadResetpoints`, `ReadCatalog` | The interface struct. It already knows the column order of the game's arrays, which is the part that is easy to get wrong. The collection reads copy the whole collection, so they belong in setup or a level change rather than in a frame. |
 | In-game message board | `SendIngameMessage` | `UI::AddMessage`, `UI::ClearMessages` | Either. Only the facade can clear the board. |
 | HUD parts, mods menu, map menu | none | `UI::SetHUDMode`, `ShowTitle`, `ShowFPS`, `OpenModsMenu`, `CloseModsMenu`, `OpenMapMenu`, `CloseMapMenu` | The interface struct only. |
+| Add pages to your own entry in the Mods menu | none | `BML::ModMenu::Page` from `ModMenu.hpp` | `ModMenu.h` is the pure C interface; the C++ facade is one-way over it. Each registration appends one native-styled details action and routes it to a fully custom ImGui page. Version 1.0 is Native Mod only. |
 | Loader events | the `IMessageReceiver` virtuals on `IMod` | none | Handle the synchronous callback. Copy the required data into mod-owned storage if work must be deferred. |
 | Cheat mode | `EnableCheat` to set, `IsCheatEnabled` to read | `Runtime::ReadState` reads it | Read either, set through the frozen C++. |
 | Console commands | `RegisterCommand` plus an `ICommand` subclass | none | Frozen C++ to register. Removing one again is a C export, `BML_UnregisterCommand`, because `IBML` could not grow the function. |
@@ -99,7 +100,7 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Timers | `AddTimer`, `AddTimerLoop` | none | Frozen C++ only. |
 | Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |
 | Which mods are loaded, and dependencies | `GetModCount`, `GetMod`, `FindMod`, `RegisterDependency`, `CheckDependencies` | none | Frozen C++ only. |
-| Discover, configure, and execute Virtools Building Blocks; inspect or edit Behavior graphs | raw CK SDK and `ExecuteBB` compatibility helpers | `BML::Behavior` from `Behavior.hpp` | Use `BML::Behavior` for new authoring. It gives Prototype/Layout validation, owned Frames, checked object references, and reversible Patch/Plan lifetimes. Use raw CK only when implementing engine-level infrastructure that intentionally owns those invariants itself. |
+| Discover, configure, and execute Virtools Building Blocks; inspect or edit Behavior graphs | raw CK SDK and `ExecuteBB` compatibility helpers | `BML::Behavior` from `Behavior.hpp` | Use `BML::Behavior` for new authoring. It gives Prototype/Layout validation, owned Frames, checked object references, reversible Patch/Plan lifetimes, and revisioned bindings to installed Edit symbols. Use raw CK only when implementing engine-level infrastructure that intentionally owns those invariants itself. |
 | Publishing an API of your own to other mods | none | IMC, or a BML provider interface for a native base Mod | Prefer generated IMC for ordinary RPC/Topic services. For a plain-C, process-local function table that must expose direct or borrowed native objects, C++ Mods should use `Interface.hpp` plus `ModInterface.hpp`; these retain the C ABI while owning publication, typed lookup, status, and provider dependency lifetime. Publish the shared header with `bml_add_interface_package`, and never import a provider symbol. Script Mods cannot publish or consume provider interfaces. |
 | Drawing your own UI | `Bui` for ImGui widgets, `BGui` for in-game 2D entities | none | Neither of these is `BML::UI`, which controls the loader's own UI and draws nothing of yours. |
 | Strings, paths, files, allocation | none | the `BML_*` functions of `BML.h` | The C exports. Release what they return with the matching `BML_Free*`, never with the CRT `free`. |
@@ -130,7 +131,9 @@ Three differences do show through:
   works from `OnProcess`. `BML::Gameplay`, `BML::Scene`, and `BML::UI` touch the
   game's arrays, its objects, and the UI the loader draws, so all three answer
   `BML_ERROR_WRONG_THREAD` when called from any other thread. `BML::Runtime` and `BML::Speedrun` do not
-  refuse another thread, but they are meant for the game thread too. Before the
+  refuse another thread, but they are meant for the game thread too. Mod menu
+  page registration is also game-thread only, and its draw callback runs inside
+  the loader's active ImGui frame. Before the
   loader has loaded its mods every one of them answers `BML_ERROR_FAIL`.
 
 ## Further reading

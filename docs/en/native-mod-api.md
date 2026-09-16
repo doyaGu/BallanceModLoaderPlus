@@ -57,6 +57,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | Header | Purpose |
 | --- | --- |
 | `Version.h`, `Defines.h` | Version macros, export macros, status codes, and base definitions |
+| `Result.hpp` | Reusable C++ result carrying a BML status code, an optional value, and an optional module-specific diagnostic |
 | `BML.h` | C ABI for version, loader and mod directories, command unregistration, memory, encoding, path, file, and Zip utilities |
 | `BMLAll.h` | Convenience header that includes the complete native SDK surface |
 | `IMod.h`, `IMessageReceiver.h` | Mod metadata, lifecycle, gameplay, and engine callbacks |
@@ -69,6 +70,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
 | `Behavior.h`, `Behavior.hpp` | Virtools Building Block discovery, authoring, execution, graph inspection, and editing |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with inline C++ wrappers |
+| `ModMenu.h`, `ModMenu.hpp` | Pure C Mods-menu page interface and its type-safe C++ authoring layer |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ runtime and wire format |
 | `Bui.h` | Ballance-style ImGui widgets |
 | `Gui.h`, `Gui/*.h` | `BGui` wrappers around Virtools entities and behaviours |
@@ -76,6 +78,58 @@ and deploy the Mod under `ModLoader/Mods`.
 | `ExecuteBB.h` | v0.3 compatibility interface for executing or creating common Building Blocks |
 | `ScriptHelper.h` | Find, connect, insert, and remove behaviour nodes and parameters |
 | `Guids.h`, `Guids/*.h` | Virtools and Ballance Building Block GUIDs |
+
+`BML::Result<T>` combines a BML status code with an optional value. Modules that
+need structured diagnostics can use `BML::Result<T, ModuleStatus>`; for example,
+`Behavior::Result<T>` supplies `Behavior::Status` without changing the shared
+container or the C ABI. `Failure()` normalizes a non-error code to
+`BML_ERROR_FAIL`, so a failed `Result<void>` cannot appear successful.
+
+## Custom Mods menu pages
+
+A Native Mod can append Ballance-styled entries to its own details page with
+`BML::ModMenu::Page`. Config categories remain first; custom entries follow in
+registration order and share the same four-item pagination. Selecting an entry
+opens the Mod's fully custom page:
+
+```cpp
+#include <BML/Bui.h>
+#include <BML/ModMenu.hpp>
+
+class DiagnosticsPage final : public BML::ModMenu::Page {
+public:
+    DiagnosticsPage()
+        : Page("diagnostics", "Diagnostics", "Show live runtime details") {}
+
+protected:
+    BML::ModMenu::PageAction OnFrame() override {
+        Bui::Title("Diagnostics");
+        // Draw ImGui or Bui widgets directly into the active page here.
+        return Bui::NavBack() ? BML::ModMenu::PageAction::Back
+                              : BML::ModMenu::PageAction::None;
+    }
+};
+
+// Keep this object alive as part of the Mod.
+DiagnosticsPage diagnostics;
+
+void RegisterMenuPages() { (void) diagnostics.Register(); }
+void UnregisterMenuPages() { (void) diagnostics.Unregister(); }
+```
+
+The loader has already opened the full-viewport ImGui page when `OnFrame` runs;
+draw its contents directly and do not call `ImGui::NewFrame` or `ImGui::Render`.
+Return `Back` to restore the Mod details page or `Close` to leave the Mods menu.
+The loader copies the id, label, and description, but the page object and callbacks
+must remain alive until unregistration. Remaining registrations are removed before
+the owner DLL unloads. Version 1.0 exposes this capability to Native Mods only.
+Call the two registration helpers from the owning Mod's `OnLoad` and `OnUnload`.
+`ModMenu.h` remains usable from C and contains no C++ standard-library or class
+surface; `ModMenu.hpp` is a one-way authoring facade over that C interface. At
+the C seam, `BML_ModMenuPageDraw` returns a `BML_OK`/error status and writes a
+deferred navigation request to the `Action` member of `BML_ModMenuPageFrame`. Navigation is
+therefore never overloaded as an error result, and future frame inputs or outputs
+can be appended behind `StructSize` without changing the 1.0 callback signature.
 
 ## Mod lifecycle and events
 
@@ -211,7 +265,8 @@ checks in:
 - `BML::UI` for the message board, mod/map menus, and HUD;
 - `BML::Speedrun` for the shared speedrun timer;
 - `BML::Behavior` for Virtools Building Block discovery, configured Runs,
-  copied Frames, graph inspection, Watches, Patches, and Plans.
+  copied Frames, graph inspection, Watches, Patches, Plans, and revisioned
+  installation bindings for installed Edit Nodes and parameter Ports.
 
 `Interface.h` documents the version rules: a struct grows only by appending a
 member and bumping its minor version, and `BML_IFACE_HAS` asks whether the
