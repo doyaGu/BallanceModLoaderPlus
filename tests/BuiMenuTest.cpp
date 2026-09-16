@@ -154,6 +154,42 @@ private:
     PageState &m_State;
 };
 
+class ThrowingWindow final : public Bui::Window {
+public:
+    ThrowingWindow() : Bui::Window("Throwing Bui Window") {}
+
+    void OnDraw() override {
+        throw std::runtime_error("draw failed");
+    }
+};
+
+class ThrowingLifecycleWindow final : public Bui::Window {
+public:
+    ThrowingLifecycleWindow() : Bui::Window("Throwing Bui Lifecycle Window") {}
+
+    void OnPostBegin() override {
+        ++PostBeginCount;
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_WHITE);
+    }
+
+    void OnDraw() override {
+        throw std::runtime_error("draw failed");
+    }
+
+    void OnPreEnd() override {
+        ++PreEndCount;
+        ImGui::PopStyleColor();
+    }
+
+    void OnPostEnd() override {
+        ++PostEndCount;
+    }
+
+    int PostBeginCount = 0;
+    int PreEndCount = 0;
+    int PostEndCount = 0;
+};
+
 TEST(BuiPaginationTest, OwnsAndClampsOnlyListPosition) {
     Bui::Pagination pagination;
 
@@ -463,6 +499,28 @@ TEST(BuiMenuTest, RenderRestoresImGuiWindowScopeWhenPageThrows) {
     EXPECT_THROW(menu.Render(), std::runtime_error);
     EXPECT_NO_THROW(imgui.EndFrame());
     EXPECT_TRUE(menu.IsCurrentPage("throwing"));
+}
+
+TEST(BuiWindowTest, RenderRestoresImGuiWindowScopeWhenDrawingThrows) {
+    ScopedImGuiContext imgui;
+    ThrowingWindow window;
+
+    imgui.BeginFrame();
+    EXPECT_THROW(window.Render(), std::runtime_error);
+    EXPECT_NO_THROW(imgui.EndFrame());
+    EXPECT_TRUE(window.IsVisible());
+}
+
+TEST(BuiWindowTest, RenderPairsLifecycleHooksWhenDrawingThrows) {
+    ScopedImGuiContext imgui;
+    ThrowingLifecycleWindow window;
+
+    imgui.BeginFrame();
+    EXPECT_THROW(window.Render(), std::runtime_error);
+    EXPECT_EQ(window.PostBeginCount, 1);
+    EXPECT_EQ(window.PreEndCount, 1);
+    EXPECT_EQ(window.PostEndCount, 1);
+    EXPECT_NO_THROW(imgui.EndFrame());
 }
 
 } // namespace

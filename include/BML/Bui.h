@@ -28,11 +28,12 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <exception>
 #include <functional>
-#include <unordered_map>
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -74,39 +75,6 @@ namespace Bui {
     // CORE POSITIONING SYSTEM
     // =============================================================================
 
-    // Primary positioning function - void return type
-    template <typename Func>
-    std::enable_if_t<std::is_void_v<std::invoke_result_t<Func>>>
-    At(float x, float y, Func &&func) {
-        const ImVec2 savedPos = ImGui::GetCursorScreenPos();
-        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-
-        ImGui::SetCursorScreenPos(ImVec2(vpSize.x * x, vpSize.y * y));
-        func();
-        ImGui::SetCursorScreenPos(savedPos);
-        ImGui::Dummy(ImVec2(0.0f, 0.0f)); // ImGui 1.89+ compliance
-    }
-
-    // Primary positioning function - return value type
-    template <typename Func>
-    std::enable_if_t<!std::is_void_v<std::invoke_result_t<Func>>, std::invoke_result_t<Func>>
-    At(float x, float y, Func &&func) {
-        const ImVec2 savedPos = ImGui::GetCursorScreenPos();
-        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-
-        ImGui::SetCursorScreenPos(ImVec2(vpSize.x * x, vpSize.y * y));
-        auto result = func();
-        ImGui::SetCursorScreenPos(savedPos);
-        ImGui::Dummy(ImVec2(0.0f, 0.0f)); // ImGui 1.89+ compliance
-        return result;
-    }
-
-    // ImVec2 overloads
-    template <typename Func>
-    auto At(const ImVec2 &pos, Func &&func) -> decltype(At(pos.x, pos.y, std::forward<Func>(func))) {
-        return At(pos.x, pos.y, std::forward<Func>(func));
-    }
-
     // Pixel coordinate version (for internal use)
     template <typename Func>
     auto AtPixel(const ImVec2 &pixelPos, Func &&func) -> decltype(func()) {
@@ -114,15 +82,53 @@ namespace Bui {
         ImGui::SetCursorScreenPos(pixelPos);
 
         if constexpr (std::is_void_v<decltype(func())>) {
-            func();
+            try {
+                func();
+            } catch (...) {
+                ImGui::SetCursorScreenPos(savedPos);
+                ImGui::Dummy(ImVec2(0.0f, 0.0f));
+                throw;
+            }
             ImGui::SetCursorScreenPos(savedPos);
             ImGui::Dummy(ImVec2(0.0f, 0.0f));
         } else {
-            auto result = func();
-            ImGui::SetCursorScreenPos(savedPos);
-            ImGui::Dummy(ImVec2(0.0f, 0.0f));
-            return result;
+            try {
+                auto result = func();
+                ImGui::SetCursorScreenPos(savedPos);
+                ImGui::Dummy(ImVec2(0.0f, 0.0f));
+                return result;
+            } catch (...) {
+                ImGui::SetCursorScreenPos(savedPos);
+                ImGui::Dummy(ImVec2(0.0f, 0.0f));
+                throw;
+            }
         }
+    }
+
+    // Primary positioning function - void return type
+    template <typename Func>
+    std::enable_if_t<std::is_void_v<std::invoke_result_t<Func>>>
+    At(float x, float y, Func &&func) {
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        AtPixel(ImVec2(viewport->Pos.x + viewport->Size.x * x,
+                       viewport->Pos.y + viewport->Size.y * y),
+                std::forward<Func>(func));
+    }
+
+    // Primary positioning function - return value type
+    template <typename Func>
+    std::enable_if_t<!std::is_void_v<std::invoke_result_t<Func>>, std::invoke_result_t<Func>>
+    At(float x, float y, Func &&func) {
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        return AtPixel(ImVec2(viewport->Pos.x + viewport->Size.x * x,
+                              viewport->Pos.y + viewport->Size.y * y),
+                       std::forward<Func>(func));
+    }
+
+    // ImVec2 overloads
+    template <typename Func>
+    auto At(const ImVec2 &pos, Func &&func) -> decltype(At(pos.x, pos.y, std::forward<Func>(func))) {
+        return At(pos.x, pos.y, std::forward<Func>(func));
     }
 
     // =============================================================================
@@ -138,8 +144,8 @@ namespace Bui {
     // The loader calls these itself, on the shared textures, materials, and sounds
     // every Bui widget draws with, and destroys them at shutdown. They are exported
     // because the loader's own menus are built the same way as a Mod's, not because a
-    // Mod has anything to call them for: calling one again replaces what every other
-    // Mod is already drawing with.
+    // Mod has anything to call them for. Texture and material initialization is
+    // idempotent during one loader lifecycle and publishes no partially loaded state.
     BML_EXPORT bool InitTextures(CKContext *context);
     BML_EXPORT bool InitMaterials(CKContext *context);
     BML_EXPORT bool InitSounds(CKContext *context);
@@ -202,15 +208,15 @@ namespace Bui {
     // result rather than passing it on.
     //
     // KeyChordToString writes the printable form of a chord, Ctrl+Shift+A and the
-    // like, into buf, truncating to size rather than failing, and returns false for an
+    // like, into buffer, truncating to bufferSize rather than failing, and returns false for an
     // empty chord or a key ImGui cannot name. SetKeyChordFromIO writes whatever the
-    // player is pressing this frame into key_chord and returns true only on the frame
+    // player is pressing this frame into keyChord and returns true only on the frame
     // a key other than the modifiers arrives, which is how KeyButton records a
-    // binding; it leaves key_chord alone and returns false otherwise.
+    // binding; it leaves keyChord alone and returns false otherwise.
     BML_EXPORT ImGuiKey CKKeyToImGuiKey(CKKEYBOARD key);
     BML_EXPORT CKKEYBOARD ImGuiKeyToCKKey(ImGuiKey key);
-    BML_EXPORT bool KeyChordToString(ImGuiKeyChord key_chord, char *buf, size_t size);
-    BML_EXPORT bool SetKeyChordFromIO(ImGuiKeyChord *key_chord);
+    BML_EXPORT bool KeyChordToString(ImGuiKeyChord keyChord, char *buffer, std::size_t bufferSize);
+    BML_EXPORT bool SetKeyChordFromIO(ImGuiKeyChord *keyChord);
 
     // The game's menu click. The buttons here play it themselves; call it for a widget
     // of the Mod's own that should sound like the rest of the menu.
@@ -225,13 +231,13 @@ namespace Bui {
     // 1 for true and 0 for false, so they never reach the third image. pos is the top
     // left corner in pixels and the size comes from the type. The overloads taking
     // text draw it inside the image, shortened with an ellipsis when it does not fit,
-    // centred by ImGuiStyleVar_ButtonTextAlign unless text_align says otherwise.
+    // centred by ImGuiStyleVar_ButtonTextAlign unless textAlign says otherwise.
     BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state);
     BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected);
     BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state, const char *text);
     BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected, const char *text);
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state, const char *text, const ImVec2 &text_align);
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected, const char *text, const ImVec2 &text_align);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state, const char *text, const ImVec2 &textAlign);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected, const char *text, const ImVec2 &textAlign);
 
     // =============================================================================
     // BUTTON FUNCTIONS
@@ -261,8 +267,8 @@ namespace Bui {
     BML_EXPORT bool OkButton(const char *label, ImGuiButtonFlags flags = 0);
     BML_EXPORT bool BackButton(const char *label, ImGuiButtonFlags flags = 0);
     BML_EXPORT bool OptionButton(const char *label, ImGuiButtonFlags flags = 0);
-    BML_EXPORT bool LevelButton(const char *label, bool *v = nullptr, ImGuiButtonFlags flags = 0);
-    BML_EXPORT bool SmallButton(const char *label, bool *v = nullptr, ImGuiButtonFlags flags = 0);
+    BML_EXPORT bool LevelButton(const char *label, bool *selected = nullptr, ImGuiButtonFlags flags = 0);
+    BML_EXPORT bool SmallButton(const char *label, bool *selected = nullptr, ImGuiButtonFlags flags = 0);
     BML_EXPORT bool LeftButton(const char *label, ImGuiButtonFlags flags = 0);
     BML_EXPORT bool RightButton(const char *label, ImGuiButtonFlags flags = 0);
     BML_EXPORT bool PlusButton(const char *label, ImGuiButtonFlags flags = 0);
@@ -272,45 +278,45 @@ namespace Bui {
     // with the label drawn on the left. The Mod owns the value and passes a pointer to
     // it; these write through it and the change is visible on the next frame.
     //
-    // KeyButton records a key binding. toggled is the Mod's own bool saying the row is
+    // KeyButton records a key binding. listening is the Mod's own bool saying the row is
     // listening: clicking the row sets it, the next key the player presses is written
-    // into key_chord and clears it, and a click anywhere else cancels and clears it as
-    // well. It returns true in both of those cases, so read key_chord rather than
+    // into keyChord and clears it, and a click anywhere else cancels and clears it as
+    // well. It returns true in both of those cases, so read keyChord rather than
     // treating a true return as a new binding.
     //
     // YesNoButton draws a Yes and a No next to the label and returns true when the
     // player picks the one that was not set. Clicking the row itself outside those two
-    // also flips v, but reports nothing, so read v rather than counting the returns.
+    // also flips value, but reports nothing, so read value rather than counting the returns.
     //
-    // RadioButton cycles current_item through items with a minus and a plus at the end
+    // RadioButton cycles currentItem through items with a minus and a plus at the end
     // of the row, wrapping past either end, and returns true only on a frame the index
-    // moved. items has to hold items_count entries that outlive the call; a null entry
-    // draws as empty, and a current_item outside the range is shown as 0 but only
+    // moved. items has to hold itemCount entries that outlive the call; a null entry
+    // draws as empty, and a currentItem outside the range is shown as 0 but only
     // written back once the player moves it.
-    BML_EXPORT bool KeyButton(const char *label, bool *toggled, ImGuiKeyChord *key_chord);
-    BML_EXPORT bool YesNoButton(const char *label, bool *v);
-    BML_EXPORT bool RadioButton(const char *label, int *current_item, const char *const items[], int items_count);
+    BML_EXPORT bool KeyButton(const char *label, bool *listening, ImGuiKeyChord *keyChord);
+    BML_EXPORT bool YesNoButton(const char *label, bool *value);
+    BML_EXPORT bool RadioButton(const char *label, int *currentItem, const char *const items[], int itemCount);
 
     // An OPTION row with the label on the left and an ImGui input field in it, which is
     // ImGui::InputText, InputFloat, and InputInt with the game's look around them. They
     // return what those return, meaning true on every frame the player changed the
     // value rather than once when done, so a Mod saving to its config on each true
     // writes on every keystroke; pass ImGuiInputTextFlags_EnterReturnsTrue for the
-    // other behaviour. buf has to hold buf_size bytes and is both what is shown and
+    // other behaviour. buffer has to hold bufferSize bytes and is both what is shown and
     // where the text ends up. The ImGui item ends inside a group these close
     // themselves, so ImGui::IsItemDeactivatedAfterEdit and the rest of the item queries
     // asked after the call answer about the row, not about the field. The step pair
     // reaches ImGui unchanged, which is why InputIntButton shows the small plus and
     // minus of ImGui and InputFloatButton, defaulting to a step of 0, does not.
-    BML_EXPORT bool InputTextButton(const char *label, char *buf, size_t buf_size,
+    BML_EXPORT bool InputTextButton(const char *label, char *buffer, std::size_t bufferSize,
                                     ImGuiInputTextFlags flags = 0,
                                     ImGuiInputTextCallback callback = nullptr,
-                                    void *user_data = nullptr);
-    BML_EXPORT bool InputFloatButton(const char *label, float *v, float step = 0.0f,
-                                     float step_fast = 0.0f, const char *format = "%.3f",
+                                    void *userData = nullptr);
+    BML_EXPORT bool InputFloatButton(const char *label, float *value, float step = 0.0f,
+                                     float stepFast = 0.0f, const char *format = "%.3f",
                                      ImGuiInputTextFlags flags = 0);
-    BML_EXPORT bool InputIntButton(const char *label, int *v, int step = 1,
-                                   int step_fast = 100, ImGuiInputTextFlags flags = 0);
+    BML_EXPORT bool InputIntButton(const char *label, int *value, int step = 1,
+                                   int stepFast = 100, ImGuiInputTextFlags flags = 0);
 
     // Plain text, centred and broken across lines, for the paragraph on a page rather
     // than for a widget. Unlike the rest of this header the measurements here are
@@ -420,7 +426,7 @@ namespace Bui {
     // field a fixed id, so two of them in one window are the same field; put the second
     // one in a window of its own or use ImGui::PushID around it.
     BML_EXPORT void Title(const char *text, float y = 0.13f, float scale = 1.5f, ImU32 color = IM_COL32_WHITE);
-    BML_EXPORT bool SearchBar(char *buffer, size_t bufferSize, float x = 0.4f, float y = 0.18f, float width = 0.2f);
+    BML_EXPORT bool SearchBar(char *buffer, std::size_t bufferSize, float x = 0.4f, float y = 0.18f, float width = 0.2f);
 
     // =============================================================================
     // UI CLASSES
@@ -449,14 +455,15 @@ namespace Bui {
     // GetFlags for the ImGuiWindowFlags, OnPreBegin for the calls that have to come
     // before ImGui::Begin such as SetNextWindowPos, and OnPostBegin and OnPreEnd for
     // drawing that has to come before or after OnDraw inside the window. OnPreEnd runs
-    // even on a collapsed window, since ImGui::End always follows ImGui::Begin.
+    // even on a collapsed window or after OnDraw throws, since ImGui::End always
+    // follows ImGui::Begin.
     //
     // name is passed to ImGui::Begin, so it is both the title and the id ImGui keeps the
     // window's position under. Those ids are shared by every Mod drawing in the loader's
     // context, so put something of the Mod's own in the name.
     class Window {
     public:
-        explicit Window(std::string name) : m_Name(std::move(name)), m_Visible(true), m_ShouldHide(false) {}
+        explicit Window(std::string name) : m_Name(std::move(name)) {}
 
         virtual ~Window() = default;
 
@@ -485,26 +492,49 @@ namespace Bui {
             OnPreBegin();
             bool keepVisible = true;
             const bool notCollapsed = ImGui::Begin(m_Name.c_str(), &keepVisible, GetFlags());
-            if (!keepVisible) {
+            if (!keepVisible)
                 m_ShouldHide = true;
+            if (notCollapsed) {
+                try {
+                    OnPostBegin();
+                } catch (...) {
+                    ImGui::End();
+                    throw;
+                }
             }
-            if (notCollapsed)
-                OnPostBegin();
             return notCollapsed;
         }
 
         void End() {
-            OnPreEnd();
+            try {
+                OnPreEnd();
+            } catch (...) {
+                ImGui::End();
+                throw;
+            }
             ImGui::End();
             OnPostEnd();
         }
 
         // Rendering
         void Render() {
-            if (!IsVisible()) return;
+            if (!IsVisible())
+                return;
 
-            if (Begin())
-                OnDraw();
+            const bool drawContents = Begin();
+            try {
+                if (drawContents)
+                    OnDraw();
+            } catch (...) {
+                const std::exception_ptr drawFailure = std::current_exception();
+                try {
+                    End();
+                } catch (...) {
+                    // Preserve the drawing failure after making a best effort to
+                    // complete the window lifecycle and restore ImGui state.
+                }
+                std::rethrow_exception(drawFailure);
+            }
             End();
 
             if (m_ShouldHide) {
@@ -526,8 +556,8 @@ namespace Bui {
 
     protected:
         std::string m_Name;
-        bool m_Visible;
-        bool m_ShouldHide;
+        bool m_Visible = true;
+        bool m_ShouldHide = false;
     };
 
     // Pagination is local list state, independent of a Menu route. Update recalculates
@@ -744,9 +774,9 @@ namespace Bui {
 
             const std::string pageId = m_CurrentPage;
             Page *page = it->second.get();
-            const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-            ImGui::SetNextWindowSize(ImVec2(vpSize.x, vpSize.y));
+            const ImGuiViewport *viewport = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(viewport->Pos);
+            ImGui::SetNextWindowSize(viewport->Size);
 
             constexpr ImGuiWindowFlags flags =
                 ImGuiWindowFlags_NoDecoration |
@@ -774,7 +804,7 @@ namespace Bui {
         }
 
     protected:
-        static constexpr size_t MAX_NAVIGATION_DEPTH = 32;
+        static constexpr std::size_t MAX_NAVIGATION_DEPTH = 32;
 
     private:
         struct ImGuiIdGuard {
@@ -786,16 +816,16 @@ namespace Bui {
         };
 
         struct DispatchGuard {
-            explicit DispatchGuard(bool &dispatching) : Dispatching(dispatching) {
-                Dispatching = true;
+            explicit DispatchGuard(bool &dispatching) : m_Dispatching(dispatching) {
+                m_Dispatching = true;
             }
 
-            ~DispatchGuard() { Dispatching = false; }
+            ~DispatchGuard() { m_Dispatching = false; }
 
             DispatchGuard(const DispatchGuard &) = delete;
             DispatchGuard &operator=(const DispatchGuard &) = delete;
 
-            bool &Dispatching;
+            bool &m_Dispatching;
         };
 
         template <typename Operation>
@@ -849,10 +879,13 @@ namespace Bui {
                 m_PageStack.size() >= MAX_NAVIGATION_DEPTH)
                 return false;
 
-            const std::string previous = m_CurrentPage;
+            std::string next = target;
+            std::string previous = m_CurrentPage;
+            if (pushCurrent && !previous.empty())
+                m_PageStack.reserve(m_PageStack.size() + 1);
             LeaveCurrent(leaveReason);
 
-            m_CurrentPage = target;
+            m_CurrentPage = std::move(next);
             try {
                 EnterCurrent(enterReason);
             } catch (...) {
@@ -864,7 +897,7 @@ namespace Bui {
             if (clearHistory)
                 m_PageStack.clear();
             if (pushCurrent && !previous.empty() && HasPage(previous))
-                m_PageStack.push_back(previous);
+                m_PageStack.push_back(std::move(previous));
             return true;
         }
 

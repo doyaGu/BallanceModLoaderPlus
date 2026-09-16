@@ -1,7 +1,7 @@
 #ifndef BML_INPUT_SURFACE_STYLE_H
 #define BML_INPUT_SURFACE_STYLE_H
 
-#include "BML/Bui.h"
+#include "UI/BallancePalette.h"
 
 namespace InputSurfaceStyle {
     constexpr float ScreenMargin = 8.0f;
@@ -18,20 +18,19 @@ namespace InputSurfaceStyle {
     }
 
     inline ImVec4 PanelBackground() {
-        return Bui::GetMenuColor();
+        return BallancePalette::PanelBackground();
     }
 
     inline ImVec4 SelectionColor() {
-        // Bright body colors sampled from Ballance's selected-button atlas.
-        return {224.0f / 255.0f, 169.0f / 255.0f, 113.0f / 255.0f, 195.0f / 255.0f};
+        return BallancePalette::Selection();
     }
 
     inline ImVec4 HoverColor() {
-        return {235.0f / 255.0f, 190.0f / 255.0f, 122.0f / 255.0f, 210.0f / 255.0f};
+        return BallancePalette::Hover();
     }
 
     inline ImVec4 ActiveColor() {
-        return {190.0f / 255.0f, 128.0f / 255.0f, 52.0f / 255.0f, 225.0f / 255.0f};
+        return BallancePalette::Active();
     }
 
     inline void DrawPanel(ImDrawList *drawList, const ImVec2 &minimum, const ImVec2 &maximum,
