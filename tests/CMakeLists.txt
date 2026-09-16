@@ -727,6 +727,8 @@ add_bml_test(MapMenuStateTest
         MapMenuStateTest.cpp
         ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
         ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
+        ${BML_SOURCE_DIR}/CustomMaps/MapMenuState.cpp
+        ${BML_SOURCE_DIR}/CustomMaps/MapMenuState.h
         DEPENDENCIES
         BMLUtils
 )

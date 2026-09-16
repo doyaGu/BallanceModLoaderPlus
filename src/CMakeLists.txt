@@ -236,15 +236,20 @@ set(BML_HUD_SOURCES
 )
 
 set(BML_CUSTOM_MAPS_PRIVATE_HEADERS
+        CustomMaps/CustomMapLoad.h
         CustomMaps/CustomMaps.h
+        CustomMaps/LevelLoader.h
         CustomMaps/MapCatalog.h
         CustomMaps/MapMenu.h
+        CustomMaps/MapMenuState.h
 )
 
 set(BML_CUSTOM_MAPS_SOURCES
         CustomMaps/CustomMaps.cpp
+        CustomMaps/LevelLoader.cpp
         CustomMaps/MapCatalog.cpp
         CustomMaps/MapMenu.cpp
+        CustomMaps/MapMenuState.cpp
 )
 
 set(BML_GAMEPLAY_PRIVATE_HEADERS
