@@ -74,6 +74,7 @@ set(BML_PUBLIC_GUID_HEADERS
 set(BML_PUBLIC_HEADERS
         ${BML_VERSION_HEADER}
         ${BML_INCLUDE_DIR}/BML/Defines.h
+        ${BML_INCLUDE_DIR}/BML/Result.hpp
         ${BML_INCLUDE_DIR}/BML/Interface.h
         ${BML_INCLUDE_DIR}/BML/Interface.hpp
         ${BML_INCLUDE_DIR}/BML/ModInterface.hpp
