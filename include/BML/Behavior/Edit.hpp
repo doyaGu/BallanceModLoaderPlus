@@ -22,6 +22,7 @@ struct EditProgram;
 struct EditStep;
 struct EditWire;
 struct PatchSymbols;
+struct PlanSymbols;
 struct PatchTarget;
 struct PlanRule;
 struct PatchWire;
@@ -45,11 +46,15 @@ private:
     friend class Edit;
 };
 
-// A cross-world authoring Plan the Loader owns. Closing the handle retires every
-// installation the Plan still holds. A conflict keeps the handle readable;
-// retirement continues at later Behavior safe points even if this value dies.
+// A cross-world authoring Plan the Loader owns. It retains the symbolic Edit
+// identity needed by Resolve/Read/Set, so source Edit values may leave scope
+// after submission. Closing the handle retires every instance the Plan
+// still holds. A conflict keeps the handle readable; retirement continues at
+// later Behavior safe points even if this value dies.
 class Plan {
 public:
+    class Instance;
+
     Plan() = default;
     ~Plan();
     Plan(const Plan &) = delete;
@@ -66,6 +71,9 @@ public:
     // A Plan the Loader accepted is Reconciling until the next frame installs
     // it, so read the state rather than assuming the edit is already live.
     [[nodiscard]] Result<PlanInfo> Info() const;
+    // Returns revisioned views of the Plan's current live instances.
+    // A view becomes stale after its rule is rebuilt or the world changes.
+    [[nodiscard]] Result<std::vector<Instance>> Instances() const;
     // Reverts what the Plan still owns. If a live graph prevents the inverse,
     // the handle remains valid so Info can describe the conflict and Close can
     // be retried after the graph is restored to the expected after-image.
@@ -76,17 +84,23 @@ private:
     [[nodiscard]] Result<PlanInfo> Replace(
         std::vector<Detail::PlanRule> rules);
     Plan(std::shared_ptr<Detail::SessionState> session,
-         BML_BehaviorPlan handle);
+         BML_BehaviorPlan handle,
+         std::vector<Detail::PlanSymbols> rules);
 
     std::shared_ptr<Detail::SessionState> m_Session;
     BML_BehaviorPlan m_Handle = nullptr;
+    // Replacements retain earlier symbol tables because a queued definition
+    // may roll back to any definition accepted by this handle.
+    std::vector<Detail::PlanSymbols> m_Rules;
+    std::uint64_t m_NextBinding = 1;
 
     friend class Session;
 };
 
-// One reversible Patch on a specific live graph. It does not follow script
-// names into another world; use Plan when the same intent must be reconciled
-// again after loading or reset.
+// One reversible Patch on a specific live graph. It retains the symbolic Edit
+// identity needed by Resolve/Read/Set. It does not follow script names into
+// another world; use Plan when the same intent must be reconciled again after
+// loading or reset.
 class Patch {
 public:
     Patch() = default;
@@ -108,12 +122,17 @@ public:
     // point yet, so nothing is live to name.
 private:
     [[nodiscard]] Result<ObjectRef> ResolveHandle(
-        std::uint32_t node) const;
+        const BML_BehaviorNodeRef &node) const;
 
 public:
     // Accepts the symbolic Node returned by Edit::Add or Edit::Require.
     template <class Handle>
     [[nodiscard]] Result<ObjectRef> Resolve(const Handle &node) const;
+    template <class Handle>
+    [[nodiscard]] Result<ObservedValue> Read(const Handle &port) const;
+    template <class Handle>
+    [[nodiscard]] Result<void> Set(const Handle &port,
+                                   const Value &value) const;
     // A revert conflict keeps this handle live for Info and a later retry.
     [[nodiscard]] Result<CloseState> Close() noexcept;
 
@@ -121,20 +140,27 @@ private:
     [[nodiscard]] Result<PatchInfo> SetActive(bool active);
     [[nodiscard]] Result<PatchInfo> Replace(
         std::vector<Detail::PatchTarget> targets);
+    template <class Handle>
+    [[nodiscard]] Result<BML_BehaviorPortRef> ResolvePort(
+        const Handle &port) const;
     Patch(std::shared_ptr<Detail::SessionState> session,
           BML_BehaviorPatch handle,
           std::vector<Detail::PatchSymbols> edits);
 
     std::shared_ptr<Detail::SessionState> m_Session;
     BML_BehaviorPatch m_Handle = nullptr;
+    // See Plan::m_Rules: replacement and rollback keep historical bindings
+    // addressable until the Patch closes.
     std::vector<Detail::PatchSymbols> m_Edits;
+    std::uint64_t m_NextBinding = 1;
 
     friend class BML::Behavior::Graph;
     friend class Session;
 };
 
 // A symbolic transformation that can be applied once to a Graph or retained as
-// a Plan. Its Node, Port, Link, and Path names exist only inside this Edit.
+// a Plan. Its Node, Port, Link, and Path names are scoped to this Edit program
+// and cannot be mixed with names from another Edit.
 class Edit {
 public:
     Edit();
@@ -167,6 +193,8 @@ public:
         friend class Edit;
         friend class Ports;
         friend class Nodes;
+        friend class Patch;
+        friend class Plan::Instance;
     };
 
     // The corresponding port on every Node selected by Graph::Each.
@@ -345,6 +373,7 @@ public:
 
         friend class Edit;
         friend class Patch;
+        friend class Plan::Instance;
         friend class Nodes;
     };
 
@@ -600,10 +629,49 @@ private:
     friend class Session;
     friend class Patch;
     friend class Plan;
+    friend class Plan::Instance;
     friend struct Detail::PatchWire;
     friend struct Detail::PlanWire;
     friend auto On(const BML::Behavior::Graph &, const Edit &);
     friend auto On(const Scripts &, const Edit &);
+};
+
+// One immutable, world-bound instance snapshot returned by a Plan. It
+// resolves symbols through the Edit that authored its rule; native CK pointers
+// never leave the Behavior implementation and every access revalidates the
+// instance revision.
+class Plan::Instance {
+public:
+    Instance() = default;
+
+    [[nodiscard]] explicit operator bool() const noexcept;
+    [[nodiscard]] std::uint32_t Rule() const noexcept { return m_Wire.Rule; }
+    [[nodiscard]] std::uint64_t World() const noexcept { return m_Wire.World; }
+    [[nodiscard]] ObjectRef Script() const noexcept { return m_Wire.Script; }
+
+    [[nodiscard]] Result<ObjectRef> Resolve(const Edit::Node &node) const;
+    [[nodiscard]] Result<ObservedValue> Read(const Edit::Port &port) const;
+    [[nodiscard]] Result<void> Set(const Edit::Port &port,
+                                   const Value &value) const;
+
+private:
+    Instance(std::shared_ptr<Detail::SessionState> session,
+             BML_BehaviorPlan plan,
+             BML_BehaviorPlanInstance wire,
+             std::shared_ptr<Detail::EditProgram> edit,
+             std::uint32_t handleLimit)
+        : m_Session(std::move(session)), m_Plan(plan), m_Wire(wire),
+          m_Edit(std::move(edit)), m_HandleLimit(handleLimit) {}
+    [[nodiscard]] Result<BML_BehaviorPortRef> ResolvePort(
+        const Edit::Port &port) const;
+
+    std::shared_ptr<Detail::SessionState> m_Session;
+    BML_BehaviorPlan m_Plan = nullptr;
+    BML_BehaviorPlanInstance m_Wire{};
+    std::shared_ptr<Detail::EditProgram> m_Edit;
+    std::uint32_t m_HandleLimit = 0;
+
+    friend class Plan;
 };
 
 class Scripts {

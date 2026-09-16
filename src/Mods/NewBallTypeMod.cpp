@@ -9,6 +9,8 @@
 #include "BML/Behavior/Blocks/Physicalize.hpp"
 
 #include <cstdint>
+#include <string_view>
+#include <utility>
 
 namespace Behavior = BML::Behavior;
 
@@ -26,9 +28,16 @@ Behavior::Edit::Node First(Behavior::Edit::Graph graph,
     return graph.Require(Behavior::Named(name, 0));
 }
 
-bool AddPhysicalize(const Behavior::Session &session,
-                    Behavior::Edit::Graph graph,
-                    const std::vector<BallBehavior> &balls) {
+Behavior::Status AddContext(Behavior::Status status, std::string message) {
+    if (!status.Message.empty())
+        message += ": " + status.Message;
+    status.Message = std::move(message);
+    return status;
+}
+
+Behavior::Result<void> AddPhysicalize(
+    const Behavior::Session &session, Behavior::Edit::Graph graph,
+    const std::vector<BallBehavior> &balls) {
     const auto physicalize = First(graph, "Physicalize");
     const auto switchOnBall = First(graph, "Switch On Parameter");
     const auto show = First(graph, "Show");
@@ -47,8 +56,12 @@ bool AddPhysicalize(const Behavior::Session &session,
             options.Radius = ball.Info->m_Radius;
         }
         auto made = Behavior::Blocks::Physicalize::Make(session, options);
-        if (!made)
-            return false;
+        if (!made) {
+            return Behavior::Result<void>::Failure(
+                made.Code(), AddContext(
+                    made.GetStatus(), "Could not create Physicalize for " +
+                    ball.Info->m_Name));
+        }
         const auto added = graph.Add(made.Value());
         graph.Share(added.Target(), physicalize.Target());
         for (int pin = 0; pin != 11; ++pin)
@@ -59,7 +72,7 @@ bool AddPhysicalize(const Behavior::Session &session,
         graph.Flow(route, added.In(0));
         graph.Flow(added.Out(0), show.In(0));
     }
-    return true;
+    return Behavior::Result<void>::Success();
 }
 
 void ExtendResetBallPieces(Behavior::Edit::Graph graph,
@@ -105,7 +118,7 @@ void RemoveBallAttributes(const Behavior::Session &session,
     }
 }
 
-bool BuildEventHandlerEdit(const Behavior::Session &session,
+void BuildEventHandlerEdit(const Behavior::Session &session,
                            const std::vector<BallBehavior> &balls,
                            Behavior::Edit &edit) {
     auto root = edit.Root();
@@ -122,19 +135,18 @@ bool BuildEventHandlerEdit(const Behavior::Session &session,
         First(exitLevel, "reset Ballpieces").Graph(), balls);
     RemoveBallAttributes(
         session, First(exitLevel, "reset Level").Graph(), balls);
-    return true;
 }
 
-bool BuildGameplayEdit(const Behavior::Session &session,
-                       CKAttributeType trafoType,
-                       const std::vector<BallBehavior> &balls,
-                       Behavior::Edit &edit) {
+Behavior::Result<void> BuildGameplayEdit(
+    const Behavior::Session &session, CKAttributeType trafoType,
+    const std::vector<BallBehavior> &balls, Behavior::Edit &edit) {
     auto root = edit.Root();
     auto ballManager = First(root, "BallManager").Graph();
     auto newBall = First(ballManager, "New Ball").Graph();
-    if (!AddPhysicalize(
-            session, First(newBall, "physicalize new Ball").Graph(), balls))
-        return false;
+    auto newBallPhysicalize = AddPhysicalize(
+        session, First(newBall, "physicalize new Ball").Graph(), balls);
+    if (!newBallPhysicalize)
+        return newBallPhysicalize;
     auto deactivate = First(ballManager, "Deactivate Ball").Graph();
     ExtendResetBallPieces(
         First(deactivate, "reset Ballpieces").Graph(), balls);
@@ -228,9 +240,10 @@ bool BuildGameplayEdit(const Behavior::Session &session,
         fadeout.FlowCycle(activate.Out(), firstSwitch.In(), 1);
     }
 
-    if (!AddPhysicalize(
-            session, First(trafo, "physicalize new Ball").Graph(), balls))
-        return false;
+    auto trafoPhysicalize = AddPhysicalize(
+        session, First(trafo, "physicalize new Ball").Graph(), balls);
+    if (!trafoPhysicalize)
+        return trafoPhysicalize;
 
     auto explosion = First(trafo, "start Explosion").Graph();
     const auto explosionSwitch = First(explosion, "Switch On Parameter");
@@ -264,7 +277,7 @@ bool BuildGameplayEdit(const Behavior::Session &session,
         setBall.Flow(ballRoute, ballIn);
     }
 
-    return true;
+    return Behavior::Result<void>::Success();
 }
 
 } // namespace
@@ -282,7 +295,7 @@ void NewBallTypeMod::OnLoad() {
 }
 
 void NewBallTypeMod::OnUnload() {
-    (void) m_BallPatch.Close();
+    CloseBallBehaviorPatch("unload");
     m_Behavior.Reset();
     m_GameplayScript = {};
     m_EventHandler = {};
@@ -331,7 +344,7 @@ void NewBallTypeMod::OnProcess() {
 }
 
 void NewBallTypeMod::OnExitGame() {
-    (void) m_BallPatch.Close();
+    CloseBallBehaviorPatch("world teardown");
     m_GameplayScript = {};
     m_EventHandler = {};
     m_BallPatchPending = false;
@@ -752,10 +765,15 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
 
     Behavior::Edit eventEdit;
     Behavior::Edit gameplayEdit;
-    if (!BuildEventHandlerEdit(m_Behavior, balls, eventEdit) ||
-        !BuildGameplayEdit(m_Behavior, trafoType, balls, gameplayEdit)) {
+    BuildEventHandlerEdit(m_Behavior, balls, eventEdit);
+    auto gameplayBuilt = BuildGameplayEdit(
+        m_Behavior, trafoType, balls, gameplayEdit);
+    if (!gameplayBuilt) {
         GetLogger()->Error(
-            "Cannot describe the new-ball graph changes with Behavior authoring");
+            "Cannot describe the new-ball graph changes: %s",
+            gameplayBuilt.GetStatus().Message.empty()
+                ? "Behavior block construction failed"
+                : gameplayBuilt.GetStatus().Message.c_str());
         m_BallPatchPending = false;
         return;
     }
@@ -776,5 +794,20 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
 
     m_BallPatch = applied.Take();
     m_BallPatchPending = false;
-    GetLogger()->Info("Installed the new-ball Behavior Patch");
+    GetLogger()->Info("Applied the new-ball Behavior Patch");
+}
+
+void NewBallTypeMod::CloseBallBehaviorPatch(const char *operation) {
+    if (!m_BallPatch)
+        return;
+
+    auto closed = m_BallPatch.Close();
+    if (!closed) {
+        GetLogger()->Error(
+            "Cannot restore the new-ball Behavior Patch during %s: %s",
+            operation,
+            closed.GetStatus().Message.empty()
+                ? "the Patch could not be closed"
+                : closed.GetStatus().Message.c_str());
+    }
 }

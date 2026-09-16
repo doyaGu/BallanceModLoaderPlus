@@ -2,11 +2,11 @@
 #define BML_BEHAVIOR_VALUE_HPP
 
 #include "BML/Behavior.h"
+#include "BML/Result.hpp"
 #include "BML/TypeConvert.h"
 #include "CKAll.h"
 
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -148,97 +148,7 @@ struct Status {
 };
 
 template <class T>
-class Result {
-public:
-    Result() = default;
-
-    [[nodiscard]] explicit operator bool() const noexcept {
-        return m_Code == BML_OK && m_Value.has_value();
-    }
-    [[nodiscard]] int Code() const noexcept { return m_Code; }
-    [[nodiscard]] const Behavior::Status &GetStatus() const noexcept {
-        return m_Status;
-    }
-
-    [[nodiscard]] bool HasValue() const noexcept { return m_Value.has_value(); }
-    [[nodiscard]] T &Value() & { return m_Value.value(); }
-    [[nodiscard]] const T &Value() const & { return m_Value.value(); }
-    template <class U = T,
-              std::enable_if_t<std::is_copy_constructible_v<U>, int> = 0>
-    [[nodiscard]] T Value() && {
-        if constexpr (std::is_move_constructible_v<T>)
-            return std::move(m_Value).value();
-        else
-            return m_Value.value();
-    }
-    template <class U = T,
-              std::enable_if_t<!std::is_copy_constructible_v<U>, int> = 0>
-    [[nodiscard]] T Value() && = delete;
-    [[nodiscard]] const T &&Value() const && = delete;
-    // Consumes the contained value. The Result keeps its code and Status so
-    // diagnostics remain readable, but no longer reports a value afterwards.
-    [[nodiscard]] T Take() {
-        T value(std::move(m_Value).value());
-        m_Value.reset();
-        return value;
-    }
-    [[nodiscard]] T *operator->() { return &Value(); }
-    [[nodiscard]] const T *operator->() const { return &Value(); }
-    [[nodiscard]] T &operator*() & { return Value(); }
-    [[nodiscard]] const T &operator*() const & { return Value(); }
-
-    static Result Success(T value, Status status = {}) {
-        Result result;
-        result.m_Code = BML_OK;
-        result.m_Status = std::move(status);
-        result.m_Value.emplace(std::move(value));
-        return result;
-    }
-
-    static Result Failure(int code, Status status = {}) {
-        Result result;
-        result.m_Code = code;
-        result.m_Status = std::move(status);
-        return result;
-    }
-
-private:
-    int m_Code = BML_ERROR_FAIL;
-    Status m_Status;
-    std::optional<T> m_Value;
-};
-
-template <>
-class Result<void> {
-public:
-    Result() = default;
-
-    [[nodiscard]] explicit operator bool() const noexcept {
-        return m_Code == BML_OK;
-    }
-    [[nodiscard]] int Code() const noexcept { return m_Code; }
-    [[nodiscard]] const Behavior::Status &GetStatus() const noexcept {
-        return m_Status;
-    }
-
-    static Result Success(Status status = {}) {
-        Result result;
-        result.m_Code = BML_OK;
-        result.m_Status = std::move(status);
-        return result;
-    }
-
-    static Result Failure(int code, Status status = {}) {
-        Result result;
-        result.m_Code = code;
-        result.m_Status = std::move(status);
-        return result;
-    }
-
-private:
-    int m_Code = BML_ERROR_FAIL;
-    Behavior::Status m_Status;
-};
+using Result = BML::Result<T, Status>;
 
 class Selector {
 public:

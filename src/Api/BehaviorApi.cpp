@@ -2111,6 +2111,24 @@ bool AddGraphValue(const GraphValue &source, BehaviorPayload &payload,
     return payload.Value(bytes, size, record.ValueOffset);
 }
 
+int WriteGraphValueResult(const GraphValue &source,
+                          BML_BehaviorGraphValue *value,
+                          void *payload, std::uint32_t payloadCapacity,
+                          std::uint32_t *outPayloadSize) {
+    BehaviorPayload bytes;
+    BML_BehaviorGraphValue wire{};
+    if (!AddGraphValue(source, bytes, wire) ||
+        bytes.Bytes().size() > UINT32_MAX)
+        return BML_ERROR_OUT_OF_MEMORY;
+    *outPayloadSize = static_cast<std::uint32_t>(bytes.Bytes().size());
+    if (payloadCapacity < bytes.Bytes().size())
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    *value = wire;
+    if (!bytes.Bytes().empty())
+        std::memcpy(payload, bytes.Bytes().data(), bytes.Bytes().size());
+    return BML_OK;
+}
+
 int BML_BEHAVIOR_CALL Inspect(
     BML_BehaviorSession session, BML_ObjectRef root, std::uint32_t view,
     BML_BehaviorGraph *graph, void *payload, std::uint32_t payloadCapacity,
@@ -2260,18 +2278,8 @@ int BML_BEHAVIOR_CALL ReadGraphValue(
         WriteStatus(status, result);
         if (!result)
             return ResultCode(result);
-        BehaviorPayload bytes;
-        BML_BehaviorGraphValue wire{};
-        if (!AddGraphValue(source, bytes, wire) ||
-            bytes.Bytes().size() > UINT32_MAX)
-            return BML_ERROR_OUT_OF_MEMORY;
-        *outPayloadSize = static_cast<std::uint32_t>(bytes.Bytes().size());
-        if (payloadCapacity < bytes.Bytes().size())
-            return BML_ERROR_BUFFER_TOO_SMALL;
-        *value = wire;
-        if (!bytes.Bytes().empty())
-            std::memcpy(payload, bytes.Bytes().data(), bytes.Bytes().size());
-        return BML_OK;
+        return WriteGraphValueResult(source, value, payload,
+                                     payloadCapacity, outPayloadSize);
     });
 }
 
@@ -2550,7 +2558,7 @@ void WritePlanInfo(BML_BehaviorPlanInfo *out, const PlanInfo &info) noexcept {
     out->State = PublicPlanState(info.State);
     out->World = info.World;
     out->Matches = Count(info.Matches);
-    out->Installations = Count(info.Installations);
+    out->Instances = Count(info.Instances);
     out->LastStatus.StructSize = sizeof(out->LastStatus);
     WriteStatus(&out->LastStatus, info.LastStatus);
 }
@@ -2814,9 +2822,9 @@ class EditProgram final {
 public:
     Status Build(const BML_BehaviorEditStep *steps, std::uint32_t count,
                  ModContext &context, GraphEdit &edit);
-    // Reports the symbolic Node each caller handle defined, so an applied
-    // Patch answers ResolvePatchNode in the caller's own handle space.
-    [[nodiscard]] BML::Behavior::Internal::Patches::HandleMap Nodes() const;
+    // Reports every symbolic Node and appended Port the caller can address in
+    // an installed Patch or Plan.
+    [[nodiscard]] BML::Behavior::Internal::Patches::SymbolMap Symbols() const;
 
 private:
     static bool Defines(std::uint32_t kind) noexcept;
@@ -2880,18 +2888,28 @@ Status EditProgram::Build(const BML_BehaviorEditStep *steps,
     return {};
 }
 
-BML::Behavior::Internal::Patches::HandleMap EditProgram::Nodes() const {
-    BML::Behavior::Internal::Patches::HandleMap nodes;
+BML::Behavior::Internal::Patches::SymbolMap EditProgram::Symbols() const {
+    BML::Behavior::Internal::Patches::SymbolMap symbols;
     for (const auto &entry : m_Handles) {
-        if (entry.second.Kind == EditHandleKind::Node &&
-            entry.first.second != BML_BEHAVIOR_EDIT_GRAPH) {
-            nodes.emplace(
-                entry.first.second,
-                BML::Behavior::Internal::Patches::Symbol{
-                    entry.first.first, entry.second.NodeValue.Value});
+        if (entry.second.Kind == EditHandleKind::Node) {
+            BML::Behavior::Internal::Patches::Symbol symbol;
+            symbol.Kind = BML::Behavior::Internal::Patches::SymbolKind::Node;
+            symbol.NodeValue = entry.second.NodeValue;
+            symbols.emplace(
+                BML::Behavior::Internal::Patches::SymbolRef{
+                    0, entry.first.first, entry.first.second},
+                std::move(symbol));
+        } else if (entry.second.Kind == EditHandleKind::Port) {
+            BML::Behavior::Internal::Patches::Symbol symbol;
+            symbol.Kind = BML::Behavior::Internal::Patches::SymbolKind::Port;
+            symbol.PortValue = entry.second.PortValue;
+            symbols.emplace(
+                BML::Behavior::Internal::Patches::SymbolRef{
+                    0, entry.first.first, entry.first.second},
+                std::move(symbol));
         }
     }
-    return nodes;
+    return symbols;
 }
 
 Status ReadNodePattern(const BML_BehaviorEditStep &step,
@@ -3572,6 +3590,87 @@ PlanId PlanIdOf(BML_BehaviorPlan plan) noexcept {
     return static_cast<PlanId>(reinterpret_cast<std::uintptr_t>(plan));
 }
 
+bool ReadPortQuery(
+    const BML_BehaviorPortRef &from,
+    BML::Behavior::Internal::Patches::PortQuery &out,
+    Status &status) {
+    out = BML::Behavior::Internal::Patches::PortQuery();
+    if (from.StructSize < sizeof(from) || !from.Binding || !from.Graph ||
+        !from.Handle) {
+        status = InvalidValue("A Plan instance Port reference is malformed.");
+        return false;
+    }
+    out.Binding = from.Binding;
+    out.Scope = from.Graph;
+    out.Handle = from.Handle;
+    if (from.Kind == 0)
+        return true;
+
+    SlotKind kind;
+    if (!ReadSlotKind(from.Kind, kind) || kind == SlotKind::Input ||
+        kind == SlotKind::Output) {
+        status = InvalidValue(
+            "A Plan instance value requires a Target, Pin, Pout, Setting, or Local Port.");
+        return false;
+    }
+    Slot selector;
+    if (!ReadSelector(from.Slot, kind, Guid(from.Type), selector, status))
+        return false;
+    out.Selector = std::move(selector);
+    return true;
+}
+
+bool ReadNodeRef(const BML_BehaviorNodeRef &from,
+                 BML::Behavior::Internal::Patches::SymbolRef &out,
+                 Status &status) {
+    if (from.StructSize < sizeof(from) || !from.Binding || !from.Graph ||
+        !from.Handle) {
+        status = InvalidValue("A Plan instance Node reference is malformed.");
+        return false;
+    }
+    out.Binding = from.Binding;
+    out.Scope = from.Graph;
+    out.Handle = from.Handle;
+    return true;
+}
+
+bool ReadPlanInstance(
+    const BML_BehaviorPlanInstance &from,
+    BML::Behavior::Internal::Patches::PlanInstance &out,
+    Status &status) {
+    if (from.StructSize < sizeof(from) || !from.Identity || !from.Binding ||
+        !from.PlanRevision || !from.Revision || !from.World ||
+        !from.Script.Domain) {
+        status = InvalidValue(
+            "A Behavior Plan instance snapshot is malformed.");
+        return false;
+    }
+    out.Rule = from.Rule;
+    out.PlanRevision = from.PlanRevision;
+    out.Binding = from.Binding;
+    out.Value.Target = {from.Script.Domain, from.Script.Slot,
+                        from.Script.Generation};
+    out.Value.Id = from.Identity;
+    out.Value.World = from.World;
+    out.Value.Revision = from.Revision;
+    return true;
+}
+
+BML_BehaviorPlanInstance WritePlanInstance(
+    const BML::Behavior::Internal::Patches::PlanInstance &from) noexcept {
+    BML_BehaviorPlanInstance out{};
+    out.StructSize = sizeof(out);
+    out.Rule = from.Rule;
+    out.PlanRevision = from.PlanRevision;
+    out.Binding = from.Binding;
+    out.World = from.Value.World;
+    out.Revision = from.Value.Revision;
+    out.Identity = from.Value.Id;
+    out.Script = {from.Value.Target.Domain, from.Value.Target.Slot,
+                  from.Value.Target.Generation};
+    return out;
+}
+
 bool ReadSessionOwner(BML_BehaviorSession session, ModContext &context,
                       SessionOwner &out, Status &status) {
     status = context.BehaviorSessions().ReadOwner(SessionId(session), out);
@@ -3690,6 +3789,54 @@ int BML_BEHAVIOR_CALL ReadPlanFailures(
     });
 }
 
+int BML_BEHAVIOR_CALL ReadPlanInstances(
+    BML_BehaviorSession session, BML_BehaviorPlan plan,
+    BML_BehaviorPlanInstance *instances,
+    std::uint32_t instanceCapacity, std::uint32_t instanceStride,
+    std::uint32_t *outInstanceCount, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !plan ||
+            !outInstanceCount ||
+            (instanceCapacity &&
+             (!instances || instanceStride < sizeof(*instances))))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        std::vector<BML::Behavior::Internal::Patches::PlanInstance> found;
+        result = context->BehaviorPatches().ReadPlanInstances(
+            context->BehaviorPlans(), owner, PlanIdOf(plan), found);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        if (found.size() > UINT32_MAX)
+            return BML_ERROR_OUT_OF_MEMORY;
+        *outInstanceCount = static_cast<std::uint32_t>(found.size());
+        if (instanceCapacity < found.size())
+            return BML_ERROR_BUFFER_TOO_SMALL;
+        if (!FitsStrided(found.size(), instanceStride,
+                         sizeof(BML_BehaviorPlanInstance)))
+            return BML_ERROR_OUT_OF_MEMORY;
+
+        auto *bytes = reinterpret_cast<std::uint8_t *>(instances);
+        for (std::size_t index = 0; index < found.size(); ++index) {
+            const BML_BehaviorPlanInstance record =
+                WritePlanInstance(found[index]);
+            std::memcpy(bytes + index * instanceStride,
+                        &record, sizeof(record));
+        }
+        return BML_OK;
+    });
+}
+
 int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
                                 BML_BehaviorPlan plan) {
     return Guard([&] {
@@ -3716,11 +3863,17 @@ Status ReadScriptEdits(
         return InvalidValue("A Behavior Plan requires at least one Script rule.");
     try {
         out.reserve(count);
+        std::set<std::uint64_t> bindings;
         for (std::uint32_t index = 0; index < count; ++index) {
             const BML_BehaviorScriptEdit &source = edits[index];
-            if (!HasStructSize(&source) || source.Reserved != 0 ||
+            if (!HasStructSize(&source) || !source.Binding ||
+                source.Reserved != 0 ||
                 (source.StepCount && !source.Steps))
                 return InvalidValue("A Script Edit descriptor is malformed.");
+            if (!bindings.insert(source.Binding).second) {
+                return InvalidValue(
+                    "Script Edits in one Behavior Plan require distinct bindings.");
+            }
             TargetSet targets;
             switch (source.Targets) {
             case BML_BEHAVIOR_TARGETS_EACH: targets = TargetSet::Each; break;
@@ -3737,8 +3890,16 @@ Status ReadScriptEdits(
                                           context, edit);
             if (!status)
                 return status;
+            BML::Behavior::Internal::Patches::SymbolMap symbols;
+            for (const auto &[reference, symbol] : program.Symbols()) {
+                auto bound = reference;
+                bound.Binding = source.Binding;
+                symbols.emplace(bound, symbol);
+            }
             out.push_back({ScriptSelection{std::move(script), targets},
-                           std::make_shared<GraphEdit>(std::move(edit))});
+                           source.Binding,
+                           std::make_shared<GraphEdit>(std::move(edit)),
+                           std::move(symbols)});
         }
     } catch (const std::bad_alloc &) {
         throw;
@@ -3825,36 +3986,38 @@ Status ReadGraphEdits(
         return InvalidValue("A Behavior Patch requires at least one Graph Edit.");
     try {
         out.reserve(count);
-        std::set<std::uint32_t> publicHandles;
+        std::set<std::uint64_t> bindings;
         for (std::uint32_t index = 0; index < count; ++index) {
             const BML_BehaviorGraphEdit &source = edits[index];
             if (!HasStructSize(&source) || source.Reserved != 0 ||
+                !source.Binding ||
                 !source.Graph.Domain ||
                 (source.StepCount && !source.Steps))
                 return InvalidValue("A Graph Edit descriptor is malformed.");
+            if (!bindings.insert(source.Binding).second) {
+                return InvalidValue(
+                    "Graph Edits in one Behavior Patch require distinct bindings.");
+            }
             GraphEdit edit;
             EditProgram program;
             Status status = program.Build(source.Steps, source.StepCount,
                                           context, edit);
             if (!status)
                 return status;
-            const auto localNodes = program.Nodes();
-            BML::Behavior::Internal::Patches::HandleMap nodes;
-            for (const auto &[handle, node] : localNodes) {
-                if (handle > UINT32_MAX - source.HandleBase)
-                    return InvalidValue("A composed Patch Node handle overflows.");
-                const std::uint32_t publicHandle = handle + source.HandleBase;
-                if (!publicHandles.insert(publicHandle).second)
-                    return InvalidValue(
-                        "Node handles must be unique across a composed Behavior Patch.");
-                nodes.emplace(publicHandle, node);
+            const auto localSymbols = program.Symbols();
+            BML::Behavior::Internal::Patches::SymbolMap symbols;
+            for (const auto &[reference, symbol] : localSymbols) {
+                auto publicReference = reference;
+                publicReference.Binding = source.Binding;
+                symbols.emplace(publicReference, symbol);
             }
             BML::Behavior::Internal::Patches::Target target;
             target.Graph = {source.Graph.Domain, source.Graph.Slot,
                             source.Graph.Generation};
             target.Fingerprint = source.Fingerprint;
+            target.Binding = source.Binding;
             target.Body = std::make_shared<GraphEdit>(std::move(edit));
-            target.Handles = std::move(nodes);
+            target.Symbols = std::move(symbols);
             out.push_back(std::move(target));
         }
     } catch (const std::bad_alloc &) {
@@ -4082,32 +4245,225 @@ int BML_BEHAVIOR_CALL Reference(BML_BehaviorSession session,
 
 int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession session,
                                       BML_BehaviorPatch patch,
-                                      std::uint32_t handle,
+                                      const BML_BehaviorNodeRef *node,
                                       BML_ObjectRef *outNode,
                                       BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!PrepareStatus(status) || !session || !patch || !outNode || !handle)
+        if (!PrepareStatus(status) || !session || !patch || !node || !outNode)
             return BML_ERROR_INVALID_PARAMETER;
         *outNode = BML_ObjectRef{};
+        BML::Behavior::Internal::Patches::SymbolRef selected;
+        Status result;
+        if (!ReadNodeRef(*node, selected, result)) {
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
         ModContext *context = BML_GetModContext();
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
         SessionOwner owner;
-        Status result;
         if (!ReadSessionOwner(session, *context, owner, result)) {
             WriteStatus(status, result);
             return ResultCode(result);
         }
-        BML::Behavior::Internal::ObjectRef node;
+        BML::Behavior::Internal::ObjectRef resolved;
         result = context->BehaviorPatches().ResolveNode(
-            owner, PatchIdOf(patch), handle, node);
+            owner, PatchIdOf(patch), selected, resolved);
         WriteStatus(status, result);
         if (!result)
             return ResultCode(result);
-        *outNode = BML_ObjectRef{node.Domain, node.Slot, node.Generation};
+        *outNode = BML_ObjectRef{
+            resolved.Domain, resolved.Slot, resolved.Generation};
         return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ResolvePlanInstanceNode(
+    BML_BehaviorSession session, BML_BehaviorPlan plan,
+    const BML_BehaviorPlanInstance *instance,
+    const BML_BehaviorNodeRef *node, BML_ObjectRef *outNode,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !plan || !instance ||
+            !node || !outNode)
+            return BML_ERROR_INVALID_PARAMETER;
+        *outNode = BML_ObjectRef{};
+        BML::Behavior::Internal::Patches::PlanInstance selected;
+        BML::Behavior::Internal::Patches::SymbolRef selectedNode;
+        Status result;
+        if (!ReadPlanInstance(*instance, selected, result) ||
+            !ReadNodeRef(*node, selectedNode, result)) {
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        BML::Behavior::Internal::ObjectRef resolved;
+        result = context->BehaviorPatches().ResolvePlanNode(
+            context->BehaviorPlans(), owner, PlanIdOf(plan), selected,
+            selectedNode, resolved);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        *outNode = {resolved.Domain, resolved.Slot, resolved.Generation};
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadPatchValue(
+    BML_BehaviorSession session, BML_BehaviorPatch patch,
+    const BML_BehaviorPortRef *port, BML_BehaviorGraphValue *value,
+    void *payload, std::uint32_t payloadCapacity,
+    std::uint32_t *outPayloadSize, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !patch || !port ||
+            !HasStructSize(value) || !outPayloadSize ||
+            (payloadCapacity && !payload))
+            return BML_ERROR_INVALID_PARAMETER;
+        BML::Behavior::Internal::Patches::PortQuery selected;
+        Status result;
+        if (!ReadPortQuery(*port, selected, result)) {
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        GraphValue read;
+        result = context->BehaviorPatches().ReadValue(
+            owner, PatchIdOf(patch), selected, read);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        return WriteGraphValueResult(read, value, payload, payloadCapacity,
+                                     outPayloadSize);
+    });
+}
+
+int BML_BEHAVIOR_CALL WritePatchValue(
+    BML_BehaviorSession session, BML_BehaviorPatch patch,
+    const BML_BehaviorPortRef *port, const BML_BehaviorValue *value,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !patch || !port || !value)
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        BML::Behavior::Internal::Patches::PortQuery selected;
+        Parameter::Binding binding;
+        Status result;
+        if (!ReadPortQuery(*port, selected, result) ||
+            !ReadValue(*value, *context, binding, result)) {
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        SessionOwner owner;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        result = context->BehaviorPatches().WriteValue(
+            owner, PatchIdOf(patch), selected, binding);
+        WriteStatus(status, result);
+        return ResultCode(result);
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadPlanInstanceValue(
+    BML_BehaviorSession session, BML_BehaviorPlan plan,
+    const BML_BehaviorPlanInstance *instance,
+    const BML_BehaviorPortRef *port, BML_BehaviorGraphValue *value,
+    void *payload, std::uint32_t payloadCapacity,
+    std::uint32_t *outPayloadSize, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !plan || !instance ||
+            !port || !HasStructSize(value) || !outPayloadSize ||
+            (payloadCapacity && !payload))
+            return BML_ERROR_INVALID_PARAMETER;
+        BML::Behavior::Internal::Patches::PlanInstance selected;
+        BML::Behavior::Internal::Patches::PortQuery selectedPort;
+        Status result;
+        if (!ReadPlanInstance(*instance, selected, result) ||
+            !ReadPortQuery(*port, selectedPort, result)) {
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        GraphValue read;
+        result = context->BehaviorPatches().ReadPlanValue(
+            context->BehaviorPlans(), owner, PlanIdOf(plan), selected,
+            selectedPort, read);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        return WriteGraphValueResult(read, value, payload, payloadCapacity,
+                                     outPayloadSize);
+    });
+}
+
+int BML_BEHAVIOR_CALL WritePlanInstanceValue(
+    BML_BehaviorSession session, BML_BehaviorPlan plan,
+    const BML_BehaviorPlanInstance *instance,
+    const BML_BehaviorPortRef *port, const BML_BehaviorValue *value,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !plan || !instance ||
+            !port || !value)
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        BML::Behavior::Internal::Patches::PlanInstance selected;
+        BML::Behavior::Internal::Patches::PortQuery selectedPort;
+        Parameter::Binding binding;
+        Status result;
+        if (!ReadPlanInstance(*instance, selected, result) ||
+            !ReadPortQuery(*port, selectedPort, result) ||
+            !ReadValue(*value, *context, binding, result)) {
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        SessionOwner owner;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        result = context->BehaviorPatches().WritePlanValue(
+            context->BehaviorPlans(), owner, PlanIdOf(plan), selected,
+            selectedPort, binding);
+        WriteStatus(status, result);
+        return ResultCode(result);
     });
 }
 
@@ -4284,6 +4640,12 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &ReplacePlan,
     &ReadPatchFailures,
     &ReadPlanFailures,
+    &ReadPlanInstances,
+    &ResolvePlanInstanceNode,
+    &ReadPatchValue,
+    &WritePatchValue,
+    &ReadPlanInstanceValue,
+    &WritePlanInstanceValue,
 };
 
 } // namespace

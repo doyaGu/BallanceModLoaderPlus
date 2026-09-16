@@ -19,7 +19,7 @@ inline PlanInfo ReadPlanInfo(const BML_BehaviorPlanInfo &source) {
     info.State = static_cast<PlanState>(source.State);
     info.World = source.World;
     info.Matches = source.Matches;
-    info.Installations = source.Installations;
+    info.Instances = source.Instances;
     info.LastStatus = ReadStatus(source.LastStatus);
     return info;
 }

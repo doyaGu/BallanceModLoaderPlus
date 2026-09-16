@@ -16,6 +16,13 @@ namespace BML::Behavior::Internal {
 using Epoch = std::uint64_t;
 using Installation = std::uint64_t;
 
+struct InstallationInfo {
+    ObjectRef Target;
+    Installation Id = 0;
+    Epoch World = 0;
+    std::uint64_t Revision = 0;
+};
+
 enum class TargetSet {
     Each,
     One,
@@ -72,6 +79,7 @@ public:
     [[nodiscard]] Epoch WorldEpoch() const noexcept { return m_Epoch; }
     [[nodiscard]] std::size_t Size() const noexcept { return m_Installed.size(); }
     [[nodiscard]] bool Contains(const ObjectRef &target) const noexcept;
+    [[nodiscard]] std::vector<InstallationInfo> Installations() const;
     [[nodiscard]] bool Retiring() const noexcept { return m_Retiring; }
     [[nodiscard]] const Status &LastStatus() const noexcept {
         return m_LastStatus;
@@ -95,6 +103,7 @@ private:
     Status Applied(Status status);
     Status Restored(Status status);
     Status Settled();
+    void Touch() noexcept;
 
     PatchKey m_Patch;
     ScriptSelection m_Target;
@@ -103,6 +112,7 @@ private:
     PlanState m_State = PlanState::Reconciling;
     Epoch m_Epoch = 0;
     bool m_Retiring = false;
+    std::uint64_t m_Revision = 1;
     std::map<ObjectRef, Installation, RefLess> m_Installed;
     Status m_LastStatus;
     Status m_ApplyFailure;
@@ -115,7 +125,7 @@ struct PlanInfo {
     PlanState State = PlanState::Unsatisfied;
     Epoch World = 0;
     std::size_t Matches = 0;
-    std::size_t Installations = 0;
+    std::size_t Instances = 0;
     Status LastStatus;
     Status ApplyFailure;
     Status RestoreFailure;
@@ -137,6 +147,9 @@ public:
     Status Read(PlanId id, PlanInfo &out) const;
     Status Read(std::string_view owner, std::uint64_t ownerGeneration,
                 PlanId id, PlanInfo &out) const;
+    Status ReadInstallations(
+        std::string_view owner, std::uint64_t ownerGeneration, PlanId id,
+        std::vector<InstallationInfo> &out) const;
     Status Close(PlanId id);
     Status Close(std::string_view owner, std::uint64_t ownerGeneration,
                  PlanId id);

@@ -94,7 +94,16 @@ TEST(InterfaceStructOffsets, BehaviorInterface) {
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReplacePlan, 168);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadPatchFailures, 172);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadPlanFailures, 176);
-    ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 180, 0,
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadPlanInstances, 180);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface,
+                         ResolvePlanInstanceNode, 184);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadPatchValue, 188);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, WritePatchValue, 192);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface,
+                         ReadPlanInstanceValue, 196);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface,
+                         WritePlanInstanceValue, 200);
+    ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 204, 0,
                                              BML_BEHAVIOR_INTERFACE_MINOR);
     EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MAJOR, 1u);
     EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MINOR, 0u);
@@ -152,6 +161,21 @@ TEST(InterfaceStructOffsets, BehaviorWireRecords) {
     EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, ValueOffset, 24);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, ValueSize, 28);
     EXPECT_EQ(sizeof(BML_BehaviorGraphValue), static_cast<std::size_t>(32));
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorNodeRef, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorNodeRef, Graph, 4);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorNodeRef, Handle, 8);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorNodeRef, Binding, 16);
+    EXPECT_EQ(sizeof(BML_BehaviorNodeRef), static_cast<std::size_t>(24));
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPlanInstance, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPlanInstance, Rule, 4);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPlanInstance, PlanRevision, 8);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPlanInstance, Binding, 16);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPlanInstance, World, 24);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPlanInstance, Revision, 32);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPlanInstance, Identity, 40);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPlanInstance, Script, 48);
+    EXPECT_EQ(sizeof(BML_BehaviorPlanInstance),
+              static_cast<std::size_t>(64));
     EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptSpec, StructSize, 0);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptSpec, Owner, 4);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptSpec, Name, 16);

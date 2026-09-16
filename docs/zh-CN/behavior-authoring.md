@@ -94,7 +94,7 @@ m_Behavior = opened.Take();
 
 Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 DLL 释放前完成 callback 和 native Behavior 的退役。
 
-对具名 Result 调用 `Result<T>::Value()` 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 `Take()`。`Take()` 会清空结果中的值，但 `Code()` 和 `GetStatus()` 仍可用于读取诊断。
+`Behavior::Result<T>` 是共用 `BML::Result<T, Behavior::Status>` 的别名，只有诊断信息属于 Behavior。对具名 Result 调用 `Result<T>::Value()` 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 `Take()`。`Take()` 会清空结果中的值，但 `Code()` 和 `GetStatus()` 仍可用于读取诊断。
 
 由 Session 创建的对象持有自己所需的 Session lease。移动或对最初的 `Session` 值调用 `Reset()`，只会释放这个值持有的 lease，不会使仍存活的 Block、run、Script、Watch、Patch 或 Plan 失效。最后一个 lease 释放时，native Session 才关闭。
 
@@ -390,7 +390,10 @@ destination，可直接表达绕过一个 Block。Redirect 本身是作者期望
 interface。`Edit::Root()` 返回 root scope，`Edit::Node::Graph()` 进入一个
 graph-backed Node；`Edit` 本身不再镜像 graph-local operation。graph scope
 是可低成本复制的值，修改操作也返回值，因此从 `Root()` 临时值开始的链式调用可以
-安全保存。所有 scope 和 symbol 的生命周期都受所属 Edit 限制。父 graph 只能连接 child 的 public port；不同 scope 的
+安全保存。提交后的 Patch 或 Plan 会继续持有所属 Edit 的符号身份，因此局部 Edit
+离开作用域后，已保存的 Node 和 Port 仍可用于 installation operation。每版定义带有
+不透明 binding token，排队 Replace 或失败回滚不会让不同 Edit 中相同数值的 handle
+发生串号。父 graph 只能连接 child 的 public port；不同 scope 的
 internal port 不能直接相连。`AddGraph(name, priority)` 创建真实的 graph-backed
 child，其 nested scope 在同一个 transaction 中定义 public interface 与内部
 body。root 和所有 nested scope 一起验证，恢复顺序固定为 child 在前、parent 在后。
@@ -467,7 +470,8 @@ auto patch = session.Apply(
     On(energyGraph, energyEdit));
 ```
 
-`On(...)` 只负责在这些调用中连接目标和 Edit，不引入新的公开 graph 或 patch 类型。
+`On(...)` 只负责在这些调用中连接目标和 Edit，不引入新的公开 graph 或 patch 类型；
+它会在调用时冻结 Edit，之后才向同一个 Edit 追加的 symbol 不属于该 target 或 rule。
 
 第一个 graph 改变前，所有 target 都会完成解析和静态检查。随后按参数顺序提交；
 后面的 target 失败时，前面的 target 按逆序恢复。同一个 graph 不能在顶层出现两次。
@@ -490,6 +494,42 @@ rule 可选择 `One` 或 `Each`；其 root 与 nested scope 作为一个原子 P
 `Partial` 表示至少一条 rule 已安装、但仍有 rule 没有匹配；`Unsatisfied` 表示当前
 没有任何安装。定义会跨 world reset 保留，并在下一 world 重新 reconcile。
 
+exact Patch 可用 `Patch::Read` 和 `Patch::Set` 读写其 Edit 命名的参数 Port。
+Plan 则先取得当前实例快照，再选择对应 rule 与 Script 的 instance：
+
+```cpp
+Edit levelEdit;
+auto level = levelEdit.Root().Require("Load LevelXX").Graph();
+const auto levelRow = level.Root().Local("AllLevel row", CKPGUID_INT);
+const auto customLevel = level.AppendLocal("Custom Level", CKPGUID_BOOL);
+
+auto submitted = session.Plan(
+    "custom-level-route",
+    On(Scripts::One("Levelinit_build"), levelEdit));
+if (submitted) {
+    Plan plan = submitted.Take();
+    auto instances = plan.Instances();
+    if (instances && instances->size() == 1) {
+        Plan::Instance instance = std::move(instances->front());
+        auto previous = instance.Read(levelRow);
+        if (previous &&
+            previous->State == ObservationState::Available) {
+            auto changed = instance.Set(customLevel, true);
+        }
+    }
+}
+```
+
+运行期还要使用的 Node 或 Port 必须在把 Edit 传给 `On(...)` 之前保存；该调用会冻结
+definition 及其 binding handle 上限。
+这是带 revision 的 Plan instance 快照，不是 native parameter handle。
+Patch 与 Plan 会在自身有效期内保留对应 Edit 的符号身份；提交所用的局部 Edit
+离开作用域后，先前保存的 Node 和 Port 仍可用于这些绑定。
+每次 `Resolve`、`Read` 或 `Set` 都会重新校验 definition、world 与实际安装的
+Patch；world 变化、Replace、Disable 或重建都会让旧快照失效。读取不会强制求值。
+写入会沿 Pin 或 Target 找到当前 stored source，并保持 direct/shared relation；这类
+运行期写入不进入 Patch journal，因此调用方必须自己管理事务与回滚。
+
 Patch 和 Plan 都提供 `Enable()`、`Disable()`、`Replace(...)`、`Info()` 与
 `Close()`。Disable 恢复 native graph，但保留 handle 和 owned definition；Enable
 重新验证后再安装。Replace 保留未变化的前缀，先逆序恢复变化后的旧后缀，再安装
@@ -506,6 +546,8 @@ definition 时的第一个失败，`RestoreFailure` 表示当前阻止恢复或�
 
 Close 会比较 installation 仍然拥有的 Link、source 和 graph after-image；外部修改
 导致 `RevertConflict` 时，handle 保持可读，作者修复冲突后可以再次 Close。
+`Closing` 同样会保留 handle；调用方应持有它，并在后续 safe point 查询或重试，
+不能把它当作已恢复完成而直接丢弃。
 
 Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。
 

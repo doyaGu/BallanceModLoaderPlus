@@ -16,7 +16,7 @@ Behavior::Hook Callback(Receiver *receiver) {
     return Behavior::Hook([receiver] { (receiver->*Method)(); });
 }
 
-Behavior::Edit::Node WaitMessage(Behavior::Edit::Graph &graph,
+Behavior::Edit::Node WaitMessage(Behavior::Edit::Graph graph,
                                  CKMessageType message) {
     Behavior::NodePattern pattern("Wait Message");
     pattern.Pin(0, Behavior::Value::As(
@@ -24,11 +24,16 @@ Behavior::Edit::Node WaitMessage(Behavior::Edit::Graph &graph,
     return graph.Require(std::move(pattern));
 }
 
-Behavior::Edit::Node Advance(Behavior::Edit::Graph &graph,
+Behavior::Edit::Node Advance(Behavior::Edit::Graph graph,
                              Behavior::Edit::Node node, int count) {
     while (count-- > 0)
         node = graph.Next(node);
     return node;
+}
+
+Behavior::Edit::Node Branch(Behavior::Edit::Graph graph,
+                            Behavior::Edit::Node dispatch, int output) {
+    return graph.Next(dispatch.Out(output));
 }
 
 Behavior::Edit BaseEventHandler(Receiver *receiver) {
@@ -37,53 +42,52 @@ Behavior::Edit BaseEventHandler(Receiver *receiver) {
     Behavior::NodePattern dispatchPattern("Switch On Message");
     dispatchPattern.Ins(2).Outs(11).Pins(11).Pouts(0);
     const auto dispatch = root.Require(std::move(dispatchPattern));
-    const auto branch = [&](int output) {
-        return root.Next(dispatch.Out(output));
-    };
 
-    const auto startMenu = branch(0);
+    const auto startMenu = Branch(root, dispatch, 0);
     root.Before(root.Leaving(startMenu),
                 Callback<&Receiver::OnPreStartMenu>(receiver));
     root.After(startMenu.Out(),
                Callback<&Receiver::OnPostStartMenu>(receiver));
 
-    const auto exitGame = branch(1);
+    const auto exitGame = Branch(root, dispatch, 1);
     root.Before(root.Leaving(exitGame),
                 Callback<&Receiver::OnExitGame>(receiver));
 
-    const auto loadLevel = branch(2);
+    const auto loadLevel = Branch(root, dispatch, 2);
     root.Before(root.Leaving(Advance(root, loadLevel, 2)),
                 Callback<&Receiver::OnPreLoadLevel>(receiver));
     root.After(loadLevel.Out(),
                Callback<&Receiver::OnPostLoadLevel>(receiver));
-    root.After(branch(3).Out(), Callback<&Receiver::OnStartLevel>(receiver));
+    root.After(Branch(root, dispatch, 3).Out(),
+               Callback<&Receiver::OnStartLevel>(receiver));
 
     auto reset = root.Require("reset Level").Graph();
     const auto resetFirst = reset.Next(reset.Root().In(0));
     const auto resetSecond = reset.Next(resetFirst);
     reset.Before(reset.Leaving(resetSecond),
                  Callback<&Receiver::OnPreResetLevel>(receiver));
-    root.After(branch(4).Out(),
+    root.After(Branch(root, dispatch, 4).Out(),
                Callback<&Receiver::OnPostResetLevel>(receiver));
-    root.After(branch(5).Out(),
+    root.After(Branch(root, dispatch, 5).Out(),
                Callback<&Receiver::OnPauseLevel>(receiver));
-    root.After(branch(6).Out(),
+    root.After(Branch(root, dispatch, 6).Out(),
                Callback<&Receiver::OnUnpauseLevel>(receiver));
 
     const auto exitBranches = root.Next(
         root.Require("DeleteCollisionSurfaces"));
-    root.Before(root.Leaving(Advance(root, branch(7), 4)),
+    root.Before(root.Leaving(Advance(root, Branch(root, dispatch, 7), 4)),
                 Callback<&Receiver::OnPreExitLevel>(receiver));
     root.Before(root.Leaving(root.Next(exitBranches, 0)),
                 Callback<&Receiver::OnPostExitLevel>(receiver));
-    root.Before(root.Leaving(Advance(root, branch(8), 4)),
+    root.Before(root.Leaving(Advance(root, Branch(root, dispatch, 8), 4)),
                 Callback<&Receiver::OnPreNextLevel>(receiver));
     root.Before(root.Leaving(root.Next(exitBranches, 1)),
                 Callback<&Receiver::OnPostNextLevel>(receiver));
-    root.After(branch(9).Out(), Callback<&Receiver::OnDead>(receiver));
+    root.After(Branch(root, dispatch, 9).Out(),
+               Callback<&Receiver::OnDead>(receiver));
 
     const auto highscoreNode = root.Require("Highscore");
-    root.Before(root.Leaving(branch(10)),
+    root.Before(root.Leaving(Branch(root, dispatch, 10)),
                 Callback<&Receiver::OnPreEndLevel>(receiver));
     auto highscore = highscoreNode.Graph();
     const auto completed = highscore.AppendOut("Out");
@@ -236,11 +240,20 @@ void GameEventHooks::OnLoad(IBML &bml, ILogger &logger) {
     m_Plan = plan.Take();
     if (m_Logger)
         m_Logger->Info(
-            "Install game lifecycle hooks through one Behavior Plan");
+            "Created the game lifecycle hook Plan");
 }
 
 void GameEventHooks::OnUnload() {
-    (void) m_Plan.Close();
+    if (m_Plan) {
+        auto closed = m_Plan.Close();
+        if (!closed && m_Logger) {
+            m_Logger->Error(
+                "Failed to restore the game lifecycle hook Plan: %s",
+                closed.GetStatus().Message.empty()
+                    ? "Behavior Plan close failed"
+                    : closed.GetStatus().Message.c_str());
+        }
+    }
     m_Behavior.Reset();
     m_Logger = nullptr;
     m_Receiver = nullptr;

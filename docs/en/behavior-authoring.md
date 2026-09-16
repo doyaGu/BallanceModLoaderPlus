@@ -94,7 +94,7 @@ m_Behavior = opened.Take();
 
 The Loader verifies the calling DLL and binds the Session to the current Mod generation. A Session survives world reset; runs, Scripts, Watches, and Patches tied to that world do not. On Mod unload, the Loader stops new admission and retires callbacks and native Behaviors before unloading the DLL.
 
-`Result<T>::Value()` borrows from a named Result; a temporary Result may return a copyable value directly. Use `Take()` when ownership of a move-only domain object leaves a successful Result. `Take()` clears the stored value, while keeping `Code()` and `GetStatus()` available for diagnostics.
+`Behavior::Result<T>` is an alias of the shared `BML::Result<T, Behavior::Status>`; only the diagnostic remains Behavior-specific. `Result<T>::Value()` borrows from a named Result; a temporary Result may return a copyable value directly. Use `Take()` when ownership of a move-only domain object leaves a successful Result. `Take()` clears the stored value, while keeping `Code()` and `GetStatus()` available for diagnostics.
 
 Objects created through a Session retain their own Session lease. Moving or `Reset()`-ing the original `Session` value releases that value's lease but does not invalidate a live Block, run, Script, Watch, Patch, or Plan. The native Session closes when its last lease is released.
 
@@ -411,7 +411,11 @@ scope are validated together and restored in child-before-parent order.
 
 `Edit::Node`, `Edit::Port`, `Edit::Link`, and `Edit::Path` are authoring symbols,
 not graph snapshot views. Symbols belong to the Edit and graph scope that
-created them. `Require(snapshotNode)` copies a unique structural requirement:
+created them. A submitted Patch or Plan retains the symbolic identity of its
+Edit, so saved Nodes and Ports remain usable for installation operations after
+the local Edit leaves scope. Each definition carries an opaque binding token;
+queued replacement and rollback therefore cannot alias equal numeric handles
+from different Edits. `Require(snapshotNode)` copies a unique structural requirement:
 name when present, Prototype, graph/function kind, and exact port layout. It
 does not copy the native child index. If two Nodes remain indistinguishable by
 those facts, resolution reports ambiguity instead of choosing one by array
@@ -494,7 +498,8 @@ auto patch = session.Apply(
 ```
 
 `On(...)` is only the connective syntax for these calls; it does not introduce
-another public graph or patch type.
+another public graph or patch type. It snapshots the Edit at that call, so
+symbols authored later on the same Edit are not part of that target or rule.
 
 All targets are resolved and statically checked before the first graph changes.
 They then commit in argument order; a later failure restores earlier targets in
@@ -519,6 +524,47 @@ scopes install as one atomic Patch. `Partial` means at least one rule is
 installed while another is unmatched; `Unsatisfied` means none is installed.
 Definitions survive world reset and reconcile against the next world.
 
+An exact Patch can read or update a parameter Port named by its Edit with
+`Patch::Read` and `Patch::Set`. For a Plan, first snapshot its live
+instances, then use the instance that belongs to the desired rule and
+Script:
+
+```cpp
+Edit levelEdit;
+auto level = levelEdit.Root().Require("Load LevelXX").Graph();
+const auto levelRow = level.Root().Local("AllLevel row", CKPGUID_INT);
+const auto customLevel = level.AppendLocal("Custom Level", CKPGUID_BOOL);
+
+auto submitted = session.Plan(
+    "custom-level-route",
+    On(Scripts::One("Levelinit_build"), levelEdit));
+if (submitted) {
+    Plan plan = submitted.Take();
+    auto instances = plan.Instances();
+    if (instances && instances->size() == 1) {
+        Plan::Instance instance = std::move(instances->front());
+        auto previous = instance.Read(levelRow);
+        if (previous &&
+            previous->State == ObservationState::Available) {
+            auto changed = instance.Set(customLevel, true);
+        }
+    }
+}
+```
+
+Capture every Node or Port needed at runtime before passing the Edit to
+`On(...)`; that call snapshots the definition and its binding-handle limit.
+These are revisioned Plan instance snapshots, not native parameter handles.
+Patch and Plan retain the corresponding Edit's symbolic identity for their
+lifetime, so saved Nodes and Ports remain usable after a local source Edit
+leaves scope.
+Every `Resolve`, `Read`, or `Set` revalidates the owning definition, world, and
+Plan instance. A world change, replacement, disable, or rebuild makes an old
+snapshot stale. Reads are non-forcing. Writes follow the selected Pin or Target
+to its current stored source and preserve direct/shared relations; they do not
+become part of the Patch journal, so code that changes runtime values owns its
+own transaction and rollback.
+
 Patch and Plan both expose `Enable()`, `Disable()`, `Replace(...)`, `Info()`, and
 `Close()`. Disable restores native graphs but keeps the handle and owned
 definition. Enable validates again before installation. Replace preserves an
@@ -540,7 +586,9 @@ Script name for logging.
 
 Close compares the Links, sources, and graph after-images still owned by an
 installation. A foreign change produces `RevertConflict`; the handle remains
-readable and Close can be retried after the conflict is repaired.
+readable and Close can be retried after the conflict is repaired. `Closing`
+also retains the handle: keep it and poll or retry at later safe points instead
+of discarding it as though restoration had completed.
 
 Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.
 

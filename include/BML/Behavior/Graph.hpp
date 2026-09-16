@@ -719,7 +719,7 @@ struct PlanInfo {
     // The world epoch this Plan was last reconciled against.
     std::uint64_t World = 0;
     std::uint32_t Matches = 0;
-    std::uint32_t Installations = 0;
+    std::uint32_t Instances = 0;
     // Result of the most recent reconciliation pass.
     Behavior::Status LastStatus;
     // The first failure applying the current requested rules, and the failure
