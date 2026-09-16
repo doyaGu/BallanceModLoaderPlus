@@ -69,6 +69,7 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 | 关卡状态、能量、检查点、重置点、关卡目录 | `GetArrayByName` 加 `CKDataArray` 按列读取 | `Gameplay::ReadLevel`、`ReadEnergy`、`ReadCheckpoints`、`ReadResetpoints`、`ReadCatalog` | 走 interface struct。它已经知道游戏那些数组的列顺序，而这正是最容易写错的部分。集合类读取会整份拷贝，属于初始化或换关时做的事，不适合每帧调用。 |
 | 游戏内消息板 | `SendIngameMessage` | `UI::AddMessage`、`UI::ClearMessages` | 两者皆可。清空消息板只有门面能做。 |
 | HUD 各部分、Mod 菜单、地图菜单 | 无 | `UI::SetHUDMode`、`ShowTitle`、`ShowFPS`、`OpenModsMenu`、`CloseModsMenu`、`OpenMapMenu`、`CloseMapMenu` | 只有 interface struct。 |
+| 在 Mods 菜单中扩展自己的 Mod 详情页 | 无 | `ModMenu.hpp` 的 `BML::ModMenu::Page` | `ModMenu.h` 是纯 C 接口，C++ facade 单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。 |
 | Loader 事件 | `IMod` 上的 `IMessageReceiver` 虚函数 | 无 | 处理同步回调；需要延后执行时，把必要数据复制到 Mod 自己拥有的存储中。 |
 | 作弊模式 | 写用 `EnableCheat`，读用 `IsCheatEnabled` | `Runtime::ReadState` 可读 | 读两者皆可，写走旧式 C++。 |
 | 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | 无 | 注册走旧式 C++。注销是 C 导出 `BML_UnregisterCommand`，因为 `IBML` 已经无法再加函数。 |
@@ -76,7 +77,7 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 | 定时器 | `AddTimer`、`AddTimerLoop` | 无 | 只有旧式 C++。 |
 | 退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染 | `ExitGame`、`SetIC`、`RestoreIC`、`Show`、`RegisterBallType` 等注册族、`SkipRenderForNextTick` | 无 | 只有旧式 C++。 |
 | 已加载了哪些 Mod，以及依赖 | `GetModCount`、`GetMod`、`FindMod`、`RegisterDependency`、`CheckDependencies` | 无 | 只有旧式 C++。 |
-| 发现、配置、执行 Virtools Building Block，以及检查或编辑 Behavior Graph | 原始 CK SDK 与 `ExecuteBB` 兼容 helper | `Behavior.hpp` 的 `BML::Behavior` | 新代码使用 `BML::Behavior`。它负责 Prototype/Layout 校验、自持有 Frame、可校验对象引用以及可恢复的 Patch/Plan 生命周期。只有明确自行承担这些 invariant 的引擎基础设施才直接使用 raw CK。 |
+| 发现、配置、执行 Virtools Building Block，以及检查或编辑 Behavior Graph | 原始 CK SDK 与 `ExecuteBB` 兼容 helper | `Behavior.hpp` 的 `BML::Behavior` | 新代码使用 `BML::Behavior`。它负责 Prototype/Layout 校验、自持有 Frame、可校验对象引用、可恢复的 Patch/Plan 生命周期，以及访问已安装 Edit symbol 的 revisioned binding。只有明确自行承担这些 invariant 的引擎基础设施才直接使用 raw CK。 |
 | 把自己的接口发布给别的 Mod | 无 | IMC；原生基础 Mod 也可发布 BML provider interface | 普通 RPC/Topic 服务优先使用生成式 IMC。必须暴露直接或借用原生对象的纯 C 进程内函数表，C++ Mod 使用 `Interface.hpp` 加 `ModInterface.hpp`：底层仍是 C ABI，但发布所有权、类型化查询、状态码和提供方依赖生命周期由 authoring 层持有。共享头用 `bml_add_interface_package` 发布，不得导入提供者符号；脚本 Mod 不能发布或消费 provider interface。 |
 | 绘制自己的界面 | `Bui` 画 ImGui 控件，`BGui` 用游戏内 2D 实体 | 无 | 这两者都不是 `BML::UI`，后者控制的是 Loader 自己的界面，不画你的东西。 |
 | 字符串、路径、文件、内存分配 | 无 | `BML.h` 的 `BML_*` 函数 | 走 C 导出。它们返回的东西要用对应的 `BML_Free*` 释放，不能用 CRT 的 `free`。 |
@@ -102,7 +103,8 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
   `OnProcess` 里用的原因。`BML::Gameplay`、`BML::Scene`、`BML::UI` 触碰的是游戏的
   数组、游戏对象和 Loader 自己绘制的界面，因此这三个从别的线程调用一律返回
   `BML_ERROR_WRONG_THREAD`。`BML::Runtime` 和 `BML::Speedrun`
-  不拒绝其他线程，但同样是给游戏线程用的。在 Loader 加载完 Mod 之前，它们全都返回
+  不拒绝其他线程，但同样是给游戏线程用的。Mod 菜单页面的注册也只能在游戏线程
+  进行，其绘制回调运行于 Loader 已打开的 ImGui 帧内。在 Loader 加载完 Mod 之前，它们全都返回
   `BML_ERROR_FAIL`。
 
 ## 延伸阅读

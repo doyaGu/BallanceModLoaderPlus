@@ -53,6 +53,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | 头文件 | 用途 |
 | --- | --- |
 | `Version.h`, `Defines.h` | 版本宏、导出宏、状态码和基础定义 |
+| `Result.hpp` | 共用 C++ 结果类型，携带 BML 状态码、可选值和可选的模块专属诊断 |
 | `BML.h` | C ABI：版本、Loader 与 Mod 目录、命令注销、内存、字符串/编码、路径、文件与 Zip 工具 |
 | `BMLAll.h` | 一次包含全部原生 SDK 接口的便捷聚合头 |
 | `IMod.h`, `IMessageReceiver.h` | Mod 元数据、生命周期、玩法和引擎回调 |
@@ -65,6 +66,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `Interface.h` | Loader 交出的带版本接口结构体，以及取用它的方式 |
 | `Behavior.h`, `Behavior.hpp` | Virtools Building Block 发现、编写、执行、行为图检查与编辑 |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带内联 C++ 包装 |
+| `ModMenu.h`, `ModMenu.hpp` | 纯 C 的 Mods 菜单页面接口，以及其强类型 C++ 编写层 |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ 运行时与线格式 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |
 | `Gui.h`, `Gui/*.h` | `BGui` Virtools 实体/行为 UI 封装 |
@@ -72,6 +74,54 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `ExecuteBB.h` | 用于执行或创建常用 Building Block 的 v0.3 兼容接口 |
 | `ScriptHelper.h` | 查找、连接、插入和删除行为图节点与参数 |
 | `Guids.h`, `Guids/*.h` | Virtools 与 Ballance Building Block GUID 集合 |
+
+`BML::Result<T>` 组合 BML 状态码与可选值。需要结构化诊断的模块可使用
+`BML::Result<T, ModuleStatus>`；例如 `Behavior::Result<T>` 传入
+`Behavior::Status`，无需改变共用容器或 C ABI。`Failure()` 收到非错误码时会将其
+规范化为 `BML_ERROR_FAIL`，因此失败的 `Result<void>` 不会被判为成功。
+
+## 自定义 Mods 菜单页面
+
+原生 Mod 可通过 `BML::ModMenu::Page` 在自己的详情页末尾追加 Ballance 风格
+入口。Config 分类保持在前，自定义入口按注册顺序排列，并共用每页四项的分页。
+点击入口后会进入该 Mod 完全自定义的页面：
+
+```cpp
+#include <BML/Bui.h>
+#include <BML/ModMenu.hpp>
+
+class DiagnosticsPage final : public BML::ModMenu::Page {
+public:
+    DiagnosticsPage()
+        : Page("diagnostics", "Diagnostics", "Show live runtime details") {}
+
+protected:
+    BML::ModMenu::PageAction OnFrame() override {
+        Bui::Title("Diagnostics");
+        // 在当前页面中直接绘制 ImGui 或 Bui 控件。
+        return Bui::NavBack() ? BML::ModMenu::PageAction::Back
+                              : BML::ModMenu::PageAction::None;
+    }
+};
+
+// 让该对象作为 Mod 状态的一部分持续存活。
+DiagnosticsPage diagnostics;
+
+void RegisterMenuPages() { (void) diagnostics.Register(); }
+void UnregisterMenuPages() { (void) diagnostics.Unregister(); }
+```
+
+调用 `OnFrame` 时，Loader 已经打开覆盖整个 viewport 的 ImGui 页面；直接绘制
+内容即可，不要调用 `ImGui::NewFrame` 或 `ImGui::Render`。返回 `Back` 回到 Mod
+详情页，返回 `Close` 退出 Mods 菜单。Loader 会复制 id、标签和说明，但页面对象
+及回调必须存活到注销为止；owner DLL 卸载前，Loader 还会清除所有遗留注册。
+1.0 版仅向原生 Mod 开放这一能力。请在所属 Mod 的 `OnLoad` 和 `OnUnload`
+中分别调用上面的注册与注销函数。
+`ModMenu.h` 可直接用于 C，不包含 C++ 标准库或类；`ModMenu.hpp` 只是单向建立在
+该 C 接口上的 C++ 编写 facade。在 C 边界上，`BML_ModMenuPageDraw` 返回
+`BML_OK` 或错误状态，并把延迟执行的导航请求写入
+`BML_ModMenuPageFrame` 的 `Action` 成员。导航不会再复用错误返回值；后续小版本也可借助
+`StructSize` 在 frame 末尾追加输入或输出，而不改变 1.0 的回调签名。
 
 ## Mod 生命周期与事件
 
@@ -190,7 +240,8 @@ void MyMod::OnUnload() {
 - `BML::UI`：消息板、Mod/地图菜单和 HUD。
 - `BML::Speedrun`：共享 Speedrun 计时器。
 - `BML::Behavior`：Virtools Building Block 发现、配置后的 Run、自持有
-  Frame、行为图检查、Watch、Patch 与持久 Plan。
+  Frame、行为图检查、Watch、Patch、持久 Plan，以及访问已安装 Edit Node 和参数
+  Port 的 revisioned installation binding。
 
 版本规则写在 `Interface.h` 里：结构体只能在末尾追加成员并提升次版本号，而
 `BML_IFACE_HAS` 用来询问正在运行的 Loader 有没有某个比 Mod 编译时的头文件更晚
