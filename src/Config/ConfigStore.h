@@ -23,7 +23,7 @@ public:
 
 private:
     std::vector<std::unique_ptr<Config>> m_Configs;
-    std::unordered_map<std::string, size_t> m_Index;
+    std::unordered_map<std::string, std::size_t> m_Index;
 };
 
 #endif // BML_CONFIGSTORE_H

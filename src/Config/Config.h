@@ -1,13 +1,16 @@
 #ifndef BML_CONFIG_INTERNAL_H
 #define BML_CONFIG_INTERNAL_H
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
-#include <vector>
 #include <unordered_map>
-#include <variant>
+#include <vector>
 
 #include "BML/IConfig.h"
 #include "BML/IMod.h"
+
+#include "Config/ConfigValue.h"
 
 class Config;
 
@@ -16,7 +19,7 @@ class Property : public IProperty {
     friend class Category;
 
 public:
-    using Value = std::variant<bool, int, float, std::string>;
+    using Value = ConfigValue;
 
     Property() = default;
     Property(Config *config, std::string category, std::string key);
@@ -25,7 +28,7 @@ public:
     const char *GetName() const { return m_Key.c_str(); }
 
     const char *GetString() override;
-    size_t GetStringSize();
+    std::size_t GetStringSize();
     bool GetBoolean() override;
     int GetInteger() override;
     float GetFloat() override;
@@ -38,7 +41,7 @@ public:
     void SetKey(CKKEYBOARD value) override;
 
     const char *GetComment() const { return m_Comment.c_str(); }
-    void SetComment(const char *comment) override { m_Comment = comment ? comment : ""; }
+    void SetComment(const char *comment) override;
 
     void SetDefaultString(const char *value) override;
     void SetDefaultBoolean(bool value) override;
@@ -49,21 +52,16 @@ public:
     PropertyType GetType() override { return m_Type; }
     const Value &GetValue() const { return m_Value; }
     void SetValue(const Value &value);
-    size_t GetHash() const;
+    std::size_t GetHash() const;
 
     void CopyValue(Property *o);
 
-    bool *GetBooleanPtr();
-    int *GetIntegerPtr();
-    float *GetFloatPtr();
-    CKKEYBOARD *GetKeyPtr();
-
-    void SetModified();
+    void SetModified(PropertyType previousType);
 
 private:
     Value m_Value = 0;
     PropertyType m_Type = INTEGER;
-    size_t m_Hash = 0;
+    std::size_t m_Hash = 0;
     std::string m_Comment;
     std::string m_Category;
     std::string m_Key;
@@ -81,10 +79,10 @@ public:
     const char *GetName() const { return m_Name.c_str(); }
 
     const char *GetComment() const { return m_Comment.c_str(); }
-    void SetComment(const char *comment) { m_Comment = comment ? comment : ""; }
+    void SetComment(const char *comment);
 
-    size_t GetPropertyCount() const { return m_Properties.size(); }
-    Property *GetProperty(size_t i);
+    std::size_t GetPropertyCount() const { return m_Properties.size(); }
+    Property *GetProperty(std::size_t i);
     Property *GetProperty(const char *key);
 
     bool HasKey(const char *key) const;
@@ -99,9 +97,40 @@ private:
 };
 
 class Config : public IConfig {
+    friend class Category;
     friend class Property;
 
 public:
+    struct Edit {
+        std::string Category;
+        std::string Key;
+        IProperty::PropertyType ExpectedType = IProperty::NONE;
+        Property::Value BaseValue = 0;
+        Property::Value NewValue = 0;
+    };
+
+    enum class ApplyError {
+        None,
+        OwnerChanged,
+        SchemaChanged,
+        PropertyMissing,
+        TypeChanged,
+        BaseChanged,
+        DuplicateTarget,
+        InvalidValue,
+    };
+
+    struct ApplyResult {
+        static constexpr std::size_t NoEdit = static_cast<std::size_t>(-1);
+
+        ApplyError Error = ApplyError::None;
+        std::size_t EditIndex = NoEdit;
+        std::size_t ChangedCount = 0;
+
+        bool Succeeded() const { return Error == ApplyError::None; }
+        explicit operator bool() const { return Succeeded(); }
+    };
+
     struct PendingNotification {
         std::string Category;
         std::string Key;
@@ -115,8 +144,8 @@ public:
     const std::string &GetModID() const { return m_ModID; }
     void SnapshotModMetadata();
 
-    size_t GetCategoryCount() const { return m_Categories.size(); }
-    Category *GetCategory(size_t i);
+    std::size_t GetCategoryCount() const { return m_Categories.size(); }
+    Category *GetCategory(std::size_t i);
     Category *GetCategory(const char *name);
 
     bool HasCategory(const char *category) override;
@@ -130,10 +159,21 @@ public:
     bool Save(const wchar_t *path);
 
     bool IsDirty() const { return m_Dirty; }
+    // Schema changes invalidate documents built from category, property, or type
+    // metadata. Value changes can be reconciled independently by stable key.
+    std::uint64_t GetSchemaRevision() const { return m_SchemaRevision; }
+    std::uint64_t GetValueRevision() const { return m_ValueRevision; }
+
+    // This is an implementation-only transaction boundary for loader-owned UI.
+    // Every edit is validated before any property is changed.
+    ApplyResult ApplyEdits(const IMod *expectedOwner, std::uint64_t expectedSchemaRevision,
+                           const std::vector<Edit> &edits);
     std::vector<PendingNotification> TakePendingNotifications();
 
 private:
     void MarkDirty() { m_Dirty = true; }
+    void TouchSchema() { ++m_SchemaRevision; }
+    void TouchValue() { ++m_ValueRevision; }
     void QueueNotification(Property *property, const std::string &category, const std::string &key);
 
     IMod *m_Mod;
@@ -141,6 +181,8 @@ private:
     std::string m_ModName = "Unknown";
     std::string m_ModVersion = "Unknown";
     bool m_Dirty = false;
+    std::uint64_t m_SchemaRevision = 0;
+    std::uint64_t m_ValueRevision = 0;
     std::vector<PendingNotification> m_PendingNotifications;
 
     std::vector<Category *> m_Categories;
