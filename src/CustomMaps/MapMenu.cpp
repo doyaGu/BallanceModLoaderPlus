@@ -2,14 +2,17 @@
 
 #include "UI/BuiInternal.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <cstring>
+#include <utility>
+
 #include <oniguruma.h>
 
 #include "BML/InputHook.h"
 #include "BML/ILogger.h"
 
 #include "StringUtils.h"
-#include "PathUtils.h"
 
 MapMenu::MapMenu(MapMenuState::MapLoader loader)
     : m_State(std::move(loader)),
@@ -49,6 +52,7 @@ void MapMenu::Shutdown() {
         return;
     m_ShuttingDown = true;
     m_Routes.Close();
+    m_State.ResetLoad();
     m_ShuttingDown = false;
     m_Active = false;
 }
@@ -56,42 +60,6 @@ void MapMenu::Shutdown() {
 void MapMenu::SetMaxDepth(int depth) {
     if (m_State.SetMaxDepth(depth) && m_Active)
         m_State.RefreshMaps();
-}
-
-bool MapMenuState::SetMaxDepth(int depth) {
-    depth = std::max(1, depth);
-    if (m_MaxDepth == depth)
-        return false;
-
-    m_MaxDepth = depth;
-    return true;
-}
-
-void MapMenuState::BindCatalog(std::wstring mapsDirectory, ILogger &logger) {
-    m_MapsDirectory = std::move(mapsDirectory);
-    m_Logger = &logger;
-}
-
-void MapMenuState::RefreshMaps() {
-    const bool directoryExists = utils::DirectoryExistsW(m_MapsDirectory);
-
-    if (!m_Catalog.Refresh(m_MapsDirectory, m_MaxDepth, m_Logger)) {
-        if (m_Logger) {
-            m_Logger->Error("Failed to refresh maps directory: %s",
-                            utils::Utf16ToUtf8(m_MapsDirectory).c_str());
-        }
-        return;
-    }
-
-    if (!directoryExists && m_Logger) {
-        m_Logger->Info("Maps directory does not exist: %s",
-                       utils::Utf16ToUtf8(m_MapsDirectory).c_str());
-    }
-
-    ++m_CatalogRevision;
-    ResetCurrentMaps();
-    if (directoryExists && m_Catalog.GetRoot()->children.empty() && m_Logger)
-        m_Logger->Warn("No maps found in directory");
 }
 
 void MapListPage::SyncCatalog() {
@@ -106,7 +74,15 @@ void MapListPage::SyncCatalog() {
 
 Bui::PageAction MapListPage::OnFrame() {
     SyncCatalog();
+    if (m_State.TakeCloseRequest())
+        return Bui::PageAction::Close();
+
     Bui::Title("Custom Maps", 0.07f);
+
+    if (m_State.IsLoading()) {
+        Bui::Title("Loading...", 0.4f, 0.5f);
+        return Bui::PageAction::None();
+    }
 
     MapEntry *maps = m_State.GetCurrentMaps();
     if (!maps || maps->children.empty()) {
@@ -148,7 +124,6 @@ Bui::PageAction MapListPage::OnFrame() {
             m_Pagination.Next();
     }
 
-    Bui::PageAction action;
     if (m_Count > 0) {
         bool v = true;
         const int n = m_Pagination.GetFirstItem();
@@ -157,7 +132,7 @@ Bui::PageAction MapListPage::OnFrame() {
             Bui::Entries([&](std::size_t index) {
                 if (n + index >= m_MapSearchResult.size())
                     return false;
-                return OnDrawEntry(m_MapSearchResult[n + index], &v, action);
+                return OnDrawEntry(m_MapSearchResult[n + index], &v);
             }, 0.4031f, 0.23f, 0.06f, 10);
         } else {
             MapEntry *currentMaps = m_State.GetCurrentMaps();
@@ -166,14 +141,11 @@ Bui::PageAction MapListPage::OnFrame() {
                 Bui::Entries([&](std::size_t index) {
                     if (n + index >= entries.size())
                         return false;
-                    return OnDrawEntry(entries[n + index], &v, action);
+                    return OnDrawEntry(entries[n + index], &v);
                 }, 0.4031f, 0.23f, 0.06f, 10);
             }
         }
     }
-
-    if (!action.IsNone())
-        return action;
 
     if (Bui::NavBack()) {
         MapEntry *current = m_State.GetCurrentMaps();
@@ -194,7 +166,7 @@ bool MapListPage::IsSearching() const {
 }
 
 void MapListPage::ClearSearch() {
-    memset(m_MapSearchBuf, 0, sizeof(m_MapSearchBuf));
+    std::memset(m_MapSearchBuf, 0, sizeof(m_MapSearchBuf));
     m_MapSearchResult.clear();
 }
 
@@ -281,15 +253,14 @@ void MapListPage::OnSearchMaps() {
     }
 }
 
-bool MapListPage::OnDrawEntry(MapEntry *entry, bool *v, Bui::PageAction &action) {
+bool MapListPage::OnDrawEntry(MapEntry *entry, bool *v) {
     if (!entry) return false;
 
     ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.8f);
 
     if (entry->type == MAP_ENTRY_FILE) {
-        if (Bui::LevelButton(entry->name.c_str(), v)) {
-            action = m_State.SelectMap(entry->path);
-        }
+        if (Bui::LevelButton(entry->name.c_str(), v))
+            (void) m_State.BeginLoad(entry->path);
     } else {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 165, 0, 255)); // Orange Color for directory
 

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "BML/DataShare.h"
+#include "CustomMaps/CustomMapLoad.h"
 
 namespace BML {
 namespace Test {
@@ -140,6 +141,25 @@ TEST_F(DataShareTest, CleanupDoesNotThrowThroughCApi) {
 
     EXPECT_EQ(0, probe.callbacks);
     EXPECT_EQ(1, probe.cleanups);
+
+    BML_DataShare_Release(share);
+}
+
+TEST_F(DataShareTest, CustomMapLoadProtocolRoundTripsAttemptIdentityAndOutcome) {
+    BML_DataShare *share = BML_GetDataShare("custom-map-load-protocol");
+    ASSERT_NE(nullptr, share);
+
+    ASSERT_TRUE(CustomMapLoad::WriteRequest(share, 42));
+    CustomMapLoad::Request request;
+    ASSERT_TRUE(CustomMapLoad::ReadRequest(share, request));
+    EXPECT_EQ(request.Attempt, 42u);
+
+    ASSERT_TRUE(CustomMapLoad::WriteResult(
+        share, request.Attempt, CustomMapLoad::Outcome::Failed));
+    CustomMapLoad::Result result;
+    ASSERT_TRUE(CustomMapLoad::ReadResult(share, result));
+    EXPECT_EQ(result.Attempt, request.Attempt);
+    EXPECT_EQ(result.Value, CustomMapLoad::Outcome::Failed);
 
     BML_DataShare_Release(share);
 }

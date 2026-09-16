@@ -2,10 +2,46 @@
 
 #include <cstring>
 #include <string>
+#include <vector>
 
+#include "BML/ILogger.h"
+#include "CustomMaps/CustomMapLoad.h"
 #include "Loader/ModContext.h"
 
 static CKBEHAVIORFCT g_ObjectLoad = nullptr;
+
+namespace {
+
+bool ReadSharedString(const BML_DataShare *share, const char *key,
+                      std::string &value) {
+    std::size_t size = 0;
+    (void) BML_DataShare_CopyEx(share, key, nullptr, 0, &size);
+    for (int retry = 0; retry != 3 && size != 0; ++retry) {
+        std::vector<char> buffer(size, '\0');
+        std::size_t fullSize = 0;
+        const int copied = BML_DataShare_CopyEx(
+            share, key, buffer.data(), buffer.size(), &fullSize);
+        if (copied == 1 && fullSize == buffer.size() && buffer.back() == '\0') {
+            value.assign(buffer.data(), buffer.size() - 1u);
+            return true;
+        }
+        size = fullSize;
+    }
+    return false;
+}
+
+void PublishCustomMapResult(ModContext &context, BML_DataShare *share,
+                            const CustomMapLoad::Request &request,
+                            CustomMapLoad::Outcome outcome) {
+    if (!CustomMapLoad::WriteResult(share, request.Attempt, outcome)) {
+        if (ILogger *logger = context.GetLogger())
+            logger->Error("Failed to publish custom map Object Load result");
+    }
+    BML_DataShare_Remove(share, CustomMapLoad::RequestKey);
+    BML_DataShare_Remove(share, CustomMapLoad::NameKey);
+}
+
+} // namespace
 
 int ObjectLoad(const CKBehaviorContext &behcontext) {
     CKBehavior *beh = behcontext.Behavior;
@@ -35,34 +71,37 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
             mastername = value;
     }
 
+    auto *modContext = BML_GetModContext();
+    CKBehavior *ownerScript = beh->GetOwnerScript();
+    const bool isMap = ownerScript && ownerScript->GetName() &&
+        std::strcmp(ownerScript->GetName(), "Levelinit_build") == 0;
+    BML_DataShare *dataShare = modContext ? modContext->GetDataShare(nullptr) : nullptr;
+    CustomMapLoad::Request request;
+    const bool customMap = wasLoading && isMap && dataShare &&
+        CustomMapLoad::ReadRequest(dataShare, request);
+    std::string callbackName = fname;
+    if (wasLoading && isMap && dataShare)
+        (void) ReadSharedString(dataShare, CustomMapLoad::NameKey, callbackName);
+
     const int result = g_ObjectLoad(behcontext);
 
-    if (!wasLoading)
-        return result;
-
-    auto *modContext = BML_GetModContext();
-    if (!modContext)
+    if (!wasLoading || !modContext)
         return result;
 
     XObjectArray *oarray = nullptr;
     if (void *outputArrayPtr = beh->GetOutputParameterWriteDataPtr(0))
         oarray = *static_cast<XObjectArray **>(outputArrayPtr);
-    if (!oarray)
+    const bool loaded = oarray && beh->IsOutputActive(0) != FALSE &&
+        beh->IsOutputActive(2) == FALSE;
+    if (!loaded) {
+        if (customMap) {
+            PublishCustomMapResult(
+                *modContext, dataShare, request, CustomMapLoad::Outcome::Failed);
+        }
         return result;
+    }
 
     CKObject *masterobject = beh->GetOutputParameterObject(1);
-    CKBehavior *ownerScript = beh->GetOwnerScript();
-    CKBOOL isMap = ownerScript && std::strcmp(ownerScript->GetName(), "Levelinit_build") == 0;
-
-    BML_DataShare *ds = modContext->GetDataShare(nullptr);
-    std::string callbackName = fname;
-    if (isMap && ds) {
-        size_t nameSize = BML_DataShare_SizeOf(ds, "CustomMapName");
-        if (nameSize > 0) {
-            callbackName.resize(nameSize - 1);
-            BML_DataShare_Copy(ds, "CustomMapName", callbackName.data(), nameSize);
-        }
-    }
 
     CKContext *ckContext = modContext->GetCKContext();
     modContext->BroadcastCallback(&IMod::OnLoadObject,
@@ -81,8 +120,12 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
         }
     }
 
-    if (isMap && ds)
-        BML_DataShare_Remove(ds, "CustomMapName");
+    if (customMap) {
+        PublishCustomMapResult(
+            *modContext, dataShare, request, CustomMapLoad::Outcome::Loaded);
+    } else if (isMap && dataShare) {
+        BML_DataShare_Remove(dataShare, CustomMapLoad::NameKey);
+    }
 
     return result;
 }
