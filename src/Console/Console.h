@@ -27,6 +27,7 @@ public:
                 const FontCommandContext &fontContext);
     void OnUnload();
     void OnProcess();
+    void CloseCommandBar();
 
     void AddMessage(const char *message);
     void ClearMessages();

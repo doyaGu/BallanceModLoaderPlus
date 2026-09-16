@@ -49,6 +49,7 @@ public:
     void OnPreStartMenu() override;
     void OnPostStartMenu() override;
     void OnExitGame() override;
+    void OnPreLoadLevel() override;
     void OnStartLevel() override;
     void OnPostExitLevel() override;
     void OnPauseLevel() override;

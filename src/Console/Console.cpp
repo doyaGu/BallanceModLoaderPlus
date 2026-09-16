@@ -127,6 +127,7 @@ void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, 
 }
 
 void Console::OnUnload() {
+    CloseCommandBar();
     if (m_OutputCallbackInstalled && m_Commands) {
         m_Commands->ClearOutputCallback();
     }
@@ -135,6 +136,10 @@ void Console::OnUnload() {
     m_OutputCallbackInstalled = false;
     m_Logger = nullptr;
     m_Commands = nullptr;
+}
+
+void Console::CloseCommandBar() {
+    m_CommandBar.ToggleCommandBar(false);
 }
 
 void Console::OnProcess() {

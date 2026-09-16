@@ -396,6 +396,15 @@ void CommandBar::OnPreBegin() {
 }
 
 void CommandBar::OnDraw() {
+    // The game also receives clicks outside ImGui windows. Do not leave the
+    // command session holding its keyboard block after the player returns to
+    // a native menu, while preserving clicks on the completion child window.
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+        !ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+        ToggleCommandBar(false);
+        return;
+    }
+
     if (m_TextCompositionActive && !m_Candidates.Empty())
         InvalidateCandidates();
 
@@ -733,7 +742,10 @@ void CommandBar::ToggleCommandBar(bool on) {
         if (!IsVisible())
             return;
         Hide();
-        ImGui::SetWindowFocus(nullptr);
+        if (ImGuiContext *context = Bui::GetImGuiContext()) {
+            Bui::ImGuiContextScope scope(context);
+            ImGui::SetWindowFocus(nullptr);
+        }
         m_Buffer.clear();
         Bui::UnblockKeyboardAfterRelease(this);
     }
