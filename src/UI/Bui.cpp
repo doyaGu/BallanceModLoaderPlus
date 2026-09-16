@@ -1,16 +1,17 @@
 #include "BML/Bui.h"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <unordered_set>
 
 #ifndef BML_UI_AUTOMATION_TEST
+#include "CKGroup.h"
+#include "CKMaterial.h"
 #include "CKMessageManager.h"
 #include "CKPathManager.h"
 #include "CKTexture.h"
-#include "CKMaterial.h"
-#include "CKGroup.h"
 #endif
 
 #include "imgui_internal.h"
@@ -24,75 +25,6 @@
 #endif
 
 namespace Bui {
-#ifndef BML_UI_AUTOMATION_TEST
-    static uint64_t g_KeyboardInputBlockToken = 0;
-    static unsigned int g_AnonymousKeyboardInputBlockUsers = 0;
-    static std::unordered_set<const void *> g_KeyboardInputBlockOwners;
-    static std::unordered_set<uint64_t> g_PendingKeyboardInputBlockReleases;
-
-    static bool HasKeyboardInputBlockUsers() {
-        return g_AnonymousKeyboardInputBlockUsers != 0 || !g_KeyboardInputBlockOwners.empty();
-    }
-
-    static bool AcquireKeyboardInputBlock() {
-        if (g_KeyboardInputBlockToken != 0)
-            return true;
-
-        auto *ctx = BML_GetModContext();
-        if (!ctx)
-            return false;
-        if (auto *input = ctx->GetInputManager())
-            g_KeyboardInputBlockToken = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
-        return g_KeyboardInputBlockToken != 0;
-    }
-
-    static void ReleaseKeyboardInputBlockAfterKeysUp() {
-        if (HasKeyboardInputBlockUsers())
-            return;
-
-        auto *mod = BML_GetModContext();
-        if (!mod)
-            return;
-
-        const uint64_t token = g_KeyboardInputBlockToken;
-        g_KeyboardInputBlockToken = 0;
-        if (token == 0)
-            return;
-
-        g_PendingKeyboardInputBlockReleases.insert(token);
-        mod->AddTimerLoop(1ul, [mod, token] {
-            if (g_PendingKeyboardInputBlockReleases.find(token) == g_PendingKeyboardInputBlockReleases.end())
-                return false;
-
-            auto *input = mod->GetInputManager();
-            if (!input)
-                return false;
-            if (input->oIsKeyDown(CKKEY_ESCAPE) || input->oIsKeyDown(CKKEY_RETURN))
-                return true;
-
-            input->ReleaseBlock(token);
-            g_PendingKeyboardInputBlockReleases.erase(token);
-            return false;
-        });
-    }
-
-    static void ResetKeyboardInputBlocks() {
-        if (auto *ctx = BML_GetModContext()) {
-            if (auto *input = ctx->GetInputManager()) {
-                if (g_KeyboardInputBlockToken != 0)
-                    input->ReleaseBlock(g_KeyboardInputBlockToken);
-                for (uint64_t token : g_PendingKeyboardInputBlockReleases)
-                    input->ReleaseBlock(token);
-            }
-        }
-
-        g_KeyboardInputBlockToken = 0;
-        g_AnonymousKeyboardInputBlockUsers = 0;
-        g_KeyboardInputBlockOwners.clear();
-        g_PendingKeyboardInputBlockReleases.clear();
-    }
-#endif
-
     enum TextureType {
         TEXTURE_BUTTON_DESELECT,
         TEXTURE_BUTTON_SELECT,
@@ -111,7 +43,7 @@ namespace Bui {
         MATERIAL_COUNT
     };
 
-    ImRect g_ButtonUVs[BUTTON_COUNT] = {
+    static const ImRect ButtonUvs[BUTTON_COUNT] = {
         {ImVec2(0.0f, 0.51372f), ImVec2(1.0f, 0.7451f)},
         {ImVec2(0.2392f, 0.75294f), ImVec2(0.8666f, 0.98431f)},
         {ImVec2(0.0f, 0.0f), ImVec2(1.0f, 0.24706f)},
@@ -124,7 +56,7 @@ namespace Bui {
         {ImVec2(0.88627f, 0.77804f), ImVec2(0.96863f, 0.8594f)},
     };
 
-    ImVec2 g_ButtonSizes[BUTTON_COUNT] = {
+    static const ImVec2 ButtonSizes[BUTTON_COUNT] = {
         {0.3000f, 0.0938f},
         {0.1875f, 0.0938f},
         {0.3000f, 0.1000f},
@@ -137,7 +69,7 @@ namespace Bui {
         {0.0200f, 0.0267f},
     };
 
-    float g_ButtonIndent[BUTTON_COUNT] = {
+    static constexpr float ButtonIndents[BUTTON_COUNT] = {
         0.055f,
         0.049f,
         0.055f,
@@ -150,11 +82,85 @@ namespace Bui {
         0.0f,
     };
 
-    CKTexture *g_Textures[TEXTURE_COUNT] = {};
-    CKMaterial *g_Materials[MATERIAL_COUNT] = {};
-    CKGroup *g_Sounds = nullptr;
-    CKMessageManager *g_MessageManager = nullptr;
-    CKMessageType g_MenuClickMessageType = -1;
+    struct ResourceState {
+        std::array<CKTexture *, TEXTURE_COUNT> textures{};
+        std::array<CKMaterial *, MATERIAL_COUNT> materials{};
+        CKGroup *sounds = nullptr;
+        CKMessageManager *messageManager = nullptr;
+        CKMessageType menuClickMessage = -1;
+    };
+
+    static ResourceState Resources;
+
+#ifndef BML_UI_AUTOMATION_TEST
+    struct KeyboardInputBlockState {
+        std::uint64_t token = 0;
+        unsigned int anonymousUsers = 0;
+        std::unordered_set<const void *> owners;
+        std::unordered_set<std::uint64_t> pendingReleases;
+
+        bool HasUsers() const {
+            return anonymousUsers != 0 || !owners.empty();
+        }
+    };
+
+    static KeyboardInputBlockState KeyboardInputBlocks;
+
+    static bool AcquireKeyboardInputBlock() {
+        if (KeyboardInputBlocks.token != 0)
+            return true;
+
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return false;
+        if (InputHook *input = context->GetInputManager())
+            KeyboardInputBlocks.token = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
+        return KeyboardInputBlocks.token != 0;
+    }
+
+    static void ReleaseKeyboardInputBlockAfterKeysUp() {
+        if (KeyboardInputBlocks.HasUsers())
+            return;
+
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return;
+
+        const std::uint64_t token = KeyboardInputBlocks.token;
+        KeyboardInputBlocks.token = 0;
+        if (token == 0)
+            return;
+
+        KeyboardInputBlocks.pendingReleases.insert(token);
+        context->AddTimerLoop(1ul, [context, token] {
+            if (!KeyboardInputBlocks.pendingReleases.contains(token))
+                return false;
+
+            InputHook *input = context->GetInputManager();
+            if (!input)
+                return false;
+            if (input->oIsKeyDown(CKKEY_ESCAPE) || input->oIsKeyDown(CKKEY_RETURN))
+                return true;
+
+            input->ReleaseBlock(token);
+            KeyboardInputBlocks.pendingReleases.erase(token);
+            return false;
+        });
+    }
+
+    static void ResetKeyboardInputBlocks() {
+        if (ModContext *context = BML_GetModContext()) {
+            if (InputHook *input = context->GetInputManager()) {
+                if (KeyboardInputBlocks.token != 0)
+                    input->ReleaseBlock(KeyboardInputBlocks.token);
+                for (std::uint64_t token : KeyboardInputBlocks.pendingReleases)
+                    input->ReleaseBlock(token);
+            }
+        }
+
+        KeyboardInputBlocks = {};
+    }
+#endif
 
     ImGuiContext *GetImGuiContext() {
 #ifdef BML_UI_AUTOMATION_TEST
@@ -166,164 +172,135 @@ namespace Bui {
 
 #ifndef BML_UI_AUTOMATION_TEST
     CKTexture *LoadTexture(CKContext *context, const char *id, const char *filename, int slot) {
-        if (!context || !filename)
+        if (!context || !id || !filename)
             return nullptr;
 
-        XString fname((CKSTRING) filename);
-        CKERROR res = CK_OK;
-        if (fname.Length() == 0)
+        XString path((CKSTRING) filename);
+        if (path.Length() == 0)
             return nullptr;
 
-        CKPathManager *pm = context->GetPathManager();
-        if (pm->ResolveFileName(fname, BITMAP_PATH_IDX) != CK_OK)
+        CKPathManager *pathManager = context->GetPathManager();
+        if (!pathManager || pathManager->ResolveFileName(path, BITMAP_PATH_IDX) != CK_OK)
             return nullptr;
 
-        auto *tex = (CKTexture *) context->CreateObject(CKCID_TEXTURE, (CKSTRING) id);
-        if (!tex)
+        auto *texture = static_cast<CKTexture *>(context->CreateObject(CKCID_TEXTURE, (CKSTRING) id));
+        if (!texture)
             return nullptr;
 
-        if (!tex->LoadImage(fname.Str(), slot)) {
-            context->DestroyObject(tex);
+        if (!texture->LoadImage(path.Str(), slot)) {
+            context->DestroyObject(texture);
             return nullptr;
         }
 
-        tex->SetDesiredVideoFormat(_32_ARGB8888);
+        texture->SetDesiredVideoFormat(_32_ARGB8888);
+        return texture;
+    }
 
-        return tex;
+    template <typename Object, std::size_t Size>
+    static bool AllObjectsReady(const std::array<Object *, Size> &objects) {
+        for (const Object *object : objects) {
+            if (!object)
+                return false;
+        }
+        return true;
+    }
+
+    template <typename Object, std::size_t Size>
+    static void DestroyObjects(CKContext *context, std::array<Object *, Size> &objects) {
+        if (context) {
+            for (Object *object : objects) {
+                if (object)
+                    context->DestroyObject(object);
+            }
+        }
+        objects = {};
+    }
+
+    static CKMaterial *CreateButtonMaterial(CKContext *context, const char *name, CKTexture *texture,
+                                            const VxColor &diffuse, VXBLEND_MODE sourceBlend,
+                                            VXBLEND_MODE destinationBlend, VXTEXTURE_ADDRESSMODE addressMode,
+                                            bool enablePerspectiveCorrection) {
+        auto *material = static_cast<CKMaterial *>(context->CreateObject(CKCID_MATERIAL, (CKSTRING) name));
+        if (!material)
+            return nullptr;
+
+        material->SetAmbient(VxColor(76, 76, 76, 255));
+        material->SetDiffuse(diffuse);
+        material->SetSpecular(VxColor(127, 127, 127, 255));
+        material->SetPower(0.0f);
+        material->SetEmissive(VxColor(255, 255, 255, 0));
+        material->SetFillMode(VXFILL_SOLID);
+        material->SetShadeMode(VXSHADE_GOURAUD);
+        material->EnableZWrite(FALSE);
+        material->EnableAlphaBlend();
+        material->SetSourceBlend(sourceBlend);
+        material->SetDestBlend(destinationBlend);
+        material->SetTexture0(texture);
+        material->SetTextureBlendMode(VXTEXTUREBLEND_MODULATEALPHA);
+        material->SetTextureMinMode(VXTEXTUREFILTER_LINEAR);
+        material->SetTextureMagMode(VXTEXTUREFILTER_LINEAR);
+        material->SetTextureAddressMode(addressMode);
+        if (enablePerspectiveCorrection)
+            material->EnablePerspectiveCorrection(TRUE);
+        return material;
     }
 
     bool InitTextures(CKContext *context) {
         if (!context)
             return false;
+        if (AllObjectsReady(Resources.textures))
+            return true;
 
-        g_Textures[TEXTURE_BUTTON_DESELECT] = LoadTexture(context, "TEX_Button_Deselect", "Button01_deselect.tga");
-        g_Textures[TEXTURE_BUTTON_SELECT] = LoadTexture(context, "TEX_Button_Select", "Button01_select.tga");
-        g_Textures[TEXTURE_BUTTON_SPECIAL] = LoadTexture(context, "TEX_Button_Special", "Button01_special.tga");
-        g_Textures[TEXTURE_FONT] = LoadTexture(context, "TEX_Font_1", "Font_1.tga");
+        // Materials borrow these textures. Rebuilding a partial texture set
+        // invalidates the whole dependent material set as one unit.
+        DestroyObjects(context, Resources.materials);
+        DestroyObjects(context, Resources.textures);
+        std::array<CKTexture *, TEXTURE_COUNT> textures{};
+        textures[TEXTURE_BUTTON_DESELECT] = LoadTexture(context, "TEX_Button_Deselect", "Button01_deselect.tga");
+        textures[TEXTURE_BUTTON_SELECT] = LoadTexture(context, "TEX_Button_Select", "Button01_select.tga");
+        textures[TEXTURE_BUTTON_SPECIAL] = LoadTexture(context, "TEX_Button_Special", "Button01_special.tga");
+        textures[TEXTURE_FONT] = LoadTexture(context, "TEX_Font_1", "Font_1.tga");
 
-        for (auto *texture: g_Textures)
-            if (texture == nullptr)
-                return false;
+        if (!AllObjectsReady(textures)) {
+            DestroyObjects(context, textures);
+            return false;
+        }
 
+        Resources.textures = textures;
         return true;
     }
 
     bool InitMaterials(CKContext *context) {
-        if (!context)
+        if (!context || !AllObjectsReady(Resources.textures))
             return false;
+        if (AllObjectsReady(Resources.materials))
+            return true;
 
-        auto *mbu = (CKMaterial *) context->CreateObject(CKCID_MATERIAL, (CKSTRING) "MAT_Button_Up");
-        if (!mbu)
+        DestroyObjects(context, Resources.materials);
+        std::array<CKMaterial *, MATERIAL_COUNT> materials{};
+        materials[MATERIAL_BUTTON_UP] = CreateButtonMaterial(
+            context, "MAT_Button_Up", Resources.textures[TEXTURE_BUTTON_DESELECT],
+            VxColor(255, 255, 255, 255), VXBLEND_SRCALPHA, VXBLEND_INVSRCALPHA,
+            VXTEXTURE_ADDRESSCLAMP, FALSE);
+        materials[MATERIAL_BUTTON_OVER] = CreateButtonMaterial(
+            context, "MAT_Button_Over", Resources.textures[TEXTURE_BUTTON_SELECT],
+            VxColor(255, 255, 255, 255), VXBLEND_SRCALPHA, VXBLEND_INVSRCALPHA,
+            VXTEXTURE_ADDRESSCLAMP, FALSE);
+        materials[MATERIAL_BUTTON_INACTIVE] = CreateButtonMaterial(
+            context, "MAT_Button_Inactive", Resources.textures[TEXTURE_BUTTON_SPECIAL],
+            VxColor(255, 255, 255, 255), VXBLEND_SRCALPHA, VXBLEND_INVSRCALPHA,
+            VXTEXTURE_ADDRESSCLAMP, TRUE);
+        materials[MATERIAL_KEYS_HIGHLIGHT] = CreateButtonMaterial(
+            context, "MAT_Keys_Highlight", Resources.textures[TEXTURE_BUTTON_SPECIAL],
+            VxColor(209, 209, 209, 255), VXBLEND_ONE, VXBLEND_ONE,
+            VXTEXTURE_ADDRESSWRAP, TRUE);
+
+        if (!AllObjectsReady(materials)) {
+            DestroyObjects(context, materials);
             return false;
+        }
 
-        mbu->SetAmbient(VxColor(76, 76, 76, 255));
-        mbu->SetDiffuse(VxColor(255, 255, 255, 255));
-        mbu->SetSpecular(VxColor(127, 127, 127, 255));
-        mbu->SetPower(0.0f);
-        mbu->SetEmissive(VxColor(255, 255, 255, 0));
-
-        mbu->SetFillMode(VXFILL_SOLID);
-        mbu->SetShadeMode(VXSHADE_GOURAUD);
-
-        mbu->EnableZWrite(FALSE);
-
-        mbu->EnableAlphaBlend();
-        mbu->SetSourceBlend(VXBLEND_SRCALPHA);
-        mbu->SetDestBlend(VXBLEND_INVSRCALPHA);
-
-        mbu->SetTexture0(g_Textures[TEXTURE_BUTTON_DESELECT]);
-        mbu->SetTextureBlendMode(VXTEXTUREBLEND_MODULATEALPHA);
-        mbu->SetTextureMinMode(VXTEXTUREFILTER_LINEAR);
-        mbu->SetTextureMagMode(VXTEXTUREFILTER_LINEAR);
-        mbu->SetTextureAddressMode(VXTEXTURE_ADDRESSCLAMP);
-
-        g_Materials[MATERIAL_BUTTON_UP] = mbu;
-
-        auto *mbo = (CKMaterial *) context->CreateObject(CKCID_MATERIAL, (CKSTRING) "MAT_Button_Over");
-        if (!mbo)
-            return false;
-
-        mbo->SetAmbient(VxColor(76, 76, 76, 255));
-        mbo->SetDiffuse(VxColor(255, 255, 255, 255));
-        mbo->SetSpecular(VxColor(127, 127, 127, 255));
-        mbo->SetPower(0.0f);
-        mbo->SetEmissive(VxColor(255, 255, 255, 0));
-
-        mbo->SetFillMode(VXFILL_SOLID);
-        mbo->SetShadeMode(VXSHADE_GOURAUD);
-
-        mbo->EnableZWrite(FALSE);
-
-        mbo->EnableAlphaBlend();
-        mbo->SetSourceBlend(VXBLEND_SRCALPHA);
-        mbo->SetDestBlend(VXBLEND_INVSRCALPHA);
-
-        mbo->SetTexture0(g_Textures[TEXTURE_BUTTON_SELECT]);
-        mbo->SetTextureBlendMode(VXTEXTUREBLEND_MODULATEALPHA);
-        mbo->SetTextureMinMode(VXTEXTUREFILTER_LINEAR);
-        mbo->SetTextureMagMode(VXTEXTUREFILTER_LINEAR);
-        mbo->SetTextureAddressMode(VXTEXTURE_ADDRESSCLAMP);
-
-        g_Materials[MATERIAL_BUTTON_OVER] = mbo;
-
-        auto *mbi = (CKMaterial *) context->CreateObject(CKCID_MATERIAL, (CKSTRING) "MAT_Button_Inactive");
-        if (!mbi)
-            return false;
-
-        mbi->SetAmbient(VxColor(76, 76, 76, 255));
-        mbi->SetDiffuse(VxColor(255, 255, 255, 255));
-        mbi->SetSpecular(VxColor(127, 127, 127, 255));
-        mbi->SetPower(0.0f);
-        mbi->SetEmissive(VxColor(255, 255, 255, 0));
-
-        mbi->SetFillMode(VXFILL_SOLID);
-        mbi->SetShadeMode(VXSHADE_GOURAUD);
-
-        mbi->EnableZWrite(FALSE);
-
-        mbi->EnableAlphaBlend();
-        mbi->SetSourceBlend(VXBLEND_SRCALPHA);
-        mbi->SetDestBlend(VXBLEND_INVSRCALPHA);
-
-        mbi->SetTexture0(g_Textures[TEXTURE_BUTTON_SPECIAL]);
-        mbi->SetTextureBlendMode(VXTEXTUREBLEND_MODULATEALPHA);
-        mbi->SetTextureMinMode(VXTEXTUREFILTER_LINEAR);
-        mbi->SetTextureMagMode(VXTEXTUREFILTER_LINEAR);
-        mbi->SetTextureAddressMode(VXTEXTURE_ADDRESSCLAMP);
-
-        mbi->EnablePerspectiveCorrection(TRUE);
-
-        g_Materials[MATERIAL_BUTTON_INACTIVE] = mbi;
-
-        auto *mkh = (CKMaterial *) context->CreateObject(CKCID_MATERIAL, (CKSTRING) "MAT_Keys_Highlight");
-        if (!mkh)
-            return false;
-
-        mkh->SetAmbient(VxColor(76, 76, 76, 255));
-        mkh->SetDiffuse(VxColor(209, 209, 209, 255));
-        mkh->SetSpecular(VxColor(127, 127, 127, 255));
-        mkh->SetPower(0.0f);
-        mkh->SetEmissive(VxColor(255, 255, 255, 0));
-
-        mkh->SetFillMode(VXFILL_SOLID);
-        mkh->SetShadeMode(VXSHADE_GOURAUD);
-
-        mkh->EnableZWrite(FALSE);
-
-        mkh->EnableAlphaBlend();
-        mkh->SetSourceBlend(VXBLEND_ONE);
-        mkh->SetDestBlend(VXBLEND_ONE);
-
-        mkh->SetTexture0(g_Textures[TEXTURE_BUTTON_SPECIAL]);
-        mkh->SetTextureBlendMode(VXTEXTUREBLEND_MODULATEALPHA);
-        mkh->SetTextureMinMode(VXTEXTUREFILTER_LINEAR);
-        mkh->SetTextureMagMode(VXTEXTUREFILTER_LINEAR);
-        mkh->SetTextureAddressMode(VXTEXTURE_ADDRESSWRAP);
-
-        mkh->EnablePerspectiveCorrection(TRUE);
-
-        g_Materials[MATERIAL_KEYS_HIGHLIGHT] = mkh;
-
+        Resources.materials = materials;
         return true;
     }
 
@@ -331,41 +308,36 @@ namespace Bui {
         if (!context)
             return false;
 
-        g_MessageManager = context->GetMessageManager();
-        if (!g_MessageManager)
+        Resources.sounds = nullptr;
+        Resources.messageManager = nullptr;
+        Resources.menuClickMessage = -1;
+
+        CKMessageManager *messageManager = context->GetMessageManager();
+        if (!messageManager)
             return false;
 
-        g_MenuClickMessageType = g_MessageManager->AddMessageType((CKSTRING) "Menu_Click");
-        if (g_MenuClickMessageType == -1)
+        const CKMessageType menuClickMessage = messageManager->AddMessageType((CKSTRING) "Menu_Click");
+        if (menuClickMessage == -1)
             return false;
 
-        g_Sounds = (CKGroup *) context->GetObjectByNameAndClass((CKSTRING) "All_Sound", CKCID_GROUP);
-        if (!g_Sounds)
+        auto *sounds = static_cast<CKGroup *>(
+            context->GetObjectByNameAndClass((CKSTRING) "All_Sound", CKCID_GROUP));
+        if (!sounds)
             return false;
 
+        Resources.messageManager = messageManager;
+        Resources.menuClickMessage = menuClickMessage;
+        Resources.sounds = sounds;
         return true;
     }
 
     void CleanupResources(CKContext *context) {
         ResetKeyboardInputBlocks();
-        if (!context) return;
-
-        for (auto &tex : g_Textures) {
-            if (tex) {
-                context->DestroyObject(tex);
-                tex = nullptr;
-            }
-        }
-        for (auto &mat : g_Materials) {
-            if (mat) {
-                context->DestroyObject(mat);
-                mat = nullptr;
-            }
-        }
-
-        g_Sounds = nullptr;
-        g_MessageManager = nullptr;
-        g_MenuClickMessageType = -1;
+        DestroyObjects(context, Resources.materials);
+        DestroyObjects(context, Resources.textures);
+        Resources.sounds = nullptr;
+        Resources.messageManager = nullptr;
+        Resources.menuClickMessage = -1;
     }
 #endif
 
@@ -583,44 +555,54 @@ namespace Bui {
             case ImGuiKey_F10: return CKKEY_F10;
             case ImGuiKey_F11: return CKKEY_F11;
             case ImGuiKey_F12: return CKKEY_F12;
-            default: return (CKKEYBOARD) 0;
+            default: return static_cast<CKKEYBOARD>(0);
         }
     }
 
-    bool KeyChordToString(ImGuiKeyChord key_chord, char *buf, size_t size) {
-        if (!buf || size == 0 || key_chord == 0)
+    bool KeyChordToString(ImGuiKeyChord keyChord, char *buffer, std::size_t bufferSize) {
+        if (!buffer || bufferSize == 0)
+            return false;
+        buffer[0] = '\0';
+        if (keyChord == 0)
             return false;
 
-        // Extract modifiers and key from chord
-        ImGuiKey key = (ImGuiKey)(key_chord & ~ImGuiMod_Mask_);
-        int mods = key_chord & ImGuiMod_Mask_;
+        const ImGuiKey key = static_cast<ImGuiKey>(keyChord & ~ImGuiMod_Mask_);
+        const int modifiers = keyChord & ImGuiMod_Mask_;
 
-        // Build string from public API (avoids internal ImGui::GetKeyChordName)
         std::string result;
-        if (mods & ImGuiMod_Ctrl)  result += "Ctrl+";
-        if (mods & ImGuiMod_Shift) result += "Shift+";
-        if (mods & ImGuiMod_Alt)   result += "Alt+";
-        if (mods & ImGuiMod_Super) result += "Super+";
+        if (modifiers & ImGuiMod_Ctrl)
+            result += "Ctrl+";
+        if (modifiers & ImGuiMod_Shift)
+            result += "Shift+";
+        if (modifiers & ImGuiMod_Alt)
+            result += "Alt+";
+        if (modifiers & ImGuiMod_Super)
+            result += "Super+";
 
         const char *keyName = ImGui::GetKeyName(key);
         if (!keyName || *keyName == '\0')
             return false;
 
         result += keyName;
-        ImStrncpy(buf, result.c_str(), (int) size);
+        ImStrncpy(buffer, result.c_str(), bufferSize);
         return true;
     }
 
-    bool SetKeyChordFromIO(ImGuiKeyChord *key_chord) {
-        ImGuiKeyChord chord = 0;
+    bool SetKeyChordFromIO(ImGuiKeyChord *keyChord) {
+        if (!keyChord)
+            return false;
 
+        ImGuiKeyChord chord = 0;
         ImGuiIO &io = ImGui::GetIO();
 
-        // Use ImGuiMod_* flags for chord modifiers (unified since 1.89+).
-        if (io.KeyCtrl)  chord |= ImGuiMod_Ctrl;
-        if (io.KeyShift) chord |= ImGuiMod_Shift;
-        if (io.KeyAlt)   chord |= ImGuiMod_Alt;
-        if (io.KeySuper) chord |= ImGuiMod_Super;
+        if (io.KeyCtrl)
+            chord |= ImGuiMod_Ctrl;
+        if (io.KeyShift)
+            chord |= ImGuiMod_Shift;
+        if (io.KeyAlt)
+            chord |= ImGuiMod_Alt;
+        if (io.KeySuper)
+            chord |= ImGuiMod_Super;
 
         for (int key = ImGuiKey_Tab; key < ImGuiKey_AppBack; ++key) {
             if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(key))) {
@@ -637,8 +619,7 @@ namespace Bui {
                     continue;
 
                 chord |= key;
-
-                *key_chord = chord;
+                *keyChord = chord;
                 return true;
             }
         }
@@ -648,14 +629,14 @@ namespace Bui {
 
     void PlayMenuClickSound() {
 #ifndef BML_UI_AUTOMATION_TEST
-        if (g_Sounds)
-            g_MessageManager->SendMessageSingle(g_MenuClickMessageType, g_Sounds);
+        if (Resources.messageManager && Resources.sounds && Resources.menuClickMessage != -1)
+            Resources.messageManager->SendMessageSingle(Resources.menuClickMessage, Resources.sounds);
 #endif
     }
 
     ImVec2 GetMenuPos() {
-        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-        return {vpSize.x * 0.3f, 0.0f};
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        return {viewport->Pos.x + viewport->Size.x * 0.3f, viewport->Pos.y};
     }
 
     ImVec2 GetMenuSize() {
@@ -668,23 +649,27 @@ namespace Bui {
     }
 
     ImVec2 GetButtonSize(ButtonType type) {
-        if (type < 0 || type >= BUTTON_COUNT) return ImVec2(0, 0);
-        return CoordToPixel(g_ButtonSizes[type]);
+        if (type < 0 || type >= BUTTON_COUNT)
+            return ImVec2(0.0f, 0.0f);
+        return CoordToPixel(ButtonSizes[type]);
     }
 
     float GetButtonIndent(ButtonType type) {
-        if (type < 0 || type >= BUTTON_COUNT) return 0.0f;
-        return g_ButtonIndent[type] * ImGui::GetMainViewport()->Size.x;
+        if (type < 0 || type >= BUTTON_COUNT)
+            return 0.0f;
+        return ButtonIndents[type] * ImGui::GetMainViewport()->Size.x;
     }
 
     ImVec2 GetButtonSizeInCoord(ButtonType type) {
-        if (type < 0 || type >= BUTTON_COUNT) return ImVec2(0, 0);
-        return g_ButtonSizes[type];
+        if (type < 0 || type >= BUTTON_COUNT)
+            return ImVec2(0.0f, 0.0f);
+        return ButtonSizes[type];
     }
 
     float GetButtonIndentInCoord(ButtonType type) {
-        if (type < 0 || type >= BUTTON_COUNT) return 0.0f;
-        return g_ButtonIndent[type];
+        if (type < 0 || type >= BUTTON_COUNT)
+            return 0.0f;
+        return ButtonIndents[type];
     }
 
     enum TextOverflowMode {
@@ -692,18 +677,18 @@ namespace Bui {
         TextOverflowMarqueeWhenActive,
     };
 
-    TextOverflowMode GetButtonTextOverflowMode(ButtonType type) {
+    static TextOverflowMode GetButtonTextOverflowMode(ButtonType type) {
         return type == BUTTON_MAIN || type == BUTTON_LEVEL
             ? TextOverflowMarqueeWhenActive
             : TextOverflowEllipsis;
     }
 
-    ImRect GetButtonTextRect(const ImRect &bb, ButtonType type) {
+    static ImRect GetButtonTextRect(const ImRect &bb, ButtonType type) {
         const float indent = GetButtonIndent(type);
         return ImRect(ImVec2(bb.Min.x + indent, bb.Min.y), ImVec2(bb.Max.x - indent, bb.Max.y));
     }
 
-    ImRect GetButtonOverflowTextRect(const ImRect &bb, ButtonType type) {
+    static ImRect GetButtonOverflowTextRect(const ImRect &bb, ButtonType type) {
         ImRect textRect = GetButtonTextRect(bb, type);
 
         if (type == BUTTON_LEVEL) {
@@ -715,9 +700,9 @@ namespace Bui {
         return textRect;
     }
 
-    void RenderEllipsisText(ImDrawList *drawList, const ImVec2 &textMin, const ImVec2 &textMax,
-                            const char *text, const ImVec2 *textSize, const ImVec2 &textAlign,
-                            const ImRect *clipRect) {
+    static void RenderEllipsisText(ImDrawList *drawList, const ImVec2 &textMin, const ImVec2 &textMax,
+                                   const char *text, const ImVec2 *textSize, const ImVec2 &textAlign,
+                                   const ImRect *clipRect) {
         if (!drawList || !text || text[0] == '\0' || !textSize)
             return;
 
@@ -735,9 +720,9 @@ namespace Bui {
                                   textMax.x, text, nullptr, textSize);
     }
 
-    void RenderMarqueeText(ImDrawList *drawList, const ImVec2 &textMin, const ImVec2 &textMax,
-                           const char *text, const ImVec2 *textSize, bool selected,
-                           float selectedTimer, const ImRect *clipRect) {
+    static void RenderMarqueeText(ImDrawList *drawList, const ImVec2 &textMin, const ImVec2 &textMax,
+                                  const char *text, const ImVec2 *textSize, bool selected,
+                                  float selectedTimer, const ImRect *clipRect) {
         if (!drawList || !text || text[0] == '\0' || !textSize)
             return;
 
@@ -747,8 +732,8 @@ namespace Bui {
             return;
         }
 
-        constexpr float kScrollSpeed = 45.0f;
-        constexpr float kScrollGap = 36.0f;
+        constexpr float ScrollSpeed = 45.0f;
+        constexpr float ScrollGap = 36.0f;
 
         float textY = textMin.y + (textMax.y - textMin.y - textSize->y) * 0.5f;
         if (textY < textMin.y)
@@ -759,8 +744,8 @@ namespace Bui {
             return;
         }
 
-        const float cycleWidth = textSize->x + kScrollGap;
-        const float scrollOffset = fmodf(selectedTimer * kScrollSpeed, cycleWidth);
+        const float cycleWidth = textSize->x + ScrollGap;
+        const float scrollOffset = fmodf(selectedTimer * ScrollSpeed, cycleWidth);
         const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
         const float firstX = textMin.x - scrollOffset;
 
@@ -770,8 +755,8 @@ namespace Bui {
         drawList->PopClipRect();
     }
 
-    void RenderButtonText(ImDrawList *drawList, const ImRect &bb, ButtonType type, const char *text,
-                          const ImVec2 &textAlign, bool selected, float selectedTimer) {
+    static void RenderButtonText(ImDrawList *drawList, const ImRect &bb, ButtonType type, const char *text,
+                                 const ImVec2 &textAlign, bool selected, float selectedTimer) {
         if (!text || text[0] == '\0')
             return;
 
@@ -793,8 +778,9 @@ namespace Bui {
                            &textSize, textAlign, &overflowTextRect);
     }
 
-    void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state) {
-        assert(drawList != nullptr);
+    static void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state) {
+        if (!drawList || type < 0 || type >= BUTTON_COUNT)
+            return;
 
         TextureType texture;
         switch (state) {
@@ -809,15 +795,18 @@ namespace Bui {
                 break;
         }
 
-        drawList->AddImage((ImTextureID) g_Textures[texture], bb.Min, bb.Max, g_ButtonUVs[type].Min, g_ButtonUVs[type].Max);
+        const ImTextureID textureId = static_cast<ImTextureID>(
+            reinterpret_cast<std::uintptr_t>(Resources.textures[texture]));
+        drawList->AddImage(textureId, bb.Min, bb.Max, ButtonUvs[type].Min, ButtonUvs[type].Max);
     }
 
-    void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state, const char *text, const ImVec2 &textAlign) {
+    static void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state,
+                               const char *text, const ImVec2 &textAlign) {
         AddButtonImage(drawList, bb, type, state);
         RenderButtonText(drawList, bb, type, text, textAlign, false, 0.0f);
     }
 
-    void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, bool selected) {
+    static void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, bool selected) {
         AddButtonImage(drawList, bb, type, selected ? 1 : 0);
     }
 
@@ -839,23 +828,26 @@ namespace Bui {
         AddButtonImage(drawList, pos, type, selected ? 1 : 0, text, ImGui::GetStyle().ButtonTextAlign);
     }
 
-    void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, bool selected, const char *text, const ImVec2 &text_align) {
-        AddButtonImage(drawList, bb, type, selected ? 1 : 0, text, text_align);
+    void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, bool selected,
+                        const char *text, const ImVec2 &textAlign) {
+        AddButtonImage(drawList, bb, type, selected ? 1 : 0, text, textAlign);
     }
 
-    void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state, const char *text, const ImVec2 &text_align) {
-        ImVec2 size = GetButtonSize(type);
+    void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state,
+                        const char *text, const ImVec2 &textAlign) {
+        const ImVec2 size = GetButtonSize(type);
         const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
-        AddButtonImage(drawList, bb, type, state, text, text_align);
+        AddButtonImage(drawList, bb, type, state, text, textAlign);
     }
 
-    void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected, const char *text, const ImVec2 &text_align) {
-        AddButtonImage(drawList, pos, type, selected ? 1 : 0, text, text_align);
+    void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected,
+                        const char *text, const ImVec2 &textAlign) {
+        AddButtonImage(drawList, pos, type, selected ? 1 : 0, text, textAlign);
     }
 
-    bool TextImageButton(const char *label, const char *text, ButtonType type, ImGuiButtonFlags flags = 0) {
-        assert(label != nullptr);
-        assert(text != nullptr);
+    static bool TextImageButton(const char *label, const char *text, ButtonType type, ImGuiButtonFlags flags = 0) {
+        if (!label || !text || type < 0 || type >= BUTTON_COUNT)
+            return false;
 
         ImGuiWindow *window = ImGui::GetCurrentWindow();
         if (window->SkipItems)
@@ -887,9 +879,10 @@ namespace Bui {
         return pressed;
     }
 
-    bool TextImageButtonV(const char *label, const char *text, ButtonType type, bool *v, ImGuiButtonFlags flags = 0) {
-        assert(label != nullptr);
-        assert(text != nullptr);
+    static bool SelectableTextImageButton(const char *label, const char *text, ButtonType type, bool *selected,
+                                          ImGuiButtonFlags flags = 0) {
+        if (!label || !text || type < 0 || type >= BUTTON_COUNT)
+            return false;
 
         ImGuiWindow *window = ImGui::GetCurrentWindow();
         if (window->SkipItems)
@@ -909,11 +902,12 @@ namespace Bui {
         if (pressed)
             PlayMenuClickSound();
 
-        int state = (v && *v) ? 0 : 2;
+        int state = (selected && *selected) ? 0 : 2;
         const bool active = pressed || hovered || held;
         if (active) {
             state = 1;
-            if (v) *v = true;
+            if (selected)
+                *selected = true;
         }
 
         ImGuiContext &g = *GImGui;
@@ -926,11 +920,14 @@ namespace Bui {
         IMGUI_TEST_ENGINE_ITEM_INFO(
             id, label,
             g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Checkable |
-                ((v && *v) ? ImGuiItemStatusFlags_Checked : 0));
+                ((selected && *selected) ? ImGuiItemStatusFlags_Checked : 0));
         return pressed;
     }
 
-    bool ImageButton(const char *label, ButtonType type, ImGuiButtonFlags flags = 0) {
+    static bool ImageButton(const char *label, ButtonType type, ImGuiButtonFlags flags = 0) {
+        if (!label || type < 0 || type >= BUTTON_COUNT)
+            return false;
+
         ImGuiWindow *window = ImGui::GetCurrentWindow();
         if (window->SkipItems)
             return false;
@@ -971,12 +968,12 @@ namespace Bui {
         return TextImageButton(label, label, BUTTON_OPTION, flags);
     }
 
-    bool LevelButton(const char *label, bool *v, ImGuiButtonFlags flags) {
-        return TextImageButtonV(label, label, BUTTON_LEVEL, v, flags);
+    bool LevelButton(const char *label, bool *selected, ImGuiButtonFlags flags) {
+        return SelectableTextImageButton(label, label, BUTTON_LEVEL, selected, flags);
     }
 
-    bool SmallButton(const char *label, bool *v, ImGuiButtonFlags flags) {
-        return TextImageButtonV(label, label, BUTTON_SMALL, v, flags);
+    bool SmallButton(const char *label, bool *selected, ImGuiButtonFlags flags) {
+        return SelectableTextImageButton(label, label, BUTTON_SMALL, selected, flags);
     }
 
     bool LeftButton(const char *label, ImGuiButtonFlags flags) {
@@ -995,18 +992,21 @@ namespace Bui {
         return ImageButton(label, BUTTON_MINUS, flags);
     }
 
-    bool KeyButton(const char *label, bool *toggled, ImGuiKeyChord *key_chord) {
-        constexpr float kLabelLeftInsetRatio = 0.1055f;
-        constexpr float kLabelRightInsetRatio = 0.5195f;
-        constexpr float kChordLeftInsetRatio = 0.5625f;
-        constexpr float kChordRightInsetRatio = 0.0195f;
-        constexpr float kHighlightLeftInsetRatio = 0.155f;
-        constexpr float kHighlightWidthRatio = 0.145f;
-        constexpr float kHighlightHeightRatio = 0.039f;
-        constexpr float kHighlightUvMinX = 0.005f;
-        constexpr float kHighlightUvMinY = 0.3850f;
-        constexpr float kHighlightUvMaxX = 0.4320f;
-        constexpr float kHighlightUvMaxY = 0.4500f;
+    bool KeyButton(const char *label, bool *listening, ImGuiKeyChord *keyChord) {
+        constexpr float LabelLeftInsetRatio = 0.1055f;
+        constexpr float LabelRightInsetRatio = 0.5195f;
+        constexpr float ChordLeftInsetRatio = 0.5625f;
+        constexpr float ChordRightInsetRatio = 0.0195f;
+        constexpr float HighlightLeftInsetRatio = 0.155f;
+        constexpr float HighlightWidthRatio = 0.145f;
+        constexpr float HighlightHeightRatio = 0.039f;
+        constexpr float HighlightUvMinX = 0.005f;
+        constexpr float HighlightUvMinY = 0.3850f;
+        constexpr float HighlightUvMaxX = 0.4320f;
+        constexpr float HighlightUvMaxY = 0.4500f;
+
+        if (!label || !listening || !keyChord)
+            return false;
 
         ImGuiWindow *window = ImGui::GetCurrentWindow();
         if (window->SkipItems)
@@ -1016,390 +1016,299 @@ namespace Bui {
         const ImGuiID id = window->GetID(label);
         const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
 
-        ImVec2 pos = window->DC.CursorPos;
-        ImVec2 size = GetButtonSize(BUTTON_KEY);
+        const ImVec2 pos = window->DC.CursorPos;
+        const ImVec2 size = GetButtonSize(BUTTON_KEY);
         const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
         ImGui::ItemSize(bb);
         if (!ImGui::ItemAdd(bb, id))
             return false;
 
-        bool hovered, held;
-        bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
+        bool hovered = false;
+        bool held = false;
+        const bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
 
         ImGuiContext &g = *GImGui;
         IMGUI_TEST_ENGINE_ITEM_INFO(
             id, label,
             g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable |
-                (*toggled ? ImGuiItemStatusFlags_Checked : 0));
+                (*listening ? ImGuiItemStatusFlags_Checked : 0));
 
         bool changed = false;
-        if (*toggled) {
-            if ((!ImGui::IsItemHovered() && ImGui::GetIO().MouseClicked[0]) || SetKeyChordFromIO(key_chord)) {
-                *toggled = false;
+        if (*listening) {
+            if ((!ImGui::IsItemHovered() && ImGui::GetIO().MouseClicked[0]) || SetKeyChordFromIO(keyChord)) {
+                *listening = false;
                 changed = true;
             }
         } else if (pressed) {
-            *toggled = !*toggled;
+            *listening = true;
             PlayMenuClickSound();
         }
 
-        auto *drawList = ImGui::GetWindowDrawList();
-
+        ImDrawList *drawList = window->DrawList;
         AddButtonImage(drawList, bb, BUTTON_KEY, hovered);
 
-        const float xl1 = size.x * kLabelLeftInsetRatio;
-        const float xr1 = size.x * kLabelRightInsetRatio;
-        const ImVec2 min1(bb.Min.x + xl1, bb.Min.y);
-        const ImVec2 max1(bb.Max.x - xr1, bb.Max.y);
-        RenderEllipsisText(drawList, min1, max1, label, &textSize, style.ButtonTextAlign, &bb);
+        const float labelLeftInset = size.x * LabelLeftInsetRatio;
+        const float labelRightInset = size.x * LabelRightInsetRatio;
+        const ImVec2 labelMin(bb.Min.x + labelLeftInset, bb.Min.y);
+        const ImVec2 labelMax(bb.Max.x - labelRightInset, bb.Max.y);
+        RenderEllipsisText(drawList, labelMin, labelMax, label, &textSize, style.ButtonTextAlign, &bb);
 
-        if (*key_chord != 0) {
-            const float xl2 = size.x * kChordLeftInsetRatio;
-            const float xr2 = size.x * kChordRightInsetRatio;
-            const ImVec2 min2(bb.Min.x + xl2, bb.Min.y);
-            const ImVec2 max2(bb.Max.x - xr2, bb.Max.y);
+        if (*keyChord != 0) {
+            const float chordLeftInset = size.x * ChordLeftInsetRatio;
+            const float chordRightInset = size.x * ChordRightInsetRatio;
+            const ImVec2 chordMin(bb.Min.x + chordLeftInset, bb.Min.y);
+            const ImVec2 chordMax(bb.Max.x - chordRightInset, bb.Max.y);
 
-            char keyText[32];
-            KeyChordToString(*key_chord, keyText, sizeof(keyText));
-            const ImVec2 keyTextSize = ImGui::CalcTextSize(keyText, nullptr, true);
-            RenderEllipsisText(drawList, min2, max2, keyText, &keyTextSize, style.ButtonTextAlign, &bb);
+            char keyText[32]{};
+            if (KeyChordToString(*keyChord, keyText, sizeof(keyText))) {
+                const ImVec2 keyTextSize = ImGui::CalcTextSize(keyText, nullptr, true);
+                RenderEllipsisText(drawList, chordMin, chordMax, keyText, &keyTextSize,
+                                   style.ButtonTextAlign, &bb);
+            }
         }
 
-        if (*toggled) {
+        if (*listening && Resources.materials[MATERIAL_KEYS_HIGHLIGHT]) {
             const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
-            const ImVec2 size0(vpSize.x * kHighlightWidthRatio, vpSize.y * kHighlightHeightRatio);
-            const ImVec2 min0(bb.Min.x + vpSize.x * kHighlightLeftInsetRatio, bb.Min.y);
-            const ImVec2 max0(min0.x + size0.x, min0.y + size0.y);
+            const ImVec2 highlightSize(vpSize.x * HighlightWidthRatio, vpSize.y * HighlightHeightRatio);
+            const ImVec2 highlightMin(bb.Min.x + vpSize.x * HighlightLeftInsetRatio, bb.Min.y);
+            const ImVec2 highlightMax(highlightMin.x + highlightSize.x, highlightMin.y + highlightSize.y);
+            const ImVec2 uvMin(HighlightUvMinX, HighlightUvMinY);
+            const ImVec2 uvMax(HighlightUvMaxX, HighlightUvMaxY);
 
-            const ImVec2 uv0(kHighlightUvMinX, kHighlightUvMinY);
-            const ImVec2 uv1(kHighlightUvMaxX, kHighlightUvMaxY);
-
-            drawList->AddImage(g_Materials[MATERIAL_KEYS_HIGHLIGHT], min0, max0, uv0, uv1);
+            drawList->AddImage(Resources.materials[MATERIAL_KEYS_HIGHLIGHT], highlightMin, highlightMax, uvMin, uvMax);
         }
 
         return changed;
     }
 
-    bool YesNoButton(const char *label, bool *v) {
-        ImGuiWindow *window = ImGui::GetCurrentWindow();
-        if (window->SkipItems)
+    struct OptionRow {
+        const char *label = nullptr;
+        ImGuiWindow *window = nullptr;
+        ImGuiID id = 0;
+        ImVec2 position;
+        ImVec2 size;
+        ImRect bounds;
+        ImVec2 restoreCursor;
+        bool hovered = false;
+        bool held = false;
+        bool pressed = false;
+        float activeTimer = 0.0f;
+    };
+
+    static bool BeginOptionRow(const char *label, OptionRow &row) {
+        if (!label)
             return false;
 
-        const ImGuiID id = window->GetID(label);
-        const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
+        row.window = ImGui::GetCurrentWindow();
+        if (row.window->SkipItems)
+            return false;
 
-        ImVec2 pos = window->DC.CursorPos;
-        ImVec2 size = GetButtonSize(BUTTON_OPTION);
-        const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+        row.label = label;
+        row.id = row.window->GetID(label);
+        row.position = row.window->DC.CursorPos;
+        row.size = GetButtonSize(BUTTON_OPTION);
+        row.bounds = ImRect(row.position, ImVec2(row.position.x + row.size.x, row.position.y + row.size.y));
 
         ImGui::BeginGroup();
-
-        ImGui::ItemSize(bb);
-        if (!ImGui::ItemAdd(bb, id)) {
+        ImGui::ItemSize(row.bounds);
+        if (!ImGui::ItemAdd(row.bounds, row.id)) {
             ImGui::EndGroup();
             return false;
         }
 
-        bool hovered, held;
-        bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
-        if (pressed)
-            *v = !*v;
+        row.pressed = ImGui::ButtonBehavior(
+            row.bounds, row.id, &row.hovered, &row.held,
+            ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
+        ImGuiContext &context = *GImGui;
+        row.activeTimer = row.held ? context.ActiveIdTimer : (row.hovered ? context.HoveredIdTimer : 0.0f);
 
-        ImGuiContext &g = *GImGui;
-        IMGUI_TEST_ENGINE_ITEM_INFO(
-            id, label,
-            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Checkable |
-                (*v ? ImGuiItemStatusFlags_Checked : 0));
+        AddButtonImage(row.window->DrawList, row.bounds, BUTTON_OPTION, row.hovered);
+        const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
+        const float indent = GetButtonIndent(BUTTON_OPTION);
+        const ImVec2 textMin(row.bounds.Min.x + indent, row.bounds.Min.y);
+        const ImVec2 textMax(row.bounds.Max.x - indent, row.bounds.Max.y);
+        RenderEllipsisText(row.window->DrawList, textMin, textMax, label, &textSize,
+                           ImVec2(0.5f, 0.21f), &row.bounds);
 
-        AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
-
-        float indent = GetButtonIndent(BUTTON_OPTION);
-        const ImVec2 min(bb.Min.x + indent, bb.Min.y);
-        const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
-
-        // Inline "Yes / No"
-        ImVec2 backup = ImGui::GetCursorScreenPos();
-        float spacing = size.x * 0.05f;
-        ImVec2 smPos(pos.x + size.x * 0.27f, pos.y + size.y * 0.43f);
-        ImGui::SetCursorScreenPos(smPos);
-
-        ImGui::PushID(label);
-        bool yf = *v;
-        bool yes = SmallButton("Yes", &yf);
-        ImGui::SameLine(0, spacing);
-        bool nf = !*v;
-        bool no = SmallButton("No", &nf);
-        ImGui::PopID();
-
-        ImGui::SetCursorScreenPos(backup);
-        ImGui::Dummy(ImVec2(0.0f, 0.0f));
-        ImGui::EndGroup();
-
-        if (yes || no) {
-            *v = yes;
-            return true;
-        }
-        return false;
+        row.restoreCursor = ImGui::GetCursorScreenPos();
+        return true;
     }
 
-    bool RadioButton(const char *label, int *current_item, const char *const items[], int items_count) {
-        if (!label || !current_item || !items || items_count <= 0)
+    static void ReportOptionRow(const OptionRow &row, ImGuiItemStatusFlags extraStatus = 0) {
+        ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(row.id, row.label, g.LastItemData.StatusFlags | extraStatus);
+    }
+
+    static void EndOptionRow(const OptionRow &row) {
+        ImGui::SetCursorScreenPos(row.restoreCursor);
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
+        ImGui::EndGroup();
+    }
+
+    static void BeginOptionInput(const OptionRow &row) {
+        ImGui::SetCursorScreenPos(
+            ImVec2(row.position.x + row.size.x * 0.24f, row.position.y + row.size.y * 0.45f));
+        ImGui::SetNextItemWidth(row.size.x * 0.6f);
+        ImGui::PushID(row.label);
+    }
+
+    static void EndOptionInput(const OptionRow &row) {
+        ImGui::PopID();
+        EndOptionRow(row);
+    }
+
+    bool YesNoButton(const char *label, bool *value) {
+        if (!value)
             return false;
 
-        ImGuiWindow *window = ImGui::GetCurrentWindow();
-        if (window->SkipItems)
+        OptionRow row;
+        if (!BeginOptionRow(label, row))
             return false;
 
-        const ImGuiID id = window->GetID(label);
-        const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
+        const bool originalValue = *value;
+        if (row.pressed)
+            *value = !*value;
+        ReportOptionRow(row, ImGuiItemStatusFlags_Checkable |
+                             (*value ? ImGuiItemStatusFlags_Checked : 0));
 
-        ImVec2 pos = window->DC.CursorPos;
-        ImVec2 size = GetButtonSize(BUTTON_OPTION);
-        const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+        const float spacing = row.size.x * 0.05f;
+        ImGui::SetCursorScreenPos(
+            ImVec2(row.position.x + row.size.x * 0.27f, row.position.y + row.size.y * 0.43f));
+        ImGui::PushID(label);
+        bool yesSelected = *value;
+        const bool yesPressed = SmallButton("Yes", &yesSelected);
+        ImGui::SameLine(0.0f, spacing);
+        bool noSelected = !*value;
+        const bool noPressed = SmallButton("No", &noSelected);
+        ImGui::PopID();
+        EndOptionRow(row);
 
-        int selectedItem = *current_item;
-        if (selectedItem < 0 || selectedItem >= items_count)
+        if (!yesPressed && !noPressed)
+            return false;
+
+        *value = yesPressed;
+        return *value != originalValue;
+    }
+
+    bool RadioButton(const char *label, int *currentItem, const char *const items[], int itemCount) {
+        if (!currentItem || !items || itemCount <= 0)
+            return false;
+
+        int selectedItem = *currentItem;
+        if (selectedItem < 0 || selectedItem >= itemCount)
             selectedItem = 0;
 
-        ImGui::BeginGroup();
-
-        ImGui::ItemSize(bb);
-        if (!ImGui::ItemAdd(bb, id)) {
-            ImGui::EndGroup();
+        OptionRow row;
+        if (!BeginOptionRow(label, row))
             return false;
-        }
+        ReportOptionRow(row);
 
-        bool hovered, held;
-        ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
-        ImGuiContext &g = *GImGui;
-        IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags);
-        const float selectedTimer = held ? g.ActiveIdTimer : (hovered ? g.HoveredIdTimer : 0.0f);
+        const ImVec2 previousPosition(row.position.x + row.size.x * 0.23f,
+                                      row.position.y + row.size.y * 0.50f);
+        const ImVec2 nextPosition(row.position.x + row.size.x * 0.82f,
+                                  row.position.y + row.size.y * 0.50f);
+        const ImVec2 textMin(row.position.x + row.size.x * 0.32f,
+                             row.position.y + row.size.y * 0.38f);
+        const ImVec2 textMax(row.position.x + row.size.x * 0.80f,
+                             row.position.y + row.size.y * 0.90f);
 
-        AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
-
-        float indent = GetButtonIndent(BUTTON_OPTION);
-        const ImVec2 min(bb.Min.x + indent, bb.Min.y);
-        const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
-
-        ImVec2 backup = ImGui::GetCursorScreenPos();
         bool changed = false;
-        const char *currentText = items[selectedItem] ? items[selectedItem] : "";
-
-        ImVec2 leftPos(pos.x + size.x * 0.23f, pos.y + size.y * 0.50f);
-        ImVec2 rightPos(pos.x + size.x * 0.82f, pos.y + size.y * 0.50f);
-        ImVec2 textMin(pos.x + size.x * 0.32f, pos.y + size.y * 0.38f);
-        ImVec2 textMax(pos.x + size.x * 0.80f, pos.y + size.y * 0.90f);
-        const ImVec2 currentTextSize = ImGui::CalcTextSize(currentText, nullptr, true);
-
         ImGui::PushID(label);
-
-        ImGui::SetCursorScreenPos(leftPos);
+        ImGui::SetCursorScreenPos(previousPosition);
         if (MinusButton("##RadioPrev")) {
-            selectedItem = (selectedItem + items_count - 1) % items_count;
+            selectedItem = (selectedItem + itemCount - 1) % itemCount;
             changed = true;
         }
 
-        ImGui::SetCursorScreenPos(rightPos);
+        ImGui::SetCursorScreenPos(nextPosition);
         if (PlusButton("##RadioNext")) {
-            selectedItem = (selectedItem + 1) % items_count;
+            selectedItem = (selectedItem + 1) % itemCount;
             changed = true;
         }
 
-        RenderMarqueeText(window->DrawList, textMin, textMax, currentText, &currentTextSize,
-                          hovered || held, selectedTimer, &bb);
+        const char *currentText = items[selectedItem] ? items[selectedItem] : "";
+        const ImVec2 currentTextSize = ImGui::CalcTextSize(currentText, nullptr, true);
+        RenderMarqueeText(row.window->DrawList, textMin, textMax, currentText, &currentTextSize,
+                          row.hovered || row.held, row.activeTimer, &row.bounds);
         ImGui::PopID();
-
-        ImGui::SetCursorScreenPos(backup);
-        ImGui::Dummy(ImVec2(0.0f, 0.0f));
-        ImGui::EndGroup();
+        EndOptionRow(row);
 
         if (changed)
-            *current_item = selectedItem;
-
+            *currentItem = selectedItem;
         return changed;
     }
 
-    template <typename DrawInput>
-    bool InputTextButtonImpl(const char *label, DrawInput &&drawInput) {
-        ImGuiWindow *window = ImGui::GetCurrentWindow();
-        if (window->SkipItems)
+    bool InputTextButton(const char *label, char *buffer, std::size_t bufferSize,
+                         ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *userData) {
+        if (!buffer || bufferSize == 0)
             return false;
 
-        const ImGuiID id = window->GetID(label);
-        const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
-
-        ImVec2 pos = window->DC.CursorPos;
-        ImVec2 size = GetButtonSize(BUTTON_OPTION);
-        const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
-
-        ImGui::BeginGroup();
-
-        ImGui::ItemSize(bb);
-        if (!ImGui::ItemAdd(bb, id)) {
-            ImGui::EndGroup();
+        OptionRow row;
+        if (!BeginOptionRow(label, row))
             return false;
-        }
+        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
 
-        bool hovered, held;
-        ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
-
-        ImGuiContext &g = *GImGui;
-        IMGUI_TEST_ENGINE_ITEM_INFO(
-            id, label,
-            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable);
-
-        AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
-
-        float indent = GetButtonIndent(BUTTON_OPTION);
-        const ImVec2 min(bb.Min.x + indent, bb.Min.y);
-        const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
-
-        ImVec2 backup = ImGui::GetCursorScreenPos();
-        ImVec2 smPos(pos.x + size.x * 0.24f, pos.y + size.y * 0.45f);
-        ImGui::SetCursorScreenPos(smPos);
-
+        BeginOptionInput(row);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
-        ImGui::SetNextItemWidth(size.x * 0.6f);
-
-        ImGui::PushID(label);
-        bool changed = drawInput();
-        ImGui::PopID();
-
+        const bool changed = ImGui::InputText("##InputText", buffer, bufferSize, flags, callback, userData);
         ImGui::PopStyleColor();
-
-        ImGui::SetCursorScreenPos(backup);
-        ImGui::Dummy(ImVec2(0.0f, 0.0f));
-        ImGui::EndGroup();
-
+        EndOptionInput(row);
         return changed;
     }
 
-    bool InputTextButton(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *user_data) {
-        return InputTextButtonImpl(label, [&] {
-            return ImGui::InputText("##InputText", buf, buf_size, flags, callback, user_data);
-        });
-    }
-
-    bool InputTextButton(const char *label, std::string *value, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *userData) {
-        return InputTextButtonImpl(label, [&] {
-            return ImGui::InputText("##InputText", value, flags, callback, userData);
-        });
-    }
-
-    bool InputFloatButton(const char *label, float *v, float step, float step_fast, const char *format, ImGuiInputTextFlags flags) {
-        ImGuiWindow *window = ImGui::GetCurrentWindow();
-        if (window->SkipItems)
+    bool InputTextButton(const char *label, std::string *value, ImGuiInputTextFlags flags,
+                         ImGuiInputTextCallback callback, void *userData) {
+        if (!value)
             return false;
 
-        const ImGuiID id = window->GetID(label);
-        const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
-
-        ImVec2 pos = window->DC.CursorPos;
-        ImVec2 size = GetButtonSize(BUTTON_OPTION);
-        const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
-
-        ImGui::BeginGroup();
-
-        ImGui::ItemSize(bb);
-        if (!ImGui::ItemAdd(bb, id)) {
-            ImGui::EndGroup();
+        OptionRow row;
+        if (!BeginOptionRow(label, row))
             return false;
-        }
+        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
 
-        bool hovered, held;
-        ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
-
-        ImGuiContext &g = *GImGui;
-        IMGUI_TEST_ENGINE_ITEM_INFO(
-            id, label,
-            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable);
-
-        AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
-
-        float indent = GetButtonIndent(BUTTON_OPTION);
-        const ImVec2 min(bb.Min.x + indent, bb.Min.y);
-        const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
-
-        ImVec2 backup = ImGui::GetCursorScreenPos();
-        ImVec2 smPos(pos.x + size.x * 0.24f, pos.y + size.y * 0.45f);
-        ImGui::SetCursorScreenPos(smPos);
-
+        BeginOptionInput(row);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
-        ImGui::SetNextItemWidth(size.x * 0.6f);
-
-        ImGui::PushID(label);
-        bool changed = ImGui::InputFloat("##InputFloat", v, step, step_fast, format, flags);
-        ImGui::PopID();
-
+        const bool changed = ImGui::InputText("##InputText", value, flags, callback, userData);
         ImGui::PopStyleColor();
-
-        ImGui::SetCursorScreenPos(backup);
-        ImGui::Dummy(ImVec2(0.0f, 0.0f));
-        ImGui::EndGroup();
-
+        EndOptionInput(row);
         return changed;
     }
 
-    bool InputIntButton(const char *label, int *v, int step, int step_fast, ImGuiInputTextFlags flags) {
-        ImGuiWindow *window = ImGui::GetCurrentWindow();
-        if (window->SkipItems)
+    bool InputFloatButton(const char *label, float *value, float step, float stepFast,
+                          const char *format, ImGuiInputTextFlags flags) {
+        if (!value || !format)
             return false;
 
-        const ImGuiID id = window->GetID(label);
-        const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
-
-        ImVec2 pos = window->DC.CursorPos;
-        ImVec2 size = GetButtonSize(BUTTON_OPTION);
-        const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
-
-        ImGui::BeginGroup();
-
-        ImGui::ItemSize(bb);
-        if (!ImGui::ItemAdd(bb, id)) {
-            ImGui::EndGroup();
+        OptionRow row;
+        if (!BeginOptionRow(label, row))
             return false;
-        }
+        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
 
-        bool hovered, held;
-        ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
+        BeginOptionInput(row);
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
+        const bool changed = ImGui::InputFloat("##InputFloat", value, step, stepFast, format, flags);
+        ImGui::PopStyleColor();
+        EndOptionInput(row);
+        return changed;
+    }
 
-        ImGuiContext &g = *GImGui;
-        IMGUI_TEST_ENGINE_ITEM_INFO(
-            id, label,
-            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable);
+    bool InputIntButton(const char *label, int *value, int step, int stepFast, ImGuiInputTextFlags flags) {
+        if (!value)
+            return false;
 
-        AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
+        OptionRow row;
+        if (!BeginOptionRow(label, row))
+            return false;
+        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
 
-        float indent = GetButtonIndent(BUTTON_OPTION);
-        const ImVec2 min(bb.Min.x + indent, bb.Min.y);
-        const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
-
-        ImVec2 backup = ImGui::GetCursorScreenPos();
-        ImVec2 smPos(pos.x + size.x * 0.24f, pos.y + size.y * 0.45f);
-        ImGui::SetCursorScreenPos(smPos);
-
+        BeginOptionInput(row);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.63f, 0.32f, 0.18f, 0.57f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.63f, 0.32f, 0.18f, 0.57f));
-
-        ImGui::SetNextItemWidth(size.x * 0.6f);
-
-        ImGui::PushID(label);
-        bool changed = ImGui::InputInt("##InputInt", v, step, step_fast, flags);
-        ImGui::PopID();
-
+        const bool changed = ImGui::InputInt("##InputInt", value, step, stepFast, flags);
         ImGui::PopStyleColor(4);
-
-        ImGui::SetCursorScreenPos(backup);
-        ImGui::Dummy(ImVec2(0.0f, 0.0f));
-        ImGui::EndGroup();
-
+        EndOptionInput(row);
         return changed;
     }
 
@@ -1453,7 +1362,7 @@ namespace Bui {
 #ifndef BML_UI_AUTOMATION_TEST
     void BlockKeyboardInput() {
         if (AcquireKeyboardInputBlock())
-            ++g_AnonymousKeyboardInputBlockUsers;
+            ++KeyboardInputBlocks.anonymousUsers;
     }
 
     void BlockKeyboardInput(const void *owner) {
@@ -1461,26 +1370,28 @@ namespace Bui {
             BlockKeyboardInput();
             return;
         }
-        if (g_KeyboardInputBlockOwners.find(owner) != g_KeyboardInputBlockOwners.end())
+        if (KeyboardInputBlocks.owners.contains(owner))
             return;
         if (AcquireKeyboardInputBlock())
-            g_KeyboardInputBlockOwners.insert(owner);
+            KeyboardInputBlocks.owners.insert(owner);
     }
 
     void ActivateScript(const char *scriptName) {
-        if (!scriptName || !*scriptName) return;
-        auto *mod = BML_GetModContext();
-        auto *ck = BML_GetCKContext();
-        if (!mod || !ck) return;
-        CKBehavior *beh = mod->GetScriptByName(scriptName);
-        if (beh && ck->GetCurrentScene())
-            ck->GetCurrentScene()->Activate(beh, true);
+        if (!scriptName || !*scriptName)
+            return;
+        ModContext *context = BML_GetModContext();
+        CKContext *ckContext = BML_GetCKContext();
+        if (!context || !ckContext)
+            return;
+        CKBehavior *script = context->GetScriptByName(scriptName);
+        if (script && ckContext->GetCurrentScene())
+            ckContext->GetCurrentScene()->Activate(script, true);
     }
 
     void UnblockKeyboardAfterRelease() {
-        if (g_AnonymousKeyboardInputBlockUsers == 0)
+        if (KeyboardInputBlocks.anonymousUsers == 0)
             return;
-        --g_AnonymousKeyboardInputBlockUsers;
+        --KeyboardInputBlocks.anonymousUsers;
         ReleaseKeyboardInputBlockAfterKeysUp();
     }
 
@@ -1489,7 +1400,7 @@ namespace Bui {
             UnblockKeyboardAfterRelease();
             return;
         }
-        if (g_KeyboardInputBlockOwners.erase(owner) == 0)
+        if (KeyboardInputBlocks.owners.erase(owner) == 0)
             return;
         ReleaseKeyboardInputBlockAfterKeysUp();
     }
@@ -1506,7 +1417,8 @@ namespace Bui {
 #endif
 
     void Title(const char *text, float y, float scale, ImU32 color) {
-        if (!text || !*text) return;
+        if (!text || !*text)
+            return;
 
         ImFont *font = ImGui::GetFont();
         const float size = ImGui::GetFontSize() * (scale > 0.0f ? scale : 1.0f);
@@ -1519,12 +1431,15 @@ namespace Bui {
         ImGui::GetForegroundDrawList()->AddText(font, size, pos, color, text);
     }
 
-    bool SearchBar(char *buffer, size_t bufferSize, float x, float y, float width) {
+    bool SearchBar(char *buffer, std::size_t bufferSize, float x, float y, float width) {
+        if (!buffer || bufferSize == 0)
+            return false;
+
         return At(x, y, [=]() {
             ImGui::PushStyleColor(ImGuiCol_FrameBg, GetMenuColor());
             ImGui::SetNextItemWidth(ImGui::GetMainViewport()->Size.x * width);
 
-            bool changed = ImGui::InputText("##SearchBar", buffer, bufferSize);
+            const bool changed = ImGui::InputText("##SearchBar", buffer, bufferSize);
 
             ImGui::PopStyleColor();
             return changed;
