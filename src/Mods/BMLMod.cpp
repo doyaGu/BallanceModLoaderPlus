@@ -244,6 +244,7 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
 }
 
 void BMLMod::OnPreStartMenu() {
+    m_Console.CloseCommandBar();
     m_HUD.OnMenuStart();
 }
 
@@ -263,6 +264,10 @@ void BMLMod::OnExitGame() {
 #ifndef NDEBUG
     m_ShowImGuiDemo = false;
 #endif
+}
+
+void BMLMod::OnPreLoadLevel() {
+    m_Console.CloseCommandBar();
 }
 
 void BMLMod::OnStartLevel() {
