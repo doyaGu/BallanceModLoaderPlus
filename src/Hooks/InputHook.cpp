@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 
+#include "Hooks/CursorVisibilityPolicy.h"
 #include "Hooks/VTables.h"
 #include "HookUtils.h"
 
@@ -14,8 +15,13 @@ struct InputHook::Impl {
     static std::unordered_map<uint64_t, uint32_t> s_BlockTokens;
     static CKInputManager *s_InputManager;
     static CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> s_VTable;
+    static CursorVisibilityPolicy s_CursorVisibility;
 
     CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
+
+    CP_DECLARE_METHOD_HOOK(void, ShowCursor, (CKBOOL show)) {
+        ShowCursorOriginal(s_CursorVisibility.SetGameVisible(show != FALSE));
+    }
 
     CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyDown, (CKDWORD iKey, CKDWORD *oStamp)) {
         if (IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
@@ -210,6 +216,16 @@ struct InputHook::Impl {
         return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.PostProcess);
     }
 
+    static void ShowCursorOriginal(CKBOOL show) {
+        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.ShowCursor, show);
+    }
+
+    static void SetOverlayCursorVisible(bool visible) {
+        const bool effective = s_CursorVisibility.SetOverlayVisible(visible);
+        if ((s_InputManager->GetCursorVisibility() != FALSE) != effective)
+            ShowCursorOriginal(effective);
+    }
+
     static CKBOOL IsKeyDownOriginal(CKDWORD iKey, CKDWORD *oStamp) {
         return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsKeyDown, iKey, oStamp);
     }
@@ -301,12 +317,14 @@ struct InputHook::Impl {
         s_InputManager = im;
         s_HookedSlotCount = 0;
         utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
+        s_CursorVisibility.Reset(s_InputManager->GetCursorVisibility() != FALSE);
 
 #define HOOK_INPUT_MANAGER_VIRTUAL_METHOD(Instance, Name) \
     HookSlot(Instance, &InputHook::Impl::CP_FUNC_HOOK_NAME(Name), \
              (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void*)))
 
         HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, PostProcess);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, ShowCursor);
 
         HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyDown);
         HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyUp);
@@ -332,6 +350,8 @@ struct InputHook::Impl {
 
     static void Unhook() {
         if (!s_InputManager || s_HookedSlotCount == 0) return;
+
+        SetOverlayCursorVisible(false);
 
         // Restore only the specific vtable slots we hooked.
         void **vtable = *reinterpret_cast<void***>(s_InputManager);
@@ -363,6 +383,7 @@ uint64_t InputHook::Impl::s_NextBlockToken = 1;
 std::unordered_map<uint64_t, uint32_t> InputHook::Impl::s_BlockTokens;
 CKInputManager *InputHook::Impl::s_InputManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> InputHook::Impl::s_VTable = {};
+CursorVisibilityPolicy InputHook::Impl::s_CursorVisibility;
 void *InputHook::Impl::s_OriginalSlots[32] = {};
 size_t InputHook::Impl::s_HookedSlotIndices[32] = {};
 size_t InputHook::Impl::s_HookedSlotCount = 0;
@@ -516,6 +537,11 @@ void InputHook::Pause(CKBOOL pause) {
 void InputHook::ShowCursor(CKBOOL iShow) {
     if (!IsValid()) return;
     Impl::s_InputManager->ShowCursor(iShow);
+}
+
+void InputHook::SetOverlayCursorVisible(bool visible) {
+    if (!IsValid()) return;
+    Impl::SetOverlayCursorVisible(visible);
 }
 
 CKBOOL InputHook::GetCursorVisibility() {
