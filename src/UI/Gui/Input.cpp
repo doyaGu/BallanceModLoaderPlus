@@ -1,7 +1,7 @@
 #include "BML/Gui/Input.h"
 
 #include "Loader/ModContext.h"
-#include "Behavior/Text2DView.h"
+#include "Behavior/Blocks/Text2DView.h"
 
 using namespace BGui;
 

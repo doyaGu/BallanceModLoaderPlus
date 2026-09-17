@@ -108,7 +108,7 @@ API 文件。
 
 | 修改目标 | 负责区域 | 最小定向验证 |
 | --- | --- | --- |
-| 插件入口、Hook Block 注册或引擎拦截 | `src/BML.cpp`、`src/Behavior/HookBlock.*`、`src/Hooks/` | Win32 构建，以及覆盖该回调或 Hook 的真实 Player 场景 |
+| 插件入口、Hook Block 注册或引擎拦截 | `src/BML.cpp`、`src/Behavior/Blocks/HookBlock.*`、`src/Hooks/` | Win32 构建，以及覆盖该回调或 Hook 的真实 Player 场景 |
 | Building Block 配置、执行或行为图插入 | `src/Behavior/Block.*`、`src/Behavior/Runtime.*`、`include/BML/Behavior/Blocks/`、`src/Api/ExecuteBB.cpp` | 定向 Behavior 和 ABI 测试、Win32 构建及受影响的 Player 测试 |
 | CK 生命周期和回调时序 | `src/Loader/ModManager.*` | 定向生命周期测试和 Player 冒烟测试 |
 | Mod 发现、依赖顺序、服务或关闭 | `src/Loader/ModContext.*` | 对应 Loader/依赖测试和原生/脚本冒烟覆盖 |

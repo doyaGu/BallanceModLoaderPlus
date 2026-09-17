@@ -18,7 +18,7 @@
 
 #include "BML/ImcWire.hpp"
 #include "BML/TypeConvert.h"
-#include "Behavior/HookBlock.h"
+#include "Behavior/Blocks/HookBlock.h"
 #include "Behavior/Patches.h"
 #include "Behavior/Script.h"
 #include "Behavior/Sessions.h"

@@ -1,4 +1,4 @@
-#include "Behavior/HookBlock.h"
+#include "Behavior/Blocks/HookBlock.h"
 
 #include <stdexcept>
 #include <thread>

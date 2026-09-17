@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_TEXT2DVIEW_H
-#define BML_BEHAVIOR_TEXT2DVIEW_H
+#ifndef BML_BEHAVIOR_BLOCKS_TEXT2DVIEW_H
+#define BML_BEHAVIOR_BLOCKS_TEXT2DVIEW_H
 
 #include "BML/Behavior/Blocks/Text2D.hpp"
 #include "Behavior/Block.h"
@@ -55,4 +55,4 @@ private:
 
 } // namespace BML::Behavior::Internal::Text2DView
 
-#endif // BML_BEHAVIOR_TEXT2DVIEW_H
+#endif // BML_BEHAVIOR_BLOCKS_TEXT2DVIEW_H

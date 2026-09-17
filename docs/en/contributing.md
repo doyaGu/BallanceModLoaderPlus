@@ -115,7 +115,7 @@ for an unrelated change; the runner commands and probe ownership are in
 
 | Change | Owner | Minimum focused validation |
 | --- | --- | --- |
-| Plugin entry, Hook Block registration, or engine interception | `src/BML.cpp`, `src/Behavior/HookBlock.*`, `src/Hooks/` | Win32 build plus the affected real Player scenario |
+| Plugin entry, Hook Block registration, or engine interception | `src/BML.cpp`, `src/Behavior/Blocks/HookBlock.*`, `src/Hooks/` | Win32 build plus the affected real Player scenario |
 | Building Block configuration, execution, or graph insertion | `src/Behavior/Block.*`, `src/Behavior/Runtime.*`, `include/BML/Behavior/Blocks/`, `src/Api/ExecuteBB.cpp` | Focused Behavior and ABI tests, Win32 build, and affected Player test |
 | CK lifecycle and callback timing | `src/Loader/ModManager.*` | Focused lifecycle tests and Player smoke test |
 | Mod discovery, dependency order, services, or shutdown | `src/Loader/ModContext.*` | Relevant loader/dependency tests and native/script smoke coverage |

@@ -357,30 +357,31 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Callback.h
         Behavior/CKBehaviorContext.h
         Behavior/CKEdit.h
-        Behavior/Graph.h
-        Behavior/ObjectRef.h
-        Behavior/PrototypeCatalog.h
-        Behavior/Execution.h
         Behavior/Edit.h
+        Behavior/Execution.h
+        Behavior/FrameStore.h
+        Behavior/Graph.h
         Behavior/GraphEdit.h
-        Behavior/Pattern.h
         Behavior/Lifecycle.h
         Behavior/Layout.h
-        Behavior/FrameStore.h
+        Behavior/ObjectRef.h
         Behavior/Parameter.h
-        Behavior/Value.h
         Behavior/Patches.h
+        Behavior/Pattern.h
         Behavior/Plan.h
+        Behavior/PrototypeCatalog.h
         Behavior/Relations.h
-        Behavior/HookBlock.h
-        Behavior/PhysicsForce.h
         Behavior/Runtime.h
         Behavior/Script.h
         Behavior/Sessions.h
         Behavior/Status.h
-        Behavior/Text2DView.h
         Behavior/Topology.h
+        Behavior/Value.h
         Behavior/Watch.h
+
+        Behavior/Blocks/HookBlock.h
+        Behavior/Blocks/PhysicsForce.h
+        Behavior/Blocks/Text2DView.h
 )
 
 set(BML_BEHAVIOR_SOURCES
@@ -389,28 +390,29 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/CKEdit.cpp
         Behavior/CKGraph.cpp
         Behavior/CKPrototypeSource.cpp
-        Behavior/Execution.cpp
         Behavior/Edit.cpp
+        Behavior/Execution.cpp
+        Behavior/FrameStore.cpp
         Behavior/GraphEdit.cpp
-        Behavior/Pattern.cpp
         Behavior/Lifecycle.cpp
         Behavior/Layout.cpp
-        Behavior/FrameStore.cpp
         Behavior/Parameter.cpp
-        Behavior/Value.cpp
         Behavior/Patches.cpp
+        Behavior/Pattern.cpp
         Behavior/Plan.cpp
         Behavior/PrototypeCatalog.cpp
         Behavior/Relations.cpp
-        Behavior/Hook.cpp
-        Behavior/HookBlock.cpp
-        Behavior/PhysicsForce.cpp
         Behavior/Runtime.cpp
         Behavior/Script.cpp
         Behavior/Sessions.cpp
-        Behavior/Text2DView.cpp
         Behavior/Topology.cpp
+        Behavior/Value.cpp
         Behavior/Watch.cpp
+
+        Behavior/Blocks/Hook.cpp
+        Behavior/Blocks/HookBlock.cpp
+        Behavior/Blocks/PhysicsForce.cpp
+        Behavior/Blocks/Text2DView.cpp
 )
 
 set(BML_VIRTOOLS_PRIVATE_HEADERS
