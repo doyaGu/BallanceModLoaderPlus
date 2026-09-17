@@ -6,7 +6,7 @@
 #include "UI/Overlay.h"
 #include "UI/FontRuntime.h"
 #if BML_ENABLE_UI_AUTOMATION
-#include "UI/UiAutomation.h"
+#include "player/UiAutomation.h"
 #endif
 
 namespace {

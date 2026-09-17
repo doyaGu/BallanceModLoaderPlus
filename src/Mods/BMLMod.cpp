@@ -13,7 +13,7 @@
 #include "UI/FontRuntime.h"
 #include "UI/GameFontCatalog.h"
 #if BML_ENABLE_UI_AUTOMATION
-#include "UI/UiAutomation.h"
+#include "player/UiAutomation.h"
 #endif
 #include "StringUtils.h"
 #include "PathUtils.h"

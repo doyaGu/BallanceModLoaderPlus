@@ -18,38 +18,44 @@ framework.
   and the Player-side Test Engine runtime. It is available only when
   `BML_BUILD_TESTS` is enabled, and is independent of the Behavior test
   interface compiled for other Player integration tests.
-- `src/UI/UiAutomation.cpp` owns the Player-side ImGui Test Engine lifecycle.
+- `player/UiAutomation.cpp` owns the Player-side ImGui Test Engine lifecycle.
   It arms only after `On Message PostStartMenu`, waits for real keyboard
   navigation from the native Main and Options menus, registers the selected
   scenario, writes the small `bml-ui-result-v1` result, then exits cleanly.
-- `src/UI/Automation/UiTestFramework.h` is the stable scenario interface. It
+  Production `BMLMod` and `ModManager` retain only compile-gated lifecycle
+  calls; `PlayerSources.cmake` adds the test implementation to the acceptance
+  DLL, never to a production build.
+- `player/UiTestFramework.h` is the stable scenario interface. It
   provides bounded waits, wall-clock-bounded cross-process actions,
   native/ImGui transition helpers, reusable real-UI navigation and
   `BML_REGISTER_UI_SCENARIO`. `NativeMenuTransition` and `SurfaceCapture`
   keep native input separate from observation; business behavior must be
   exercised through visible UI.
-- `src/UI/Automation/UiAutomationSession.*` is the shared cross-process Module.
+- `session/UiAutomationSession.*` is the shared cross-process Module.
   Player publishes one immutable, sequenced checkpoint and yields while keeping
   that UI state visible. The native runner performs the requested foreground
   input or capture and atomically publishes the matching acknowledgement.
-- `src/UI/Automation/Scenarios/*.cpp` contains one business journey per file.
-  A scenario owns its setup, actions, assertions and restoration.
+- `player/journeys/<feature>/*Scenario.cpp` groups each business journey by
+  feature, wholly outside the production source tree. A scenario owns its
+  setup, actions, assertions and restoration.
 - `tests/ui/scenarios/*.scenario` is runner metadata in plain `key=value`
-  text: identity, source, input profile, fixtures, capture name, requirements
-  and required log evidence.
-- `UiAutomationProtocol.cpp` owns parsing and validation for scenario metadata
+  text: identity, `tests/ui/`-relative source, input profile, fixtures,
+  capture name, requirements and required log evidence. `PlayerSources.cmake`
+  compiles the sources named by these descriptors into the test BML DLL, and
+  the framework validates the same catalog.
+- `runner/UiAutomationProtocol.cpp` owns parsing and validation for scenario metadata
   and result files, including names, duplicate identities and supported values.
-- `UiPlayerHarness.cpp` is the native Windows adapter behind one small run
+- `runner/UiPlayerHarness.cpp` is the native Windows adapter behind one small run
   interface. It installs the built DLL transactionally, isolates external Mods,
   starts Player visibly, accepts the render setup dialog, keeps Ballance in the
   foreground, sends physical keyboard events, captures the client area only
   while it is unobstructed, acknowledges each Session checkpoint, and verifies
   restored files, including `BML.cfg`, by content fingerprint.
-- `UiPlayerRunner.cpp` evaluates shared acceptance checks plus the selected
+- `runner/UiPlayerRunner.cpp` evaluates shared acceptance checks plus the selected
   scenario's evidence.
-- `UiFrameworkTest.cpp` checks catalog completeness, uniqueness, source
+- `runner/UiFrameworkTest.cpp` checks catalog completeness, uniqueness, source
   registration, descriptor validity and result parsing without starting Player.
-- `UiAutomationSessionTest.cpp` verifies checkpoint sequencing, atomic
+- `session/UiAutomationSessionTest.cpp` verifies checkpoint sequencing, atomic
   publication, waiting semantics and successful/failed acknowledgements without
   starting Player.
 
@@ -80,7 +86,7 @@ Run one case only:
 
 The native runner can also be invoked directly for debugging:
 
-    build-dev/tests/ui/RelWithDebInfo/UiPlayerRunner.exe --scenario-dir tests/ui/scenarios --source-root src/UI/Automation/Scenarios --ballance-root C:/Users/kakut/Games/Ballance --build-dll build-dev/bin/RelWithDebInfo/BMLPlus.dll --scenario console --artifacts build-dev/tests/ui/RelWithDebInfo/UiAutomation/console
+    build-dev/tests/ui/RelWithDebInfo/UiPlayerRunner.exe --scenario-dir tests/ui/scenarios --source-root tests/ui --ballance-root C:/Users/kakut/Games/Ballance --build-dll build-dev/bin/RelWithDebInfo/BMLPlus.dll --scenario console --artifacts build-dev/tests/ui/RelWithDebInfo/UiAutomation/console
 
 Each scenario gets its own artifact directory containing a `.result` file,
 ModLoader trace, Player trace, 800x600 BMP captures and one isolated `session-*`
@@ -96,7 +102,7 @@ run. The result is deliberately small and framework-owned:
 
 ## Adding or changing a scenario
 
-1. Add `src/UI/Automation/Scenarios/<Surface>Scenario.cpp`.
+1. Add `tests/ui/player/journeys/<feature>/<Surface>Scenario.cpp`.
 2. Implement one registration function. Use `UiAutomation::Test` helpers for
    native menu transitions, Mod configuration navigation and Built-in Console
    submission, and ImGui Test Engine actions/checks for UI interaction. Do not
@@ -110,11 +116,13 @@ run. The result is deliberately small and framework-owned:
    - `input`: `mod-list`, `level-one` or `custom-map`; the last profile
      reaches the Start menu but lets the visible Custom Maps UI initiate level
      loading.
-   - `source`: scenario C++ filename.
+   - `source`: path relative to `tests/ui/`, for example
+     `player/journeys/console/ConsoleScenario.cpp`.
    - optional repeated `fixture`, `requires` and `required_log` entries.
    - supported fixture: `custom-map`; supported requirement: `angelscript`.
-5. Reconfigure CMake. `CONFIGURE_DEPENDS` discovers both files and creates only
-   `UiPlayerAutomation.<name>`; no central list needs editing.
+5. Reconfigure CMake. The descriptor is the source inventory for the BML test
+   build and the Player runner; `CONFIGURE_DEPENDS` discovers new descriptors
+   and creates `UiPlayerAutomation.<name>` when a Player is configured.
 6. Run `UiFrameworkTest`, then run only the new or changed Player scenario.
 
 ## Current business coverage

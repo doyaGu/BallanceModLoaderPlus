@@ -1,4 +1,4 @@
-#include "UI/Automation/UiAutomationSession.h"
+#include "UiAutomationSession.h"
 
 #include <fstream>
 #include <iomanip>

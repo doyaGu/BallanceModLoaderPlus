@@ -3,4 +3,4 @@ test=hud_overlay
 surface=hud
 capture=HUD
 input=level-one
-source=HudScenario.cpp
+source=player/journeys/hud/HudScenario.cpp

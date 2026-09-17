@@ -1,7 +1,7 @@
 #ifndef BML_TESTS_UI_PLAYER_HARNESS_H
 #define BML_TESTS_UI_PLAYER_HARNESS_H
 
-#include "UI/Automation/UiAutomationSession.h"
+#include "session/UiAutomationSession.h"
 #include "UiAutomationProtocol.h"
 
 #include <filesystem>

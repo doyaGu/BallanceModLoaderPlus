@@ -3,5 +3,5 @@ test=custom_maps_roundtrip
 surface=custom-maps
 capture=CustomMaps
 input=custom-map
-source=CustomMapsScenario.cpp
+source=player/journeys/custom-maps/CustomMapsScenario.cpp
 fixture=custom-map

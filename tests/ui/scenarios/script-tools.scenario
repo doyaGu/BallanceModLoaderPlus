@@ -3,5 +3,5 @@ test=script_developer_tools
 surface=script-tools
 capture=ScriptTools
 input=level-one
-source=ScriptToolsScenario.cpp
+source=player/journeys/script-tools/ScriptToolsScenario.cpp
 requires=angelscript
