@@ -1,0 +1,8 @@
+add_subdirectory(behavior)
+add_subdirectory(angelscript)
+add_subdirectory(ui)
+add_subdirectory(builtins)
+add_subdirectory(core)
+add_subdirectory(interface)
+add_subdirectory(imc)
+add_subdirectory(utils)
