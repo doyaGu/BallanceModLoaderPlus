@@ -12,7 +12,6 @@
 #include "BML/Bui.h"
 
 #include "ModMenu/ModMenuModel.h"
-#include "UI/BallancePalette.h"
 #include "UI/BuiInternal.h"
 
 namespace {
@@ -25,6 +24,9 @@ namespace {
     constexpr float DetailsSpacing = 0.06f;
     constexpr float TextPanelScrollbarScale = 0.45f;
     constexpr float MinimumTextPanelScrollbarSize = 6.0f;
+    constexpr ImVec4 ScrollbarGrabColor = {224.0f / 255.0f, 169.0f / 255.0f, 113.0f / 255.0f, 195.0f / 255.0f};
+    constexpr ImVec4 ScrollbarHoverColor = {235.0f / 255.0f, 190.0f / 255.0f, 122.0f / 255.0f, 210.0f / 255.0f};
+    constexpr ImVec4 ScrollbarActiveColor = {190.0f / 255.0f, 128.0f / 255.0f, 52.0f / 255.0f, 225.0f / 255.0f};
     constexpr ImGuiWindowFlags TextPanelFlags = ImGuiWindowFlags_NoSavedSettings |
                                                 ImGuiWindowFlags_NoNavInputs |
                                                 ImGuiWindowFlags_NoNavFocus;
@@ -74,9 +76,9 @@ namespace {
             ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, scrollbarSize);
             ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);
             ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-            ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, BallancePalette::Selection());
-            ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, BallancePalette::Hover());
-            ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, BallancePalette::Active());
+            ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, ScrollbarGrabColor);
+            ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, ScrollbarHoverColor);
+            ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, ScrollbarActiveColor);
         }
 
         ~TextPanelStyleScope() {
@@ -114,7 +116,7 @@ namespace {
         const ImVec2 size = viewport.Size(layout.width, layout.height);
 
         TextPanelStyleScope textPanelStyle;
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, BallancePalette::PanelBackground());
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
         viewport.SetCursor(layout.x, layout.y);
         if (resetScroll)
             ImGui::SetNextWindowScroll(ImVec2(-1.0f, 0.0f));

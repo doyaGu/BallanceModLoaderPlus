@@ -2,7 +2,6 @@
 
 #include "UI/Ime/RailLayout.h"
 #include "UI/Ime/Runtime.h"
-#include "UI/InputSurfaceStyle.h"
 
 #include "imgui_internal.h"
 
@@ -17,12 +16,17 @@
 
 namespace Overlay::Ime::Presentation {
     namespace {
-        constexpr float ScreenMargin = InputSurfaceStyle::ScreenMargin;
-        constexpr float AnchorGap = InputSurfaceStyle::AnchorGap;
-        constexpr float RailPaddingX = InputSurfaceStyle::PaddingX;
-        constexpr float RailPaddingY = InputSurfaceStyle::PaddingY;
-        constexpr float RailItemGap = InputSurfaceStyle::ItemGap;
-        constexpr float CandidatePaddingX = InputSurfaceStyle::ChipPaddingX;
+        constexpr float ScreenMargin = 8.0f;
+        constexpr float AnchorGap = 3.0f;
+        constexpr float RailPaddingX = 8.0f;
+        constexpr float RailPaddingY = 5.0f;
+        constexpr float RailItemGap = 6.0f;
+        constexpr float CandidatePaddingX = 6.0f;
+        constexpr ImVec4 RailBackgroundColor = {0.0f, 0.0f, 0.0f, 155.0f / 255.0f};
+        constexpr ImVec4 TextColor = {1.0f, 1.0f, 1.0f, 1.0f};
+        constexpr ImVec4 MutedTextColor = {1.0f, 1.0f, 1.0f, 0.65f};
+        constexpr ImVec4 InvertedTextColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        constexpr ImVec4 SelectionColor = {1.0f, 1.0f, 1.0f, 1.0f};
         constexpr float MinimumRailWidth = 280.0f;
         constexpr float MaximumRailWidthRatio = 0.72f;
         constexpr float CandidateWidthReserveRatio = 0.62f;
@@ -516,7 +520,7 @@ namespace Overlay::Ime::Presentation {
                                 float contentMaxY,
                                 float clipMinY, float clipMaxY,
                                 ImU32 textColor, ImU32 mutedColor,
-                                ImU32 selectionColor) {
+                                ImU32 selectionColor, ImU32 invertedTextColor) {
             const CandidateRail &candidates = prepared.candidates;
             std::size_t firstChip = ChooseFirstChip(
                 candidates, std::max(0.0f, contentMaxX - contentX));
@@ -538,9 +542,7 @@ namespace Overlay::Ime::Presentation {
                 const ImVec2 chipMax(contentX + visibleWidth,
                                      contentMaxY + 1.0f);
                 if (chip.selected) {
-                    drawList->AddRectFilled(
-                        chipMin, chipMax, selectionColor,
-                        InputSurfaceStyle::Rounding);
+                    drawList->AddRectFilled(chipMin, chipMax, selectionColor);
                 }
 
                 drawList->PushClipRect(
@@ -549,14 +551,15 @@ namespace Overlay::Ime::Presentation {
                 const ImVec2 keyPos(
                     contentX + CandidatePaddingX, contentY);
                 drawList->AddText(
-                    keyPos, chip.selected ? textColor : mutedColor,
+                    keyPos, chip.selected ? invertedTextColor : mutedColor,
                     chip.key.c_str());
                 const float valueX = keyPos.x + chip.keyWidth + 4.0f;
                 const float valueMaxX = std::max(
                     valueX, chipMax.x - CandidatePaddingX);
                 DrawTextEllipsizedHorizontally(
                     drawList, prepared.font, prepared.fontSize, ImVec2(valueX, contentY),
-                    valueX, valueMaxX, clipMinY, clipMaxY, textColor,
+                    valueX, valueMaxX, clipMinY, clipMaxY,
+                    chip.selected ? invertedTextColor : textColor,
                     chip.value, chip.valueWidth, prepared.ellipsisWidth);
                 drawList->PopClipRect();
                 contentX += visibleWidth + RailItemGap;
@@ -583,7 +586,6 @@ namespace Overlay::Ime::Presentation {
             return;
         const PreparedComposition &composition = prepared.composition;
         const CandidateRail &candidates = prepared.candidates;
-        const ImGuiStyle &style = ImGui::GetStyle();
         const float lineHeight = prepared.lineHeight;
         // A merged CJK fallback may extend above the primary font's logical
         // line origin. Fit the row to actual glyph bounds instead of assuming
@@ -629,15 +631,9 @@ namespace Overlay::Ime::Presentation {
 
         ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
         ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
-        const ImVec4 railBackground =
-            InputSurfaceStyle::PanelBackground();
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, railBackground);
-        ImGui::PushStyleColor(ImGuiCol_Border,
-                              style.Colors[ImGuiCol_Separator]);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,
-                            InputSurfaceStyle::BorderSize);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,
-                            InputSurfaceStyle::Rounding);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, RailBackgroundColor);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
                             ImVec2(RailPaddingX, RailPaddingY));
         constexpr ImGuiWindowFlags flags =
@@ -649,11 +645,12 @@ namespace Overlay::Ime::Presentation {
             ImGuiWindowFlags_NoScrollWithMouse;
         if (ImGui::Begin(WindowName, nullptr, flags)) {
             ImDrawList *drawList = ImGui::GetWindowDrawList();
-            const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
-            const ImU32 mutedColor = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-            const ImU32 selectionColor = ImGui::GetColorU32(InputSurfaceStyle::SelectionColor());
-            const ImU32 cursorColor = ImGui::GetColorU32(ImGuiCol_InputTextCursor);
-            const ImU32 separatorColor = ImGui::GetColorU32(ImGuiCol_Separator);
+            const ImU32 textColor = ImGui::GetColorU32(TextColor);
+            const ImU32 mutedColor = ImGui::GetColorU32(MutedTextColor);
+            const ImU32 selectionColor = ImGui::GetColorU32(SelectionColor);
+            const ImU32 invertedTextColor = ImGui::GetColorU32(InvertedTextColor);
+            const ImU32 cursorColor = textColor;
+            const ImU32 separatorColor = mutedColor;
             const ImVec2 windowPos = ImGui::GetWindowPos();
             const float windowMaxY = windowPos.y + windowSize.y;
             const float contentY = windowPos.y + verticalFit.textOrigin;
@@ -743,11 +740,11 @@ namespace Overlay::Ime::Presentation {
 
             DrawCandidateChips(drawList, prepared, contentX, contentY, candidatesMaxX,
                                contentMinY, contentMaxY, windowPos.y, windowMaxY,
-                               textColor, mutedColor, selectionColor);
+                               textColor, mutedColor, selectionColor, invertedTextColor);
         }
         ImGui::End();
         ImGui::PopStyleVar(3);
-        ImGui::PopStyleColor(2);
+        ImGui::PopStyleColor();
     }
 
     void ReservePlacement(const ImVec2 &position, float width) {

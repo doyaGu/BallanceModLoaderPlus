@@ -28,6 +28,7 @@ public:
     void SaveHistory();
 
     void ToggleCommandBar(bool on = true);
+    static float MeasureRowHeight();
     void SetFrameLayout(const ConsoleLayout::Stack &layout) { m_FrameLayout = layout; }
     void SetCompositionActive(bool active) { m_TextCompositionActive = active; }
     bool HasActiveTextInput() const { return IsVisible() && m_InputActive; }

@@ -9,9 +9,9 @@
 
 #include "Loader/ModContext.h"
 #include "StringUtils.h"
-#include "UI/InputSurfaceStyle.h"
 
 static constexpr float MaximumDisplayHeightRatio = 0.8f;
+static constexpr ImVec4 DefaultBackgroundColor = {0.0f, 0.0f, 0.0f, 155.0f / 255.0f};
 
 // =============================================================================
 // MessageUnit Implementation
@@ -244,7 +244,7 @@ void MessageBoard::OnPreBegin() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-    ImVec4 winBg = m_HasCustomWindowBg ? m_WindowBgColor : Bui::GetMenuColor();
+    ImVec4 winBg = m_HasCustomWindowBg ? m_WindowBgColor : DefaultBackgroundColor;
     winBg.w = std::clamp(winBg.w * std::clamp(m_WindowBgAlphaScale, 0.0f, 1.0f), 0.0f, 1.0f);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, winBg);
 
@@ -326,7 +326,7 @@ void MessageBoard::OnDraw() {
 }
 
 void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth, const FrameLayout &layout) {
-    const ImVec4 backgroundBase = m_HasCustomMessageBg ? m_MessageBgColor : Bui::GetMenuColor();
+    const ImVec4 backgroundBase = m_HasCustomMessageBg ? m_MessageBgColor : DefaultBackgroundColor;
     const float backgroundAlpha = std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f);
     const float maximumAlpha = std::clamp(m_FadeMaxAlpha, 0.0f, 1.0f);
     const ImU32 backgroundRgb = ImGui::ColorConvertFloat4ToU32(

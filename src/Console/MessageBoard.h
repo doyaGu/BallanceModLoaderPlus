@@ -244,8 +244,8 @@ private:
     int m_TabColumns = AnsiText::DefaultTabColumns; // Tab size in columns
     bool m_HasCustomWindowBg = false;
     bool m_HasCustomMessageBg = false;
-    ImVec4 m_WindowBgColor = {};        // If !m_HasCustomWindowBg, use Bui::GetMenuColor()
-    ImVec4 m_MessageBgColor = {};       // If !m_HasCustomMessageBg, use Bui::GetMenuColor()
+    ImVec4 m_WindowBgColor = {};        // If !m_HasCustomWindowBg, use the Console background.
+    ImVec4 m_MessageBgColor = {};       // If !m_HasCustomMessageBg, use the Console background.
     float m_WindowBgAlphaScale = 1.0f;
     float m_MessageBgAlphaScale = 1.0f;
     float m_FadeMaxAlpha = 1.0f;

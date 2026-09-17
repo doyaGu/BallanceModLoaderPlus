@@ -13,7 +13,6 @@
 #include "Console/FontCommand.h"
 #include "StringUtils.h"
 #include "UI/Ime/Presentation.h"
-#include "UI/InputSurfaceStyle.h"
 
 const Console::Setting *Console::GetSettings(size_t &count) {
     static const Setting settings[] = {
@@ -152,10 +151,10 @@ void Console::OnProcess() {
 
     const bool visible = m_CommandBar.IsVisible();
     const ImGuiViewport *viewport = ImGui::GetMainViewport();
-    const float transientHeight = InputSurfaceStyle::TransientHeight(ImGui::GetTextLineHeight());
+    const float rowHeight = CommandBar::MeasureRowHeight();
     const ConsoleLayout::Stack layout = ConsoleLayout::Calculate(
         {viewport->WorkPos.x, viewport->WorkPos.y, viewport->WorkSize.x, viewport->WorkSize.y},
-        transientHeight, transientHeight);
+        rowHeight, rowHeight);
     m_CommandBar.SetFrameLayout(layout);
     m_MessageBoard.SetFrameLayout(layout);
     m_CommandBar.SetCompositionActive(Overlay::Ime::Presentation::IsActive());
