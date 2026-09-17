@@ -57,7 +57,7 @@ The test-only cross-process Module coordinating one visible Ballance Player UI j
 _Avoid_: log protocol, marker polling, sleep handshake, UI test service
 
 **UI Automation Journey**:
-One independently runnable visible Player scenario that begins in the native game menu and exercises one player-facing outcome. Fixtures may prepare data, but the behavior under test must be performed through native keyboard input, the Built-in Console, or visible ImGui items. Native menu transitions and surface captures use separate Interfaces; observations occur after the relevant user action, and the installation transaction restores modified files and configuration even when the journey fails.
+One independently runnable visible Player scenario that begins in the native game menu and exercises one player-facing outcome. Its C++ implementation lives in `tests/ui/player/journeys/`, grouped by the feature it exercises; one test descriptor identifies that source for both the build and the runner. Fixtures may prepare data, but the behavior under test must be performed through native keyboard input, the Built-in Console, or visible ImGui items. Native menu transitions and surface captures use separate Interfaces; observations occur after the relevant user action, and the installation transaction restores modified files and configuration even when the journey fails.
 _Avoid_: UI smoke pipeline, business-action shortcut, aggregate Player run
 
 **Overlay Platform Input**:
@@ -156,10 +156,12 @@ The private source tree follows these runtime concepts instead of collecting unr
 - `src/Console/`, `src/HUD/`, and `src/CustomMaps/` contain the Built-in Console, Built-in HUD, and Built-in Custom Maps modules respectively.
 - `src/Gameplay/` contains the loader-owned game session, game event hooks, and gameplay tweaks.
 - `src/Config/`, `src/DataShare/`, `src/Imc/`, and `src/Logging/` each keep one cross-cutting runtime concern local.
-- `src/ModMenu/` owns the built-in Mod Menu's model, session, page registry, presentation, and test-only Mod Menu journey. `src/UI/` contains shared UI infrastructure: Overlay lifecycle, Overlay Platform Input, Script ImGui Ownership, ANSI Text, the Built-in UI Font Runtime, Game Font Catalog, and Legacy GUI Text. Its `Ime/` subtree keeps IME Runtime, native presentation policy, TSF adaptation, rail layout, and IME Presentation together behind the Runtime and Presentation seams. Its test-only `Automation/` subtree provides the UI Automation Session Module and shared journey framework; production UI does not depend on the native runner. `src/Hooks/` contains process and engine hooks; `src/Virtools/` contains only shared low-level CK graph helpers that do not belong to a deeper runtime module. The Hook Block Prototype, registration, execution, and spec all belong to `src/Behavior/HookBlock.*`.
+- `src/ModMenu/` owns the built-in Mod Menu's model, session, page registry, and presentation. `src/UI/` contains shared UI infrastructure: Overlay lifecycle, Overlay Platform Input, Script ImGui Ownership, ANSI Text, the Built-in UI Font Runtime, Game Font Catalog, and Legacy GUI Text. Its `Ime/` subtree keeps IME Runtime, native presentation policy, TSF adaptation, rail layout, and IME Presentation together behind the Runtime and Presentation seams. Test-only Player automation, its journeys, and the shared UI Automation Session live under `tests/ui/`; production lifecycle code retains only guarded calls into the test Player driver. `src/Hooks/` contains process and engine hooks; `src/Virtools/` contains only shared low-level CK graph helpers that do not belong to a deeper runtime module. The Hook Block Prototype, registration, execution, and spec all belong to `src/Behavior/HookBlock.*`.
 - `src/AngelScript/` and `src/Utils/` remain independently navigable implementation families.
 
 Private includes use these directory names explicitly, so a caller reveals which module interface it crosses.
+
+Test implementations are grouped by execution seam under `tests/`: `unit/<domain>/` owns in-process tests, `contracts/` owns ABI, codegen, and SDK checks, `player/` owns probe-driven Player acceptance, and `ui/` owns ImGui and visible UI acceptance. The Player probe runner and the UI Automation Session are separate test Modules; neither is a generic substitute for the other.
 
 ## Example dialogue
 

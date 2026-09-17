@@ -29,7 +29,7 @@ add_custom_target(BML_VersionHeader ALL
 
 # The IMC code generator is an authoring tool for mods that publish their own
 # .imc interfaces. The loader ships none of its own, so nothing here runs it;
-# the sample interface under tests/imc is what keeps the generator covered.
+# the sample interface under tests/contracts/imc is what keeps the generator covered.
 find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 
 add_subdirectory(Utils)

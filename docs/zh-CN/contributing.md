@@ -180,7 +180,7 @@ powershell -ExecutionPolicy Bypass `
 | IMC 运行时 | `src/Imc/ImcApi.cpp`、`src/Imc/ImcRuntime.*` | IMC 运行时/兼容性测试和原生 IMC 冒烟测试 |
 | 内建 interface struct 或其背后的读取实现 | `include/BML/Interface.h`、`src/Api/Interfaces.cpp`、`src/Api/BuiltinCapabilities.*` | 定向 interface 测试、C ABI 编译测试和原生冒烟测试 |
 | C/脚本 seam 的不透明 CK 对象引用 | `include/BML/Types.h`、`src/Api/ObjectRefs.*` | `ObjectRefsTest`、C ABI/IMC 编译测试；删除时序改变时再做 Player 生命周期测试 |
-| IMC 代码生成器或其示例接口 | `tools/imc_codegen.py`、`tests/imc/` | 生成器检查、兼容性测试，并一起审查接口、lock 和头文件 |
+| IMC 代码生成器或其示例接口 | `tools/imc_codegen.py`、`tests/contracts/imc/` | 生成器检查、兼容性测试，并一起审查接口、lock 和头文件 |
 | 脚本发现、绑定、执行或重载 | `src/AngelScript/`、`docs/api/` | 定向脚本测试、API stub 检查和脚本版 Player 冒烟测试 |
 | 公开文档或发布目录 | `docs/`、`src/CMakeLists.txt`、`scripts/Package-BMLRelease.ps1` | 中英文严格文档构建、CMake install 和 SDK stage 校验 |
 
@@ -206,7 +206,7 @@ powershell -ExecutionPolicy Bypass `
 ## 生成式接口
 
 Loader 自己不发布任何 `.imc` 接口，生成器是给发布接口的 Mod 用的编写工具。
-本仓库里有两个 `.imc` 文件，都属于测试。`tests/imc/test.sample.imc` 让生成器、
+本仓库里有两个 `.imc` 文件，都属于测试。`tests/contracts/imc/test.sample.imc` 让生成器、
 lock 格式和已提交的输出都保持在测试覆盖之下。`tests/smoke/smoke.native.imc`
 属于原生冒烟 Mod，它在 Player 中既发布该接口又反过来消费它，让 Loader 的 IMC
 导出在运行期持续被覆盖；`bml_target_imc_api` 把它的生成头写进构建树，因此仓库
@@ -217,8 +217,8 @@ lock 格式和已提交的输出都保持在测试覆盖之下。`tests/smoke/sm
 ```powershell
 python tools/imc_codegen.py `
   --update-lock `
-  --out-dir tests/imc/generated `
-  --input tests/imc/test.sample.imc
+  --out-dir tests/contracts/imc/generated `
+  --input tests/contracts/imc/test.sample.imc
 ```
 
 `.imc`、`.imc.lock` 和生成头应一起审查和提交。lock 保存稳定的字段与端点标识，
