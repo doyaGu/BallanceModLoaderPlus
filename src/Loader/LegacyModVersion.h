@@ -8,7 +8,7 @@
 namespace BML {
 
 // IMod::GetVersion() historically accepted arbitrary text around the first
-// three digit runs. Keep that contract at the frozen facade boundary.
+// three digit runs. Preserve that parsing rule at the frozen facade boundary.
 inline BMLVersion ParseLegacyModVersion(const char *text) noexcept {
     int parts[3] = {};
     int partCount = 0;

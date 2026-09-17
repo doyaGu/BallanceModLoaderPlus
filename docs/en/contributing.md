@@ -18,14 +18,14 @@ BallancePlayer / Virtools CK2
         /         \
  native mods     script host   IMod callbacks / CKAngelScript callbacks
         \         /
-       built-in services and generated IMC APIs
+       built-in loader features
 ```
 
 `ModManager` connects the Virtools manager lifecycle to BML+. `ModContext`
 owns mod discovery, dependency order, callback dispatch, public services, and
 shutdown. Native mods enter through the installed C++ ABI; script mods enter
-through the CKAngelScript host. Built-in generated IMC Providers project
-loader-owned behavior rather than implementing a second copy of it.
+through the CKAngelScript host. Mods may use IMC to publish their own interfaces;
+the loader does not publish a generated IMC interface.
 
 ## Development environment
 
@@ -73,8 +73,8 @@ cmake -S . -B build-dev `
   -DBML_BUILD_TESTS=ON `
   -DCMAKE_INSTALL_PREFIX="<absolute-path-to-install-dev>"
 
-cmake --build build-dev --config Debug
-ctest --test-dir build-dev -C Debug --output-on-failure
+cmake --build build-dev --config Debug --target BML BehaviorExecutionTest
+ctest --test-dir build-dev -C Debug -R '^BehaviorExecutionTest$' --output-on-failure
 ```
 
 The Debug DLL is written to `build-dev/bin/Debug/BMLPlus.dll` with Visual
@@ -82,8 +82,7 @@ Studio. A single-configuration generator writes it to
 `build-dev/bin/BMLPlus.dll`. Build Release before packaging:
 
 ```powershell
-cmake --build build-dev --config Release
-ctest --test-dir build-dev -C Release --output-on-failure
+cmake --build build-dev --config Release --target BML
 ```
 
 To verify the installed SDK layout and its consumer helpers:
@@ -98,99 +97,26 @@ adds the native/script templates and editor API files to that installed tree.
 
 ## Runtime validation
 
-Unit and integration tests do not exercise Virtools or the real Player. Changes
-to hooks, lifecycle order, rendering, input, CK object access, native mod
-loading, or script hosting also require validation in the real Player. Choose
-the validation level that observes the behavior being changed:
+Choose the smallest test that observes the changed behavior:
 
-- `tests/smoke/Validate-BMLBallance.ps1` checks deployment, Mod loading,
-  exported runtime surfaces, shutdown, and installation restoration. It is a
-  process-integration smoke test, not proof of Building Block semantics.
-- A focused Player scenario drives the actual game path and checks an observable
-  world result. Use this level for behavior execution, physics epochs, graph
-  changes, lifecycle ordering, rendering, or input behavior.
+| Change | Validation |
+| --- | --- |
+| Pure logic, parsing, or public headers | Build and run the affected unit or ABI test |
+| Loader startup, installation, or native/script loading | Run the focused smoke script under `tests/smoke/` |
+| CK lifecycle, Behavior execution, physics, or gameplay | Run the affected real-Player runner under `tests/player/` |
+| Visible ImGui, input, or menu navigation | Run the affected scenario described in `tests/ui/README.md` |
 
-Set `BML_BALLANCE_ROOT` or pass `-BallanceRoot` to the smoke script:
-
-```powershell
-powershell -ExecutionPolicy Bypass `
-  -File tests/smoke/Validate-BMLBallance.ps1 `
-  -BallanceRoot "<Ballance-root>" `
-  -BuildDll "build-dev/bin/Debug/BMLPlus.dll"
-```
-
-Close any existing Player process before replacing a loaded DLL. The script
-backs up the installed loader, installs smoke assets, starts Player, validates
-the logs, and restores the previous installation unless `-KeepInstalled` is
-specified.
-
-Player acceptance is split into one driver Mod and one probe Mod per subject.
-`PlayerFlowDriver` owns only the shipped flow: the menu graph into Level 01, the
-tutorial exit handshake, the frame captures, and the exit. It knows no subject
-under test. Every verdict comes from a probe Mod whose DLL exports
-`BMLPlayerProbeRead`; the driver discovers the loaded probes, waits for each one
-to report, and fails the run when a probe fails. A probe that reads gameplay
-state also exports `BMLPlayerProbeStart`, so the driver decides when it may
-touch the ball, the camera, or input. Which subjects a run covers is therefore
-decided by which probes the runner installs, not by the driver.
-
-The ExecuteBB probe physicalizes a body it owns itself, so it proves the
-ExecuteBB physics operations without depending on the retail ball:
-
-```powershell
-cmake --build build-dev --config RelWithDebInfo --target BML `
-  PlayerFlowDriver ExecuteBBTest
-powershell -ExecutionPolicy Bypass `
-  -File tests/player/Invoke-ExecuteBBTest.ps1 `
-  -BallanceRoot "<Ballance-root>" `
-  -BuildDll "build-dev/bin/RelWithDebInfo/BMLPlus.dll"
-```
-
-Every runner shows the Player window by default and restores the installed
-loader, the test Mods, and the logs when it finishes.
-
-The gameplay route test drives the real shipped level independently of the
-Behavior and ExecuteBB acceptance sets:
-
-| Runner | Probe | Subject |
-| --- | --- | --- |
-| `Invoke-InterfaceProviderTest.ps1` | `InterfaceConsumerTest` plus `InterfaceProviderTest` | Native provider registration, cross-DLL lookup, ownership checks, explicit unregister, and automatic cleanup before DLL release |
-| `Invoke-GameplayRouteTest.ps1` | `GameplayRouteTest` | The authored Level_01 route; reports SKIPPED while the route is under review |
-
-The Behavior Runtime probes cover the runtime semantics fixture, the transport
-seam, Patches, the published Plan and Hook facade, and the script hook a script
-Mod retires. They install together with their two Virtools fixture plugins:
-
-```powershell
-cmake --build build-dev --config RelWithDebInfo --target BML `
-  PlayerFlowDriver BehaviorRuntimeSemanticsTest BehaviorTransportTest `
-  BehaviorPatchTest BehaviorFacadeTest BehaviorScriptHookTest `
-  BehaviorLifecycleFixture BehaviorTransportFixture
-powershell -ExecutionPolicy Bypass `
-  -File tests/player/Invoke-BehaviorAcceptanceTest.ps1 `
-  -BallanceRoot "<Ballance-root>" `
-  -BuildDll "build-dev/bin/RelWithDebInfo/BMLPlus.dll"
-```
-
-Every probe path defaults to the directory holding the loader DLL, so one
-`-BuildDll` is enough. Add `-DisableAngelScript` when the install has no
-`AngelScript.dll`; the script hook probe then reports SKIPPED instead of
-failing.
-
-All runners share `tests/player/BMLPlayerHarness.psm1`. `Invoke-BMLPlayerRun`
-owns backing up and installing the touched files, starting Player, answering the
-FullScreen Setup dialog, capturing window screenshots, driving the tutorial exit
-key, and restoring the installation. `Get-BMLPlayerFlowChecks` turns the driver
-line and the probe verdicts into the checks every runner shares. Change that
-module when startup, the flow, or the probe protocol changes, not the individual
-runners.
+Real-Player tests modify a game installation during the run and restore it
+afterward. Close Player before starting one. Do not run every visible UI case
+for an unrelated change; the runner commands and probe ownership are in
+`tests/player/README.md` and `tests/ui/README.md`.
 
 ## Find the owner of a change
 
 | Change | Owner | Minimum focused validation |
 | --- | --- | --- |
 | Plugin entry, Hook Block registration, or engine interception | `src/BML.cpp`, `src/Behavior/HookBlock.*`, `src/Hooks/` | Win32 build plus the affected real Player scenario |
-| Building Block Prototype configuration, execution, or graph insertion | `src/Behavior/Runtime.*`, the affected `src/Behavior/<BuildingBlock>.*` module, `src/Api/ExecuteBB.cpp` | Dependency test, exported ABI test, Win32 build, and affected Player test |
+| Building Block configuration, execution, or graph insertion | `src/Behavior/Block.*`, `src/Behavior/Runtime.*`, `include/BML/Behavior/Blocks/`, `src/Api/ExecuteBB.cpp` | Focused Behavior and ABI tests, Win32 build, and affected Player test |
 | CK lifecycle and callback timing | `src/Loader/ModManager.*` | Focused lifecycle tests and Player smoke test |
 | Mod discovery, dependency order, services, or shutdown | `src/Loader/ModContext.*` | Relevant loader/dependency tests and native/script smoke coverage |
 | HUD, menus, command bar, or built-in behavior | `src/Mods/BMLMod.*`, `src/HUD/`, `src/Console/`, `src/CustomMaps/`, `src/ModMenu/`, `src/Gameplay/`, `src/UI/` | Focused UI/service tests and Player visual/input smoke test |
@@ -198,7 +124,7 @@ runners.
 | IMC runtime | `src/Imc/ImcApi.cpp`, `src/Imc/ImcRuntime.*` | IMC runtime/compatibility tests and native IMC smoke test |
 | Built-in interface struct or the reads behind it | `include/BML/Interface.h`, `src/Api/Interfaces.cpp`, `src/Api/BuiltinCapabilities.*` | Focused interface tests, the C ABI compile test, and native smoke test |
 | Opaque CK object references at the C/script seam | `include/BML/Types.h`, `src/Api/ObjectRefs.*` | `ObjectRefsTest`, C ABI/IMC compile tests, and a Player lifecycle test when deletion timing changes |
-| IMC code generator or its sample interface | `tools/imc_codegen.py`, `tests/contracts/imc/` | Generator check, compatibility test, and review of interface, lock, and header together |
+| IMC code generator or its sample interface | `tools/imc_codegen.py`, `tests/codegen/imc/` | Generator check, compatibility test, and review of interface, lock, and header together |
 | Script discovery, binding, execution, or reload | `src/AngelScript/`, `docs/api/` | Focused script tests, API stub check, and script-capable Player smoke test |
 | Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/Package-BMLRelease.ps1` | Both strict MkDocs builds, CMake install, and SDK stage validation |
 
@@ -228,14 +154,11 @@ same change.
 
 ## Generated interfaces
 
-The loader publishes no `.imc` interface of its own; the generator is an
-authoring tool for Mods that publish theirs. Two `.imc` files live in this
-repository, both as tests. `tests/contracts/imc/test.sample.imc` keeps the generator, its
-lock format, and its committed output under test.
-`tests/smoke/smoke.native.imc` belongs to the native smoke Mod, which publishes
-it and consumes it again in the Player so the loader's IMC exports stay
-exercised at runtime; `bml_target_imc_api` generates its header into the build
-tree, so only the `.imc` and its lock are committed.
+The loader publishes no `.imc` interface of its own; the generator is for Mods.
+`tests/codegen/imc/test.sample.imc` checks the generator, lock, and committed
+header. The `.imc` files under `tests/smoke/` and `tests/player/` exercise runtime
+interop; the provider template has its own starter interface. Runtime test
+headers are generated in the build tree.
 
 Do not edit a generated header by hand. Change the matching `.imc` file and run
 the generator. For the sample interface that is:
@@ -243,8 +166,8 @@ the generator. For the sample interface that is:
 ```powershell
 python tools/imc_codegen.py `
   --update-lock `
-  --out-dir tests/contracts/imc/generated `
-  --input tests/contracts/imc/test.sample.imc
+  --out-dir tests/codegen/imc/generated `
+  --input tests/codegen/imc/test.sample.imc
 ```
 
 Review and commit the `.imc`, `.imc.lock`, and generated header together. The

@@ -6,8 +6,8 @@
 // These tests drive test.sample, an interface that exists for them alone.
 // Pinning them to one of the loader's own interfaces made every change to that
 // interface churn this file, and a third-party mod is what the generated layer
-// is for in the first place. tests/contracts/imc/test.sample.imc is the authoring input
-// and tests/contracts/imc/generated holds the committed output.
+// is for in the first place. tests/codegen/imc/test.sample.imc is the authoring input
+// and tests/codegen/imc/generated holds the committed output.
 #include "test_sample_imc.hpp"
 
 #include <gtest/gtest.h>

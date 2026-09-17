@@ -169,7 +169,7 @@ binding, and keep the schema lock with the interface. See [Inter-mod communicati
 Use a CKAngelScript extension only when a script must directly borrow a
 plugin-specific native object or invoke an engine primitive that cannot be
 expressed as typed IMC data. Routine native/script service boundaries should
-use one generated IMC contract instead of maintaining a second hand-written API.
+use one generated IMC interface instead of maintaining a second hand-written API.
 
 ## Performance and ownership
 

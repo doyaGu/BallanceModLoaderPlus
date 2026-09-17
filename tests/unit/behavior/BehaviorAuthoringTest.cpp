@@ -1941,7 +1941,7 @@ TEST(BehaviorAuthoring, ResultSeparatesBorrowingFromConsumption) {
     EXPECT_THROW((void) result.Take(), std::bad_optional_access);
 }
 
-TEST(BehaviorAuthoring, OpensAgainstTheCompleteVersionOneContract) {
+TEST(BehaviorAuthoring, OpensAgainstTheCompleteVersionOneInterface) {
     g_State = {};
     const std::uint16_t minor = g_Interface.Header.MinorVersion;
     const std::size_t size = g_Interface.Header.StructSize;
@@ -3744,7 +3744,7 @@ TEST(BehaviorAuthoring, ContainsHookCallbackFailuresAtTheCSeam) {
     context.Script = {1, 0, 0};
     EXPECT_EQ(g_State.PlanHooks[0].Invoke(g_State.PlanHooks[0].State, &context),
               static_cast<int>(HookResult::Error));
-    // A missing context is a Loader-side contract violation, not an author
+    // A missing context is a Loader-side error, not an author
     // fault, so it is still reported as an explicit Error.
     EXPECT_EQ(g_State.PlanHooks[0].Invoke(g_State.PlanHooks[0].State, nullptr),
               static_cast<int>(HookResult::Error));

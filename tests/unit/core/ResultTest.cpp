@@ -69,7 +69,7 @@ TEST(Result, CopyOnlyValueCanBeConsumed) {
     EXPECT_EQ(result.Code(), BML_OK);
 }
 
-TEST(Result, VoidUsesTheSameStatusContract) {
+TEST(Result, VoidUsesTheSameStatusRules) {
     auto success = BML::Result<void>::Success();
     EXPECT_TRUE(success);
     EXPECT_EQ(success.Code(), BML_OK);
