@@ -198,7 +198,7 @@ runners.
 | IMC runtime | `src/Imc/ImcApi.cpp`, `src/Imc/ImcRuntime.*` | IMC runtime/compatibility tests and native IMC smoke test |
 | Built-in interface struct or the reads behind it | `include/BML/Interface.h`, `src/Api/Interfaces.cpp`, `src/Api/BuiltinCapabilities.*` | Focused interface tests, the C ABI compile test, and native smoke test |
 | Opaque CK object references at the C/script seam | `include/BML/Types.h`, `src/Api/ObjectRefs.*` | `ObjectRefsTest`, C ABI/IMC compile tests, and a Player lifecycle test when deletion timing changes |
-| IMC code generator or its sample interface | `tools/imc_codegen.py`, `tests/imc/` | Generator check, compatibility test, and review of interface, lock, and header together |
+| IMC code generator or its sample interface | `tools/imc_codegen.py`, `tests/contracts/imc/` | Generator check, compatibility test, and review of interface, lock, and header together |
 | Script discovery, binding, execution, or reload | `src/AngelScript/`, `docs/api/` | Focused script tests, API stub check, and script-capable Player smoke test |
 | Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/Package-BMLRelease.ps1` | Both strict MkDocs builds, CMake install, and SDK stage validation |
 
@@ -230,7 +230,7 @@ same change.
 
 The loader publishes no `.imc` interface of its own; the generator is an
 authoring tool for Mods that publish theirs. Two `.imc` files live in this
-repository, both as tests. `tests/imc/test.sample.imc` keeps the generator, its
+repository, both as tests. `tests/contracts/imc/test.sample.imc` keeps the generator, its
 lock format, and its committed output under test.
 `tests/smoke/smoke.native.imc` belongs to the native smoke Mod, which publishes
 it and consumes it again in the Player so the loader's IMC exports stay
@@ -243,8 +243,8 @@ the generator. For the sample interface that is:
 ```powershell
 python tools/imc_codegen.py `
   --update-lock `
-  --out-dir tests/imc/generated `
-  --input tests/imc/test.sample.imc
+  --out-dir tests/contracts/imc/generated `
+  --input tests/contracts/imc/test.sample.imc
 ```
 
 Review and commit the `.imc`, `.imc.lock`, and generated header together. The
