@@ -7,11 +7,11 @@
 #include <Windows.h>
 #include <stdexcept>
 
-#include "Behavior/HookBlock.h"
+#include "Behavior/Blocks/HookBlock.h"
 #include "Behavior/CKEdit.h"
 #include "BML/Behavior/Blocks.hpp"
 #include "Behavior/Block.h"
-#include "Behavior/PhysicsForce.h"
+#include "Behavior/Blocks/PhysicsForce.h"
 #include "Behavior/Runtime.h"
 #include "Behavior/Sessions.h"
 #include "BML/Guids/Interface.h"

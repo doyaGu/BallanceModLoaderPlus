@@ -133,21 +133,23 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKGraph.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Edit.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Execution.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/FrameStore.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Lifecycle.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Layout.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/Hook.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/HookBlock.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/FrameStore.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Parameter.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/Value.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/PhysicsForce.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PrototypeCatalog.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Relations.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Sessions.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/Text2DView.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Topology.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Value.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Watch.cpp
+
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/Hook.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/HookBlock.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/PhysicsForce.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/Text2DView.cpp
+
         ${PROJECT_SOURCE_DIR}/src/Virtools/CKGraphOrder.cpp
 )
 target_include_directories(BehaviorRuntimeSemanticsTest PRIVATE

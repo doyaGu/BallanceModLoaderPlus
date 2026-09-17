@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "Behavior/Graph.h"
-#include "Behavior/HookBlock.h"
+#include "Behavior/Blocks/HookBlock.h"
 #include "Behavior/Topology.h"
 
 namespace BML::Behavior::Internal {

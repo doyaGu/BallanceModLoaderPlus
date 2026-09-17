@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_PHYSICSFORCE_H
-#define BML_BEHAVIOR_PHYSICSFORCE_H
+#ifndef BML_BEHAVIOR_BLOCKS_PHYSICSFORCE_H
+#define BML_BEHAVIOR_BLOCKS_PHYSICSFORCE_H
 
 #include <list>
 #include <optional>
@@ -90,4 +90,4 @@ private:
 
 } // namespace BML::Behavior::Internal::PhysicsForce
 
-#endif // BML_BEHAVIOR_PHYSICSFORCE_H
+#endif // BML_BEHAVIOR_BLOCKS_PHYSICSFORCE_H

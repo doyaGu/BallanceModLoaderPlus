@@ -4,7 +4,7 @@
 #include "BML/ILogger.h"
 #include "UI/GameFontCatalog.h"
 #include "Api/ExecuteBBAdapter.h"
-#include "Behavior/HookBlock.h"
+#include "Behavior/Blocks/HookBlock.h"
 #include "Behavior/Block.h"
 #include "BML/Behavior/Blocks.hpp"
 

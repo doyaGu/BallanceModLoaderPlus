@@ -14,7 +14,7 @@
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "Loader/ModContext.h"
-#include "Behavior/HookBlock.h"
+#include "Behavior/Blocks/HookBlock.h"
 
 namespace BML {
 

@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_HOOKBLOCK_H
-#define BML_BEHAVIOR_HOOKBLOCK_H
+#ifndef BML_BEHAVIOR_BLOCKS_HOOKBLOCK_H
+#define BML_BEHAVIOR_BLOCKS_HOOKBLOCK_H
 
 #include <cstdint>
 
@@ -124,4 +124,4 @@ void Register(XObjectDeclarationArray *registry);
 
 } // namespace BML::Behavior::Internal::HookBlock
 
-#endif // BML_BEHAVIOR_HOOKBLOCK_H
+#endif // BML_BEHAVIOR_BLOCKS_HOOKBLOCK_H

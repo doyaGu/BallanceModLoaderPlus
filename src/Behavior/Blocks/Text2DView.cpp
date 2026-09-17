@@ -1,4 +1,4 @@
-#include "Behavior/Text2DView.h"
+#include "Behavior/Blocks/Text2DView.h"
 
 #include "BML/Guids/Interface.h"
 #include <string>

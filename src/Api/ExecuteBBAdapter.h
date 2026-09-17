@@ -7,7 +7,7 @@
 #include "Behavior/Block.h"
 #include "BML/Behavior/Blocks/ObjectLoad.hpp"
 #include "BML/Behavior/Blocks/PhysicsForce.hpp"
-#include "Behavior/PhysicsForce.h"
+#include "Behavior/Blocks/PhysicsForce.h"
 #include "Behavior/Runtime.h"
 
 namespace BML {

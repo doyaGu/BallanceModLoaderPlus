@@ -161,7 +161,8 @@ Behavior Runtime does not depend on ExecuteBB.
 - src/BML.cpp composes the loader; src/Mods/ contains its bundled Mods.
 - src/Loader/ owns Mod discovery, invocation, and CK manager integration.
 - src/Api/ adapts public BML interfaces to private implementations.
-- src/Behavior/ owns Sessions, Prototypes, Blocks, graph authoring, and Runtime.
+- src/Behavior/ owns Sessions, Prototypes, graph authoring, and Runtime.
+  src/Behavior/Blocks/ holds private implementations tied to individual BBs.
 - src/Console/, src/HUD/, src/CustomMaps/, src/Gameplay/, and src/ModMenu/
   own their named built-in features.
 - src/UI/ owns shared Overlay, input, text, fonts, and IME infrastructure.
