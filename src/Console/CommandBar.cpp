@@ -1,7 +1,6 @@
 #include "Console/CommandBar.h"
 
 #include "UI/BuiInternal.h"
-#include "UI/InputSurfaceStyle.h"
 
 #include <algorithm>
 #include <cctype>
@@ -22,6 +21,16 @@
 
 namespace {
     constexpr wchar_t CommandHistoryFile[] = L"CommandBar.history";
+    constexpr float PaddingX = 8.0f;
+    constexpr float PaddingY = 5.0f;
+    constexpr float ItemGap = 6.0f;
+    constexpr float ChipPaddingX = 6.0f;
+    constexpr ImVec4 PanelBackgroundColor = {0.0f, 0.0f, 0.0f, 155.0f / 255.0f};
+    constexpr ImVec4 TextColor = {1.0f, 1.0f, 1.0f, 1.0f};
+    constexpr ImVec4 MutedTextColor = {1.0f, 1.0f, 1.0f, 0.65f};
+    constexpr ImVec4 InvertedTextColor = {0.0f, 0.0f, 0.0f, 1.0f};
+    constexpr ImVec4 SelectedBackgroundColor = {1.0f, 1.0f, 1.0f, 1.0f};
+    constexpr ImVec4 HoveredBackgroundColor = {1.0f, 1.0f, 1.0f, 0.8f};
 
     std::wstring BuildHistoryPath(const std::wstring &loaderDirectory) {
         if (loaderDirectory.empty())
@@ -112,11 +121,10 @@ namespace {
     }
 
     struct RailColors {
-        ImU32 text;
-        ImU32 disabled;
-        ImU32 selection;
-        ImU32 hover;
-        ImU32 active;
+        ImU32 mutedText;
+        ImU32 invertedText;
+        ImU32 selectedBackground;
+        ImU32 hoveredBackground;
     };
 
     bool DrawRailButton(const char *id, const char *label, const ImVec2 &labelSize,
@@ -129,12 +137,17 @@ namespace {
         const bool active = ImGui::IsItemActive();
         if (hovered) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-            drawList->AddRectFilled(minimum, maximum, active ? colors.active : colors.hover,
-                                    InputSurfaceStyle::Rounding);
+            drawList->AddRectFilled(minimum, maximum,
+                                    active ? colors.selectedBackground : colors.hoveredBackground);
         }
-        drawList->AddText(CenterText(minimum, maximum, labelSize), hovered ? colors.text : colors.disabled, label);
+        drawList->AddText(CenterText(minimum, maximum, labelSize),
+                          hovered ? colors.invertedText : colors.mutedText, label);
         return pressed;
     }
+}
+
+float CommandBar::MeasureRowHeight() {
+    return ImGui::GetTextLineHeight() + PaddingY * 2.0f;
 }
 
 bool CommandBar::CandidateState::Add(const std::string &candidate) {
@@ -176,18 +189,18 @@ void CommandBar::CandidateState::BuildPages(float maxWidth) {
 
     const std::string maximumPageStatus = std::to_string(m_Items.size()) + "/" + std::to_string(m_Items.size());
     const float pagerReserve = ImGui::CalcTextSize(maximumPageStatus.c_str()).x +
-        (ImGui::CalcTextSize(">").x + InputSurfaceStyle::ChipPaddingX * 2.0f) * 2.0f +
-        InputSurfaceStyle::ItemGap * 2.0f;
+        (ImGui::CalcTextSize(">").x + ChipPaddingX * 2.0f) * 2.0f +
+        ItemGap * 2.0f;
     const float availableWidth = std::max(
-        1.0f, maxWidth - InputSurfaceStyle::PaddingX * 2.0f -
+        1.0f, maxWidth - PaddingX * 2.0f -
                   pagerReserve);
     float width = 0.0f;
     m_PageStarts.push_back(0);
 
     for (int i = 0; i < static_cast<int>(m_Items.size()); ++i) {
-        const float itemWidth = m_ItemSizes[i].x + InputSurfaceStyle::ChipPaddingX * 2.0f;
+        const float itemWidth = m_ItemSizes[i].x + ChipPaddingX * 2.0f;
         const float nextWidth = width + (width > 0.0f
-            ? InputSurfaceStyle::ItemGap
+            ? ItemGap
             : 0.0f) + itemWidth;
         if (nextWidth > availableWidth && i > m_PageStarts.back()) {
             m_PageStarts.push_back(i);
@@ -413,19 +426,18 @@ void CommandBar::OnDraw() {
     const ImVec2 rowMax(m_WindowPos.x + m_WindowSize.x,
                         m_WindowPos.y + m_CommandHeight);
     ImDrawList *drawList = ImGui::GetWindowDrawList();
-    InputSurfaceStyle::DrawPanel(
-        drawList, rowMin, rowMax, InputSurfaceStyle::PanelBackground());
+    drawList->AddRectFilled(rowMin, rowMax, ImGui::GetColorU32(PanelBackgroundColor));
 
     constexpr const char *Prompt = ">";
     const ImVec2 promptPos(
-        rowMin.x + InputSurfaceStyle::PaddingX,
+        rowMin.x + PaddingX,
         rowMin.y + std::max(0.0f, m_CommandHeight - m_PromptSize.y) * 0.5f);
-    drawList->AddText(promptPos, ImGui::GetColorU32(InputSurfaceStyle::HoverColor()), Prompt);
+    drawList->AddText(promptPos, ImGui::GetColorU32(TextColor), Prompt);
 
     const float inputX = promptPos.x + m_PromptSize.x +
-                         InputSurfaceStyle::ItemGap;
+                         ItemGap;
     const float inputWidth = std::max(
-        1.0f, rowMax.x - InputSurfaceStyle::PaddingX - inputX);
+        1.0f, rowMax.x - PaddingX - inputX);
     ImGui::SetCursorScreenPos(ImVec2(inputX, rowMin.y));
     ImGui::SetNextItemWidth(inputWidth);
     if (!m_VisiblePrev || m_FocusInputNextFrame)
@@ -445,13 +457,14 @@ void CommandBar::OnDraw() {
         dismissCompletion = ImGui::IsKeyPressed(ImGuiKey_Escape, ImGuiInputFlags_None, completionOwner);
     }
 
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, InputSurfaceStyle::PaddingY));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, PaddingY));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
     const ImVec4 transparent(0.0f, 0.0f, 0.0f, 0.0f);
     ImGui::PushStyleColor(ImGuiCol_FrameBg, transparent);
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, transparent);
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive, transparent);
     ImGui::PushStyleColor(ImGuiCol_Border, transparent);
+    ImGui::PushStyleColor(ImGuiCol_Text, TextColor);
 
     ImGuiInputTextFlags inputTextFlags = ImGuiInputTextFlags_EscapeClearsAll |
                                         ImGuiInputTextFlags_CallbackAlways |
@@ -460,7 +473,7 @@ void CommandBar::OnDraw() {
         inputTextFlags |= ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory;
     const bool submitted = ImGui::InputTextWithHint("##CmdBar", "Enter a command", &m_Buffer, inputTextFlags,
                                                     &TextEditCallback, this);
-    ImGui::PopStyleColor(4);
+    ImGui::PopStyleColor(5);
     ImGui::PopStyleVar(2);
     m_InputActive = ImGui::IsItemActive();
 
@@ -500,42 +513,42 @@ void CommandBar::DrawCompletionSurface() {
                                             ImGuiWindowFlags_NoScrollWithMouse |
                                             ImGuiWindowFlags_NoNav;
     if (ImGui::BeginChild("##CmdHints", m_TransientSize, ImGuiChildFlags_None, ChildFlags)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, TextColor);
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         const RailColors colors{
-            ImGui::GetColorU32(ImGuiCol_Text),
-            ImGui::GetColorU32(ImGuiCol_TextDisabled),
-            ImGui::GetColorU32(InputSurfaceStyle::SelectionColor()),
-            ImGui::GetColorU32(InputSurfaceStyle::HoverColor()),
-            ImGui::GetColorU32(InputSurfaceStyle::ActiveColor()),
+            ImGui::GetColorU32(MutedTextColor),
+            ImGui::GetColorU32(InvertedTextColor),
+            ImGui::GetColorU32(SelectedBackgroundColor),
+            ImGui::GetColorU32(HoveredBackgroundColor),
         };
         const ImVec2 railMin = m_TransientPos;
         const ImVec2 railMax(m_TransientPos.x + m_TransientSize.x,
                              m_TransientPos.y + m_TransientSize.y);
-        InputSurfaceStyle::DrawPanel(drawList, railMin, railMax, InputSurfaceStyle::PanelBackground());
+        drawList->AddRectFilled(railMin, railMax, ImGui::GetColorU32(PanelBackgroundColor));
 
         const float lineHeight = m_TextLineHeight;
         const float contentY = railMin.y +
             std::max(0.0f, m_TransientSize.y - lineHeight) * 0.5f;
-        float contentX = railMin.x + InputSurfaceStyle::PaddingX;
-        float contentMaxX = railMax.x - InputSurfaceStyle::PaddingX;
+        float contentX = railMin.x + PaddingX;
+        float contentMaxX = railMax.x - PaddingX;
 
         const int pageCount = std::max(1, m_Candidates.PageCount());
         const std::string &status = m_Candidates.Status();
         const float statusWidth = m_Candidates.StatusWidth();
-        const float buttonWidth = lineHeight + InputSurfaceStyle::ChipPaddingX;
+        const float buttonWidth = lineHeight + ChipPaddingX;
         const float controlsWidth = statusWidth +
             (pageCount > 1
-                 ? buttonWidth * 2.0f + InputSurfaceStyle::ItemGap * 2.0f
+                 ? buttonWidth * 2.0f + ItemGap * 2.0f
                  : 0.0f);
         const float controlsX = std::max(contentX, contentMaxX - controlsWidth);
-        contentMaxX = std::max(contentX, controlsX - InputSurfaceStyle::ItemGap);
+        contentMaxX = std::max(contentX, controlsX - ItemGap);
 
         const int begin = m_Candidates.PageBegin();
         const int end = m_Candidates.PageEnd();
         for (int i = begin; i < end && contentX < contentMaxX; ++i) {
             const char *label = m_Candidates[i].c_str();
             const ImVec2 &labelSize = m_Candidates.ItemSize(i);
-            const float desiredWidth = labelSize.x + InputSurfaceStyle::ChipPaddingX * 2.0f;
+            const float desiredWidth = labelSize.x + ChipPaddingX * 2.0f;
             const float width = std::min(desiredWidth, contentMaxX - contentX);
             if (width <= 1.0f)
                 break;
@@ -556,22 +569,26 @@ void CommandBar::DrawCompletionSurface() {
             ImGui::PopID();
 
             if (selected || hovered) {
-                const ImU32 color = hovered ? (active ? colors.active : colors.hover) : colors.selection;
-                drawList->AddRectFilled(chipMin, chipMax, color, InputSurfaceStyle::Rounding);
+                const ImU32 color = selected || active ? colors.selectedBackground : colors.hoveredBackground;
+                drawList->AddRectFilled(chipMin, chipMax, color);
             }
-            const ImVec2 textMin(chipMin.x + InputSurfaceStyle::ChipPaddingX, contentY);
-            const ImVec2 textMax(std::max(textMin.x, chipMax.x - InputSurfaceStyle::ChipPaddingX),
+            const ImVec2 textMin(chipMin.x + ChipPaddingX, contentY);
+            const ImVec2 textMax(std::max(textMin.x, chipMax.x - ChipPaddingX),
                                  contentY + lineHeight);
             drawList->PushClipRect(chipMin, chipMax, true);
+            if (selected || hovered)
+                ImGui::PushStyleColor(ImGuiCol_Text, InvertedTextColor);
             ImGui::RenderTextEllipsis(drawList, textMin, textMax, textMax.x,
                                       label, nullptr, &labelSize);
+            if (selected || hovered)
+                ImGui::PopStyleColor();
             drawList->PopClipRect();
 
             if (pressed) {
                 m_Candidates.Select(i);
                 m_FocusInputNextFrame = true;
             }
-            contentX += width + InputSurfaceStyle::ItemGap;
+            contentX += width + ItemGap;
         }
 
         float controlX = controlsX;
@@ -584,15 +601,15 @@ void CommandBar::DrawCompletionSurface() {
                 PrevPageOfCandidates();
                 m_FocusInputNextFrame = true;
             }
-            controlX = previousMax.x + InputSurfaceStyle::ItemGap;
+            controlX = previousMax.x + ItemGap;
         }
 
         drawList->AddText(
-            ImVec2(controlX, contentY), colors.disabled, status.c_str());
+            ImVec2(controlX, contentY), colors.mutedText, status.c_str());
         controlX += statusWidth;
 
         if (pageCount > 1) {
-            controlX += InputSurfaceStyle::ItemGap;
+            controlX += ItemGap;
             const ImVec2 nextMin(controlX, railMin.y + 2.0f);
             const ImVec2 nextMax(controlX + buttonWidth,
                                  railMax.y - 2.0f);
@@ -610,6 +627,7 @@ void CommandBar::DrawCompletionSurface() {
                 NextPageOfCandidates();
             m_FocusInputNextFrame = true;
         }
+        ImGui::PopStyleColor();
     }
     ImGui::EndChild();
 

@@ -295,7 +295,6 @@ set(BML_MOD_MENU_SOURCES
 set(BML_UI_PRIVATE_HEADERS
         UI/AnsiPalette.h
         UI/AnsiText.h
-        UI/BallancePalette.h
         UI/BuiInternal.h
         UI/Ime/Presentation.h
         UI/Ime/NativePresentation.h
@@ -303,7 +302,6 @@ set(BML_UI_PRIVATE_HEADERS
         UI/Ime/Runtime.h
         UI/Ime/State.h
         UI/Ime/Tsf.h
-        UI/InputSurfaceStyle.h
         UI/FontRuntime.h
         UI/GameFontCatalog.h
         UI/Gui/LegacyTextFont.h
