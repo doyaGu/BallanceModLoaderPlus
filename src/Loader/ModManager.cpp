@@ -3,6 +3,7 @@
 #include "Loader/ModContext.h"
 
 #include "BML/InputHook.h"
+#include "Hooks/InputCursor.h"
 #include "UI/Overlay.h"
 #include "UI/FontRuntime.h"
 #if BML_ENABLE_UI_AUTOMATION
@@ -59,7 +60,7 @@ CKERROR ModManager::OnCKReset() {
         Overlay::ImGuiEndFrame();
 
         if (auto *input = m_ModContext->GetInputManager())
-            input->SetOverlayCursorVisible(false);
+            SetOverlayCursorVisible(false);
 
         m_ModContext->ShutdownMods();
         m_ModContext->UnloadMods();
@@ -152,10 +153,10 @@ CKERROR ModManager::PostProcess() {
     }
 
     if (scope.IsActive()) {
-        inputHook->SetOverlayCursorVisible(ImGui::GetIO().WantCaptureMouse);
+        SetOverlayCursorVisible(ImGui::GetIO().WantCaptureMouse);
         Overlay::ImGuiRender();
     } else {
-        inputHook->SetOverlayCursorVisible(false);
+        SetOverlayCursorVisible(false);
     }
 
     inputHook->Process();

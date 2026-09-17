@@ -206,7 +206,9 @@ public:
 
 private:
     friend class ModManager;
-    void SetOverlayCursorVisible(bool visible);
+    // Keep the loader's cursor request off this exported class: even private
+    // members become DLL exports under MSVC.
+    friend void SetOverlayCursorVisible(bool visible);
     static bool IsValid();
     struct Impl;
     Impl *m_Impl;

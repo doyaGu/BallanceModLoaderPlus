@@ -3,6 +3,7 @@
 #include <unordered_map>
 
 #include "Hooks/CursorVisibilityPolicy.h"
+#include "Hooks/InputCursor.h"
 #include "Hooks/VTables.h"
 #include "HookUtils.h"
 
@@ -539,9 +540,9 @@ void InputHook::ShowCursor(CKBOOL iShow) {
     Impl::s_InputManager->ShowCursor(iShow);
 }
 
-void InputHook::SetOverlayCursorVisible(bool visible) {
-    if (!IsValid()) return;
-    Impl::SetOverlayCursorVisible(visible);
+void SetOverlayCursorVisible(bool visible) {
+    if (!InputHook::IsValid()) return;
+    InputHook::Impl::SetOverlayCursorVisible(visible);
 }
 
 CKBOOL InputHook::GetCursorVisibility() {
