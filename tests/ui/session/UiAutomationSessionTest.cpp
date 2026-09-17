@@ -1,4 +1,4 @@
-#include "UI/Automation/UiAutomationSession.h"
+#include "session/UiAutomationSession.h"
 
 #include <chrono>
 #include <filesystem>

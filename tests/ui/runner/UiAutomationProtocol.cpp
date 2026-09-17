@@ -4,6 +4,7 @@
 #include <cctype>
 #include <fstream>
 #include <map>
+#include <regex>
 #include <set>
 #include <stdexcept>
 
@@ -159,10 +160,10 @@ Scenario LoadScenario(const fs::path &definitionPath, const fs::path &sourceRoot
     if (scenario.Name != absoluteDefinition.stem().string())
         throw std::runtime_error(absoluteDefinition.string() +
                                  ": file name and scenario name differ");
-    const fs::path source = RequireOne(properties, "source", absoluteDefinition);
-    RequireFormat(source == source.filename() && source.extension() == ".cpp" &&
-                      source.stem().string().ends_with("Scenario"),
-                  absoluteDefinition, "source");
+    const std::string source = RequireOne(properties, "source", absoluteDefinition);
+    static const std::regex sourceFormat(
+        R"(^player/journeys/[a-z][a-z0-9-]*/[A-Za-z][A-Za-z0-9_]*Scenario[.]cpp$)");
+    RequireFormat(std::regex_match(source, sourceFormat), absoluteDefinition, "source");
     scenario.DefinitionPath = absoluteDefinition.lexically_normal();
     scenario.SourcePath = fs::absolute(sourceRoot / source).lexically_normal();
     if (!fs::is_regular_file(scenario.SourcePath))
@@ -187,6 +188,7 @@ std::vector<Scenario> LoadScenarioCatalog(const fs::path &scenarioDirectory,
     std::set<std::string> names;
     std::set<std::string> tests;
     std::set<std::string> captures;
+    std::set<fs::path> sources;
     for (const auto &scenario : scenarios) {
         if (!names.insert(scenario.Name).second)
             throw std::runtime_error("Duplicate scenario name: " + scenario.Name);
@@ -194,6 +196,8 @@ std::vector<Scenario> LoadScenarioCatalog(const fs::path &scenarioDirectory,
             throw std::runtime_error("Duplicate scenario test: " + scenario.TestName);
         if (!captures.insert(scenario.CaptureName).second)
             throw std::runtime_error("Duplicate scenario capture: " + scenario.CaptureName);
+        if (!sources.insert(scenario.SourcePath).second)
+            throw std::runtime_error("Duplicate scenario source: " + scenario.SourcePath.string());
     }
     return scenarios;
 }

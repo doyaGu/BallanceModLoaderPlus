@@ -1,4 +1,4 @@
-#include "UI/UiAutomation.h"
+#include "UiAutomation.h"
 
 #include <algorithm>
 #include <array>
@@ -18,8 +18,8 @@
 #include "BML/ILogger.h"
 #include "Loader/ModContext.h"
 #include "Mods/BMLMod.h"
-#include "UI/Automation/UiAutomationSession.h"
-#include "UI/Automation/UiTestFramework.h"
+#include "player/UiTestFramework.h"
+#include "session/UiAutomationSession.h"
 #include "imgui.h"
 #include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"

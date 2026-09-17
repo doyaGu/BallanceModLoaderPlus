@@ -1,4 +1,4 @@
-#include "UI/Automation/UiTestFramework.h"
+#include "player/UiTestFramework.h"
 
 #include <array>
 
