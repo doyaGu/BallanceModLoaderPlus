@@ -154,7 +154,7 @@ objects, callbacks, ModRef, CK handles, timers, commands, or DataShare requests.
 A reload bag is enabled only during the state hook. Recreate owned resources in
 `OnLoad` after state restoration.
 
-Keep state hooks focused on copying values. This is a transaction contract, not
+Keep state hooks focused on copying values. This is a state-migration rule, not
 an API allowlist: BML+ does not block other APIs in these callbacks. Any host or
 game-world side effect happens immediately and cannot be rolled back after a
 failed reload.

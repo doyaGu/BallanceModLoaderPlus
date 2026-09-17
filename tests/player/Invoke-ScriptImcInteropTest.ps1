@@ -1,4 +1,4 @@
-# Runs the generated native and AngelScript facades from one .imc contract in
+# Runs the generated native and AngelScript facades from one .imc interface in
 # the original Ballance Player. RPC and topic traffic must work both ways.
 [CmdletBinding()]
 param(

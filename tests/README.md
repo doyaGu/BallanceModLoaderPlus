@@ -5,11 +5,12 @@ connects the suites. Keep a test's source, fixtures, and target declaration in
 the suite that owns it:
 
 - `unit/<domain>/`: in-process C++ tests of one implementation domain.
-- `contracts/abi/`: C and C++ compile checks, public-header checks, and DLL
+- `abi/`: C and C++ compile checks, public-header checks, and DLL
   export baselines.
-- `contracts/codegen/`: generated-interface fixtures and code generator checks.
-- `contracts/sdk/`: CMake, installed-package, and Native Mod consumer checks.
-- `player/`: probe Mods and scripts for real Player acceptance runs.
+- `codegen/`: generated-interface fixtures and code generator checks.
+- `sdk/`: CMake, installed-package, and Native Mod consumer checks.
+- `player/`: probe Mods and scripts for real Player acceptance runs; see
+  [Player tests](player/README.md).
 - `ui/`: headless ImGui checks and visible Player UI automation; see
   [UI automation](ui/README.md).
 - `smoke/`: installed-game and script smoke assets.

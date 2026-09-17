@@ -18,7 +18,7 @@
 因此新增、删除或重排任何一个虚函数都会移动它之后的全部槽位，已经构建好的
 `.bmodp` 会调到错误的函数上。Loader 用 `src/Loader/ModContext.cpp` 里的静态断言钉住这些
 槽位号，并在每次构建时把导出符号集与
-`tests/contracts/abi/legacy-native-exports-x86-msvc.txt` 比对。所以这些接口在当前发布线上是
+`tests/abi/legacy-native-exports-x86-msvc.txt` 比对。所以这些接口在当前发布线上是
 冻结的：不能再往里加东西。
 
 interface struct 没有这个问题。BML 注册表交出的是一个函数指针结构体，Mod 通过唯一的

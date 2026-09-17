@@ -1,6 +1,6 @@
 // Golden offsets for the current pre-release interface structs. Once an
 // interface ships these become immutable; before then they keep accidental
-// reordering visible while the contract is still being completed.
+// reordering visible while the interface is still being completed.
 //
 // Offsets are the x86 MSVC layout, the only platform the loader ships on.
 #include "BML/Gameplay.h"

@@ -69,7 +69,7 @@ bool RequiresSerializedValue(const CKParameterTypeDesc &type) noexcept {
 bool OwnsStoredValue(const CKParameterTypeDesc &type) noexcept {
     // CKParameter::SetValue replaces the registered buffer directly. That is
     // safe for ordinary and manager-coded scalar values, including types that
-    // merely provide SaveLoadFunction. A DeleteFunction is the CK contract
+    // merely provide SaveLoadFunction. A DeleteFunction indicates
     // that the bytes themselves own state which must not be fabricated from a
     // caller buffer.
     return type.DeleteFunction != nullptr;

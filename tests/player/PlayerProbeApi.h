@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-// The contract between the Player flow driver and the probe Mods it collects
+// The interface between the Player flow driver and the probe Mods it collects
 // verdicts from. The driver owns the shipped menu graph, the tutorial exit and
 // the frame captures; a probe owns exactly one subject under test and never
 // navigates. Any Mod that exports BMLPlayerProbeRead is treated as a probe, so

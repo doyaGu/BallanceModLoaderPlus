@@ -1,182 +1,173 @@
 # Ballance Mod Loader Runtime Context
 
-This context names the loader-owned runtime features that ship with BML itself. It distinguishes the built-in Mod's lifecycle role from the player-facing features it owns.
+This file names the loader-owned features and their owners. It is a map, not an
+implementation history. Use the source and focused guides for detailed behavior:
+[Behavior authoring](docs/en/behavior-authoring.md) and
+[UI automation](tests/ui/README.md).
 
-## Language
+## Authoring and public UI
 
-**Mod Project**:
-An author-owned source tree for one Native or Script Mod. Existing source files remain authoritative; optional workflow metadata describes how Developer Workflow prepares and publishes the Mod without replacing its runtime identity.
-_Avoid_: Mod workspace, generated project, CLI project
+**Mod Project** — An author-owned source tree for one Native or Script Mod.
+Developer Workflow may add build metadata, but does not replace the Mod's runtime
+identity.
 
-**Developer Workflow**:
-The SDK's Python module for creating or adopting a Mod Project, preparing a runnable artifact, starting Player, reporting the Mod's diagnostics, and producing its publishable artifact. It presents one interface through Native and Script adapters while preserving their different build and reload semantics.
-_Avoid_: project helper, native scaffolder, script packer, workflow script
+**Developer Workflow** — The SDK Python interface for creating or adopting a
+Mod Project, building it, starting Player, collecting diagnostics, and packaging
+it. Native and Script adapters share the entry point but retain their different
+build and reload rules.
 
-**Bui**:
-The stable Native Mod C++ Interface for drawing Ballance-styled controls in the loader's Dear ImGui frame, plus lightweight Window, Page, Pagination, and Menu lifecycle primitives. Its Implementation owns the shared game texture, material, and click-sound resources, adapts CK and ImGui key representations, and coordinates keyboard blocking without owning any loader feature's Model, Session, or Presentation. Built-in UI Modules may consume Bui at this Seam, but Bui does not become their framework or retain their domain state.
-_Avoid_: BML::UI, Built-in Mod Menu framework, generic UI runtime, feature-owned state
+**Bui** — The public C++ Interface for Ballance-styled ImGui controls and small
+Window, Page, Pagination, and Menu primitives. It owns shared visual resources
+and keyboard blocking, not the state of a loader feature.
 
-**Built-in Loader Mod**:
-The loader-owned Mod registered with the id `BML`. It receives Mod lifecycle callbacks and owns the built-in runtime features without absorbing their state and behavior.
-_Avoid_: BML service, built-in feature
+**Built-in Loader Mod** — The loader-owned Mod named BML. It receives lifecycle
+callbacks and forwards them to built-in features; it does not own their internal
+state.
 
-**Built-in Mod Menu**:
-The loader's in-game Mod and configuration browser. It projects the current Mod registry, stable Mod metadata, Config comments, Config values, and registered Mod Menu Page metadata into value-owned documents, retains navigation and edit drafts only by owner generation and stable keys, and applies one Mod's pending changes as a deterministic transaction. Its ImGui Presentation preserves the established Mod Menu: a four-entry Mod list; a details page containing name, author, version, Script state and diagnostics, description, compact action buttons, and hover comments; and a four-entry option page with hover comments and Save/Revert controls. Config categories appear first in one ordered details-action document and optional Mod Menu Pages follow in registration order through the same pagination; their typed keys keep the Config category and page id namespaces independent without parallel presentation lists. Variable-length information and comments remain inside fixed menu regions and gain Ballance-styled pointer scrolling only when their content overflows, so they never displace or cover fixed controls. It continues to use Ballance's menu panel, fonts, textures, arrows, and Back control without impersonating the retail Options page layout. Existing Config declarations receive that complete presentation without registration. Conflicts and failed transactions keep their drafts and expose recovery through the same comment-panel and Revert language. `Bui::Menu` retains route and Page lifecycle ownership; Model adapts Config categories and the revisioned Mod Menu Page catalog into one document and invokes the selected Page only inside the Mod invocation gate; Session owns stable drafts and reconciliation; Presentation owns only menu layout and short-lived interaction state; and the Built-in Loader Mod only forwards open, close, and process events.
-_Avoid_: config page registry, Mod-owned settings window, generic Bui settings framework
+**Built-in Mod Menu** — The in-game Mod and configuration browser. Model combines
+Mod metadata, Config categories, and registered Pages; Session owns navigation,
+drafts, and reconciliation; Presentation owns the native-looking menu layout.
+Bui::Menu owns route and Page lifecycle. An unregistered Mod still gets its
+standard details and Config presentation.
 
-**Mod Menu Page**:
-An optional owner-scoped Native Mod page in the Built-in Mod Menu. One registration copies a stable page id, entry label, and hover description into the loader-owned Mod Menu Page catalog, appends one native-styled action to that Mod's details page, and binds it to one fully custom ImGui draw callback with optional enter and leave notifications. A catalog snapshot owns one coherent revision and its ordered Page metadata. Each Page Key contains owner, id, and registration generation; the same Key flows through Model documents, Session reconciliation, routing, and callback lookup so removing and re-registering an id cannot dispatch an old route into new callbacks. `ModMenu.h` is the complete versioned C ABI; `ModMenu.hpp` is a one-way C++ authoring facade that owns strings, enum conversion, and exception containment without changing that ABI. Callback and user-data lifetime remains with the Native Mod; the loader invokes them only on the game thread inside the active ImGui frame and Mod invocation gate. Draw reports execution status separately from its versioned frame's deferred Back or Close action. Central owner-state cleanup retires Behavior state and removes every remaining Page before the owner DLL is released. Registration never changes `IMod`, Config semantics, or the default presentation of an unregistered Mod. AngelScript exposure and nested Mod-owned routing are outside the 1.0 Interface.
-_Avoid_: Mod Menu Extension, config category, arbitrary details callback, retained Mod page object, generic plugin UI host
+**Mod Menu Page** — An optional Native Mod page registered with a stable id,
+label, description, and draw callback. The loader keys it by owner and
+registration generation, so removing and re-registering an id cannot revive a
+stale route. The public C ABI lives in ModMenu.h and the C++ authoring layer in
+ModMenu.hpp. Nested Mod-owned routing and AngelScript exposure are not part of
+the 1.0 Interface.
 
-**Built-in Console**:
-The loader's in-game command surface, comprising the command bar, message board, command history, built-in command registration, and their configuration. One measured layout over the main viewport work area owns its stable bottom stack: message board, command bar, then one transient surface. The command row and either transient owner use one input-surface visual language. The open command bar owns one keyboard block; clicking outside its input and completion surface or entering a new game scene closes that session and releases the block. When its text input is active, the Console reserves the transient surface's exact current-frame placement for IME Presentation; the command bar itself has no IME dependency. IME Presentation takes that surface for the full composition lifecycle, including empty preedit frames, and command completion and history navigation are disabled until IME ends. While completion is visible it owns accept, dismiss, and page navigation before command execution or history, and offers equivalent pointer controls. One Built-in Loader Mod owns one Built-in Console.
-_Avoid_: CommandBar, MessageBoard, console UI
+## Built-in gameplay features
 
-**Built-in HUD**:
-The loader's in-game status and custom overlay surface, comprising the HUD tree, title, FPS display, speedrun timer, cheat indicator, HUD command, and their configuration. One Built-in Loader Mod owns one Built-in HUD.
-_Avoid_: HUD window, HUD host, HUD service
+**Built-in Console** — Command bar, message board, history, commands, and
+configuration. One viewport layout places the message board above the command
+bar and a single transient completion or IME row below it. Clicking outside an
+open command session or entering a new scene closes it and releases keyboard
+capture.
 
-**Built-in Custom Maps**:
-The loader's custom-map feature, comprising map discovery, map selection, temporary map preparation, level selection, asynchronous load orchestration and its configuration. It delegates game-script binding and the reversible runtime-value transaction to one Custom Map Level Loader. Selection state is independent of Bui presentation. The Object Load Hook reports the engine outcome through the private custom-map load protocol but does not own the transaction. One Built-in Loader Mod owns one Built-in Custom Maps Module.
-_Avoid_: map menu, map loader, custom map service
+**Built-in HUD** — HUD tree, title, FPS, speedrun timer, cheat indicator,
+commands, and configuration.
 
-**Custom Map Level Loader**:
-The private Custom Maps submodule that owns one cross-world Behavior Plan authored from Graph Patterns, its current revisioned Plan Instance, and the symbolic Ports captured before Plan submission. It reads `Object Load.File`, `AllLevel row`, and the Patch-owned custom-load flag into one value-owned Transaction before changing runtime state. That Transaction keeps the exact Instance and Ports used by the load, stages the new values, clears the route on level start, and attempts every rollback step while preserving the first failure. Custom Maps owns load orchestration and decides when to complete or restore; the Level Loader does not own menu state, files, messages, or Object Load completion.
-_Avoid_: Behavior Plan fields in Custom Maps, cached CKParameter pointers, boolean-only rollback helper
+**Built-in Custom Maps** — Map discovery, selection, preparation, and load
+orchestration. Menu selection stays separate from loading and Behavior edits.
 
-**Built-in Gameplay Tweaks**:
-The loader's configurable game corrections, comprising the lantern alpha-test option, life-ball freeze fix, overclock patch, and their Virtools script bindings. One Built-in Loader Mod owns one Built-in Gameplay Tweaks Module.
-_Avoid_: script patches, tweak settings, gameplay fixes
+**Custom Map Level Loader** — The private Custom Maps Module that reads the
+values to be changed, installs a Behavior Plan, and restores the previous values
+if loading fails or ends. It does not own menu state, files, or user messages.
 
-**Built-in Game Event Hooks**:
-The loader-owned Virtools script adapters that translate game and menu transitions into Mod lifecycle and gameplay callbacks. One Built-in Loader Mod owns one Built-in Game Event Hooks Module.
-_Avoid_: EventHookRegistrar, callback patches, event bridge
+**Built-in Gameplay Tweaks** — Configurable game corrections and their Virtools
+script bindings.
 
-**UI Automation Session**:
-The test-only cross-process Module coordinating one visible Ballance Player UI journey. The Player publishes one immutable, sequenced checkpoint and keeps the current UI state until the native runner acknowledges the matching input or capture operation. The Module owns protocol versioning, atomic mailbox publication, acknowledgement validation, and failure propagation; ModLoader logs remain diagnostic output and never control timing. One scenario run owns one isolated UI Automation Session directory.
-_Avoid_: log protocol, marker polling, sleep handshake, UI test service
+**Built-in Game Event Hooks** — Adapters from retail script and menu transitions
+to Mod lifecycle and gameplay callbacks. They do not own tweak state.
 
-**UI Automation Journey**:
-One independently runnable visible Player scenario that begins in the native game menu and exercises one player-facing outcome. Its C++ implementation lives in `tests/ui/player/journeys/`, grouped by the feature it exercises; one test descriptor identifies that source for both the build and the runner. Fixtures may prepare data, but the behavior under test must be performed through native keyboard input, the Built-in Console, or visible ImGui items. Native menu transitions and surface captures use separate Interfaces; observations occur after the relevant user action, and the installation transaction restores modified files and configuration even when the journey fails.
-_Avoid_: UI smoke pipeline, business-action shortcut, aggregate Player run
+## UI and input
 
-**Overlay Platform Input**:
-The private Win32 Module that attaches window-local subclasses to the Ballance Player main single-UI-thread root-window tree for the lifetime of the ImGui platform backend. The tree observes IME and window lifecycle messages, while ordinary input is submitted to the backend only from the exact window used to initialize it; child-window coordinates and capture never enter the main ImGui viewport. Its one queue-boundary exception is a current-UI-thread `WH_GETMESSAGE` adapter that, while IME Runtime requests candidate navigation, recovers `VK_TAB` from `VK_PROCESSKEY` in the required interval before `TranslateMessage`, captures the queued Shift state, and posts one private move message to the backend window. The original message is not mutated or consumed; the private message runs after its dispatch and never synthesizes a partial ImGui key event for an IME-consumed key. The window adapter executes one disposition returned by IME Runtime without duplicating its filtering policy. The Module retains failed subclass or hook removals for retry and only detaches on the owning thread. The ImGui Win32 backend exclusively owns character submission. Overlay Platform Input does not decode committed text, own input capture policy, or poll cursor state.
-_Avoid_: broad `WH_GETMESSAGE` message forwarding, process-wide user32 hooks, queued-message mutation, Overlay message pump, character decoder, cursor adapter
+**UI Automation Session** — A test-only cross-process exchange between Player
+and one visible UI runner. Player publishes a numbered checkpoint; the runner
+performs the requested input or capture and acknowledges that checkpoint. Logs
+are diagnostic, never the synchronization mechanism.
 
-**Script ImGui Ownership**:
-The private UI Module that records the ImGui windows, active interaction, moving window, and next-frame mouse capture created by each Script Mod call. Its call scope restores host state after script execution, while Mod unload releases only state still owned by that Mod. Overlay owns the shared ImGui context and frame lifecycle but does not own per-script recovery policy.
-_Avoid_: Overlay script state, global ImGui reset, unload-time context cleanup
+**UI Automation Journey** — One independently runnable Player scenario under
+tests/ui/player/journeys/. Its descriptor selects the same source for the build
+and runner. The user-facing action must pass through visible UI or native input;
+fixtures may prepare data but cannot perform the action being tested.
 
-**IME Runtime**:
-The private Windows 10 input Module below the ImGui presentation seam. Overlay Platform Input owns its attach, detach, native-message observation, and deferred candidate-move calls and gives it both the observed Player root and the exact ImGui backend window. IMM32 mirrors composition and remains the candidate fallback for legacy IMEs; a UI-less TSF sink is the authoritative candidate source and control path for modern TIPs. The Runtime combines those sources into revisioned immutable presentation frames and changes the real candidate selection through TSF or IMM when the active IME supports it. A rejected direct change may use native Up/Down input only as a bounded CJK compatibility path: the exact ImGui backend window must still own focus inside the foreground Player root on the owning thread, unrelated modifiers must be released, and no vendor-neutral behavior is implied. It clears state when composition, text focus, IME open state, or platform lifetime ends, and delegates native-window suppression to the separate Native Presentation policy. Native IMM and TSF UI is reserved for in-game presentation only on the focused ImGui backend window, including the interval before the first text frame; native child controls retain their system UI. ImGui text visibility separately controls drawing and ordinary-key candidate navigation. The Runtime never calls ImGui, submits characters, or replaces the ImGui Win32 backend. The legacy `IME_CAND_CODE` single-entry DBCS layout is rejected rather than decoded as UTF-16.
-_Avoid_: IME widget, custom text input backend, committed-text decoder, local-only candidate selection
+**Overlay Platform Input** — The Win32 window adapter for ImGui's platform
+backend. It observes the Player window tree and IME messages, but submits
+ordinary input only from the backend window. Its narrow queue hook recovers
+IME-consumed Tab navigation without rewriting or consuming the original
+message. The ImGui Win32 backend alone submits committed characters.
 
-**IME Presentation**:
-The private ImGui Module above IME Runtime that renders one in-game horizontal rail in both windowed and true exclusive full-screen modes. A text host may reserve an exact placement for the current frame: the Built-in Console publishes the transient row immediately below its command bar; other ImGui fields fall back to the active caret and viewport clamping. The rail presents preedit text, normalized target ranges and clause boundaries, a caret-centered overflow view, numbered candidate chips, selection, page position, overflow, additional-list presence, and a compact navigation hint. While candidates are visible, Presentation uses ImGui's global-over-active shortcut route only for Tab input that actually reached the backend; IME-consumed `VK_PROCESSKEY` navigation remains entirely below the ImGui boundary. Presentation owns UTF conversion, font-aware measurement caches, rail layout and drawing; it consumes a new immutable frame only when the Runtime revision changes, and a separate candidate revision prevents composition-only updates from rebuilding candidate text and geometry. Its strings use the Built-in UI Font Runtime like every other ImGui surface.
-_Avoid_: IME backend, native-message handler, Console-owned candidate state, display-mode-specific IME UI
+**Script ImGui Ownership** — Tracks ImGui interaction created by each Script
+Mod call. It restores host state after a call and releases only that Mod's
+remaining state on unload; the shared ImGui context belongs to Overlay.
 
-**ANSI Text**:
-The private UI text Module that parses terminal-style ANSI formatting into stable text segments and prepares a font-aware, wrapped layout before drawing. Prepared layouts own line breaking, span metrics, and decoration geometry, can be reused across frames while their source text, ImGui context, font bake, and layout options remain unchanged, and let callers vary only opacity and palette at draw time. Built-in Console surfaces consume this prepared interface instead of depending on its line and span representation.
-_Avoid_: MessageBoard text layout, public layout structs, per-frame ANSI reflow
+**IME Runtime** — Mirrors composition through IMM32 and obtains modern
+candidate state and control through a UI-less TSF sink. It publishes immutable,
+revisioned frames and clears stale state on composition, focus, or lifecycle
+changes. It never draws ImGui or submits text.
 
-**Built-in UI Font Runtime**:
-The private loader-owned Module that turns one configured font profile and the loader and Windows font catalogs into the default ordered font used by built-in ImGui surfaces. It preserves every Unicode scalar value, owns source resolution, fallback order, logical scaling, live replacement of its own atlas font, text-coverage inspection, and diagnostics, and applies staged changes only before a new ImGui frame; fonts added independently by Native Mods remain untouched, and dynamic texture upload remains the CK2 renderer adapter. The dedicated `font` command owns the operational interface: it reports runtime health and resolved sources, lists the loader catalog, checks text coverage, renders a multilingual probe, edits the primary face, size, configured fallbacks, and Windows fallbacks, and safely reloads or resets the profile without adding a public API. Loader information remains under `bml`; font management does not. The ImGui compile configuration is part of the Native Mod ABI and the BML CMake target and installed headers propagate the loader's 32-bit codepoint and packed-color choices to consumers. The Module does not own Game Fonts or Legacy GUI Text.
-_Avoid_: ImGuiFontSupport, FontManager, glyph-range loader, emoji helper
+**IME Presentation** — Draws one in-game composition and candidate rail in
+windowed and true exclusive full-screen modes. Console may reserve the row
+below its command bar; other text fields use their caret and viewport. It owns
+measurement, layout, and drawing, not native IME state or character submission.
 
-**Game Font Catalog**:
-The loader-owned mapping between semantic Ballance menu-font roles and the named Virtools font objects created by the current game world. Acquisition tolerates missing, reordered, and additional font-building blocks; unresolved roles retain their legacy indices. It resets with that world and does not load font files or participate in ImGui fallback.
-_Avoid_: UI font registry, font-file catalog, ImGui fonts
+**ANSI Text** — Parses terminal-style formatting and prepares reusable
+font-aware wrapped layouts for Console drawing. Opacity and palette can vary
+without repeating line layout.
 
-**Legacy GUI Text**:
-The `CKSpriteText` rendering path retained by the legacy `BML::Gui` interface. Its private style state selects a Windows face understood by Virtools, scales the default style with viewport height, and preserves an explicitly assigned per-text style across screen-mode changes without changing the public `Text` object layout. It has a different lifecycle and error model from both the Built-in UI Font Runtime and Game Font Catalog.
-_Avoid_: Built-in UI fonts, Game Fonts, universal font backend
+**Built-in UI Font Runtime** — Resolves the configured ImGui font profile,
+fallback order, coverage, and live atlas replacement for loader-owned text.
+Independent Native Mod fonts remain untouched. The font command is its user
+interface.
 
-**Behavior Authoring**:
-The stable Win32 interface for using Virtools Behaviors whose parameters use supported value domains. A Native Mod opens an owner-scoped Session; each physical Script Mod receives an owner-scoped `BML::Behavior` AngelScript projection over the same Runtime. Authors select a registered Prototype, configure a copyable Block, and create a Call, Task, or Instance that owns one real `CKBehavior`. A Block contains its Prototype, Target, Setting stages, and initial Pin and Local values; it does not contain graph relations or Frame retention. Frame retention belongs to the Call, Task, or Instance that observes execution. The same model creates owner-scoped top-level Scripts, inspects Behavior graphs, and composes symbolic Edits under one exact-world Patch or cross-world Plan. Script creation atomically admits the root and its initial Edit: failure exposes no Script, while success returns one inactive Script that owns the installed graph. Sessions survive world reset, but their world-bound Runs, Scripts, Watches, and Patches do not; all callback and native state retires before the owning Native or Script Mod unloads. The `bml.behavior 1.0` C function table is the complete low-level Behavior seam and has no Virtools or C++ type dependency; the C++ and AngelScript surfaces share its execution, lifecycle, graph, and callback implementation rather than implementing parallel runtimes. AngelScript currently exposes one Graph per Patch and one Script rule per Plan; atomic multi-Graph Patch and multi-rule Plan composition remain Native C++ conveniences. The C table and the domain names in `BML::Behavior` are public contracts; `BML::Behavior::Detail` is implementation and is not a supported source API. Native Mod bootstrap still belongs to the legacy C++ `IMod` interface. Win64, third-party parameter-format registration, active Node replacement, and exact DataChanged observation are outside the 1.0 contract.
-_Avoid_: Behavior transport, execution facade, Builder, compiler product, codec
+**Game Font Catalog** — Resolves retail menu font names to indices created by
+the current world. It is separate from the ImGui font atlas.
 
-**Behavior Plan Instance**:
-A revisioned, world-bound view of the Nodes and parameter Ports named by one installed Edit. An exact Patch exposes its own binding operations directly; a cross-world Plan publishes immutable `Plan::Instance` snapshots in rule and Script-reference order. Every submitted Edit definition has an opaque binding identity, so `(binding, graph scope, handle)` remains unambiguous across composed edits, queued replacement, failed replacement, and rollback; Patch and Plan retain that symbolic identity after the source Edit leaves scope. `Resolve` returns an Object Reference rather than a native pointer. `Read` is non-forcing, while `Set` writes the current stored parameter behind a Pin, Target, Pout, Setting, Local, or appended parameter without changing its direct/shared relation. Every operation re-resolves the symbol and validates the binding identity, Patch or Plan definition revision, world epoch, instance identity, and instance revision; world changes, replacement, disable, or rebuild make an older snapshot stale. Plan Instances do not own values, extend Patch rollback to later runtime writes, or expose CK pointers.
-_Avoid_: parameter cache, installed graph view, persistent CKParameter handle, Plan value store
+**Legacy GUI Text** — The private style registry for BML::Gui::Text sprites
+backed by Windows font faces. It is separate from both ImGui and retail menu
+fonts. See [font domain decision](docs/adr/0001-separate-font-domains.md).
 
-**Behavior Runtime**:
-The private native Instance implementation behind Behavior Authoring and loader-owned Behavior consumers. All private Behavior implementation types live in `BML::Behavior::Internal`; `BML::Behavior` is reserved for the public C++ interface, so the Loader can consume that interface without giving public and private types the same linkage identity. Runtime consumes a `BlockSpec`, creates and configures one Building Block `CKBehavior`, reflects its live Layout, applies that Block's Target and parameter relations, executes under the correct CK context, captures Frames, and completes CREATE/ATTACH/RESET/DETACH/DELETE at game-thread safe points. The private Block Module owns `BlockSpec`; it is not Runtime protocol state. Execution and Lifecycle are Runtime's CK2-independent internal seams; Runtime is their CK2 adapter. Runtime neither owns top-level Script roots nor creates graph-owned Parameter Operations: those belong to Behavior Graph Authoring. The private Script Module owns root owner, Scene, activity, and teardown lifecycle. A Ready Instance remains owned and may still hold Local or manager state until explicit teardown.
-_Avoid_: Runtime Spec, Building Block singleton, Prototype-specific state table, synchronous-function wrapper, Virtools scheduler
+## Behavior and engine access
 
-**Behavior Graph Authoring**:
-The Script, Graph, Edit, Patch, and Plan model used to create, observe, and change native Behavior graphs. Script owns one world-bound top-level graph root and enters its owner exactly once through `CKBeObject::AddScript`; its initial Edit is installed before the Script is published or returned, and closes before the root. Creation leaves it inactive, while activity and teardown requests complete at Behavior safe points. Graph is an immutable Logical or Live snapshot of Nodes, Links, Ports, and graph-owned Parameter Operations. Its fingerprint covers native membership, priority, layout, operations, Link topology, child scheduling order, graph Link order, and each source Behavior IO's Link traversal order. `CKBehavior::AddSubBehavior` uses an unstable priority-only sort, so the CK adapter preserves the existing relative order when adding an equal-priority Node and Patch journals restore every scheduler-visible order. Explicit `At(index)` remains a current-position selector protected by the exact snapshot; `Require(snapshotNode)` records that child position together with its expected name, Prototype, Behavior kind, and port shape, so repeated sibling names remain addressable without accepting a different Node in a later world. Edit owns one symbolic transformation program: `Edit::Root()` returns its sole public graph-scope Interface, while `Edit::Node::Graph()` enters a nested graph-backed Node. A graph scope is a cheap value whose authoring operations return another value, so chains starting at `Root()` never expose references to temporary scopes. The public domain header keeps that Interface separate from the header-only `Detail/EditProgram` Implementation, which owns symbolic instruction construction, validation, and C-seam lowering. Edit alone keeps the program alive; symbolic Nodes, Ports, Links, Paths, and graph scopes keep only its weak identity. Moving an Edit therefore preserves every existing symbol without pointer repair, while destroying or replacing it invalidates authoring through those symbols. Patch retains only that weak identity for `Resolve`, so a symbol can still name its installed Node after the source Edit dies without retaining the instruction program. Added Blocks and appended root ports or Locals describe both a new Script body and changes to an existing graph. Author-requested ports are created first. CK2's `VARIABLE*` flags describe editor and Block intent rather than restricting `CreateInput`, `CreateOutput`, or parameter creation; only an existing Block's private Locals remain outside a Patch's ownership. When an action consumes a still-missing callback-owned companion port, a function-backed Block receives a narrowly scoped `CKM_BEHAVIOREDITED` reconciliation callback before that port is resolved and bound. `Set` changes the value currently read through an existing Pin, Pout, Local, or Target without replacing its relation, and the Patch journals and restores that stored value. `Flow(source, Hook, sink)` lowers to one Patch-owned Hook Block and two hidden control links, keeping callback infrastructure out of the Logical graph. `AddOperation` declares one native `CKParameterOperation` by its operation GUID and exact result/input type tuple; its inputs use the same Bind relation as Block Pins, and Virtools retains its normal lazy result evaluation. `Replace` exchanges one idle child Node for a Block with the same public interface while retaining native Links, delays, public parameter relations, name, priority, and owner; the original Node is parked without lifecycle callbacks and restored before the replacement is destroyed, while private Settings and Locals are never copied. `Remove` parks one existing child Node and all incident Behavior Links without destroying them, disconnects the parked Links so active sibling outputs cannot traverse them, then restores their exact identities, endpoints, delays, and scheduler-visible order when the Patch closes. Removal requires the selected Node, its control ports, and every incident Link source to be idle; an active non-target sink has already received its activation and does not depend on the Link. Because the retail SDK does not expose delayed-list membership, any positive remaining delay that differs from the Link's initial delay is treated as in-flight, including after the graph is deactivated without a reset. Unrelated graph work may remain active. Node edits exclude active Link overlays and prevent later Patches until they close. Edit copies each configured Block atomically, then describes graph structure and parameter relations around that Block. Settings belong only to the Block and are never represented as separate Edit steps. For a Node added by an Edit, all added Nodes exist first; its final graph parameter relations are then visible to its single final `CKM_BEHAVIOREDITED` callback before control Flow makes the Node reachable. An existing Node normally receives one final `CKM_BEHAVIOREDITED` callback after its interface and parameter relations are installed. When an action consumes a callback-owned port that does not exist yet, Apply first sends one narrowly scoped reconciliation callback to materialize that deferred port, resolves and installs the relation, then sends the final callback with the complete candidate state visible. Teardown restores relations and author-owned interface before one restoration callback. Pure control Flow changes do not send that callback. Every callback boundary is followed by identity, Layout, and relation validation. Patch binds an Edit to one exact graph fingerprint and may therefore use a Block, Node, Link, or Value from that world. `Use(snapshotNode)` retains its exact current-world ObjectRef. Plan resolves the same Edit against selected scripts in later worlds and rejects every non-null Object Reference retained by the Edit or one of its Blocks. CKEdit owns native mutation and its checked inverse, including operation ownership and Node replacement/removal, while Topology and Relations validate Link overlays and parameter claims without mutating CK objects.
-Retail `CKBehavior::SetParent(nullptr)` is a no-op, so `RemoveSubBehavior` removes a Node from the native child array without clearing its cached parent identity. The CK adapter therefore treats the child array—not `GetParent()` alone—as graph membership.
-Patch targets pair exact Logical Graph snapshots with owned Edits; Plan rules pair Script selectors with owned Edits. Initial submission and Replace use the same validation and lowering path. Initial Apply re-reads every Patch target before the seam; Replace defers fingerprint validation until the Loader has restored the changed suffix to its base graph.
-_Avoid_: endpoint-pair Link identity, best-effort rollback, world-bound Plan, graph builder
+**Behavior Authoring** — The public Win32 C function table and its C++ and
+AngelScript authoring layers. An owner-scoped Session configures Blocks from
+registered Prototypes, runs them as Calls, Tasks, or Instances, and builds
+graph Edits for Patches and Plans. Sessions survive world reset; world-bound
+objects and callbacks do not. The C, C++, and script layers use one native
+implementation. The legacy IMod interface still bootstraps Native Mods.
 
-A Block may select the native types of existing variable Pins and Pouts with
-`PinType` and `PoutType`. Runtime applies those selections after Setting stages
-establish the live Layout and before bindings and `CKM_BEHAVIOREDITED`, so the
-same Block configuration works for Runs and graph Add. Parameter type selection
-is not an Edit operation; existing game Nodes remain type-immutable because a
-generic Patch cannot own and restore provider-private parameter data.
+**Behavior Plan Instance** — A revisioned view of one Plan installation in a
+world. Symbolic Nodes and Ports can be resolved to checked Object References or
+read and written through the installed parameter relation. World reset,
+replacement, disable, or rebuild invalidates an older view; no CK pointer is
+kept alive for the caller.
 
-One Edit contains an explicit root graph scope and may enter graph-backed Nodes recursively. A nested scope owns only its internal Nodes and may publish ports to its parent; ports from different internal scopes never connect directly. `AddGraph` creates a real graph-backed child and its body in that same transaction. One Patch owns an ordered set of exact-world Graph targets and restores all of them in reverse if any target fails or disappears. One Plan owns several independent Script rules; each rule produces an atomic Patch for its root and nested scopes, while the Plan survives world reset. Patch and Plan retain their identity across Enable, Disable, and Replace. Replace preserves an unchanged prefix, replaces only the changed suffix, and restores the previous complete definition when the new definition fails.
-Graph child selectors never include the root; authors obtain it explicitly with `Root()`. Incoming and outgoing Link navigation use snapshot-owned indices, preserving graph-Link order and source-IO traversal order without scanning unrelated Links. Native graphs whose source IO reaches a Link owned by another graph are rejected because CK2 would execute control flow omitted by such a snapshot.
-Patch and Plan expose three separate reconciliation facts: `LastStatus` is the latest pass, `ApplyFailure` retains the first rejection of the requested definition, and `RestoreFailure` names the obstruction that currently prevents recovery. `Active()` means the complete requested definition is active; `Partial` remains explicit state rather than being reported as installed. A successful recovery clears only the recovery obstruction, not the rejected-definition evidence from that pass. Stable code branches on Error and Phase; diagnostic text adds object and rule/target context for logs.
+**Behavior Runtime** — The private CK adapter that instantiates a configured
+Block as a real CKBehavior, executes it, captures Frames, and completes its
+lifecycle at safe points. It does not own top-level Script roots or graph
+mutation. Private implementation types live in BML::Behavior::Internal.
 
-**Graph Pattern**:
-A serializable structural requirement owned by an Edit and resolved within one graph scope. It identifies Nodes by Selector, Prototype, Behavior kind, port shape, and observable parameter values, then derives unique Nodes, Links, and bounded control-flow paths without retaining live Graph objects or author predicates. `Require` selects exactly one Node; `Each` selects a non-empty set in native child-index order and repeats operations over its Ports. `Next`, `Previous`, `Leaving`, `Entering`, and `To` express control topology, and redirecting one Link to another Link's destination preserves the destination's actual In or graph Exit across worlds.
-_Avoid_: NodeMatch, live Graph discovery callback, arbitrary predicate, global pattern solver
+**Behavior Graph Authoring** — Script owns a top-level root; Graph captures an
+immutable snapshot; Edit describes symbolic changes. Patch applies one exact
+world, while Plan resolves rules across later worlds. Installation and
+restoration are checked and atomic for each requested change; rejected or
+partially restored work remains visible as explicit status.
 
-A Plan owns its Script rules, Graph Pattern resolution, readiness, installation, restoration, and cross-world reconciliation. Callers provide complete world-independent Edits when the Plan is created or deliberately replaced; Script arrival never requires callers to inspect a live Graph, cache per-world Edits, or update readiness flags.
+**Graph Pattern** — A serializable structural selector inside an Edit. It
+matches observable Nodes, Ports, Links, and bounded paths without retaining a
+live Graph or an author callback.
 
-**Named Building Block Adapters**:
-Header-only definitions under `include/BML/Behavior/Blocks/*.hpp` that map one known retail BB's Prototype, Options, Settings, Pins, and Locals into an ordinary Behavior Block. They contain BB-specific parameter knowledge but do not own creation, execution, lifecycle, graph mutation, or teardown. Stateful loader consumers such as Physics Force may retain Runs separately without adding Prototype-specific behavior to Runtime.
-Each installed header owns the single Prototype and configuration rule for that BB and contains only public dependencies. `BlockSpec::From(options)` applies that same rule directly inside the Loader; installed headers have no private compile mode or parallel private adapter.
-_Avoid_: internal BB implementation, spec collection, action module, Runtime special case
+**Named Building Block Adapters** — Header-only definitions under
+include/BML/Behavior/Blocks/ for known retail Prototypes and their parameters.
+They provide configuration, not a second Runtime.
 
-**Physics Force**:
-The private `BML::Behavior::Internal::PhysicsForce` module, which owns the options, spec construction, and target-indexed sessions for persistent Virtools Physics Force instances. Create and Shutdown use the same configured instance because the Building Block stores its native controller in a Local. `PhysicsCallbackContainer::Process(callback)` first invokes Create synchronously; only a target without a PhysicsObject leaves the callback pending for a later simulation. Same-frame Set or Clear may queue Shutdown under Runtime's one-Execute-per-frame rule, so the session remains in its stopping state until Shutdown clears the old Local; an updating Set also retains the next requested force and creates a fresh instance only after that point. A deleting target leaves the active index immediately, while its instance remains in a retiring queue until a pending callback has observed cancellation or native Shutdown is complete. The Ballance Player probe waits for `OnBallNavActive`, then verifies that a `Ready` Create leaves a live controller, motion continues while the Instance is idle, Shutdown clears the Local, the last same-frame Set wins, and repeated Clear retires the session.
-_Avoid_: force action cache, independent Set/Unset calls, force manager
+**Physics Force** — The private target-indexed owner of persistent Physics
+Force Instances. It retains the same Instance through Create and Shutdown,
+handles pending callbacks, and retires deleted targets safely.
 
-**Object References**:
-`BML::ObjectRefs`, the private module at the C and script interface seam that issues and resolves opaque `BML_ObjectRef` values. It observes normal CK object-deletion notifications and world reset, and rejects stale domain, generation, address, and deletion state. Behavior Runtime and Physics Force do not depend on this module; they keep their ownership and delayed-lifetime knowledge local. Objects deliberately destroyed with `CK_DESTROY_NONOTIFY` are outside this interface because CK managers cannot observe that lifecycle.
-_Avoid_: CK identity registry, universal CK identity, Behavior object handle
+**Object References** — BML::ObjectRefs issues and resolves opaque
+BML_ObjectRef values across the C and script seams. It observes CK deletion and
+world reset, rejecting stale identities. Destruction without CK notification is
+outside what it can observe.
 
-**ExecuteBB Adapter**:
-`BML::ExecuteBBAdapter`, the stateful adapter behind the exported `ExecuteBB` interface. It translates API calls into `BlockSpec` values and delegates them to the Behavior Runtime. The adapter belongs to the API seam; it is not part of the Behavior module and the Behavior module never depends on it.
-_Avoid_: ExecuteBB runtime, Behavior implementation, Virtools adapter
+**ExecuteBB Adapter** — The API-side adapter that translates exported
+ExecuteBB calls into Blocks and delegates execution to Behavior Runtime.
+Behavior Runtime does not depend on ExecuteBB.
 
-## Source layout
+## Source ownership
 
-The private source tree follows these runtime concepts instead of collecting unrelated code under generic `Core`, `Runtime`, or `Builtin` directories:
-
-- `src/BML.cpp` is the loader composition root.
-- `src/Mods/` contains concrete bundled `IMod` implementations. `BMLMod` assembles the built-in modules, while `NewBallTypeMod` is an independent bundled Mod.
-- `src/Loader/` owns Mod discovery, registration, invocation, lifecycle, and CK manager integration.
-- `src/Api/` adapts the public BML interfaces to loader-owned implementations, including Behavior Authoring, Object References, the `ExecuteBB` facade, and its stateful adapter.
-- `src/Behavior/` contains owner-scoped Behavior Sessions, the Prototype Catalog, the private `BlockSpec`, top-level Script lifecycle, graph inspection/editing and Plans, shared Layout and Parameter semantics, and the Behavior Runtime. Named Building Block definitions are header-only adapters under `include/BML/Behavior/Blocks/`; loader-owned consumers lower the same configuration into `BlockSpec`. Only stateful services such as Physics Force sessions and the live Text2D view remain private modules. These modules depend on CK infrastructure but never on `Loader` or `Api`; the Runtime never depends on a concrete Building Block.
-- `src/Console/`, `src/HUD/`, and `src/CustomMaps/` contain the Built-in Console, Built-in HUD, and Built-in Custom Maps modules respectively.
-- `src/Gameplay/` contains the loader-owned game session, game event hooks, and gameplay tweaks.
-- `src/Config/`, `src/DataShare/`, `src/Imc/`, and `src/Logging/` each keep one cross-cutting runtime concern local.
-- `src/ModMenu/` owns the built-in Mod Menu's model, session, page registry, and presentation. `src/UI/` contains shared UI infrastructure: Overlay lifecycle, Overlay Platform Input, Script ImGui Ownership, ANSI Text, the Built-in UI Font Runtime, Game Font Catalog, and Legacy GUI Text. Its `Ime/` subtree keeps IME Runtime, native presentation policy, TSF adaptation, rail layout, and IME Presentation together behind the Runtime and Presentation seams. Test-only Player automation, its journeys, and the shared UI Automation Session live under `tests/ui/`; production lifecycle code retains only guarded calls into the test Player driver. `src/Hooks/` contains process and engine hooks; `src/Virtools/` contains only shared low-level CK graph helpers that do not belong to a deeper runtime module. The Hook Block Prototype, registration, execution, and spec all belong to `src/Behavior/HookBlock.*`.
-- `src/AngelScript/` and `src/Utils/` remain independently navigable implementation families.
-
-Private includes use these directory names explicitly, so a caller reveals which module interface it crosses.
-
-Test implementations are grouped by execution seam under `tests/`: `unit/<domain>/` owns in-process tests, `contracts/` owns ABI, codegen, and SDK checks, `player/` owns probe-driven Player acceptance, and `ui/` owns ImGui and visible UI acceptance. The Player probe runner and the UI Automation Session are separate test Modules; neither is a generic substitute for the other.
-
-## Example dialogue
-
-> **Developer:** Should command history be saved by the Built-in Loader Mod?
->
-> **Domain expert:** No. Command history belongs to the Built-in Console; the Built-in Loader Mod only tells it when loading and unloading occur.
->
-> **Developer:** Should the Built-in Loader Mod update the speedrun timer and HUD elements itself?
->
-> **Domain expert:** No. Those belong to the Built-in HUD; the Built-in Loader Mod only forwards game lifecycle events.
-
-> **Developer:** Should the Built-in Loader Mod know which Virtools parameters a custom map load changes?
->
-> **Domain expert:** No. Those bindings and the loading sequence belong to Built-in Custom Maps; the Built-in Loader Mod only forwards the relevant object, script, and game lifecycle events.
-
-> **Developer:** Does the Overclock graph state belong to Built-in Game Event Hooks because both inspect gameplay scripts?
->
-> **Domain expert:** No. Built-in Game Event Hooks only translate game transitions into callbacks. Overclock and the other configurable corrections belong to Built-in Gameplay Tweaks.
+- src/BML.cpp composes the loader; src/Mods/ contains its bundled Mods.
+- src/Loader/ owns Mod discovery, invocation, and CK manager integration.
+- src/Api/ adapts public BML interfaces to private implementations.
+- src/Behavior/ owns Sessions, Prototypes, Blocks, graph authoring, and Runtime.
+- src/Console/, src/HUD/, src/CustomMaps/, src/Gameplay/, and src/ModMenu/
+  own their named built-in features.
+- src/UI/ owns shared Overlay, input, text, fonts, and IME infrastructure.
+- src/Config/, src/DataShare/, src/Imc/, src/Logging/, src/Hooks/, src/Virtools/,
+  src/AngelScript/, and src/Utils/ keep their respective supporting code local.
+- tests/unit/ groups in-process tests by domain. tests/abi/, tests/codegen/,
+  and tests/sdk/ check public headers, generators, and installed consumers.
+  tests/player/ drives gameplay acceptance; tests/ui/ owns ImGui and visible UI
+  acceptance. Test-only Player automation does not live in src/UI/.

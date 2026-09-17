@@ -133,7 +133,7 @@ bml_install_mod(MyMod)
 [跨 Mod 通信](imc.md)和[创建类型化 IMC API](imc-author-guide.md)。
 
 只有脚本必须直接借用插件专有原生对象，或调用无法表示为类型化 IMC 数据的引擎原语时，
-才增加 CKAngelScript 扩展。常规 native/script 服务边界应共用一份生成式 IMC 契约，
+才增加 CKAngelScript 扩展。常规 native/script 服务边界应共用一份生成式 IMC 接口，
 不要再维护第二套手写 API。
 
 ## 性能与所有权

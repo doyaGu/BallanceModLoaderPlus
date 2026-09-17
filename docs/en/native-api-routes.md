@@ -29,7 +29,7 @@ mod was compiled, so adding, removing, or reordering a virtual function moves
 every slot after it and every already built `.bmodp` calls the wrong one. The
 loader pins those slot numbers with static assertions in `src/Loader/ModContext.cpp`
 and compares its exported symbol set against
-`tests/contracts/abi/legacy-native-exports-x86-msvc.txt` on every build. These interfaces
+`tests/abi/legacy-native-exports-x86-msvc.txt` on every build. These interfaces
 are therefore frozen for the current release line: nothing new can be added to
 them.
 

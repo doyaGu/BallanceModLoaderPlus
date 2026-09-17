@@ -957,7 +957,7 @@ private:
             if (!m_SelfClose->Closing || m_SelfClose->Calls != 1 ||
                 !closed || closed.Value() != BML::Behavior::CloseState::Closed ||
                 m_SelfPlan || m_SelfClose.use_count() != 1) {
-                Finish(false, "self-close-contract");
+                Finish(false, "self-close-state");
                 return;
             }
             GetLogger()->Info("Behavior plan downstream close: downstream_calls=%d", m_SelfCloseTailCalls);
@@ -1206,7 +1206,7 @@ private:
             GetLogger()->Info("Behavior session close: status=%s calls=%u",
                               passed ? "pass" : "fail", *m_RetirementCalls);
             if (!passed) {
-                Finish(false, "session-close-contract");
+                Finish(false, "session-close-state");
                 return;
             }
             m_RetirementPlan = {};

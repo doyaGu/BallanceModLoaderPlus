@@ -60,7 +60,7 @@ Mod 后续真正需要的状态；脚本侧没有需要打开或轮询的事件�
 
 脚本 RPC 一律异步发起，回调和脚本 Provider Handler 一律在游戏线程执行。
 需要 caller-thread Handler、高频循环或原生内存所有权时，把实现放在原生 Mod；
-脚本仍可通过同一生成式 IMC 契约调用它，不需要再写 CKAngelScript 包装层。
+脚本仍可通过同一生成式 IMC 接口调用它，不需要再写 CKAngelScript 包装层。
 
 只有必须直接借用插件专有原生对象或调用无法表示为 IMC Record 的引擎原语时，
 才增加 CKAngelScript 扩展。不要手写字段编码，也不要跨 DLL 传递 C++ 对象、

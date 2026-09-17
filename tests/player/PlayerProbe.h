@@ -4,7 +4,7 @@
 
 namespace BML::PlayerTest {
 
-// The probe side of the driver contract. One instance per probe Mod lives in
+// The probe side of the driver interface. One instance per probe Mod lives in
 // the Mod's own DLL, so the driver reads a verdict per module and a probe never
 // has to know about the others.
 class ProbeReport {

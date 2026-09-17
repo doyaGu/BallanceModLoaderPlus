@@ -8,7 +8,7 @@ mods. It provides two operations:
 
 Use IMC when independently shipped native or script mods need a stable API
 without sharing C++ objects, STL containers, allocators, or Virtools pointers.
-Any native/script pairing may provide and consume the same generated contract.
+Any native/script pairing may provide and consume the same generated interface.
 A consumer asks at runtime whether a route is there, so a missing provider is a
 status code rather than a load failure.
 
@@ -119,7 +119,7 @@ Generated ASMod providers always use game-thread execution because AngelScript,
 Virtools objects, and script-owned callback state are game-thread services.
 Generated ASMod calls are asynchronous and complete through typed callbacks.
 Use a native provider only when caller-thread execution or a native hot path is
-actually required; the script caller still uses the same `.imc` contract.
+actually required; the script caller still uses the same `.imc` interface.
 
 Synchronous generated calls wait for their typed result up to the supplied
 timeout. Generated `Begin*` methods return a move-only typed future for polling,

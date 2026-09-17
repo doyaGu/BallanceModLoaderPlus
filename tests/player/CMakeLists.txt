@@ -89,7 +89,7 @@ bml_add_player_test(InterfaceConsumerTest
         ${BML_PLAYER_PROBE_SOURCES}
 )
 
-# A single .imc contract drives both the native and ASMod facades. The probe
+# A single .imc interface drives both the native and ASMod facades. The probe
 # exercises RPC and topic traffic in both directions inside the shipped Player.
 bml_add_player_test(ScriptImcInteropTest
         ScriptImcInteropTest.cpp
