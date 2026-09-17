@@ -2204,6 +2204,9 @@
 <p>类型值：<code>CONFIG_PROPERTY_BOOLEAN</code>、<code>CONFIG_PROPERTY_STRING</code>、<code>CONFIG_PROPERTY_INTEGER</code>、<code>CONFIG_PROPERTY_FLOAT</code>、<code>CONFIG_PROPERTY_KEY</code>。</p>
 <p>配置文件自动生成在 <code>ModLoader/Configs/&lt;mod-id&gt;.cfg</code>。</p>
 <h2 id="_6">定时器<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<p>BML+ 会在脚本 Mod 卸载或热重载时取消它拥有的定时器。脚本 Mod 的所有回调中都不允许
+创建 CKAngelScript <code>Async::*</code> 任务，因为这种 detached 任务不归 Mod 生命周期管理，
+可能越过热重载继续运行。需要延迟到后续帧或周期执行时，应使用这里的 BML+ Timer。</p>
 <h3 id="_7">一次性<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">TimerCallback</span><span class="err">@</span><span class="w"> </span><span class="n">cb</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">TimerCallback</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="n">OnTimeout</span><span class="p">);</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">BML</span><span class="o">::</span><span class="n">TimerRef</span><span class="err">@</span><span class="w"> </span><span class="n">timerRef</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">SetTimeout</span><span class="p">(</span><span class="mf">1000.0f</span><span class="p">,</span><span class="w"> </span><span class="n">cb</span><span class="p">,</span><span class="w"> </span><span class="s">"my-timeout"</span><span class="p">);</span>

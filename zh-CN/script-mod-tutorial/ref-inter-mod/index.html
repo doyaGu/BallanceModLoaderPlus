@@ -1546,10 +1546,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#imc-provider" class="md-nav__link">
+  <a href="#imc" class="md-nav__link">
     <span class="md-ellipsis">
       
-        何时需要原生 IMC Provider
+        生成式 IMC
       
     </span>
   </a>
@@ -1850,10 +1850,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#imc-provider" class="md-nav__link">
+  <a href="#imc" class="md-nav__link">
     <span class="md-ellipsis">
       
-        何时需要原生 IMC Provider
+        生成式 IMC
       
     </span>
   </a>
@@ -1881,8 +1881,9 @@
 
 
 <h1 id="mod">跨 Mod 通信<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h1>
-<p>IMC 用于一个 Mod 发布给其他 Mod 的接口，不承载任何 Loader 能力。脚本 Mod
-直接使用 Loader 提供的类型化能力接口；IMC Provider 只能由原生 Mod 实现。</p>
+<p>IMC 用于一个 Mod 发布给其他 Mod 的接口，不承载任何 Loader 能力。同一份
+<code>.imc</code> 可以生成 C++ 和 AngelScript 门面；原生 Mod 与脚本 Mod 都可以成为
+Client 或 Provider，并共享相同的 Record、路由、状态码和版本规则。</p>
 <h2 id="mod_1">脚本 Mod 如何选择<a class="headerlink" href="#mod_1" title="Permanent link">&para;</a></h2>
 <p>脚本中读取 BML 自带能力时，直接使用有类型的接口：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">Runtime</span><span class="o">::</span><span class="n">State</span><span class="w"> </span><span class="n">runtime</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Runtime</span><span class="o">::</span><span class="n">GetState</span><span class="p">();</span>
@@ -1890,12 +1891,15 @@
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="c1">// 使用 runtime 的复制快照。</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">}</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">array</span><span class="o">&lt;</span><span class="n">BML</span><span class="o">::</span><span class="n">Gameplay</span><span class="o">::</span><span class="n">Checkpoint</span><span class="o">&gt;</span><span class="err">@</span><span class="w"> </span><span class="n">checkpoints</span><span class="p">;</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Gameplay</span><span class="o">::</span><span class="n">ReadCheckpoints</span><span class="p">(</span><span class="n">checkpoints</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ERROR_OK</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">uint</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">checkpoints</span><span class="p">.</span><span class="n">length</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="n">CKObject</span><span class="err">@</span><span class="w"> </span><span class="n">checkpoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">checkpoints</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">BorrowObject</span><span class="p">();</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="kt">int</span><span class="w"> </span><span class="n">checkpointCount</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Gameplay</span><span class="o">::</span><span class="n">ReadCheckpointCount</span><span class="p">(</span><span class="n">checkpointCount</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ERROR_OK</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">checkpointCount</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Gameplay</span><span class="o">::</span><span class="n">Checkpoint</span><span class="w"> </span><span class="n">checkpoint</span><span class="p">;</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Gameplay</span><span class="o">::</span><span class="n">ReadCheckpoint</span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">checkpoint</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ERROR_OK</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">      </span><span class="n">CKObject</span><span class="err">@</span><span class="w"> </span><span class="n">object</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">checkpoint</span><span class="p">.</span><span class="n">BorrowObject</span><span class="p">();</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="p">}</span>
 </code></pre></div>
 <p>可用的内置命名空间包括 <code>BML::Runtime</code>、<code>BML::Gameplay</code>、<code>BML::UI</code> 和
 <code>BML::Speedrun</code>。Virtools 场景查找和对象标识应使用
@@ -1904,28 +1908,33 @@ CKAngelScript 的 <code>Scene</code> 命名空间及其可重新验证的引用�
 也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
 异常。Gameplay 读取也直接复用进程内的数据读取器，但对应的 Ballance
 数据数组可能尚不可用或布局不受支持，因此仍返回明确的状态码。脚本只处理
-类型化数据，不直接管理原始消息或原生 IMC 句柄。<code>ReadCatalog</code>、
-<code>ReadCheckpoints</code> 和 <code>ReadResetpoints</code> 返回标准 AngelScript 数组形式的完整
-快照；读取失败时输出句柄为 <code>null</code>，不需要游标、<code>Next</code> 循环或显式 <code>Close</code>。
-每次调用都会重新读取源数据并创建快照，因此数据稳定时应复用已返回的数组，
-不要每帧重复构建。</p>
+类型化数据，不直接管理原始消息或原生 IMC 句柄。目录、检查点和重置点使用
+<code>Read*Count</code> 加 <code>Read*(index, value)</code> 读取；count 是当次读取的行数，随后每次
+按索引读取都会重新检查当前数据数组，关卡切换后失效的索引会返回
+<code>BML::ERROR_NOT_FOUND</code>。需要跨回调保留数据时，应复制实际需要的值，不要长期
+缓存行号。</p>
 <p>Loader 事件通过 <code>OnGameEvent</code> 同步回调到达。需要跨回调保留信息时，只复制
 Mod 后续真正需要的状态；脚本侧没有需要打开或轮询的事件队列。</p>
 <p>两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
 类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。</p>
-<h2 id="imc-provider">何时需要原生 IMC Provider<a class="headerlink" href="#imc-provider" title="Permanent link">&para;</a></h2>
-<p>IMC 只用于一个 Mod 发布给其他 Mod 的接口。这类服务满足下面任一条件时，应把它
-实现为原生 Mod：</p>
+<h2 id="imc">生成式 IMC<a class="headerlink" href="#imc" title="Permanent link">&para;</a></h2>
+<p>服务需要下面任一能力时使用 IMC：</p>
 <ul>
 <li>需要请求/响应 RPC；</li>
 <li>需要高频或有背压策略的事件流；</li>
-<li>需要显式选择 caller thread 或 game thread；</li>
-<li>需要稳定的跨 DLL ABI，供多个独立 Mod 使用。</li>
+<li>需要稳定字段与端点标识，供独立发布的 Mod 使用。</li>
 </ul>
-<p>原生实现流程是：编写版本化 <code>.imc</code> 接口定义，用 <code>imc_codegen.py</code> 或
-<code>bml_target_imc_api()</code> 生成 C++ 绑定，实现生成的 provider，并让消费者
-使用生成的 client。不要手写字段编码，也不要跨 DLL 传递 C++ 对象、STL
-容器、allocator 所有权或 <code>CKObject*</code>。</p>
+<p>编写版本化 <code>.imc</code> 接口定义后，用 <code>bml_target_imc_api()</code> 的
+<code>SCRIPT_OUTPUT_DIR</code> 生成 <code>*_imc.as</code>。脚本入口在 <code>[bml.mod]</code> 之前包含该文件，
+然后使用生成的 <code>Is*Available</code>、<code>BeginCall*</code>、<code>Subscribe*</code>、<code>Publish*</code>、
+<code>Handlers</code> 和 <code>Provider</code>。不要直接使用 <code>BML::Detail</code> 或下划线开头的
+<code>ModContext</code> 方法，它们只服务于生成代码。</p>
+<p>脚本 RPC 一律异步发起，回调和脚本 Provider Handler 一律在游戏线程执行。
+需要 caller-thread Handler、高频循环或原生内存所有权时，把实现放在原生 Mod；
+脚本仍可通过同一生成式 IMC 接口调用它，不需要再写 CKAngelScript 包装层。</p>
+<p>只有必须直接借用插件专有原生对象或调用无法表示为 IMC Record 的引擎原语时，
+才增加 CKAngelScript 扩展。不要手写字段编码，也不要跨 DLL 传递 C++ 对象、
+STL 容器、allocator 所有权或裸 <code>CKObject*</code>。</p>
 <p>完整示例与兼容演进规则见：</p>
 <ul>
 <li><a href="../../imc/">跨 Mod 通信</a></li>

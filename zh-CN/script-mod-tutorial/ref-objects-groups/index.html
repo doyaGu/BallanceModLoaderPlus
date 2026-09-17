@@ -2049,6 +2049,9 @@
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kt">bool</span><span class="w"> </span><span class="nf">BML::CK::IsVisible</span><span class="p">(</span><span class="n">CKObject</span><span class="err">@</span><span class="w"> </span><span class="n">object</span><span class="p">);</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="kt">bool</span><span class="w"> </span><span class="nf">BML::CK::IsDynamic</span><span class="p">(</span><span class="n">CKObject</span><span class="err">@</span><span class="w"> </span><span class="n">object</span><span class="p">);</span>
 </code></pre></div>
+<p>借用的 CK 句柄不拥有对象。对象删除、切换关卡或 CK reset 后，先用
+<code>BML::CK::IsValid()</code> 检查；它会在当前 CK 对象表中按地址确认对象仍然存活，
+不会为了验证而先解引用可能已经悬空的句柄。其他 <code>BML::CK</code> 查询应在检查通过后调用。</p>
 <h2 id="_3">位置和可见性<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">VxVector</span><span class="w"> </span><span class="nf">BML::CK::GetPosition</span><span class="p">(</span><span class="n">CK3dEntity</span><span class="err">@</span><span class="w"> </span><span class="n">entity</span><span class="p">);</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kt">void</span><span class="w"> </span><span class="nf">BML::CK::SetPosition</span><span class="p">(</span><span class="n">CK3dEntity</span><span class="err">@</span><span class="w"> </span><span class="n">entity</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">VxVector</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">position</span><span class="p">);</span>

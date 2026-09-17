@@ -1070,8 +1070,8 @@
 
 <h1 id="communication-from-script-mods">Communication from script mods<a class="headerlink" href="#communication-from-script-mods" title="Permanent link">&para;</a></h1>
 <p>Choose the smallest existing mechanism that matches the data and execution
-model. BML+ does not expose a raw message codec or custom IMC Provider API to
-scripts.</p>
+model. For cross-mod services, scripts use the generated AngelScript facade;
+the raw message codec and transport handles remain generated-only details.</p>
 <h2 id="mod-identity-and-dependencies">Mod identity and dependencies<a class="headerlink" href="#mod-identity-and-dependencies" title="Permanent link">&para;</a></h2>
 <p><code>ModRef</code> reports another mod's id, version, load state, and diagnostic. Declare
 required and optional load-order relationships with <code>[bml.require]</code> and
@@ -1125,34 +1125,38 @@ service needs one or more of these properties:</p>
 <li>explicit thread policy; or</li>
 <li>throughput that should stay in native code.</li>
 </ul>
-<p>A native mod writes the <code>.imc</code> interface, commits its <code>.imc.lock</code>, generates
-the C++ binding, and registers the generated Provider. Another native mod uses
-the generated Client. See <a href="../../imc/">Inter-mod communication</a> and
+<p>A service author writes one <code>.imc</code> interface and commits its <code>.imc.lock</code>.
+Codegen can emit both <code>*_imc.hpp</code> and <code>*_imc.as</code>; both describe the same records,
+routes, status codes, and compatibility rules. Native and script mods may be
+mixed in any Client/Provider pairing.</p>
+<p>The generated script facade provides:</p>
+<ul>
+<li><code>Is*Available(ctx, available)</code> and asynchronous <code>BeginCall*</code> RPC calls;</li>
+<li><code>Subscribe*</code>, <code>Publish*</code>, and <code>Get*SubscriberCount</code> Topic operations;</li>
+<li>a typed <code>Handlers</code> object and <code>Provider::Start/Open/Close</code>; and</li>
+<li><code>ImcRequestRef</code> and <code>ImcSubscriptionRef</code> lifetime handles.</li>
+</ul>
+<p>Include the generated file before the <code>[bml.mod]</code> metadata. Do not call the
+underscore-prefixed <code>ModContext</code> methods or <code>BML::Detail</code> codec types yourself;
+they are the stable bridge used by generated code. See
+<a href="../../imc/">Inter-mod communication</a> and
 <a href="../../imc-author-guide/">Create a typed IMC API</a>.</p>
-<p>Script mods do not register custom RPC or Topic providers. If scripts also need
-the native service, its owning plugin should register a small typed
-CKAngelScript extension. Keep native ownership, thread policy, validation, and
-high-frequency work behind that extension.</p>
 <h2 id="design-a-script-facing-native-service">Design a script-facing native service<a class="headerlink" href="#design-a-script-facing-native-service" title="Permanent link">&para;</a></h2>
-<p>A useful split is:</p>
+<p>A useful split for performance-sensitive services is:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>generated IMC interface
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>        |
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>native Provider and service implementation
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        |
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>small CKAngelScript extension
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>        |
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>BML+ script mod policy and UI
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>     /             \
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>native Provider   generated AS Client
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>native hot path   script policy and UI
 </code></pre></div>
-<p>The extension should expose domain operations and values, not transport
-handles, serialized payloads, allocator details, or raw worker-thread
-callbacks. Report failure as a typed result, status, or script exception that
-the author can diagnose.</p>
+<p>No CKAngelScript extension is needed for that boundary. Add one only when a
+script must directly borrow plugin-specific native objects or use engine
+primitives that cannot be represented by IMC records.</p>
 <p>Avoid a new service when DataShare or an existing BML+/CKAngelScript API already
 owns the operation. Avoid a script façade when no script consumer exists.</p>
 <h2 id="performance-rules">Performance rules<a class="headerlink" href="#performance-rules" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Synchronous IMC handlers and BML+ callbacks normally execute on the game
-  thread; keep them bounded.</li>
+<li>Script IMC handlers and callbacks execute on the game thread; keep them
+  bounded. Caller-thread handlers are native-only.</li>
 <li>Move parsing, preparation, and large native work out of per-frame script
   callbacks.</li>
 <li>Do not rebuild stable gameplay snapshots or repeat scene scans every frame.</li>

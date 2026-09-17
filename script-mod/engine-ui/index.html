@@ -704,6 +704,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#behavior-authoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Behavior authoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#hook-block" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1027,6 +1038,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#behavior-authoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Behavior authoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#hook-block" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1095,9 +1117,9 @@
 of building overlapping wrappers:</p>
 <ul>
 <li>BML+ owns mod identity, load order, callbacks, config, commands, resources,
-  loader UI, built-in services, and DataShare.</li>
-<li>CKAngelScript owns scene and behavior APIs, runtime scripts, components,
-  messages, async work, and registered CK/Vx bindings.</li>
+  loader UI, built-in services, DataShare, and <code>BML::Behavior</code> authoring.</li>
+<li>CKAngelScript owns scene APIs, raw <code>Behavior</code>/<code>BB</code>/<code>Param</code> handles, runtime
+  scripts, components, messages, async work, and registered CK/Vx bindings.</li>
 <li>A native plugin owns unsafe hooks, native memory, performance-critical loops,
   and plugin-specific CKAngelScript extensions.</li>
 </ul>
@@ -1119,7 +1141,11 @@ of building overlapping wrappers:</p>
 <td><code>AngelScript Component</code></td>
 </tr>
 <tr>
-<td>Search or edit behavior graphs and Building Blocks</td>
+<td>Discover, execute, or reversibly edit Behavior graphs</td>
+<td>BML <code>BML::Behavior</code> (<code>Inspect</code>, <code>Edit</code>, <code>Patch</code>, <code>Plan</code>)</td>
+</tr>
+<tr>
+<td>Low-level CK2 Behavior/Param handles</td>
 <td>CKAS <code>Behavior</code>, <code>BB</code>, and <code>Param</code></td>
 </tr>
 <tr>
@@ -1164,7 +1190,9 @@ but those handles are non-owning.</p>
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="p">}</span>
 </code></pre></div>
 <p>Resolve raw CK handles close to the operation. Revalidate after deletion, level
-changes, and CK reset.</p>
+changes, and CK reset. <code>BML::CK::IsValid()</code> checks the handle address against
+the current CK object table without first dereferencing the candidate; call it
+before passing a stored raw handle to the other <code>BML::CK</code> helpers.</p>
 <p><code>BML::CK</code> contains small stateless helpers, not a second complete Virtools API:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="n">CKDataArray</span><span class="err">@</span><span class="w"> </span><span class="n">array</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowDataArrayByName</span><span class="p">(</span><span class="s">"Some_Array"</span><span class="p">);</span>
@@ -1196,10 +1224,22 @@ returns <code>false</code>.</p>
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="p">}</span>
 </code></pre></div>
 <p>Definitions are value objects. Keep asset paths mod-relative.</p>
+<h2 id="behavior-authoring">Behavior authoring<a class="headerlink" href="#behavior-authoring" title="Permanent link">&para;</a></h2>
+<p><code>BML::Behavior</code> is the Script Mod projection of the same Win32 authoring model
+used by Native Mods. There is no Session to open: <code>Use</code>, <code>Find</code>, <code>Describe</code>,
+<code>Inspect</code>, <code>Edit</code>, and <code>CreateScript</code> bind to the current Script Mod and retire
+before unload or hot reload. A Script Patch currently targets one Graph and a
+Script Plan contains one Script rule. Use the Native C++ facade when one handle
+must compose multiple Graphs or multiple Script rules atomically.</p>
+<p>CKAngelScript <code>Behavior</code>/<code>BB</code>/<code>Param</code> remains available for low-level CK2 work.
+It does not provide BML owner retirement, Patch journals, or cross-world Plan
+semantics. See <a href="../../behavior-authoring/">Behavior authoring</a> section 10.</p>
 <h2 id="hook-block">Hook Block<a class="headerlink" href="#hook-block" title="Permanent link">&para;</a></h2>
 <p>Hook Block inserts a callback at a known point in an existing Virtools behavior
-graph. CKAngelScript should find the owner script and Building Blocks; BML+
-owns the inserted native block and retained callback.</p>
+graph. Prefer <code>BML::Behavior</code> Hook / Before / After when the change should
+participate in a Patch or Plan. <code>InsertHookBlock*</code> is a legacy splice: BML+
+owns the inserted native block and removes it at unload, but it has no Patch
+journal. CKAngelScript should find the owner script and Building Blocks.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">HookBlockRef</span><span class="err">@</span><span class="w"> </span><span class="n">hook</span><span class="p">;</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="kt">int</span><span class="w"> </span><span class="nf">OnBallHook</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span>

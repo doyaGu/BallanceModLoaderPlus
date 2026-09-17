@@ -1037,6 +1037,9 @@ they offer, use the interface structs for reading game state, for loader events,
 for driving the loader's own UI, and for Behavior authoring, and use IMC for
 ordinary services published to other Mods. Reserve a provider interface for
 native-only base infrastructure whose ABI and lifetime follow its provider DLL.</p>
+<p>If you maintain an existing Mod, no migration is required. Keep its <code>IBML</code>,
+<code>IMod</code>, raw CK SDK, and direct CMake code. Use a newer facade only when it solves
+a new requirement; old and new calls may coexist in the same Mod.</p>
 <h2 id="why-there-is-more-than-one-spelling">Why there is more than one spelling<a class="headerlink" href="#why-there-is-more-than-one-spelling" title="Permanent link">&para;</a></h2>
 <p><code>IBML</code>, <code>IMod</code>, <code>IMessageReceiver</code>, <code>IConfig</code>, and <code>ICommand</code> are C++ classes
 with virtual functions, and a mod calls them across a DLL boundary. A call
@@ -1159,6 +1162,12 @@ declared in the header of the same name under <code>include/BML/</code>; the res
 <td>The interface struct only.</td>
 </tr>
 <tr>
+<td>Add pages to your own entry in the Mods menu</td>
+<td>none</td>
+<td><code>BML::ModMenu::Page</code> from <code>ModMenu.hpp</code></td>
+<td><code>ModMenu.h</code> is the pure C interface; the C++ facade is one-way over it. Each registration appends one native-styled details action and routes it to a fully custom ImGui page. Version 1.0 is Native Mod only.</td>
+</tr>
+<tr>
 <td>Loader events</td>
 <td>the <code>IMessageReceiver</code> virtuals on <code>IMod</code></td>
 <td>none</td>
@@ -1204,13 +1213,13 @@ declared in the header of the same name under <code>include/BML/</code>; the res
 <td>Discover, configure, and execute Virtools Building Blocks; inspect or edit Behavior graphs</td>
 <td>raw CK SDK and <code>ExecuteBB</code> compatibility helpers</td>
 <td><code>BML::Behavior</code> from <code>Behavior.hpp</code></td>
-<td>Use <code>BML::Behavior</code> for new authoring. It gives Prototype/Layout validation, owned Frames, checked object references, and reversible Patch/Plan lifetimes. Use raw CK only when implementing engine-level infrastructure that intentionally owns those invariants itself.</td>
+<td>Use <code>BML::Behavior</code> for new authoring. It gives Prototype/Layout validation, owned Frames, checked object references, reversible Patch/Plan lifetimes, and revisioned bindings to installed Edit symbols. Use raw CK only when implementing engine-level infrastructure that intentionally owns those invariants itself.</td>
 </tr>
 <tr>
 <td>Publishing an API of your own to other mods</td>
 <td>none</td>
 <td>IMC, or a BML provider interface for a native base Mod</td>
-<td>Prefer generated IMC for ordinary RPC/Topic services. Use <code>BML_RegisterInterface</code> only for a plain-C, process-local function table that must expose direct or borrowed native objects. The provider table and id must be static data in its DLL; every consumer must declare the provider Mod as a required dependency and use <code>BML_GetInterface</code>, never import a provider symbol. Script Mods cannot publish or consume provider interfaces.</td>
+<td>Prefer generated IMC for ordinary RPC/Topic services. For a plain-C, process-local function table that must expose direct or borrowed native objects, C++ Mods should use <code>Interface.hpp</code> plus <code>ModInterface.hpp</code>; these retain the C ABI while owning publication, typed lookup, status, and provider dependency lifetime. Publish the shared header with <code>bml_add_interface_package</code>, and never import a provider symbol. Script Mods cannot publish or consume provider interfaces.</td>
 </tr>
 <tr>
 <td>Drawing your own UI</td>
@@ -1255,7 +1264,9 @@ that dependency remains loaded.</p>
   works from <code>OnProcess</code>. <code>BML::Gameplay</code>, <code>BML::Scene</code>, and <code>BML::UI</code> touch the
   game's arrays, its objects, and the UI the loader draws, so all three answer
   <code>BML_ERROR_WRONG_THREAD</code> when called from any other thread. <code>BML::Runtime</code> and <code>BML::Speedrun</code> do not
-  refuse another thread, but they are meant for the game thread too. Before the
+  refuse another thread, but they are meant for the game thread too. Mod menu
+  page registration is also game-thread only, and its draw callback runs inside
+  the loader's active ImGui frame. Before the
   loader has loaded its mods every one of them answers <code>BML_ERROR_FAIL</code>.</li>
 </ul>
 <h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>

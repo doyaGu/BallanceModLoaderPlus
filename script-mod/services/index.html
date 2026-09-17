@@ -1207,6 +1207,9 @@ Loader events arrive synchronously through <code>OnGameEvent</code>. Copy only t
 mod needs to retain; there is no script-side event queue to open or poll.</p>
 <h2 id="timers">Timers<a class="headerlink" href="#timers" title="Permanent link">&para;</a></h2>
 <p>BML+ owns registered timers for the script mod and cancels them at unload.
+CKAngelScript <code>Async::*</code> task creation is intentionally unavailable inside
+script-mod callbacks; those tasks have no script-mod lifetime owner. Use a BML+
+timer whenever work must continue in a later frame.
 Prefer callback timers for simple delays and intervals:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">SayReady</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">              </span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">TimerEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>

@@ -474,6 +474,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#custom-mods-menu-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom Mods menu pages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mod-lifecycle-and-events" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1086,6 +1097,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#custom-mods-menu-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom Mods menu pages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mod-lifecycle-and-events" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1288,6 +1310,10 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 <td>Version macros, export macros, status codes, and base definitions</td>
 </tr>
 <tr>
+<td><code>Result.hpp</code></td>
+<td>Reusable C++ result carrying a BML status code, an optional value, and an optional module-specific diagnostic</td>
+</tr>
+<tr>
 <td><code>BML.h</code></td>
 <td>C ABI for version, loader and mod directories, command unregistration, memory, encoding, path, file, and Zip utilities</td>
 </tr>
@@ -1336,6 +1362,10 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 <td>Loader capabilities reached through an interface struct, with inline C++ wrappers</td>
 </tr>
 <tr>
+<td><code>ModMenu.h</code>, <code>ModMenu.hpp</code></td>
+<td>Pure C Mods-menu page interface and its type-safe C++ authoring layer</td>
+</tr>
+<tr>
 <td><code>Imc.h</code>, <code>ImcWire.hpp</code>, <code>ImcCpp.hpp</code></td>
 <td>IMC C/C++ runtime and wire format</td>
 </tr>
@@ -1365,6 +1395,52 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 </tr>
 </tbody>
 </table>
+<p><code>BML::Result&lt;T&gt;</code> combines a BML status code with an optional value. Modules that
+need structured diagnostics can use <code>BML::Result&lt;T, ModuleStatus&gt;</code>; for example,
+<code>Behavior::Result&lt;T&gt;</code> supplies <code>Behavior::Status</code> without changing the shared
+container or the C ABI. <code>Failure()</code> normalizes a non-error code to
+<code>BML_ERROR_FAIL</code>, so a failed <code>Result&lt;void&gt;</code> cannot appear successful.</p>
+<h2 id="custom-mods-menu-pages">Custom Mods menu pages<a class="headerlink" href="#custom-mods-menu-pages" title="Permanent link">&para;</a></h2>
+<p>A Native Mod can append Ballance-styled entries to its own details page with
+<code>BML::ModMenu::Page</code>. Config categories remain first; custom entries follow in
+registration order and share the same four-item pagination. Selecting an entry
+opens the Mod's fully custom page:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Bui.h&gt;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/ModMenu.hpp&gt;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">DiagnosticsPage</span><span class="w"> </span><span class="k">final</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="k">public</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">Page</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">public</span><span class="o">:</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="n">DiagnosticsPage</span><span class="p">()</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">        </span><span class="o">:</span><span class="w"> </span><span class="n">Page</span><span class="p">(</span><span class="s">"diagnostics"</span><span class="p">,</span><span class="w"> </span><span class="s">"Diagnostics"</span><span class="p">,</span><span class="w"> </span><span class="s">"Show live runtime details"</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="k">protected</span><span class="o">:</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="w"> </span><span class="n">OnFrame</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">        </span><span class="n">Bui</span><span class="o">::</span><span class="n">Title</span><span class="p">(</span><span class="s">"Diagnostics"</span><span class="p">);</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">        </span><span class="c1">// Draw ImGui or Bui widgets directly into the active page here.</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">Bui</span><span class="o">::</span><span class="n">NavBack</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="o">::</span><span class="n">Back</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">                              </span><span class="o">:</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="o">::</span><span class="n">None</span><span class="p">;</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="p">};</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="c1">// Keep this object alive as part of the Mod.</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="n">DiagnosticsPage</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">;</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="kt">void</span><span class="w"> </span><span class="nf">RegisterMenuPages</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">.</span><span class="n">Register</span><span class="p">();</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="kt">void</span><span class="w"> </span><span class="nf">UnregisterMenuPages</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">.</span><span class="n">Unregister</span><span class="p">();</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>The loader has already opened the full-viewport ImGui page when <code>OnFrame</code> runs;
+draw its contents directly and do not call <code>ImGui::NewFrame</code> or <code>ImGui::Render</code>.
+Return <code>Back</code> to restore the Mod details page or <code>Close</code> to leave the Mods menu.
+The loader copies the id, label, and description, but the page object and callbacks
+must remain alive until unregistration. Remaining registrations are removed before
+the owner DLL unloads. Version 1.0 exposes this capability to Native Mods only.
+Call the two registration helpers from the owning Mod's <code>OnLoad</code> and <code>OnUnload</code>.
+<code>ModMenu.h</code> remains usable from C and contains no C++ standard-library or class
+surface; <code>ModMenu.hpp</code> is a one-way authoring facade over that C interface. At
+the C seam, <code>BML_ModMenuPageDraw</code> returns a <code>BML_OK</code>/error status and writes a
+deferred navigation request to the <code>Action</code> member of <code>BML_ModMenuPageFrame</code>. Navigation is
+therefore never overloaded as an error result, and future frame inputs or outputs
+can be appended behind <code>StructSize</code> without changing the 1.0 callback signature.</p>
 <h2 id="mod-lifecycle-and-events">Mod lifecycle and events<a class="headerlink" href="#mod-lifecycle-and-events" title="Permanent link">&para;</a></h2>
 <p><code>IMod</code> inherits <code>IMessageReceiver</code>. A mod supplies its ID, version, name,
 author, description, and required BML version, then overrides only the
@@ -1406,9 +1482,9 @@ the loader owns scheduling and callback processing.</p>
 <code>CKDWORD</code> overloads count frames, the <code>float</code> overloads count milliseconds, and
 both units share one name, so an unsuffixed integer literal is ambiguous and
 fails to compile. Write the suffix explicitly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mi">1ul</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* next frame */</span><span class="w"> </span><span class="p">});</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mf">1000.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* one second later */</span><span class="w"> </span><span class="p">});</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimerLoop</span><span class="p">(</span><span class="mf">1.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">KeepRunning</span><span class="p">();</span><span class="w"> </span><span class="p">});</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mi">1ul</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* next frame */</span><span class="w"> </span><span class="p">});</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mf">1000.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* one second later */</span><span class="w"> </span><span class="p">});</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimerLoop</span><span class="p">(</span><span class="mf">1.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">KeepRunning</span><span class="p">();</span><span class="w"> </span><span class="p">});</span>
 </code></pre></div>
 <p>The loop callbacks keep running while they return <code>true</code>. Neither overload
 returns a handle, so a scheduled timer cannot be cancelled; make the loop
@@ -1417,10 +1493,10 @@ callback return <code>false</code> instead.</p>
 <p>Register dependencies before BML initializes mods. The constructor is the
 usual place because it runs while <code>BMLEntry</code> creates the mod and before any
 <code>OnLoad</code> callback:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">explicit</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">IMod</span><span class="p">(</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="n">AddDependency</span><span class="p">(</span><span class="s">"RequiredMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="n">AddOptionalDependency</span><span class="p">(</span><span class="s">"OptionalMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">explicit</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">IMod</span><span class="p">(</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="n">AddDependency</span><span class="p">(</span><span class="s">"RequiredMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="n">AddOptionalDependency</span><span class="p">(</span><span class="s">"OptionalMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">}</span>
 </code></pre></div>
 <p>BML orders mods so installed dependencies receive <code>OnLoad</code> before their
 dependents. A missing optional dependency is ignored. A missing required
@@ -1443,10 +1519,10 @@ happens for a null command, an invalid name or alias, and an already registered
 name.</p>
 <p><code>IBML</code> has no unregister function, so removing a command goes through
 <code>BML_UnregisterCommand</code> in <code>BML.h</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">MyMod::OnUnload</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML_UnregisterCommand</span><span class="p">(</span><span class="s">"mycmd"</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">        </span><span class="k">delete</span><span class="w"> </span><span class="n">m_Command</span><span class="p">;</span><span class="w">  </span><span class="c1">// only now is deleting it safe</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">MyMod::OnUnload</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML_UnregisterCommand</span><span class="p">(</span><span class="s">"mycmd"</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">        </span><span class="k">delete</span><span class="w"> </span><span class="n">m_Command</span><span class="p">;</span><span class="w">  </span><span class="c1">// only now is deleting it safe</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">}</span>
 </code></pre></div>
 <p>Only the DLL that registered a command may remove it, which the loader decides
 by remembering which module called <code>RegisterCommand</code>. Asking about someone else's
@@ -1474,7 +1550,8 @@ checks in:</p>
 <li><code>BML::UI</code> for the message board, mod/map menus, and HUD;</li>
 <li><code>BML::Speedrun</code> for the shared speedrun timer;</li>
 <li><code>BML::Behavior</code> for Virtools Building Block discovery, configured Runs,
-  copied Frames, graph inspection, Watches, Patches, and Plans.</li>
+  copied Frames, graph inspection, Watches, Patches, Plans, and revisioned
+  installation bindings for installed Edit Nodes and parameter Ports.</li>
 </ul>
 <p><code>Interface.h</code> documents the version rules: a struct grows only by appending a
 member and bumping its minor version, and <code>BML_IFACE_HAS</code> asks whether the
@@ -1484,7 +1561,7 @@ Local, In, Out, Pout, Graph, Patch, and Plan vocabulary. Its C interface is the
 stable transport seam; Native C++ Mods should normally use <code>Behavior.hpp</code>, which
 owns strings, arrays, callbacks, handles, and Frame bytes. See
 <a href="../behavior-authoring/">Behavior authoring</a> for the complete ownership, thread,
-world-reset, error, and hot-path contracts.</p>
+world-reset, error-handling, and hot-path rules.</p>
 <p>The native <code>BML::Gameplay</code> collection reads return complete snapshots in a
 caller-owned <code>std::vector</code>. Read the catalog during setup and refresh level
 checkpoints or reset points when the level changes; these calls transfer the
@@ -1493,29 +1570,44 @@ complete collection and are not intended for per-frame polling.</p>
 Handle the returned status, or use an explicit <code>(void)</code> cast when deliberately
 discarding the result of best-effort cleanup.</p>
 <h2 id="inter-mod-communication">Inter-mod communication<a class="headerlink" href="#inter-mod-communication" title="Permanent link">&para;</a></h2>
-<p>Prefer IMC for an ordinary API a Mod publishes to other Mods:</p>
-<ul>
-<li>a <code>.imc</code> file contains interface declarations only; field IDs are permanent
-  wire identifiers rather than array positions;</li>
-<li><code>bml_target_imc_api</code> generates C++ bindings and adds them to a target;</li>
-<li>RPC supports synchronous calls, futures, cancellation, timeouts, and
-  completion callbacks;</li>
-<li>Topic supports bounded subscriber queues, unsubscribe, and drop counts;</li>
-<li>generated types and cached route IDs keep text parsing out of hot paths;</li>
-<li>a consumer discovers at runtime whether a route is there, so provider and
-  consumer can ship separately.</li>
-</ul>
-<p>C++ IMC operations that return a BML status are marked <code>[[nodiscard]]</code> as well.</p>
-<p>A native base Mod that must expose direct function pointers or borrowed engine
-objects may instead publish a plain-C function table with
-<code>BML_RegisterInterface</code>. The table and its <code>InterfaceId</code> must be static data in
-the provider DLL. Consumers declare that Mod as a required dependency, fetch the
-table through <code>BML_GetInterface</code>, and never link an import library or resolve an
-API export from the provider. BML rejects duplicate id/major pairs and removes a
-provider's registrations before unloading its DLL.</p>
-<p><code>DataShare</code> is suitable for small named byte values when both sides obey its
-reference-count and borrowed-pointer lifetime rules. Use IMC when an API has to
-evolve on its own schedule, or needs RPC or Topic semantics.</p>
+<p>Choose the smallest interface that matches the data crossing between Mods:</p>
+<table>
+<thead>
+<tr>
+<th>Need</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Typed RPC or notifications between independently shipped native/script Mods</td>
+<td>IMC</td>
+</tr>
+<tr>
+<td>Direct function pointers or borrowed engine objects between native Mods</td>
+<td>A versioned plain-C table through <code>BML_RegisterInterface</code></td>
+</tr>
+<tr>
+<td>A small named byte value with a known lifetime</td>
+<td><code>DataShare</code></td>
+</tr>
+</tbody>
+</table>
+<p>For IMC, define a <code>.imc</code> file, generate the C++ or AngelScript bindings with
+<code>bml_target_imc_api</code>, and commit its lock file. A missing provider is a runtime
+status, not a load failure. See <a href="../imc/">IMC overview</a> and
+<a href="../imc-author-guide/">IMC authoring</a>.</p>
+<p>A plain-C table must have static storage in its provider DLL. Consumers declare
+the provider as a required Mod dependency and obtain the table through
+<code>BML_GetInterface</code>; they do not link against the provider DLL. Prefer
+<code>bml_add_generated_interface_package</code> for its header-only package and version
+checks. The independent provider and consumer projects in
+<code>examples/native-interface-provider</code> and <code>examples/native-interface-consumer</code> show
+the complete setup. Use <code>BML::Interfaces::RequiredInterface</code> or
+<code>OptionalInterface</code> for typed C++ lookup; the latter may return
+<code>BML_ERROR_NOT_FOUND</code>.</p>
+<p><code>DataShare</code> transfers small named byte values, not an evolving callable API.
+Observe its reference-count and borrowed-pointer lifetime rules.</p>
 <h2 id="three-ui-surfaces">Three UI surfaces<a class="headerlink" href="#three-ui-surfaces" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>Bui</code> draws Ballance-style ImGui widgets for native overlays.</li>
@@ -1548,13 +1640,13 @@ same key is set or removed or when the instance is destroyed. Use
 <code>BML_DataShare_CopyEx</code> when a stable copy is required.</p>
 <h2 id="where-the-loader-and-your-mod-live">Where the loader and your mod live<a class="headerlink" href="#where-the-loader-and-your-mod-live" title="Permanent link">&para;</a></h2>
 <p><code>BML.h</code> answers both questions a mod has about the file system:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// The loader's own directories. Borrowed, valid for the process, never freed.</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">loaderDir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetLoaderPathUtf8</span><span class="p">(</span><span class="n">BML_DIR_LOADER</span><span class="p">);</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1">// Your own installation directory. Allocated, so release it.</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">modRoot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetModRootUtf8</span><span class="p">(</span><span class="nb">nullptr</span><span class="p">);</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1">// ... use modRoot ...</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">BML_FreeString</span><span class="p">(</span><span class="n">modRoot</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1">// The loader's own directories. Borrowed, valid for the process, never freed.</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">loaderDir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetLoaderPathUtf8</span><span class="p">(</span><span class="n">BML_DIR_LOADER</span><span class="p">);</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1">// Your own installation directory. Allocated, so release it.</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">modRoot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetModRootUtf8</span><span class="p">(</span><span class="nb">nullptr</span><span class="p">);</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1">// ... use modRoot ...</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">BML_FreeString</span><span class="p">(</span><span class="n">modRoot</span><span class="p">);</span>
 </code></pre></div>
 <p><code>BML_GetLoaderPathW</code> and <code>BML_GetLoaderPathUtf8</code> take a <code>BML_LoaderDirectory</code>:
 <code>BML_DIR_WORKING</code>, <code>BML_DIR_TEMP</code>, <code>BML_DIR_GAME</code>, <code>BML_DIR_LOADER</code>, or

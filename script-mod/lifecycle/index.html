@@ -1205,7 +1205,8 @@ when possible.</p>
 hook declarations without calling lifecycle or state hooks. Adding
 <code>--check-state</code> calls the old <code>SaveState</code> and the candidate's migration/restore
 hooks, then discards the candidate without calling its <code>OnLoad</code>. State hooks
-used by this mode must therefore be pure.</p>
+used by this mode should therefore be pure and repeatable: the calls are real,
+and BML+ cannot roll back their external side effects.</p>
 <p>Reload has these limits:</p>
 <ul>
 <li>A new entry, changed mod id, or changed dependency graph requires restart.</li>
@@ -1213,6 +1214,8 @@ used by this mode must therefore be pure.</p>
 <li>A candidate that no longer satisfies a loaded dependent is rejected.</li>
 <li>Old timers, commands, DataShare requests, hooks, and callback handles become
   invalid when replacement succeeds.</li>
+<li>CKAngelScript <code>Async::*</code> tasks are not BML-owned resources. They may retain an
+  old physical module after reload; use BML+ timers for mod-owned delayed work.</li>
 <li>BML+ can restore resources it owns, but cannot undo arbitrary CKAS or raw
   CK/Vx changes made to the game world.</li>
 </ul>
@@ -1250,9 +1253,10 @@ original bag before calling the old runtime's rollback <code>OnLoad</code>.</p>
 objects, callbacks, ModRef, CK handles, timers, commands, or DataShare requests.
 A reload bag is enabled only during the state hook. Recreate owned resources in
 <code>OnLoad</code> after state restoration.</p>
-<p>State hooks may copy values and log. They must not register resources, execute
-commands, write config or DataShare values, mutate input, call host mutations,
-or change CK/game objects.</p>
+<p>Keep state hooks focused on copying values. This is a state-migration rule, not
+an API allowlist: BML+ does not block other APIs in these callbacks. Any host or
+game-world side effect happens immediately and cannot be rolled back after a
+failed reload.</p>
 <h2 id="diagnostics">Diagnostics<a class="headerlink" href="#diagnostics" title="Permanent link">&para;</a></h2>
 <p>Diagnostics identify the failing phase:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>phase=compile message=...
@@ -1280,6 +1284,8 @@ or change CK/game objects.</p>
   but should still be checked before use after failure or unload.</li>
 <li>Timer, Command, DataShare request, callback, and Hook Block resources are
   removed on unload and successful replacement.</li>
+<li>CKAngelScript async tasks are outside BML+ resource ownership; do not rely on
+  hot reload to cancel them.</li>
 <li>A hot reload does not undo script-authored game-world side effects.</li>
 </ul>
 <h2 id="release-checklist">Release checklist<a class="headerlink" href="#release-checklist" title="Permanent link">&para;</a></h2>

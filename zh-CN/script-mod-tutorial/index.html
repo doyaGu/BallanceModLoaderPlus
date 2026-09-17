@@ -1907,17 +1907,18 @@
 <code>BMLPlus-SDK-&lt;version&gt;-Release.zip</code> SDK。如果尚未安装运行时，先阅读
 <a href="../using-bml/">使用 BML+</a>。</p>
 <ol>
-<li>在 <code>&lt;Ballance&gt;/ModLoader/Mods</code> 中打开 PowerShell，让 SDK 生成并填写模板：</li>
+<li>在平常保存源码的工作区中，让 SDK 生成并填写模板：</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">&amp;</span> <span class="s2">"&lt;BML-SDK&gt;/scripts/New-BMLScriptMod.ps1"</span> <span class="p">`</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">-Id</span> <span class="s2">"yourname.my-mod"</span> <span class="n">-Name</span> <span class="s2">"My Mod"</span> <span class="n">-Author</span> <span class="s2">"Your Name"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="s2">"&lt;BML-SDK&gt;\scripts\bml.cmd"</span> new script yourname.my-mod
 </code></pre></div>
 <p>也可以继续手动复制 <code>templates/script-mod-template</code>。
-2. 确认 <code>&lt;Ballance&gt;/BuildingBlocks/AngelScript.dll</code> 存在。
-3. 不再修改生成的源码，直接启动 <code>Bin/Player.exe</code>，确认游戏内出现问候语，并在
+2. 进入生成目录运行 <code>.\bml run</code>；首次运行会询问 Ballance 目录并确认
+   <code>&lt;Ballance&gt;/BuildingBlocks/AngelScript.dll</code> 存在。
+3. 不再修改生成的源码，让命令启动 Player，确认游戏内出现问候语，并在
    <code>ModLoader/ModLoader.log</code> 中找到 <code>My Mod loaded</code>。
 4. 保持生成的 id 稳定；以后修改 id 会成为另一个 Mod，并且需要重启一次。
-5. 保持 Player 运行，修改问候语并保存。已加载的目录 Mod 会自动热重载。</p>
+5. 保持 <code>bml run</code> 和 Player 运行，修改问候语并保存。Developer Workflow 会同步
+   源码，已加载的目录 Mod 会自动热重载。</p>
 <p>新增 Mod、修改 id 或修改依赖时需要重启 Player；普通源码修改不需要。加载失败时
 依次使用：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>script status

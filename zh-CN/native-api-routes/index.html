@@ -2038,6 +2038,12 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 <td>只有 interface struct。</td>
 </tr>
 <tr>
+<td>在 Mods 菜单中扩展自己的 Mod 详情页</td>
+<td>无</td>
+<td><code>ModMenu.hpp</code> 的 <code>BML::ModMenu::Page</code></td>
+<td><code>ModMenu.h</code> 是纯 C 接口，C++ facade 单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。</td>
+</tr>
+<tr>
 <td>Loader 事件</td>
 <td><code>IMod</code> 上的 <code>IMessageReceiver</code> 虚函数</td>
 <td>无</td>
@@ -2083,13 +2089,13 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 <td>发现、配置、执行 Virtools Building Block，以及检查或编辑 Behavior Graph</td>
 <td>原始 CK SDK 与 <code>ExecuteBB</code> 兼容 helper</td>
 <td><code>Behavior.hpp</code> 的 <code>BML::Behavior</code></td>
-<td>新代码使用 <code>BML::Behavior</code>。它负责 Prototype/Layout 校验、自持有 Frame、可校验对象引用以及可恢复的 Patch/Plan 生命周期。只有明确自行承担这些 invariant 的引擎基础设施才直接使用 raw CK。</td>
+<td>新代码使用 <code>BML::Behavior</code>。它负责 Prototype/Layout 校验、自持有 Frame、可校验对象引用、可恢复的 Patch/Plan 生命周期，以及访问已安装 Edit symbol 的 revisioned binding。只有明确自行承担这些 invariant 的引擎基础设施才直接使用 raw CK。</td>
 </tr>
 <tr>
 <td>把自己的接口发布给别的 Mod</td>
 <td>无</td>
 <td>IMC；原生基础 Mod 也可发布 BML provider interface</td>
-<td>普通 RPC/Topic 服务优先使用生成式 IMC。只有必须暴露直接或借用原生对象时才用 <code>BML_RegisterInterface</code> 发布纯 C 函数表。接口表和 id 必须是提供者 DLL 中的静态数据；所有使用方必须声明该 Mod 为必需依赖，通过 <code>BML_GetInterface</code> 取用，不能导入提供者符号。脚本 Mod 不能发布或消费 provider interface。</td>
+<td>普通 RPC/Topic 服务优先使用生成式 IMC。必须暴露直接或借用原生对象的纯 C 进程内函数表，C++ Mod 使用 <code>Interface.hpp</code> 加 <code>ModInterface.hpp</code>：底层仍是 C ABI，但发布所有权、类型化查询、状态码和提供方依赖生命周期由 authoring 层持有。共享头用 <code>bml_add_interface_package</code> 发布，不得导入提供者符号；脚本 Mod 不能发布或消费 provider interface。</td>
 </tr>
 <tr>
 <td>绘制自己的界面</td>
@@ -2129,7 +2135,8 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
   <code>OnProcess</code> 里用的原因。<code>BML::Gameplay</code>、<code>BML::Scene</code>、<code>BML::UI</code> 触碰的是游戏的
   数组、游戏对象和 Loader 自己绘制的界面，因此这三个从别的线程调用一律返回
   <code>BML_ERROR_WRONG_THREAD</code>。<code>BML::Runtime</code> 和 <code>BML::Speedrun</code>
-  不拒绝其他线程，但同样是给游戏线程用的。在 Loader 加载完 Mod 之前，它们全都返回
+  不拒绝其他线程，但同样是给游戏线程用的。Mod 菜单页面的注册也只能在游戏线程
+  进行，其绘制回调运行于 Loader 已打开的 ImGui 帧内。在 Loader 加载完 Mod 之前，它们全都返回
   <code>BML_ERROR_FAIL</code>。</li>
 </ul>
 <h2 id="_4">延伸阅读<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>

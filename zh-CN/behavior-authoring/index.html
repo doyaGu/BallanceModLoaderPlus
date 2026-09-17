@@ -480,6 +480,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#c-seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C seam 的位置
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -596,10 +607,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#10-retail-bb" class="md-nav__link">
+  <a href="#10-angelscript" class="md-nav__link">
     <span class="md-ellipsis">
       
-        10. 已命名的 retail BB
+        10. AngelScript
       
     </span>
   </a>
@@ -607,10 +618,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#11" class="md-nav__link">
+  <a href="#11-retail-bb" class="md-nav__link">
     <span class="md-ellipsis">
       
-        11. 生命周期、错误与性能
+        11. 已命名的 retail BB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. 生命周期、错误与性能
       
     </span>
   </a>
@@ -1951,6 +1973,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#c-seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C seam 的位置
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2067,10 +2100,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#10-retail-bb" class="md-nav__link">
+  <a href="#10-angelscript" class="md-nav__link">
     <span class="md-ellipsis">
       
-        10. 已命名的 retail BB
+        10. AngelScript
       
     </span>
   </a>
@@ -2078,10 +2111,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#11" class="md-nav__link">
+  <a href="#11-retail-bb" class="md-nav__link">
     <span class="md-ellipsis">
       
-        11. 生命周期、错误与性能
+        11. 已命名的 retail BB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. 生命周期、错误与性能
       
     </span>
   </a>
@@ -2109,15 +2153,44 @@
 
 
 <h1 id="behavior">Behavior 编写<a class="headerlink" href="#behavior" title="Permanent link">&para;</a></h1>
-<p><code>BML/Behavior.hpp</code> 是 Native Mod 使用 Virtools Behavior 的 C++ interface。它能创建和执行任意已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。<code>BML/Behavior.h</code> 是同一能力的 C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。该 interface 仍在发布前开发阶段，目前只支持 Win32 Native C++ Mod，源码兼容性尚未冻结。</p>
+<p><code>BML/Behavior.hpp</code> 是 Native Mod 使用 Virtools Behavior 的稳定 C++ interface。它能创建和执行使用受支持参数类型的已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。<code>BML/Behavior.h</code> 是稳定的 <code>bml.behavior 1.0</code> C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。该 interface 只支持 Win32 Native C++ Mod，不支持 Win64。</p>
+<p><code>BML::Behavior</code> 中的领域类型和 <code>BML/Behavior.h</code> 中的 1.0 C function table 是公开接口。<code>BML::Behavior::Detail</code> 只承载 header-only 实现；Mod 不应直接引用其中的名称，其源码兼容性不作保证。</p>
+<h3 id="c-seam">C seam 的位置<a class="headerlink" href="#c-seam" title="Permanent link">&para;</a></h3>
+<p><code>BML/Behavior.h</code> 是完整的底层 interface，不是 C++ facade 的残缺传输格式。Prototype 查询、Block 执行、Frame 读取、Graph 检查、Watch、Script、Patch 和 Plan 都通过同一张 1.0 function table 提供；C++ facade 也只调用这张表，不使用私有 DLL 入口。因此，一个 C 翻译单元可以在不包含 Virtools header 或 C++ Behavior header 的情况下直接使用它：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior.h&gt;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">UseBehavior</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">found</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">BML_BehaviorInterface</span><span class="w"> </span><span class="o">*</span><span class="n">behavior</span><span class="p">;</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="n">BML_BehaviorStatus</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="n">BML_BehaviorSession</span><span class="w"> </span><span class="n">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="n">BML_BehaviorString</span><span class="w"> </span><span class="n">owner</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">};</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML_GetInterface</span><span class="p">(</span><span class="n">BML_BEHAVIOR_INTERFACE_ID</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">                         </span><span class="n">BML_BEHAVIOR_INTERFACE_MAJOR</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">found</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="n">behavior</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML_BehaviorInterface</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="n">found</span><span class="p">;</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">BML_BEHAVIOR_HAS_1_0</span><span class="p">(</span><span class="n">behavior</span><span class="p">))</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="n">status</span><span class="p">.</span><span class="n">StructSize</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">status</span><span class="p">);</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">behavior</span><span class="o">-&gt;</span><span class="n">OpenSession</span><span class="p">(</span><span class="n">owner</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">session</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">status</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span><span class="cm">/* Discover a Prototype and use the rest of the 1.0 table here. */</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="n">behavior</span><span class="o">-&gt;</span><span class="n">CloseSession</span><span class="p">(</span><span class="n">session</span><span class="p">);</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="p">}</span>
+</code></pre></div>
+<p>每个带 <code>StructSize</code> 的输入或输出结构都必须由调用方先填写该字段。输入字符串和数组只借用到调用返回；Frame、Graph 和 Layout 的变长结果使用无部分写入的 caller-buffer 协议。<code>BML_BEHAVIOR_HAS_1_0</code> 是完整 1.0 surface 的 capability gate，后续 minor 增加的成员再单独使用 <code>BML_IFACE_HAS</code> 检查。</p>
+<p>这不意味着 BML 提供纯 C 的 Mod 启动协议：现有 Native Mod host 仍由 <code>IMod</code> 定义。链接进同一个 Native Mod DLL 的 C 翻译单元或其他语言适配层可以直接调用 C seam，并仍遵守 Mod ownership、game thread、world reset 和 <code>BML_ObjectRef</code> 生命周期。它是独立的 Behavior seam，不是脱离 BML Runtime 的独立库。</p>
 <h2 id="1">1. 对象模型<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Prototype -&gt; Block -&gt; Call / Task / Instance -&gt; Frames
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                         |
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                         +--------------------&gt; live CKBehavior
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>existing CKBehavior graph -&gt; Graph snapshot -&gt; Edit -&gt; Patch / Plan
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>CKBeObject -&gt; Script -&gt; Graph snapshot -&gt; Edit -&gt; Patch
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Prototype -&gt; Block -&gt; Call / Task / Instance -&gt; Frames
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>                         |
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>                         +--------------------&gt; live CKBehavior
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>existing CKBehavior graph -&gt; Graph snapshot -&gt; Edit -&gt; Patch / Plan
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>CKBeObject -&gt; Script -&gt; Graph snapshot -&gt; Edit -&gt; Patch
 </code></pre></div>
 <table>
 <thead>
@@ -2209,52 +2282,52 @@
 <p>下文按这个顺序展开：先讲 BB 执行，再讲 graph 读取与创建，最后讲 graph edit 及其生命期。</p>
 <h2 id="2-session">2. 打开 Session<a class="headerlink" href="#2-session" title="Permanent link">&para;</a></h2>
 <p>在 Mod 初始化时打开一个 <code>Session</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior.hpp&gt;</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">using</span><span class="w"> </span><span class="k">namespace</span><span class="w"> </span><span class="nn">BML</span><span class="o">::</span><span class="nn">Behavior</span><span class="p">;</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">opened</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Session</span><span class="o">::</span><span class="n">Open</span><span class="p">();</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">opened</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="n">GetLogger</span><span class="p">()</span><span class="o">-&gt;</span><span class="n">Error</span><span class="p">(</span><span class="s">"Behavior unavailable: %s"</span><span class="p">,</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">                       </span><span class="n">opened</span><span class="p">.</span><span class="n">GetStatus</span><span class="p">().</span><span class="n">Message</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">}</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">m_Behavior</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">opened</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior.hpp&gt;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">using</span><span class="w"> </span><span class="k">namespace</span><span class="w"> </span><span class="nn">BML</span><span class="o">::</span><span class="nn">Behavior</span><span class="p">;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">opened</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Session</span><span class="o">::</span><span class="n">Open</span><span class="p">();</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">opened</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="n">GetLogger</span><span class="p">()</span><span class="o">-&gt;</span><span class="n">Error</span><span class="p">(</span><span class="s">"Behavior unavailable: %s"</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">                       </span><span class="n">opened</span><span class="p">.</span><span class="n">GetStatus</span><span class="p">().</span><span class="n">Message</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="p">}</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">m_Behavior</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">opened</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
 </code></pre></div>
 <p>Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 DLL 释放前完成 callback 和 native Behavior 的退役。</p>
-<p>对具名 Result 调用 <code>Result&lt;T&gt;::Value()</code> 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 <code>Take()</code>。<code>Take()</code> 会清空结果中的值，但 <code>Code()</code> 和 <code>GetStatus()</code> 仍可用于读取诊断。</p>
+<p><code>Behavior::Result&lt;T&gt;</code> 是共用 <code>BML::Result&lt;T, Behavior::Status&gt;</code> 的别名，只有诊断信息属于 Behavior。对具名 Result 调用 <code>Result&lt;T&gt;::Value()</code> 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 <code>Take()</code>。<code>Take()</code> 会清空结果中的值，但 <code>Code()</code> 和 <code>GetStatus()</code> 仍可用于读取诊断。</p>
 <p>由 Session 创建的对象持有自己所需的 Session lease。移动或对最初的 <code>Session</code> 值调用 <code>Reset()</code>，只会释放这个值持有的 lease，不会使仍存活的 Block、run、Script、Watch、Patch 或 Plan 失效。最后一个 lease 释放时，native Session 才关闭。</p>
 <h3 id="prototype">查找 Prototype<a class="headerlink" href="#prototype" title="Permanent link">&para;</a></h3>
 <p>已知 GUID 时可以直接 <code>Use(CKGUID)</code>。不知道 GUID，或需要固定当前 provider 时，先查询 catalog：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">PrototypeQuery</span><span class="w"> </span><span class="n">query</span><span class="p">;</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">query</span><span class="p">.</span><span class="n">Name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Physicalize"</span><span class="p">;</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">found</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Prototypes</span><span class="p">(</span><span class="n">query</span><span class="p">);</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">found</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">found</span><span class="o">-&gt;</span><span class="n">size</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">Prototype</span><span class="w"> </span><span class="n">prototype</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">found</span><span class="o">-&gt;</span><span class="n">front</span><span class="p">().</span><span class="n">Ref</span><span class="p">;</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="k">auto</span><span class="w"> </span><span class="n">declared</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Layout</span><span class="p">(</span><span class="n">prototype</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">PrototypeQuery</span><span class="w"> </span><span class="n">query</span><span class="p">;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">query</span><span class="p">.</span><span class="n">Name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Physicalize"</span><span class="p">;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">found</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Prototypes</span><span class="p">(</span><span class="n">query</span><span class="p">);</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">found</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">found</span><span class="o">-&gt;</span><span class="n">size</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">Prototype</span><span class="w"> </span><span class="n">prototype</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">found</span><span class="o">-&gt;</span><span class="n">front</span><span class="p">().</span><span class="n">Ref</span><span class="p">;</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="k">auto</span><span class="w"> </span><span class="n">declared</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Layout</span><span class="p">(</span><span class="n">prototype</span><span class="p">);</span>
 </code></pre></div>
 <p>空 <code>PrototypeQuery</code> 返回当前可发现的全部注册。<code>Session::Layout(prototype)</code> 读取 declared Layout，不创建 native Instance，也不发送 lifecycle callback。</p>
 <h2 id="3-building-block">3. 配置任意 Building Block<a class="headerlink" href="#3-building-block" title="Permanent link">&para;</a></h2>
 <p><code>Session::Use</code> 从 Prototype 创建 <code>Block</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">prototype</span><span class="p">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="p">.</span><span class="n">TargetOwner</span><span class="p">()</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({{</span><span class="s">"Mode"</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="s">"Detail"</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">}})</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({{</span><span class="s">"Created Later"</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="p">}})</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({{</span><span class="s">"Strength"</span><span class="p">,</span><span class="w"> </span><span class="mf">12.0f</span><span class="p">}})</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="p">.</span><span class="n">Locals</span><span class="p">({{</span><span class="s">"Accumulator"</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0f</span><span class="p">}});</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Signals</span><span class="p">(</span><span class="mi">64</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">prototype</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="p">.</span><span class="n">TargetOwner</span><span class="p">()</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({{</span><span class="s">"Mode"</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="s">"Detail"</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">}})</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({{</span><span class="s">"Created Later"</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="p">}})</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({{</span><span class="s">"Strength"</span><span class="p">,</span><span class="w"> </span><span class="mf">12.0f</span><span class="p">}})</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="p">.</span><span class="n">Locals</span><span class="p">({{</span><span class="s">"Accumulator"</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0f</span><span class="p">}});</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Signals</span><span class="p">(</span><span class="mi">64</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
 </code></pre></div>
 <p>每次 <code>Settings({...})</code> 是一个 Setting stage。一个 stage 写完后，Runtime 会发送 <code>SETTINGSEDITED</code>；BB 可以在 callback 中重建 interface，所以下一个 stage 必须在新的 live Layout 上重新解析。全部 Setting stage 完成后，Runtime 才应用 Pin 和 Local。Frame retention 属于每次 Call、Task 或 Instance，而不是可复用的 Block。</p>
 <p>Target 有三种形式：<code>TargetOwner()</code>、<code>Target(type, object)</code> 和 <code>NullTarget(type)</code>。slot selector 也必须明确：<code>At(index)</code>、<code>Named(name, occurrence)</code> 或 <code>Unique(name)</code>。字符串重载等价于 <code>Unique(name)</code>，重名时不会擅自选择第一项。</p>
 <p><code>Identity</code> 一类 variable-parameter Block 在 Block 自身选择 native parameter
 type：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">identity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">VT_LOGICS_IDENTITY</span><span class="p">)</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="p">.</span><span class="n">PinType</span><span class="p">(</span><span class="n">At</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">CKPGUID_BOOL</span><span class="p">)</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="p">.</span><span class="n">PoutType</span><span class="p">(</span><span class="s">"pOut 0"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_BOOL</span><span class="p">)</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({{</span><span class="n">At</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="nb">true</span><span class="p">}});</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">identity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">VT_LOGICS_IDENTITY</span><span class="p">)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="p">.</span><span class="n">PinType</span><span class="p">(</span><span class="n">At</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">CKPGUID_BOOL</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="p">.</span><span class="n">PoutType</span><span class="p">(</span><span class="s">"pOut 0"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_BOOL</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({{</span><span class="n">At</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="nb">true</span><span class="p">}});</span>
 </code></pre></div>
 <p><code>PinType</code> 和 <code>PoutType</code> 接受与其他 Block 配置相同的 index/name selector。
 Runtime 在 Setting callback 确定 live Layout 后、Pin binding 与最终 <code>EDITED</code>
@@ -2296,13 +2369,13 @@ game Node。</p>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">once</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Run"</span><span class="p">);</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Latest</span><span class="p">());</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">auto</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Spawn</span><span class="p">();</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">parked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Pulse</span><span class="p">(</span><span class="s">"Reset"</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">once</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Run"</span><span class="p">);</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Latest</span><span class="p">());</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="k">auto</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Spawn</span><span class="p">();</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">parked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Pulse</span><span class="p">(</span><span class="s">"Reset"</span><span class="p">);</span>
 </code></pre></div>
 <p>Frame policy 只属于本次 run；可复用的 Block 不保存观察策略。<code>Call::Continue()</code> 保留同一个 native Instance；它不是重新激活或重新创建。成功时 Call 被消费并返回对应 Task；失败时 Call 仍可继续使用。</p>
 <p>BB 只有一个 In 时，可直接使用 <code>Call(policy)</code> 和 <code>Start(policy)</code>，无需传入占位 Selector；需要选择特定 In 时再使用 Selector 或字符串重载。</p>
@@ -2338,33 +2411,33 @@ game Node。</p>
 </tbody>
 </table>
 <p>只有在 policy 上调用 <code>.Pouts()</code>，Runtime 才读取并复制 Pout：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Signals</span><span class="p">(</span><span class="mi">64</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">Frames</span><span class="w"> </span><span class="n">frames</span><span class="p">;</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">frames</span><span class="p">.</span><span class="n">Reserve</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">4096</span><span class="p">);</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">taken</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">task</span><span class="o">-&gt;</span><span class="n">TakeFrames</span><span class="p">(</span><span class="n">frames</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Frame</span><span class="w"> </span><span class="n">frame</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">frames</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">frame</span><span class="p">.</span><span class="n">HasOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">            </span><span class="k">auto</span><span class="w"> </span><span class="n">speed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frame</span><span class="p">.</span><span class="n">Pout</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;</span><span class="p">(</span><span class="s">"Speed"</span><span class="p">);</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">speed</span><span class="p">)</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">                </span><span class="n">Use</span><span class="p">(</span><span class="n">speed</span><span class="p">.</span><span class="n">Value</span><span class="p">());</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Signals</span><span class="p">(</span><span class="mi">64</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">Frames</span><span class="w"> </span><span class="n">frames</span><span class="p">;</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">frames</span><span class="p">.</span><span class="n">Reserve</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">4096</span><span class="p">);</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">taken</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">task</span><span class="o">-&gt;</span><span class="n">TakeFrames</span><span class="p">(</span><span class="n">frames</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Frame</span><span class="w"> </span><span class="n">frame</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">frames</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">frame</span><span class="p">.</span><span class="n">HasOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">            </span><span class="k">auto</span><span class="w"> </span><span class="n">speed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frame</span><span class="p">.</span><span class="n">Pout</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;</span><span class="p">(</span><span class="s">"Speed"</span><span class="p">);</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">speed</span><span class="p">)</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">                </span><span class="n">Use</span><span class="p">(</span><span class="n">speed</span><span class="p">.</span><span class="n">Value</span><span class="p">());</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="p">}</span>
 </code></pre></div>
 <p><code>TakeFrames()</code> 是自动分配版本；<code>TakeFrames(Frames&amp;)</code> 会复用已有 header 和 payload buffer。容量足够时，它只调用一次 C seam，且不为 record 或 string 另行分配。这个名字也明确区分了它的消费语义与 <code>Result&lt;T&gt;::Take()</code>。<code>Frame</code>、<code>Out</code> 和 <code>Pout</code> 都是所属 <code>Frames</code> 的只读 view；下一次修改该 <code>Frames</code> 后，旧 view 全部失效。</p>
 <p>只有左值 <code>Frames</code> 能产生 view，因此临时对象不会泄出悬空 <code>Frame</code>。<code>Clear()</code> 保留可复用容量；遇到异常大的批次后，可用 <code>ShrinkToFit()</code> 释放不再需要的 header 与 payload 空间。</p>
 <p>object Pout 会在对象仍 live 时签发 <code>ObjectRef</code>。Object List Pout
 （<code>CKPGUID_OBJECTARRAY</code>）对应 <code>ObjectList</code>，它是 capture-time reference 的
 零分配 view：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">loaded</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frame</span><span class="p">.</span><span class="n">Pout</span><span class="o">&lt;</span><span class="n">ObjectList</span><span class="o">&gt;</span><span class="p">(</span><span class="s">"Loaded Objects"</span><span class="p">);</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">loaded</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">ObjectRef</span><span class="w"> </span><span class="n">object</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">loaded</span><span class="p">.</span><span class="n">Value</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Scene</span><span class="o">::</span><span class="n">ObjectInfo</span><span class="w"> </span><span class="n">info</span><span class="p">;</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Scene</span><span class="o">::</span><span class="n">ReadObject</span><span class="p">(</span><span class="n">object</span><span class="p">,</span><span class="w"> </span><span class="n">info</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">            </span><span class="n">Use</span><span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">CK_ID</span><span class="o">&gt;</span><span class="p">(</span><span class="n">info</span><span class="p">.</span><span class="n">Id</span><span class="p">));</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">loaded</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frame</span><span class="p">.</span><span class="n">Pout</span><span class="o">&lt;</span><span class="n">ObjectList</span><span class="o">&gt;</span><span class="p">(</span><span class="s">"Loaded Objects"</span><span class="p">);</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">loaded</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">ObjectRef</span><span class="w"> </span><span class="n">object</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">loaded</span><span class="p">.</span><span class="n">Value</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Scene</span><span class="o">::</span><span class="n">ObjectInfo</span><span class="w"> </span><span class="n">info</span><span class="p">;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Scene</span><span class="o">::</span><span class="n">ReadObject</span><span class="p">(</span><span class="n">object</span><span class="p">,</span><span class="w"> </span><span class="n">info</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">            </span><span class="n">Use</span><span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">CK_ID</span><span class="o">&gt;</span><span class="p">(</span><span class="n">info</span><span class="p">.</span><span class="n">Id</span><span class="p">));</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="p">}</span>
 </code></pre></div>
 <p>与 <code>Frame</code>、<code>Out</code> 和 <code>Pout</code> 一样，这个 view 属于 <code>Frames</code>，遍历本身不分配。
 之后读取 Frame 不再访问原 CK parameter、Object List 或 CK object；对象已经删除时，
@@ -2375,25 +2448,25 @@ Object List 只是一种输出形式，不能作为 Block literal。</p>
 <p>有界队列满时不会丢弃旧 Frame；run 会停止，并在独立 failure slot 中报告 <code>FrameQueueFull</code>。成功 Take 后会释放普通队列容量。</p>
 <h2 id="6-live-layout">6. 使用 live Layout<a class="headerlink" href="#6-live-layout" title="Permanent link">&para;</a></h2>
 <p>run 的 <code>Layout()</code> 返回当前配置后的 native interface。<code>Slot</code> 带有 Instance identity 和 layout generation，可直接交给 <code>Set()</code> 或 <code>Bind()</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Layout</span><span class="p">();</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">layout</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">strength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">layout</span><span class="o">-&gt;</span><span class="n">Find</span><span class="p">(</span><span class="n">SlotKind</span><span class="o">::</span><span class="n">Pin</span><span class="p">,</span><span class="w"> </span><span class="s">"Strength"</span><span class="p">))</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">        </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Set</span><span class="p">(</span><span class="o">*</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="mf">20.0f</span><span class="p">);</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Layout</span><span class="p">();</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">layout</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">strength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">layout</span><span class="o">-&gt;</span><span class="n">Find</span><span class="p">(</span><span class="n">SlotKind</span><span class="o">::</span><span class="n">Pin</span><span class="p">,</span><span class="w"> </span><span class="s">"Strength"</span><span class="p">))</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">        </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Set</span><span class="p">(</span><span class="o">*</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="mf">20.0f</span><span class="p">);</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">}</span>
 </code></pre></div>
 <p>lifecycle callback 边界会使旧 Slot 失效，因为 provider 可能重建了相同形状的 interface。普通 Execute 只有在 Target、In/Out、Pin/Pout、Setting 或 Local identity 实际变化时才推进 layout generation。旧 Slot 或 Port 会返回 <code>LayoutChanged</code>，不会按旧 ordinal 写错参数。</p>
 <p><code>Settings({...})</code> 可对 live run 应用新的 Setting stage。Runtime 会重新取得 Layout，并恢复仍然唯一且类型匹配的 Target、Pin、Local 和 source relation。native mutation 一旦开始，任何写入、callback、Layout 或 relation 失败都会让 run 进入 <code>Failed</code>：<code>Info()</code> 保留首个 <code>Status</code>，后续 mutation 和 execution 返回同一 diagnostic，而 native Instance 仍由该 run 持有，直到 <code>Close()</code>。</p>
 <h2 id="7-graph">7. 读取 graph<a class="headerlink" href="#7-graph" title="Permanent link">&para;</a></h2>
 <p><code>Session::Inspect</code> 和 run 的 <code>Inspect</code> 返回 immutable <code>Graph</code> snapshot：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">snapshot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Inspect</span><span class="p">(</span><span class="n">script</span><span class="p">);</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">snapshot</span><span class="p">)</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">counter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">snapshot</span><span class="o">-&gt;</span><span class="n">Find</span><span class="p">(</span><span class="n">Named</span><span class="p">(</span><span class="s">"Counter_Active"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">counter</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">snapshot</span><span class="o">-&gt;</span><span class="n">Read</span><span class="p">(</span><span class="n">counter</span><span class="o">-&gt;</span><span class="n">Pout</span><span class="p">(</span><span class="s">"Count"</span><span class="p">));</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">    </span><span class="c1">// 在 snapshot 有效期间使用 value。</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">snapshot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Inspect</span><span class="p">(</span><span class="n">script</span><span class="p">);</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">snapshot</span><span class="p">)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">counter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">snapshot</span><span class="o">-&gt;</span><span class="n">Find</span><span class="p">(</span><span class="n">Named</span><span class="p">(</span><span class="s">"Counter_Active"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">counter</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">snapshot</span><span class="o">-&gt;</span><span class="n">Read</span><span class="p">(</span><span class="n">counter</span><span class="o">-&gt;</span><span class="n">Pout</span><span class="p">(</span><span class="s">"Count"</span><span class="p">));</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="c1">// 在 snapshot 有效期间使用 value。</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="p">}</span>
 </code></pre></div>
 <p>需要 physical graph 时，直接向 <code>Session::Inspect</code> 传入 <code>View::Live</code>，无需先读取一次 Logical snapshot。已有 snapshot 需要切换视图时，仍使用 <code>Graph::Logical()</code> 和 <code>Live()</code>。</p>
 <p><code>Find</code> 和 <code>FindAll</code> 与 Block slot 使用同一组 selector：<code>At(index)</code>、
@@ -2412,7 +2485,7 @@ view 隐藏 Patch 基础设施后重新生成连续 index，Live view 使用 nat
 进行结构解析。
 <code>Port::Index()</code> 同样保留 CK 原生 slot index。Setting 与 Local 共用 CK 的
 local-parameter 数组、但在 API 中属于不同 slot kind，因此 Local index 可能不连续；
-除非 BB contract 明确规定原生 index，否则应优先使用名称 selector。</p>
+除非 BB 的参数布局明确要求原生 index，否则应优先使用名称 selector。</p>
 <p><code>Incoming</code> 和 <code>Outgoing</code> 返回零分配的索引 Link view，不扫描无关 Link。
 <code>Links()</code> 和 <code>Incoming</code> 使用 graph 的 Link collection 顺序，<code>Outgoing</code> 使用每个
 source IO 的 Virtools 遍历顺序。
@@ -2428,22 +2501,22 @@ graph owner 和 object identity。Port 保留所属 Node 的 layout generation�
 <p>Watch 每个 game frame 采样一次 graph、layout 或 value。callback 或观察失败后，Watch 保留第一条 <code>Status</code>，进入 <code>Failed</code> 并停止后续 callback。</p>
 <h2 id="8-script-graph">8. 创建 Script graph<a class="headerlink" href="#8-script-graph" title="Permanent link">&para;</a></h2>
 <p><code>Session::CreateScript</code> 在当前 Scene 中创建一个由 live <code>CKBeObject</code> 拥有的顶层 Script，并在返回前安装初始 <code>Edit</code>。Script 初始不激活，因此 Virtools 不会调度一个只完成了一半的 graph：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">body</span><span class="p">;</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">graph</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">body</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">graph</span><span class="p">.</span><span class="n">AppendIn</span><span class="p">(</span><span class="s">"Start"</span><span class="p">);</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">graph</span><span class="p">.</span><span class="n">AppendOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">);</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">left</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="p">.</span><span class="n">AppendLocal</span><span class="p">(</span><span class="s">"Left"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">);</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="k">auto</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="p">.</span><span class="n">AddOperation</span><span class="p">(</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="n">addition</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">);</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">graph</span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">left</span><span class="p">,</span><span class="w"> </span><span class="mf">2.0f</span><span class="p">)</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">sum</span><span class="p">.</span><span class="n">Input</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">left</span><span class="p">)</span>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">sum</span><span class="p">.</span><span class="n">Input</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="mf">3.0f</span><span class="p">);</span>
-<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
-<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="k">auto</span><span class="w"> </span><span class="n">created</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">CreateScript</span><span class="p">(</span><span class="n">owner</span><span class="p">,</span><span class="w"> </span><span class="s">"My Script"</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="p">);</span>
-<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">created</span><span class="p">)</span>
-<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
-<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="n">Script</span><span class="w"> </span><span class="n">script</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">created</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
-<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="n">script</span><span class="p">.</span><span class="n">Activate</span><span class="p">();</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">body</span><span class="p">;</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">graph</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">body</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">graph</span><span class="p">.</span><span class="n">AppendIn</span><span class="p">(</span><span class="s">"Start"</span><span class="p">);</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">graph</span><span class="p">.</span><span class="n">AppendOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">);</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">left</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="p">.</span><span class="n">AppendLocal</span><span class="p">(</span><span class="s">"Left"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">);</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="k">auto</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="p">.</span><span class="n">AddOperation</span><span class="p">(</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="n">addition</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">);</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="n">graph</span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">left</span><span class="p">,</span><span class="w"> </span><span class="mf">2.0f</span><span class="p">)</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">sum</span><span class="p">.</span><span class="n">Input</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">left</span><span class="p">)</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">    </span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">sum</span><span class="p">.</span><span class="n">Input</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="mf">3.0f</span><span class="p">);</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="k">auto</span><span class="w"> </span><span class="n">created</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">CreateScript</span><span class="p">(</span><span class="n">owner</span><span class="p">,</span><span class="w"> </span><span class="s">"My Script"</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="p">);</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">created</span><span class="p">)</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="n">Script</span><span class="w"> </span><span class="n">script</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">created</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="n">script</span><span class="p">.</span><span class="n">Activate</span><span class="p">();</span>
 </code></pre></div>
 <p><code>CreateScript</code> 只执行一次 native <code>AddScript</code>，同时建立 owner 与 Scene membership，然后编译并应用完整 Edit。validation、lifecycle、callback 或 graph 任一阶段失败都不会返回 Script handle；未发布的 root 会被移除，也不会进入 Plan。安装后的初始 graph 由 Script 自身拥有，不要求作者额外保存第二个 Patch handle。</p>
 <p><code>Activate()</code> 在不请求 reset 的情况下调度 inactive Script；<code>Restart()</code> 明确请求 Virtools activation reset，即使 Script 已经 active 也一样；<code>Deactivate()</code> 停止调度。</p>
@@ -2451,22 +2524,22 @@ graph owner 和 object identity。Port 保留所属 Node 的 layout generation�
 <p>Script 关闭也在 safe point 完成：首次 <code>Close()</code> 可能返回 <code>CloseState::Closing</code>；完成 deactivate、从 owner 移除和 native destruction 后，再次调用返回 <code>Closed</code>。应先关闭 Script，再销毁 owner；Mod unload 和 world reset 会自动执行相同的退役流程。</p>
 <h2 id="9-graph">9. 修改 graph<a class="headerlink" href="#9-graph" title="Permanent link">&para;</a></h2>
 <p><code>Edit</code> 是带显式 graph scope 的唯一 symbolic transformation：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">edit</span><span class="p">;</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edit</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">auto</span><span class="w"> </span><span class="n">dispatch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="n">NodePattern</span><span class="p">(</span><span class="s">"Switch On Message"</span><span class="p">)</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">        </span><span class="p">.</span><span class="n">Kind</span><span class="p">(</span><span class="n">BehaviorKind</span><span class="o">::</span><span class="n">Function</span><span class="p">)</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">        </span><span class="p">.</span><span class="n">Ins</span><span class="p">(</span><span class="mi">2</span><span class="p">).</span><span class="n">Outs</span><span class="p">(</span><span class="mi">11</span><span class="p">).</span><span class="n">Pins</span><span class="p">(</span><span class="mi">11</span><span class="p">).</span><span class="n">Pouts</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">checkpoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span>
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="n">NodePattern</span><span class="p">(</span><span class="s">"Wait Message"</span><span class="p">).</span><span class="n">Pin</span><span class="p">(</span>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">        </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">Value</span><span class="o">::</span><span class="n">As</span><span class="p">(</span><span class="n">CKPGUID_MESSAGE</span><span class="p">,</span><span class="w"> </span><span class="n">checkpointMessage</span><span class="p">)));</span>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="k">auto</span><span class="w"> </span><span class="n">highscoreNode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span><span class="s">"Highscore"</span><span class="p">);</span>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="k">auto</span><span class="w"> </span><span class="n">highscore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscoreNode</span><span class="p">.</span><span class="n">Graph</span><span class="p">();</span>
-<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
-<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="k">auto</span><span class="w"> </span><span class="n">done</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscore</span><span class="p">.</span><span class="n">AppendOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">);</span>
-<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="k">auto</span><span class="w"> </span><span class="n">activators</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscore</span><span class="p">.</span><span class="n">Each</span><span class="p">(</span><span class="s">"Activate Script"</span><span class="p">);</span>
-<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="n">highscore</span><span class="p">.</span><span class="n">Flow</span><span class="p">(</span><span class="n">activators</span><span class="p">.</span><span class="n">Out</span><span class="p">(),</span><span class="w"> </span><span class="n">done</span><span class="p">);</span>
-<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="n">root</span><span class="p">.</span><span class="n">After</span><span class="p">(</span><span class="n">highscoreNode</span><span class="p">.</span><span class="n">Out</span><span class="p">(</span><span class="s">"Done"</span><span class="p">),</span><span class="w"> </span><span class="n">hook</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">edit</span><span class="p">;</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edit</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="k">auto</span><span class="w"> </span><span class="n">dispatch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="n">NodePattern</span><span class="p">(</span><span class="s">"Switch On Message"</span><span class="p">)</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">        </span><span class="p">.</span><span class="n">Kind</span><span class="p">(</span><span class="n">BehaviorKind</span><span class="o">::</span><span class="n">Function</span><span class="p">)</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">        </span><span class="p">.</span><span class="n">Ins</span><span class="p">(</span><span class="mi">2</span><span class="p">).</span><span class="n">Outs</span><span class="p">(</span><span class="mi">11</span><span class="p">).</span><span class="n">Pins</span><span class="p">(</span><span class="mi">11</span><span class="p">).</span><span class="n">Pouts</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">checkpoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="n">NodePattern</span><span class="p">(</span><span class="s">"Wait Message"</span><span class="p">).</span><span class="n">Pin</span><span class="p">(</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">        </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">Value</span><span class="o">::</span><span class="n">As</span><span class="p">(</span><span class="n">CKPGUID_MESSAGE</span><span class="p">,</span><span class="w"> </span><span class="n">checkpointMessage</span><span class="p">)));</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="k">auto</span><span class="w"> </span><span class="n">highscoreNode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span><span class="s">"Highscore"</span><span class="p">);</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="k">auto</span><span class="w"> </span><span class="n">highscore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscoreNode</span><span class="p">.</span><span class="n">Graph</span><span class="p">();</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="k">auto</span><span class="w"> </span><span class="n">done</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscore</span><span class="p">.</span><span class="n">AppendOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">);</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="k">auto</span><span class="w"> </span><span class="n">activators</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscore</span><span class="p">.</span><span class="n">Each</span><span class="p">(</span><span class="s">"Activate Script"</span><span class="p">);</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="n">highscore</span><span class="p">.</span><span class="n">Flow</span><span class="p">(</span><span class="n">activators</span><span class="p">.</span><span class="n">Out</span><span class="p">(),</span><span class="w"> </span><span class="n">done</span><span class="p">);</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="n">root</span><span class="p">.</span><span class="n">After</span><span class="p">(</span><span class="n">highscoreNode</span><span class="p">.</span><span class="n">Out</span><span class="p">(</span><span class="s">"Done"</span><span class="p">),</span><span class="w"> </span><span class="n">hook</span><span class="p">);</span>
 </code></pre></div>
 <p><code>NodePattern</code> 是 <code>Require</code> 使用的结构词汇。它可以组合 index/name
 selector、Prototype、Behavior kind、各类 port 的精确数量，以及对 Target、Pin、
@@ -2488,7 +2561,10 @@ destination，可直接表达绕过一个 Block。Redirect 本身是作者期望
 interface。<code>Edit::Root()</code> 返回 root scope，<code>Edit::Node::Graph()</code> 进入一个
 graph-backed Node；<code>Edit</code> 本身不再镜像 graph-local operation。graph scope
 是可低成本复制的值，修改操作也返回值，因此从 <code>Root()</code> 临时值开始的链式调用可以
-安全保存。所有 scope 和 symbol 的生命周期都受所属 Edit 限制。父 graph 只能连接 child 的 public port；不同 scope 的
+安全保存。提交后的 Patch 或 Plan 会继续持有所属 Edit 的符号身份，因此局部 Edit
+离开作用域后，已保存的 Node 和 Port 仍可用于 installation operation。每版定义带有
+不透明 binding token，排队 Replace 或失败回滚不会让不同 Edit 中相同数值的 handle
+发生串号。父 graph 只能连接 child 的 public port；不同 scope 的
 internal port 不能直接相连。<code>AddGraph(name, priority)</code> 创建真实的 graph-backed
 child，其 nested scope 在同一个 transaction 中定义 public interface 与内部
 body。root 和所有 nested scope 一起验证，恢复顺序固定为 child 在前、parent 在后。</p>
@@ -2548,29 +2624,62 @@ overlay；需要移动 Link 本身时使用 <code>Reconnect</code>。若新结�
 <code>Remove</code> 还会排除本 Patch 自己的 Link overlay，避免物理 chain 穿过 parked Node。</p>
 <p>使用 <code>On(graph, edit)</code> 将多个当前 world 的 graph 和 Edit 组合起来。Session 为整个
 功能返回一个 Patch：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">patch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Apply</span><span class="p">(</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="s">"overclock"</span><span class="p">,</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">deactivateGraph</span><span class="p">,</span><span class="w"> </span><span class="n">deactivateEdit</span><span class="p">),</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">newBallGraph</span><span class="p">,</span><span class="w"> </span><span class="n">newBallEdit</span><span class="p">),</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">energyGraph</span><span class="p">,</span><span class="w"> </span><span class="n">energyEdit</span><span class="p">));</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">patch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Apply</span><span class="p">(</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="s">"overclock"</span><span class="p">,</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">deactivateGraph</span><span class="p">,</span><span class="w"> </span><span class="n">deactivateEdit</span><span class="p">),</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">newBallGraph</span><span class="p">,</span><span class="w"> </span><span class="n">newBallEdit</span><span class="p">),</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">energyGraph</span><span class="p">,</span><span class="w"> </span><span class="n">energyEdit</span><span class="p">));</span>
 </code></pre></div>
-<p><code>On(...)</code> 只负责在这些调用中连接目标和 Edit，不引入新的公开 graph 或 patch 类型。</p>
+<p><code>On(...)</code> 只负责在这些调用中连接目标和 Edit，不引入新的公开 graph 或 patch 类型；
+它会在调用时冻结 Edit，之后才向同一个 Edit 追加的 symbol 不属于该 target 或 rule。</p>
 <p>第一个 graph 改变前，所有 target 都会完成解析和静态检查。随后按参数顺序提交；
 后面的 target 失败时，前面的 target 按逆序恢复。同一个 graph 不能在顶层出现两次。
 任一 exact target 被删除时，整个 Patch 退役，其余仍存在的 graph 会在下一个
 Behavior safe point 恢复。<code>Graph::Apply</code> 和 <code>Script::Apply</code> 是这项操作的单 graph
 便利入口。</p>
 <p>一个 Plan 可以拥有多条相互独立的 Script rule：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Plan</span><span class="p">(</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="s">"game-events"</span><span class="p">,</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Event_handler"</span><span class="p">),</span><span class="w"> </span><span class="n">eventEdit</span><span class="p">),</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Gameplay_Ingame"</span><span class="p">),</span><span class="w"> </span><span class="n">gameplayEdit</span><span class="p">),</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Gameplay_Energy"</span><span class="p">),</span><span class="w"> </span><span class="n">energyEdit</span><span class="p">));</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Plan</span><span class="p">(</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">    </span><span class="s">"game-events"</span><span class="p">,</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Event_handler"</span><span class="p">),</span><span class="w"> </span><span class="n">eventEdit</span><span class="p">),</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Gameplay_Ingame"</span><span class="p">),</span><span class="w"> </span><span class="n">gameplayEdit</span><span class="p">),</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Gameplay_Energy"</span><span class="p">),</span><span class="w"> </span><span class="n">energyEdit</span><span class="p">));</span>
 </code></pre></div>
 <p>每条 rule 只在对应 Script 名称发生变化时 reconcile，不会逐帧扫描全部 graph。
 rule 可选择 <code>One</code> 或 <code>Each</code>；其 root 与 nested scope 作为一个原子 Patch 安装。
 <code>Partial</code> 表示至少一条 rule 已安装、但仍有 rule 没有匹配；<code>Unsatisfied</code> 表示当前
 没有任何安装。定义会跨 world reset 保留，并在下一 world 重新 reconcile。</p>
+<p>exact Patch 可用 <code>Patch::Read</code> 和 <code>Patch::Set</code> 读写其 Edit 命名的参数 Port。
+Plan 则先取得当前实例快照，再选择对应 rule 与 Script 的 instance：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">levelEdit</span><span class="p">;</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">levelEdit</span><span class="p">.</span><span class="n">Root</span><span class="p">().</span><span class="n">Require</span><span class="p">(</span><span class="s">"Load LevelXX"</span><span class="p">).</span><span class="n">Graph</span><span class="p">();</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">levelRow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">level</span><span class="p">.</span><span class="n">Root</span><span class="p">().</span><span class="n">Local</span><span class="p">(</span><span class="s">"AllLevel row"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_INT</span><span class="p">);</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">customLevel</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">level</span><span class="p">.</span><span class="n">AppendLocal</span><span class="p">(</span><span class="s">"Custom Level"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_BOOL</span><span class="p">);</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="k">auto</span><span class="w"> </span><span class="n">submitted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Plan</span><span class="p">(</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">    </span><span class="s">"custom-level-route"</span><span class="p">,</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Levelinit_build"</span><span class="p">),</span><span class="w"> </span><span class="n">levelEdit</span><span class="p">));</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">submitted</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">    </span><span class="n">Plan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">submitted</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">instances</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="n">Instances</span><span class="p">();</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">instances</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">instances</span><span class="o">-&gt;</span><span class="n">size</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="w">        </span><span class="n">Plan</span><span class="o">::</span><span class="n">Instance</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">instances</span><span class="o">-&gt;</span><span class="n">front</span><span class="p">());</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a><span class="w">        </span><span class="k">auto</span><span class="w"> </span><span class="n">previous</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">Read</span><span class="p">(</span><span class="n">levelRow</span><span class="p">);</span>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">previous</span><span class="w"> </span><span class="o">&amp;&amp;</span>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a><span class="w">            </span><span class="n">previous</span><span class="o">-&gt;</span><span class="n">State</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">ObservationState</span><span class="o">::</span><span class="n">Available</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="w">            </span><span class="k">auto</span><span class="w"> </span><span class="n">changed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">Set</span><span class="p">(</span><span class="n">customLevel</span><span class="p">,</span><span class="w"> </span><span class="nb">true</span><span class="p">);</span>
+<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a><span class="p">}</span>
+</code></pre></div>
+<p>运行期还要使用的 Node 或 Port 必须在把 Edit 传给 <code>On(...)</code> 之前保存；该调用会冻结
+definition 及其 binding handle 上限。
+这是带 revision 的 Plan instance 快照，不是 native parameter handle。
+Patch 与 Plan 会在自身有效期内保留对应 Edit 的符号身份；提交所用的局部 Edit
+离开作用域后，先前保存的 Node 和 Port 仍可用于这些绑定。
+每次 <code>Resolve</code>、<code>Read</code> 或 <code>Set</code> 都会重新校验 definition、world 与实际安装的
+Patch；world 变化、Replace、Disable 或重建都会让旧快照失效。读取不会强制求值。
+写入会沿 Pin 或 Target 找到当前 stored source，并保持 direct/shared relation；这类
+运行期写入不进入 Patch journal，因此调用方必须自己管理事务与回滚。</p>
 <p>Patch 和 Plan 都提供 <code>Enable()</code>、<code>Disable()</code>、<code>Replace(...)</code>、<code>Info()</code> 与
 <code>Close()</code>。Disable 恢复 native graph，但保留 handle 和 owned definition；Enable
 重新验证后再安装。Replace 保留未变化的前缀，先逆序恢复变化后的旧后缀，再安装
@@ -2584,23 +2693,59 @@ definition 时的第一个失败，<code>RestoreFailure</code> 表示当前阻�
 <code>Error</code> 和 <code>Phase</code>；message 只用于日志，并附加 Patch/Plan 名、Mod generation，
 以及可确定的 world、rule/target index 和 Script 名。</p>
 <p>Close 会比较 installation 仍然拥有的 Link、source 和 graph after-image；外部修改
-导致 <code>RevertConflict</code> 时，handle 保持可读，作者修复冲突后可以再次 Close。</p>
+导致 <code>RevertConflict</code> 时，handle 保持可读，作者修复冲突后可以再次 Close。
+<code>Closing</code> 同样会保留 handle；调用方应持有它，并在后续 safe point 查询或重试，
+不能把它当作已恢复完成而直接丢弃。</p>
 <p>Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。</p>
-<h2 id="10-retail-bb">10. 已命名的 retail BB<a class="headerlink" href="#10-retail-bb" title="Permanent link">&para;</a></h2>
+<h2 id="10-angelscript">10. AngelScript<a class="headerlink" href="#10-angelscript" title="Permanent link">&para;</a></h2>
+<p>启用 CKAngelScript 时，每个 Script Mod 都会得到同一模型的 owner-scoped
+<code>BML::Behavior</code> 投影。无需手动打开 Session：<code>Use</code>、<code>Find</code>、<code>Describe</code>、
+<code>Inspect</code>、<code>Edit</code> 和 <code>CreateScript</code> 会使用当前 Script Mod 的身份，卸载或热重载前
+统一关闭它创建的 Run、Watch、Patch、Plan、Script 和 callback。</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Find</span><span class="p">(</span><span class="s">"My Building Block"</span><span class="p">,</span><span class="w"> </span><span class="s">"My Category"</span><span class="p">)</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Mode"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="p">})</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">12.0f</span><span class="p">))</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">    </span><span class="p">});</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Spawn</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Signals</span><span class="p">(</span><span class="mi">16</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">Layout</span><span class="p">();</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">strength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">layout</span><span class="p">.</span><span class="n">Find</span><span class="p">(</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotKind</span><span class="o">::</span><span class="n">Pin</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">));</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="n">instance</span><span class="p">.</span><span class="n">Set</span><span class="p">(</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">18.0f</span><span class="p">));</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="n">instance</span><span class="p">.</span><span class="n">Pulse</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Run"</span><span class="p">));</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">frames</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">TakeFrames</span><span class="p">();</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="kt">float</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0f</span><span class="p">;</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">frames</span><span class="p">.</span><span class="n">Empty</span><span class="p">)</span>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="w">    </span><span class="n">frames</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">Read</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Result"</span><span class="p">),</span><span class="w"> </span><span class="n">result</span><span class="p">);</span>
+</code></pre></div>
+<p>Graph 路径同样使用 <code>Graph → Edit → Patch / Plan</code> 这组领域概念，包括嵌套 graph、
+<code>NodePattern</code>/<code>Each</code>、Add/Replace/Remove、Flow、parameter relation、Parameter
+Operation、Hook 和 Watch。AngelScript handle 是引用对象；需要从一个 Block 配置
+派生互不影响的副本时显式调用 <code>Clone()</code>。当前 Script Patch 一次只对应一个 Graph，
+Script Plan 一次只包含一条 Script 规则；需要由一个 handle 原子组合多个 Graph 或
+多条 Script 规则时仍使用 Native C++ facade。捕获到的 CK object 以 <code>ObjectRef</code>
+返回；<code>Borrow()</code> 只用于当前调用，object 或 world 失效后会返回 null。原始
+CKAngelScript Behavior/Param API 仍可用于低层 CK2 操作，但它不会获得 BML 的
+owner retirement、Patch journal 或跨 world Plan 语义。</p>
+<h2 id="11-retail-bb">11. 已命名的 retail BB<a class="headerlink" href="#11-retail-bb" title="Permanent link">&para;</a></h2>
 <p><code>BML/Behavior/Blocks.hpp</code> 汇总 BML+ 已知的 header-only adapter，例如 Object Load、Physicalize、Physics Force、Physics Impulse、Physics Wake Up、Send Message 和 2D Text。每个 header 只封装该 BB 的 Prototype、Options 和 slot knowledge：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior/Blocks/Text2D.hpp&gt;</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Options</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">options</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"score"</span><span class="p">;</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="n">options</span><span class="p">.</span><span class="n">FontIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">made</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Make</span><span class="p">(</span><span class="n">m_Behavior</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">made</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">made</span><span class="p">.</span><span class="n">Take</span><span class="p">().</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior/Blocks/Text2D.hpp&gt;</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Options</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="n">options</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"score"</span><span class="p">;</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="n">options</span><span class="p">.</span><span class="n">FontIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">made</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Make</span><span class="p">(</span><span class="n">m_Behavior</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">made</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">made</span><span class="p">.</span><span class="n">Take</span><span class="p">().</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="p">}</span>
 </code></pre></div>
 <p>这些 adapter 仍返回普通 <code>Block</code>，不会绕过统一的 lifecycle、execution 或 teardown。新 Native Mod 不应再使用 legacy ExecuteBB interface。</p>
-<h2 id="11">11. 生命周期、错误与性能<a class="headerlink" href="#11" title="Permanent link">&para;</a></h2>
+<h2 id="12">12. 生命周期、错误与性能<a class="headerlink" href="#12" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -2644,7 +2789,7 @@ definition 时的第一个失败，<code>RestoreFailure</code> 表示当前阻�
 <p>健康状态下，Patch/Plan 的 <code>Info()</code> 不复制保留的 apply/restore 错误对；仅当
 <code>LastStatus</code> 表示调和失败时才读取详细错误。Plan 已稳定且 Script 集合没有变化时，
 每帧不扫描 Script、不解析 Edit、不触发 native 安装，也不分配内存。</p>
-<p>当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language；它尚不包含 AngelScript Behavior projection 或第三方 parameter format registration。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。</p>
+<p>当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language。<code>bml.behavior 1.0</code> 不包含第三方 parameter format registration、active Node replacement 或精确的 DataChanged observer。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。这些是 1.0 的范围边界，不是对相邻能力已经实现的暗示。</p>
 
 
 

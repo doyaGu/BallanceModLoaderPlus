@@ -2917,12 +2917,12 @@
 </code></pre></div>
 <p>规则：目录里有且只能有一个 <code>*.mod.as</code> 入口文件。BML 扫描 <code>ModLoader/Mods/</code> 时，如果遇到子目录，会进入其中寻找入口。</p>
 <h3 id="zip">zip 包分发<a class="headerlink" href="#zip" title="Permanent link">&para;</a></h3>
-<p>正式发布目录形式的 Mod 时，使用 BML+ SDK 随附的打包脚本：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">Set-Location</span> <span class="s2">"&lt;Ballance&gt;/ModLoader/Mods/CompleteMod"</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="p">&amp;</span> <span class="s2">"&lt;BML-SDK&gt;/scripts/Pack-BMLScriptMod.ps1"</span> <span class="n">-Force</span>
+<p>正式发布目录形式的 Mod 时，使用项目内的 Developer Workflow：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>.\bml pack
 </code></pre></div>
-<p>默认产物是 <code>dist/CompleteMod.zip</code>。自动化流程仍可通过 <code>-Source</code> 和 <code>-Output</code>
-指定其他路径。源目录的顶层必须恰好有一个 <code>*.mod.as</code> 入口；打包脚本会保留
+<p>默认产物是 <code>dist/CompleteMod.zip</code>。自动化流程仍可通过 <code>--project</code> 和 <code>--output</code>
+指定其他路径，覆盖现有文件时使用 <code>--force</code>。源目录的顶层必须恰好有一个
+<code>*.mod.as</code> 入口；Developer Workflow 会保留
 相对路径，并让入口位于 zip 根目录：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>CompleteMod.zip
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  CompleteMod.mod.as
@@ -3215,7 +3215,7 @@
 <h3 id="zip_1">zip 中的入口数量不正确<a class="headerlink" href="#zip_1" title="Permanent link">&para;</a></h3>
 <p><strong>现象</strong>：zip 放入 <code>Mods/</code> 后 BML 拒绝加载。<strong>原因</strong>：包内没有入口，或存在多个
 <code>*.mod.as</code> 入口。<strong>解决</strong>：让源目录顶层恰好保留一个入口，并使用 SDK 的
-<code>Pack-BMLScriptMod.ps1</code> 重新打包。</p>
+<code>.\bml pack --force</code> 重新打包。</p>
 <h3 id="_26">残留调试代码<a class="headerlink" href="#_26" title="Permanent link">&para;</a></h3>
 <p><strong>现象</strong>：用户反馈日志刷屏，影响性能。<strong>原因</strong>：<code>OnProcess</code> 里留下了每帧 <code>ctx.LogInfo</code>，或者发布包还保留测试命令。<strong>解决</strong>：发布前搜索 <code>ctx.Log</code> 和命令注册代码，移除调试专用输出。</p>
 <h3 id="bml_1">bml 版本要求过低<a class="headerlink" href="#bml_1" title="Permanent link">&para;</a></h3>

@@ -454,6 +454,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Start a native mod">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-it-with-an-existing-native-mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use it with an existing native Mod
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advanced-native-starting-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced native starting points
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1022,6 +1050,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Start a native mod">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-it-with-an-existing-native-mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use it with an existing native Mod
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advanced-native-starting-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced native starting points
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1093,8 +1149,8 @@
 necessary when changing the loader, SDK, script host, or bundled services.</p>
 <p>If you are unsure which route to choose, start with a script mod. It has the
 shortest build-free edit, reload, and diagnosis loop. Move to native code only
-when a concrete requirement needs native hooks, native memory, a generated IMC
-Provider, or a performance-critical loop.</p>
+when a concrete requirement needs native hooks, native memory, caller-thread
+RPC handlers, or a performance-critical loop.</p>
 <h2 id="choose-a-development-route">Choose a development route<a class="headerlink" href="#choose-a-development-route" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1107,17 +1163,17 @@ Provider, or a performance-critical loop.</p>
 <tbody>
 <tr>
 <td>Script mod</td>
-<td>You want quick edit/test cycles, commands, config, UI, gameplay scripting, or CKAngelScript engine access without a C++ build.</td>
-<td>Cannot provide a custom IMC Provider and should not own unsafe hooks or performance-critical native loops.</td>
+<td>You want quick edit/test cycles, commands, config, UI, gameplay scripting, CKAngelScript engine access, or a generated IMC Client/Provider without C++.</td>
+<td>IMC callbacks run on the game thread; scripts should not own unsafe hooks or performance-critical loops.</td>
 </tr>
 <tr>
 <td>Native mod</td>
-<td>You need C++20, direct Virtools integration, native hooks, generated IMC providers, or tight control over hot-path work.</td>
+<td>You need C++20, direct Virtools integration, native hooks, caller-thread IMC execution, or tight control over hot-path work.</td>
 <td>Requires an MSVC-compatible Win32 build and explicit DLL ABI and lifetime discipline.</td>
 </tr>
 <tr>
 <td>Native plugin with a CKAngelScript extension</td>
-<td>A native service owns the unsafe or performance-sensitive work, but scripts need a small typed control surface.</td>
+<td>Scripts must directly use plugin-specific native objects or engine primitives that cannot be represented as IMC records.</td>
 <td>The native plugin must register and maintain that script API through CKAngelScript.</td>
 </tr>
 </tbody>
@@ -1127,49 +1183,50 @@ APIs in a new BML wrapper. Use CKAngelScript for CK/Vx work and BML+ for mod
 identity, lifecycle, configuration, commands, loader UI, and mod-level services.</p>
 <h2 id="start-a-script-mod">Start a script mod<a class="headerlink" href="#start-a-script-mod" title="Permanent link">&para;</a></h2>
 <ol>
-<li>Open PowerShell in <code>ModLoader/Mods</code> and create a Mod from the SDK template:</li>
+<li>Create a Script Mod Project in your normal source workspace:</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">&amp;</span> <span class="s2">"&lt;BML-SDK&gt;/scripts/New-BMLScriptMod.ps1"</span> <span class="p">`</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">-Id</span> <span class="s2">"yourname.my-mod"</span> <span class="n">-Name</span> <span class="s2">"My Mod"</span> <span class="n">-Author</span> <span class="s2">"Your Name"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="s2">"&lt;BML-SDK&gt;\scripts\bml.cmd"</span> new script yourname.my-mod
 </code></pre></div>
-<p>The command creates the destination directory, a valid class and entry
-   filename, and personalized metadata. You can also copy
-   <code>templates/script-mod-template</code> manually.</p>
+<p>The command infers a readable name and author, creates a valid class and
+   entry filename, and adds the project-local Developer Workflow.</p>
 <ol>
-<li>Open the generated directory and README.</li>
-<li>Confirm that the matching <code>BuildingBlocks/AngelScript.dll</code> is installed.</li>
-<li>Start Player without editing the generated source. Confirm both the in-game
-   greeting and its load line in <code>ModLoader/ModLoader.log</code>.</li>
-<li>Keep the generated id stable; changing it later creates a different Mod and
-   requires a Player restart.</li>
-<li>Keep Player open. Saving source in the loaded directory triggers automatic
-   hot reload; only new entries, id changes, and dependency changes require a
-   restart.</li>
-<li>From the Mod directory, run <code>scripts/Pack-BMLScriptMod.ps1</code>; it writes
-   <code>dist/&lt;directory-name&gt;.zip</code>. Test that zip without the development copy
-   installed.</li>
+<li>Enter the generated directory and run <code>.\bml run</code>. The first run asks for
+   the Ballance folder, verifies the Script Mod runtime, deploys a managed copy,
+   starts Player, and prints only this Mod's new log lines.</li>
+<li>Keep <code>bml run</code> open while editing. Each saved source change is synchronized
+   to the managed copy so Player's normal hot reload remains active.</li>
+<li>Run <code>.\bml pack</code> to create <code>dist/&lt;project&gt;.zip</code>. Test that zip without the
+   managed development copy installed.</li>
 </ol>
+<p>An existing directory Script Mod can adopt the same commands without rewriting
+its source: <code>"&lt;BML-SDK&gt;\scripts\bml.cmd" init --project "C:\path\to\mod"</code>.
+Move an existing single-file Mod into its own directory first; Player loads that
+directory with the same runtime behavior.</p>
 <p>Read the <a href="https://doyagu.github.io/BallanceModLoaderPlus/script-mod/">script mod guide</a>,
 then use its API reference for exact declarations. A script-capable SDK installs
 the same pages under <code>share/BML/docs/en/script-mod</code>.</p>
 <h2 id="start-a-native-mod">Start a native mod<a class="headerlink" href="#start-a-native-mod" title="Permanent link">&para;</a></h2>
 <ol>
-<li>Open PowerShell in the directory where you keep source projects and create
+<li>Open a terminal in the directory where you keep source projects and create
    a Mod from the SDK template:</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">&amp;</span> <span class="s2">"&lt;BML-SDK&gt;/scripts/New-BMLNativeMod.ps1"</span> <span class="p">`</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="n">-Id</span> <span class="s2">"yourname.my-mod"</span> <span class="n">-Name</span> <span class="s2">"My Mod"</span> <span class="n">-Author</span> <span class="s2">"Your Name"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="s2">"&lt;BML-SDK&gt;\scripts\bml.cmd"</span> new native yourname.my-mod
 </code></pre></div>
-<p>The command keeps the CMake target, C++ class, source filename, and metadata
-   consistent. You can also copy <code>templates/native-mod-template</code> manually.</p>
+<p>The command creates a working Mod, chooses its readable name from the id, and
+   uses your Git name as the author. You do not need to edit CMake settings.</p>
 <ol>
-<li>Open the generated README. Run <code>cmake --help</code>, select an installed Visual
-   Studio generator explicitly, configure its Win32 target, and point
-   <code>CMAKE_PREFIX_PATH</code> at the extracted BML+ SDK. Keep the source and build
-   paths short, for example <code>C:\Mods\MyMod</code>, to avoid MSBuild file-tracking
-   failures in deeply nested directories.</li>
-<li>Point <code>VIRTOOLS_SDK_PATH</code> at Virtools SDK 2.1.</li>
-<li>Build <code>RelWithDebInfo</code> and install the Mod into <code>ModLoader/Mods</code>. A native
+<li>Enter the generated directory and run one development command:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>.\bml run
+</code></pre></div>
+<p>The first run asks for the Virtools SDK and Ballance folders. It then selects
+   the newest installed Visual Studio generator, configures Win32,
+   builds and deploys <code>RelWithDebInfo</code>, starts Player, and prints this Mod's new
+   log lines after Player exits. The two paths and selected generator are cached
+   in ignored <code>.bml/settings.json</code>; later runs need only <code>.\bml run</code>. The
+   project-local tool is Python 3.10+; <code>bml.cmd</code> is only its Windows launcher.
+3. Edit the source file printed by <code>new</code>, then run <code>.\bml run</code> again.
+4. The native
    Mod must link the same MSVC runtime as the loader it runs in, because the
    native interface passes C++ objects across the DLL boundary. The runtime in
    <code>BMLPlus-&lt;version&gt;.zip</code> is built against the Release MSVC runtime, so a Debug
@@ -1182,17 +1239,55 @@ the same pages under <code>share/BML/docs/en/script-mod</code>.</p>
    Debug <code>bin/BMLPlus.dll</code> and its <code>.pdb</code>, so a Debug Mod is valid as long as
    you also copy that Debug loader over <code>BuildingBlocks/BMLPlus.dll</code>. Keep the
    loader and every installed native Mod on one side of that line, and go back
-   to the Release loader before testing what you publish.</li>
-<li>Start that Ballance installation's Player, wait until the main menu is
-   visible, and confirm the generated Mod's in-game greeting, load line in
-   <code>ModLoader/ModLoader.log</code>, and sample command. The BML+ version banner alone
-   only proves that the loader initialized.</li>
-<li>Build Release and test the exact artifact you intend to publish.</li>
-</ol>
+   to the Release loader before testing what you publish.
+5. Before publishing, run <code>.\bml run --configuration Release</code>, test that exact
+   artifact, then run <code>.\bml pack</code>; it copies the Release <code>.bmodp</code> into <code>dist</code>.
+   Use the generated README's manual CMake commands only for CI or diagnosing
+   the build itself.</p>
+<h3 id="use-it-with-an-existing-native-mod">Use it with an existing native Mod<a class="headerlink" href="#use-it-with-an-existing-native-mod" title="Permanent link">&para;</a></h3>
+<p>An existing CMake Mod does not need to be regenerated or rewritten. Run this
+once from the extracted SDK:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="s2">"&lt;BML-SDK&gt;\scripts\bml.cmd"</span> init owner.existing-mod --project <span class="s2">"C:\path\to\mod"</span>
+</code></pre></div>
+<p><code>init</code> reads the target from <code>bml_add_mod</code>, reads the version from <code>project</code>, and
+adds only <code>bml.mod.json</code>, <code>bml.py</code>, <code>bml.cmd</code>, and ignored local settings. It
+does not change <code>CMakeLists.txt</code> or source files. If the target cannot be
+inferred, pass <code>--target</code>; if the installed filename differs from the target,
+also pass <code>--artifact</code>.</p>
+<p>Afterward, <code>.\bml run</code> is available, but the existing manual CMake workflow
+remains fully supported. Adopting the helper is optional.</p>
+<h3 id="advanced-native-starting-points">Advanced native starting points<a class="headerlink" href="#advanced-native-starting-points" title="Permanent link">&para;</a></h3>
+<p>Ignore this section for a normal Mod. These options exist only when two Mods
+must call each other:</p>
+<table>
+<thead>
+<tr>
+<th>Need</th>
+<th>Creation option</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Let another native Mod call a small C++ API</td>
+<td><code>--profile interface-provider</code></td>
+</tr>
+<tr>
+<td>Call that API from a second native Mod</td>
+<td><code>--profile interface-consumer --provider-id "owner.provider"</code></td>
+</tr>
+<tr>
+<td>Expose a message-based API that isolates callers from your C++ binary</td>
+<td><code>--profile imc-provider</code></td>
+</tr>
+</tbody>
+</table>
+<p>Run <code>bml help --verbose</code> to see the complete commands. A provider edits its
+file under <code>api/</code>, then runs <code>.\bml interface update</code> after an intentional
+compatible API change. BML+ owns the generated headers.</p>
 <p>The SDK CMake entry point is:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="w"> </span><span class="s">MyMod.cpp</span><span class="p">)</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">bml_install_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="w"> </span><span class="s">MyMod.cpp</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nb">bml_install_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="p">)</span>
 </code></pre></div>
 <p>Read the <a href="../native-mod-api/">native mod API overview</a> before adding ownership,
 callbacks, UI, or cross-mod services, and
@@ -1226,8 +1321,8 @@ one spelling.</p>
 <td>DataShare</td>
 </tr>
 <tr>
-<td>Typed request/response calls, asynchronous results, Topics, versioned data, or high throughput between mods</td>
-<td>A generated IMC interface implemented by a native mod</td>
+<td>Typed request/response calls, asynchronous results, Topics, or versioned data between native and/or script mods</td>
+<td>A generated IMC interface; either language may consume or provide it</td>
 </tr>
 <tr>
 <td>A built-in BML+ runtime, gameplay, event, UI, or speedrun service</td>
@@ -1240,12 +1335,13 @@ one spelling.</p>
 </tbody>
 </table>
 <p>Do not invent a JSON message format or hand-write field identifiers. Define a
-<code>.imc</code> interface, let <code>bml_target_imc_api</code> generate its C++ binding, and keep
-the schema lock with the interface. See <a href="../imc/">Inter-mod communication</a> and
+<code>.imc</code> interface, let <code>bml_target_imc_api</code> generate its C++ and/or AngelScript
+binding, and keep the schema lock with the interface. See <a href="../imc/">Inter-mod communication</a> and
 <a href="../imc-author-guide/">Create a typed IMC API</a>.</p>
-<p>Script mods can consume BML+'s typed script APIs and DataShare. A custom IMC
-Provider remains native. If scripts must use a native service, expose a small
-typed CKAngelScript extension owned by that native plugin.</p>
+<p>Use a CKAngelScript extension only when a script must directly borrow a
+plugin-specific native object or invoke an engine primitive that cannot be
+expressed as typed IMC data. Routine native/script service boundaries should
+use one generated IMC interface instead of maintaining a second hand-written API.</p>
 <h2 id="performance-and-ownership">Performance and ownership<a class="headerlink" href="#performance-and-ownership" title="Permanent link">&para;</a></h2>
 <p>BML callbacks and synchronous IMC handlers normally run on the game thread.
 Cache stable lookup results as ids or revalidating references, move preparation

@@ -1071,11 +1071,13 @@
 <h1 id="script-mods">Script mods<a class="headerlink" href="#script-mods" title="Permanent link">&para;</a></h1>
 <p>A BML+ script mod is an AngelScript class loaded through CKAngelScript. BML+
 adds mod identity, dependency ordering, lifecycle callbacks, resources,
-configuration, commands, logging, timers, loader UI, DataShare, and typed
-built-in services. CKAngelScript continues to own scene, behavior graph,
-component, message, async, and raw CK/Vx APIs.</p>
+configuration, commands, logging, timers, loader UI, DataShare, typed
+built-in services, and <code>BML::Behavior</code> authoring. CKAngelScript continues to
+own scene, raw Behavior/BB/Param, component, message, async, and CK/Vx APIs.</p>
 <p>Use a native mod instead when the feature needs unsafe engine hooks,
-performance-critical native loops, or a custom generated IMC Provider.</p>
+performance-critical native loops, caller-thread RPC handlers, or direct native
+memory ownership. Generated IMC Clients and Providers are available to both
+native and script mods.</p>
 <h2 id="read-by-task">Read by task<a class="headerlink" href="#read-by-task" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1127,9 +1129,8 @@ code.</p>
 diagnostic. Native-only BML+ features remain available when the script host
 cannot start.</p>
 <h2 id="create-the-first-mod">Create the first mod<a class="headerlink" href="#create-the-first-mod" title="Permanent link">&para;</a></h2>
-<p>Open PowerShell in <code>ModLoader/Mods</code> and let the SDK personalize the template:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">&amp;</span> <span class="s2">"&lt;BML-SDK&gt;/scripts/New-BMLScriptMod.ps1"</span> <span class="p">`</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">-Id</span> <span class="s2">"yourname.my-mod"</span> <span class="n">-Name</span> <span class="s2">"My Mod"</span> <span class="n">-Author</span> <span class="s2">"Your Name"</span>
+<p>Create the project in your normal source workspace:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="s2">"&lt;BML-SDK&gt;\scripts\bml.cmd"</span> new script yourname.my-mod
 </code></pre></div>
 <p>The command derives a safe class and entry filename from the id and refuses to
 overwrite an existing directory. Copying <code>templates/script-mod-template</code>
@@ -1147,7 +1148,8 @@ manually remains supported. The underlying entry is deliberately small:</p>
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">}</span>
 </code></pre></div>
-<p>Start <code>Bin/Player.exe</code> once without editing the generated source. The in-game
+<p>Run <code>.\bml run</code> once without editing the generated source. It deploys a managed
+copy, starts Player, and keeps later saved changes synchronized. The in-game
 greeting proves that <code>OnLoad</code> ran; the <code>My Mod loaded</code> line in
 <code>ModLoader/ModLoader.log</code> proves which Mod produced it. Together they confirm
 that BML+ found the entry, compiled it through CKAngelScript, accepted the
@@ -1203,8 +1205,11 @@ named after the entry stem, such as <code>Mods/Foo/Resources</code> for <code>Fo
   the mod unloads.</li>
 <li>Value classes such as event snapshots and definitions are copied by value.
   A method named <code>Borrow*</code> still returns a non-owning handle.</li>
-<li>Fixed callbacks use CKAngelScript no-suspend execution. Do not call an API
-  that suspends from a BML+ callback, timer, command, or DataShare callback.</li>
+<li>Fixed callbacks use CKAngelScript no-suspend execution, so they cannot
+  <code>Await</code> a task. Creating an <code>Async::*</code> task is allowed, but CKAS tasks are not
+  BML-owned resources and may retain an old physical module after hot reload.
+  Use BML+ timers for delayed or repeated mod work that must follow mod
+  ownership and unload.</li>
 <li>Interface signatures must match exactly, including <code>const</code>, <code>&amp;in</code>, return
   type, and method name.</li>
 </ul>
@@ -1215,13 +1220,13 @@ change the syntax used when passing an ordinary script object or delegate.</p>
 Saving a loaded source queues a reload. Adding a new mod, changing its id, or
 changing its dependency graph still requires a Player restart. Zip packages
 use manual reload and are intended for distribution testing.</p>
-<p>Run the SDK tool from the Mod directory:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">Set-Location</span> <span class="s2">"&lt;Ballance&gt;/ModLoader/Mods/MyScriptMod"</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="p">&amp;</span> <span class="s2">"&lt;BML-SDK&gt;/scripts/Pack-BMLScriptMod.ps1"</span> <span class="n">-Force</span>
+<p>Run the project-local Developer Workflow:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>.\bml pack
 </code></pre></div>
-<p>It writes <code>dist/MyScriptMod.zip</code>. <code>-Source</code> and <code>-Output</code> remain available for
-automation. The default package excludes editor settings, version-control
-metadata, <code>as.predefined</code>, Python cache files, and <code>dist</code> itself.</p>
+<p>It writes <code>dist/MyScriptMod.zip</code>. <code>--project</code>, <code>--output</code>, and <code>--force</code> remain
+available for automation. The default package excludes workflow files, local
+settings, editor settings, version-control metadata, <code>as.predefined</code>, Python
+cache files, and <code>dist</code> itself.</p>
 <p>Test the zip in a clean <code>ModLoader/Mods</code> directory without the development
 directory or a single-file copy of the same mod id. Do not package editor API
 stubs as runtime source.</p>

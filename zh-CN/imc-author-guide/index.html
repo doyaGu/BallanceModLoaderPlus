@@ -1777,6 +1777,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#asmod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        在 ASMod 中使用同一接口
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#3-provider" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1948,6 +1959,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#asmod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        在 ASMod 中使用同一接口
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#3-provider" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2023,7 +2045,7 @@
 
 
 <h1 id="imc-api">创建类型化 IMC API<a class="headerlink" href="#imc-api" title="Permanent link">&para;</a></h1>
-<p>本文演示一个原生 Mod 如何向另一个 Mod 提供类型化进程内 API。开始前先阅读
+<p>本文演示原生 Mod 和脚本 Mod 如何通过同一份接口定义互相提供类型化进程内 API。开始前先阅读
 <a href="../imc/">跨 Mod 通信</a>，了解传输、线程、兼容性和生命周期模型。</p>
 <p>示例需要已安装的 BML+ SDK、CMake 3.15 或更新版本、C++20 编译器，以及
 Python 3.10 或更新版本。新接口由 RPC 和 Topic 组成。</p>
@@ -2100,32 +2122,39 @@ C++ 标识符的名称。</p>
 <tr>
 <th>接口类型</th>
 <th>生成的 C++ 类型</th>
+<th>生成的 AngelScript 类型</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>bool</code>, <code>int</code>, <code>float</code></td>
 <td><code>bool</code>、32 位 <code>int</code>、<code>float</code></td>
+<td><code>bool</code>、<code>int</code>、<code>float</code></td>
 </tr>
 <tr>
 <td><code>int64</code>, <code>uint64</code>, <code>double</code></td>
 <td><code>std::int64_t</code>、<code>std::uint64_t</code>、<code>double</code></td>
+<td><code>int64</code>、<code>uint64</code>、<code>double</code></td>
 </tr>
 <tr>
 <td><code>string</code>, <code>bytes</code></td>
 <td><code>std::string</code>、<code>std::vector&lt;std::uint8_t&gt;</code></td>
+<td><code>string</code>、<code>array&lt;uint8&gt;</code></td>
 </tr>
 <tr>
 <td><code>object</code>, <code>vec2</code>, <code>vec3</code>, <code>mat4</code></td>
 <td>BML 不透明对象/数学值</td>
+<td><code>CKObject@</code>、<code>BML::Vec2</code>、<code>BML::Vec3</code>、<code>BML::Mat4</code></td>
 </tr>
 <tr>
 <td><code>array&lt;T&gt;</code></td>
-<td>Bool、数值、字符串、对象和数学类型对应的 <code>std::vector&lt;T&gt;</code></td>
+<td>支持元素类型对应的 <code>std::vector&lt;T&gt;</code></td>
+<td>对应脚本类型的 <code>array&lt;T&gt;</code></td>
 </tr>
 <tr>
 <td><code>enum&lt;name&gt;</code></td>
-<td>使用固定整数底层类型的 <code>enum class Name</code></td>
+<td>生成的 <code>enum class Name</code></td>
+<td>生成的 AngelScript <code>enum Name</code></td>
 </tr>
 </tbody>
 </table>
@@ -2153,7 +2182,8 @@ minor 版本并修改接口后，通过下文介绍的项目目标显式更新�
 不兼容修改必须增加 major；新的 major 使用独立的字段 ID 空间。</p>
 <h2 id="2-cmake">2. 从 CMake 生成<a class="headerlink" href="#2-cmake" title="Permanent link">&para;</a></h2>
 <p>安装后的 BML 软件包包含生成器和 <code>bml_target_imc_api()</code>。该辅助函数将生成头加入
-目标、将构建目录加入包含路径，并启用 C++20。配置时需要 Python 3.10 或更新版本。
+目标、按需输出 AngelScript 门面、将 C++ 构建目录加入包含路径，并启用 C++20。
+配置时需要 Python 3.10 或更新版本。
 普通目标构建要求接口旁存在已提交的 <code>.imc.lock</code>；缺少锁文件时仍可完成 CMake 配置，
 以便显式更新目标创建它。</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
@@ -2162,11 +2192,14 @@ minor 版本并修改接口后，通过下文介绍的项目目标显式更新�
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nb">bml_target_imc_api</span><span class="p">(</span><span class="s">EchoMod</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="s">INPUT</span><span class="w"> </span><span class="s2">"${CMAKE_CURRENT_SOURCE_DIR}/api/example.echo.imc"</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="p">)</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="s">SCRIPT_OUTPUT_DIR</span><span class="w"> </span><span class="s2">"${CMAKE_CURRENT_BINARY_DIR}/script-api"</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="p">)</span>
 </code></pre></div>
 <p>默认输出为 <code>${CMAKE_CURRENT_BINARY_DIR}/bml-imc/example_echo_imc.hpp</code>。默认情况下，
 <code>.imc</code> 文件名必须与 <code>api</code> 相同；不同时传入 <code>API_ID example.echo</code>。辅助函数会将期望
-ID 交给生成器，使拼写错误直接报告两个 ID 和输入路径。<code>OUTPUT_DIR</code> 可以覆盖输出目录。</p>
+ID 交给生成器，使拼写错误直接报告两个 ID 和输入路径。<code>OUTPUT_DIR</code> 可以覆盖 C++
+输出目录；<code>SCRIPT_OUTPUT_DIR</code> 会生成
+<code>${CMAKE_CURRENT_BINARY_DIR}/script-api/example_echo_imc.as</code>，不需要 ASMod 门面时省略。</p>
 <p>该辅助函数会为项目中声明的所有 IMC 接口注册一个项目级更新目标：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>cmake --build build --target bml_update_imc_locks
 </code></pre></div>
@@ -2177,36 +2210,91 @@ ID 交给生成器，使拼写错误直接报告两个 ID 和输入路径。<cod
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python imc_codegen.py \
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  --input api/example.echo.imc \
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  --expected-api-id example.echo \
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  --out-dir generated
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  --out-dir generated \
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  --script-out-dir script-api
 </code></pre></div>
 <p>在 CI 中加入 <code>--check</code>，检查已提交的生成头和接口锁文件是否过期。非 CMake 工作流可在
 作者控制的更新步骤使用 <code>--update-lock</code>。<code>--expected-api-id</code> 在 CMake 外可省略，但对
 预测输出文件名的脚本很有用。解析和校验错误始终包含对应输入路径。</p>
+<h2 id="asmod">在 ASMod 中使用同一接口<a class="headerlink" href="#asmod" title="Permanent link">&para;</a></h2>
+<p>把生成的 <code>example_echo_imc.as</code> 随脚本 Mod 打包，并在 <code>[bml.mod]</code> 之前包含。
+生成命名空间与 C++ 一样来自 API ID。常规接口只有类型化 Record 和回调、
+<code>Is*Available</code>、异步 <code>BeginCall*</code>、Topic Helper、<code>Handlers</code> 和 <code>Provider</code>；
+不需要手写消息编解码或数字字段 ID。</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">"example_echo_imc.as"</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">"example.echo-script"</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">"Echo Script"</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">"1.0.0"</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">"Example"</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">"Provides the example.echo service"</span><span class="p">]</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">EchoScript</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="n">Example</span><span class="o">::</span><span class="n">Echo</span><span class="o">::</span><span class="n">Provider</span><span class="w"> </span><span class="n">provider</span><span class="p">;</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">ImcSubscriptionRef</span><span class="err">@</span><span class="w"> </span><span class="n">changed</span><span class="p">;</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="nf">HandleEcho</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">Example</span><span class="o">::</span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoRequestValue</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">request</span><span class="p">,</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">                   </span><span class="n">Example</span><span class="o">::</span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoReplyValue</span><span class="w"> </span><span class="o">&amp;</span><span class="n">out</span><span class="w"> </span><span class="n">response</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">        </span><span class="n">response</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">request</span><span class="p">.</span><span class="n">Text</span><span class="p">;</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ERROR_OK</span><span class="p">;</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnChanged</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="p">,</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">                   </span><span class="k">const</span><span class="w"> </span><span class="n">Example</span><span class="o">::</span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedEventValue</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ERROR_OK</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">            </span><span class="c1">// 使用类型化事件。</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">        </span><span class="n">Example</span><span class="o">::</span><span class="n">Echo</span><span class="o">::</span><span class="n">Handlers</span><span class="w"> </span><span class="n">handlers</span><span class="p">;</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="w">        </span><span class="err">@</span><span class="n">handlers</span><span class="p">.</span><span class="n">Echo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Example</span><span class="o">::</span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoHandler</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="n">HandleEcho</span><span class="p">);</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">provider</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">handlers</span><span class="p">);</span>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="w">        </span><span class="n">Example</span><span class="o">::</span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedCallback</span><span class="err">@</span><span class="w"> </span><span class="n">callback</span><span class="w"> </span><span class="o">=</span>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="w">            </span><span class="n">Example</span><span class="o">::</span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedCallback</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="n">OnChanged</span><span class="p">);</span>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="w">        </span><span class="err">@</span><span class="n">changed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Example</span><span class="o">::</span><span class="n">Echo</span><span class="o">::</span><span class="n">SubscribeChanged</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">callback</span><span class="p">,</span><span class="w"> </span><span class="mi">64</span><span class="p">);</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a>
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnUnload</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">changed</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="n">changed</span><span class="p">.</span><span class="n">Cancel</span><span class="p">();</span>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a><span class="w">        </span><span class="err">@</span><span class="n">changed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">null</span><span class="p">;</span>
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a><span class="w">        </span><span class="n">provider</span><span class="p">.</span><span class="n">Close</span><span class="p">();</span>
+<a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>Is*Available</code>、<code>Cancel</code>、<code>GetDroppedCount</code>、发布/计数 Helper 和 Provider 操作都
+返回 BML 状态码，结果值使用 <code>&amp;out</code>。RPC 固定异步发起并通过类型化回调完成；脚本
+Provider Handler 和 Topic 回调固定在游戏线程执行。卸载或替换脚本 Module 前，
+BML 会关闭该 Mod 拥有的 IMC 资源。</p>
+<p>两种生成语言都以 <code>Provider::Start</code>/<code>Close</code> 作为常规生命周期入口。需要动态开放 Endpoint
+时，先调用一次 <code>Open</code>，再使用生成的 <code>Register*</code>/<code>Unregister*</code>。ASMod Provider 拥有
+独立 Transport，因此 <code>Close</code> 只移除自己的 Route，也可以从自身 Handler 中安全调用。
+在 Handler 内注销当前这一个 Route 仍会返回 <code>BML_ERROR_BUSY</code>；应在回调返回后重试，
+或直接关闭整个 Provider。</p>
+<p><code>BML::Detail</code> 和 <code>ModContext</code> 上下划线开头的方法只属于生成代码，不应由手写脚本调用。
+原生实现与脚本实现可以在传输边界互换，因为两者来自同一份 <code>.imc</code> 和 <code>.imc.lock</code>。</p>
 <h2 id="3-provider">3. 实现 Provider<a class="headerlink" href="#3-provider" title="Permanent link">&para;</a></h2>
 <p>生成命名空间来自 API ID。Provider Handler 接收类型化值并返回普通 BML 状态码：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">"example_echo_imc.hpp"</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="k">namespace</span><span class="w"> </span><span class="nn">Echo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nn">BML</span><span class="o">::</span><span class="nn">Imc</span><span class="o">::</span><span class="nn">Generated</span><span class="o">::</span><span class="nn">Example</span><span class="o">::</span><span class="nn">Echo</span><span class="p">;</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">Echo</span><span class="o">::</span><span class="n">Provider</span><span class="w"> </span><span class="n">g_EchoProvider</span><span class="p">;</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="kt">int</span><span class="w"> </span><span class="nf">HandleEcho</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoRequestValue</span><span class="w"> </span><span class="o">&amp;</span><span class="n">request</span><span class="p">,</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">               </span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoReplyValue</span><span class="w"> </span><span class="o">&amp;</span><span class="n">reply</span><span class="p">,</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">               </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="n">reply</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">request</span><span class="p">.</span><span class="n">Text</span><span class="p">;</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">;</span>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="p">}</span>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
-<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="kt">int</span><span class="w"> </span><span class="nf">StartEchoProvider</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">    </span><span class="n">Echo</span><span class="o">::</span><span class="n">Provider</span><span class="o">::</span><span class="n">Handlers</span><span class="w"> </span><span class="n">handlers</span><span class="p">{};</span>
-<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">    </span><span class="n">handlers</span><span class="p">.</span><span class="n">Echo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">HandleEcho</span><span class="p">;</span>
-<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">    </span><span class="n">handlers</span><span class="p">.</span><span class="n">Execution</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_IMC_EXECUTION_CALLER_THREAD</span><span class="p">;</span>
-<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">g_EchoProvider</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="n">handlers</span><span class="p">);</span>
-<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="p">}</span>
-<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>
-<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="kt">int</span><span class="w"> </span><span class="nf">StopEchoProvider</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">g_EchoProvider</span><span class="p">.</span><span class="n">Close</span><span class="p">();</span>
-<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">"example_echo_imc.hpp"</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">namespace</span><span class="w"> </span><span class="nn">Echo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nn">BML</span><span class="o">::</span><span class="nn">Imc</span><span class="o">::</span><span class="nn">Generated</span><span class="o">::</span><span class="nn">Example</span><span class="o">::</span><span class="nn">Echo</span><span class="p">;</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">Echo</span><span class="o">::</span><span class="n">Provider</span><span class="w"> </span><span class="n">g_EchoProvider</span><span class="p">;</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="kt">int</span><span class="w"> </span><span class="nf">HandleEcho</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoRequestValue</span><span class="w"> </span><span class="o">&amp;</span><span class="n">request</span><span class="p">,</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">               </span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoReplyValue</span><span class="w"> </span><span class="o">&amp;</span><span class="n">reply</span><span class="p">,</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">               </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="n">reply</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">request</span><span class="p">.</span><span class="n">Text</span><span class="p">;</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">;</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="p">}</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="kt">int</span><span class="w"> </span><span class="nf">StartEchoProvider</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">    </span><span class="n">Echo</span><span class="o">::</span><span class="n">Provider</span><span class="o">::</span><span class="n">Handlers</span><span class="w"> </span><span class="n">handlers</span><span class="p">{};</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">    </span><span class="n">handlers</span><span class="p">.</span><span class="n">Echo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">HandleEcho</span><span class="p">;</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">    </span><span class="n">handlers</span><span class="p">.</span><span class="n">Execution</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_IMC_EXECUTION_CALLER_THREAD</span><span class="p">;</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">g_EchoProvider</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="n">handlers</span><span class="p">);</span>
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="p">}</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="kt">int</span><span class="w"> </span><span class="nf">StopEchoProvider</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">g_EchoProvider</span><span class="p">.</span><span class="n">Close</span><span class="p">();</span>
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="p">}</span>
 </code></pre></div>
 <p><code>Provider::Start</code> 是普通生命周期入口。至少需要一个非空的生成 Handler。它会打开
 Transport，使用共享的 <code>Userdata</code> 和 <code>Execution</code> 注册所有非空 Handler，并在注册失败
@@ -2228,62 +2316,62 @@ Provider 可以在自己的游戏线程 Handler 中销毁，无需维护重试�
 递归调用，仍会返回 <code>BML_ERROR_BUSY</code>；应保留 Provider，并在回调返回后重试单个注销。</p>
 <h2 id="4">4. 同步或异步调用<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
 <p>普通生成方法完成整个类型化调用：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">Echo</span><span class="o">::</span><span class="n">Client</span><span class="w"> </span><span class="n">client</span><span class="p">;</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">Open</span><span class="p">();</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">Echo</span><span class="o">::</span><span class="n">EchoRequestValue</span><span class="w"> </span><span class="n">request</span><span class="p">;</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">request</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"hello"</span><span class="p">;</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">request</span><span class="p">.</span><span class="n">Mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoMode</span><span class="o">::</span><span class="n">Normal</span><span class="p">;</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">Echo</span><span class="o">::</span><span class="n">EchoReplyValue</span><span class="w"> </span><span class="n">reply</span><span class="p">;</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">    </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">CallEcho</span><span class="p">(</span><span class="n">request</span><span class="p">,</span><span class="w"> </span><span class="n">reply</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">Echo</span><span class="o">::</span><span class="n">Client</span><span class="w"> </span><span class="n">client</span><span class="p">;</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">Open</span><span class="p">();</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">Echo</span><span class="o">::</span><span class="n">EchoRequestValue</span><span class="w"> </span><span class="n">request</span><span class="p">;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">request</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"hello"</span><span class="p">;</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">request</span><span class="p">.</span><span class="n">Mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoMode</span><span class="o">::</span><span class="n">Normal</span><span class="p">;</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">Echo</span><span class="o">::</span><span class="n">EchoReplyValue</span><span class="w"> </span><span class="n">reply</span><span class="p">;</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">    </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">CallEcho</span><span class="p">(</span><span class="n">request</span><span class="p">,</span><span class="w"> </span><span class="n">reply</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">);</span>
 </code></pre></div>
 <p>可选集成可以先做提示性的可用性检查：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kt">bool</span><span class="w"> </span><span class="n">available</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">client</span><span class="p">.</span><span class="n">IsEchoAvailable</span><span class="p">(</span><span class="n">available</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">available</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="c1">// 显示或启用集成功能；正常调用仍需处理 Provider 卸载。</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kt">bool</span><span class="w"> </span><span class="n">available</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">client</span><span class="p">.</span><span class="n">IsEchoAvailable</span><span class="p">(</span><span class="n">available</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">available</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="c1">// 显示或启用集成功能；正常调用仍需处理 Provider 卸载。</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p">}</span>
 </code></pre></div>
 <p><code>IsEchoAvailable</code> 只查询已缓存 RPC ID 的当前状态，不枚举 Provider，也不创建 Future。
 Provider 可能在检查后立即卸载，因此 <code>CallEcho</code> 和 <code>BeginCallEcho</code> 仍需处理
 <code>BML_ERROR_IMC_ENDPOINT_NOT_FOUND</code>。</p>
 <p>每个生成 RPC 还提供类型化 Future 方法，无需手工编码请求、检查载荷或解码结果：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">Echo</span><span class="o">::</span><span class="n">Client</span><span class="o">::</span><span class="n">EchoFuture</span><span class="w"> </span><span class="n">pending</span><span class="p">;</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">BeginCallEcho</span><span class="p">(</span><span class="n">request</span><span class="p">,</span><span class="w"> </span><span class="n">pending</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">);</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1">// 在后续 Tick 或 Worker 迭代中：</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">    </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pending</span><span class="p">.</span><span class="n">AwaitResult</span><span class="p">(</span><span class="n">reply</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w"> </span><span class="c1">// 0 表示轮询</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_ERROR_BUSY</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">        </span><span class="c1">// 尚未完成；保留 Future，之后再次检查。</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">Echo</span><span class="o">::</span><span class="n">Client</span><span class="o">::</span><span class="n">EchoFuture</span><span class="w"> </span><span class="n">pending</span><span class="p">;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">BeginCallEcho</span><span class="p">(</span><span class="n">request</span><span class="p">,</span><span class="w"> </span><span class="n">pending</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">);</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1">// 在后续 Tick 或 Worker 迭代中：</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pending</span><span class="p">.</span><span class="n">AwaitResult</span><span class="p">(</span><span class="n">reply</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w"> </span><span class="c1">// 0 表示轮询</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_ERROR_BUSY</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">        </span><span class="c1">// 尚未完成；保留 Future，之后再次检查。</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="p">}</span>
 </code></pre></div>
 <p><code>RpcFuture&lt;T&gt;</code> 只可移动，并自动释放原始 Future；还提供 <code>GetState</code>、<code>Await</code>、
 <code>Cancel</code>、<code>GetError</code>、<code>GetResult</code> 和显式 <code>Release</code>。调用方仍持有未完成 Future 时，
 再次执行 <code>Begin*</code> 会返回 <code>BML_ERROR_BUSY</code>，不会静默覆盖。</p>
 <p>不要在游戏线程上以非零超时等待尚未完成的游戏线程任务；零超时轮询是安全的。</p>
 <h2 id="5">5. 发布与订阅<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="n">subscribers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">client</span><span class="p">.</span><span class="n">GetChangedSubscriberCount</span><span class="p">(</span><span class="n">subscribers</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">subscribers</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedEventValue</span><span class="w"> </span><span class="n">event</span><span class="p">;</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="n">event</span><span class="p">.</span><span class="n">Sequence</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="n">event</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"updated"</span><span class="p">;</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">client</span><span class="p">.</span><span class="n">PublishChanged</span><span class="p">(</span><span class="n">event</span><span class="p">);</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="n">subscribers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">client</span><span class="p">.</span><span class="n">GetChangedSubscriberCount</span><span class="p">(</span><span class="n">subscribers</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">subscribers</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedEventValue</span><span class="w"> </span><span class="n">event</span><span class="p">;</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="n">event</span><span class="p">.</span><span class="n">Sequence</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="n">event</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"updated"</span><span class="p">;</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">client</span><span class="p">.</span><span class="n">PublishChanged</span><span class="p">(</span><span class="n">event</span><span class="p">);</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="p">}</span>
 </code></pre></div>
 <p>构造事件本身代价较高时，可以先检查订阅者数量。没有订阅者时发布仍然有效。</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnChanged</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="p">,</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedEventValue</span><span class="w"> </span><span class="o">*</span><span class="n">event</span><span class="p">,</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">               </span><span class="k">const</span><span class="w"> </span><span class="n">BML_ImcMessage</span><span class="w"> </span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">noexcept</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">        </span><span class="c1">// 类型化值只在本次回调期间有效。</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="p">}</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedSubscription</span><span class="w"> </span><span class="n">subscription</span><span class="p">;</span>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">SubscribeChanged</span><span class="p">(</span><span class="n">subscription</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">OnChanged</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">,</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">    </span><span class="n">BML_IMC_BACKPRESSURE_DROP_OLDEST</span><span class="p">,</span>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">    </span><span class="n">BML_IMC_EXECUTION_GAME_THREAD</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnChanged</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="p">,</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedEventValue</span><span class="w"> </span><span class="o">*</span><span class="n">event</span><span class="p">,</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">               </span><span class="k">const</span><span class="w"> </span><span class="n">BML_ImcMessage</span><span class="w"> </span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">noexcept</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">        </span><span class="c1">// 类型化值只在本次回调期间有效。</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="p">}</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedSubscription</span><span class="w"> </span><span class="n">subscription</span><span class="p">;</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">SubscribeChanged</span><span class="p">(</span><span class="n">subscription</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">OnChanged</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">,</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="n">BML_IMC_BACKPRESSURE_DROP_OLDEST</span><span class="p">,</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">    </span><span class="n">BML_IMC_EXECUTION_GAME_THREAD</span><span class="p">);</span>
 </code></pre></div>
 <p><code>Close()</code> 可以从 Subscription 自己的回调中调用。它会立即阻止新的投递，并在最外层
 回调返回后完成删除，因此生成的 Subscription 可以在自己的游戏线程回调中销毁。

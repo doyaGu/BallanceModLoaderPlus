@@ -474,6 +474,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        自定义 Mods 菜单页面
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mod" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1984,6 +1995,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        自定义 Mods 菜单页面
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mod" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2182,6 +2204,10 @@ C 符号 <code>BMLEntry</code> 和 <code>BMLExit</code>。入口缺失或被 C++
 <td>版本宏、导出宏、状态码和基础定义</td>
 </tr>
 <tr>
+<td><code>Result.hpp</code></td>
+<td>共用 C++ 结果类型，携带 BML 状态码、可选值和可选的模块专属诊断</td>
+</tr>
+<tr>
 <td><code>BML.h</code></td>
 <td>C ABI：版本、Loader 与 Mod 目录、命令注销、内存、字符串/编码、路径、文件与 Zip 工具</td>
 </tr>
@@ -2230,6 +2256,10 @@ C 符号 <code>BMLEntry</code> 和 <code>BMLExit</code>。入口缺失或被 C++
 <td>通过接口结构体取用的 Loader 能力，附带内联 C++ 包装</td>
 </tr>
 <tr>
+<td><code>ModMenu.h</code>, <code>ModMenu.hpp</code></td>
+<td>纯 C 的 Mods 菜单页面接口，以及其强类型 C++ 编写层</td>
+</tr>
+<tr>
 <td><code>Imc.h</code>, <code>ImcWire.hpp</code>, <code>ImcCpp.hpp</code></td>
 <td>IMC C/C++ 运行时与线格式</td>
 </tr>
@@ -2259,6 +2289,48 @@ C 符号 <code>BMLEntry</code> 和 <code>BMLExit</code>。入口缺失或被 C++
 </tr>
 </tbody>
 </table>
+<p><code>BML::Result&lt;T&gt;</code> 组合 BML 状态码与可选值。需要结构化诊断的模块可使用
+<code>BML::Result&lt;T, ModuleStatus&gt;</code>；例如 <code>Behavior::Result&lt;T&gt;</code> 传入
+<code>Behavior::Status</code>，无需改变共用容器或 C ABI。<code>Failure()</code> 收到非错误码时会将其
+规范化为 <code>BML_ERROR_FAIL</code>，因此失败的 <code>Result&lt;void&gt;</code> 不会被判为成功。</p>
+<h2 id="mods">自定义 Mods 菜单页面<a class="headerlink" href="#mods" title="Permanent link">&para;</a></h2>
+<p>原生 Mod 可通过 <code>BML::ModMenu::Page</code> 在自己的详情页末尾追加 Ballance 风格
+入口。Config 分类保持在前，自定义入口按注册顺序排列，并共用每页四项的分页。
+点击入口后会进入该 Mod 完全自定义的页面：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Bui.h&gt;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/ModMenu.hpp&gt;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">DiagnosticsPage</span><span class="w"> </span><span class="k">final</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="k">public</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">Page</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">public</span><span class="o">:</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="n">DiagnosticsPage</span><span class="p">()</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">        </span><span class="o">:</span><span class="w"> </span><span class="n">Page</span><span class="p">(</span><span class="s">"diagnostics"</span><span class="p">,</span><span class="w"> </span><span class="s">"Diagnostics"</span><span class="p">,</span><span class="w"> </span><span class="s">"Show live runtime details"</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="k">protected</span><span class="o">:</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="w"> </span><span class="n">OnFrame</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">        </span><span class="n">Bui</span><span class="o">::</span><span class="n">Title</span><span class="p">(</span><span class="s">"Diagnostics"</span><span class="p">);</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">        </span><span class="c1">// 在当前页面中直接绘制 ImGui 或 Bui 控件。</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">Bui</span><span class="o">::</span><span class="n">NavBack</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="o">::</span><span class="n">Back</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">                              </span><span class="o">:</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="o">::</span><span class="n">None</span><span class="p">;</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="p">};</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="c1">// 让该对象作为 Mod 状态的一部分持续存活。</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="n">DiagnosticsPage</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">;</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="kt">void</span><span class="w"> </span><span class="nf">RegisterMenuPages</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">.</span><span class="n">Register</span><span class="p">();</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="kt">void</span><span class="w"> </span><span class="nf">UnregisterMenuPages</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">.</span><span class="n">Unregister</span><span class="p">();</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>调用 <code>OnFrame</code> 时，Loader 已经打开覆盖整个 viewport 的 ImGui 页面；直接绘制
+内容即可，不要调用 <code>ImGui::NewFrame</code> 或 <code>ImGui::Render</code>。返回 <code>Back</code> 回到 Mod
+详情页，返回 <code>Close</code> 退出 Mods 菜单。Loader 会复制 id、标签和说明，但页面对象
+及回调必须存活到注销为止；owner DLL 卸载前，Loader 还会清除所有遗留注册。
+1.0 版仅向原生 Mod 开放这一能力。请在所属 Mod 的 <code>OnLoad</code> 和 <code>OnUnload</code>
+中分别调用上面的注册与注销函数。
+<code>ModMenu.h</code> 可直接用于 C，不包含 C++ 标准库或类；<code>ModMenu.hpp</code> 只是单向建立在
+该 C 接口上的 C++ 编写 facade。在 C 边界上，<code>BML_ModMenuPageDraw</code> 返回
+<code>BML_OK</code> 或错误状态，并把延迟执行的导航请求写入
+<code>BML_ModMenuPageFrame</code> 的 <code>Action</code> 成员。导航不会再复用错误返回值；后续小版本也可借助
+<code>StructSize</code> 在 frame 末尾追加输入或输出，而不改变 1.0 的回调签名。</p>
 <h2 id="mod">Mod 生命周期与事件<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h2>
 <p><code>IMod</code> 继承 <code>IMessageReceiver</code>。实现类必须提供 ID、版本、名称、作者、说明和
 BML 版本要求，并可按需重写以下回调：</p>
@@ -2295,19 +2367,19 @@ BML 版本要求，并可按需重写以下回调：</p>
 <p><code>AddTimer</code> 和 <code>AddTimerLoop</code> 各有 <code>CKDWORD</code> 与 <code>float</code> 两个重载：<code>CKDWORD</code>
 按帧计数，<code>float</code> 按毫秒计数。两种单位共用同一个函数名，因此不带后缀的整型
 字面量是二义的，无法编译。调用时必须写明后缀：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mi">1ul</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* 下一帧 */</span><span class="w"> </span><span class="p">});</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mf">1000.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* 一秒后 */</span><span class="w"> </span><span class="p">});</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimerLoop</span><span class="p">(</span><span class="mf">1.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">KeepRunning</span><span class="p">();</span><span class="w"> </span><span class="p">});</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mi">1ul</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* 下一帧 */</span><span class="w"> </span><span class="p">});</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mf">1000.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* 一秒后 */</span><span class="w"> </span><span class="p">});</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimerLoop</span><span class="p">(</span><span class="mf">1.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">KeepRunning</span><span class="p">();</span><span class="w"> </span><span class="p">});</span>
 </code></pre></div>
 <p>循环回调返回 <code>true</code> 时继续运行。两个重载都不返回句柄，已安排的定时器无法取消，
 需要停止时让循环回调返回 <code>false</code>。</p>
 <h2 id="mod_1">原生 Mod 依赖<a class="headerlink" href="#mod_1" title="Permanent link">&para;</a></h2>
 <p>依赖必须在 BML 初始化 Mod 之前注册。构造函数是通常的注册位置，因为它在
 <code>BMLEntry</code> 创建 Mod 时执行，早于任何 <code>OnLoad</code> 回调：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">explicit</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">IMod</span><span class="p">(</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="n">AddDependency</span><span class="p">(</span><span class="s">"RequiredMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="n">AddOptionalDependency</span><span class="p">(</span><span class="s">"OptionalMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">explicit</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">IMod</span><span class="p">(</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="n">AddDependency</span><span class="p">(</span><span class="s">"RequiredMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="n">AddOptionalDependency</span><span class="p">(</span><span class="s">"OptionalMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">}</span>
 </code></pre></div>
 <p>BML 会调整初始化顺序，使已安装的依赖先于依赖方收到 <code>OnLoad</code>。缺失的可选
 依赖会被忽略。缺失必需依赖或出现依赖循环时，整个 Mod 初始化阶段不会开始；
@@ -2325,10 +2397,10 @@ Integer、Float、Boolean 的基础解析函数。<code>ILogger</code> 提供三
 任何返回信息，只在失败时写日志；失败的情况包括命令为空指针、命令名或别名非法、
 命令名已被注册。</p>
 <p><code>IBML</code> 没有注销函数，注销命令要用 <code>BML.h</code> 里的 <code>BML_UnregisterCommand</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">MyMod::OnUnload</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML_UnregisterCommand</span><span class="p">(</span><span class="s">"mycmd"</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">        </span><span class="k">delete</span><span class="w"> </span><span class="n">m_Command</span><span class="p">;</span><span class="w">  </span><span class="c1">// 到这一步删除才是安全的</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">MyMod::OnUnload</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML_UnregisterCommand</span><span class="p">(</span><span class="s">"mycmd"</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">        </span><span class="k">delete</span><span class="w"> </span><span class="n">m_Command</span><span class="p">;</span><span class="w">  </span><span class="c1">// 到这一步删除才是安全的</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">}</span>
 </code></pre></div>
 <p>只有注册该命令的那个 DLL 才能注销它。Loader 记下是哪个模块调用了
 <code>RegisterCommand</code>，据此判断：注销别人的命令返回 <code>BML_ERROR_ACCESS_DENIED</code>，名字
@@ -2351,7 +2423,8 @@ Integer、Float、Boolean 的基础解析函数。<code>ILogger</code> 提供三
 <li><code>BML::UI</code>：消息板、Mod/地图菜单和 HUD。</li>
 <li><code>BML::Speedrun</code>：共享 Speedrun 计时器。</li>
 <li><code>BML::Behavior</code>：Virtools Building Block 发现、配置后的 Run、自持有
-  Frame、行为图检查、Watch、Patch 与持久 Plan。</li>
+  Frame、行为图检查、Watch、Patch、持久 Plan，以及访问已安装 Edit Node 和参数
+  Port 的 revisioned installation binding。</li>
 </ul>
 <p>版本规则写在 <code>Interface.h</code> 里：结构体只能在末尾追加成员并提升次版本号，而
 <code>BML_IFACE_HAS</code> 用来询问正在运行的 Loader 有没有某个比 Mod 编译时的头文件更晚
@@ -2359,7 +2432,7 @@ Integer、Float、Boolean 的基础解析函数。<code>ILogger</code> 提供三
 <p><code>bml.behavior</code> 直接沿用 Virtools 的 Prototype、Layout、Setting、Pin、Local、In、
 Out、Pout、Graph、Patch 与 Plan 词汇。C interface 是稳定的传输 seam；原生 C++
 Mod 通常应使用 <code>Behavior.hpp</code>，由它持有字符串、数组、callback、handle 和 Frame
-字节。完整的 ownership、线程、world reset、错误恢复与热路径契约见
+字节。完整的 ownership、线程、world reset、错误恢复与热路径规则见
 <a href="../behavior-authoring/">Behavior 编写</a>。</p>
 <p>原生 <code>BML::Gameplay</code> 的集合读取函数会在调用方持有的 <code>std::vector</code> 中返回完整
 快照。目录应在初始化时读取，检查点和重置点应在关卡变化时刷新；这些调用会
@@ -2367,23 +2440,41 @@ Mod 通常应使用 <code>Behavior.hpp</code>，由它持有字符串、数组�
 <p>这些 inline C++ 操作都返回 BML 状态码，并标记为 <code>[[nodiscard]]</code>。调用方应处理返回
 状态；只有明确忽略尽力清理的结果时才使用显式 <code>(void)</code> 转换。</p>
 <h2 id="mod_2">跨 Mod 通信<a class="headerlink" href="#mod_2" title="Permanent link">&para;</a></h2>
-<p>Mod 向其他 Mod 发布普通接口时优先使用 IMC：</p>
-<ul>
-<li><code>.imc</code> 文件只描述接口；字段编号是稳定的线格式标识，不是数组下标。</li>
-<li><code>bml_target_imc_api</code> 在构建时生成 C++ 绑定并加入目标。</li>
-<li>RPC 支持同步调用、Future、取消、超时和完成回调。</li>
-<li>Topic 支持有界订阅队列、退订和丢弃计数。</li>
-<li>热路径使用已生成的类型与缓存的 ID，不在每次调用时解析文本描述。</li>
-<li>使用方在运行期就能发现某条路由在不在，因此提供方与使用方可以各自独立发布。</li>
-</ul>
-<p>返回 BML 状态码的 C++ IMC 操作同样标记为 <code>[[nodiscard]]</code>。</p>
-<p>需要暴露直接函数指针或借用引擎对象的原生基础 Mod，可以改用
-<code>BML_RegisterInterface</code> 发布纯 C 函数表。接口表及其 <code>InterfaceId</code> 必须是提供者 DLL
-中的静态数据。使用方必须把该 Mod 声明为必需依赖，经 <code>BML_GetInterface</code> 取用，不能
-链接提供者 import library，也不能解析提供者自己的 API 导出。BML 会拒绝重复 id/major，
-并在卸载提供者 DLL 前清除其全部注册。</p>
-<p><code>DataShare</code> 适合共享少量命名字节数据，调用方必须遵守引用计数和借用指针
-有效期。接口需要按自己的节奏演进，或需要 RPC/Topic 语义时，使用 IMC。</p>
+<p>按 Mod 之间需要传递的内容选择接口：</p>
+<table>
+<thead>
+<tr>
+<th>需求</th>
+<th>方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>独立发布的原生/脚本 Mod 之间需要类型化 RPC 或通知</td>
+<td>IMC</td>
+</tr>
+<tr>
+<td>原生 Mod 之间需要直接函数指针或借用引擎对象</td>
+<td>通过 <code>BML_RegisterInterface</code> 注册带版本的纯 C 函数表</td>
+</tr>
+<tr>
+<td>共享生命周期明确的少量命名字节数据</td>
+<td><code>DataShare</code></td>
+</tr>
+</tbody>
+</table>
+<p>使用 IMC 时，编写 <code>.imc</code> 文件，通过 <code>bml_target_imc_api</code> 生成 C++ 或 AngelScript
+绑定，并提交 lock 文件。Provider 缺失是运行时状态，不会阻止 Mod 加载。
+详见 <a href="../imc/">IMC 概览</a>和 <a href="../imc-author-guide/">IMC 编写指南</a>。</p>
+<p>纯 C 函数表必须保存在 Provider DLL 的静态存储区。Consumer 应声明必需 Mod
+依赖，通过 <code>BML_GetInterface</code> 获取函数表，而不是链接 Provider DLL。
+<code>bml_add_generated_interface_package</code> 可生成纯头文件包并检查版本；
+<code>examples/native-interface-provider</code> 和 <code>examples/native-interface-consumer</code>
+提供独立构建的完整工程。C++ 查询可使用
+<code>BML::Interfaces::RequiredInterface</code> 或 <code>OptionalInterface</code>；后者可能返回
+<code>BML_ERROR_NOT_FOUND</code>。</p>
+<p><code>DataShare</code> 只适合少量命名字节数据，不适合可演进的调用接口。
+使用时遵守引用计数和借用指针的有效期规则。</p>
 <h2 id="ui">三种 UI 接口<a class="headerlink" href="#ui" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>Bui</code> 直接绘制 Ballance 风格的 ImGui 控件，适合原生覆盖层界面。</li>
@@ -2415,13 +2506,13 @@ Mod 通常应使用 <code>Behavior.hpp</code>，由它持有字符串、数组�
 <code>BML_DataShare_CopyEx</code>。</p>
 <h2 id="loader-mod">Loader 与 Mod 所在目录<a class="headerlink" href="#loader-mod" title="Permanent link">&para;</a></h2>
 <p>Mod 关于文件系统的两个问题都由 <code>BML.h</code> 回答：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// Loader 自己的目录。借用指针，进程期间有效，不要释放。</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">loaderDir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetLoaderPathUtf8</span><span class="p">(</span><span class="n">BML_DIR_LOADER</span><span class="p">);</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1">// 自己的安装目录。新分配的字符串，用完要释放。</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">modRoot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetModRootUtf8</span><span class="p">(</span><span class="nb">nullptr</span><span class="p">);</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1">// ... 使用 modRoot ...</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">BML_FreeString</span><span class="p">(</span><span class="n">modRoot</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1">// Loader 自己的目录。借用指针，进程期间有效，不要释放。</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">loaderDir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetLoaderPathUtf8</span><span class="p">(</span><span class="n">BML_DIR_LOADER</span><span class="p">);</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1">// 自己的安装目录。新分配的字符串，用完要释放。</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">modRoot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetModRootUtf8</span><span class="p">(</span><span class="nb">nullptr</span><span class="p">);</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1">// ... 使用 modRoot ...</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">BML_FreeString</span><span class="p">(</span><span class="n">modRoot</span><span class="p">);</span>
 </code></pre></div>
 <p><code>BML_GetLoaderPathW</code> 和 <code>BML_GetLoaderPathUtf8</code> 接收一个 <code>BML_LoaderDirectory</code>：
 <code>BML_DIR_WORKING</code>、<code>BML_DIR_TEMP</code>、<code>BML_DIR_GAME</code>、<code>BML_DIR_LOADER</code> 或

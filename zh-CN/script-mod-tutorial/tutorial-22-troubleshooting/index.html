@@ -2555,10 +2555,10 @@
 <li><strong>改了 mod id 或 dependency 声明</strong>：热重载会拒绝。依赖图变化需要重启。</li>
 <li><strong>状态迁移失败</strong>：检查 <code>SaveState</code>、<code>MigrateState</code>、<code>RestoreState</code> 签名和日志。<code>--dry-run --check-state</code> 可以在不替换 runtime 的情况下验证迁移代码。</li>
 </ul>
-<p>状态迁移方法只能搬运纯数据。不要在 <code>SaveState</code>、<code>MigrateState</code>、
-<code>RestoreState</code> 中注册命令或 Timer、写入 DataShare/Config、执行命令，或修改
-CK/游戏世界对象。BML+ 只能恢复自己持有的脚本资源，不能撤销脚本已经改过的
-游戏世界状态。</p>
+<p>状态迁移方法应只搬运纯数据。BML+ 不会在 <code>SaveState</code>、<code>MigrateState</code>、
+<code>RestoreState</code> 中封锁其他脚本 API；注册命令或 Timer、写入 DataShare/Config、
+执行命令或修改 CK/游戏世界对象都会真实发生。BML+ 只能恢复自己持有的脚本资源，
+不能撤销这些副作用。</p>
 <hr />
 <h2 id="angelscript">常见 AngelScript 语法错误<a class="headerlink" href="#angelscript" title="Permanent link">&para;</a></h2>
 <h3 id="_6">缺少分号<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>

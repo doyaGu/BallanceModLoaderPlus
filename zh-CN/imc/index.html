@@ -2061,9 +2061,10 @@
 <li>RPC：请求/响应调用；</li>
 <li>Topic：发布/订阅通知。</li>
 </ul>
-<p>当两个独立构建的原生模块需要稳定接口，又不能共享 C++ 对象、STL 容器、
-分配器或 Virtools 指针时，应使用 IMC。双方可以各自独立发布：使用方在运行期
-才查询某条路由是否存在，因此提供方缺失只是一个状态码，而不是装载失败。
+<p>当独立发布的原生或脚本 Mod 需要稳定接口，又不能共享 C++ 对象、STL 容器、
+分配器或 Virtools 指针时，应使用 IMC。任意 native/script 组合都可以提供和消费
+同一份生成式接口。使用方在运行期查询路由，因此提供方缺失只是一个状态码，
+而不是装载失败。
 完整示例参见<a href="../imc-author-guide/">创建类型化 IMC API</a>。</p>
 <p>IMC 不承载任何 Loader 能力。Loader 自己的状态、事件和 UI 都通过
 <code>BML_GetInterface</code> 取得的带版本 interface struct 提供，它自己也不发布任何
@@ -2111,14 +2112,14 @@
 <li>在带版本的 <code>.imc</code> 文件中定义 Record、RPC 和 Topic。</li>
 <li>使用 <code>bml_target_imc_api()</code> 将接口加入 CMake 目标。</li>
 <li>通过 CMake 目标 <code>bml_update_imc_locks</code> 生成或更新相邻的 <code>.imc.lock</code>，审查差异后提交。</li>
-<li>实现生成的 <code>Provider</code> 回调。</li>
-<li>通过生成的 <code>Client</code> 调用接口。</li>
+<li>生成 C++ 头、AngelScript 门面，或同时生成两者。</li>
+<li>实现生成的 <code>Provider</code> 回调，并通过生成的 Client 接口调用。</li>
 <li>在关闭或释放成功前，保持 Provider、Client、Subscription、Future 和回调数据存活。</li>
 </ol>
 <p>生成的绑定是常规使用入口。它们负责编解码和校验载荷、缓存路由 ID、管理不透明
 句柄并返回 BML 状态码。大多数 Mod 不应手工构造 <code>BML_ImcMessage</code>。</p>
 <h2 id="api">公开 API 层次<a class="headerlink" href="#api" title="Permanent link">&para;</a></h2>
-<p>IMC 有三层公开接口：</p>
+<p>IMC 有三层公开接口；生成层按语言提供两种门面：</p>
 <table>
 <thead>
 <tr>
@@ -2130,6 +2131,10 @@
 <tr>
 <td>生成的 <code>*_imc.hpp</code></td>
 <td>类型化载荷、编解码器、Client、Provider、Future 和 Subscription</td>
+</tr>
+<tr>
+<td>生成的 <code>*_imc.as</code></td>
+<td>面向 ASMod Client/Provider 的同一套类型与路由；传输细节留在 <code>BML::Detail</code></td>
 </tr>
 <tr>
 <td><code>BML/ImcCpp.hpp</code></td>
@@ -2173,6 +2178,9 @@
 <li><code>BML_IMC_EXECUTION_GAME_THREAD</code>：排入 BML 游戏线程 Pump，适用于 Virtools 对象、
   BML UI 和其他仅限游戏线程的状态。</li>
 </ul>
+<p>生成的 ASMod Provider 固定使用游戏线程，因为 AngelScript、Virtools 对象和脚本持有
+的回调状态都属于游戏线程服务。ASMod 调用固定为异步，并通过类型化回调完成。只有确实
+需要调用线程执行或原生热路径时才使用原生 Provider；脚本调用方仍复用同一 <code>.imc</code> 接口定义。</p>
 <p>同步生成调用会在指定超时时间内等待类型化结果。生成的 <code>Begin*</code> 方法返回只可移动的
 类型化 Future，可用于轮询、取消或有界等待。</p>
 <p>不要在游戏线程上用非零超时等待游戏线程任务。零超时等待是安全轮询；任务尚未完成时
@@ -2200,6 +2208,9 @@ Subscription 独立的有界队列。</p>
 <li>注销 Provider 回调；</li>
 <li>关闭 Provider 和 Client。</li>
 </ol>
+<p>ASMod 的 Request、Subscription 和 Provider 句柄归脚本 Mod 所有。卸载或成功热重载
+替换时，BML 会在释放 AngelScript Module 前取消并关闭它们。服务需要提前结束时，
+脚本仍应显式调用 <code>Cancel()</code> / <code>Close()</code>。</p>
 <p>在 Client 或 Subscription 自己的活动回调中关闭它时，Runtime 会立即阻止新的分派，
 并在最外层回调返回后完成删除。因此，生成的 Provider 和 Subscription 可以在自己的
 游戏线程回调中安全销毁。若在 Provider 回调中直接注销单个 Route，仍会返回

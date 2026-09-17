@@ -2041,12 +2041,12 @@ SDK 编写 Mod，请阅读<a href="../native-mod-api/">原生 Mod 指南</a>或<
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        /         \
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>   原生 Mod       脚本宿主      IMod 回调 / CKAngelScript 回调
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        \         /
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>       内建服务和生成式 IMC API
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>       Loader 内建功能
 </code></pre></div>
 <p><code>ModManager</code> 将 Virtools manager 生命周期连接到 BML+。<code>ModContext</code> 负责 Mod
 发现、依赖顺序、回调分发、公共服务和关闭。原生 Mod 通过已安装的 C++ ABI 进入，
-脚本 Mod 通过 CKAngelScript 宿主进入。内建生成式 IMC Provider 只投影 Loader 已有
-行为，不维护第二份实现。</p>
+脚本 Mod 通过 CKAngelScript 宿主进入。Mod 可以通过 IMC 发布自己的接口；
+Loader 不发布生成式 IMC 接口。</p>
 <h2 id="_2">开发环境<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>BML+ 是 Virtools CK2 使用的 32 位 Windows 插件。构建 Loader 需要：</p>
 <ul>
@@ -2079,13 +2079,12 @@ Virtools SDK 的库。</p>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  <span class="n">-DBML_BUILD_TESTS</span><span class="p">=</span><span class="n">ON</span> <span class="p">`</span>
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  <span class="n">-DCMAKE_INSTALL_PREFIX</span><span class="p">=</span><span class="s2">"&lt;install-dev 的绝对路径&gt;"</span>
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">Debug</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">ctest</span> <span class="p">-</span><span class="n">-test-dir</span> <span class="n">build-dev</span> <span class="n">-C</span> <span class="n">Debug</span> <span class="p">-</span><span class="n">-output-on-failure</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">Debug</span> <span class="p">-</span><span class="n">-target</span> <span class="n">BML</span> <span class="n">BehaviorExecutionTest</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">ctest</span> <span class="p">-</span><span class="n">-test-dir</span> <span class="n">build-dev</span> <span class="n">-C</span> <span class="n">Debug</span> <span class="n">-R</span> <span class="s1">'^BehaviorExecutionTest$'</span> <span class="p">-</span><span class="n">-output-on-failure</span>
 </code></pre></div>
 <p>使用 Visual Studio 时，Debug DLL 位于 <code>build-dev/bin/Debug/BMLPlus.dll</code>；单配置
 生成器的输出为 <code>build-dev/bin/BMLPlus.dll</code>。发布前还要构建并测试 Release：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">Release</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">ctest</span> <span class="p">-</span><span class="n">-test-dir</span> <span class="n">build-dev</span> <span class="n">-C</span> <span class="n">Release</span> <span class="p">-</span><span class="n">-output-on-failure</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">Release</span> <span class="p">-</span><span class="n">-target</span> <span class="n">BML</span>
 </code></pre></div>
 <p>使用下列命令检查安装后的 SDK 目录和消费端辅助文件：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">Release</span> <span class="p">-</span><span class="n">-target</span> <span class="n">install</span>
@@ -2094,60 +2093,36 @@ Virtools SDK 的库。</p>
 生成器和面向 Mod 作者的公开文档。发布脚本再向该安装树加入原生/脚本模板和编辑器
 API 文件。</p>
 <h2 id="_4">运行时验证<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<p>单元测试和集成测试不会运行 Virtools 或真实 Player。修改 Hook、生命周期顺序、
-渲染、输入、CK 对象访问、原生 Mod 装载或脚本宿主后，还必须在真实 Player 中验证。
-验证层级必须能观察到被修改的行为：</p>
-<ul>
-<li><code>tests/smoke/Validate-BMLBallance.ps1</code> 检查部署、Mod 加载、导出的运行时 interface、
-  关闭和安装恢复。它是进程集成冒烟测试，不能证明 Building Block 语义正确。</li>
-<li>定向 Player 场景沿真实游戏路径运行，并检查可观察的世界结果。行为执行、physics
-  epoch、行为图修改、生命周期顺序、渲染或输入语义必须使用这一层。</li>
-</ul>
-<p>设置 <code>BML_BALLANCE_ROOT</code>，或向脚本传入 <code>-BallanceRoot</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">smoke</span><span class="p">/</span><span class="n">Validate-BMLBallance</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  <span class="n">-BallanceRoot</span> <span class="s2">"&lt;Ballance 根目录&gt;"</span> <span class="p">`</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  <span class="n">-BuildDll</span> <span class="s2">"build-dev/bin/Debug/BMLPlus.dll"</span>
-</code></pre></div>
-<p>替换已加载的 DLL 前先关闭 Player。测试脚本会备份现有 Loader、安装冒烟测试
-资源、启动 Player、检查日志，并在结束后恢复原安装；只有显式传入
-<code>-KeepInstalled</code> 才会保留测试文件。</p>
-<p>Player 验收拆成一个驱动 Mod 加每个被测对象各一个 probe Mod。<code>PlayerFlowDriver</code>
-只负责自带流程：菜单图进入 Level 01、教程退出握手、抓帧和退出，它不认识任何被测
-对象。所有结论都来自导出 <code>BMLPlayerProbeRead</code> 的 probe Mod：驱动枚举已加载的
-probe，等每个 probe 报告结论，任一 probe 失败即整轮失败。读取 gameplay 状态的
-probe 还导出 <code>BMLPlayerProbeStart</code>，由驱动决定它何时可以碰球、相机或输入。因此
-一轮验收覆盖哪些对象，由 runner 安装了哪些 probe 决定，而不是由驱动决定。</p>
-<p>ExecuteBB probe 自己 Physicalize 一个自有物体，因此可以在不依赖原版球的前提下
-证明 ExecuteBB 的物理操作：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">RelWithDebInfo</span> <span class="p">-</span><span class="n">-target</span> <span class="n">BML</span> <span class="p">`</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  <span class="n">PlayerFlowDriver</span> <span class="n">ExecuteBBTest</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">player</span><span class="p">/</span><span class="nb">Invoke-ExecuteBBTest</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  <span class="n">-BallanceRoot</span> <span class="s2">"&lt;Ballance 根目录&gt;"</span> <span class="p">`</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  <span class="n">-BuildDll</span> <span class="s2">"build-dev/bin/RelWithDebInfo/BMLPlus.dll"</span>
-</code></pre></div>
-<p>每个 runner 默认显示 Player 窗口，结束后恢复已安装的 Loader、测试 Mod 和日志。</p>
-<p>Behavior Runtime 的各 probe 覆盖运行时语义 fixture、transport 接缝、Patch、公开的
-Plan 与 Hook facade，以及由脚本 Mod 退休的脚本 Hook。它们与两个 Virtools fixture
-插件一起安装：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">RelWithDebInfo</span> <span class="p">-</span><span class="n">-target</span> <span class="n">BML</span> <span class="p">`</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  <span class="n">PlayerFlowDriver</span> <span class="n">BehaviorRuntimeSemanticsTest</span> <span class="n">BehaviorTransportTest</span> <span class="p">`</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  <span class="n">BehaviorPatchTest</span> <span class="n">BehaviorFacadeTest</span> <span class="n">BehaviorScriptHookTest</span> <span class="p">`</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  <span class="n">BehaviorLifecycleFixture</span> <span class="n">BehaviorTransportFixture</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">player</span><span class="p">/</span><span class="nb">Invoke-BehaviorAcceptanceTest</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>  <span class="n">-BallanceRoot</span> <span class="s2">"&lt;Ballance 根目录&gt;"</span> <span class="p">`</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>  <span class="n">-BuildDll</span> <span class="s2">"build-dev/bin/RelWithDebInfo/BMLPlus.dll"</span>
-</code></pre></div>
-<p>各 probe 路径默认取 Loader DLL 所在目录，只传 <code>-BuildDll</code> 即可。安装目录没有
-<code>AngelScript.dll</code> 时补 <code>-DisableAngelScript</code>，脚本 Hook probe 会报告 SKIPPED 而
-不是判定失败。</p>
-<p>所有 runner 共用 <code>tests/player/BMLPlayerHarness.psm1</code>。<code>Invoke-BMLPlayerRun</code> 负责
-备份并安装被改动的文件、启动 Player、应答 FullScreen Setup 对话框、抓取窗口截图、
-驱动教程退出键并恢复安装；<code>Get-BMLPlayerFlowChecks</code> 把驱动日志行和各 probe 结论
-转成所有 runner 共用的检查项。启动流程、验收流程或 probe 协议变化时改这个模块，
-不要各自改 runner。</p>
+<p>选择能观察到改动行为的最小测试：</p>
+<table>
+<thead>
+<tr>
+<th>改动</th>
+<th>验证方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>纯逻辑、解析或公开头文件</td>
+<td>构建并运行受影响的单元或 ABI 测试</td>
+</tr>
+<tr>
+<td>Loader 启动、安装或原生/脚本加载</td>
+<td>运行 <code>tests/smoke/</code> 中对应的冒烟脚本</td>
+</tr>
+<tr>
+<td>CK 生命周期、Behavior 执行、物理或玩法</td>
+<td>运行 <code>tests/player/</code> 中对应的真实 Player runner</td>
+</tr>
+<tr>
+<td>可见 ImGui、输入或菜单导航</td>
+<td>运行 <code>tests/ui/README.md</code> 指定的场景</td>
+</tr>
+</tbody>
+</table>
+<p>真实 Player 测试会临时修改游戏安装并在结束后恢复。启动前先退出 Player。
+无关改动不必跑整套可视 UI 测试。runner 用法与 probe 归属见
+<code>tests/player/README.md</code> 和 <code>tests/ui/README.md</code>。</p>
 <h2 id="_5">找到修改的负责区域<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2160,13 +2135,13 @@ Plan 与 Hook facade，以及由脚本 Mod 退休的脚本 Hook。它们与两�
 <tbody>
 <tr>
 <td>插件入口、Hook Block 注册或引擎拦截</td>
-<td><code>src/BML.cpp</code>、<code>src/Behavior/HookBlock.*</code>、<code>src/Hooks/</code></td>
+<td><code>src/BML.cpp</code>、<code>src/Behavior/Blocks/HookBlock.*</code>、<code>src/Hooks/</code></td>
 <td>Win32 构建，以及覆盖该回调或 Hook 的真实 Player 场景</td>
 </tr>
 <tr>
-<td>Building Block Prototype 配置、执行或行为图插入</td>
-<td><code>src/Behavior/Runtime.*</code>、对应的 <code>src/Behavior/&lt;BuildingBlock&gt;.*</code> 模块、<code>src/Api/ExecuteBB.cpp</code></td>
-<td>依赖测试、导出 ABI 测试、Win32 构建和受影响的 Player 测试</td>
+<td>Building Block 配置、执行或行为图插入</td>
+<td><code>src/Behavior/Block.*</code>、<code>src/Behavior/Runtime.*</code>、<code>include/BML/Behavior/Blocks/</code>、<code>src/Api/ExecuteBB.cpp</code></td>
+<td>定向 Behavior 和 ABI 测试、Win32 构建及受影响的 Player 测试</td>
 </tr>
 <tr>
 <td>CK 生命周期和回调时序</td>
@@ -2180,7 +2155,7 @@ Plan 与 Hook facade，以及由脚本 Mod 退休的脚本 Hook。它们与两�
 </tr>
 <tr>
 <td>HUD、菜单、命令栏或内建行为</td>
-<td><code>src/Mods/BMLMod.*</code>、<code>src/HUD/</code>、<code>src/Console/</code>、<code>src/CustomMaps/</code>、<code>src/Gameplay/</code>、<code>src/UI/</code></td>
+<td><code>src/Mods/BMLMod.*</code>、<code>src/HUD/</code>、<code>src/Console/</code>、<code>src/CustomMaps/</code>、<code>src/ModMenu/</code>、<code>src/Gameplay/</code>、<code>src/UI/</code></td>
 <td>定向 UI/服务测试和 Player 画面/输入冒烟测试</td>
 </tr>
 <tr>
@@ -2205,7 +2180,7 @@ Plan 与 Hook facade，以及由脚本 Mod 退休的脚本 Hook。它们与两�
 </tr>
 <tr>
 <td>IMC 代码生成器或其示例接口</td>
-<td><code>tools/imc_codegen.py</code>、<code>tests/imc/</code></td>
+<td><code>tools/imc_codegen.py</code>、<code>tests/codegen/imc/</code></td>
 <td>生成器检查、兼容性测试，并一起审查接口、lock 和头文件</td>
 </tr>
 <tr>
@@ -2235,17 +2210,15 @@ Plan 与 Hook facade，以及由脚本 Mod 退休的脚本 Hook。它们与两�
 <p>脚本 API 是公开的源码接口。修改绑定时，必须在同一次变更中更新脚本 API
 参考、作者文档和运行时冒烟测试覆盖。</p>
 <h2 id="_7">生成式接口<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
-<p>Loader 自己不发布任何 <code>.imc</code> 接口，生成器是给发布接口的 Mod 用的编写工具。
-本仓库里有两个 <code>.imc</code> 文件，都属于测试。<code>tests/imc/test.sample.imc</code> 让生成器、
-lock 格式和已提交的输出都保持在测试覆盖之下。<code>tests/smoke/smoke.native.imc</code>
-属于原生冒烟 Mod，它在 Player 中既发布该接口又反过来消费它，让 Loader 的 IMC
-导出在运行期持续被覆盖；<code>bml_target_imc_api</code> 把它的生成头写进构建树，因此仓库
-里只提交 <code>.imc</code> 和它的 lock。</p>
+<p>Loader 自己不发布 <code>.imc</code> 接口；生成器供 Mod 作者使用。
+<code>tests/codegen/imc/test.sample.imc</code> 检查生成器、lock 和已提交的头文件。
+<code>tests/smoke/</code> 与 <code>tests/player/</code> 中的接口覆盖运行时互通；Provider 模板另有
+入门接口。运行时测试所用的头文件在构建树中生成。</p>
 <p>不要手工修改生成头。应修改对应的 <code>.imc</code> 文件并运行生成器。对示例接口即：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">python</span> <span class="n">tools</span><span class="p">/</span><span class="n">imc_codegen</span><span class="p">.</span><span class="n">py</span> <span class="p">`</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  <span class="p">-</span><span class="n">-update-lock</span> <span class="p">`</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">generated</span> <span class="p">`</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">test</span><span class="p">.</span><span class="n">sample</span><span class="p">.</span><span class="n">imc</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">python</span> <span class="n">tools</span><span class="p">/</span><span class="n">imc_codegen</span><span class="p">.</span><span class="n">py</span> <span class="p">`</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="p">-</span><span class="n">-update-lock</span> <span class="p">`</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">tests</span><span class="p">/</span><span class="n">codegen</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">generated</span> <span class="p">`</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">tests</span><span class="p">/</span><span class="n">codegen</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">test</span><span class="p">.</span><span class="n">sample</span><span class="p">.</span><span class="n">imc</span>
 </code></pre></div>
 <p><code>.imc</code>、<code>.imc.lock</code> 和生成头应一起审查和提交。lock 保存稳定的字段与端点标识，
 不要手工调整其中的数字。BML+ 的正常构建会对该示例以检查模式运行生成器，并在
@@ -2266,9 +2239,9 @@ lock 格式和已提交的输出都保持在测试覆盖之下。<code>tests/smo
 <li>同一项公开行为同时有中英文文档时，两种语言应在同一次变更中更新。</li>
 </ul>
 <p>Commit 标题使用简短的英文祈使句，例如：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Fix native mod instance cleanup
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>Document native mod build requirements
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>Reject malformed event payloads
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>Fix native mod instance cleanup
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>Document native mod build requirements
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>Reject malformed event payloads
 </code></pre></div>
 <p>能够独立审查的行为、文档、生成物和清理工作应分别提交，不要混入无关修改。</p>
 <h2 id="_9">提交前检查<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>

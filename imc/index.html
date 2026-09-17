@@ -1163,10 +1163,11 @@ mods. It provides two operations:</p>
 <li>RPC for request/response calls;</li>
 <li>Topic for publish/subscribe notifications.</li>
 </ul>
-<p>Use IMC when two independently built native modules need a stable API without
-sharing C++ objects, STL containers, allocators, or Virtools pointers. Both sides
-ship on their own schedule: a consumer asks at runtime whether a route is there,
-so a missing provider is a status code rather than a load failure.</p>
+<p>Use IMC when independently shipped native or script mods need a stable API
+without sharing C++ objects, STL containers, allocators, or Virtools pointers.
+Any native/script pairing may provide and consume the same generated interface.
+A consumer asks at runtime whether a route is there, so a missing provider is a
+status code rather than a load failure.</p>
 <p>IMC carries no loader capability. The loader serves its own state, its events,
 and its UI through versioned interface structs reached by <code>BML_GetInterface</code>, and
 it publishes no <code>.imc</code> interface of its own. See <a href="../native-api-routes/">Which native API to
@@ -1218,8 +1219,9 @@ lifetime, and failure handling consistent across APIs.</p>
 <li>Add the interface to a CMake target with <code>bml_target_imc_api()</code>.</li>
 <li>Generate or refresh its adjacent <code>.imc.lock</code> with the
    <code>bml_update_imc_locks</code> CMake target, then review and commit the diff.</li>
-<li>Implement the generated <code>Provider</code> callbacks.</li>
-<li>Call the API through the generated <code>Client</code>.</li>
+<li>Generate the C++ header, AngelScript facade, or both.</li>
+<li>Implement the generated <code>Provider</code> callbacks and call through the generated
+   Client surface.</li>
 <li>Keep providers, clients, subscriptions, futures, and callback data alive
    until their corresponding close or release operation succeeds.</li>
 </ol>
@@ -1227,7 +1229,7 @@ lifetime, and failure handling consistent across APIs.</p>
 payloads, cache route IDs, manage opaque handles, and return BML status codes.
 Most mods should not construct <code>BML_ImcMessage</code> values directly.</p>
 <h2 id="public-api-layers">Public API layers<a class="headerlink" href="#public-api-layers" title="Permanent link">&para;</a></h2>
-<p>IMC has three public layers:</p>
+<p>IMC has three public layers; the generated layer has one surface per language:</p>
 <table>
 <thead>
 <tr>
@@ -1239,6 +1241,10 @@ Most mods should not construct <code>BML_ImcMessage</code> values directly.</p>
 <tr>
 <td>Generated <code>*_imc.hpp</code></td>
 <td>Typed payloads, codecs, clients, providers, futures, and subscriptions</td>
+</tr>
+<tr>
+<td>Generated <code>*_imc.as</code></td>
+<td>The same typed payloads and routes for ASMod Clients and Providers; transport details stay under <code>BML::Detail</code></td>
 </tr>
 <tr>
 <td><code>BML/ImcCpp.hpp</code></td>
@@ -1294,6 +1300,11 @@ layout define the interoperable interface.</p>
 <li><code>BML_IMC_EXECUTION_GAME_THREAD</code> queues the request for the BML game-thread
   pump. Use it for Virtools objects, BML UI, and other game-thread-only state.</li>
 </ul>
+<p>Generated ASMod providers always use game-thread execution because AngelScript,
+Virtools objects, and script-owned callback state are game-thread services.
+Generated ASMod calls are asynchronous and complete through typed callbacks.
+Use a native provider only when caller-thread execution or a native hot path is
+actually required; the script caller still uses the same <code>.imc</code> interface.</p>
 <p>Synchronous generated calls wait for their typed result up to the supplied
 timeout. Generated <code>Begin*</code> methods return a move-only typed future for polling,
 cancellation, or bounded waiting.</p>
@@ -1326,6 +1337,10 @@ IMC state during unload, but explicit shutdown is still required:</p>
 <li>unregister provider callbacks;</li>
 <li>close providers and clients.</li>
 </ol>
+<p>ASMod request, subscription, and provider handles are owned by the script Mod.
+BML cancels and closes them before the AngelScript module is released, including
+during successful hot-reload replacement. Scripts should still call
+<code>Cancel()</code>/<code>Close()</code> when ending a service earlier.</p>
 <p>Closing a client or subscription from one of its active callbacks immediately
 prevents new dispatch and defers final removal until the outermost callback
 returns. This also makes generated Provider and Subscription destruction safe
