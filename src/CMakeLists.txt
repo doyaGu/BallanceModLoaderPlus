@@ -340,6 +340,7 @@ set(BML_HOOK_PRIVATE_HEADERS
         Hooks/CKRasterizer.h
         Hooks/CKRasterizerEnums.h
         Hooks/CKRasterizerTypes.h
+        Hooks/InputCursor.h
         Hooks/Macros.h
         Hooks/RenderHook.h
         Hooks/VTables.h
