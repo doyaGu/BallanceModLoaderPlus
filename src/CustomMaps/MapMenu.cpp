@@ -62,6 +62,14 @@ void MapMenu::SetMaxDepth(int depth) {
         m_State.RefreshMaps();
 }
 
+bool MapMenu::Render() {
+    if (m_State.TakeCloseRequest())
+        return m_Routes.Close();
+    if (m_State.IsLoading())
+        return true;
+    return m_Routes.Render();
+}
+
 void MapListPage::SyncCatalog() {
     if (m_CatalogRevision == m_State.GetCatalogRevision())
         return;
@@ -74,15 +82,7 @@ void MapListPage::SyncCatalog() {
 
 Bui::PageAction MapListPage::OnFrame() {
     SyncCatalog();
-    if (m_State.TakeCloseRequest())
-        return Bui::PageAction::Close();
-
     Bui::Title("Custom Maps", 0.07f);
-
-    if (m_State.IsLoading()) {
-        Bui::Title("Loading...", 0.4f, 0.5f);
-        return Bui::PageAction::None();
-    }
 
     MapEntry *maps = m_State.GetCurrentMaps();
     if (!maps || maps->children.empty()) {

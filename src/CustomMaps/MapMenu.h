@@ -43,7 +43,7 @@ public:
 
     bool Open(const std::string &id) { return m_Active && !m_ShuttingDown && m_Routes.Open(id); }
     bool Close() { return m_Routes.Close(); }
-    bool Render() { return m_Routes.Render(); }
+    bool Render();
     bool IsOpen() const { return m_Routes.IsOpen(); }
     bool CompleteLoad(bool loaded) { return m_State.CompleteLoad(loaded); }
     void ResetLoad() { m_State.ResetLoad(); }
