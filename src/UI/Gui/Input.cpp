@@ -10,15 +10,15 @@ CKMaterial *g_Caret = nullptr;
 namespace {
 // The caret is drawn by the same Block the Label owns, so the field asks the
 // Text2D module for the Slots it needs instead of numbering the parameters.
-BML::Behavior::Internal::Text2DView::View Text(CKBehavior *block) {
-    return {BML_GetCKContext(), block};
+BML::Behavior::Internal::Text2DView::View Text(CKContext *context, CKBehavior *block) {
+    return {context, block};
 }
 } // namespace
 
 Input::Input(const char *name) : Label(name) {
     m_2dEntity->UseSourceRect();
-    Text(m_Text2d).SetCaretMaterial(::g_Caret);
-    Text(m_Text2d).SetText("\b");
+    Text(m_Context, m_Text2d).SetCaretMaterial(::g_Caret);
+    Text(m_Context, m_Text2d).SetText("\b");
 }
 
 void Input::InvokeCallback(CKDWORD key) {
@@ -88,7 +88,7 @@ void Input::OnCharTyped(CKDWORD key) {
         InvokeCallback(key);
         std::string str = m_Text;
         str.insert(m_Caret, 1, '\b');
-        Text(m_Text2d).SetText(str.c_str());
+        Text(m_Context, m_Text2d).SetText(str.c_str());
     }
 }
 
@@ -99,7 +99,7 @@ const char *Input::GetText() {
 void Input::SetText(const char *text) {
     m_Text = text;
     m_Caret = m_Text.size();
-    Text(m_Text2d).SetText((m_Text + '\b').c_str());
+    Text(m_Context, m_Text2d).SetText((m_Text + '\b').c_str());
 }
 
 void Input::GetFocus() {

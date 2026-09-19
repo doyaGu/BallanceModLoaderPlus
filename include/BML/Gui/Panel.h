@@ -20,7 +20,7 @@ namespace BGui {
         void SetColor(VxColor color);
 
     protected:
-        CKMaterial *m_Material;
+        CKMaterial *m_Material = nullptr;
     };
 }
 

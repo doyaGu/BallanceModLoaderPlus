@@ -51,7 +51,7 @@ namespace BGui {
         void UpdateFont();
 
     protected:
-        CKSpriteText *m_Sprite;
+        CKSpriteText *m_Sprite = nullptr;
     };
 }
 

@@ -22,6 +22,8 @@
 
 #include "BML/Defines.h"
 
+class CKContext;
+
 namespace BGui {
     class BML_EXPORT Element {
         friend class Gui;
@@ -45,7 +47,8 @@ namespace BGui {
         virtual void Process() {};
 
     protected:
-        CK2dEntity *m_2dEntity;
+        CKContext *m_Context = nullptr;
+        CK2dEntity *m_2dEntity = nullptr;
     };
 }
 

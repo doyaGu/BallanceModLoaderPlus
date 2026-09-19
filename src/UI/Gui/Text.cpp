@@ -6,30 +6,27 @@
 using namespace BGui;
 
 Text::Text(const char *name) : Element(name) {
-    CKContext *context = BML_GetCKContext();
-    m_Sprite = (CKSpriteText *)context->CreateObject(CKCID_SPRITETEXT, (CKSTRING) name);
+    m_Sprite = (CKSpriteText *)m_Context->CreateObject(CKCID_SPRITETEXT, (CKSTRING) name);
     m_Sprite->ModifyObjectFlags(CK_OBJECT_NOTTOBELISTEDANDSAVED, 0);
-    context->GetCurrentLevel()->AddObject(m_Sprite);
+    m_Context->GetCurrentLevel()->AddObject(m_Sprite);
     m_Sprite->SetHomogeneousCoordinates();
     m_Sprite->EnableClipToCamera(false);
     m_Sprite->EnableRatioOffset(false);
     m_Sprite->SetZOrder(20);
     m_Sprite->SetTextColor(0xffffffff);
     m_Sprite->SetAlign(CKSPRITETEXT_ALIGNMENT(CKSPRITETEXT_VCENTER | CKSPRITETEXT_LEFT));
-    InitializeLegacyTextFont(m_Sprite, context->GetPlayerRenderContext()->GetHeight());
+    InitializeLegacyTextFont(m_Sprite, m_Context->GetPlayerRenderContext()->GetHeight());
 }
 
 Text::~Text() {
     ForgetLegacyTextFont(m_Sprite);
-    CKContext *context = BML_GetCKContext();
-    if (context && m_Sprite)
-        context->DestroyObject(CKOBJID(m_Sprite));
+    if (m_Context && m_Sprite)
+        m_Context->DestroyObject(CKOBJID(m_Sprite));
 }
 
 void Text::UpdateFont() {
-    CKContext *context = BML_GetCKContext();
-    if (context && context->GetPlayerRenderContext()) {
-        RefreshLegacyTextFont(m_Sprite, context->GetPlayerRenderContext()->GetHeight());
+    if (m_Context && m_Context->GetPlayerRenderContext()) {
+        RefreshLegacyTextFont(m_Sprite, m_Context->GetPlayerRenderContext()->GetHeight());
     }
 }
 
@@ -51,7 +48,7 @@ Vx2DVector Text::GetSize() {
 
 void Text::SetSize(Vx2DVector size) {
     m_Sprite->ReleaseAllSlots();
-    auto *rc = BML_GetRenderContext();
+    auto *rc = m_Context->GetPlayerRenderContext();
     m_Sprite->Create((int)(rc->GetWidth() * size.x), (int)(rc->GetHeight() * size.y), 32);
     m_Sprite->SetSize(size, true);
 }
