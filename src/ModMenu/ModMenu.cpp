@@ -81,13 +81,17 @@ namespace {
     protected:
         void OnEnter(Bui::PageEnterReason) override {
             m_Entered = m_Model.EnterPage() == BML_OK;
+            m_Status = m_Entered ? ModMenuPageStatus::Ready
+                                 : ModMenuPageStatus::EnterFailed;
         }
 
         Bui::PageAction OnFrame() override {
-            const ModMenuRouteAction action = m_Presentation.DrawPage(m_Model, m_Entered);
-            if (action == ModMenuRouteAction::Back)
+            const ModMenuPagePresentationResult result =
+                m_Presentation.DrawPage(m_Model, m_Status);
+            m_Status = result.status;
+            if (result.action == ModMenuRouteAction::Back)
                 return Bui::PageAction::Back();
-            if (action == ModMenuRouteAction::Close)
+            if (result.action == ModMenuRouteAction::Close)
                 return Bui::PageAction::Close();
             return Bui::PageAction::None();
         }
@@ -100,12 +104,14 @@ namespace {
                         : BML_MOD_MENU_PAGE_LEAVE_BACK);
             }
             m_Entered = false;
+            m_Status = ModMenuPageStatus::Ready;
         }
 
     private:
         ModMenuModel &m_Model;
         ModMenuPresentation &m_Presentation;
         bool m_Entered = false;
+        ModMenuPageStatus m_Status = ModMenuPageStatus::Ready;
     };
 }
 
