@@ -27,6 +27,9 @@ namespace {
     constexpr ImVec4 ScrollbarGrabColor = {224.0f / 255.0f, 169.0f / 255.0f, 113.0f / 255.0f, 195.0f / 255.0f};
     constexpr ImVec4 ScrollbarHoverColor = {235.0f / 255.0f, 190.0f / 255.0f, 122.0f / 255.0f, 210.0f / 255.0f};
     constexpr ImVec4 ScrollbarActiveColor = {190.0f / 255.0f, 128.0f / 255.0f, 52.0f / 255.0f, 225.0f / 255.0f};
+    constexpr ImVec4 EditedSettingColor = {1.0f, 1.0f, 0.72f, 1.0f};
+    constexpr ImVec4 ConflictSettingColor = {1.0f, 0.67f, 0.28f, 1.0f};
+    constexpr ImVec4 StaleSettingColor = {1.0f, 0.45f, 0.35f, 1.0f};
     constexpr ImGuiWindowFlags TextPanelFlags = ImGuiWindowFlags_NoSavedSettings |
                                                 ImGuiWindowFlags_NoNavInputs |
                                                 ImGuiWindowFlags_NoNavFocus;
@@ -105,6 +108,35 @@ namespace {
             return "Loading Mod settings.";
         case ModMenuSessionStatus::Ready:
         case ModMenuSessionStatus::NoSelection:
+        default:
+            return "";
+        }
+    }
+
+    const ImVec4 *SettingTextColor(ModMenuSettingState state) {
+        switch (state) {
+        case ModMenuSettingState::Edited:
+            return &EditedSettingColor;
+        case ModMenuSettingState::Conflict:
+            return &ConflictSettingColor;
+        case ModMenuSettingState::Stale:
+            return &StaleSettingColor;
+        case ModMenuSettingState::Unchanged:
+        case ModMenuSettingState::Missing:
+        default:
+            return nullptr;
+        }
+    }
+
+    const char *PageStatusMessage(ModMenuPageStatus status) {
+        switch (status) {
+        case ModMenuPageStatus::EnterFailed:
+            return "The Mod could not open this page.";
+        case ModMenuPageStatus::DrawFailed:
+            return "The Mod stopped drawing this page after an error.";
+        case ModMenuPageStatus::Unavailable:
+            return "This page is no longer available.";
+        case ModMenuPageStatus::Ready:
         default:
             return "";
         }
@@ -425,46 +457,53 @@ struct ModMenuPresentation::State {
 
     void DrawSetting(ModMenuModel &model, const ModMenuSettingDocument &setting) {
         const ModMenuSettingValue *source = model.GetSession().GetValue(setting.key);
+        const ImVec4 *textColor = SettingTextColor(
+            model.GetSession().GetSettingState(setting.key));
+        if (textColor)
+            ImGui::PushStyleColor(ImGuiCol_Text, *textColor);
+
         if (!source) {
             ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
-            return;
+        } else {
+            switch (setting.type) {
+            case IProperty::STRING: {
+                std::string next = std::get<std::string>(*source);
+                if (Bui::InputTextButton(setting.label.c_str(), &next))
+                    model.EditSetting(setting.key, std::move(next));
+                break;
+            }
+            case IProperty::BOOLEAN: {
+                bool next = std::get<bool>(*source);
+                const bool previous = next;
+                Bui::YesNoButton(setting.label.c_str(), &next);
+                if (next != previous)
+                    model.EditSetting(setting.key, next);
+                break;
+            }
+            case IProperty::INTEGER: {
+                int next = std::get<int>(*source);
+                if (Bui::InputIntButton(setting.label.c_str(), &next))
+                    model.EditSetting(setting.key, next);
+                break;
+            }
+            case IProperty::KEY:
+                DrawKeySetting(model, setting.key, setting.label.c_str(), std::get<int>(*source));
+                break;
+            case IProperty::FLOAT: {
+                float next = std::get<float>(*source);
+                if (Bui::InputFloatButton(setting.label.c_str(), &next))
+                    model.EditSetting(setting.key, next);
+                break;
+            }
+            case IProperty::NONE:
+            default:
+                ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
+                break;
+            }
         }
 
-        switch (setting.type) {
-        case IProperty::STRING: {
-            std::string next = std::get<std::string>(*source);
-            if (Bui::InputTextButton(setting.label.c_str(), &next))
-                model.EditSetting(setting.key, std::move(next));
-            break;
-        }
-        case IProperty::BOOLEAN: {
-            bool next = std::get<bool>(*source);
-            const bool previous = next;
-            Bui::YesNoButton(setting.label.c_str(), &next);
-            if (next != previous)
-                model.EditSetting(setting.key, next);
-            break;
-        }
-        case IProperty::INTEGER: {
-            int next = std::get<int>(*source);
-            if (Bui::InputIntButton(setting.label.c_str(), &next))
-                model.EditSetting(setting.key, next);
-            break;
-        }
-        case IProperty::KEY:
-            DrawKeySetting(model, setting.key, setting.label.c_str(), std::get<int>(*source));
-            break;
-        case IProperty::FLOAT: {
-            float next = std::get<float>(*source);
-            if (Bui::InputFloatButton(setting.label.c_str(), &next))
-                model.EditSetting(setting.key, next);
-            break;
-        }
-        case IProperty::NONE:
-        default:
-            ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
-            break;
-        }
+        if (textColor)
+            ImGui::PopStyleColor();
     }
 
     void DrawSettings(ModMenuModel &model, const ModMenuDocument &document,
@@ -588,14 +627,18 @@ ModMenuRouteAction ModMenuPresentation::DrawDetailsPage(ModMenuModel &model) {
     return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
 }
 
-ModMenuRouteAction ModMenuPresentation::DrawPage(ModMenuModel &model, bool entered) {
+ModMenuPagePresentationResult ModMenuPresentation::DrawPage(
+    ModMenuModel &model, ModMenuPageStatus status) {
     m_State->BeginFrame();
-    if (!entered) {
+    if (status != ModMenuPageStatus::Ready) {
         Bui::Title("Page unavailable");
         m_State->viewport.SetCursor(ListX, ListY);
-        Bui::WrappedText("The Mod could not open this page.",
+        Bui::WrappedText(PageStatusMessage(status),
                          Bui::GetButtonSize(Bui::BUTTON_MAIN).x);
-        return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
+        return {
+            Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None,
+            status,
+        };
     }
 
     model.SynchronizeSelected();
@@ -604,13 +647,20 @@ ModMenuRouteAction ModMenuPresentation::DrawPage(ModMenuModel &model, bool enter
     const ModMenuPageInfo *page = selected ? std::get_if<ModMenuPageInfo>(selected) : nullptr;
     if (!document || !page) {
         Bui::Title("Page unavailable");
-        return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
+        return {
+            Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None,
+            ModMenuPageStatus::Unavailable,
+        };
     }
 
     BML_ModMenuPageAction action = BML_MOD_MENU_PAGE_NONE;
     ImGui::PushID(document->owner.id.c_str());
     ImGui::PushID(page->key.id.c_str());
+    ImGui::PushID(static_cast<int>(page->key.generation));
+    ImGui::PushID(static_cast<int>(page->key.generation >> 32));
     const int result = model.DrawPage(action);
+    ImGui::PopID();
+    ImGui::PopID();
     ImGui::PopID();
     ImGui::PopID();
 
@@ -619,13 +669,16 @@ ModMenuRouteAction ModMenuPresentation::DrawPage(ModMenuModel &model, bool enter
         m_State->viewport.SetCursor(ListX, ListY);
         Bui::WrappedText("The Mod could not draw this page.",
                          Bui::GetButtonSize(Bui::BUTTON_MAIN).x);
-        return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
+        return {
+            Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None,
+            ModMenuPageStatus::DrawFailed,
+        };
     }
     if (action == BML_MOD_MENU_PAGE_BACK)
-        return ModMenuRouteAction::Back;
+        return {ModMenuRouteAction::Back, ModMenuPageStatus::Ready};
     if (action == BML_MOD_MENU_PAGE_CLOSE)
-        return ModMenuRouteAction::Close;
-    return ModMenuRouteAction::None;
+        return {ModMenuRouteAction::Close, ModMenuPageStatus::Ready};
+    return {};
 }
 
 ModMenuRouteAction ModMenuPresentation::DrawSettingsPage(ModMenuModel &model) {
@@ -646,6 +699,11 @@ ModMenuRouteAction ModMenuPresentation::DrawSettingsPage(ModMenuModel &model) {
     if (model.GetSession().IsDirty()) {
         m_State->DrawPendingActions(model);
         return ModMenuRouteAction::None;
+    }
+
+    if (!model.GetNotice().empty()) {
+        DrawTextPanel(m_State->viewport, "ModOptionNotice", SettingCommentPanel,
+                      "Settings", model.GetNotice().c_str());
     }
 
     return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;

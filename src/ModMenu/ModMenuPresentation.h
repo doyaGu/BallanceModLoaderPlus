@@ -16,6 +16,18 @@ enum class ModMenuRouteAction {
     OpenPage,
 };
 
+enum class ModMenuPageStatus {
+    Ready,
+    EnterFailed,
+    DrawFailed,
+    Unavailable,
+};
+
+struct ModMenuPagePresentationResult {
+    ModMenuRouteAction action = ModMenuRouteAction::None;
+    ModMenuPageStatus status = ModMenuPageStatus::Ready;
+};
+
 class ModMenuPresentation final {
 public:
     ModMenuPresentation();
@@ -28,7 +40,8 @@ public:
     ModMenuRouteAction DrawModListPage(ModMenuModel &model);
     ModMenuRouteAction DrawDetailsPage(ModMenuModel &model);
     ModMenuRouteAction DrawSettingsPage(ModMenuModel &model);
-    ModMenuRouteAction DrawPage(ModMenuModel &model, bool entered);
+    ModMenuPagePresentationResult DrawPage(
+        ModMenuModel &model, ModMenuPageStatus status);
 
 private:
     struct State;
