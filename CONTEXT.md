@@ -80,8 +80,16 @@ IME-consumed Tab navigation without rewriting or consuming the original
 message. The ImGui Win32 backend alone submits committed characters.
 
 **Script ImGui Ownership** — Tracks ImGui interaction created by each Script
-Mod call. It restores host state after a call and releases only that Mod's
-remaining state on unload; the shared ImGui context belongs to Overlay.
+Mod call. Script window ids include the owning Mod identity while preserving
+the requested visible title, so equal names from different Mods remain
+independent. It releases only that Mod's remaining interaction state on
+unload; the shared ImGui context belongs to Overlay.
+
+**ImGui Callback Recovery** — Captures ImGui stack depths before each Mod
+callback and restores unbalanced windows, styles, ids, and related stacks
+before the next Mod runs. Native and Script callbacks share the same recovery
+mechanism; recovery contains a failed Mod without replacing normal balanced
+window lifecycle.
 
 **IME Runtime** — Mirrors composition through IMM32 and obtains modern
 candidate state and control through a UI-less TSF sink. It publishes immutable,
