@@ -44,7 +44,14 @@ void MapMenu::Init(const std::wstring &mapsDirectory, ILogger &logger) {
     }
 
     m_Active = true;
-    m_State.RefreshMaps();
+}
+
+bool MapMenu::Open(const std::string &id) {
+    if (!m_Active || m_ShuttingDown)
+        return false;
+    if (!m_Routes.IsOpen())
+        m_State.RefreshMaps();
+    return m_Routes.Open(id);
 }
 
 void MapMenu::Shutdown() {
@@ -58,7 +65,7 @@ void MapMenu::Shutdown() {
 }
 
 void MapMenu::SetMaxDepth(int depth) {
-    if (m_State.SetMaxDepth(depth) && m_Active)
+    if (m_State.SetMaxDepth(depth) && m_Active && m_Routes.IsOpen())
         m_State.RefreshMaps();
 }
 
