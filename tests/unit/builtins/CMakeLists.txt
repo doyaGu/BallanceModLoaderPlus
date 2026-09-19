@@ -4,6 +4,13 @@ add_bml_test(ConsoleLayoutTest
         ${BML_SOURCE_DIR}/Console/ConsoleLayout.cpp
 )
 
+add_bml_test(CommandCompletionTest
+        SOURCES
+        CommandCompletionTest.cpp
+        ${BML_SOURCE_DIR}/Console/CommandCompletion.cpp
+        DEPENDENCIES utf8
+)
+
 add_bml_test(ModMenuSessionTest
         SOURCES
         ModMenuSessionTest.cpp

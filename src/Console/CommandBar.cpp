@@ -14,6 +14,7 @@
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "BML/ICommand.h"
+#include "Console/CommandCompletion.h"
 #include "Console/CommandContext.h"
 #include "Loader/ModContext.h"
 #include "PathUtils.h"
@@ -343,25 +344,7 @@ const std::string *CommandBar::CandidateState::Selected() const {
 }
 
 std::size_t CommandBar::CandidateState::CommonPrefixLength() const {
-    if (m_Items.empty())
-        return 0;
-
-    std::size_t prefixLength = m_Items.front().size();
-    for (std::size_t itemIndex = 1; itemIndex < m_Items.size(); ++itemIndex) {
-        const std::string &item = m_Items[itemIndex];
-        prefixLength = std::min(prefixLength, item.size());
-        for (std::size_t character = 0; character < prefixLength; ++character) {
-            const int first = std::toupper(
-                static_cast<unsigned char>(m_Items.front()[character]));
-            const int current = std::toupper(
-                static_cast<unsigned char>(item[character]));
-            if (first != current) {
-                prefixLength = character;
-                break;
-            }
-        }
-    }
-    return prefixLength;
+    return CommandCompletion::CommonPrefixLength(m_Items);
 }
 
 CommandBar::CommandBar() : Window("CommandBar") {
@@ -725,16 +708,11 @@ void CommandBar::ReplaceCurrentToken(ImGuiInputTextCallbackData *data, const cha
     if (!data || !replacement)
         return;
 
-    const char *tokenStart = data->Buf;
-    const char *cursor = data->Buf + data->CursorPos;
-    const int leftCount = LastToken(tokenStart, cursor);
-    const char *textEnd = data->Buf + data->BufTextLen;
-    const char *tokenEnd = cursor;
-    while (tokenEnd < textEnd && !std::isspace(static_cast<unsigned char>(*tokenEnd)))
-        ++tokenEnd;
-
-    const int deletePos = static_cast<int>(tokenStart - data->Buf);
-    const int deleteCount = leftCount + static_cast<int>(tokenEnd - cursor);
+    const CommandCompletion::TokenRange token = CommandCompletion::FindTokenRange(
+        std::string_view(data->Buf, static_cast<std::size_t>(data->BufTextLen)),
+        static_cast<std::size_t>(data->CursorPos));
+    const int deletePos = static_cast<int>(token.begin);
+    const int deleteCount = static_cast<int>(token.end - token.begin);
     data->DeleteChars(deletePos, deleteCount);
 
     const int insertLength = replacementLength >= 0 ? replacementLength : static_cast<int>(std::strlen(replacement));
@@ -743,8 +721,7 @@ void CommandBar::ReplaceCurrentToken(ImGuiInputTextCallbackData *data, const cha
     if (replacementLength >= 0)
         return;
 
-    const bool hasSpaceAfter = tokenEnd < textEnd && std::isspace(static_cast<unsigned char>(*tokenEnd));
-    if (!hasSpaceAfter)
+    if (!token.followedByWhitespace)
         data->InsertChars(deletePos + insertLength, " ");
 }
 
