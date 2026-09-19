@@ -690,8 +690,9 @@ void CommandBar::CollectCommandCandidates(const char *cmdStart, int cmdLength) {
 void CommandBar::CollectArgumentCandidates(const char *wordStart, int wordLength,
                                            const char *cmdStart, const char *lineEnd) {
     const std::string commandLine(cmdStart, lineEnd);
-    auto args = BML::CommandContext::ParseCommandLine(commandLine.c_str());
-    if (!commandLine.empty() && std::isspace(static_cast<unsigned char>(commandLine.back())))
+    bool trailingSeparator = false;
+    auto args = BML::CommandContext::ParseCommandLine(commandLine.c_str(), &trailingSeparator);
+    if (trailingSeparator)
         args.emplace_back();
     if (args.empty())
         return;

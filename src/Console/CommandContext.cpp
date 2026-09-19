@@ -474,42 +474,46 @@ bool CommandContext::IsValidCommandAlias(const char *alias) {
     return true;
 }
 
-std::vector<std::string> CommandContext::ParseCommandLine(const char *cmd) {
+std::vector<std::string> CommandContext::ParseCommandLine(
+    const char *cmd, bool *trailingSeparator) {
+    if (trailingSeparator)
+        *trailingSeparator = false;
     if (!cmd || cmd[0] == '\0')
         return {};
 
     std::vector<std::string> args;
-    size_t size = utf8size(cmd);
-    char *buf = new char[size + 1];
-    utf8ncpy(buf, cmd, size);
+    std::string argument;
+    bool quoted = false;
+    bool started = false;
 
-    char *lp = &buf[0];
-    char *rp = lp;
-    char *end = lp + size;
-    utf8_int32_t cp, temp;
-    utf8codepoint(rp, &cp);
-    while (rp != end) {
-        if ((utf8codepointsize(*rp) == 1 && std::isspace(static_cast<unsigned char>(*rp))) || *rp == '\0') {
-            size_t len = rp - lp;
-            if (len != 0) {
-                char bk = *rp;
-                *rp = '\0';
-                args.emplace_back(lp);
-                *rp = bk;
-            }
-
-            if (*rp != '\0') {
-                while (utf8codepointsize(*rp) == 1 && std::isspace(static_cast<unsigned char>(*rp)))
-                    ++rp;
-                --rp;
-            }
-
-            lp = utf8codepoint(rp, &temp);
+    for (const unsigned char *cursor = reinterpret_cast<const unsigned char *>(cmd);
+         *cursor != '\0'; ++cursor) {
+        if (*cursor == '"') {
+            quoted = !quoted;
+            started = true;
+            if (trailingSeparator)
+                *trailingSeparator = false;
+            continue;
         }
 
-        rp = utf8codepoint(rp, &cp);
-    }
+        const bool whitespace = *cursor < 0x80 && std::isspace(*cursor) != 0;
+        if (!quoted && whitespace) {
+            if (started) {
+                args.push_back(std::move(argument));
+                argument.clear();
+                started = false;
+            }
+            if (trailingSeparator)
+                *trailingSeparator = true;
+            continue;
+        }
 
-    delete[] buf;
+        argument.push_back(static_cast<char>(*cursor));
+        started = true;
+        if (trailingSeparator)
+            *trailingSeparator = false;
+    }
+    if (started)
+        args.push_back(std::move(argument));
     return args;
 }

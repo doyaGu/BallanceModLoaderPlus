@@ -58,17 +58,16 @@ public:
 
     // Runs the command. args[0] is the word the player typed, so it is the alias
     // when that is what was used, and the arguments start at args[1]. The line is
-    // split on ASCII whitespace with no quoting and no escapes, so an argument
-    // cannot contain a space and a quoted string arrives as several args; join them
-    // back if the command wants one text. Write output with
-    // IBML::SendIngameMessage. An exception thrown here is caught by the loader,
+    // split on ASCII whitespace outside double quotes. Quote delimiters are removed,
+    // allowing one argument to contain whitespace; quotes cannot be escaped. Write
+    // output with IBML::SendIngameMessage. An exception thrown here is caught by the loader,
     // logged, and shown to the player, and it skips the OnPostCommandExecute
     // broadcast.
     virtual void Execute(IBML *bml, const std::vector<std::string> &args) = 0;
 
     // Asked when the player presses Tab. args is the line up to the caret split the
-    // same way, with args[0] the command word, and a caret sitting after a space
-    // adds an empty last element, so args.size() is 2 while the first argument is
+    // same way, with args[0] the command word, and a caret sitting after an unquoted
+    // space adds an empty last element, so args.size() is 2 while the first argument is
     // being completed, 3 for the second, and so on. Return every candidate for that
     // position, in any order: the command bar keeps the ones that start with what
     // has been typed, ignoring case, and drops duplicates. Return an empty vector
