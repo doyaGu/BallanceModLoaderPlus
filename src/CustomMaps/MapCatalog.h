@@ -1,8 +1,10 @@
 #ifndef BML_MAPCATALOG_H
 #define BML_MAPCATALOG_H
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class ILogger;
@@ -41,6 +43,11 @@ public:
 
     MapEntry *GetRoot() const { return m_Root.get(); }
     bool Refresh(const std::wstring &path, int maxDepth, ILogger *logger);
+    std::vector<std::string> ListFiles(std::string_view fragment, std::size_t limit) const;
+    static bool ResolveFile(const std::wstring &mapsDirectory, std::string_view relativePath,
+                            std::wstring &path, std::string &error);
+    static bool ValidateFile(const std::wstring &mapsDirectory, const std::wstring &candidate,
+                             std::wstring &path, std::string &error);
 
 private:
     enum class ScanResult {
