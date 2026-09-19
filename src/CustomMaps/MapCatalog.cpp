@@ -2,17 +2,35 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <climits>
 #include <cstring>
 #include <cwchar>
+#include <filesystem>
 #include <io.h>
 #include <new>
 #include <windows.h>
+
+#include <utf8.h>
 
 #undef CompareString
 
 #include "BML/ILogger.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
+
+namespace {
+bool ContainsCaseInsensitiveUtf8(const std::string &text, const std::string &fragment) {
+    if (fragment.empty())
+        return true;
+    if (text.find('\0') != std::string::npos || fragment.find('\0') != std::string::npos)
+        return false;
+
+    const auto *textUtf8 = reinterpret_cast<const utf8_int8_t *>(text.c_str());
+    const auto *fragmentUtf8 = reinterpret_cast<const utf8_int8_t *>(fragment.c_str());
+    return utf8valid(textUtf8) == nullptr && utf8valid(fragmentUtf8) == nullptr &&
+           utf8casestr(textUtf8, fragmentUtf8) != nullptr;
+}
+}
 
 MapEntry::~MapEntry() {
     if (m_BeingDeleted)
@@ -41,6 +59,90 @@ bool MapEntry::operator<(const MapEntry &rhs) const {
 }
 
 MapCatalog::MapCatalog() : m_Root(std::make_unique<MapEntry>(nullptr, MAP_ENTRY_DIR)) {}
+
+bool MapCatalog::ResolveFile(const std::wstring &mapsDirectory, std::string_view relativePath,
+                             std::wstring &path, std::string &error) {
+    path.clear();
+    error.clear();
+    if (mapsDirectory.empty() || relativePath.empty() || relativePath.size() > INT_MAX ||
+        relativePath.find('\0') != std::string_view::npos) {
+        error = "provide a map path relative to ModLoader/Maps";
+        return false;
+    }
+
+    const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                           relativePath.data(), static_cast<int>(relativePath.size()),
+                                           nullptr, 0);
+    if (length <= 0) {
+        error = "the map path is not valid UTF-8";
+        return false;
+    }
+
+    std::wstring widePath(static_cast<std::size_t>(length), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, relativePath.data(),
+                            static_cast<int>(relativePath.size()), widePath.data(), length) != length) {
+        error = "the map path is not valid UTF-8";
+        return false;
+    }
+
+    const std::filesystem::path requested(widePath);
+    if (requested.has_root_path()) {
+        error = "use a path relative to ModLoader/Maps";
+        return false;
+    }
+    for (const auto &part : requested) {
+        if (part == L"..") {
+            error = "parent-directory paths are not allowed";
+            return false;
+        }
+    }
+    if (!IsSupportedFileType(widePath)) {
+        error = "only .nmo and .cmo maps can be loaded";
+        return false;
+    }
+
+    const std::wstring candidate = (std::filesystem::path(mapsDirectory) / requested).wstring();
+    return ValidateFile(mapsDirectory, candidate, path, error);
+}
+
+bool MapCatalog::ValidateFile(const std::wstring &mapsDirectory, const std::wstring &candidate,
+                              std::wstring &path, std::string &error) {
+    path.clear();
+    error.clear();
+    if (mapsDirectory.empty() || candidate.empty() || !IsSupportedFileType(candidate)) {
+        error = "only .nmo and .cmo maps can be loaded";
+        return false;
+    }
+    if (candidate.size() >= MAX_PATH) {
+        error = "the map path is too long";
+        return false;
+    }
+
+    const DWORD attributes = GetFileAttributesW(candidate.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        error = "map file was not found";
+        return false;
+    }
+
+    std::wstring rootPath;
+    std::wstring filePath;
+    if (!utils::TryGetFinalPathW(mapsDirectory, rootPath) ||
+        !utils::TryGetFinalPathW(candidate, filePath)) {
+        error = "could not resolve the map path";
+        return false;
+    }
+    if (!utils::IsPathInsideRootW(filePath, rootPath)) {
+        error = "the map is outside ModLoader/Maps";
+        return false;
+    }
+    if (filePath.size() >= MAX_PATH || !IsSupportedFileType(filePath)) {
+        error = "the resolved map path is not a supported file";
+        return false;
+    }
+
+    path = std::move(filePath);
+    return true;
+}
 
 bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, ILogger *logger) {
     auto newRoot = std::unique_ptr<MapEntry>(new(std::nothrow) MapEntry(nullptr, MAP_ENTRY_DIR));
@@ -77,6 +179,36 @@ bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, ILogger *logger
 
     m_Root = std::move(newRoot);
     return true;
+}
+
+std::vector<std::string> MapCatalog::ListFiles(std::string_view fragment, std::size_t limit) const {
+    std::vector<std::string> paths;
+    if (!m_Root || m_Root->path.empty() || limit == 0)
+        return paths;
+
+    const std::string search(fragment);
+    std::vector<const MapEntry *> pending{m_Root.get()};
+    while (!pending.empty() && paths.size() < limit) {
+        const MapEntry *entry = pending.back();
+        pending.pop_back();
+        if (entry->type == MAP_ENTRY_DIR) {
+            for (auto it = entry->children.rbegin(); it != entry->children.rend(); ++it)
+                pending.push_back(*it);
+            continue;
+        }
+
+        if (entry->path.size() <= m_Root->path.size())
+            continue;
+        std::wstring relative = entry->path.substr(m_Root->path.size());
+        if (!relative.empty() && (relative.front() == L'\\' || relative.front() == L'/'))
+            relative.erase(relative.begin());
+
+        const std::string name = utils::Utf16ToUtf8(relative);
+        if (!ContainsCaseInsensitiveUtf8(name, search))
+            continue;
+        paths.push_back(name);
+    }
+    return paths;
 }
 
 MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogger *logger,

@@ -49,6 +49,7 @@ add_bml_test(MapCatalogTest
         ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
         DEPENDENCIES
         BMLUtils
+        utf8
 )
 
 add_bml_test(MapMenuStateTest
@@ -60,6 +61,7 @@ add_bml_test(MapMenuStateTest
         ${BML_SOURCE_DIR}/CustomMaps/MapMenuState.h
         DEPENDENCIES
         BMLUtils
+        utf8
 )
 target_include_directories(MapMenuStateTest BEFORE PRIVATE
         ${IMGUI_SOURCE_DIR}
