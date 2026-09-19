@@ -120,7 +120,8 @@ void UnregisterMenuPages() { (void) diagnostics.Unregister(); }
 `ModMenu.h` 可直接用于 C，不包含 C++ 标准库或类；`ModMenu.hpp` 只是单向建立在
 该 C 接口上的 C++ 编写 facade。在 C 边界上，`BML_ModMenuPageDraw` 返回
 `BML_OK` 或错误状态，并把延迟执行的导航请求写入
-`BML_ModMenuPageFrame` 的 `Action` 成员。导航不会再复用错误返回值；后续小版本也可借助
+`BML_ModMenuPageFrame` 的 `Action` 成员。可选的 Enter 和 Leave 回调同样返回
+状态码，页面生命周期失败不会再被静默当成成功。导航不会复用错误返回值；后续小版本也可借助
 `StructSize` 在 frame 末尾追加输入或输出，而不改变 1.0 的回调签名。
 
 ## Mod 生命周期与事件

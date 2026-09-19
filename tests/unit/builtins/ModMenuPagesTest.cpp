@@ -17,6 +17,8 @@ namespace {
         int enters = 0;
         int leaves = 0;
         int drawStatus = BML_OK;
+        int enterStatus = BML_OK;
+        int leaveStatus = BML_OK;
         BML_ModMenuPageLeaveReason leaveReason = BML_MOD_MENU_PAGE_LEAVE_BACK;
     };
 
@@ -29,15 +31,17 @@ namespace {
         return state.drawStatus;
     }
 
-    void BML_CDECL EnterPage(void *userData) {
+    int BML_CDECL EnterPage(void *userData) {
         auto &state = *static_cast<CallbackState *>(userData);
         ++state.enters;
+        return state.enterStatus;
     }
 
-    void BML_CDECL LeavePage(void *userData, BML_ModMenuPageLeaveReason reason) {
+    int BML_CDECL LeavePage(void *userData, BML_ModMenuPageLeaveReason reason) {
         auto &state = *static_cast<CallbackState *>(userData);
         ++state.leaves;
         state.leaveReason = reason;
+        return state.leaveStatus;
     }
 
     BML_ModMenuPage MakePage(const char *id, const char *label,
@@ -119,6 +123,8 @@ namespace {
         int enters = 0;
         int leaves = 0;
         bool throwOnDraw = false;
+        bool throwOnEnter = false;
+        bool throwOnLeave = false;
 
     protected:
         BML::ModMenu::PageAction OnFrame() override {
@@ -128,8 +134,17 @@ namespace {
             return action;
         }
 
-        void OnEnter() override { ++enters; }
-        void OnLeave(BML::ModMenu::PageLeaveReason) override { ++leaves; }
+        void OnEnter() override {
+            ++enters;
+            if (throwOnEnter)
+                throw std::runtime_error("enter failed");
+        }
+
+        void OnLeave(BML::ModMenu::PageLeaveReason) override {
+            ++leaves;
+            if (throwOnLeave)
+                throw std::runtime_error("leave failed");
+        }
     };
 }
 
@@ -220,6 +235,22 @@ TEST(ModMenuPagesTest, InvokesDrawAndLifecycleCallbacks) {
     EXPECT_EQ(state.enters, 1);
     EXPECT_EQ(state.leaves, 1);
     EXPECT_EQ(state.leaveReason, BML_MOD_MENU_PAGE_LEAVE_CLOSE);
+}
+
+TEST(ModMenuPagesTest, PropagatesLifecycleFailures) {
+    ModMenuPages pages;
+    CallbackState state;
+    state.enterStatus = BML_ERROR_FAIL;
+    state.leaveStatus = BML_ERROR_OUT_OF_MEMORY;
+    const BML_ModMenuPage page = MakePage("advanced", "Advanced", "", state);
+    ASSERT_EQ(pages.Register("sample.mod", page), BML_OK);
+    const ModMenuPageKey key = KeyOf(pages, "sample.mod", "advanced");
+
+    EXPECT_EQ(pages.Enter(key), BML_ERROR_FAIL);
+    EXPECT_EQ(pages.Leave(key, BML_MOD_MENU_PAGE_LEAVE_CLOSE),
+              BML_ERROR_OUT_OF_MEMORY);
+    EXPECT_EQ(state.enters, 1);
+    EXPECT_EQ(state.leaves, 1);
 }
 
 TEST(ModMenuPagesTest, KeepsDrawStatusSeparateFromNavigation) {
@@ -369,6 +400,11 @@ TEST(ModMenuPagesTest, CppFacadeOwnsRegistrationAndContainsExceptions) {
 
     page.throwOnDraw = true;
     EXPECT_EQ(pages.Draw(key, action), BML_ERROR_FAIL);
+
+    page.throwOnEnter = true;
+    EXPECT_EQ(pages.Enter(key), BML_ERROR_FAIL);
+    page.throwOnLeave = true;
+    EXPECT_EQ(pages.Leave(key, BML_MOD_MENU_PAGE_LEAVE_BACK), BML_ERROR_FAIL);
 
     EXPECT_EQ(page.Unregister(), BML_OK);
     EXPECT_FALSE(page.IsRegistered());
