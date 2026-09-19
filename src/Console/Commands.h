@@ -66,7 +66,6 @@ public:
     };
 
     static void ParseEchoOptionToken(const std::string &tok, EchoOpts &opt);
-    static std::string JoinArgs(const std::vector<std::string> &args, size_t start);
     static bool ApplyBackslashCTrunc(std::string &s);
 };
 

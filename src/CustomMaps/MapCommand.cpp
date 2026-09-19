@@ -5,22 +5,13 @@
 
 #include "BML/IBML.h"
 #include "CustomMaps/CustomMaps.h"
+#include "StringUtils.h"
 
 namespace CustomMap {
 namespace {
 
 void Report(IBML &bml, const std::string &message) {
     bml.SendIngameMessage(message.c_str());
-}
-
-std::string JoinArguments(const std::vector<std::string> &args, std::size_t first) {
-    std::string text;
-    for (std::size_t index = first; index < args.size(); ++index) {
-        if (!text.empty())
-            text += ' ';
-        text += args[index];
-    }
-    return text;
 }
 
 } // namespace
@@ -30,7 +21,7 @@ void MapCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
         return;
 
     if (args.size() >= 2 && args[1] == "list") {
-        const std::string fragment = JoinArguments(args, 2);
+        const std::string fragment = utils::JoinString(args, ' ', 2);
         std::string error;
         const std::vector<std::string> paths = m_Maps.ListMaps(fragment, error);
         if (!error.empty()) {
@@ -50,7 +41,7 @@ void MapCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
 
     if (args.size() >= 3 && args[1] == "load") {
-        const std::string relativePath = JoinArguments(args, 2);
+        const std::string relativePath = utils::JoinString(args, ' ', 2);
         std::string error;
         if (!m_Maps.LoadFromCommand(relativePath, error))
             Report(*bml, "map load: " + error);

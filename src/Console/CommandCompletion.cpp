@@ -2,17 +2,13 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstring>
 
 #include <utf8.h>
 
+#include "StringUtils.h"
+
 namespace CommandCompletion {
     namespace {
-        bool IsValidUtf8(const std::string &text) noexcept {
-            return text.size() == std::strlen(text.c_str()) &&
-                   utf8valid(reinterpret_cast<const utf8_int8_t *>(text.c_str())) == nullptr;
-        }
-
         std::size_t CommonPrefixLength(const std::string &first,
                                        const std::string &candidate) noexcept {
             const auto *firstBegin = reinterpret_cast<const utf8_int8_t *>(first.c_str());
@@ -39,12 +35,12 @@ namespace CommandCompletion {
     }
 
     std::size_t CommonPrefixLength(const std::vector<std::string> &candidates) noexcept {
-        if (candidates.empty() || !IsValidUtf8(candidates.front()))
+        if (candidates.empty() || !utils::IsValidUtf8(candidates.front()))
             return 0;
 
         std::size_t prefixLength = candidates.front().size();
         for (std::size_t index = 1; index < candidates.size(); ++index) {
-            if (!IsValidUtf8(candidates[index]))
+            if (!utils::IsValidUtf8(candidates[index]))
                 return 0;
             prefixLength = std::min(prefixLength,
                                     CommonPrefixLength(candidates.front(), candidates[index]));
