@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <unordered_map>
 #include <unordered_set>
 
 #ifndef BML_UI_AUTOMATION_TEST
@@ -90,10 +91,28 @@ namespace Bui {
         CKMessageType menuClickMessage = -1;
     };
 
-    static ResourceState Resources;
+#ifdef BML_UI_AUTOMATION_TEST
+    static ResourceState TestResources;
+
+    static ResourceState *GetCurrentResources() {
+        return &TestResources;
+    }
+#else
+    static std::unordered_map<CKContext *, ResourceState> ResourceStates;
+
+    static ResourceState *FindResources(CKContext *context) {
+        const auto it = ResourceStates.find(context);
+        return it != ResourceStates.end() ? &it->second : nullptr;
+    }
+
+    static ResourceState *GetCurrentResources() {
+        return FindResources(BML_GetCKContext());
+    }
+#endif
 
 #ifndef BML_UI_AUTOMATION_TEST
     struct KeyboardInputBlockState {
+        ModContext *context = nullptr;
         std::uint64_t token = 0;
         unsigned int anonymousUsers = 0;
         std::unordered_set<const void *> owners;
@@ -104,36 +123,44 @@ namespace Bui {
         }
     };
 
-    static KeyboardInputBlockState KeyboardInputBlocks;
+    static std::unordered_map<CKContext *, KeyboardInputBlockState> KeyboardInputBlocks;
 
-    static bool AcquireKeyboardInputBlock() {
-        if (KeyboardInputBlocks.token != 0)
-            return true;
-
+    static KeyboardInputBlockState *AcquireKeyboardInputBlock() {
         ModContext *context = BML_GetModContext();
-        if (!context)
-            return false;
+        CKContext *ckContext = context ? context->GetCKContext() : nullptr;
+        if (!ckContext)
+            return nullptr;
+
+        KeyboardInputBlockState &state = KeyboardInputBlocks[ckContext];
+        state.context = context;
+        if (state.token != 0)
+            return &state;
         if (InputHook *input = context->GetInputManager())
-            KeyboardInputBlocks.token = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
-        return KeyboardInputBlocks.token != 0;
+            state.token = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
+        if (state.token != 0)
+            return &state;
+        KeyboardInputBlocks.erase(ckContext);
+        return nullptr;
     }
 
     static void ReleaseKeyboardInputBlockAfterKeysUp() {
-        if (KeyboardInputBlocks.HasUsers())
-            return;
-
         ModContext *context = BML_GetModContext();
-        if (!context)
+        CKContext *ckContext = context ? context->GetCKContext() : nullptr;
+        if (!ckContext)
+            return;
+        const auto it = KeyboardInputBlocks.find(ckContext);
+        if (it == KeyboardInputBlocks.end() || it->second.HasUsers())
             return;
 
-        const std::uint64_t token = KeyboardInputBlocks.token;
-        KeyboardInputBlocks.token = 0;
+        const std::uint64_t token = it->second.token;
+        it->second.token = 0;
         if (token == 0)
             return;
 
-        KeyboardInputBlocks.pendingReleases.insert(token);
-        context->AddTimerLoop(1ul, [context, token] {
-            if (!KeyboardInputBlocks.pendingReleases.contains(token))
+        it->second.pendingReleases.insert(token);
+        context->AddTimerLoop(1ul, [ckContext, context, token] {
+            const auto state = KeyboardInputBlocks.find(ckContext);
+            if (state == KeyboardInputBlocks.end() || !state->second.pendingReleases.contains(token))
                 return false;
 
             InputHook *input = context->GetInputManager();
@@ -143,22 +170,30 @@ namespace Bui {
                 return true;
 
             input->ReleaseBlock(token);
-            KeyboardInputBlocks.pendingReleases.erase(token);
+            state->second.pendingReleases.erase(token);
+            if (!state->second.HasUsers() && state->second.pendingReleases.empty())
+                KeyboardInputBlocks.erase(state);
             return false;
         });
     }
 
-    static void ResetKeyboardInputBlocks() {
-        if (ModContext *context = BML_GetModContext()) {
-            if (InputHook *input = context->GetInputManager()) {
-                if (KeyboardInputBlocks.token != 0)
-                    input->ReleaseBlock(KeyboardInputBlocks.token);
-                for (std::uint64_t token : KeyboardInputBlocks.pendingReleases)
-                    input->ReleaseBlock(token);
-            }
-        }
+    static void ResetKeyboardInputBlocks(CKContext *ckContext) {
+        const auto state = KeyboardInputBlocks.find(ckContext);
+        if (state == KeyboardInputBlocks.end())
+            return;
 
-        KeyboardInputBlocks = {};
+        ModContext *context = state->second.context;
+        if (!context) {
+            KeyboardInputBlocks.erase(state);
+            return;
+        }
+        if (InputHook *input = context->GetInputManager()) {
+            if (state->second.token != 0)
+                input->ReleaseBlock(state->second.token);
+            for (std::uint64_t token : state->second.pendingReleases)
+                input->ReleaseBlock(token);
+        }
+        KeyboardInputBlocks.erase(state);
     }
 #endif
 
@@ -248,13 +283,14 @@ namespace Bui {
     bool InitTextures(CKContext *context) {
         if (!context)
             return false;
-        if (AllObjectsReady(Resources.textures))
+        ResourceState &resources = ResourceStates[context];
+        if (AllObjectsReady(resources.textures))
             return true;
 
         // Materials borrow these textures. Rebuilding a partial texture set
         // invalidates the whole dependent material set as one unit.
-        DestroyObjects(context, Resources.materials);
-        DestroyObjects(context, Resources.textures);
+        DestroyObjects(context, resources.materials);
+        DestroyObjects(context, resources.textures);
         std::array<CKTexture *, TEXTURE_COUNT> textures{};
         textures[TEXTURE_BUTTON_DESELECT] = LoadTexture(context, "TEX_Button_Deselect", "Button01_deselect.tga");
         textures[TEXTURE_BUTTON_SELECT] = LoadTexture(context, "TEX_Button_Select", "Button01_select.tga");
@@ -266,32 +302,33 @@ namespace Bui {
             return false;
         }
 
-        Resources.textures = textures;
+        resources.textures = textures;
         return true;
     }
 
     bool InitMaterials(CKContext *context) {
-        if (!context || !AllObjectsReady(Resources.textures))
+        ResourceState *resources = FindResources(context);
+        if (!resources || !AllObjectsReady(resources->textures))
             return false;
-        if (AllObjectsReady(Resources.materials))
+        if (AllObjectsReady(resources->materials))
             return true;
 
-        DestroyObjects(context, Resources.materials);
+        DestroyObjects(context, resources->materials);
         std::array<CKMaterial *, MATERIAL_COUNT> materials{};
         materials[MATERIAL_BUTTON_UP] = CreateButtonMaterial(
-            context, "MAT_Button_Up", Resources.textures[TEXTURE_BUTTON_DESELECT],
+            context, "MAT_Button_Up", resources->textures[TEXTURE_BUTTON_DESELECT],
             VxColor(255, 255, 255, 255), VXBLEND_SRCALPHA, VXBLEND_INVSRCALPHA,
             VXTEXTURE_ADDRESSCLAMP, FALSE);
         materials[MATERIAL_BUTTON_OVER] = CreateButtonMaterial(
-            context, "MAT_Button_Over", Resources.textures[TEXTURE_BUTTON_SELECT],
+            context, "MAT_Button_Over", resources->textures[TEXTURE_BUTTON_SELECT],
             VxColor(255, 255, 255, 255), VXBLEND_SRCALPHA, VXBLEND_INVSRCALPHA,
             VXTEXTURE_ADDRESSCLAMP, FALSE);
         materials[MATERIAL_BUTTON_INACTIVE] = CreateButtonMaterial(
-            context, "MAT_Button_Inactive", Resources.textures[TEXTURE_BUTTON_SPECIAL],
+            context, "MAT_Button_Inactive", resources->textures[TEXTURE_BUTTON_SPECIAL],
             VxColor(255, 255, 255, 255), VXBLEND_SRCALPHA, VXBLEND_INVSRCALPHA,
             VXTEXTURE_ADDRESSCLAMP, TRUE);
         materials[MATERIAL_KEYS_HIGHLIGHT] = CreateButtonMaterial(
-            context, "MAT_Keys_Highlight", Resources.textures[TEXTURE_BUTTON_SPECIAL],
+            context, "MAT_Keys_Highlight", resources->textures[TEXTURE_BUTTON_SPECIAL],
             VxColor(209, 209, 209, 255), VXBLEND_ONE, VXBLEND_ONE,
             VXTEXTURE_ADDRESSWRAP, TRUE);
 
@@ -300,7 +337,7 @@ namespace Bui {
             return false;
         }
 
-        Resources.materials = materials;
+        resources->materials = materials;
         return true;
     }
 
@@ -308,9 +345,10 @@ namespace Bui {
         if (!context)
             return false;
 
-        Resources.sounds = nullptr;
-        Resources.messageManager = nullptr;
-        Resources.menuClickMessage = -1;
+        ResourceState &resources = ResourceStates[context];
+        resources.sounds = nullptr;
+        resources.messageManager = nullptr;
+        resources.menuClickMessage = -1;
 
         CKMessageManager *messageManager = context->GetMessageManager();
         if (!messageManager)
@@ -325,19 +363,21 @@ namespace Bui {
         if (!sounds)
             return false;
 
-        Resources.messageManager = messageManager;
-        Resources.menuClickMessage = menuClickMessage;
-        Resources.sounds = sounds;
+        resources.messageManager = messageManager;
+        resources.menuClickMessage = menuClickMessage;
+        resources.sounds = sounds;
         return true;
     }
 
     void CleanupResources(CKContext *context) {
-        ResetKeyboardInputBlocks();
-        DestroyObjects(context, Resources.materials);
-        DestroyObjects(context, Resources.textures);
-        Resources.sounds = nullptr;
-        Resources.messageManager = nullptr;
-        Resources.menuClickMessage = -1;
+        ResetKeyboardInputBlocks(context);
+        const auto it = ResourceStates.find(context);
+        if (it == ResourceStates.end())
+            return;
+
+        DestroyObjects(context, it->second.materials);
+        DestroyObjects(context, it->second.textures);
+        ResourceStates.erase(it);
     }
 #endif
 
@@ -629,8 +669,9 @@ namespace Bui {
 
     void PlayMenuClickSound() {
 #ifndef BML_UI_AUTOMATION_TEST
-        if (Resources.messageManager && Resources.sounds && Resources.menuClickMessage != -1)
-            Resources.messageManager->SendMessageSingle(Resources.menuClickMessage, Resources.sounds);
+        ResourceState *resources = GetCurrentResources();
+        if (resources && resources->messageManager && resources->sounds && resources->menuClickMessage != -1)
+            resources->messageManager->SendMessageSingle(resources->menuClickMessage, resources->sounds);
 #endif
     }
 
@@ -795,8 +836,9 @@ namespace Bui {
                 break;
         }
 
-        const ImTextureID textureId = static_cast<ImTextureID>(
-            reinterpret_cast<std::uintptr_t>(Resources.textures[texture]));
+        const ResourceState *resources = GetCurrentResources();
+        const ImTextureID textureId = static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(
+            resources ? resources->textures[texture] : nullptr));
         drawList->AddImage(textureId, bb.Min, bb.Max, ButtonUvs[type].Min, ButtonUvs[type].Max);
     }
 
@@ -1067,7 +1109,8 @@ namespace Bui {
             }
         }
 
-        if (*listening && Resources.materials[MATERIAL_KEYS_HIGHLIGHT]) {
+        const ResourceState *resources = GetCurrentResources();
+        if (*listening && resources && resources->materials[MATERIAL_KEYS_HIGHLIGHT]) {
             const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
             const ImVec2 highlightSize(vpSize.x * HighlightWidthRatio, vpSize.y * HighlightHeightRatio);
             const ImVec2 highlightMin(bb.Min.x + vpSize.x * HighlightLeftInsetRatio, bb.Min.y);
@@ -1075,7 +1118,7 @@ namespace Bui {
             const ImVec2 uvMin(HighlightUvMinX, HighlightUvMinY);
             const ImVec2 uvMax(HighlightUvMaxX, HighlightUvMaxY);
 
-            drawList->AddImage(Resources.materials[MATERIAL_KEYS_HIGHLIGHT], highlightMin, highlightMax, uvMin, uvMax);
+            drawList->AddImage(resources->materials[MATERIAL_KEYS_HIGHLIGHT], highlightMin, highlightMax, uvMin, uvMax);
         }
 
         return changed;
@@ -1361,8 +1404,8 @@ namespace Bui {
 
 #ifndef BML_UI_AUTOMATION_TEST
     void BlockKeyboardInput() {
-        if (AcquireKeyboardInputBlock())
-            ++KeyboardInputBlocks.anonymousUsers;
+        if (KeyboardInputBlockState *state = AcquireKeyboardInputBlock())
+            ++state->anonymousUsers;
     }
 
     void BlockKeyboardInput(const void *owner) {
@@ -1370,10 +1413,16 @@ namespace Bui {
             BlockKeyboardInput();
             return;
         }
-        if (KeyboardInputBlocks.owners.contains(owner))
+        ModContext *context = BML_GetModContext();
+        CKContext *ckContext = context ? context->GetCKContext() : nullptr;
+        if (!ckContext)
+            return;
+        KeyboardInputBlockState &state = KeyboardInputBlocks[ckContext];
+        state.context = context;
+        if (state.owners.contains(owner))
             return;
         if (AcquireKeyboardInputBlock())
-            KeyboardInputBlocks.owners.insert(owner);
+            state.owners.insert(owner);
     }
 
     void ActivateScript(const char *scriptName) {
@@ -1389,9 +1438,12 @@ namespace Bui {
     }
 
     void UnblockKeyboardAfterRelease() {
-        if (KeyboardInputBlocks.anonymousUsers == 0)
+        ModContext *context = BML_GetModContext();
+        CKContext *ckContext = context ? context->GetCKContext() : nullptr;
+        const auto state = KeyboardInputBlocks.find(ckContext);
+        if (state == KeyboardInputBlocks.end() || state->second.anonymousUsers == 0)
             return;
-        --KeyboardInputBlocks.anonymousUsers;
+        --state->second.anonymousUsers;
         ReleaseKeyboardInputBlockAfterKeysUp();
     }
 
@@ -1400,7 +1452,10 @@ namespace Bui {
             UnblockKeyboardAfterRelease();
             return;
         }
-        if (KeyboardInputBlocks.owners.erase(owner) == 0)
+        ModContext *context = BML_GetModContext();
+        CKContext *ckContext = context ? context->GetCKContext() : nullptr;
+        const auto state = KeyboardInputBlocks.find(ckContext);
+        if (state == KeyboardInputBlocks.end() || state->second.owners.erase(owner) == 0)
             return;
         ReleaseKeyboardInputBlockAfterKeysUp();
     }
