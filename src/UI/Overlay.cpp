@@ -17,6 +17,7 @@
 
 namespace Overlay {
     ImGuiContext *g_ImGuiContext = nullptr;
+    bool g_PlatformInitialized = false;
     bool g_RendererInitialized = false;
     bool g_DrawDataReady = false;
     bool g_NewFrame = false;
@@ -54,12 +55,14 @@ namespace Overlay {
         if (!context)
             return;
 
-        // Platform shutdown normally owns detachment. Keep destruction defensive
-        // so no thread hook can retain a path to a freed ImGui context.
-        if (!PlatformInput::Detach())
-            ::OutputDebugStringA("BML: Unable to detach Overlay platform input.\n");
+        {
+            ImGuiContextScope scope;
+            ImGuiEndFrame();
+        }
+        ImGuiShutdownRenderer(nullptr);
+        ImGuiShutdownPlatform(nullptr);
+
         g_ImGuiContext = nullptr;
-        g_RendererInitialized = false;
         g_DrawDataReady = false;
         g_NewFrame = false;
 
@@ -77,6 +80,7 @@ namespace Overlay {
             return false;
         }
 
+        g_PlatformInitialized = true;
         return true;
     }
 
@@ -94,14 +98,25 @@ namespace Overlay {
 
     void ImGuiShutdownPlatform(CKContext *context) {
         (void) context;
+        if (!g_PlatformInitialized) {
+            if (!PlatformInput::Detach())
+                ::OutputDebugStringA("BML: Unable to detach Overlay platform input.\n");
+            return;
+        }
+
         ImGuiContextScope scope;
 
         if (!PlatformInput::Detach())
             ::OutputDebugStringA("BML: Unable to detach Overlay platform input.\n");
         ImGui_ImplWin32_Shutdown();
+        g_PlatformInitialized = false;
     }
 
     void ImGuiShutdownRenderer(CKContext *context) {
+        (void) context;
+        if (!g_RendererInitialized)
+            return;
+
         ImGuiContextScope scope;
 
         ImGui_ImplCK2_Shutdown();
