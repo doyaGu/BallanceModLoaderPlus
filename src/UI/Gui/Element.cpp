@@ -5,8 +5,9 @@
 using namespace BGui;
 
 Element::Element(const char *name) {
-    m_2dEntity = (CK2dEntity *) BML_GetCKContext()->CreateObject(CKCID_2DENTITY, (CKSTRING) name);
-    BML_GetCKContext()->GetCurrentLevel()->AddObject(m_2dEntity);
+    m_Context = BML_GetCKContext();
+    m_2dEntity = (CK2dEntity *) m_Context->CreateObject(CKCID_2DENTITY, (CKSTRING) name);
+    m_Context->GetCurrentLevel()->AddObject(m_2dEntity);
     m_2dEntity->SetHomogeneousCoordinates();
     m_2dEntity->EnableClipToCamera(false);
     m_2dEntity->EnableRatioOffset(false);
@@ -14,9 +15,8 @@ Element::Element(const char *name) {
 }
 
 Element::~Element() {
-    CKContext *context = BML_GetCKContext();
-    if (context && m_2dEntity)
-        context->DestroyObject(CKOBJID(m_2dEntity));
+    if (m_Context && m_2dEntity)
+        m_Context->DestroyObject(CKOBJID(m_2dEntity));
 }
 
 Vx2DVector Element::GetPosition() {

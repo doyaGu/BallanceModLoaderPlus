@@ -5,9 +5,8 @@
 using namespace BGui;
 
 Panel::Panel(const char *name) : Element(name) {
-    CKContext *context = BML_GetCKContext();
-    m_Material = (CKMaterial *)context->CreateObject(CKCID_MATERIAL, (CKSTRING) ((std::string(name) + "_Mat").c_str()));
-    context->GetCurrentLevel()->AddObject(m_Material);
+    m_Material = (CKMaterial *)m_Context->CreateObject(CKCID_MATERIAL, (CKSTRING) ((std::string(name) + "_Mat").c_str()));
+    m_Context->GetCurrentLevel()->AddObject(m_Material);
     m_Material->EnableAlphaBlend();
     m_Material->SetSourceBlend(VXBLEND_SRCALPHA);
     m_Material->SetDestBlend(VXBLEND_INVSRCALPHA);
@@ -16,9 +15,8 @@ Panel::Panel(const char *name) : Element(name) {
 }
 
 Panel::~Panel() {
-    CKContext *context = BML_GetCKContext();
-    if (context && m_Material)
-        context->DestroyObject(CKOBJID(m_Material));
+    if (m_Context && m_Material)
+        m_Context->DestroyObject(CKOBJID(m_Material));
 }
 
 VxColor Panel::GetColor() {
