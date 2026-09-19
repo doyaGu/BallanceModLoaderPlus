@@ -305,7 +305,7 @@ void Gui::Process() {
     VxVector relPos;
     input->GetMouseRelativePosition(relPos);
     input->GetLastMousePosition(lastPos);
-    if (relPos.x != 0 && relPos.y != 0)
+    if (relPos.x != 0 || relPos.y != 0)
         OnMouseMove(mousePos.x / rc->GetWidth(), mousePos.y / rc->GetHeight(), lastPos.x / rc->GetWidth(),
                     lastPos.y / rc->GetHeight());
     if (relPos.z != 0)
