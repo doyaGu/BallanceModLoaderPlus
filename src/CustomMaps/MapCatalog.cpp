@@ -11,6 +11,7 @@
 #undef CompareString
 
 #include "BML/ILogger.h"
+#include "PathUtils.h"
 #include "StringUtils.h"
 
 MapEntry::~MapEntry() {
@@ -67,15 +68,19 @@ bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, ILogger *logger
         if (logger)
             logger->Error("Maps path is not a directory: %s", utils::Utf16ToUtf8(path).c_str());
         return false;
-    } else if (ExploreMaps(newRoot.get(), maxDepth, logger) == ScanResult::Failure) {
-        return false;
+    } else {
+        std::wstring rootPath;
+        if (!utils::TryGetFinalPathW(path, rootPath) ||
+            ExploreMaps(newRoot.get(), maxDepth, logger, rootPath) == ScanResult::Failure)
+            return false;
     }
 
     m_Root = std::move(newRoot);
     return true;
 }
 
-MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogger *logger) {
+MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogger *logger,
+                                               const std::wstring &rootPath) {
     if (!maps || maps->type != MAP_ENTRY_DIR || maps->path.empty())
         return ScanResult::Failure;
     if (depth <= 0)
@@ -122,6 +127,11 @@ MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogge
             }
             fullPath.append(L"\\").append(fileinfo.name);
 
+            std::wstring finalPath;
+            if (!utils::TryGetFinalPathW(fullPath, finalPath) ||
+                !utils::IsPathInsideRootW(finalPath, rootPath))
+                continue;
+
             if (wcschr(fileinfo.name, L'\\') || wcschr(fileinfo.name, L'/') ||
                 wcsstr(fileinfo.name, L"..")) {
                 continue;
@@ -138,9 +148,9 @@ MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogge
                 entry->path = fullPath;
                 maps->children.push_back(entry.get());
                 MapEntry *child = entry.release();
-                if (ExploreMaps(child, depth - 1, logger) == ScanResult::Failure)
+                if (ExploreMaps(child, depth - 1, logger, rootPath) == ScanResult::Failure)
                     return ScanResult::Failure;
-            } else if (IsSupportedFileType(fileinfo.name)) {
+            } else if (IsSupportedFileType(fileinfo.name) && IsSupportedFileType(finalPath)) {
                 std::wstring filename = fileinfo.name;
                 const size_t dotPos = filename.find_last_of(L'.');
                 if (dotPos != std::wstring::npos)

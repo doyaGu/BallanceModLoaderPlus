@@ -48,7 +48,8 @@ private:
         Failure,
     };
 
-    static ScanResult ExploreMaps(MapEntry *maps, int depth, ILogger *logger);
+    static ScanResult ExploreMaps(MapEntry *maps, int depth, ILogger *logger,
+                                  const std::wstring &rootPath);
     static bool IsSupportedFileType(const std::wstring &path);
 
     std::unique_ptr<MapEntry> m_Root;
