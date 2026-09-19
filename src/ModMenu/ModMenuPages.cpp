@@ -109,8 +109,7 @@ int ModMenuPages::Enter(const ModMenuPageKey &key) const noexcept {
         return BML_OK;
     void *const userData = page->userData;
     try {
-        enter(userData);
-        return BML_OK;
+        return enter(userData);
     } catch (...) {
         return BML_ERROR_FAIL;
     }
@@ -151,8 +150,7 @@ int ModMenuPages::Leave(const ModMenuPageKey &key,
         return BML_OK;
     void *const userData = page->userData;
     try {
-        leave(userData, reason);
-        return BML_OK;
+        return leave(userData, reason);
     } catch (...) {
         return BML_ERROR_FAIL;
     }

@@ -132,23 +132,31 @@ private:
         }
     }
 
-    static void BML_CDECL EnterPage(void *userData) noexcept {
+    static int BML_CDECL EnterPage(void *userData) noexcept {
         if (!userData)
-            return;
+            return BML_ERROR_INVALID_PARAMETER;
         try {
             static_cast<Page *>(userData)->OnEnter();
+            return BML_OK;
+        } catch (const std::bad_alloc &) {
+            return BML_ERROR_OUT_OF_MEMORY;
         } catch (...) {
+            return BML_ERROR_FAIL;
         }
     }
 
-    static void BML_CDECL LeavePage(
+    static int BML_CDECL LeavePage(
         void *userData, BML_ModMenuPageLeaveReason reason) noexcept {
         if (!userData)
-            return;
+            return BML_ERROR_INVALID_PARAMETER;
         try {
             static_cast<Page *>(userData)->OnLeave(
                 static_cast<PageLeaveReason>(reason));
+            return BML_OK;
+        } catch (const std::bad_alloc &) {
+            return BML_ERROR_OUT_OF_MEMORY;
         } catch (...) {
+            return BML_ERROR_FAIL;
         }
     }
 

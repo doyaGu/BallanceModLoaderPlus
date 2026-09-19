@@ -36,7 +36,9 @@ typedef enum BML_ModMenuPageLeaveReason {
 } BML_ModMenuPageLeaveReason;
 
 // The loader initializes this frame before every Draw call. Draw returns a
-// BML status and writes only Action. Later minor versions may append fields.
+// BML status and writes only Action. Enter and Leave also return BML status
+// codes so failed lifecycle transitions are never treated as complete. Later
+// minor versions may append fields.
 typedef struct BML_ModMenuPageFrame {
     size_t StructSize;
     BML_ModMenuPageAction Action;
@@ -48,8 +50,8 @@ typedef struct BML_ModMenuPageFrame {
 
 typedef int (BML_CDECL *BML_ModMenuPageDraw)(
     void *userData, BML_ModMenuPageFrame *frame);
-typedef void (BML_CDECL *BML_ModMenuPageEnter)(void *userData);
-typedef void (BML_CDECL *BML_ModMenuPageLeave)(
+typedef int (BML_CDECL *BML_ModMenuPageEnter)(void *userData);
+typedef int (BML_CDECL *BML_ModMenuPageLeave)(
     void *userData, BML_ModMenuPageLeaveReason reason);
 
 typedef struct BML_ModMenuPage {

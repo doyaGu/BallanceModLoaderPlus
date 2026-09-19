@@ -127,9 +127,11 @@ Call the two registration helpers from the owning Mod's `OnLoad` and `OnUnload`.
 `ModMenu.h` remains usable from C and contains no C++ standard-library or class
 surface; `ModMenu.hpp` is a one-way authoring facade over that C interface. At
 the C seam, `BML_ModMenuPageDraw` returns a `BML_OK`/error status and writes a
-deferred navigation request to the `Action` member of `BML_ModMenuPageFrame`. Navigation is
-therefore never overloaded as an error result, and future frame inputs or outputs
-can be appended behind `StructSize` without changing the 1.0 callback signature.
+deferred navigation request to the `Action` member of `BML_ModMenuPageFrame`.
+The optional Enter and Leave callbacks return status codes as well, so a failed
+page transition is not silently accepted. Navigation is therefore never overloaded
+as an error result, and future frame inputs or outputs can be appended behind
+`StructSize` without changing the 1.0 callback signature.
 
 ## Mod lifecycle and events
 

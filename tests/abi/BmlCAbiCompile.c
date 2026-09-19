@@ -321,6 +321,20 @@ static int BML_CDECL BML_TestCAbiDrawModMenuPage(
     return BML_OK;
 }
 
+static int BML_CDECL BML_TestCAbiEnterModMenuPage(void *userData) {
+    return userData != NULL ? BML_OK : BML_ERROR_INVALID_PARAMETER;
+}
+
+static int BML_CDECL BML_TestCAbiLeaveModMenuPage(
+    void *userData, BML_ModMenuPageLeaveReason reason) {
+    if (userData == NULL)
+        return BML_ERROR_INVALID_PARAMETER;
+    return reason == BML_MOD_MENU_PAGE_LEAVE_BACK ||
+           reason == BML_MOD_MENU_PAGE_LEAVE_CLOSE
+        ? BML_OK
+        : BML_ERROR_MALFORMED_MESSAGE;
+}
+
 int BML_TestCAbiModMenuInterface(void *userData) {
     const void *found = NULL;
     const BML_ModMenuInterface *menu = NULL;
@@ -331,8 +345,8 @@ int BML_TestCAbiModMenuInterface(void *userData) {
         "Runtime details",
         userData,
         &BML_TestCAbiDrawModMenuPage,
-        NULL,
-        NULL,
+        &BML_TestCAbiEnterModMenuPage,
+        &BML_TestCAbiLeaveModMenuPage,
     };
 
     if (BML_GetInterface(BML_MOD_MENU_INTERFACE_ID, BML_MOD_MENU_INTERFACE_MAJOR, &found) != BML_OK)
