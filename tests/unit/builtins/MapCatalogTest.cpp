@@ -97,4 +97,21 @@ TEST(MapCatalogTest, FailedRefreshPreservesTheLastCompleteSnapshot) {
     EXPECT_EQ(catalog.GetRoot()->children.size(), 1u);
 }
 
+TEST(MapCatalogTest, RejectsMapSymlinkEscapingDirectory) {
+    TemporaryMapDirectory maps;
+    const auto outside = std::filesystem::path(maps.Path().wstring() + L"-outside-link-target.nmo");
+    std::ofstream(outside, std::ios::binary).put('\0');
+    std::error_code linkError;
+    std::filesystem::create_symlink(outside, maps.Path() / L"linked.nmo", linkError);
+    if (linkError) {
+        std::filesystem::remove(outside);
+        GTEST_SKIP() << "symlinks are unavailable: " << linkError.message();
+    }
+
+    MapCatalog catalog;
+    ASSERT_TRUE(catalog.Refresh(maps.Path().wstring(), 8, nullptr));
+    EXPECT_TRUE(catalog.GetRoot()->children.empty());
+    std::filesystem::remove(outside);
+}
+
 } // namespace
