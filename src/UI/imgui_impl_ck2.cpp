@@ -34,6 +34,98 @@ struct ImGui_ImplCK2_Data
     ImGui_ImplCK2_Data() { memset(this, 0, sizeof(*this)); }
 };
 
+static const VXRENDERSTATETYPE ImGui_ImplCK2_RenderStates[] = {
+    VXRENDERSTATE_FILLMODE,
+    VXRENDERSTATE_SHADEMODE,
+    VXRENDERSTATE_CULLMODE,
+    VXRENDERSTATE_WRAP0,
+    VXRENDERSTATE_SRCBLEND,
+    VXRENDERSTATE_DESTBLEND,
+    VXRENDERSTATE_ALPHATESTENABLE,
+    VXRENDERSTATE_ZWRITEENABLE,
+    VXRENDERSTATE_ZENABLE,
+    VXRENDERSTATE_ALPHABLENDENABLE,
+    VXRENDERSTATE_BLENDOP,
+    VXRENDERSTATE_FOGENABLE,
+    VXRENDERSTATE_SPECULARENABLE,
+    VXRENDERSTATE_STENCILENABLE,
+    VXRENDERSTATE_CLIPPING,
+    VXRENDERSTATE_LIGHTING,
+};
+
+class ImGui_ImplCK2_RenderStateBackup
+{
+public:
+    explicit ImGui_ImplCK2_RenderStateBackup(CKRenderContext *context) : Context(context)
+    {
+        Context->GetViewRect(ViewRect);
+        for (int i = 0; i < IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates); ++i)
+            Values[i] = Context->GetState(ImGui_ImplCK2_RenderStates[i]);
+    }
+
+    ~ImGui_ImplCK2_RenderStateBackup()
+    {
+        Context->SetViewRect(ViewRect);
+        for (int i = 0; i < IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates); ++i)
+            Context->SetState(ImGui_ImplCK2_RenderStates[i], Values[i]);
+    }
+
+    ImGui_ImplCK2_RenderStateBackup(const ImGui_ImplCK2_RenderStateBackup &) = delete;
+    ImGui_ImplCK2_RenderStateBackup &operator=(const ImGui_ImplCK2_RenderStateBackup &) = delete;
+
+private:
+    CKRenderContext *Context;
+    VxRect ViewRect;
+    CKDWORD Values[IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates)] = {};
+};
+
+struct ImGui_ImplCK2_DrawSlice
+{
+    unsigned int VertexOffset;
+    unsigned int VertexCount;
+    ImVector<CKWORD> Indices;
+};
+
+static bool ImGui_ImplCK2_BuildDrawSlice(const ImDrawIdx *indices, unsigned int index_count,
+                                         unsigned int vertex_offset, int vertex_count,
+                                         ImGui_ImplCK2_DrawSlice *slice)
+{
+    slice->VertexOffset = 0;
+    slice->VertexCount = 0;
+    slice->Indices.resize(0);
+
+    if (!indices || index_count == 0 || index_count > 0x7fffffffU || vertex_count <= 0 ||
+        vertex_offset >= (unsigned int)vertex_count)
+        return false;
+
+    ImDrawIdx minimum = indices[0];
+    ImDrawIdx maximum = indices[0];
+    for (unsigned int i = 1; i < index_count; ++i)
+    {
+        if (indices[i] < minimum)
+            minimum = indices[i];
+        if (indices[i] > maximum)
+            maximum = indices[i];
+    }
+
+    const ImU64 first_vertex = (ImU64)vertex_offset + minimum;
+    const ImU64 last_vertex = (ImU64)vertex_offset + maximum;
+    if (last_vertex >= (unsigned int)vertex_count)
+        return false;
+
+    const ImU64 slice_vertex_count = last_vertex - first_vertex + 1;
+    if (slice_vertex_count > 0x10000U)
+        return false;
+
+    slice->Indices.resize((int)index_count);
+    for (unsigned int i = 0; i < index_count; ++i)
+        slice->Indices[(int)i] = (CKWORD)(indices[i] - minimum);
+
+    slice->VertexOffset = (unsigned int)first_vertex;
+    slice->VertexCount = (unsigned int)slice_vertex_count;
+    return true;
+}
+
 #ifdef IMGUI_USE_BGRA_PACKED_COLOR
 #define IMGUI_COL_TO_ARGB(_COL) (_COL)
 #else
@@ -200,6 +292,9 @@ void ImGui_ImplCK2_UpdateTexture(ImTextureData *tex)
 // Render function.
 void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
 {
+    static_assert(sizeof(ImDrawIdx) == sizeof(CKWORD),
+                  "The CK2 backend requires 16-bit ImGui indices");
+
     // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
     int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
     int fb_height = (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
@@ -219,6 +314,8 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
             if (tex->Status != ImTextureStatus_OK)
                 ImGui_ImplCK2_UpdateTexture(tex);
 
+    ImGui_ImplCK2_RenderStateBackup state_backup(dev);
+
     // Setup desired render state
     ImGui_ImplCK2_SetupRenderState(draw_data);
 
@@ -234,10 +331,13 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
         const ImDrawIdx *idx_buffer = cmd_list->IdxBuffer.Data;
 
         VxDrawPrimitiveData *data = NULL;
-        bool use_large_mesh_approach = cmd_list->VtxBuffer.Size >= 0xFFFF;
+        bool use_command_slices = cmd_list->VtxBuffer.Size >= 0xFFFF;
+        for (int cmd_i = 0; !use_command_slices && cmd_i < cmd_list->CmdBuffer.Size; ++cmd_i)
+            use_command_slices = cmd_list->CmdBuffer[cmd_i].VtxOffset != 0;
+        ImGui_ImplCK2_DrawSlice draw_slice;
 
         // For normal sized meshes, prepare all vertices at once
-        if (!use_large_mesh_approach)
+        if (!use_command_slices)
         {
             const ImDrawVert *vtx_src = vtx_buffer;
             int vtx_count = cmd_list->VtxBuffer.Size;
@@ -297,11 +397,24 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
             if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
                 continue;
 
-            // Handle per-chunk vertex data for large meshes
-            if (use_large_mesh_approach)
+            if (pcmd->ElemCount == 0 || pcmd->IdxOffset > static_cast<unsigned int>(cmd_list->IdxBuffer.Size) ||
+                pcmd->ElemCount > static_cast<unsigned int>(cmd_list->IdxBuffer.Size) - pcmd->IdxOffset)
+                continue;
+
+            const ImDrawIdx *command_indices = idx_buffer + pcmd->IdxOffset;
+            const CKWORD *draw_indices = reinterpret_cast<const CKWORD *>(command_indices);
+
+            // CK2 has no base-vertex draw call. For commands using VtxOffset, upload
+            // only the referenced vertex range and rebase this command's indices.
+            if (use_command_slices || pcmd->VtxOffset != 0)
             {
-                const ImDrawVert *vtx_src = vtx_buffer + pcmd->VtxOffset;
-                int vtx_count = pcmd->ElemCount;
+                if (!ImGui_ImplCK2_BuildDrawSlice(command_indices, pcmd->ElemCount,
+                                                  pcmd->VtxOffset, cmd_list->VtxBuffer.Size,
+                                                  &draw_slice))
+                    continue;
+
+                const ImDrawVert *vtx_src = vtx_buffer + draw_slice.VertexOffset;
+                const int vtx_count = static_cast<int>(draw_slice.VertexCount);
 
                 data = dev->GetDrawPrimitiveStructure((CKRST_DPFLAGS)(CKRST_DP_CL_VCT | CKRST_DP_VBUFFER), vtx_count);
                 if (!data)
@@ -327,6 +440,8 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
                     ++colors;
                     ++uvs;
                 }
+
+                draw_indices = draw_slice.Indices.Data;
             }
 
             // Set texture or material
@@ -338,12 +453,12 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
             {
                 CKTexture *texture = (CKTexture *)obj;
                 dev->SetTexture(texture);
-                dev->DrawPrimitive(VX_TRIANGLELIST, (CKWORD *)(idx_buffer + pcmd->IdxOffset), pcmd->ElemCount, data);
+                dev->DrawPrimitive(VX_TRIANGLELIST, (CKWORD *)draw_indices, pcmd->ElemCount, data);
             }
             else if (obj->GetClassID() == CKCID_MATERIAL)
             {
                 ((CKMaterial *)obj)->SetAsCurrent(dev);
-                dev->DrawPrimitive(VX_TRIANGLELIST, (CKWORD *)(idx_buffer + pcmd->IdxOffset), pcmd->ElemCount, data);
+                dev->DrawPrimitive(VX_TRIANGLELIST, (CKWORD *)draw_indices, pcmd->ElemCount, data);
                 ImGui_ImplCK2_SetupRenderState(draw_data);
             }
         }
