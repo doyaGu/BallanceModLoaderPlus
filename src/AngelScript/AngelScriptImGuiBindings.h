@@ -1,6 +1,9 @@
 #ifndef BML_ANGELSCRIPT_IMGUI_BINDINGS_H
 #define BML_ANGELSCRIPT_IMGUI_BINDINGS_H
 
+#include <string>
+
+#include "UI/ImGuiStateRecovery.h"
 #include "UI/ScriptImGui.h"
 
 struct ImDrawList;
@@ -34,12 +37,9 @@ struct BMLImGuiASCallbackRecoveryScope {
 
 private:
     ImGuiContext *Previous = nullptr;
-    alignas(8) unsigned char State[64] = {};
+    Overlay::ImGuiStateSnapshot State;
     bool Active = false;
     bool Changed = false;
-    bool PreviousErrorRecoveryEnableAssert = true;
-    bool PreviousErrorRecoveryEnableDebugLog = true;
-    bool PreviousErrorRecoveryEnableTooltip = true;
 };
 
 bool BMLImGuiASBeginCall(BMLImGuiASCallScope *scope);
@@ -50,6 +50,7 @@ void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
                                    const char *phase);
 void BMLImGuiASSetRegistrationError(const char **errorMessage, const char *expression, int code);
 void BMLImGuiASReportRuntimeWarning(const char *message);
+std::string BMLImGuiASScopeWindowName(const std::string &name);
 ImDrawList *BMLImGuiASGetBackgroundDrawList();
 ImDrawList *BMLImGuiASGetForegroundDrawList();
 

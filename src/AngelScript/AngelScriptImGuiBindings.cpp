@@ -3,7 +3,6 @@
 #if BML_ENABLE_ANGELSCRIPT
 
 #include <cstdio>
-#include <new>
 #include <string>
 
 #include "Loader/ModContext.h"
@@ -12,7 +11,6 @@
 #include "ScriptModRuntime.h"
 
 #include "imgui.h"
-#include "imgui_internal.h"
 
 static std::string g_BMLImGuiASLastRegistrationError;
 
@@ -44,28 +42,6 @@ bool BMLImGuiASActivateContext(ImGuiContext *&previous, bool &changed, bool repo
     }
 
     return true;
-}
-
-bool BMLImGuiASNeedsRecovery(const ImGuiErrorRecoveryState &state) {
-    ImGuiContext *context = ImGui::GetCurrentContext();
-    if (!context)
-        return false;
-
-    ImGuiContext &g = *context;
-    if (!g.CurrentWindow)
-        return g.CurrentWindowStack.Size > state.SizeOfWindowStack;
-
-    return g.CurrentWindowStack.Size > state.SizeOfWindowStack ||
-           g.CurrentWindow->IDStack.Size > state.SizeOfIDStack ||
-           g.CurrentWindow->DC.TreeDepth > state.SizeOfTreeStack ||
-           g.ColorStack.Size > state.SizeOfColorStack ||
-           g.StyleVarStack.Size > state.SizeOfStyleVarStack ||
-           g.FontStack.Size > state.SizeOfFontStack ||
-           g.FocusScopeStack.Size > state.SizeOfFocusScopeStack ||
-           g.GroupStack.Size > state.SizeOfGroupStack ||
-           g.ItemFlagsStack.Size > state.SizeOfItemFlagsStack ||
-           g.BeginPopupStack.Size > state.SizeOfBeginPopupStack ||
-           g.DisabledStackSize > state.SizeOfDisabledStack;
 }
 
 } // namespace
@@ -119,51 +95,26 @@ bool BMLImGuiASCallbackRecoveryScope::Begin() {
     Previous = nullptr;
     Active = false;
     Changed = false;
-    PreviousErrorRecoveryEnableAssert = true;
-    PreviousErrorRecoveryEnableDebugLog = true;
-    PreviousErrorRecoveryEnableTooltip = true;
 
     if (!BMLImGuiASActivateContext(Previous, Changed, false))
         return false;
 
-    static_assert(sizeof(ImGuiErrorRecoveryState) <= sizeof(State),
-                  "BMLImGuiASCallbackRecoveryScope::State is too small");
-    ImGuiErrorRecoveryState *state = new (State) ImGuiErrorRecoveryState();
-    ImGui::ErrorRecoveryStoreState(state);
-    if (ImGuiContext *context = ImGui::GetCurrentContext()) {
-        PreviousErrorRecoveryEnableAssert = context->IO.ConfigErrorRecoveryEnableAssert;
-        PreviousErrorRecoveryEnableDebugLog = context->IO.ConfigErrorRecoveryEnableDebugLog;
-        PreviousErrorRecoveryEnableTooltip = context->IO.ConfigErrorRecoveryEnableTooltip;
-        context->IO.ConfigErrorRecoveryEnableAssert = false;
-        context->IO.ConfigErrorRecoveryEnableDebugLog = false;
-        context->IO.ConfigErrorRecoveryEnableTooltip = false;
-    }
-    Active = true;
-    return true;
+    State = Overlay::CaptureImGuiState();
+    Active = State.Active;
+    return Active;
 }
 
 void BMLImGuiASCallbackRecoveryScope::End(const char *modId, const char *phase) {
     if (!Active)
         return;
 
-    ImGuiErrorRecoveryState *state = reinterpret_cast<ImGuiErrorRecoveryState *>(State);
-    const bool needsRecovery = BMLImGuiASNeedsRecovery(*state);
-    if (needsRecovery) {
-        ImGui::ErrorRecoveryTryToRecoverState(state);
-    }
-
-    if (ImGuiContext *context = ImGui::GetCurrentContext()) {
-        context->IO.ConfigErrorRecoveryEnableAssert = PreviousErrorRecoveryEnableAssert;
-        context->IO.ConfigErrorRecoveryEnableDebugLog = PreviousErrorRecoveryEnableDebugLog;
-        context->IO.ConfigErrorRecoveryEnableTooltip = PreviousErrorRecoveryEnableTooltip;
-    }
-
-    state->~ImGuiErrorRecoveryState();
+    const bool needsRecovery = Overlay::RecoverImGuiState(State);
 
     if (Changed)
         ImGui::SetCurrentContext(Previous);
 
     Previous = nullptr;
+    State = {};
     Active = false;
     Changed = false;
 
@@ -214,6 +165,13 @@ void BMLImGuiASReportRuntimeWarning(const char *message) {
         return;
 
     context->GetLogger()->Warn("BML ImGui AngelScript: %s", message);
+}
+
+std::string BMLImGuiASScopeWindowName(const std::string &name) {
+    BML::ScriptMod *scriptMod = BML::ScriptModRuntime::GetCurrentScriptMod();
+    return scriptMod
+        ? Overlay::MakeScriptImGuiWindowName(name, scriptMod->GetID())
+        : name;
 }
 
 ImDrawList *BMLImGuiASGetBackgroundDrawList() {

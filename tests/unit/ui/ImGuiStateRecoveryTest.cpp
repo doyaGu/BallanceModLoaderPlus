@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "UI/ImGuiStateRecovery.h"
 #include "UI/ScriptImGui.h"
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -80,6 +81,48 @@ TEST(ImGuiStateRecoveryTest, DoesNotReleaseUnownedMouseCapture) {
     ImGui::StopMouseMovingWindow();
     ImGui::End();
     ImGui::Render();
+}
+
+TEST(ImGuiStateRecoveryTest, RecoversWindowAndStyleStacksAfterCallbackFailure) {
+    ScopedImGuiContext context;
+
+    ImGui::NewFrame();
+    const Overlay::ImGuiStateSnapshot state = Overlay::CaptureImGuiState();
+    ASSERT_TRUE(state.Active);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::Begin("LeakedCallbackWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+    EXPECT_TRUE(Overlay::RecoverImGuiState(state));
+
+    ImGuiContext &imgui = *ImGui::GetCurrentContext();
+    EXPECT_EQ(imgui.StyleVarStack.Size, state.StyleVarStackSize);
+    EXPECT_EQ(imgui.CurrentWindowStack.Size, state.WindowStackSize);
+    ImGui::Render();
+}
+
+TEST(ImGuiStateRecoveryTest, LeavesBalancedCallbackStateUntouched) {
+    ScopedImGuiContext context;
+
+    ImGui::NewFrame();
+    const Overlay::ImGuiStateSnapshot state = Overlay::CaptureImGuiState();
+    EXPECT_FALSE(Overlay::RecoverImGuiState(state));
+    ImGui::Render();
+}
+
+TEST(ImGuiStateRecoveryTest, RestoresContextChangedByCallback) {
+    ScopedImGuiContext context;
+    ImGuiContext *expected = ImGui::GetCurrentContext();
+    ImGuiContext *foreign = ImGui::CreateContext();
+    ImGui::SetCurrentContext(expected);
+
+    ImGui::NewFrame();
+    const Overlay::ImGuiStateSnapshot state = Overlay::CaptureImGuiState();
+    ImGui::SetCurrentContext(foreign);
+
+    EXPECT_FALSE(Overlay::RecoverImGuiState(state));
+    EXPECT_EQ(ImGui::GetCurrentContext(), expected);
+    ImGui::Render();
+    ImGui::DestroyContext(foreign);
 }
 
 TEST(ImGuiStateRecoveryTest, ReleasesOnlyMatchingScriptOwnerMouseCapture) {
@@ -238,4 +281,43 @@ TEST(ImGuiStateRecoveryTest, PreservesPopupAndNonMouseCaptureState) {
 
     ImGui::End();
     ImGui::Render();
+}
+
+TEST(ImGuiStateRecoveryTest, ScriptWindowNamesAreScopedByOwner) {
+    ScopedImGuiContext context;
+
+    const std::string firstName = Overlay::MakeScriptImGuiWindowName("Settings", "first.mod");
+    const std::string secondName = Overlay::MakeScriptImGuiWindowName("Settings", "second.mod");
+    EXPECT_NE(firstName, secondName);
+
+    ImGui::NewFrame();
+    ImGui::Begin(firstName.c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings);
+    ImGuiWindow *firstWindow = ImGui::GetCurrentWindow();
+    ImGui::End();
+    ImGui::Begin(secondName.c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings);
+    ImGuiWindow *secondWindow = ImGui::GetCurrentWindow();
+    ImGui::End();
+    ImGui::Render();
+
+    ASSERT_NE(firstWindow, nullptr);
+    ASSERT_NE(secondWindow, nullptr);
+    EXPECT_NE(firstWindow, secondWindow);
+}
+
+TEST(ImGuiStateRecoveryTest, ScriptWindowScopeHandlesExplicitImGuiIds) {
+    ScopedImGuiContext context;
+
+    const std::string firstName = Overlay::MakeScriptImGuiWindowName("Title###shared", "first.mod");
+    const std::string secondName = Overlay::MakeScriptImGuiWindowName("Title###shared", "second.mod");
+
+    ImGui::NewFrame();
+    ImGui::Begin(firstName.c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings);
+    ImGuiWindow *firstWindow = ImGui::GetCurrentWindow();
+    ImGui::End();
+    ImGui::Begin(secondName.c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings);
+    ImGuiWindow *secondWindow = ImGui::GetCurrentWindow();
+    ImGui::End();
+    ImGui::Render();
+
+    EXPECT_NE(firstWindow, secondWindow);
 }

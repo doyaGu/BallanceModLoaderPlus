@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "BML/Bui.h"
+#include "UI/ImGuiStateRecovery.h"
 
 namespace Bui {
 
@@ -161,6 +162,18 @@ public:
     void OnDraw() override {
         throw std::runtime_error("draw failed");
     }
+};
+
+class ThrowingPreBeginWindow final : public Bui::Window {
+public:
+    ThrowingPreBeginWindow() : Bui::Window("Throwing Bui Pre-Begin Window") {}
+
+    void OnPreBegin() override {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        throw std::runtime_error("pre-begin failed");
+    }
+
+    void OnDraw() override {}
 };
 
 class ThrowingLifecycleWindow final : public Bui::Window {
@@ -509,6 +522,17 @@ TEST(BuiWindowTest, RenderRestoresImGuiWindowScopeWhenDrawingThrows) {
     EXPECT_THROW(window.Render(), std::runtime_error);
     EXPECT_NO_THROW(imgui.EndFrame());
     EXPECT_TRUE(window.IsVisible());
+}
+
+TEST(BuiWindowTest, CallbackRecoveryRestoresStateWhenPreBeginThrows) {
+    ScopedImGuiContext imgui;
+    ThrowingPreBeginWindow window;
+
+    imgui.BeginFrame();
+    const Overlay::ImGuiStateSnapshot state = Overlay::CaptureImGuiState();
+    EXPECT_THROW(window.Render(), std::runtime_error);
+    EXPECT_TRUE(Overlay::RecoverImGuiState(state));
+    EXPECT_NO_THROW(imgui.EndFrame());
 }
 
 TEST(BuiWindowTest, RenderPairsLifecycleHooksWhenDrawingThrows) {

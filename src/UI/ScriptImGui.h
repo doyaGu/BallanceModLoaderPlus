@@ -1,11 +1,15 @@
 #ifndef BML_UI_SCRIPT_IMGUI_H
 #define BML_UI_SCRIPT_IMGUI_H
 
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "imgui.h"
 
 namespace Overlay {
+    std::string MakeScriptImGuiWindowName(std::string_view name, std::string_view ownerId);
+
     class ScriptImGuiCallScope;
 
     // Tracks ImGui mouse state created by one Script Mod. Ownership stays on

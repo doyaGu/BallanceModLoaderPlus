@@ -310,6 +310,7 @@ set(BML_UI_PRIVATE_HEADERS
         UI/FontRuntime.h
         UI/GameFontCatalog.h
         UI/Gui/LegacyTextFont.h
+        UI/ImGuiStateRecovery.h
         UI/Overlay.h
         UI/OverlayPlatformInput.h
         UI/ScriptImGui.h
@@ -327,6 +328,7 @@ set(BML_UI_SOURCES
         UI/Ime/Tsf.cpp
         UI/FontRuntime.cpp
         UI/GameFontCatalog.cpp
+        UI/ImGuiStateRecovery.cpp
         UI/Overlay.cpp
         UI/OverlayPlatformInput.cpp
         UI/ScriptImGui.cpp
