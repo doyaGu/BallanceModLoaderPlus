@@ -72,12 +72,6 @@ public:
     void SetLineSpacing(float spacing);
     float GetLineSpacing() const;
 
-    void SetWindowBackgroundColor(ImVec4 color);
-    void SetWindowBackgroundColorU32(ImU32 color);
-    bool HasCustomWindowBackground() const { return m_HasCustomWindowBg; }
-    ImVec4 GetWindowBackgroundColor() const { return m_WindowBgColor; }
-    void ClearWindowBackgroundColor();
-
     void SetMessageBackgroundColor(ImVec4 color);
     void SetMessageBackgroundColorU32(ImU32 color);
     bool HasCustomMessageBackground() const { return m_HasCustomMessageBg; }
@@ -85,8 +79,6 @@ public:
     void ClearMessageBackgroundColor();
 
     // Alpha controls (0..1)
-    void SetWindowBackgroundAlpha(float alpha);
-    float GetWindowBackgroundAlpha() const { return m_WindowBgAlphaScale; }
     void SetMessageBackgroundAlpha(float alpha);
     float GetMessageBackgroundAlpha() const { return m_MessageBgAlphaScale; }
 
@@ -174,7 +166,6 @@ private:
         ImFont *font;
         ImGuiID bakedId;
         float fontSize;
-        float lineHeight;
         float wrapWidth;
         float contentHeight;
         float availableContentHeight;
@@ -242,11 +233,8 @@ private:
 
     // Configurable behavior
     int m_TabColumns = AnsiText::DefaultTabColumns; // Tab size in columns
-    bool m_HasCustomWindowBg = false;
     bool m_HasCustomMessageBg = false;
-    ImVec4 m_WindowBgColor = {};        // If !m_HasCustomWindowBg, use the Console background.
     ImVec4 m_MessageBgColor = {};       // If !m_HasCustomMessageBg, use the Console background.
-    float m_WindowBgAlphaScale = 1.0f;
     float m_MessageBgAlphaScale = 1.0f;
     float m_FadeMaxAlpha = 1.0f;
 };

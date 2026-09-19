@@ -59,7 +59,6 @@ private:
     IProperty *m_TabColumns = nullptr;
     IProperty *m_LineSpacing = nullptr;
     IProperty *m_MessageBackgroundAlpha = nullptr;
-    IProperty *m_WindowBackgroundAlpha = nullptr;
     IProperty *m_FadeMaxAlpha = nullptr;
 };
 

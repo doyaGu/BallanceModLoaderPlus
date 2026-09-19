@@ -38,8 +38,7 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
         IM_CHECK(OpenConfigCategory(ctx, "CommandBar", "**/MessageDuration"));
         IM_CHECK(MenuPagesContain(ctx,
                                   {"MessageDuration", "TabColumns", "LineSpacing",
-                                   "MessageBackgroundAlpha", "WindowBackgroundAlpha",
-                                   "FadeMaxAlpha"}));
+                                   "MessageBackgroundAlpha", "FadeMaxAlpha"}));
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "CustomMap", "**/LevelNumber"));
