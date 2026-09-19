@@ -44,6 +44,7 @@ void MessageBoard::MessageUnit::Reset() {
 MessageBoard::MessageBoard(int size) : Bui::Window("MessageBoard") {
     if (size < 1) size = 500;
     m_Messages.resize(size);
+    Hide();
 }
 
 MessageBoard::~MessageBoard() = default;
@@ -64,7 +65,7 @@ ImGuiWindowFlags MessageBoard::GetFlags() {
                              ImGuiWindowFlags_NoScrollbar |
                              ImGuiWindowFlags_NoScrollWithMouse;
 
-    if (!m_IsCommandBarVisible) {
+    if (!m_IsCommandBarVisible || !HasVisibleContent()) {
         flags |= ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav;
     }
 
@@ -77,12 +78,17 @@ void MessageBoard::SetCommandBarVisible(bool visible) {
 
         if (visible) {
             m_ScrollToBottom = true;
-            Show();
+            if (m_MessageCount > 0)
+                Show();
+            else
+                Hide();
         } else {
             // Reset scroll state when hiding command bar
             m_ScrollY = 0.0f;
             m_MaxScrollY = 0.0f;
             m_ScrollToBottom = true;
+            if (m_DisplayMessageCount == 0)
+                Hide();
         }
     }
 }
@@ -148,7 +154,6 @@ MessageBoard::FrameLayout MessageBoard::CaptureFrameLayout() const {
     layout.font = font;
     layout.bakedId = baked ? baked->BakedId : 0;
     layout.fontSize = fontSize;
-    layout.lineHeight = ImGui::GetTextLineHeight();
     return layout;
 }
 
@@ -223,7 +228,7 @@ const MessageBoard::MessageRows &MessageBoard::PrepareMessageRows(float wrapWidt
 
     if (!prepared->rows.empty())
         contentHeight -= layout.messageGap;
-    prepared->contentHeight = std::max(contentHeight, ImGui::GetTextLineHeightWithSpacing());
+    prepared->contentHeight = contentHeight;
     return *prepared;
 }
 
@@ -244,9 +249,6 @@ void MessageBoard::OnPreBegin() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-    ImVec4 winBg = m_HasCustomWindowBg ? m_WindowBgColor : DefaultBackgroundColor;
-    winBg.w = std::clamp(winBg.w * std::clamp(m_WindowBgAlphaScale, 0.0f, 1.0f), 0.0f, 1.0f);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, winBg);
 
     const ImGuiViewport *viewport = ImGui::GetMainViewport();
     const ConsoleLayout::Stack &stack = m_ConsoleLayout;
@@ -587,11 +589,11 @@ void MessageBoard::AddMessageInternal(MessageUnit message) {
     if (m_IsCommandBarVisible && (m_ScrollToBottom || m_MaxScrollY <= 0.0f)) {
         m_ScrollToBottom = true;
     }
+    Show();
     InvalidateMessageRows();
 }
 
 void MessageBoard::OnPostEnd() {
-    ImGui::PopStyleColor();
     ImGui::PopStyleVar(3);
     m_FrameLayout.reset();
 
@@ -601,7 +603,7 @@ void MessageBoard::OnPostEnd() {
     UpdateTimers(stats.TotalFrameTime);
 
     // Hide if no visible content
-    if (!m_IsCommandBarVisible && m_DisplayMessageCount == 0) {
+    if (!HasVisibleContent()) {
         Hide();
     }
 }
@@ -645,6 +647,7 @@ void MessageBoard::ClearMessages() {
     for (auto &message : m_Messages) {
         message.Reset();
     }
+    Hide();
     InvalidateMessageRows();
 }
 
@@ -667,6 +670,8 @@ void MessageBoard::ResizeMessages(int size) {
             ++displayed;
     }
     m_DisplayMessageCount = displayed;
+    if (m_MessageCount == 0)
+        Hide();
     InvalidateMessageRows();
 }
 
@@ -704,19 +709,6 @@ float MessageBoard::GetLineSpacing() const {
     return m_LineSpacingOverride ? m_CustomLineSpacing : -1.0f;
 }
 
-void MessageBoard::SetWindowBackgroundColor(ImVec4 color) {
-    m_HasCustomWindowBg = true;
-    m_WindowBgColor = color;
-}
-
-void MessageBoard::SetWindowBackgroundColorU32(ImU32 color) {
-    SetWindowBackgroundColor(ImGui::ColorConvertU32ToFloat4(color));
-}
-
-void MessageBoard::ClearWindowBackgroundColor() {
-    m_HasCustomWindowBg = false;
-}
-
 void MessageBoard::SetMessageBackgroundColor(ImVec4 color) {
     m_HasCustomMessageBg = true;
     m_MessageBgColor = color;
@@ -728,10 +720,6 @@ void MessageBoard::SetMessageBackgroundColorU32(ImU32 color) {
 
 void MessageBoard::ClearMessageBackgroundColor() {
     m_HasCustomMessageBg = false;
-}
-
-void MessageBoard::SetWindowBackgroundAlpha(float alpha) {
-    m_WindowBgAlphaScale = std::clamp(alpha, 0.0f, 1.0f);
 }
 
 void MessageBoard::SetMessageBackgroundAlpha(float alpha) {

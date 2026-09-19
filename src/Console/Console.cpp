@@ -32,16 +32,12 @@ const Console::Setting *Console::GetSettings(size_t &count) {
          [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
          }},
-        {"WindowBackgroundAlpha", &Console::m_WindowBackgroundAlpha,
-         [](Console &console, IProperty *property) {
-             console.m_MessageBoard.SetWindowBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
-         }},
         {"FadeMaxAlpha", &Console::m_FadeMaxAlpha,
          [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetFadeMaxAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
          }},
     };
-    static_assert(sizeof(settings) / sizeof(settings[0]) == 6,
+    static_assert(sizeof(settings) / sizeof(settings[0]) == 5,
                   "Every built-in console config property must have one settings-table entry");
 
     count = sizeof(settings) / sizeof(settings[0]);
@@ -68,9 +64,6 @@ void Console::InitConfig(IConfig &config) {
 
     m_MessageBackgroundAlpha->SetComment("Alpha scale for message backgrounds (0..1, default: 0.80)");
     m_MessageBackgroundAlpha->SetDefaultFloat(0.80f);
-
-    m_WindowBackgroundAlpha->SetComment("Alpha scale for message window background (0..1, default: 1.0)");
-    m_WindowBackgroundAlpha->SetDefaultFloat(1.0f);
 
     m_FadeMaxAlpha->SetComment("Maximum text/background alpha in notifications (0..1, default: 1.0)");
     m_FadeMaxAlpha->SetDefaultFloat(1.0f);
@@ -169,7 +162,6 @@ void Console::OnProcess() {
 }
 
 void Console::AddMessage(const char *message) {
-    m_MessageBoard.Show();
     m_MessageBoard.AddMessage(message);
 
     if (m_Logger) {
