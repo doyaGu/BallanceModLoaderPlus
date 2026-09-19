@@ -441,6 +441,30 @@ TEST_F(CommandContextTest, ParseCommandLineMultipleSpaces) {
     EXPECT_EQ("world", args[1]);
 }
 
+TEST_F(CommandContextTest, ParseCommandLinePreservesWhitespaceInsideQuotes) {
+    bool trailingSeparator = true;
+    auto args = BML::CommandContext::ParseCommandLine(
+        "map load \"folder/my  map.nmo\"", &trailingSeparator);
+    ASSERT_EQ(3u, args.size());
+    EXPECT_EQ("map", args[0]);
+    EXPECT_EQ("load", args[1]);
+    EXPECT_EQ("folder/my  map.nmo", args[2]);
+    EXPECT_FALSE(trailingSeparator);
+}
+
+TEST_F(CommandContextTest, ParseCommandLineReportsOnlyUnquotedTrailingSeparators) {
+    bool trailingSeparator = false;
+    auto args = BML::CommandContext::ParseCommandLine("map load ", &trailingSeparator);
+    ASSERT_EQ(2u, args.size());
+    EXPECT_TRUE(trailingSeparator);
+
+    args = BML::CommandContext::ParseCommandLine(
+        "map load \"folder/my  ", &trailingSeparator);
+    ASSERT_EQ(3u, args.size());
+    EXPECT_EQ("folder/my  ", args[2]);
+    EXPECT_FALSE(trailingSeparator);
+}
+
 TEST_F(CommandContextTest, ParseCommandLineSingleArg) {
     auto args = BML::CommandContext::ParseCommandLine("test");
     ASSERT_EQ(1u, args.size());
