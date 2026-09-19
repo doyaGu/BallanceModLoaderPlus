@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <utility>
 
 #ifdef _WIN32
@@ -186,6 +187,54 @@ namespace utils {
         return toUtf8 ? WideToUtf8Fallback(wstr) : WideToLocaleFallback(wstr);
     }
 #endif
+
+    bool IsValidUtf8(std::string_view text) noexcept {
+        if (text.find('\0') != std::string_view::npos)
+            return false;
+        return utf8nvalid(reinterpret_cast<const utf8_int8_t *>(text.data()),
+                          text.size()) == nullptr;
+    }
+
+    bool TryUtf8ToUtf16(std::string_view text, std::wstring &result) {
+        result.clear();
+        if (!IsValidUtf8(text))
+            return false;
+        if (text.empty())
+            return true;
+
+#ifdef _WIN32
+        if (text.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)()))
+            return false;
+
+        const int sourceLength = static_cast<int>(text.size());
+        const int required = MultiByteToWideChar(
+            CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), sourceLength, nullptr, 0);
+        if (required <= 0)
+            return false;
+
+        result.resize(static_cast<std::size_t>(required));
+        if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), sourceLength,
+                                result.data(), required) != required) {
+            result.clear();
+            return false;
+        }
+#else
+        result = Utf8ToWideFallback(std::string(text));
+#endif
+        return true;
+    }
+
+    bool ContainsUtf8CaseInsensitive(std::string_view text, std::string_view fragment) {
+        if (!IsValidUtf8(text) || !IsValidUtf8(fragment))
+            return false;
+        if (fragment.empty())
+            return true;
+
+        const std::string textValue(text);
+        const std::string fragmentValue(fragment);
+        return utf8casestr(reinterpret_cast<const utf8_int8_t *>(textValue.c_str()),
+                           reinterpret_cast<const utf8_int8_t *>(fragmentValue.c_str())) != nullptr;
+    }
 
     std::string UnescapeString(const char *str) {
         if (!str) return "";

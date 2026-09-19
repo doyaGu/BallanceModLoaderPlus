@@ -190,6 +190,13 @@ TEST_F(StringUtilsTest, JoinString) {
         auto result = utils::JoinString(strs, L",");
         EXPECT_EQ(L"one,two,three,four", result);
     }
+
+    // Join a suffix without constructing a temporary vector
+    {
+        const std::vector<std::string> strs = {"skip", "one", "two"};
+        EXPECT_EQ("one two", utils::JoinString(strs, ' ', 1));
+        EXPECT_TRUE(utils::JoinString(strs, ' ', strs.size()).empty());
+    }
 }
 
 // Test case conversion
@@ -357,6 +364,23 @@ TEST_F(StringUtilsTest, StringConversion) {
         std::string utf8 = utils::Utf16ToUtf8(nullptr);
         EXPECT_TRUE(utf8.empty());
     }
+}
+
+TEST_F(StringUtilsTest, StrictUtf8Utilities) {
+    const std::string utf8 = "\xC3\x84pfel";
+    EXPECT_TRUE(utils::IsValidUtf8(utf8));
+    EXPECT_FALSE(utils::IsValidUtf8(std::string("valid\0hidden", 12)));
+    EXPECT_FALSE(utils::IsValidUtf8("\xFF"));
+
+    std::wstring wide = L"stale";
+    EXPECT_TRUE(utils::TryUtf8ToUtf16(utf8, wide));
+    EXPECT_EQ(L"\u00C4pfel", wide);
+    EXPECT_FALSE(utils::TryUtf8ToUtf16("\xFF", wide));
+    EXPECT_TRUE(wide.empty());
+
+    EXPECT_TRUE(utils::ContainsUtf8CaseInsensitive(utf8, "\xC3\xA4PFEL"));
+    EXPECT_TRUE(utils::ContainsUtf8CaseInsensitive(utf8, ""));
+    EXPECT_FALSE(utils::ContainsUtf8CaseInsensitive(utf8, "\xFF"));
 }
 
 // Test string hash function

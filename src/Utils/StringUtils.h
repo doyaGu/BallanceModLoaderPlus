@@ -1,6 +1,7 @@
 #ifndef BML_STRINGUTILS_H
 #define BML_STRINGUTILS_H
 
+#include <cstddef>
 #include <cstdarg>
 #include <cstdint>
 #include <string>
@@ -81,11 +82,12 @@ namespace utils {
 
     // String joining functions with multiple overloads
     template <typename StringT>
-    StringT JoinString(const std::vector<StringT> &strings, const StringT &delim) {
-        if (strings.empty()) return StringT();
+    StringT JoinString(const std::vector<StringT> &strings, const StringT &delim,
+                       std::size_t first = 0) {
+        if (first >= strings.size()) return StringT();
 
-        StringT result = strings[0];
-        for (size_t i = 1; i < strings.size(); ++i) {
+        StringT result = strings[first];
+        for (std::size_t i = first + 1; i < strings.size(); ++i) {
             result += delim + strings[i];
         }
         return result;
@@ -94,15 +96,17 @@ namespace utils {
     // Overload for C-string delimiter
     template <typename StringT>
     StringT JoinString(const std::vector<StringT> &strings,
-                       const typename StringT::value_type *delim) {
-        return JoinString(strings, StringT(delim));
+                       const typename StringT::value_type *delim,
+                       std::size_t first = 0) {
+        return JoinString(strings, StringT(delim), first);
     }
 
     // Overload for single character delimiter
     template <typename StringT>
     StringT JoinString(const std::vector<StringT> &strings,
-                       typename StringT::value_type delim) {
-        return JoinString(strings, StringT(1, delim));
+                       typename StringT::value_type delim,
+                       std::size_t first = 0) {
+        return JoinString(strings, StringT(1, delim), first);
     }
 
     // Case conversion
@@ -181,6 +185,9 @@ namespace utils {
     // String conversion declarations (implemented in .cpp file)
     std::wstring ToWString(const std::string &str, bool isUtf8 = true);
     std::string ToString(const std::wstring &wstr, bool toUtf8 = true);
+    bool IsValidUtf8(std::string_view text) noexcept;
+    bool TryUtf8ToUtf16(std::string_view text, std::wstring &result);
+    bool ContainsUtf8CaseInsensitive(std::string_view text, std::string_view fragment);
 
     // Hash function
     template <typename CharT>

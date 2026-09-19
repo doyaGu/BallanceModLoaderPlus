@@ -717,6 +717,18 @@ std::wstring GetParentDirectoryW(const std::wstring &path) {
         }
     }
 
+    bool TryGetFinalPathInsideRootW(const std::wstring &path, const std::wstring &root,
+                                    std::wstring &finalPath) {
+        finalPath.clear();
+        std::wstring finalRoot;
+        if (!TryGetFinalPathW(root, finalRoot) || !TryGetFinalPathW(path, finalPath) ||
+            !IsPathInsideRootW(finalPath, finalRoot)) {
+            finalPath.clear();
+            return false;
+        }
+        return true;
+    }
+
     // ========================================================================
     // Path validation (template-based)
     // ========================================================================

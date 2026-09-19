@@ -356,6 +356,28 @@ TEST_F(PathUtilsTest, ParentDirectoryEdgeCases) {
     EXPECT_EQ(utils::GetParentDirectoryW(L"dir\\file.txt"), L"dir");
 }
 
+TEST_F(PathUtilsTest, ResolvesOnlyFinalPathsInsideRoot) {
+    const std::wstring inside = CreateTestFileW(L"inside.txt");
+    const std::wstring outside = utils::CombinePathW(
+        tempPathW, L"PathUtilsOutside_" +
+                       std::to_wstring(::testing::UnitTest::GetInstance()->random_seed()) +
+                       L".txt");
+    {
+        std::wofstream file(outside.c_str());
+        file << L"outside";
+    }
+
+    std::wstring resolved;
+    EXPECT_TRUE(utils::TryGetFinalPathInsideRootW(inside, testDirW, resolved));
+    EXPECT_FALSE(resolved.empty());
+    EXPECT_FALSE(utils::TryGetFinalPathInsideRootW(outside, testDirW, resolved));
+    EXPECT_TRUE(resolved.empty());
+    EXPECT_FALSE(utils::TryGetFinalPathInsideRootW(L"", testDirW, resolved));
+    EXPECT_TRUE(resolved.empty());
+
+    utils::DeleteFileW(outside);
+}
+
 // Test path validation functions
 TEST_F(PathUtilsTest, PathValidation) {
     // IsPathValid - note that Windows paths with drive letters contain colons,

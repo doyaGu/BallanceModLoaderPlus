@@ -103,7 +103,7 @@ void CommandEcho::Execute(IBML *bml, const std::vector<std::string> &args) {
         break;
     }
 
-    std::string out = JoinArgs(args, idx);
+    std::string out = utils::JoinString(args, ' ', idx);
 
     bool suppressNewlineViaC = false;
     if (opt.interpretEscapes) {
@@ -135,16 +135,6 @@ void CommandEcho::ParseEchoOptionToken(const std::string &tok, EchoOpts &opt) {
             return; // unknown flag -> stop option mode
         }
     }
-}
-
-// Join args with spaces from given index
-std::string CommandEcho::JoinArgs(const std::vector<std::string> &args, size_t start) {
-    std::string s;
-    for (size_t i = start; i < args.size(); ++i) {
-        if (i > start) s.push_back(' ');
-        s.append(args[i]);
-    }
-    return s;
 }
 
 // Handle \c (truncate output and suppress newline)

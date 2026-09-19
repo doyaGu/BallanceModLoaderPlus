@@ -140,6 +140,8 @@ namespace utils {
     std::wstring GetParentDirectoryW(const std::wstring &path);
     bool IsPathInsideRootW(const std::wstring &path, const std::wstring &root);
     bool TryGetFinalPathW(const std::wstring &path, std::wstring &finalPath);
+    bool TryGetFinalPathInsideRootW(const std::wstring &path, const std::wstring &root,
+                                    std::wstring &finalPath);
 
     // Path validation
     bool IsPathValidA(const std::string &path);

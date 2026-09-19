@@ -66,20 +66,8 @@ bool ContainsFace(const std::vector<std::string> &faces, const std::string &cand
     return false;
 }
 
-std::string JoinArguments(const std::vector<std::string> &args, std::size_t first) {
-    if (first >= args.size())
-        return {};
-
-    std::string value = args[first];
-    for (std::size_t index = first + 1; index < args.size(); ++index) {
-        value.push_back(' ');
-        value.append(args[index]);
-    }
-    return value;
-}
-
 std::string ReadFaceArgument(const std::vector<std::string> &args, std::size_t first) {
-    std::string value = JoinArguments(args, first);
+    std::string value = utils::JoinString(args, ' ', first);
     utils::TrimString(value);
     if (value.size() >= 2) {
         const char firstCharacter = value.front();
@@ -524,7 +512,7 @@ void CommandFont::Execute(IBML *bml, const std::vector<std::string> &args) {
         return;
     }
     if (EqualArgument(args[1], "check")) {
-        const std::string text = JoinArguments(args, 2);
+        const std::string text = utils::JoinString(args, ' ', 2);
         if (text.empty())
             bml->SendIngameMessage("Usage: font check <text>\n");
         else
