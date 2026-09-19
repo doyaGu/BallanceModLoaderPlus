@@ -358,6 +358,11 @@ void ModContext::Shutdown() {
 
     m_UiFonts.reset();
     if (Overlay::GetImGuiContext() != nullptr) {
+        {
+            Overlay::ImGuiContextScope scope;
+            Overlay::ImGuiEndFrame();
+        }
+        Overlay::ImGuiShutdownRenderer(m_CKContext);
         Overlay::ImGuiShutdownPlatform(m_CKContext);
         Overlay::ImGuiDestroyContext();
     }
