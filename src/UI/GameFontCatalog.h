@@ -33,6 +33,7 @@ public:
 private:
     static constexpr std::size_t FontCount = static_cast<std::size_t>(GameFont::Count);
     std::array<int, FontCount> m_Fonts{};
+    std::array<bool, FontCount> m_Bound{};
 };
 
 } // namespace BML

@@ -43,3 +43,24 @@ TEST(GameFontCatalogTest, ResetRestoresStableLegacyFallbacks) {
     EXPECT_FALSE(fonts.Bind(static_cast<GameFont>(999), 1));
     EXPECT_EQ(fonts.Resolve(static_cast<GameFont>(999)), 0);
 }
+
+TEST(GameFontCatalogTest, BoundRuntimeFontWinsOverLegacyFallbackCollision) {
+    GameFontCatalog fonts;
+    constexpr int LegacyNormalIndex = static_cast<int>(GameFont::Normal);
+
+    ASSERT_TRUE(fonts.Bind(GameFont::SmallGray, LegacyNormalIndex));
+    EXPECT_EQ(fonts.Identify(LegacyNormalIndex), GameFont::SmallGray);
+}
+
+TEST(GameFontCatalogTest, RejectsInvalidAndAmbiguousRuntimeHandles) {
+    GameFontCatalog fonts;
+    constexpr int RuntimeHandle = 12;
+    constexpr int InvalidHandle = -1;
+
+    EXPECT_FALSE(fonts.Bind(GameFont::None, RuntimeHandle));
+    EXPECT_FALSE(fonts.Bind(GameFont::Normal, 0));
+    EXPECT_FALSE(fonts.Bind(GameFont::Normal, InvalidHandle));
+    ASSERT_TRUE(fonts.Bind(GameFont::Normal, RuntimeHandle));
+    EXPECT_FALSE(fonts.Bind(GameFont::Large, RuntimeHandle));
+    EXPECT_EQ(fonts.Identify(InvalidHandle), GameFont::None);
+}
