@@ -107,7 +107,11 @@ def emit_wrapper(fn: FunctionBinding) -> list[str]:
         out.append(f"    if ({name}Capacity <= {name}.size()) {{ {name}Capacity = {name}.size() + 1; }}\n")
         out.append(f"    {name}Buffer.resize({name}Capacity, '\\0');\n")
         out.append(f"    if (!{name}.empty()) {{ memcpy({name}Buffer.data(), {name}.c_str(), {name}.size() < {name}Buffer.size() ? {name}.size() : {name}Buffer.size() - 1); }}\n")
-    call = f"ImGui::{fn.imgui_name}({', '.join(fn.call_args)})"
+    call_args = list(fn.call_args)
+    if fn.imgui_name == "Begin":
+        out.append("    const std::string scopedName = BMLImGuiASScopeWindowName(name);\n")
+        call_args[0] = "scopedName.c_str()"
+    call = f"ImGui::{fn.imgui_name}({', '.join(call_args)})"
     if fn.return_kind == "void":
         out.append(f"    {call};\n")
         if fn.char_buffer_name:
@@ -190,7 +194,8 @@ def emit_source(ctx, functions: list[FunctionBinding]) -> str:
     out.append("bool BMLImGuiAS_BeginNoOpen(const std::string &name, ImGuiWindowFlags flags) {\n")
     out.append("    BMLImGuiASCallScope scope;\n")
     out.append("    if (!BMLImGuiASBeginCall(&scope)) { return false; }\n")
-    out.append("    bool result = ImGui::Begin(name.c_str(), nullptr, flags);\n")
+    out.append("    const std::string scopedName = BMLImGuiASScopeWindowName(name);\n")
+    out.append("    bool result = ImGui::Begin(scopedName.c_str(), nullptr, flags);\n")
     out.append("    BMLImGuiASEndCall(&scope);\n")
     out.append("    return result;\n")
     out.append("}\n\n")

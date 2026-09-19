@@ -25,6 +25,7 @@
 #include "Loader/ModInvocationGate.h"
 #include "Gameplay/GameSession.h"
 #include "UI/GameFontCatalog.h"
+#include "UI/ImGuiStateRecovery.h"
 #include "ModMenu/ModMenuPages.h"
 #include "Behavior/Runtime.h"
 #include "Behavior/Script.h"
@@ -382,6 +383,7 @@ public:
                 mods = it->second;
         }
         for (IMod *mod : mods) {
+            const Overlay::ImGuiStateSnapshot imguiState = Overlay::CaptureImGuiState();
             try {
                 ModInvocation invocation(this, mod);
                 (mod->*callback)(std::forward<Args>(args)...);
@@ -392,6 +394,8 @@ public:
                 if (m_Logger)
                     m_Logger->Error("Unknown exception in mod %s callback", mod->GetID());
             }
+            if (Overlay::RecoverImGuiState(imguiState) && m_Logger)
+                m_Logger->Warn("Recovered unbalanced ImGui state after mod %s callback", mod->GetID());
         }
     }
 

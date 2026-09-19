@@ -35,7 +35,8 @@ void BMLImGuiAS_ConstructInt4XYZW(int x, int y, int z, int w, BMLImGuiASInt4 *se
 bool BMLImGuiAS_BeginNoOpen(const std::string &name, ImGuiWindowFlags flags) {
     BMLImGuiASCallScope scope;
     if (!BMLImGuiASBeginCall(&scope)) { return false; }
-    bool result = ImGui::Begin(name.c_str(), nullptr, flags);
+    const std::string scopedName = BMLImGuiASScopeWindowName(name);
+    bool result = ImGui::Begin(scopedName.c_str(), nullptr, flags);
     BMLImGuiASEndCall(&scope);
     return result;
 }
@@ -493,7 +494,8 @@ bool BMLImGuiAS_338_igBegin(const std::string & name, bool & p_open, ImGuiWindow
     if (!BMLImGuiASBeginCall(&scope)) {
         return 0;
     }
-    bool result = ImGui::Begin(name.c_str(), &p_open, flags);
+    const std::string scopedName = BMLImGuiASScopeWindowName(name);
+    bool result = ImGui::Begin(scopedName.c_str(), &p_open, flags);
     BMLImGuiASEndCall(&scope);
     return result;
 }

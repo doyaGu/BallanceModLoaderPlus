@@ -7,6 +7,14 @@
 namespace Overlay {
 namespace {
 
+void AppendHexEncoded(std::string &output, std::string_view value) {
+    static constexpr char Digits[] = "0123456789abcdef";
+    for (const unsigned char byte : value) {
+        output.push_back(Digits[byte >> 4]);
+        output.push_back(Digits[byte & 0x0f]);
+    }
+}
+
 bool IsMouseActiveId(const ImGuiContext &context) {
     return context.ActiveId != 0 &&
            (context.ActiveIdSource == ImGuiInputSource_Mouse || context.ActiveIdMouseButton >= 0);
@@ -28,6 +36,17 @@ void ClearMouseDownOwnership(ImGuiIO &io) {
 }
 
 } // namespace
+
+std::string Overlay::MakeScriptImGuiWindowName(std::string_view name, std::string_view ownerId) {
+    std::string scopedName;
+    scopedName.reserve(name.size() * 3 + ownerId.size() * 2 + 14);
+    scopedName.append(name);
+    scopedName.append("###BMLScript/");
+    AppendHexEncoded(scopedName, ownerId);
+    scopedName.push_back('/');
+    AppendHexEncoded(scopedName, name);
+    return scopedName;
+}
 
 bool ScriptImGuiState::HasWindow(const void *window) const {
     return window && std::find(m_Windows.begin(), m_Windows.end(), window) != m_Windows.end();
