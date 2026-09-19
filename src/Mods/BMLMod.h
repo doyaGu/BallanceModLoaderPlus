@@ -62,6 +62,7 @@ public:
 
     void OpenModsMenu();
     void CloseModsMenu();
+    void CloseModsMenuForShutdown();
 
     void OpenMapMenu();
     void CloseMapMenu();
