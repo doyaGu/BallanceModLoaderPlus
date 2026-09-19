@@ -2329,7 +2329,8 @@ C 符号 <code>BMLEntry</code> 和 <code>BMLExit</code>。入口缺失或被 C++
 <code>ModMenu.h</code> 可直接用于 C，不包含 C++ 标准库或类；<code>ModMenu.hpp</code> 只是单向建立在
 该 C 接口上的 C++ 编写 facade。在 C 边界上，<code>BML_ModMenuPageDraw</code> 返回
 <code>BML_OK</code> 或错误状态，并把延迟执行的导航请求写入
-<code>BML_ModMenuPageFrame</code> 的 <code>Action</code> 成员。导航不会再复用错误返回值；后续小版本也可借助
+<code>BML_ModMenuPageFrame</code> 的 <code>Action</code> 成员。可选的 Enter 和 Leave 回调同样返回
+状态码，页面生命周期失败不会再被静默当成成功。导航不会复用错误返回值；后续小版本也可借助
 <code>StructSize</code> 在 frame 末尾追加输入或输出，而不改变 1.0 的回调签名。</p>
 <h2 id="mod">Mod 生命周期与事件<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h2>
 <p><code>IMod</code> 继承 <code>IMessageReceiver</code>。实现类必须提供 ID、版本、名称、作者、说明和

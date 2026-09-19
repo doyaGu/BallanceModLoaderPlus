@@ -1438,9 +1438,11 @@ Call the two registration helpers from the owning Mod's <code>OnLoad</code> and 
 <code>ModMenu.h</code> remains usable from C and contains no C++ standard-library or class
 surface; <code>ModMenu.hpp</code> is a one-way authoring facade over that C interface. At
 the C seam, <code>BML_ModMenuPageDraw</code> returns a <code>BML_OK</code>/error status and writes a
-deferred navigation request to the <code>Action</code> member of <code>BML_ModMenuPageFrame</code>. Navigation is
-therefore never overloaded as an error result, and future frame inputs or outputs
-can be appended behind <code>StructSize</code> without changing the 1.0 callback signature.</p>
+deferred navigation request to the <code>Action</code> member of <code>BML_ModMenuPageFrame</code>.
+The optional Enter and Leave callbacks return status codes as well, so a failed
+page transition is not silently accepted. Navigation is therefore never overloaded
+as an error result, and future frame inputs or outputs can be appended behind
+<code>StructSize</code> without changing the 1.0 callback signature.</p>
 <h2 id="mod-lifecycle-and-events">Mod lifecycle and events<a class="headerlink" href="#mod-lifecycle-and-events" title="Permanent link">&para;</a></h2>
 <p><code>IMod</code> inherits <code>IMessageReceiver</code>. A mod supplies its ID, version, name,
 author, description, and required BML version, then overrides only the
