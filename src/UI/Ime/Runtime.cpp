@@ -1,5 +1,6 @@
 #include "UI/Ime/Runtime.h"
 #include "UI/Ime/NativePresentation.h"
+#include "UI/Ime/PresentationOwnership.h"
 #include "UI/Ime/Tsf.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -36,26 +37,29 @@ namespace Overlay::Ime {
         class PresentationTarget final {
         public:
             void Attach(HWND window) noexcept {
-                m_Visible.store(false, std::memory_order_release);
-                m_Focused.store(false, std::memory_order_release);
                 m_Window.store(window, std::memory_order_release);
-                m_Focused.store(window && ::GetFocus() == window, std::memory_order_release);
+                m_Ownership.Attach(window && ::GetFocus() == window);
             }
 
             void Detach() noexcept {
                 m_Window.store(nullptr, std::memory_order_release);
-                m_Focused.store(false, std::memory_order_release);
-                m_Visible.store(false, std::memory_order_release);
+                m_Ownership.Detach();
             }
 
             HWND Window() const noexcept {
                 return m_Window.load(std::memory_order_acquire);
             }
 
-            bool Owns(HWND messageWindow = nullptr) const noexcept {
+            bool HasFocus(HWND messageWindow = nullptr) const noexcept {
                 const HWND window = Window();
                 return window && (!messageWindow || messageWindow == window) &&
-                       m_Focused.load(std::memory_order_acquire);
+                       m_Ownership.IsFocused();
+            }
+
+            bool OwnsPresentation(HWND messageWindow = nullptr) const noexcept {
+                const HWND window = Window();
+                return window && (!messageWindow || messageWindow == window) &&
+                       m_Ownership.IsVisible();
             }
 
             bool ObserveFocus(HWND messageWindow, std::uint32_t message,
@@ -64,27 +68,26 @@ namespace Overlay::Ime {
                 if (message == WM_SETFOCUS ||
                     (message == WM_IME_SETCONTEXT && wParam != 0)) {
                     const bool focused = messageWindow == window;
-                    return m_Focused.exchange(focused, std::memory_order_acq_rel) != focused;
+                    return m_Ownership.SetFocused(focused);
                 } else if (messageWindow == window &&
                            (message == WM_KILLFOCUS || message == WM_NCDESTROY ||
                             (message == WM_IME_SETCONTEXT && wParam == 0))) {
-                    return m_Focused.exchange(false, std::memory_order_acq_rel);
+                    return m_Ownership.SetFocused(false);
                 }
                 return false;
             }
 
             bool ExchangeVisible(bool visible) noexcept {
-                return m_Visible.exchange(visible, std::memory_order_acq_rel);
+                return m_Ownership.ExchangeVisible(visible);
             }
 
             bool IsVisible() const noexcept {
-                return m_Visible.load(std::memory_order_acquire) && Owns();
+                return OwnsPresentation();
             }
 
         private:
             std::atomic<HWND> m_Window{nullptr};
-            std::atomic_bool m_Focused{false};
-            std::atomic_bool m_Visible{false};
+            PresentationOwnership m_Ownership;
         };
 
         std::mutex g_StateMutex;
@@ -499,7 +502,7 @@ namespace Overlay::Ime::Runtime {
         }
         g_PresentationTarget.Attach(owner);
         Tsf::Attach();
-        Tsf::SetPresentationOwned(g_PresentationTarget.Owns());
+        Tsf::SetPresentationOwned(false);
     }
 
     void Detach() {
@@ -520,11 +523,11 @@ namespace Overlay::Ime::Runtime {
             return {};
 
         const bool focusChanged = g_PresentationTarget.ObserveFocus(window, message, wParam);
-        const bool presentationOwned = g_PresentationTarget.Owns();
+        const bool presentationOwned = g_PresentationTarget.IsVisible();
         const bool ownsPresentation = presentationOwned && window == owner;
         if (focusChanged) {
             Tsf::SetPresentationOwned(presentationOwned);
-            if (!presentationOwned)
+            if (!g_PresentationTarget.HasFocus())
                 ResetState();
         }
         switch (message) {
@@ -584,9 +587,12 @@ namespace Overlay::Ime::Runtime {
     }
 
     bool PreparePresentationFrame(bool visible, PresentationFrame &frame) {
-        const bool presentationVisible = visible && g_PresentationTarget.Owns();
+        const bool presentationVisible = visible && g_PresentationTarget.HasFocus();
         const bool wasVisible = g_PresentationTarget.ExchangeVisible(presentationVisible);
-        if (!presentationVisible) {
+        const bool isVisible = g_PresentationTarget.IsVisible();
+        if (wasVisible != isVisible)
+            Tsf::SetPresentationOwned(isVisible);
+        if (!isVisible) {
             if (wasVisible)
                 ResetState();
             return false;

@@ -300,6 +300,7 @@ set(BML_UI_PRIVATE_HEADERS
         UI/BuiInternal.h
         UI/Ime/Presentation.h
         UI/Ime/NativePresentation.h
+        UI/Ime/PresentationOwnership.h
         UI/Ime/RailLayout.h
         UI/Ime/Runtime.h
         UI/Ime/State.h
