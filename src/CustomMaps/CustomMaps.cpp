@@ -1,5 +1,6 @@
 #include "CustomMaps/CustomMaps.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstring>
@@ -19,6 +20,8 @@
 #include "Api/ObjectRefs.h"
 #include "CustomMaps/CustomMapLoad.h"
 #include "CustomMaps/LevelLoader.h"
+#include "CustomMaps/MapCatalog.h"
+#include "CustomMaps/MapCommand.h"
 #include "Loader/ModContext.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -79,6 +82,7 @@ struct CustomMaps::LoadAttempt {
     int Level = 0;
     bool ObjectLoaded = false;
     bool LevelStarted = false;
+    LoadOrigin Origin = LoadOrigin::Menu;
     std::wstring SourcePath;
     std::wstring TempPath;
     LevelLoader::Transaction Runtime;
@@ -140,6 +144,7 @@ void CustomMaps::OnLoad(IBML &bml, ILogger &logger,
     m_CKContext = bml.GetCKContext();
     m_Logger = &logger;
     m_TempDirectory = tempDirectory;
+    m_MapsDirectory = utils::CombinePathW(loaderDirectory, L"Maps");
     auto behavior = Behavior::Session::Open("BML");
     if (behavior) {
         m_Behavior = behavior.Take();
@@ -155,7 +160,10 @@ void CustomMaps::OnLoad(IBML &bml, ILogger &logger,
     if (!m_DataShare)
         m_Logger->Error("Failed to acquire the loader data share for custom maps");
 
-    m_Menu.Init(utils::CombinePathW(loaderDirectory, L"Maps"), logger);
+    m_Menu.Init(m_MapsDirectory, logger);
+    if (!m_Command)
+        m_Command = std::make_unique<CustomMap::MapCommand>(*this);
+    bml.RegisterCommand(m_Command.get());
 }
 
 void CustomMaps::OnUnload() {
@@ -173,6 +181,7 @@ void CustomMaps::OnUnload() {
     ResetScriptBindings();
     m_Behavior.Reset();
     m_TempDirectory.clear();
+    m_MapsDirectory.clear();
     m_Logger = nullptr;
     m_CKContext = nullptr;
     m_BML = nullptr;
@@ -302,29 +311,73 @@ bool CustomMaps::Close() {
     return m_Menu.Close();
 }
 
-bool CustomMaps::LoadMap(const std::wstring &path) {
+bool CustomMaps::LoadFromCommand(std::string_view relativePath, std::string &error) {
+    error.clear();
+    if (m_Menu.IsOpen()) {
+        error = "close the Custom Maps menu before loading from a command";
+        return false;
+    }
+    if (m_LoadAttempt) {
+        error = "another custom map load is already in progress";
+        return false;
+    }
+    if (!IsRuntimeReady()) {
+        error = "custom maps can only be loaded from the main menu";
+        return false;
+    }
+
+    std::wstring path;
+    if (!MapCatalog::ResolveFile(m_MapsDirectory, relativePath, path, error))
+        return false;
+    return BeginLoad(path, LoadOrigin::Command, error);
+}
+
+std::vector<std::string> CustomMaps::ListMaps(std::string_view fragment,
+                                               std::string &error) const {
+    error.clear();
+    if (m_MapsDirectory.empty()) {
+        error = "the maps directory is unavailable";
+        return {};
+    }
+
+    MapCatalog catalog;
+    const int maxDepth = m_MaxDepth ? m_MaxDepth->GetInteger() : 8;
+    if (!catalog.Refresh(m_MapsDirectory, (std::max)(1, maxDepth), m_Logger)) {
+        error = "could not scan ModLoader/Maps";
+        return {};
+    }
+    return catalog.ListFiles(fragment, 21);
+}
+
+bool CustomMaps::LoadMap(const std::wstring &requestedPath) {
+    std::wstring path;
+    std::string error;
+    if (!MapCatalog::ValidateFile(m_MapsDirectory, requestedPath, path, error)) {
+        if (m_Logger) {
+            m_Logger->Error("Custom map is unavailable: %s: %s",
+                            utils::Utf16ToUtf8(requestedPath).c_str(), error.c_str());
+        }
+        return false;
+    }
+    return BeginLoad(path, LoadOrigin::Menu, error);
+}
+
+bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
+                           std::string &error) {
+    error.clear();
+
     LevelLoader::Transaction transaction;
     bool stateChanged = false;
+    std::wstring tempPath;
     try {
         if (m_LoadAttempt) {
+            error = "another custom map load is already in progress";
             if (m_Logger)
                 m_Logger->Warn("A custom map load is already in progress");
             return false;
         }
-        if (path.empty()) {
-            if (m_Logger)
-                m_Logger->Error("Attempted to load an empty map path");
-            return false;
-        }
-        if (!utils::FileExistsW(path)) {
-            if (m_Logger) {
-                m_Logger->Error("Map file does not exist: %s",
-                                utils::Utf16ToUtf8(path).c_str());
-            }
-            return false;
-        }
-
         if (!IsRuntimeReady()) {
+            error = "custom maps can only be loaded from the main menu";
             if (m_Logger)
                 m_Logger->Error("Custom map loading is unavailable because its runtime bindings are incomplete");
             ClearLoadMetadata();
@@ -335,6 +388,7 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
         CK2dEntity *blackScreen = m_BML->Get2dEntityByName("M_BlackScreen");
         CKMessageManager *messageManager = m_CKContext->GetMessageManager();
         if (!currentScene || !allSound || !blackScreen || !messageManager) {
+            error = "the main menu scene is incomplete";
             if (m_Logger)
                 m_Logger->Error("Custom map loading is unavailable because the menu scene is incomplete");
             ClearLoadMetadata();
@@ -345,9 +399,9 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
         if (attemptId == 0)
             attemptId = m_NextLoadAttempt++;
 
-        std::wstring tempPath;
         std::string filename;
         if (!CreateTempMapFile(path, attemptId, tempPath, filename)) {
+            error = "could not prepare a private copy of the map";
             if (m_Logger) {
                 m_Logger->Error("Failed to prepare custom map: %s",
                                 utils::Utf16ToUtf8(path).c_str());
@@ -364,6 +418,9 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
 
         auto begun = m_LevelLoader->Begin(m_CurrentLevel);
         if (!begun) {
+            error = begun.GetStatus().Message.empty()
+                ? "the level-loader state is unavailable"
+                : begun.GetStatus().Message;
             if (m_Logger) {
                 m_Logger->Error(
                     "Failed to begin the custom map load transaction: %s",
@@ -373,6 +430,7 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
             }
             m_LevelLoader->Invalidate();
             ClearLoadMetadata();
+            utils::DeleteFileW(tempPath);
             return false;
         }
         transaction = begun.Take();
@@ -380,6 +438,9 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
         stateChanged = true;
         auto staged = transaction.Stage(filename, level, m_CurrentLevel);
         if (!staged) {
+            error = staged.GetStatus().Message.empty()
+                ? "the level-loader transaction was rejected"
+                : staged.GetStatus().Message;
             if (m_Logger) {
                 m_Logger->Error(
                     "Failed to prepare the custom map runtime state: %s",
@@ -397,10 +458,13 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
                         : restored.GetStatus().Message.c_str());
             }
             ClearLoadMetadata();
+            if (!stateChanged)
+                utils::DeleteFileW(tempPath);
             return false;
         }
 
         if (!PublishLoadMetadata(path, attemptId)) {
+            error = "could not publish custom map load metadata";
             if (m_Logger)
                 m_Logger->Error("Failed to publish custom map load metadata");
             auto restored = transaction.Rollback(m_CurrentLevel);
@@ -413,25 +477,29 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
                         : restored.GetStatus().Message.c_str());
             }
             ClearLoadMetadata();
+            if (!stateChanged)
+                utils::DeleteFileW(tempPath);
             return false;
         }
 
         auto attempt = std::make_unique<LoadAttempt>();
         attempt->Id = attemptId;
         attempt->Level = level;
+        attempt->Origin = origin;
         attempt->SourcePath = path;
         attempt->TempPath = tempPath;
         attempt->Runtime = std::move(transaction);
         attempt->Started = std::chrono::steady_clock::now();
         m_LoadAttempt = std::move(attempt);
         stateChanged = false;
+        tempPath.clear();
 
         if (m_Logger) {
             m_Logger->Info(
                 "Dispatch custom map load #%llu: %s -> %s (level %d)",
                 static_cast<unsigned long long>(attemptId),
                 utils::Utf16ToUtf8(path).c_str(),
-                utils::Utf16ToUtf8(tempPath).c_str(), level);
+                utils::Utf16ToUtf8(m_LoadAttempt->TempPath).c_str(), level);
         }
 
         const CKMessageType loadLevel = messageManager->AddMessageType((CKSTRING) "Load Level");
@@ -443,18 +511,22 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
         m_ExitStart->Activate();
         return true;
     } catch (const std::exception &exception) {
+        error = exception.what();
         if (m_Logger)
             m_Logger->Error("Exception loading custom map: %s", exception.what());
     } catch (...) {
+        error = "an unexpected error interrupted the map load";
         if (m_Logger)
             m_Logger->Error("Unknown exception loading custom map");
     }
 
     if (m_LoadAttempt) {
+        m_LoadAttempt->Origin = LoadOrigin::Menu;
         CompleteLoadFailure("an exception interrupted the load dispatch");
     } else if (stateChanged) {
         try {
             auto restored = transaction.Rollback(m_CurrentLevel);
+            stateChanged = !restored;
             if (!restored && m_Logger) {
                 m_Logger->Error(
                     "Failed to restore the custom map runtime state: %s",
@@ -466,6 +538,10 @@ bool CustomMaps::LoadMap(const std::wstring &path) {
         }
     }
     ClearLoadMetadata();
+    if (!tempPath.empty() && !stateChanged)
+        utils::DeleteFileW(tempPath);
+    if (error.empty())
+        error = "the map load could not be started";
     return false;
 }
 
@@ -496,8 +572,10 @@ bool CustomMaps::CreateTempMapFile(const std::wstring &path,
         mapsDirectory,
         CustomMapLoad::MakeTempFileName(sourcePath, extension, attempt));
 
-    if (!utils::CopyFileW(path, destination))
+    if (!utils::CopyFileW(path, destination)) {
+        utils::DeleteFileW(destination);
         return false;
+    }
 
     if (!ConvertToAnsiPath(destination, ansiPath)) {
         const std::wstring shortPath = GetShortPath(destination);
@@ -598,9 +676,16 @@ void CustomMaps::CompleteLoadSuccess() {
             utils::Utf16ToUtf8(m_LoadAttempt->SourcePath).c_str(),
             m_LoadAttempt->Level);
     }
+    const bool fromCommand = m_LoadAttempt->Origin == LoadOrigin::Command;
+    const std::wstring sourcePath = m_LoadAttempt->SourcePath;
     m_LoadAttempt.reset();
     m_Menu.CompleteLoad(true);
     ClearLoadMetadata();
+    if (fromCommand && m_BML) {
+        const std::string message = "map load: loaded " +
+                                    utils::Utf16ToUtf8(utils::GetFileNameW(sourcePath));
+        m_BML->SendIngameMessage(message.c_str());
+    }
 }
 
 void CustomMaps::CompleteLoadFailure(const char *reason) {
@@ -608,6 +693,7 @@ void CustomMaps::CompleteLoadFailure(const char *reason) {
         return;
 
     const std::uint64_t attempt = m_LoadAttempt->Id;
+    const bool fromCommand = m_LoadAttempt->Origin == LoadOrigin::Command;
     const std::string sourcePath = utils::Utf16ToUtf8(m_LoadAttempt->SourcePath);
     auto restored = RollbackLoad();
 
@@ -626,12 +712,18 @@ void CustomMaps::CompleteLoadFailure(const char *reason) {
     }
 
     ReactivateStartMenu();
+    if (fromCommand && m_BML) {
+        const std::string message = std::string("map load: failed: ") +
+                                    (reason ? reason : "unknown failure");
+        m_BML->SendIngameMessage(message.c_str());
+    }
 }
 
 Behavior::Result<void> CustomMaps::RollbackLoad() {
     if (!m_LoadAttempt)
         return Behavior::Result<void>::Success();
 
+    const std::wstring tempPath = m_LoadAttempt->TempPath;
     Behavior::Result<void> restored;
     try {
         restored = m_LoadAttempt->Runtime.Rollback(m_CurrentLevel);
@@ -645,6 +737,8 @@ Behavior::Result<void> CustomMaps::RollbackLoad() {
     }
 
     m_LoadAttempt.reset();
+    if (restored && !tempPath.empty())
+        utils::DeleteFileW(tempPath);
     m_Menu.CompleteLoad(false);
     ClearLoadMetadata();
     return restored;

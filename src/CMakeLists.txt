@@ -244,6 +244,7 @@ set(BML_CUSTOM_MAPS_PRIVATE_HEADERS
         CustomMaps/CustomMaps.h
         CustomMaps/LevelLoader.h
         CustomMaps/MapCatalog.h
+        CustomMaps/MapCommand.h
         CustomMaps/MapMenu.h
         CustomMaps/MapMenuState.h
 )
@@ -252,6 +253,7 @@ set(BML_CUSTOM_MAPS_SOURCES
         CustomMaps/CustomMaps.cpp
         CustomMaps/LevelLoader.cpp
         CustomMaps/MapCatalog.cpp
+        CustomMaps/MapCommand.cpp
         CustomMaps/MapMenu.cpp
         CustomMaps/MapMenuState.cpp
 )

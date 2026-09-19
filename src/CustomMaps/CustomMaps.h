@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "BML/Behavior.hpp"
 #include "CustomMaps/MapMenu.h"
@@ -20,6 +22,7 @@ struct BML_DataShare;
 
 namespace CustomMap {
 class LevelLoader;
+class MapCommand;
 }
 
 class CustomMaps {
@@ -45,10 +48,18 @@ public:
 
     bool Open();
     bool Close();
+    bool LoadFromCommand(std::string_view relativePath, std::string &error);
+    std::vector<std::string> ListMaps(std::string_view fragment, std::string &error) const;
 
 private:
+    enum class LoadOrigin {
+        Menu,
+        Command,
+    };
+
     struct LoadAttempt;
     bool LoadMap(const std::wstring &path);
+    bool BeginLoad(const std::wstring &path, LoadOrigin origin, std::string &error);
     bool CreateTempMapFile(const std::wstring &path, std::uint64_t attempt,
                            std::wstring &widePath, std::string &ansiPath) const;
     bool IsRuntimeReady() const;
@@ -71,11 +82,13 @@ private:
     ILogger *m_Logger = nullptr;
     BML_DataShare *m_DataShare = nullptr;
     std::wstring m_TempDirectory;
+    std::wstring m_MapsDirectory;
     std::unique_ptr<LoadAttempt> m_LoadAttempt;
     std::uint64_t m_NextLoadAttempt = 1;
 
     MapMenu m_Menu;
     BML::Behavior::Session m_Behavior;
+    std::unique_ptr<CustomMap::MapCommand> m_Command;
     std::unique_ptr<CustomMap::LevelLoader> m_LevelLoader;
 
     IProperty *m_LevelNumber = nullptr;
