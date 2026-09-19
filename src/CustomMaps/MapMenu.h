@@ -41,7 +41,7 @@ public:
     void Init(const std::wstring &mapsDirectory, ILogger &logger);
     void Shutdown();
 
-    bool Open(const std::string &id) { return m_Active && !m_ShuttingDown && m_Routes.Open(id); }
+    bool Open(const std::string &id);
     bool Close() { return m_Routes.Close(); }
     bool Render();
     bool IsOpen() const { return m_Routes.IsOpen(); }
