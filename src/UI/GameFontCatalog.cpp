@@ -27,15 +27,24 @@ GameFontCatalog::GameFontCatalog() {
 }
 
 void GameFontCatalog::Reset() {
-    for (std::size_t i = 0; i < m_Fonts.size(); ++i)
+    for (std::size_t i = 0; i < m_Fonts.size(); ++i) {
         m_Fonts[i] = static_cast<int>(i);
+        m_Bound[i] = false;
+    }
 }
 
 bool GameFontCatalog::Bind(GameFont font, int virtoolsIndex) {
     const std::size_t index = static_cast<std::size_t>(font);
-    if (index >= m_Fonts.size())
+    if (font == GameFont::None || index >= m_Fonts.size() || virtoolsIndex <= 0)
         return false;
+
+    for (std::size_t i = 1; i < m_Fonts.size(); ++i) {
+        if (i != index && m_Bound[i] && m_Fonts[i] == virtoolsIndex)
+            return false;
+    }
+
     m_Fonts[index] = virtoolsIndex;
+    m_Bound[index] = true;
     return true;
 }
 
@@ -59,8 +68,15 @@ int GameFontCatalog::Resolve(GameFont font) const {
 }
 
 GameFont GameFontCatalog::Identify(int virtoolsIndex) const {
-    for (std::size_t i = 0; i < m_Fonts.size(); ++i) {
-        if (m_Fonts[i] == virtoolsIndex)
+    if (virtoolsIndex <= 0)
+        return GameFont::None;
+
+    for (std::size_t i = 1; i < m_Fonts.size(); ++i) {
+        if (m_Bound[i] && m_Fonts[i] == virtoolsIndex)
+            return static_cast<GameFont>(i);
+    }
+    for (std::size_t i = 1; i < m_Fonts.size(); ++i) {
+        if (!m_Bound[i] && m_Fonts[i] == virtoolsIndex)
             return static_cast<GameFont>(i);
     }
     return GameFont::None;
