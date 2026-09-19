@@ -110,6 +110,11 @@ namespace {
 }
 
 struct ModMenu::State {
+    enum class CloseDestination {
+        Options,
+        Shutdown,
+    };
+
     explicit State(ModContext &context)
         : model(context),
           routes(
@@ -120,7 +125,11 @@ struct ModMenu::State {
               [this]() {
                   presentation.Reset();
                   model.OnClose();
-                  Bui::TransitionToScriptAndUnblock("Menu_Options", this);
+                  if (closeDestination == CloseDestination::Options)
+                      Bui::TransitionToScriptAndUnblock("Menu_Options", this);
+                  else
+                      Bui::UnblockKeyboardAfterRelease(this);
+                  closeDestination = CloseDestination::Options;
               }) {
         routes.CreatePage<ModListPage>(ModListRoute, model, presentation);
         routes.CreatePage<ModDetailsPage>(ModDetailsRoute, model, presentation);
@@ -128,8 +137,17 @@ struct ModMenu::State {
         routes.CreatePage<ModPage>(ModPageRoute, model, presentation);
     }
 
+    bool Close(CloseDestination destination) {
+        closeDestination = destination;
+        if (routes.Close())
+            return true;
+        closeDestination = CloseDestination::Options;
+        return false;
+    }
+
     ModMenuModel model;
     ModMenuPresentation presentation;
+    CloseDestination closeDestination = CloseDestination::Options;
     Bui::Menu routes;
 };
 
@@ -144,7 +162,11 @@ bool ModMenu::Open() {
 }
 
 bool ModMenu::Close() {
-    return m_State && m_State->routes.Close();
+    return m_State && m_State->Close(State::CloseDestination::Options);
+}
+
+bool ModMenu::CloseForShutdown() {
+    return m_State && m_State->Close(State::CloseDestination::Shutdown);
 }
 
 void ModMenu::OnProcess() {

@@ -15,6 +15,7 @@ public:
 
     bool Open();
     bool Close();
+    bool CloseForShutdown();
     void OnProcess();
 
 private:

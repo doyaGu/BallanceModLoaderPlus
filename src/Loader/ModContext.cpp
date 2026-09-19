@@ -750,6 +750,12 @@ void ModContext::ShutdownMods() {
         return;
     }
 
+    // End loader-owned UI sessions while every contributed callback and owner
+    // DLL is still alive. The shutdown close releases input without returning
+    // to Menu_Options, whose script is itself about to be deactivated.
+    if (m_BMLMod)
+        m_BMLMod->CloseModsMenuForShutdown();
+
     SetFlags(BML_MODS_SHUTTING_DOWN);
 
 #if BML_ENABLE_ANGELSCRIPT
