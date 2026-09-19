@@ -15,6 +15,10 @@ add_bml_test(ImePresentationTest
         ${BML_SOURCE_DIR}/UI/Ime/RailLayout.cpp
 )
 
+add_bml_test(ImeOwnershipTest
+        SOURCES ImeOwnershipTest.cpp
+)
+
 add_bml_test(FontRuntimeTest
         SOURCES
         FontRuntimeTest.cpp
