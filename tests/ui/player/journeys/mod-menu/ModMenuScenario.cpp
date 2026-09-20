@@ -15,7 +15,7 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
         ctx->ItemClick("**/Ballance Mod Loader");
         IM_CHECK(WaitForItem(ctx, "**/Back"));
         IM_CHECK(MenuPagesContain(ctx, {"GUI", "Graphics", "HUD", "CommandBar",
-                                       "CustomMap", "Tweak"}));
+                                       "CommandBarTheme", "CustomMap", "Tweak"}));
 
         IM_CHECK(OpenConfigCategory(ctx, "GUI", "**/FontFilename"));
         IM_CHECK(MenuPagesContain(ctx, {"FontFilename", "FontSize", "FontFallbacks",
@@ -38,7 +38,33 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
         IM_CHECK(OpenConfigCategory(ctx, "CommandBar", "**/MessageDuration"));
         IM_CHECK(MenuPagesContain(ctx,
                                   {"MessageDuration", "TabColumns", "LineSpacing",
-                                   "MessageBackgroundAlpha", "FadeMaxAlpha"}));
+                                   "MessageBackgroundAlpha", "FadeMaxAlpha", "KeepOpen",
+                                   "EnableSyntaxHighlighting", "EnableTabCompletion",
+                                   "EnableHistorySuggestions", "EnableReverseHistorySearch",
+                                   "EnableHistoryNavigation", "ShowNotifications",
+                                   "ShowScrollback"}));
+        IM_CHECK(ToggleConfigBooleanOnAnyPage(ctx, "**/EnableSyntaxHighlighting"));
+        IM_CHECK(ToggleConfigBoolean(ctx, "**/EnableSyntaxHighlighting"));
+        IM_CHECK(ToggleConfigBooleanOnAnyPage(ctx, "**/ShowNotifications"));
+        IM_CHECK(ToggleConfigBoolean(ctx, "**/ShowNotifications"));
+        IM_CHECK(ToggleConfigBooleanOnAnyPage(ctx, "**/ShowScrollback"));
+        IM_CHECK(ToggleConfigBoolean(ctx, "**/ShowScrollback"));
+        ctx->ItemClick("**/Back");
+
+        IM_CHECK(OpenConfigCategory(ctx, "CommandBarTheme", "**/Plain"));
+        IM_CHECK(MenuPagesContain(ctx,
+                                  {"Plain", "CommandValid", "CommandInvalid", "String",
+                                   "Variable", "Operator", "Comment", "Error"}));
+        IM_CHECK(WaitForItem(ctx, "**/ColorSwatch"));
+        const ImGuiTestItemInfo colorRow = ctx->ItemInfo("**/Error");
+        ctx->ItemClick("**/ColorSwatch");
+        IM_CHECK(ctx->ItemIsOpened("**/ColorSwatch"));
+        ctx->MouseMoveToPos(ImVec2(colorRow.RectFull.Min.x + 4.0f,
+                                   colorRow.RectFull.GetCenter().y));
+        ctx->MouseClick();
+        ctx->Yield();
+        IM_CHECK(WaitForItem(ctx, "**/ColorSwatch"));
+        IM_CHECK(!ctx->ItemIsOpened("**/ColorSwatch"));
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "CustomMap", "**/LevelNumber"));

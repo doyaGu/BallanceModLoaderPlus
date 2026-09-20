@@ -833,6 +833,20 @@ bool ToggleConfigBoolean(ImGuiTestContext *ctx, const char *path) {
     return ctx->ItemIsChecked(path) != previous;
 }
 
+bool ToggleConfigBooleanOnAnyPage(ImGuiTestContext *ctx, const char *path) {
+    if (!RewindMenuPages(ctx))
+        return false;
+
+    while (true) {
+        if (ctx->ItemExists(path))
+            return ToggleConfigBoolean(ctx, path);
+        if (!ctx->ItemExists("**/NextPage"))
+            return false;
+        if (!ChangeMenuPage(ctx, "**/NextPage"))
+            return false;
+    }
+}
+
 bool SubmitConsoleCommand(ImGuiTestContext *ctx, const char *command) {
     ctx->KeyPress(ImGuiKey_Slash);
     if (!WaitForItem(ctx, "**/##CmdBar"))

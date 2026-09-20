@@ -4,19 +4,20 @@ add_bml_test(ConsoleLayoutTest
         ${BML_SOURCE_DIR}/Console/ConsoleLayout.cpp
 )
 
-add_bml_test(CommandCompletionTest
-        SOURCES
-        CommandCompletionTest.cpp
-        ${BML_SOURCE_DIR}/Console/CommandCompletion.cpp
-        DEPENDENCIES
-        BML_StringUtils
-        utf8
-)
-
 add_bml_test(CommandInputTest
         SOURCES
         CommandInputTest.cpp
         ${BML_SOURCE_DIR}/Console/CommandInput.cpp
+)
+
+add_bml_test(CommandBarThemeTest
+        SOURCES
+        CommandBarThemeTest.cpp
+        ${BML_SOURCE_DIR}/Console/CommandBarTheme.cpp
+        ${BML_SOURCE_DIR}/UI/ColorCodec.cpp
+)
+target_include_directories(CommandBarThemeTest PRIVATE
+        "${VIRTOOLS_SDK_INCLUDE_DIR}"
 )
 
 add_bml_test(ModMenuSessionTest

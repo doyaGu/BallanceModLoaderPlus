@@ -40,6 +40,7 @@ bool OpenModConfigCategory(ImGuiTestContext *ctx, const char *modName, const cha
 bool MenuPagesContain(ImGuiTestContext *ctx,
                       std::initializer_list<const char *> itemLabels);
 bool ToggleConfigBoolean(ImGuiTestContext *ctx, const char *path);
+bool ToggleConfigBooleanOnAnyPage(ImGuiTestContext *ctx, const char *path);
 bool SubmitConsoleCommand(ImGuiTestContext *ctx, const char *command);
 bool LeaveModListForOptions(ImGuiTestContext *ctx);
 bool EnterStartMenuFromModList(ImGuiTestContext *ctx);
