@@ -387,6 +387,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命令行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bml_3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -409,7 +420,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         排查问题
@@ -1982,6 +1993,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命令行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bml_3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2004,7 +2026,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         排查问题
@@ -2157,7 +2179,40 @@ id 的开发目录和 zip 包。新增 Mod 或修改依赖后应重启 Player。
 </tr>
 </tbody>
 </table>
-<p>命令栏支持历史和补全。输入 <code>help</code> 可以查看当前安装提供的命令。</p>
+<h2 id="_2">命令行<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>按 <code>/</code> 打开命令栏。它按 POSIX shell 的方式读取一行：</p>
+<ul>
+<li>未加引号的空格分隔单词。<code>'...'</code> 按字面保留，<code>"..."</code> 保留空格并允许其中的
+  <code>$NAME</code>，<code>$'...'</code> 解析 <code>\n</code>、<code>\e</code> 之类的转义。反斜杠只转义 shell 字符，
+  因此 <code>map load C:\Maps\x.nmo</code> 不需要加引号。</li>
+<li><code>a; b</code> 依次运行两者，<code>a &amp;&amp; b</code> 只在 <code>a</code> 成功时运行 <code>b</code>，<code>a || b</code> 只在失败时
+  运行，<code>a | b</code> 把 <code>a</code> 的输出交给 <code>b</code>。<code>$?</code> 是上一条命令的状态。<code># ...</code> 是注释。</li>
+<li><code>set NAME VALUE</code> 定义本次会话的变量，<code>set -U NAME VALUE</code> 跨会话保留，
+  <code>set -e NAME</code> 删除，<code>$NAME</code> 或 <code>${NAME}</code> 插入其值。<code>$(cmd)</code> 插入 <code>cmd</code> 的输出。</li>
+<li><code>alias name='cmd args'</code> 为一行的第一个词定义缩写；<code>alias</code> 列出全部，
+  <code>unalias name</code> 删除一个。别名会持久保存。</li>
+<li><code>history</code> 给历史行编号；<code>!!</code>、<code>!n</code>、<code>!-n</code>、<code>!text</code> 重新执行它们。</li>
+<li>管道过滤器：<code>grep</code>、<code>head</code>、<code>tail</code>、<code>wc</code>、<code>sort</code>、<code>uniq</code>、<code>xargs</code>。<code>true</code>
+  和 <code>false</code> 只设置状态，不做别的。</li>
+</ul>
+<p>编辑按键：Tab 补全命令、别名、<code>$</code> 变量和命令自己的参数，在 <code>;</code> 或 <code>|</code> 之后同样
+有效。上下方向键遍历历史，保留正在输入的文字并按它过滤。光标后面会出现来自
+历史的灰色建议，按 Right 或 End 接受。Ctrl+R 搜索历史，Ctrl+A 与 Ctrl+E 跳到
+行首行尾，Ctrl+U、Ctrl+K、Ctrl+W 分别剪切到行首、到行尾或一个词，Ctrl+Y 粘贴
+剪切的内容，Ctrl+L 清空消息板。未写完的行（例如没有闭合的引号或末尾的 <code>&amp;&amp;</code>）
+会要求再输入一行，而不是直接运行。续行向上扩展，因此补全、搜索或输入法候选栏
+始终位于当前编辑行下方，消息板位于整条命令上方；这些物理行在历史中仍是一条命令。</p>
+<p>变量、别名与历史保存在 <code>ModLoader/CommandBar.shell.json</code> 和
+<code>ModLoader/CommandBar.history</code>。在 <code>BML.cfg</code> 中设置 <code>CommandBar.KeepOpen</code>
+可以让命令运行后命令栏保持打开。输入 <code>help</code> 可以查看当前安装提供的命令。</p>
+<p><code>CommandBar</code> 配置分类还提供独立开关，可分别控制语法高亮、Tab 补全及候选栏、
+历史内联建议、Ctrl+R 反向搜索，以及上下方向键的历史导航。关闭命令栏时的定时通知
+和打开命令栏时的历史消息也可以通过 <code>ShowNotifications</code> 与 <code>ShowScrollback</code> 分别控制。
+这些设置可以在 Mod 菜单中修改，并会立即生效。</p>
+<p>语法高亮默认采用 Atom One Dark 配色。可以在 <code>CommandBarTheme</code> 分类中用
+<code>#RRGGBB</code> 或 <code>#RRGGBBAA</code> 分别修改每一种语法角色；格式无效时会回退到该角色的
+One Dark 默认颜色。有效的颜色值在 Mod 菜单中会使用调色盘按钮，主题修改同样会
+立即生效。</p>
 <h2 id="bml_3">更新 BML+<a class="headerlink" href="#bml_3" title="Permanent link">&para;</a></h2>
 <p>手动覆盖是默认且便于恢复的更新方式：</p>
 <ol>
@@ -2184,7 +2239,7 @@ Updater。</p>
 </ol>
 <p>如果需要保留 Mod、配置、地图和日志，请保留 <code>ModLoader</code>。只有确定要同时清除这些
 数据时才删除整个目录。</p>
-<h2 id="_2">排查问题<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h2 id="_3">排查问题<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <h3 id="bml_5">没有显示 BML+ 版本<a class="headerlink" href="#bml_5" title="Permanent link">&para;</a></h3>
 <ul>
 <li>确认 <code>BMLPlus.dll</code> 直接位于 <code>BuildingBlocks</code>。</li>

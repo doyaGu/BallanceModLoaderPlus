@@ -387,6 +387,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#command-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command line
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#update-bml" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1084,6 +1095,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#command-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command line
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#update-bml" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1266,8 +1288,50 @@ found and loaded. Script authors can also use <code>script status</code> and
 </tr>
 </tbody>
 </table>
-<p>The <code>/</code> command bar provides command history and completion. Run <code>help</code> to see
-the commands available in the current installation.</p>
+<h2 id="command-line">Command line<a class="headerlink" href="#command-line" title="Permanent link">&para;</a></h2>
+<p>Press <code>/</code> to open the command bar. It reads a line the way a POSIX shell does:</p>
+<ul>
+<li>Words are separated by unquoted spaces. <code>'...'</code> is literal, <code>"..."</code> keeps
+  spaces and allows <code>$NAME</code> inside, and <code>$'...'</code> resolves escapes such as <code>\n</code>
+  and <code>\e</code>. A backslash escapes only shell characters, so
+  <code>map load C:\Maps\x.nmo</code> needs no quoting.</li>
+<li><code>a; b</code> runs both, <code>a &amp;&amp; b</code> runs <code>b</code> only when <code>a</code> succeeded, <code>a || b</code> only
+  when it failed, and <code>a | b</code> feeds what <code>a</code> printed into <code>b</code>. <code>$?</code> holds the
+  status of the last command. <code># ...</code> is a comment.</li>
+<li><code>set NAME VALUE</code> defines a variable for this session, <code>set -U NAME VALUE</code>
+  keeps it across sessions, <code>set -e NAME</code> removes it, and <code>$NAME</code> or <code>${NAME}</code>
+  inserts it. <code>$(cmd)</code> inserts what <code>cmd</code> printed.</li>
+<li><code>alias name='cmd args'</code> defines a shortcut for the first word of a line;
+  <code>alias</code> lists them and <code>unalias name</code> removes one. Aliases persist.</li>
+<li><code>history</code> numbers past lines; <code>!!</code>, <code>!n</code>, <code>!-n</code>, and <code>!text</code> rerun them.</li>
+<li>Filters for pipelines: <code>grep</code>, <code>head</code>, <code>tail</code>, <code>wc</code>, <code>sort</code>, <code>uniq</code>, and
+  <code>xargs</code>. <code>true</code> and <code>false</code> set a status without doing anything.</li>
+</ul>
+<p>Editing keys: Tab completes commands, aliases, <code>$</code> variables, and a command's
+own arguments, also after <code>;</code> or <code>|</code>. Up and Down walk the history, keeping the
+text being typed and filtering by it. A grey suggestion from history follows the
+caret; Right or End accepts it. Ctrl+R searches the history, Ctrl+A and Ctrl+E
+jump to the line ends, Ctrl+U, Ctrl+K, and Ctrl+W cut to the start, to the end,
+or one word, Ctrl+Y pastes what was cut, and Ctrl+L clears the board. An
+unfinished line, such as an open quote or a trailing <code>&amp;&amp;</code>, asks for another row
+instead of running. Continuation rows grow upward so the completion/search/IME
+rail stays below the row being edited and the message board stays above the
+whole command. The physical rows are saved and recalled as one history entry.</p>
+<p>Variables, aliases, and history are stored in <code>ModLoader/CommandBar.shell.json</code>
+and <code>ModLoader/CommandBar.history</code>. Set <code>CommandBar.KeepOpen</code> in <code>BML.cfg</code> to
+keep the bar open after a command runs. Run <code>help</code> to see the commands available
+in the current installation.</p>
+<p>The <code>CommandBar</code> configuration category also provides independent switches for
+syntax highlighting, Tab completion and its candidate rail, inline history
+suggestions, Ctrl+R reverse search, and Up/Down history navigation. Timed
+notifications and the scrollback shown while the command bar is open can be
+controlled separately with <code>ShowNotifications</code> and <code>ShowScrollback</code>. These
+settings can be changed from the Mod Menu and take effect immediately.</p>
+<p>Syntax highlighting uses the Atom One Dark palette by default. Every role can
+be customised independently in the <code>CommandBarTheme</code> category with a
+<code>#RRGGBB</code> or <code>#RRGGBBAA</code> value; malformed values fall back to that role's One
+Dark default. Valid colour values use a palette button in the Mod Menu, and
+theme changes take effect immediately.</p>
 <h2 id="update-bml">Update BML+<a class="headerlink" href="#update-bml" title="Permanent link">&para;</a></h2>
 <p>Manual update is the normal recovery-safe path:</p>
 <ol>

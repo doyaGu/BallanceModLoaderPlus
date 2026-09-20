@@ -1315,7 +1315,7 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 </tr>
 <tr>
 <td><code>BML.h</code></td>
-<td>C ABI for version, loader and mod directories, command unregistration, memory, encoding, path, file, and Zip utilities</td>
+<td>C ABI for version, loader and mod directories, command unregistration, command status and piped input, memory, encoding, path, file, and Zip utilities</td>
 </tr>
 <tr>
 <td><code>BMLAll.h</code></td>
@@ -1511,10 +1511,32 @@ versions while continuing with other mods.</p>
 <p><code>IConfig</code> retrieves an <code>IProperty</code> by category and key. Properties can be
 String, Boolean, Integer, Float, or Keyboard Key and support current values,
 defaults, comments, and category comments. There is no separate UTF-16
-property API; use the explicit conversion functions in <code>BML.h</code> when needed.</p>
+property API; use the explicit conversion functions in <code>BML.h</code> when needed.
+The frozen <code>IProperty</code> vtable is not extended for presentation hints. Instead,
+call the <code>IConfig.h</code> C extension
+<code>BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR)</code> after
+<code>SetDefaultString</code> to present a <code>#RRGGBB</code> or <code>#RRGGBBAA</code> string with the Mod
+Menu colour picker. <code>BML_GetConfigPropertyEditor</code> reads the non-persisted hint.</p>
 <p><code>ICommand</code> provides the command name, aliases, description, cheat flag,
 execution, Tab completion, and basic Integer, Float, and Boolean parsers.
 <code>ILogger</code> provides three log levels.</p>
+<p>The console shell splits a line before <code>Execute</code> runs: unquoted whitespace
+separates words, <code>'...'</code>, <code>"..."</code>, and <code>$'...'</code> quote them, <code>$NAME</code> and <code>$(...)</code>
+expand, and <code>;</code>, <code>&amp;&amp;</code>, <code>||</code>, and <code>|</code> separate commands, so <code>Execute</code> receives
+one command at a time with quotes already removed. <code>args[0]</code> is the word that
+named the command, which is the alias when one was typed. A backslash outside
+quotes escapes only shell characters and stays literal otherwise, so Windows
+paths pass through unquoted. There is no word splitting after expansion: one
+word in the line is one element of <code>args</code>. Lines handed to
+<code>IBML::ExecuteCommand</code> go through the same shell.</p>
+<p><code>Execute</code> returns <code>void</code>, so two C exports in <code>BML.h</code> carry the rest of the
+shell contract. <code>BML_SetCommandStatus(int)</code> marks the running command failed
+for <code>&amp;&amp;</code>, <code>||</code>, and <code>$?</code>; without it a command counts as succeeded unless it
+throws or cannot be found. <code>BML_GetCommandInput(size_t *)</code> returns the text
+piped into the running command by <code>other | this</code>, or null when nothing was
+piped; the pointer belongs to the loader and lives until <code>Execute</code> returns.
+Output written with <code>SendIngameMessage</code> during a pipeline stage goes to the
+next stage rather than to the board.</p>
 <p><code>IBML::RegisterCommand</code> takes a raw <code>ICommand *</code> and the loader never deletes
 it. Registration returns <code>void</code> and only writes to the log when it fails, which
 happens for a null command, an invalid name or alias, and an already registered

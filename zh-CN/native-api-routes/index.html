@@ -2059,13 +2059,13 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 <td>控制台命令</td>
 <td><code>RegisterCommand</code> 加 <code>ICommand</code> 子类</td>
 <td>无</td>
-<td>注册走旧式 C++。注销是 C 导出 <code>BML_UnregisterCommand</code>，因为 <code>IBML</code> 已经无法再加函数。</td>
+<td>注册走旧式 C++。注销是 C 导出 <code>BML_UnregisterCommand</code>，因为 <code>IBML</code> 已经无法再加函数。正在运行的命令的退出状态和管道输入同样是 C 导出 <code>BML_SetCommandStatus</code> 与 <code>BML_GetCommandInput</code>，因为 <code>Execute</code> 返回 <code>void</code>。</td>
 </tr>
 <tr>
 <td>配置</td>
 <td><code>IMod::GetConfig</code> 加 <code>IConfig</code>、<code>IProperty</code></td>
-<td>无</td>
-<td>只有旧式 C++。</td>
+<td><code>BML_GetConfigPropertyEditor</code>、<code>BML_SetConfigPropertyEditor</code></td>
+<td>值仍走冻结的 C++ 接口；追加的 C 导出只附加不落盘的 Mod 菜单编辑器元数据，不改虚表。</td>
 </tr>
 <tr>
 <td>定时器</td>

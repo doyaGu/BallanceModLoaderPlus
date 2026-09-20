@@ -2391,9 +2391,29 @@ BML 版本要求，并可按需重写以下回调：</p>
 <p><code>IConfig</code> 按 Category/Key 获取 <code>IProperty</code>。属性类型为 String、Boolean、
 Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和 Category
 注释。它没有 UTF-16 专用属性接口；需要编码转换时使用 <code>BML.h</code> 中的显式
-转换函数。</p>
+转换函数。
+为了保持 <code>IProperty</code> 虚表不变，界面提示不增加虚函数。对字符串属性调用
+<code>SetDefaultString</code> 后，可用
+<code>IConfig.h</code> 的 C 扩展
+<code>BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR)</code> 让 Mod 菜单以
+调色盘编辑 <code>#RRGGBB</code> 或 <code>#RRGGBBAA</code>；<code>BML_GetConfigPropertyEditor</code> 可读取这项
+不写入配置文件的提示。</p>
 <p><code>ICommand</code> 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
 Integer、Float、Boolean 的基础解析函数。<code>ILogger</code> 提供三个日志级别。</p>
+<p>控制台 shell 会在 <code>Execute</code> 运行前拆分整行：未加引号的空白分隔单词，<code>'...'</code>、
+<code>"..."</code>、<code>$'...'</code> 是引号形式，<code>$NAME</code> 与 <code>$(...)</code> 会展开，<code>;</code>、<code>&amp;&amp;</code>、<code>||</code>、<code>|</code>
+分隔命令，因此 <code>Execute</code> 每次只收到一条命令，且引号已经去掉。<code>args[0]</code> 是命名
+该命令的那个词，输入的是别名时就是别名。引号之外的反斜杠只转义 shell 字符，
+其他情况原样保留，所以 Windows 路径不加引号也能通过。展开之后不再按空格拆分：
+一行里的一个词就是 <code>args</code> 的一个元素。交给 <code>IBML::ExecuteCommand</code> 的字符串走
+同一套 shell。</p>
+<p><code>Execute</code> 返回 <code>void</code>，所以 shell 约定的另一半由 <code>BML.h</code> 中的两个 C 导出承担。
+<code>BML_SetCommandStatus(int)</code> 把正在运行的命令标记为失败，供 <code>&amp;&amp;</code>、<code>||</code> 和 <code>$?</code>
+使用；不调用它，命令只有在抛出异常或找不到时才算失败。
+<code>BML_GetCommandInput(size_t *)</code> 返回 <code>other | this</code> 管道送进当前命令的文本，
+没有管道时返回空指针；指针属于 Loader，在 <code>Execute</code> 返回前有效。作为管道中间
+环节运行时，通过 <code>SendIngameMessage</code> 写出的内容会交给下一环节，而不是显示在
+消息板上。</p>
 <p><code>IBML::RegisterCommand</code> 接收裸 <code>ICommand *</code>，Loader 从不删除它。注册成功时没有
 任何返回信息，只在失败时写日志；失败的情况包括命令为空指针、命令名或别名非法、
 命令名已被注册。</p>

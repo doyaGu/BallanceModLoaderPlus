@@ -1183,13 +1183,13 @@ declared in the header of the same name under <code>include/BML/</code>; the res
 <td>Console commands</td>
 <td><code>RegisterCommand</code> plus an <code>ICommand</code> subclass</td>
 <td>none</td>
-<td>Frozen C++ to register. Removing one again is a C export, <code>BML_UnregisterCommand</code>, because <code>IBML</code> could not grow the function.</td>
+<td>Frozen C++ to register. Removing one again is a C export, <code>BML_UnregisterCommand</code>, because <code>IBML</code> could not grow the function. The exit status and the piped input of a running command are C exports too, <code>BML_SetCommandStatus</code> and <code>BML_GetCommandInput</code>, because <code>Execute</code> returns <code>void</code>.</td>
 </tr>
 <tr>
 <td>Configuration</td>
 <td><code>IMod::GetConfig</code> plus <code>IConfig</code> and <code>IProperty</code></td>
-<td>none</td>
-<td>Frozen C++ only.</td>
+<td><code>BML_GetConfigPropertyEditor</code>, <code>BML_SetConfigPropertyEditor</code></td>
+<td>Values stay on the frozen C++ interface; the additive C exports attach non-persisted Mod Menu editor metadata without changing its vtable.</td>
 </tr>
 <tr>
 <td>Timers</td>
