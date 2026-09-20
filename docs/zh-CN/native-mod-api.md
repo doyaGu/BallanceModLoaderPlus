@@ -199,6 +199,12 @@ BML 会调整初始化顺序，使已安装的依赖先于依赖方收到 `OnLoa
 Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和 Category
 注释。它没有 UTF-16 专用属性接口；需要编码转换时使用 `BML.h` 中的显式
 转换函数。
+为了保持 `IProperty` 虚表不变，界面提示不增加虚函数。对字符串属性调用
+`SetDefaultString` 后，可用
+`IConfig.h` 的 C 扩展
+`BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR)` 让 Mod 菜单以
+调色盘编辑 `#RRGGBB` 或 `#RRGGBBAA`；`BML_GetConfigPropertyEditor` 可读取这项
+不写入配置文件的提示。
 
 `ICommand` 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
 Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志级别。

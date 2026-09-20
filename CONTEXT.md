@@ -30,6 +30,13 @@ drafts, and reconciliation; Presentation owns the native-looking menu layout.
 Bui::Menu owns route and Page lifecycle. An unregistered Mod still gets its
 standard details and Config presentation.
 
+**Config Property Editor** — Optional, non-persisted schema metadata attached
+through `BML_GetConfigPropertyEditor` / `BML_SetConfigPropertyEditor`, keeping
+the frozen IProperty vtable unchanged. It selects a Built-in Mod Menu editor
+without changing the stored value type. The default follows PropertyType; the
+colour editor keeps STRING storage while presenting `#RRGGBB` or `#RRGGBBAA`
+through Bui.
+
 **Mod Menu Page** — An optional Native Mod page registered with a stable id,
 label, description, and draw callback. The loader keys it by owner and
 registration generation, so removing and re-registering an id cannot revive a

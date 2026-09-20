@@ -93,6 +93,17 @@ void OnModifyConfig(const BML::ModContext &in ctx,
 
 Use typed getters, setters, and defaults for string, boolean, integer, float,
 and key values. `OnModifyConfig` suppresses recursive edits of the same property.
+For a colour setting, keep the stored value portable as a string and opt into
+the Mod Menu picker explicitly:
+
+```angelscript
+BML::ConfigProperty@ accent = config.GetProperty("Appearance", "Accent");
+accent.SetDefaultString("#61AFEF");
+accent.SetEditor(BML::CONFIG_EDITOR_COLOR);
+```
+
+The picker accepts `#RRGGBB` and `#RRGGBBAA`; an invalid stored value remains a
+text field so the player can repair it.
 
 ## Input, state, UI commands, and speedrun timing
 

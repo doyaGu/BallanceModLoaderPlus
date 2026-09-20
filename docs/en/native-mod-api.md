@@ -217,6 +217,11 @@ versions while continuing with other mods.
 String, Boolean, Integer, Float, or Keyboard Key and support current values,
 defaults, comments, and category comments. There is no separate UTF-16
 property API; use the explicit conversion functions in `BML.h` when needed.
+The frozen `IProperty` vtable is not extended for presentation hints. Instead,
+call the `IConfig.h` C extension
+`BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR)` after
+`SetDefaultString` to present a `#RRGGBB` or `#RRGGBBAA` string with the Mod
+Menu colour picker. `BML_GetConfigPropertyEditor` reads the non-persisted hint.
 
 `ICommand` provides the command name, aliases, description, cheat flag,
 execution, Tab completion, and basic Integer, Float, and Boolean parsers.

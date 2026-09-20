@@ -63,6 +63,7 @@ bool show = prop.GetBoolean(true);
 | --- | --- |
 | SetDefaultBoolean/String/Integer/Float(v) | 设置默认值 |
 | SetComment(text) | 设置注释 |
+| SetEditor(CONFIG_EDITOR_COLOR) | 让字符串属性在 Mod 菜单中使用调色盘；支持 `#RRGGBB`、`#RRGGBBAA`，无效值仍可用文本框修复 |
 | GetBoolean/String/Integer/Float(default) | 读取，如未设置返回 default |
 | SetBoolean/String/Integer/Float(v) | 写入 |
 

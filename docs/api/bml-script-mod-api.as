@@ -158,6 +158,11 @@ enum ConfigPropertyType {
   CONFIG_PROPERTY_NONE = 5
 }
 
+enum ConfigPropertyEditor {
+  CONFIG_EDITOR_DEFAULT = 0,
+  CONFIG_EDITOR_COLOR = 1
+}
+
 enum TimerState {
   TIMER_IDLE = 0,
   TIMER_RUNNING = 1,
@@ -446,6 +451,7 @@ bool RadioButtonText(const string &in label, int &inout currentItem, const strin
 bool InputTextButton(const string &in label, string &inout value, int maxLength = 256);
 bool InputIntButton(const string &in label, int &inout value, int step = 1, int stepFast = 100);
 bool InputFloatButton(const string &in label, float &inout value, float step = 0.0f, float stepFast = 0.0f);
+bool ColorButton(const string &in label, ImVec4 &inout color);
 bool SearchBar(string &inout text, float x = 0.4f, float y = 0.18f, float width = 0.2f);
 
 void PlayMenuClickSound();
@@ -829,6 +835,8 @@ class ConfigProperty {
   bool IsValid() const;
   ConfigPropertyType get_Type() const;
   ConfigPropertyType GetType() const;
+  ConfigPropertyEditor get_Editor() const;
+  ConfigPropertyEditor GetEditor() const;
   string GetString(const string &in defaultValue = "") const;
   bool GetBoolean(bool defaultValue = false) const;
   int GetInteger(int defaultValue = 0) const;
@@ -840,6 +848,7 @@ class ConfigProperty {
   void SetFloat(float value) const;
   void SetKey(CKKEYBOARD value) const;
   void SetComment(const string &in comment) const;
+  void SetEditor(ConfigPropertyEditor editor) const;
   void SetDefaultString(const string &in value) const;
   void SetDefaultBoolean(bool value) const;
   void SetDefaultInteger(int value) const;

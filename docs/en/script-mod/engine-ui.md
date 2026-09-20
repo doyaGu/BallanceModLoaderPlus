@@ -191,6 +191,7 @@ materials explicitly.
 bool enabled = true;
 int count = 3;
 string search = "";
+ImVec4 accent = ImVec4(0.38f, 0.69f, 0.94f, 1.0f);
 
 void OnProcess(const BML::ModContext &in ctx) {
   BML::UI::Title("Example Script");
@@ -199,6 +200,7 @@ void OnProcess(const BML::ModContext &in ctx) {
     ctx.LogInfo("clicked");
   BML::UI::YesNoButton("Enabled", enabled);
   BML::UI::InputIntButton("Count", count);
+  BML::UI::ColorButton("Accent", accent);
   BML::UI::SearchBar(search);
 }
 ```

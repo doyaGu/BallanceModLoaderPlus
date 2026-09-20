@@ -96,7 +96,7 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Loader events | the `IMessageReceiver` virtuals on `IMod` | none | Handle the synchronous callback. Copy the required data into mod-owned storage if work must be deferred. |
 | Cheat mode | `EnableCheat` to set, `IsCheatEnabled` to read | `Runtime::ReadState` reads it | Read either, set through the frozen C++. |
 | Console commands | `RegisterCommand` plus an `ICommand` subclass | none | Frozen C++ to register. Removing one again is a C export, `BML_UnregisterCommand`, because `IBML` could not grow the function. The exit status and the piped input of a running command are C exports too, `BML_SetCommandStatus` and `BML_GetCommandInput`, because `Execute` returns `void`. |
-| Configuration | `IMod::GetConfig` plus `IConfig` and `IProperty` | none | Frozen C++ only. |
+| Configuration | `IMod::GetConfig` plus `IConfig` and `IProperty` | `BML_GetConfigPropertyEditor`, `BML_SetConfigPropertyEditor` | Values stay on the frozen C++ interface; the additive C exports attach non-persisted Mod Menu editor metadata without changing its vtable. |
 | Timers | `AddTimer`, `AddTimerLoop` | none | Frozen C++ only. |
 | Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |
 | Which mods are loaded, and dependencies | `GetModCount`, `GetMod`, `FindMod`, `RegisterDependency`, `CheckDependencies` | none | Frozen C++ only. |
