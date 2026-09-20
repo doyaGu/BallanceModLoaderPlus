@@ -1085,6 +1085,50 @@ public:
             BML_SetConfigPropertyEditor(property, static_cast<BML_ConfigPropertyEditor>(editor));
     }
 
+    bool SetChoices(const void *array) const {
+        IProperty *property = ResolveProperty();
+        BML::ScriptMod *owner = BMLAS_ResolveScriptModOwner(m_ModId);
+        if (!property || !owner || !array)
+            return false;
+
+        const CKAngelScriptAdapter::Api &api =
+            owner->GetRuntimeForFacade().GetApi();
+        if (!api.ArrayGetSize || !api.ArrayGetConstElementAddress)
+            return false;
+
+        CKDWORD count = 0;
+        if (api.ArrayGetSize(const_cast<void *>(array), &count) != CKAS_OK)
+            return false;
+
+        try {
+            std::vector<std::string> choices;
+            choices.reserve(count);
+            for (CKDWORD index = 0; index < count; ++index) {
+                const void *address = nullptr;
+                if (api.ArrayGetConstElementAddress(array, index, &address) != CKAS_OK ||
+                    !address) {
+                    return false;
+                }
+                choices.push_back(*static_cast<const std::string *>(address));
+            }
+
+            std::vector<const char *> values;
+            values.reserve(choices.size());
+            for (const std::string &choice : choices)
+                values.push_back(choice.c_str());
+            return BML_SetConfigPropertyChoices(
+                       property, values.data(), values.size()) != 0;
+        } catch (const std::bad_alloc &) {
+            BMLAS_SetActiveContextException(
+                "Out of memory copying configuration choices.");
+            return false;
+        } catch (...) {
+            BMLAS_SetActiveContextException(
+                "Unable to copy configuration choices.");
+            return false;
+        }
+    }
+
     void SetDefaultString(const std::string &value) const {
         if (IProperty *property = ResolveProperty())
             property->SetDefaultString(value.c_str());
@@ -2871,6 +2915,7 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ConfigProperty", "void SetKey(CKKEYBOARD value) const", "void ConfigProperty::SetKey(CKKEYBOARD value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetKey), asCALL_THISCALL},
     {"ConfigProperty", "void SetComment(const string &in comment) const", "void ConfigProperty::SetComment(const string &in comment) const", BML_AS_GENERIC_METHOD(&BMLAS_ConfigPropertyRef::SetComment), asCALL_GENERIC},
     {"ConfigProperty", "void SetEditor(ConfigPropertyEditor editor) const", "void ConfigProperty::SetEditor(ConfigPropertyEditor editor) const", asMETHOD(BMLAS_ConfigPropertyRef, SetEditor), asCALL_THISCALL},
+    {"ConfigProperty", "bool SetChoices(const array<string> &in choices) const", "bool ConfigProperty::SetChoices(const array<string> &in choices) const", asMETHOD(BMLAS_ConfigPropertyRef, SetChoices), asCALL_THISCALL},
     {"ConfigProperty", "void SetDefaultString(const string &in value) const", "void ConfigProperty::SetDefaultString(const string &in value) const", BML_AS_GENERIC_METHOD(&BMLAS_ConfigPropertyRef::SetDefaultString), asCALL_GENERIC},
     {"ConfigProperty", "void SetDefaultBoolean(bool value) const", "void ConfigProperty::SetDefaultBoolean(bool value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultBoolean), asCALL_THISCALL},
     {"ConfigProperty", "void SetDefaultInteger(int value) const", "void ConfigProperty::SetDefaultInteger(int value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultInteger), asCALL_THISCALL},

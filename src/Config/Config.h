@@ -20,6 +20,12 @@ class Property : public IProperty {
     friend BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property);
     friend int BML_SetConfigPropertyEditor(IProperty *property,
                                            BML_ConfigPropertyEditor editor);
+    friend std::size_t BML_GetConfigPropertyChoiceCount(const IProperty *property);
+    friend const char *BML_GetConfigPropertyChoice(const IProperty *property,
+                                                   std::size_t index);
+    friend int BML_SetConfigPropertyChoices(IProperty *property,
+                                            const char *const choices[],
+                                            std::size_t count);
 
 public:
     using Value = ConfigValue;
@@ -64,10 +70,12 @@ public:
 private:
     BML_ConfigPropertyEditor GetEditorMetadata() const;
     bool SetEditorMetadata(BML_ConfigPropertyEditor editor);
+    bool SetChoiceMetadata(const char *const choices[], std::size_t count);
 
     Value m_Value = 0;
     PropertyType m_Type = INTEGER;
     BML_ConfigPropertyEditor m_Editor = BML_CONFIG_EDITOR_DEFAULT;
+    std::vector<std::string> m_Choices;
     std::size_t m_Hash = 0;
     std::string m_Comment;
     std::string m_Category;

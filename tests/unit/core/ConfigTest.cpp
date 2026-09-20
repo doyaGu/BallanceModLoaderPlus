@@ -305,13 +305,50 @@ TEST_F(ConfigTest, PropertyEditorIsSchemaMetadata) {
     EXPECT_EQ(valueBeforeEditor, config->GetValueRevision());
     EXPECT_STREQ("#61AFEF", property->GetString());
 
+    EXPECT_EQ(1, BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_CHOICE));
+    EXPECT_EQ(BML_CONFIG_EDITOR_CHOICE, BML_GetConfigPropertyEditor(property));
+
     EXPECT_EQ(0, BML_SetConfigPropertyEditor(
                      property, static_cast<BML_ConfigPropertyEditor>(99)));
-    EXPECT_EQ(BML_CONFIG_EDITOR_COLOR, BML_GetConfigPropertyEditor(property));
+    EXPECT_EQ(BML_CONFIG_EDITOR_CHOICE, BML_GetConfigPropertyEditor(property));
 
     const std::uint64_t stableSchema = config->GetSchemaRevision();
-    EXPECT_EQ(1, BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR));
+    EXPECT_EQ(1, BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_CHOICE));
     EXPECT_EQ(stableSchema, config->GetSchemaRevision());
+}
+
+TEST_F(ConfigTest, PropertyChoicesAreSchemaMetadata) {
+    IProperty *property = config->GetProperty("Appearance", "Font");
+    property->SetDefaultString("unifont.otf");
+    EXPECT_EQ(0U, BML_GetConfigPropertyChoiceCount(nullptr));
+    EXPECT_EQ(nullptr, BML_GetConfigPropertyChoice(nullptr, 0));
+    EXPECT_EQ(0, BML_SetConfigPropertyChoices(property, nullptr, 1));
+    const char *nullChoice[] = {nullptr};
+    EXPECT_EQ(0, BML_SetConfigPropertyChoices(property, nullChoice, 1));
+
+    const char *choices[] = {"", "unifont.otf", "symbols.ttf"};
+    const std::uint64_t schemaBeforeChoices = config->GetSchemaRevision();
+    const std::uint64_t valueBeforeChoices = config->GetValueRevision();
+    EXPECT_EQ(1, BML_SetConfigPropertyChoices(property, choices, 3));
+    EXPECT_GT(config->GetSchemaRevision(), schemaBeforeChoices);
+    EXPECT_EQ(valueBeforeChoices, config->GetValueRevision());
+    ASSERT_EQ(3U, BML_GetConfigPropertyChoiceCount(property));
+    EXPECT_STREQ("", BML_GetConfigPropertyChoice(property, 0));
+    EXPECT_STREQ("unifont.otf", BML_GetConfigPropertyChoice(property, 1));
+    EXPECT_STREQ("symbols.ttf", BML_GetConfigPropertyChoice(property, 2));
+    EXPECT_EQ(nullptr, BML_GetConfigPropertyChoice(property, 3));
+    EXPECT_STREQ("unifont.otf", property->GetString());
+
+    const std::uint64_t stableSchema = config->GetSchemaRevision();
+    EXPECT_EQ(1, BML_SetConfigPropertyChoices(property, choices, 3));
+    EXPECT_EQ(stableSchema, config->GetSchemaRevision());
+
+    const char *duplicates[] = {"same", "same"};
+    EXPECT_EQ(0, BML_SetConfigPropertyChoices(property, duplicates, 2));
+    EXPECT_EQ(3U, BML_GetConfigPropertyChoiceCount(property));
+
+    EXPECT_EQ(1, BML_SetConfigPropertyChoices(property, nullptr, 0));
+    EXPECT_EQ(0U, BML_GetConfigPropertyChoiceCount(property));
 }
 
 TEST_F(ConfigTest, VariantValueKeepsIntegerAndKeySemanticsDistinct) {

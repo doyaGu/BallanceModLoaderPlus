@@ -105,6 +105,18 @@ accent.SetEditor(BML::CONFIG_EDITOR_COLOR);
 The picker accepts `#RRGGBB` and `#RRGGBBAA`; an invalid stored value remains a
 text field so the player can repair it.
 
+For a finite string setting, provide its values and select the choice editor:
+
+```angelscript
+BML::ConfigProperty@ quality = config.GetProperty("Display", "Quality");
+quality.SetDefaultString("High");
+array<string> choices = {"Low", "Medium", "High"};
+quality.SetChoices(choices);
+quality.SetEditor(BML::CONFIG_EDITOR_CHOICE);
+```
+
+`SetChoices` copies the array and returns false for invalid duplicate values.
+
 ## Input, state, UI commands, and speedrun timing
 
 Input is borrowed through `ctx.BorrowInputManager()` and used within the current

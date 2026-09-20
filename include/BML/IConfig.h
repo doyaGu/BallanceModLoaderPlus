@@ -36,6 +36,7 @@
 typedef enum BML_ConfigPropertyEditor {
     BML_CONFIG_EDITOR_DEFAULT = 0,
     BML_CONFIG_EDITOR_COLOR = 1,
+    BML_CONFIG_EDITOR_CHOICE = 2,
 } BML_ConfigPropertyEditor;
 
 // One setting. The loader owns it, it lives as long as the config does, and a Mod
@@ -104,12 +105,26 @@ public:
 
 BML_BEGIN_CDECLS
 
-// ABI-safe extensions for the frozen IProperty interface. The colour editor is
-// meaningful for STRING properties containing #RRGGBB or #RRGGBBAA. Metadata is
-// not persisted. Get returns DEFAULT for null or unsupported property objects;
-// Set returns 1 on success and 0 for null, unsupported, or invalid input.
+// ABI-safe extensions for the frozen IProperty interface. COLOR is meaningful
+// for STRING properties containing #RRGGBB or #RRGGBBAA. CHOICE presents a
+// STRING property's ordered finite choices. Metadata is not
+// persisted. Get returns DEFAULT for null or unsupported property objects; Set
+// returns 1 on success and 0 for null, unsupported, or invalid input.
 BML_EXPORT BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property);
 BML_EXPORT int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor);
+
+// Replaces the copied choice metadata in display order. An empty string is a
+// valid choice; its presentation is chosen by the editor. Passing a null
+// choices pointer is valid only when count is zero. Returned strings belong to
+// the property and remain valid until its choices are replaced or the property
+// is destroyed. Count/Get
+// return 0/null for a null or unsupported property or an out-of-range index;
+// Set returns 0 for those properties, invalid input, duplicates, or allocation
+// failure.
+BML_EXPORT size_t BML_GetConfigPropertyChoiceCount(const IProperty *property);
+BML_EXPORT const char *BML_GetConfigPropertyChoice(const IProperty *property, size_t index);
+BML_EXPORT int BML_SetConfigPropertyChoices(IProperty *property,
+                                            const char *const choices[], size_t count);
 
 BML_END_CDECLS
 

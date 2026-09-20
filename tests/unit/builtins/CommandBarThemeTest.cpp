@@ -18,7 +18,8 @@ BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property) 
 
 int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor) {
     if (!property || (editor != BML_CONFIG_EDITOR_DEFAULT &&
-                      editor != BML_CONFIG_EDITOR_COLOR))
+                      editor != BML_CONFIG_EDITOR_COLOR &&
+                      editor != BML_CONFIG_EDITOR_CHOICE))
         return 0;
     g_PropertyEditors[property] = editor;
     return 1;

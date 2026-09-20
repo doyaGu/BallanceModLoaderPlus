@@ -186,6 +186,8 @@ static const ScriptEnumValueDescriptor kConfigPropertyEditorValues[] = {
      "ConfigPropertyEditor::CONFIG_EDITOR_DEFAULT"},
     {"CONFIG_EDITOR_COLOR", BML_CONFIG_EDITOR_COLOR,
      "ConfigPropertyEditor::CONFIG_EDITOR_COLOR"},
+    {"CONFIG_EDITOR_CHOICE", BML_CONFIG_EDITOR_CHOICE,
+     "ConfigPropertyEditor::CONFIG_EDITOR_CHOICE"},
 };
 
 static const ScriptEnumValueDescriptor kTimerStateValues[] = {

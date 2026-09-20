@@ -5,6 +5,7 @@
 #include <iterator>
 #include <memory>
 #include <sstream>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -536,16 +537,68 @@ int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor ed
     return concrete && concrete->SetEditorMetadata(editor) ? 1 : 0;
 }
 
+size_t BML_GetConfigPropertyChoiceCount(const IProperty *property) {
+    const auto *concrete = dynamic_cast<const Property *>(property);
+    return concrete ? concrete->m_Choices.size() : 0;
+}
+
+const char *BML_GetConfigPropertyChoice(const IProperty *property, size_t index) {
+    const auto *concrete = dynamic_cast<const Property *>(property);
+    return concrete && index < concrete->m_Choices.size()
+        ? concrete->m_Choices[index].c_str()
+        : nullptr;
+}
+
+int BML_SetConfigPropertyChoices(IProperty *property,
+                                 const char *const choices[], size_t count) {
+    auto *concrete = dynamic_cast<Property *>(property);
+    if (!concrete)
+        return 0;
+    try {
+        return concrete->SetChoiceMetadata(choices, count) ? 1 : 0;
+    } catch (...) {
+        return 0;
+    }
+}
+
 BML_ConfigPropertyEditor Property::GetEditorMetadata() const {
     return m_Editor;
 }
 
 bool Property::SetEditorMetadata(BML_ConfigPropertyEditor editor) {
-    if (editor != BML_CONFIG_EDITOR_DEFAULT && editor != BML_CONFIG_EDITOR_COLOR)
+    if (editor != BML_CONFIG_EDITOR_DEFAULT &&
+        editor != BML_CONFIG_EDITOR_COLOR &&
+        editor != BML_CONFIG_EDITOR_CHOICE) {
         return false;
+    }
     if (m_Editor == editor)
         return true;
     m_Editor = editor;
+    if (m_Config)
+        m_Config->TouchSchema();
+    return true;
+}
+
+bool Property::SetChoiceMetadata(const char *const choices[], std::size_t count) {
+    if (!choices && count != 0)
+        return false;
+
+    std::vector<std::string> next;
+    next.reserve(count);
+    std::unordered_set<std::string_view> seen;
+    seen.reserve(count);
+    for (std::size_t index = 0; index < count; ++index) {
+        if (!choices[index])
+            return false;
+        const std::string_view choice(choices[index]);
+        if (!seen.emplace(choice).second)
+            return false;
+        next.emplace_back(choice);
+    }
+
+    if (m_Choices == next)
+        return true;
+    m_Choices = std::move(next);
     if (m_Config)
         m_Config->TouchSchema();
     return true;

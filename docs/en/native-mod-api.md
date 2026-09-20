@@ -221,7 +221,12 @@ The frozen `IProperty` vtable is not extended for presentation hints. Instead,
 call the `IConfig.h` C extension
 `BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR)` after
 `SetDefaultString` to present a `#RRGGBB` or `#RRGGBBAA` string with the Mod
-Menu colour picker. `BML_GetConfigPropertyEditor` reads the non-persisted hint.
+Menu colour picker. For a finite string setting, copy its values with
+`BML_SetConfigPropertyChoices` and select `BML_CONFIG_EDITOR_CHOICE` to show a
+RadioButton instead of a text field; an empty value is shown as `None`.
+The current stored value remains selectable even when it is not in the list.
+`BML_GetConfigPropertyEditor` and the choice accessors read this non-persisted
+metadata.
 
 `ICommand` provides the command name, aliases, description, cheat flag,
 execution, Tab completion, and basic Integer, Float, and Boolean parsers.

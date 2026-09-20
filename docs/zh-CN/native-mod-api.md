@@ -203,8 +203,11 @@ Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和
 `SetDefaultString` 后，可用
 `IConfig.h` 的 C 扩展
 `BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR)` 让 Mod 菜单以
-调色盘编辑 `#RRGGBB` 或 `#RRGGBBAA`；`BML_GetConfigPropertyEditor` 可读取这项
-不写入配置文件的提示。
+调色盘编辑 `#RRGGBB` 或 `#RRGGBBAA`。有限选项的字符串属性可先用
+`BML_SetConfigPropertyChoices` 复制候选值，再选择
+`BML_CONFIG_EDITOR_CHOICE`，Mod 菜单就会用 RadioButton 代替文本框；空字符串
+显示为 `None`，当前值即使不在列表中也仍可选择。`BML_GetConfigPropertyEditor`
+和候选值读取函数可读取这些不写入配置文件的元数据。
 
 `ICommand` 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
 Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志级别。
