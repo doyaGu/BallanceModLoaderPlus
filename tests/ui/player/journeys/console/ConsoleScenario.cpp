@@ -17,6 +17,111 @@ void RegisterConsoleScenario(ImGuiTestEngine *engine) {
         IM_CHECK(WaitForItem(ctx, "**/ui-automation-console"));
         IM_CHECK(CaptureSurface(ctx, SurfaceCapture::Console));
 
+        // A command list runs both halves in order.
+        IM_CHECK(SubmitConsoleCommand(ctx, "echo -n alpha && echo -n beta"));
+        IM_CHECK(WaitForItem(ctx, "**/alpha"));
+        IM_CHECK(WaitForItem(ctx, "**/beta"));
+
+        // A pipeline hands the first stage's output to the second; only the
+        // filtered line reaches the board.
+        IM_CHECK(SubmitConsoleCommand(ctx, "echo $'p1\\np2' | grep p2"));
+        IM_CHECK(WaitForItem(ctx, "**/p2"));
+
+        // Tab completes the command word after a separator.
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->ItemClick("**/##CmdBar");
+        ctx->KeyChars("echo -n tab-a; ech");
+        ctx->KeyPress(ImGuiKey_Tab);
+        ctx->KeyChars("-n tab-b");
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/tab-b"));
+
+        // A trailing operator keeps the bar open and grows it upward. Opening
+        // and dismissing an ambiguous completion rail must not clear the
+        // pending row; the message board still receives both commands.
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->ItemClick("**/##CmdBar");
+        ctx->KeyChars("echo -n multi-a &&");
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->KeyChars("e");
+        ctx->KeyPress(ImGuiKey_Tab);
+        ctx->Yield(2);
+        ctx->KeyPress(ImGuiKey_Escape);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_A);
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_K);
+        ctx->KeyChars("echo -n multi-b");
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/multi-a"));
+        IM_CHECK(WaitForItem(ctx, "**/multi-b"));
+
+        // Recalling a multi-line history entry restores its previous rows
+        // instead of embedding hidden newlines in the one-line text field.
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->ItemClick("**/##CmdBar");
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_L);
+        ctx->KeyPress(ImGuiKey_UpArrow);
+        ctx->Yield(2);
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_A);
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_K);
+        ctx->KeyChars("echo -n multi-history");
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/multi-a"));
+        IM_CHECK(WaitForItem(ctx, "**/multi-history"));
+
+        // An empty continuation row can accept the remaining physical rows of
+        // a history suggestion without duplicating the pending prefix.
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->ItemClick("**/##CmdBar");
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_L);
+        ctx->KeyChars("echo -n multi-a &&");
+        ctx->KeyPress(ImGuiKey_Enter);
+        ctx->Yield(2);
+        ctx->KeyPress(ImGuiKey_End);
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/multi-a"));
+        IM_CHECK(WaitForItem(ctx, "**/multi-history"));
+
+        // Reverse search previews embedded newlines in its one-row rail, then
+        // restores the selected entry as real continuation rows.
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->ItemClick("**/##CmdBar");
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_L);
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_R);
+        ctx->Yield(2);
+        ctx->KeyChars("multi-history");
+        ctx->KeyPress(ImGuiKey_Enter);
+        ctx->Yield(2);
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/multi-a"));
+        IM_CHECK(WaitForItem(ctx, "**/multi-history"));
+
+        // Argument completion keeps the command context across a backslash
+        // continuation. Completing -n inserts the separating space.
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->ItemClick("**/##CmdBar");
+        ctx->KeyChars("echo \\");
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->KeyChars("-n");
+        ctx->KeyPress(ImGuiKey_Tab);
+        ctx->KeyChars("multi-completion");
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/multi-completion"));
+
         ctx->KeyPress(ImGuiKey_Slash);
         IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
         ctx->KeyPress(ImGuiKey_Escape);

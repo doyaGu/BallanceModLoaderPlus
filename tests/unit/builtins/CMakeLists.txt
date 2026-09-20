@@ -13,6 +13,12 @@ add_bml_test(CommandCompletionTest
         utf8
 )
 
+add_bml_test(CommandInputTest
+        SOURCES
+        CommandInputTest.cpp
+        ${BML_SOURCE_DIR}/Console/CommandInput.cpp
+)
+
 add_bml_test(ModMenuSessionTest
         SOURCES
         ModMenuSessionTest.cpp
@@ -80,4 +86,101 @@ add_bml_test(CommandContextTest
         ${BML_SOURCE_DIR}/Console/CommandContext.cpp
         DEPENDENCIES
         BMLUtils
+)
+
+set(BML_SHELL_CORE_SOURCES
+        ${BML_SOURCE_DIR}/Console/Shell/ShellExecutor.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellExpander.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellLexer.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellParser.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
+)
+
+add_bml_test(ShellLexerTest
+        SOURCES
+        ShellLexerTest.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellCompletion.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellLexer.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
+        DEPENDENCIES
+        BML_StringUtils
+        utf8
+)
+
+add_bml_test(ShellQuotingTest
+        SOURCES
+        ShellQuotingTest.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellLexer.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
+        DEPENDENCIES
+        BML_StringUtils
+        utf8
+)
+
+add_bml_test(ShellParserTest
+        SOURCES
+        ShellParserTest.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellLexer.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellParser.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
+        DEPENDENCIES
+        BML_StringUtils
+        utf8
+)
+
+add_bml_test(ShellExecutorTest
+        SOURCES
+        ShellExecutorTest.cpp
+        ${BML_SHELL_CORE_SOURCES}
+        DEPENDENCIES
+        BML_StringUtils
+        utf8
+)
+
+add_bml_test(ShellEnvironmentTest
+        SOURCES
+        ShellEnvironmentTest.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellEnvironment.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
+        DEPENDENCIES
+        BMLUtils
+)
+
+add_bml_test(FilterCommandsTest
+        SOURCES
+        FilterCommandsTest.cpp
+        ${BML_SOURCE_DIR}/Console/CommandContext.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/FilterCommands.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellBuiltins.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellEnvironment.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellIo.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
+        DEPENDENCIES
+        BMLUtils
+        onig
+)
+target_include_directories(FilterCommandsTest PRIVATE
+        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+)
+
+add_bml_test(ShellHistoryTest
+        SOURCES
+        ShellHistoryTest.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellHistory.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
+        DEPENDENCIES
+        BMLUtils
+)
+
+add_bml_test(ShellCompletionTest
+        SOURCES
+        ShellCompletionTest.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellCompletion.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellHighlighter.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellLexer.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellParser.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
+        DEPENDENCIES
+        BML_StringUtils
+        utf8
 )

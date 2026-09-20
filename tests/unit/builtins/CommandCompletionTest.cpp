@@ -30,32 +30,3 @@ TEST(CommandCompletionTest, InvalidUtf8HasNoCompletablePrefix) {
 
     EXPECT_EQ(CommandCompletion::CommonPrefixLength(candidates), 0u);
 }
-
-TEST(CommandCompletionTest, TokenRangePreservesExistingSeparator) {
-    const std::string text = "map so tail";
-    const CommandCompletion::TokenRange range =
-        CommandCompletion::FindTokenRange(text, 6);
-
-    EXPECT_EQ(range.begin, 4u);
-    EXPECT_EQ(range.end, 6u);
-    EXPECT_TRUE(range.followedByWhitespace);
-}
-
-TEST(CommandCompletionTest, TokenRangeCoversTextOnBothSidesOfCursor) {
-    const std::string text = "map something tail";
-    const CommandCompletion::TokenRange range =
-        CommandCompletion::FindTokenRange(text, 8);
-
-    EXPECT_EQ(text.substr(range.begin, range.end - range.begin), "something");
-    EXPECT_TRUE(range.followedByWhitespace);
-}
-
-TEST(CommandCompletionTest, EmptyTrailingTokenNeedsSeparator) {
-    const std::string text = "map ";
-    const CommandCompletion::TokenRange range =
-        CommandCompletion::FindTokenRange(text, text.size());
-
-    EXPECT_EQ(range.begin, text.size());
-    EXPECT_EQ(range.end, text.size());
-    EXPECT_FALSE(range.followedByWhitespace);
-}

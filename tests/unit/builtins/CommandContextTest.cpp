@@ -418,59 +418,6 @@ TEST_F(CommandContextTest, OutputFFormatting) {
     EXPECT_EQ("Hello world, count=42", captured);
 }
 
-// ParseCommandLine
-TEST_F(CommandContextTest, ParseCommandLineBasic) {
-    auto args = BML::CommandContext::ParseCommandLine("hello world");
-    ASSERT_EQ(2u, args.size());
-    EXPECT_EQ("hello", args[0]);
-    EXPECT_EQ("world", args[1]);
-}
-
-TEST_F(CommandContextTest, ParseCommandLineEmpty) {
-    auto args = BML::CommandContext::ParseCommandLine("");
-    EXPECT_TRUE(args.empty());
-
-    args = BML::CommandContext::ParseCommandLine(nullptr);
-    EXPECT_TRUE(args.empty());
-}
-
-TEST_F(CommandContextTest, ParseCommandLineMultipleSpaces) {
-    auto args = BML::CommandContext::ParseCommandLine("  hello   world  ");
-    ASSERT_EQ(2u, args.size());
-    EXPECT_EQ("hello", args[0]);
-    EXPECT_EQ("world", args[1]);
-}
-
-TEST_F(CommandContextTest, ParseCommandLinePreservesWhitespaceInsideQuotes) {
-    bool trailingSeparator = true;
-    auto args = BML::CommandContext::ParseCommandLine(
-        "map load \"folder/my  map.nmo\"", &trailingSeparator);
-    ASSERT_EQ(3u, args.size());
-    EXPECT_EQ("map", args[0]);
-    EXPECT_EQ("load", args[1]);
-    EXPECT_EQ("folder/my  map.nmo", args[2]);
-    EXPECT_FALSE(trailingSeparator);
-}
-
-TEST_F(CommandContextTest, ParseCommandLineReportsOnlyUnquotedTrailingSeparators) {
-    bool trailingSeparator = false;
-    auto args = BML::CommandContext::ParseCommandLine("map load ", &trailingSeparator);
-    ASSERT_EQ(2u, args.size());
-    EXPECT_TRUE(trailingSeparator);
-
-    args = BML::CommandContext::ParseCommandLine(
-        "map load \"folder/my  ", &trailingSeparator);
-    ASSERT_EQ(3u, args.size());
-    EXPECT_EQ("folder/my  ", args[2]);
-    EXPECT_FALSE(trailingSeparator);
-}
-
-TEST_F(CommandContextTest, ParseCommandLineSingleArg) {
-    auto args = BML::CommandContext::ParseCommandLine("test");
-    ASSERT_EQ(1u, args.size());
-    EXPECT_EQ("test", args[0]);
-}
-
 TEST(ICommandParse, ParseFloatKeepsNegativeValuesByDefault) {
     EXPECT_FLOAT_EQ(-1.5f, ICommand::ParseFloat("-1.5"));
     EXPECT_FLOAT_EQ(-1000.0f, ICommand::ParseFloat("-1000"));
