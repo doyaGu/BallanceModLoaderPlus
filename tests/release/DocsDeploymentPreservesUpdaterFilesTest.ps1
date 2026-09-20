@@ -15,6 +15,7 @@ function Assert-ContainsLiteral {
 }
 
 $docsYaml = Get-Content -LiteralPath (Join-Path $SourceRoot '.github\workflows\docs.yml') -Raw
+$docsYaml = $docsYaml.Replace("`r`n", "`n").Replace("`r", "`n")
 Assert-ContainsLiteral `
     -Text $docsYaml `
     -Expected '! -name "updates"' `
