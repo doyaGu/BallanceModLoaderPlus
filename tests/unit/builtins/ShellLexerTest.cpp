@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include "Console/Shell/ShellCompletion.h"
 #include "Console/Shell/ShellLexer.h"
 
 using namespace BML::Shell;
@@ -136,14 +135,51 @@ TEST(ShellLexer, LoneAmpersandAndParensAreErrors) {
 }
 
 TEST(ShellLexer, UnterminatedConstructsAreIncomplete) {
-    EXPECT_TRUE(Lex("echo 'abc").incomplete);
-    EXPECT_TRUE(Lex("echo \"abc").incomplete);
-    EXPECT_TRUE(Lex("echo $'abc").incomplete);
-    EXPECT_TRUE(Lex("echo $(abc").incomplete);
-    EXPECT_TRUE(Lex("echo `abc").incomplete);
-    EXPECT_TRUE(Lex("echo ${abc").incomplete);
-    EXPECT_TRUE(Lex("echo abc \\").incomplete);
-    EXPECT_FALSE(Lex("echo 'abc").error);
+    struct Case {
+        const char *text;
+        IncompleteKind kind;
+        std::size_t begin;
+    };
+    const Case cases[] = {
+        {"echo 'abc", IncompleteKind::SingleQuote, 5},
+        {"echo \"abc", IncompleteKind::DoubleQuote, 5},
+        {"echo $'abc", IncompleteKind::AnsiCQuote, 5},
+        {"echo $(abc", IncompleteKind::CommandSubstitution, 5},
+        {"echo `abc", IncompleteKind::BacktickSubstitution, 5},
+        {"echo ${abc", IncompleteKind::BracedVariable, 5},
+        {"echo abc \\", IncompleteKind::LineContinuation, 9},
+    };
+
+    for (const Case &test : cases) {
+        const LexResult result = Lex(test.text);
+        EXPECT_TRUE(result.incomplete) << test.text;
+        EXPECT_FALSE(result.error) << test.text;
+        EXPECT_EQ(test.kind, result.incompleteKind) << test.text;
+        EXPECT_EQ(test.begin, result.incompleteBegin) << test.text;
+        EXPECT_EQ(std::string_view(test.text).size(), result.errorPos) << test.text;
+    }
+
+    EXPECT_EQ(IncompleteKind::None, Lex("echo complete").incompleteKind);
+    EXPECT_EQ(IncompleteKind::None, Lex("echo & error").incompleteKind);
+}
+
+TEST(ShellLexer, IncompleteConstructReportsItsOpeningOffset) {
+    LexResult result = Lex("echo $(one $(two");
+    ASSERT_TRUE(result.incomplete);
+    EXPECT_EQ(IncompleteKind::CommandSubstitution, result.incompleteKind);
+    EXPECT_EQ(11u, result.incompleteBegin);
+    EXPECT_EQ(13u, result.activeCommandBegin);
+
+    result = Lex("echo $(map load \"ot");
+    ASSERT_TRUE(result.incomplete);
+    EXPECT_EQ(IncompleteKind::DoubleQuote, result.incompleteKind);
+    EXPECT_EQ(16u, result.incompleteBegin);
+    EXPECT_EQ(7u, result.activeCommandBegin);
+
+    result = Lex("echo \"open");
+    ASSERT_TRUE(result.incomplete);
+    EXPECT_EQ(5u, result.incompleteBegin);
+    EXPECT_EQ(std::string_view::npos, result.activeCommandBegin);
 }
 
 TEST(ShellLexer, LineContinuationJoinsRows) {
@@ -153,9 +189,31 @@ TEST(ShellLexer, LineContinuationJoinsRows) {
 }
 
 TEST(ShellLexer, IncompleteInputKeepsPartialWord) {
-    const LexResult result = Lex("map load \"folder/my  ");
+    LexResult result = Lex("map load \"folder/my  ");
     ASSERT_TRUE(result.incomplete);
     EXPECT_EQ((std::vector<std::string>{"map", "load", "folder/my  "}), Words(result));
+
+    const std::string substitution = "echo $(map load \"ot";
+    result = Lex(substitution);
+    ASSERT_TRUE(result.incomplete);
+    ASSERT_EQ(2u, result.tokens.size());
+    ASSERT_EQ(1u, result.tokens.back().parts.size());
+    EXPECT_EQ(WordPart::Kind::Substitution, result.tokens.back().parts[0].kind);
+    EXPECT_EQ(substitution.size(), result.tokens.back().parts[0].end);
+    EXPECT_EQ(substitution.size(), result.tokens.back().end);
+}
+
+TEST(ShellLexer, IncompleteAnsiCQuoteKeepsPartialWordAndRange) {
+    const std::string text = "map load $'ot";
+    const LexResult result = Lex(text);
+
+    ASSERT_TRUE(result.incomplete);
+    ASSERT_EQ(3u, result.tokens.size());
+    ASSERT_EQ(1u, result.tokens.back().parts.size());
+    EXPECT_EQ(IncompleteKind::AnsiCQuote, result.incompleteKind);
+    EXPECT_EQ("ot", LiteralText(result.tokens.back().parts));
+    EXPECT_EQ(text.size(), result.tokens.back().parts.back().end);
+    EXPECT_EQ(text.size(), result.tokens.back().end);
 }
 
 TEST(ShellLexer, Utf8PassesThrough) {
@@ -175,41 +233,4 @@ TEST(ShellLexer, TokenRangesCoverSource) {
     EXPECT_EQ(10u, result.tokens[1].end);
     EXPECT_EQ(11u, result.tokens[2].begin);
     EXPECT_EQ(12u, result.tokens[2].end);
-}
-
-// SplitArguments feeds ICommand::GetTabCompletion.
-TEST(ShellSplitArguments, BasicSplitting) {
-    const ArgumentSplit split = SplitArguments("hello world");
-    EXPECT_EQ((std::vector<std::string>{"hello", "world"}), split.args);
-    EXPECT_FALSE(split.trailingSeparator);
-}
-
-TEST(ShellSplitArguments, ReportsTrailingSeparatorOnlyOutsideQuotes) {
-    ArgumentSplit split = SplitArguments("map load ");
-    EXPECT_EQ((std::vector<std::string>{"map", "load"}), split.args);
-    EXPECT_TRUE(split.trailingSeparator);
-
-    split = SplitArguments("map load \"folder/my  ");
-    EXPECT_EQ((std::vector<std::string>{"map", "load", "folder/my  "}), split.args);
-    EXPECT_FALSE(split.trailingSeparator);
-}
-
-TEST(ShellSplitArguments, UsesCommandAfterLastOperator) {
-    ArgumentSplit split = SplitArguments("echo a && map lo");
-    EXPECT_EQ((std::vector<std::string>{"map", "lo"}), split.args);
-
-    split = SplitArguments("echo a | ");
-    EXPECT_TRUE(split.args.empty());
-    EXPECT_TRUE(split.trailingSeparator);
-
-    split = SplitArguments("echo a;");
-    EXPECT_TRUE(split.args.empty());
-    EXPECT_FALSE(split.trailingSeparator);
-}
-
-TEST(ShellSplitArguments, EmptyAndNullLikeInput) {
-    EXPECT_TRUE(SplitArguments("").args.empty());
-    EXPECT_FALSE(SplitArguments("").trailingSeparator);
-    const ArgumentSplit split = SplitArguments("test");
-    EXPECT_EQ((std::vector<std::string>{"test"}), split.args);
 }

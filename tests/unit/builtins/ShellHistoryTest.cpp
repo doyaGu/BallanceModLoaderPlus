@@ -36,6 +36,27 @@ TEST(ShellHistory, AddMovesDuplicatesToNewest) {
     EXPECT_TRUE(history.Empty());
 }
 
+TEST(ShellHistory, RevisionChangesOnlyWhenEntriesChange) {
+    History history;
+    const std::uint64_t emptyRevision = history.Revision();
+    history.Add("");
+    EXPECT_EQ(emptyRevision, history.Revision());
+
+    history.Add("echo one");
+    const std::uint64_t addedRevision = history.Revision();
+    EXPECT_GT(addedRevision, emptyRevision);
+    history.Add("echo one");
+    EXPECT_EQ(addedRevision, history.Revision());
+
+    history.Add("echo two");
+    EXPECT_GT(history.Revision(), addedRevision);
+    const std::uint64_t beforeErase = history.Revision();
+    EXPECT_FALSE(history.Erase(99));
+    EXPECT_EQ(beforeErase, history.Revision());
+    EXPECT_TRUE(history.Erase(1));
+    EXPECT_GT(history.Revision(), beforeErase);
+}
+
 TEST(ShellHistory, RejectsEntriesThatCannotBeExecuted) {
     History history;
     history.Add(std::string(Limits::MaxLineBytes + 1, 'x'));

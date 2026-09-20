@@ -99,7 +99,6 @@ set(BML_SHELL_CORE_SOURCES
 add_bml_test(ShellLexerTest
         SOURCES
         ShellLexerTest.cpp
-        ${BML_SOURCE_DIR}/Console/Shell/ShellCompletion.cpp
         ${BML_SOURCE_DIR}/Console/Shell/ShellLexer.cpp
         ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
         DEPENDENCIES
@@ -120,6 +119,18 @@ add_bml_test(ShellQuotingTest
 add_bml_test(ShellParserTest
         SOURCES
         ShellParserTest.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellLexer.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellParser.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
+        DEPENDENCIES
+        BML_StringUtils
+        utf8
+)
+
+add_bml_test(ShellEditingTest
+        SOURCES
+        ShellEditingTest.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellEditing.cpp
         ${BML_SOURCE_DIR}/Console/Shell/ShellLexer.cpp
         ${BML_SOURCE_DIR}/Console/Shell/ShellParser.cpp
         ${BML_SOURCE_DIR}/Console/Shell/ShellQuoting.cpp
@@ -176,6 +187,7 @@ add_bml_test(ShellCompletionTest
         SOURCES
         ShellCompletionTest.cpp
         ${BML_SOURCE_DIR}/Console/Shell/ShellCompletion.cpp
+        ${BML_SOURCE_DIR}/Console/Shell/ShellEditing.cpp
         ${BML_SOURCE_DIR}/Console/Shell/ShellHighlighter.cpp
         ${BML_SOURCE_DIR}/Console/Shell/ShellLexer.cpp
         ${BML_SOURCE_DIR}/Console/Shell/ShellParser.cpp

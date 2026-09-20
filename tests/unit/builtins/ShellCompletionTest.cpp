@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 
 #include "Console/Shell/ShellCompletion.h"
 #include "Console/Shell/ShellHighlighter.h"
+#include "Console/Shell/ShellParser.h"
 
 using namespace BML::Shell;
 
@@ -131,6 +133,16 @@ TEST(ShellCompletion, QuotedContextsRenderCandidatesCorrectly) {
     EXPECT_EQ("map load $'other.nmo' ", Apply("map load $'ot", plan, "other.nmo", true));
 }
 
+TEST(ShellCompletion, IncompleteAnsiCQuoteFiltersByItsPartialText) {
+    Fixture fixture;
+
+    const CompletionPlan plan = fixture.Build("map load $'ot");
+
+    EXPECT_EQ(QuoteContext::AnsiC, plan.context);
+    EXPECT_EQ("ot", plan.prefix);
+    EXPECT_EQ((std::vector<std::string>{"other.nmo"}), plan.candidates);
+}
+
 TEST(ShellCompletion, AliasExpandsForArgumentCompletion) {
     Fixture fixture;
     fixture.aliases.aliases["m"] = "map";
@@ -139,6 +151,62 @@ TEST(ShellCompletion, AliasExpandsForArgumentCompletion) {
     ASSERT_EQ(1u, fixture.argumentRequests.size());
     EXPECT_EQ((std::vector<std::string>{"map", "lo"}), fixture.argumentRequests[0]);
     EXPECT_EQ((std::vector<std::string>{"load"}), plan.candidates);
+}
+
+TEST(ShellCompletion, AliasChainsUseParserRulesForArgumentCompletion) {
+    Fixture fixture;
+    fixture.aliases.aliases["m"] = "next";
+    fixture.aliases.aliases["next"] = "map";
+
+    const CompletionPlan plan = fixture.Build("m lo");
+
+    ASSERT_EQ(1u, fixture.argumentRequests.size());
+    EXPECT_EQ((std::vector<std::string>{"map", "lo"}), fixture.argumentRequests[0]);
+    EXPECT_EQ((std::vector<std::string>{"load"}), plan.candidates);
+}
+
+TEST(ShellCompletion, AliasOperatorsCompleteTheFinalSimpleCommand) {
+    Fixture fixture;
+    fixture.aliases.aliases["both"] = "echo first && map";
+
+    const CompletionPlan plan = fixture.Build("both lo");
+
+    ASSERT_EQ(1u, fixture.argumentRequests.size());
+    EXPECT_EQ((std::vector<std::string>{"map", "lo"}), fixture.argumentRequests[0]);
+    EXPECT_EQ((std::vector<std::string>{"load"}), plan.candidates);
+}
+
+TEST(ShellCompletion, AliasTrailingPipeCanIntroduceTheCompletedCommand) {
+    Fixture fixture;
+    fixture.aliases.aliases["pipe"] = "echo first |";
+
+    const CompletionPlan plan = fixture.Build("pipe map l");
+
+    ASSERT_EQ(1u, fixture.argumentRequests.size());
+    EXPECT_EQ((std::vector<std::string>{"map", "l"}), fixture.argumentRequests[0]);
+    EXPECT_EQ((std::vector<std::string>{"list", "load"}), plan.candidates);
+}
+
+TEST(ShellCompletion, AliasTrailingSeparatorCanIntroduceCommandCompletion) {
+    Fixture fixture;
+    fixture.aliases.aliases["next"] = "echo first;";
+
+    const CompletionPlan plan = fixture.Build("next ma");
+
+    EXPECT_EQ(CompletionPlan::Kind::Command, plan.kind);
+    EXPECT_TRUE(fixture.argumentRequests.empty());
+    EXPECT_EQ((std::vector<std::string>{"map"}), plan.candidates);
+}
+
+TEST(ShellCompletion, QuotedAliasDoesNotExpandForArgumentCompletion) {
+    Fixture fixture;
+    fixture.aliases.aliases["m"] = "map";
+
+    const CompletionPlan plan = fixture.Build("'m' lo");
+
+    ASSERT_EQ(1u, fixture.argumentRequests.size());
+    EXPECT_EQ((std::vector<std::string>{"m", "lo"}), fixture.argumentRequests[0]);
+    EXPECT_TRUE(plan.candidates.empty());
 }
 
 TEST(ShellCompletion, VariablesCompleteAfterDollar) {
@@ -161,11 +229,28 @@ TEST(ShellCompletion, VariablesCompleteAfterDollar) {
 
 TEST(ShellCompletion, InsideSubstitution) {
     Fixture fixture;
-    const CompletionPlan plan = fixture.Build("echo $(he");
+    CompletionPlan plan = fixture.Build("echo $(he");
     EXPECT_EQ(CompletionPlan::Kind::Command, plan.kind);
     EXPECT_EQ((std::vector<std::string>{"help"}), plan.candidates);
     EXPECT_EQ(7u, plan.replaceBegin);
     EXPECT_EQ("echo $(help ", Apply("echo $(he", plan, "help", true));
+
+    const std::string text = "echo $(ma tail)";
+    plan = fixture.BuildAt(text, 9);
+    EXPECT_TRUE(plan.followedByWhitespace);
+    EXPECT_EQ("echo $(map tail)", Apply(text, plan, "map", true));
+}
+
+TEST(ShellCompletion, IncompleteQuoteInsideSubstitutionUsesInnerCommand) {
+    Fixture fixture;
+
+    const CompletionPlan plan = fixture.Build("echo $(map load \"ot");
+
+    EXPECT_EQ(CompletionPlan::Kind::Argument, plan.kind);
+    EXPECT_EQ(QuoteContext::Double, plan.context);
+    ASSERT_EQ(1u, fixture.argumentRequests.size());
+    EXPECT_EQ((std::vector<std::string>{"map", "load", "ot"}), fixture.argumentRequests[0]);
+    EXPECT_EQ((std::vector<std::string>{"other.nmo"}), plan.candidates);
 }
 
 TEST(ShellCompletion, CaretInTheMiddleUsesTextBeforeIt) {
@@ -187,6 +272,57 @@ TEST(ShellCompletion, CaseInsensitivePrefix) {
     Fixture fixture;
     const CompletionPlan plan = fixture.Build("HE");
     EXPECT_EQ((std::vector<std::string>{"help"}), plan.candidates);
+}
+
+TEST(ShellCompletion, DeduplicatesCandidatesInProviderOrder) {
+    Fixture fixture;
+    fixture.providers.commandNames = [] {
+        return std::vector<std::string>{"echo", "help", "echo"};
+    };
+    fixture.providers.aliasNames = [] {
+        return std::vector<std::string>{"help", "e", "e"};
+    };
+
+    const CompletionPlan plan = fixture.Build("");
+    EXPECT_EQ((std::vector<std::string>{"echo", "help", "e"}), plan.candidates);
+}
+
+TEST(ShellCompletion, CommonPrefixEndsAtUtf8CodepointBoundary) {
+    Fixture fixture;
+    fixture.providers.commandNames = [] {
+        return std::vector<std::string>{
+            "\xe4\xbd\xa0\xe5\xa5\xbd",
+            "\xe4\xbd\xa0\xe5\xae\x89",
+        };
+    };
+    fixture.providers.aliasNames = {};
+
+    const CompletionPlan plan = fixture.Build("");
+    EXPECT_EQ(3u, plan.commonPrefixLength);
+    EXPECT_EQ(plan.candidates.front().substr(0, plan.commonPrefixLength), "\xe4\xbd\xa0");
+}
+
+TEST(ShellCompletion, CommonPrefixIsUnicodeCaseInsensitive) {
+    Fixture fixture;
+    fixture.providers.commandNames = [] {
+        return std::vector<std::string>{
+            "\xc3\x84pfel",
+            "\xc3\xa4PFELmus",
+        };
+    };
+    fixture.providers.aliasNames = {};
+
+    EXPECT_EQ(6u, fixture.Build("").commonPrefixLength);
+}
+
+TEST(ShellCompletion, InvalidUtf8HasNoCompletablePrefix) {
+    Fixture fixture;
+    fixture.providers.commandNames = [] {
+        return std::vector<std::string>{"valid", std::string("\xe5", 1)};
+    };
+    fixture.providers.aliasNames = {};
+
+    EXPECT_EQ(0u, fixture.Build("").commonPrefixLength);
 }
 
 TEST(ShellHighlighter, PartitionsTextIntoSpans) {
@@ -235,4 +371,70 @@ TEST(ShellHighlighter, IncompleteInputStillHighlights) {
     EXPECT_EQ(HighlightSpan::Kind::CommandValid, spans[0].kind);
     EXPECT_EQ(HighlightSpan::Kind::String, spans.back().kind);
     EXPECT_EQ(10u, spans.back().end);
+}
+
+TEST(ShellHighlighter, IncompleteAnsiCQuoteIsAString) {
+    auto isCommand = [](std::string_view name) { return name == "map"; };
+    const std::string text = "map load $'ot";
+    const std::vector<HighlightSpan> spans = Highlight(text, isCommand);
+
+    ASSERT_FALSE(spans.empty());
+    EXPECT_EQ(HighlightSpan::Kind::String, spans.back().kind);
+    EXPECT_EQ(text.find("$'"), spans.back().begin);
+    EXPECT_EQ(text.size(), spans.back().end);
+}
+
+TEST(ShellHighlighter, IncompleteSubstitutionIsAnExpansion) {
+    auto isCommand = [](std::string_view name) { return name == "echo"; };
+    const std::string text = "echo $(map load \"ot";
+    const std::vector<HighlightSpan> spans = Highlight(text, isCommand);
+
+    ASSERT_FALSE(spans.empty());
+    EXPECT_EQ(HighlightSpan::Kind::Variable, spans.back().kind);
+    EXPECT_EQ(text.find("$("), spans.back().begin);
+    EXPECT_EQ(text.size(), spans.back().end);
+}
+
+TEST(ShellHighlighter, AliasValidityRequiresOneBareLiteral) {
+    MapAliases aliases;
+    aliases.aliases["e"] = "echo";
+    auto isCommand = [](std::string_view) { return false; };
+    const std::string text = "e''; e";
+    const std::vector<HighlightSpan> spans = Highlight(text, isCommand, &aliases);
+
+    ASSERT_GE(spans.size(), 4u);
+    EXPECT_EQ(HighlightSpan::Kind::CommandInvalid, spans.front().kind);
+    const auto bare = std::find_if(spans.begin(), spans.end(), [&](const HighlightSpan &span) {
+        return span.begin == text.rfind('e');
+    });
+    ASSERT_NE(spans.end(), bare);
+    EXPECT_EQ(HighlightSpan::Kind::CommandValid, bare->kind);
+}
+
+TEST(ShellHighlighter, AliasOperatorExposesFollowingCommandHead) {
+    MapAliases aliases;
+    aliases.aliases["pipe"] = "echo first |";
+    auto isCommand = [](std::string_view name) { return name == "echo" || name == "map"; };
+    const std::string text = "pipe map";
+    const std::vector<HighlightSpan> spans = Highlight(text, isCommand, &aliases);
+
+    const auto map = std::find_if(spans.begin(), spans.end(), [&](const HighlightSpan &span) {
+        return span.begin == text.find("map");
+    });
+    ASSERT_NE(spans.end(), map);
+    EXPECT_EQ(HighlightSpan::Kind::CommandValid, map->kind);
+}
+
+TEST(ShellHighlighter, AliasOperatorExposesIncompleteCommandHead) {
+    MapAliases aliases;
+    aliases.aliases["pipe"] = "echo first |";
+    auto isCommand = [](std::string_view name) { return name == "echo" || name == "map"; };
+    const std::string text = "pipe ma'";
+    const std::vector<HighlightSpan> spans = Highlight(text, isCommand, &aliases);
+
+    const auto partial = std::find_if(spans.begin(), spans.end(), [&](const HighlightSpan &span) {
+        return span.begin == text.find("ma");
+    });
+    ASSERT_NE(spans.end(), partial);
+    EXPECT_EQ(HighlightSpan::Kind::CommandInvalid, partial->kind);
 }
