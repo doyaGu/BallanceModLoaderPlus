@@ -5,6 +5,7 @@
 #define BML_SHELL_HISTORY_H
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,6 +18,9 @@ namespace BML::Shell {
         const std::vector<std::string> &Entries() const { return m_Entries; }
         std::size_t Size() const { return m_Entries.size(); }
         bool Empty() const { return m_Entries.empty(); }
+        // Changes whenever the entry sequence changes. Consumers may use this
+        // to keep derived views without rescanning an unchanged history.
+        std::uint64_t Revision() const { return m_Revision; }
 
         // Adds an entry and saves when a path is set.
         void Add(std::string entry);
@@ -50,6 +54,7 @@ namespace BML::Shell {
     private:
         std::vector<std::string> m_Entries;
         std::wstring m_Path;
+        std::uint64_t m_Revision = 0;
     };
 
     // Up/Down over a History. Leaving the draft saves it; walking back past the

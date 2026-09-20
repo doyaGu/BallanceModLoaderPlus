@@ -1,17 +1,12 @@
 #include "Console/CommandInput.h"
 
-namespace CommandInput {
-    std::size_t PendingBytes(const std::vector<std::string> &pending) noexcept {
-        std::size_t size = 0;
-        for (const std::string &row : pending)
-            size += row.size() + 1;
-        return size;
-    }
+#include <utility>
 
-    std::string Join(const std::vector<std::string> &pending, std::string_view current) {
+namespace CommandInput {
+    std::string Continuations::Join(std::string_view current) const {
         std::string logical;
-        logical.reserve(PendingBytes(pending) + current.size());
-        for (const std::string &row : pending) {
+        logical.reserve(m_Bytes + current.size());
+        for (const std::string &row : m_Rows) {
             logical += row;
             logical.push_back('\n');
         }
@@ -19,34 +14,29 @@ namespace CommandInput {
         return logical;
     }
 
-    bool Equals(const std::vector<std::string> &pending, std::string_view current,
-                std::string_view logical) noexcept {
-        if (PendingBytes(pending) + current.size() != logical.size())
-            return false;
-        std::size_t offset = 0;
-        for (const std::string &row : pending) {
-            if (logical.compare(offset, row.size(), row) != 0)
-                return false;
-            offset += row.size();
-            if (logical[offset++] != '\n')
-                return false;
-        }
-        return logical.compare(offset, current.size(), current) == 0;
+    void Continuations::Push(std::string row) {
+        const std::size_t bytes = row.size() + 1;
+        m_Rows.push_back(std::move(row));
+        m_Bytes += bytes;
     }
 
-    Rows Split(std::string_view logical) {
-        Rows rows;
+    void Continuations::Clear() noexcept {
+        m_Rows.clear();
+        m_Bytes = 0;
+    }
+
+    std::string Continuations::Replace(std::string_view logical) {
+        Continuations replacement;
         std::size_t begin = 0;
         while (true) {
             const std::size_t newline = logical.find('\n', begin);
             if (newline == std::string_view::npos)
                 break;
-            rows.pending.emplace_back(logical.substr(begin, newline - begin));
+            replacement.Push(std::string(logical.substr(begin, newline - begin)));
             begin = newline + 1;
         }
-        rows.currentOffset = begin;
-        rows.current.assign(logical.substr(begin));
-        return rows;
+        *this = std::move(replacement);
+        return std::string(logical.substr(begin));
     }
 
     std::string SingleLinePreview(std::string_view text) {

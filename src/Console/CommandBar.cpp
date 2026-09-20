@@ -7,13 +7,13 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #include <utf8.h>
 #include <imgui_internal.h>
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "BML/ICommand.h"
-#include "Console/CommandCompletion.h"
 #include "Console/CommandContext.h"
 #include "Console/CommandInput.h"
 #include "Console/Shell/ShellEnvironment.h"
@@ -36,28 +36,8 @@ namespace {
     constexpr ImVec4 SelectedBackgroundColor = {1.0f, 1.0f, 1.0f, 1.0f};
     constexpr ImVec4 HoveredBackgroundColor = {1.0f, 1.0f, 1.0f, 0.8f};
 
-    // Syntax colours of the input line.
-    constexpr ImVec4 CommandValidColor = {0.60f, 0.90f, 0.60f, 1.0f};
-    constexpr ImVec4 CommandInvalidColor = {1.00f, 0.50f, 0.50f, 1.0f};
-    constexpr ImVec4 StringColor = {0.98f, 0.84f, 0.55f, 1.0f};
-    constexpr ImVec4 VariableColor = {0.60f, 0.85f, 1.00f, 1.0f};
-    constexpr ImVec4 OperatorColor = {0.85f, 0.75f, 1.00f, 1.0f};
-    constexpr ImVec4 CommentColor = {1.0f, 1.0f, 1.0f, 0.5f};
-    constexpr ImVec4 ErrorColor = {1.00f, 0.35f, 0.35f, 1.0f};
-
-    ImU32 ColorForSpan(BML::Shell::HighlightSpan::Kind kind) {
-        using Kind = BML::Shell::HighlightSpan::Kind;
-        switch (kind) {
-            case Kind::CommandValid: return ImGui::GetColorU32(CommandValidColor);
-            case Kind::CommandInvalid: return ImGui::GetColorU32(CommandInvalidColor);
-            case Kind::String: return ImGui::GetColorU32(StringColor);
-            case Kind::Variable: return ImGui::GetColorU32(VariableColor);
-            case Kind::Operator: return ImGui::GetColorU32(OperatorColor);
-            case Kind::Comment: return ImGui::GetColorU32(CommentColor);
-            case Kind::Error: return ImGui::GetColorU32(ErrorColor);
-            case Kind::Plain: break;
-        }
-        return ImGui::GetColorU32(TextColor);
+    ImU32 ToImU32(CommandBarTheme::Color color) {
+        return IM_COL32(color.red, color.green, color.blue, color.alpha);
     }
 
     std::string NormalizeCandidateEncoding(const std::string &candidate) {
@@ -123,16 +103,14 @@ namespace {
         return i;
     }
 
-    bool NamesSomethingRunnable(std::string_view name) {
+    bool NamesRegisteredCommand(std::string_view name) {
         if (name.empty())
             return false;
         ModContext *context = BML_GetModContext();
         if (!context)
             return false;
         const std::string text(name);
-        if (context->FindCommand(text.c_str()))
-            return true;
-        return context->GetShellEnvironment().HasAlias(name);
+        return context->FindCommand(text.c_str()) != nullptr;
     }
 
     BML::Shell::CompletionProviders MakeProviders() {
@@ -172,15 +150,12 @@ float CommandBar::MeasureRowHeight() {
 
 // CandidateState
 
-bool CommandBar::CandidateState::Add(const std::string &candidate) {
-    if (!utils::AppendUnique(m_Items, candidate))
-        return false;
-
-    m_DisplayItems.push_back(CommandInput::SingleLinePreview(candidate));
-    InvalidateLayout();
-    m_Selected = -1;
-    m_HintsVisible = false;
-    return true;
+void CommandBar::CandidateState::Set(std::vector<std::string> candidates) {
+    Clear();
+    m_Items = std::move(candidates);
+    m_DisplayItems.reserve(m_Items.size());
+    for (const std::string &candidate : m_Items)
+        m_DisplayItems.push_back(CommandInput::SingleLinePreview(candidate));
 }
 
 void CommandBar::CandidateState::Clear() {
@@ -358,10 +333,6 @@ const std::string *CommandBar::CandidateState::Selected() const {
     return m_Selected >= 0 && m_Selected < static_cast<int>(m_Items.size()) ? &m_Items[m_Selected] : nullptr;
 }
 
-std::size_t CommandBar::CandidateState::CommonPrefixLength() const {
-    return CommandCompletion::CommonPrefixLength(m_Items);
-}
-
 // CommandBar
 
 CommandBar::CommandBar() : Window("CommandBar") {
@@ -374,11 +345,38 @@ CommandBar::~CommandBar() = default;
 void CommandBar::SetHistory(BML::Shell::History *history) {
     m_History = history;
     m_Navigator.Reset();
-    m_Suggestion.clear();
+    InvalidateSuggestion();
+}
+
+void CommandBar::SetFeatures(Features features) {
+    if (m_Features == features)
+        return;
+
+    const Features previous = m_Features;
+    m_Features = features;
+    if (previous.syntaxHighlighting != features.syntaxHighlighting) {
+        m_HighlightSource.clear();
+        m_HighlightSpans.clear();
+        m_HighlightInputRevision = 0;
+    }
+    if (previous.tabCompletion && !features.tabCompletion)
+        InvalidateCandidates();
+    if (previous.historySuggestions && !features.historySuggestions)
+        InvalidateSuggestion();
+    if (previous.historyNavigation && !features.historyNavigation)
+        m_Navigator.Reset();
+    if (previous.reverseHistorySearch && !features.reverseHistorySearch) {
+        m_SearchRequested = false;
+        if (m_SearchActive) {
+            m_SearchAcceptRequested = false;
+            m_SearchCancelRequested = true;
+            m_FocusInputNextFrame = true;
+        }
+    }
 }
 
 int CommandBar::RowCount() const {
-    return 1 + std::min(static_cast<int>(m_PendingLines.size()), MaxContinuationRows);
+    return 1 + std::min(static_cast<int>(m_Continuations.Size()), MaxContinuationRows);
 }
 
 ImGuiWindowFlags CommandBar::GetFlags() {
@@ -441,10 +439,10 @@ void CommandBar::OnDraw() {
     DrawContinuationRows(drawList, areaMin, rowHeight);
 
     const float inputTop = std::max(areaMin.y, areaMax.y - rowHeight);
-    const char *prompt = m_PendingLines.empty() ? ">" : "...";
-    const ImVec2 promptSize = m_PendingLines.empty() ? m_PromptSize : ImGui::CalcTextSize(prompt);
+    const char *prompt = m_Continuations.Empty() ? ">" : "...";
+    const ImVec2 promptSize = m_Continuations.Empty() ? m_PromptSize : ImGui::CalcTextSize(prompt);
     const ImVec2 promptPos(areaMin.x + PaddingX, inputTop + std::max(0.0f, rowHeight - promptSize.y) * 0.5f);
-    drawList->AddText(promptPos, ImGui::GetColorU32(m_PendingLines.empty() ? TextColor : MutedTextColor), prompt);
+    drawList->AddText(promptPos, ImGui::GetColorU32(m_Continuations.Empty() ? TextColor : MutedTextColor), prompt);
 
     const float inputX = promptPos.x + promptSize.x + ItemGap;
     const float inputWidth = std::max(1.0f, areaMax.x - PaddingX - inputX);
@@ -459,7 +457,7 @@ void CommandBar::OnDraw() {
     // keyboard input, then transition search state from inside the callback
     // where its buffer can be replaced safely.
     const bool reverseSearchPressed = ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_R, false);
-    if (!m_TextCompositionActive && reverseSearchPressed) {
+    if (m_Features.reverseHistorySearch && !m_TextCompositionActive && reverseSearchPressed) {
         m_SearchRequested = true;
     }
 
@@ -479,7 +477,8 @@ void CommandBar::OnDraw() {
         dismissTransient = ImGui::IsKeyPressed(ImGuiKey_Escape, ImGuiInputFlags_None, owner);
     }
 
-    const bool overlayText = !m_TextCompositionActive;
+    const bool overlayText = !m_TextCompositionActive &&
+        (m_Features.syntaxHighlighting || m_Features.historySuggestions);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, PaddingY));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
     const ImVec4 transparent(0.0f, 0.0f, 0.0f, 0.0f);
@@ -500,9 +499,9 @@ void CommandBar::OnDraw() {
                                          ImGuiInputTextFlags_EnterReturnsTrue;
     if (!transientOwnsKeys)
         inputTextFlags |= ImGuiInputTextFlags_EscapeClearsAll;
-    if (!m_TextCompositionActive && !transientOwnsKeys)
+    if (m_Features.historyNavigation && !m_TextCompositionActive && !transientOwnsKeys)
         inputTextFlags |= ImGuiInputTextFlags_CallbackHistory;
-    const char *hint = m_SearchActive ? "Search history" : (m_PendingLines.empty() ? "Enter a command" : "");
+    const char *hint = m_SearchActive ? "Search history" : (m_Continuations.Empty() ? "Enter a command" : "");
     const bool submitted = ImGui::InputTextWithHint("##CmdBar", hint, &m_Buffer, inputTextFlags,
                                                     &TextEditCallback, this);
     const ImVec2 itemMin = ImGui::GetItemRectMin();
@@ -512,9 +511,10 @@ void CommandBar::OnDraw() {
     m_InputActive = ImGui::IsItemActive();
 
     if (overlayText) {
-        if (!CommandInput::Equals(m_PendingLines, m_Buffer, m_HighlightSource))
+        if (m_Features.syntaxHighlighting && m_HighlightInputRevision != m_InputRevision)
             RefreshHighlight();
-        DrawInputOverlay(drawList, itemMin, itemMax, !completionVisible && !m_SearchActive);
+        DrawInputOverlay(drawList, itemMin, itemMax,
+                         m_Features.historySuggestions && !completionVisible && !m_SearchActive);
     }
 
     // Enter confirms the native IME composition first. Even if a backend also
@@ -547,13 +547,12 @@ void CommandBar::OnDraw() {
             m_Candidates.ShowHints();
 
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-            if (!m_PendingLines.empty()) {
-                ClearPendingLines();
+            if (!m_Continuations.Empty()) {
+                m_Continuations.Clear();
                 m_Buffer.clear();
                 m_CursorPos = 0;
                 m_Navigator.Reset();
-                m_NavigatedText.clear();
-                m_Suggestion.clear();
+                MarkInputChanged();
                 InvalidateCandidates();
                 m_HighlightSource.clear();
                 m_FocusInputNextFrame = true;
@@ -567,9 +566,10 @@ void CommandBar::OnDraw() {
 }
 
 void CommandBar::DrawContinuationRows(ImDrawList *drawList, const ImVec2 &areaMin, float rowHeight) {
-    if (m_PendingLines.empty())
+    if (m_Continuations.Empty())
         return;
-    const int pendingCount = static_cast<int>(m_PendingLines.size());
+    const std::vector<std::string> &rows = m_Continuations.Rows();
+    const int pendingCount = static_cast<int>(rows.size());
     const bool elided = pendingCount > MaxContinuationRows;
     const int actualRows = elided ? MaxContinuationRows - 1 : pendingCount;
     const int first = pendingCount - actualRows;
@@ -598,21 +598,25 @@ void CommandBar::DrawContinuationRows(ImDrawList *drawList, const ImVec2 &areaMi
         const float textX = areaMin.x + PaddingX + promptSize.x + ItemGap;
         drawList->PushClipRect(ImVec2(textX, top), ImVec2(right, top + rowHeight), true);
         drawList->AddText(ImVec2(textX, textY), textColor,
-                          m_PendingLines[static_cast<std::size_t>(rowIndex)].c_str());
+                          rows[static_cast<std::size_t>(rowIndex)].c_str());
         drawList->PopClipRect();
     }
 }
 
 void CommandBar::RefreshHighlight() {
-    m_HighlightSource = JoinPending(m_Buffer);
+    m_HighlightSource = m_Continuations.Join(m_Buffer);
     m_HighlightSpans.clear();
-    if (m_SearchActive) {
+    m_HighlightInputRevision = m_InputRevision;
+    if (!m_Features.syntaxHighlighting || m_SearchActive) {
         return;
     }
 
-    const std::size_t currentOffset = CurrentRowOffset();
+    const std::size_t currentOffset = m_Continuations.Bytes();
+    const BML::Shell::AliasResolver *aliases = nullptr;
+    if (ModContext *context = BML_GetModContext())
+        aliases = &context->GetShellEnvironment();
     for (const BML::Shell::HighlightSpan &span :
-         BML::Shell::Highlight(m_HighlightSource, NamesSomethingRunnable)) {
+         BML::Shell::Highlight(m_HighlightSource, NamesRegisteredCommand, aliases)) {
         if (span.end <= currentOffset)
             continue;
         BML::Shell::HighlightSpan visible = span;
@@ -639,7 +643,10 @@ void CommandBar::DrawInputOverlay(ImDrawList *drawList, const ImVec2 &itemMin, c
 
     const char *base = m_Buffer.c_str();
     if (m_HighlightSpans.empty()) {
-        drawList->AddText(font, fontSize, pos, ImGui::GetColorU32(TextColor), base, base + m_Buffer.size());
+        const ImU32 color = m_Features.syntaxHighlighting
+            ? ToImU32(m_SyntaxPalette.plain)
+            : ImGui::GetColorU32(TextColor);
+        drawList->AddText(font, fontSize, pos, color, base, base + m_Buffer.size());
         pos.x += ImGui::CalcTextSize(base, base + m_Buffer.size(), false).x;
     } else {
         for (const BML::Shell::HighlightSpan &span : m_HighlightSpans) {
@@ -658,6 +665,21 @@ void CommandBar::DrawInputOverlay(ImDrawList *drawList, const ImVec2 &itemMin, c
     }
 
     drawList->PopClipRect();
+}
+
+ImU32 CommandBar::ColorForSpan(BML::Shell::HighlightSpan::Kind kind) const {
+    using Kind = BML::Shell::HighlightSpan::Kind;
+    switch (kind) {
+        case Kind::Plain: return ToImU32(m_SyntaxPalette.plain);
+        case Kind::CommandValid: return ToImU32(m_SyntaxPalette.commandValid);
+        case Kind::CommandInvalid: return ToImU32(m_SyntaxPalette.commandInvalid);
+        case Kind::String: return ToImU32(m_SyntaxPalette.string);
+        case Kind::Variable: return ToImU32(m_SyntaxPalette.variable);
+        case Kind::Operator: return ToImU32(m_SyntaxPalette.op);
+        case Kind::Comment: return ToImU32(m_SyntaxPalette.comment);
+        case Kind::Error: return ToImU32(m_SyntaxPalette.error);
+    }
+    return ToImU32(m_SyntaxPalette.plain);
 }
 
 void CommandBar::DrawSearchSurface() {
@@ -768,7 +790,7 @@ void CommandBar::DrawCompletionSurface() {
             const ImVec2 previousMin(controlX, railMin.y + 2.0f);
             const ImVec2 previousMax(controlX + buttonWidth, railMax.y - 2.0f);
             if (DrawRailButton("##previous-page", "<", m_PreviousPageLabelSize, previousMin, previousMax, colors)) {
-                PrevPageOfCandidates();
+                m_Candidates.PreviousPage();
                 m_FocusInputNextFrame = true;
             }
             controlX = previousMax.x + ItemGap;
@@ -782,7 +804,7 @@ void CommandBar::DrawCompletionSurface() {
             const ImVec2 nextMin(controlX, railMin.y + 2.0f);
             const ImVec2 nextMax(controlX + buttonWidth, railMax.y - 2.0f);
             if (DrawRailButton("##next-page", ">", m_NextPageLabelSize, nextMin, nextMax, colors)) {
-                NextPageOfCandidates();
+                m_Candidates.NextPage();
                 m_FocusInputNextFrame = true;
             }
         }
@@ -790,9 +812,9 @@ void CommandBar::DrawCompletionSurface() {
         const ImGuiIO &io = ImGui::GetIO();
         if (ImGui::IsWindowHovered() && io.MouseWheel != 0.0f) {
             if (io.MouseWheel > 0.0f)
-                PrevPageOfCandidates();
+                m_Candidates.PreviousPage();
             else
-                NextPageOfCandidates();
+                m_Candidates.NextPage();
             m_FocusInputNextFrame = true;
         }
         ImGui::PopStyleColor();
@@ -836,10 +858,9 @@ void CommandBar::ToggleCommandBar(bool on) {
 void CommandBar::ResetEditorState() {
     m_Buffer.clear();
     m_CursorPos = 0;
-    ClearPendingLines();
+    m_Continuations.Clear();
     m_Navigator.Reset();
-    m_NavigatedText.clear();
-    m_Suggestion.clear();
+    MarkInputChanged();
 
     m_SearchActive = false;
     m_SearchQuery.clear();
@@ -857,35 +878,29 @@ void CommandBar::ResetEditorState() {
     m_FocusInputNextFrame = false;
 }
 
-void CommandBar::ClearPendingLines() {
-    m_PendingLines.clear();
-}
-
-std::string CommandBar::JoinPending(std::string_view lastRow) const {
-    return CommandInput::Join(m_PendingLines, lastRow);
-}
-
-std::size_t CommandBar::CurrentRowOffset() const {
-    return CommandInput::PendingBytes(m_PendingLines);
+void CommandBar::MarkInputChanged() {
+    ++m_InputRevision;
+    InvalidateSuggestion();
 }
 
 void CommandBar::SubmitLine() {
-    const std::string row = m_Buffer;
-    std::string line = JoinPending(row);
+    std::string row = m_Buffer;
+    std::string line = m_Continuations.Join(row);
     ModContext *context = BML_GetModContext();
 
     // Enforce the executor's hard limit before parsing or retaining another
     // continuation row. Otherwise an unterminated quote could grow pending
     // input without bound and repeatedly reparse an ever-larger string.
     if (line.size() > BML::Shell::Limits::MaxLineBytes) {
-        ClearPendingLines();
+        m_Continuations.Clear();
         if (context)
             context->ExecuteCommandLine(line.c_str());
         m_Navigator.Reset();
-        m_Suggestion.clear();
+        InvalidateSuggestion();
         if (m_KeepOpen && IsVisible()) {
             m_Buffer.clear();
             m_CursorPos = 0;
+            MarkInputChanged();
             m_FocusInputNextFrame = true;
         } else {
             ToggleCommandBar(false);
@@ -896,15 +911,15 @@ void CommandBar::SubmitLine() {
     // A line that is not finished yet asks for another row instead of running.
     const BML::Shell::ParseResult parsed = BML::Shell::Parse(line, nullptr);
     if (parsed.incomplete) {
-        m_PendingLines.push_back(row);
+        m_Continuations.Push(std::move(row));
         m_Buffer.clear();
         m_CursorPos = 0;
         m_Navigator.Reset();
-        m_Suggestion.clear();
+        MarkInputChanged();
         m_FocusInputNextFrame = true;
         return;
     }
-    ClearPendingLines();
+    m_Continuations.Clear();
 
     const bool blank = std::all_of(line.begin(), line.end(), [](unsigned char c) { return std::isspace(c) != 0; });
     if (!blank && context) {
@@ -917,6 +932,7 @@ void CommandBar::SubmitLine() {
                 context->SendIngameMessage(message.c_str());
                 m_Buffer.clear();
                 m_CursorPos = 0;
+                MarkInputChanged();
                 m_FocusInputNextFrame = true;
                 return;
             }
@@ -928,33 +944,18 @@ void CommandBar::SubmitLine() {
             m_History->Add(line);
         }
         m_Navigator.Reset();
-        m_Suggestion.clear();
+        InvalidateSuggestion();
         context->ExecuteCommandLine(line.c_str());
     }
 
     if (m_KeepOpen && IsVisible()) {
         m_Buffer.clear();
         m_CursorPos = 0;
+        MarkInputChanged();
         m_FocusInputNextFrame = true;
     } else {
         ToggleCommandBar(false);
     }
-}
-
-void CommandBar::NextCandidate() {
-    m_Candidates.Next();
-}
-
-void CommandBar::PrevCandidate() {
-    m_Candidates.Previous();
-}
-
-void CommandBar::NextPageOfCandidates() {
-    m_Candidates.NextPage();
-}
-
-void CommandBar::PrevPageOfCandidates() {
-    m_Candidates.PreviousPage();
 }
 
 void CommandBar::InvalidateCandidates() {
@@ -986,8 +987,9 @@ void CommandBar::ApplyCandidate(ImGuiInputTextCallbackData *data, std::string_vi
         return;
 
     const std::string_view current(data->Buf, static_cast<std::size_t>(data->BufTextLen));
-    std::string logical = JoinPending(current);
-    const std::size_t end = std::min(CurrentRowOffset() + static_cast<std::size_t>(data->CursorPos), logical.size());
+    std::string logical = m_Continuations.Join(current);
+    const std::size_t end = std::min(m_Continuations.Bytes() + static_cast<std::size_t>(data->CursorPos),
+                                     logical.size());
     const std::size_t begin = std::min(m_Plan.replaceBegin, end);
     const std::string replacement = BML::Shell::RenderReplacement(m_Plan, candidate, final);
     logical.replace(begin, end - begin, replacement);
@@ -997,35 +999,37 @@ void CommandBar::ApplyCandidate(ImGuiInputTextCallbackData *data, std::string_vi
         return;
     }
     SetLogicalText(data, logical, begin + replacement.size());
+    m_Navigator.Reset();
 }
 
 void CommandBar::BeginCompletion(ImGuiInputTextCallbackData *data, bool selectPrevious) {
+    if (!m_Features.tabCompletion)
+        return;
     InvalidateCandidates();
     const std::string_view current(data->Buf, static_cast<std::size_t>(data->BufTextLen));
-    const std::string logical = JoinPending(current);
-    const std::size_t cursor = CurrentRowOffset() + static_cast<std::size_t>(data->CursorPos);
+    const std::string logical = m_Continuations.Join(current);
+    const std::size_t cursor = m_Continuations.Bytes() + static_cast<std::size_t>(data->CursorPos);
     m_Plan = BML::Shell::BuildCompletion(logical, cursor, MakeProviders(),
                                          &BML_GetModContext()->GetShellEnvironment());
-    for (const std::string &candidate : m_Plan.candidates)
-        m_Candidates.Add(candidate);
+    m_Candidates.Set(std::move(m_Plan.candidates));
     m_Candidates.BuildPages(m_WindowSize.x);
 
     if (m_Candidates.Size() == 1) {
         ApplyCandidate(data, m_Candidates[0], true);
         InvalidateCandidates();
     } else if (m_Candidates.Size() > 1) {
-        const std::size_t commonLength = m_Candidates.CommonPrefixLength();
+        const std::size_t commonLength = m_Plan.commonPrefixLength;
         if (commonLength > m_Plan.prefix.size())
             ApplyCandidate(data, std::string_view(m_Candidates[0]).substr(0, commonLength), false);
         if (selectPrevious)
-            PrevCandidate();
+            m_Candidates.Previous();
     }
 
     m_CursorPos = data->CursorPos;
 }
 
 bool CommandBar::HandleCompletionShortcuts(ImGuiInputTextCallbackData *data) {
-    if (!data)
+    if (!m_Features.tabCompletion || !data)
         return false;
 
     constexpr ImGuiInputFlags ShortcutFlags = ImGuiInputFlags_RouteAlways;
@@ -1044,20 +1048,20 @@ bool CommandBar::HandleCompletionShortcuts(ImGuiInputTextCallbackData *data) {
 
     if (ImGui::Shortcut(ImGuiMod_Shift | ImGuiKey_Tab, ShortcutFlags, data->ID) ||
         ImGui::Shortcut(ImGuiKey_UpArrow, RepeatShortcutFlags, data->ID)) {
-        PrevCandidate();
+        m_Candidates.Previous();
         return true;
     }
     if (ImGui::Shortcut(ImGuiKey_Tab, ShortcutFlags, data->ID) ||
         ImGui::Shortcut(ImGuiKey_DownArrow, RepeatShortcutFlags, data->ID)) {
-        NextCandidate();
+        m_Candidates.Next();
         return true;
     }
     if (ImGui::Shortcut(ImGuiKey_PageUp, RepeatShortcutFlags, data->ID)) {
-        PrevPageOfCandidates();
+        m_Candidates.PreviousPage();
         return true;
     }
     if (ImGui::Shortcut(ImGuiKey_PageDown, RepeatShortcutFlags, data->ID)) {
-        NextPageOfCandidates();
+        m_Candidates.NextPage();
         return true;
     }
     return false;
@@ -1068,31 +1072,31 @@ void CommandBar::SetBufferText(ImGuiInputTextCallbackData *data, std::string_vie
     data->InsertChars(0, text.data(), text.data() + text.size());
     data->CursorPos = data->BufTextLen;
     data->SelectionStart = data->SelectionEnd = data->CursorPos;
+    MarkInputChanged();
 }
 
 void CommandBar::SetLogicalText(ImGuiInputTextCallbackData *data, std::string_view text,
                                 std::size_t logicalCursor) {
-    CommandInput::Rows rows = CommandInput::Split(text);
-    m_PendingLines = std::move(rows.pending);
-    SetBufferText(data, rows.current);
+    std::string current = m_Continuations.Replace(text);
+    const std::size_t currentOffset = m_Continuations.Bytes();
+    SetBufferText(data, current);
 
-    const std::size_t relativeCursor = logicalCursor > rows.currentOffset
-        ? logicalCursor - rows.currentOffset
+    const std::size_t relativeCursor = logicalCursor > currentOffset
+        ? logicalCursor - currentOffset
         : 0;
-    data->CursorPos = static_cast<int>(std::min(relativeCursor, rows.current.size()));
+    data->CursorPos = static_cast<int>(std::min(relativeCursor, current.size()));
     data->SelectionStart = data->SelectionEnd = data->CursorPos;
-    m_Suggestion.clear();
     m_HighlightSource.clear();
 }
 
-void CommandBar::EnforceInputLimit(ImGuiInputTextCallbackData *data) {
-    const std::size_t prefixBytes = CurrentRowOffset();
+bool CommandBar::EnforceInputLimit(ImGuiInputTextCallbackData *data) {
+    const std::size_t prefixBytes = m_Continuations.Bytes();
     const std::size_t available = prefixBytes < BML::Shell::Limits::MaxLineBytes
         ? BML::Shell::Limits::MaxLineBytes - prefixBytes
         : 0;
     const std::size_t length = static_cast<std::size_t>(data->BufTextLen);
     if (length <= available)
-        return;
+        return false;
 
     // Do not leave half of a UTF-8 codepoint at the end after clipping a paste.
     std::size_t keep = available;
@@ -1104,8 +1108,9 @@ void CommandBar::EnforceInputLimit(ImGuiInputTextCallbackData *data) {
     data->CursorPos = std::min(data->CursorPos, data->BufTextLen);
     data->SelectionStart = std::min(data->SelectionStart, data->BufTextLen);
     data->SelectionEnd = std::min(data->SelectionEnd, data->BufTextLen);
-    m_Suggestion.clear();
+    MarkInputChanged();
     InvalidateCandidates();
+    return true;
 }
 
 bool CommandBar::HandleEditingShortcuts(ImGuiInputTextCallbackData *data) {
@@ -1121,10 +1126,11 @@ bool CommandBar::HandleEditingShortcuts(ImGuiInputTextCallbackData *data) {
         begin = std::clamp(begin, 0, length);
         end = std::clamp(end, begin, length);
         if (end == begin)
-            return;
+            return false;
         m_KillBuffer.assign(data->Buf + begin, static_cast<std::size_t>(end - begin));
         data->DeleteChars(begin, end - begin);
         placeCursor(begin);
+        return true;
     };
 
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_A, Flags, data->ID)) {
@@ -1136,21 +1142,25 @@ bool CommandBar::HandleEditingShortcuts(ImGuiInputTextCallbackData *data) {
         return true;
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_U, Flags, data->ID)) {
-        kill(0, cursor);
+        if (kill(0, cursor))
+            MarkInputChanged();
         return true;
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_K, Flags, data->ID)) {
-        kill(cursor, length);
+        if (kill(cursor, length))
+            MarkInputChanged();
         return true;
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_W, Flags, data->ID)) {
-        kill(WordStartBefore(data->Buf, cursor), cursor);
+        if (kill(WordStartBefore(data->Buf, cursor), cursor))
+            MarkInputChanged();
         return true;
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, Flags, data->ID)) {
         if (!m_KillBuffer.empty()) {
             data->InsertChars(cursor, m_KillBuffer.c_str(), m_KillBuffer.c_str() + m_KillBuffer.size());
             placeCursor(cursor + static_cast<int>(m_KillBuffer.size()));
+            MarkInputChanged();
         }
         return true;
     }
@@ -1171,19 +1181,38 @@ bool CommandBar::HandleEditingShortcuts(ImGuiInputTextCallbackData *data) {
 }
 
 void CommandBar::UpdateSuggestion(const ImGuiInputTextCallbackData *data) {
-    m_Suggestion.clear();
-    if (!m_History || m_SearchActive || data->CursorPos != data->BufTextLen)
+    if (!m_Features.historySuggestions || !m_History || m_SearchActive ||
+        data->CursorPos != data->BufTextLen) {
+        InvalidateSuggestion();
         return;
+    }
     const std::string_view current(data->Buf, static_cast<std::size_t>(data->BufTextLen));
-    const std::string logical = JoinPending(current);
-    if (logical.empty())
+    const std::uint64_t revision = m_History->Revision();
+    if (m_SuggestionSourceValid && m_SuggestionInputRevision == m_InputRevision &&
+        revision == m_SuggestionHistoryRevision)
         return;
-    if (const std::string *entry = m_History->Suggest(logical))
-        m_Suggestion = entry->substr(logical.size());
+
+    m_Suggestion.clear();
+    m_SuggestionSource = m_Continuations.Join(current);
+    m_SuggestionSourceValid = true;
+    m_SuggestionInputRevision = m_InputRevision;
+    m_SuggestionHistoryRevision = revision;
+    if (m_SuggestionSource.empty())
+        return;
+    if (const std::string *entry = m_History->Suggest(m_SuggestionSource))
+        m_Suggestion = entry->substr(m_SuggestionSource.size());
+}
+
+void CommandBar::InvalidateSuggestion() {
+    m_Suggestion.clear();
+    m_SuggestionSource.clear();
+    m_SuggestionInputRevision = 0;
+    m_SuggestionHistoryRevision = 0;
+    m_SuggestionSourceValid = false;
 }
 
 bool CommandBar::HandleSuggestionShortcuts(ImGuiInputTextCallbackData *data) {
-    if (m_Suggestion.empty() || m_SearchActive)
+    if (!m_Features.historySuggestions || m_Suggestion.empty() || m_SearchActive)
         return false;
     // m_CursorPos still holds last frame's caret, so a Right press that only
     // moved the caret to the end does not also accept the suggestion.
@@ -1195,18 +1224,17 @@ bool CommandBar::HandleSuggestionShortcuts(ImGuiInputTextCallbackData *data) {
         ImGui::Shortcut(ImGuiKey_End, Flags, data->ID) ||
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_F, Flags, data->ID)) {
         const std::string_view current(data->Buf, static_cast<std::size_t>(data->BufTextLen));
-        std::string logical = JoinPending(current);
+        std::string logical = m_Continuations.Join(current);
         logical += m_Suggestion;
         if (logical.size() > BML::Shell::Limits::MaxLineBytes)
             return true;
         SetLogicalText(data, logical, logical.size());
-        m_Suggestion.clear();
         return true;
     }
     if (ImGui::Shortcut(ImGuiMod_Alt | ImGuiKey_RightArrow, Flags, data->ID)) {
         const int wordEnd = WordEndAfter(m_Suggestion.c_str(), 0, static_cast<int>(m_Suggestion.size()));
         const std::string_view current(data->Buf, static_cast<std::size_t>(data->BufTextLen));
-        std::string logical = JoinPending(current);
+        std::string logical = m_Continuations.Join(current);
         logical.append(m_Suggestion.data(), static_cast<std::size_t>(wordEnd));
         if (logical.size() > BML::Shell::Limits::MaxLineBytes)
             return true;
@@ -1220,7 +1248,7 @@ void CommandBar::HandleHistoryNavigation(ImGuiInputTextCallbackData *data) {
     if (!m_History)
         return;
     const std::string_view currentRow(data->Buf, static_cast<std::size_t>(data->BufTextLen));
-    const std::string current = JoinPending(currentRow);
+    const std::string current = m_Continuations.Join(currentRow);
     std::string text;
     bool changed = false;
     if (data->EventKey == ImGuiKey_UpArrow)
@@ -1230,21 +1258,24 @@ void CommandBar::HandleHistoryNavigation(ImGuiInputTextCallbackData *data) {
     if (!changed)
         return;
     SetLogicalText(data, text, text.size());
-    m_NavigatedText = text;
+    m_NavigatedInputRevision = m_InputRevision;
 }
 
 void CommandBar::BeginSearch(ImGuiInputTextCallbackData *data) {
+    if (!m_Features.reverseHistorySearch)
+        return;
     m_SearchActive = true;
     const std::string_view current(data->Buf, static_cast<std::size_t>(data->BufTextLen));
-    m_SearchDraft = JoinPending(current);
+    m_SearchDraft = m_Continuations.Join(current);
     m_SearchQuery.clear();
     m_SearchMatch.clear();
     m_SearchFailed = false;
     m_SearchIndex = m_History ? static_cast<int>(m_History->Size()) : 0;
     m_SearchAcceptRequested = false;
     m_SearchCancelRequested = false;
-    m_Suggestion.clear();
+    InvalidateSuggestion();
     InvalidateCandidates();
+    m_Navigator.Reset();
     SetBufferText(data, "");
     m_HighlightSource.clear();
 }
@@ -1288,6 +1319,8 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
     if (m_TextCompositionActive) {
         if (!m_Candidates.Empty())
             InvalidateCandidates();
+        if (data->EventFlag == ImGuiInputTextFlags_CallbackEdit)
+            MarkInputChanged();
         m_CursorPos = data->CursorPos;
         return 0;
     }
@@ -1315,7 +1348,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         return 0;
     }
 
-    EnforceInputLimit(data);
+    const bool inputClipped = EnforceInputLimit(data);
 
     if (HandleCompletionShortcuts(data))
         return 0;
@@ -1336,21 +1369,26 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 InvalidateCandidates();
 
             // Editing the text after walking the history starts a fresh walk.
-            const std::string_view currentRow(data->Buf, static_cast<std::size_t>(data->BufTextLen));
-            if (m_Navigator.Browsing() && JoinPending(currentRow) != m_NavigatedText) {
+            if (m_Navigator.Browsing() && m_NavigatedInputRevision != m_InputRevision) {
                 m_Navigator.Reset();
             }
 
+            const std::uint64_t shortcutInputRevision = m_InputRevision;
             if (HandleSuggestionShortcuts(data) || HandleEditingShortcuts(data)) {
+                if (m_InputRevision != shortcutInputRevision)
+                    m_Navigator.Reset();
                 InvalidateCandidates();
             }
-            if (!m_SearchActive)
+            if (m_Features.historySuggestions && !m_SearchActive)
                 UpdateSuggestion(data);
 
             m_CursorPos = data->CursorPos;
         }
         break;
         case ImGuiInputTextFlags_CallbackEdit:
+            if (!inputClipped)
+                MarkInputChanged();
+            m_Navigator.Reset();
             if (!m_Candidates.Empty())
                 InvalidateCandidates();
             break;

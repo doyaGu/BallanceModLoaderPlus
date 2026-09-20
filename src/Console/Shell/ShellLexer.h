@@ -56,9 +56,29 @@ namespace BML::Shell {
         std::vector<WordPart> parts; // Word only
     };
 
+    // Why lexing needs another continuation row. This is syntax data consumed
+    // by editing features; message remains a human-readable diagnostic only.
+    enum class IncompleteKind {
+        None,
+        LineContinuation,
+        SingleQuote,
+        DoubleQuote,
+        AnsiCQuote,
+        CommandSubstitution,
+        BracedVariable,
+        BacktickSubstitution,
+    };
+
     struct LexResult {
         std::vector<Token> tokens;
         bool incomplete = false;
+        IncompleteKind incompleteKind = IncompleteKind::None;
+        std::size_t incompleteBegin = 0;
+        // Absolute byte offset immediately after the innermost unterminated
+        // command-substitution opener, or npos outside command substitution.
+        // Editing features use this to analyze the active inner command even
+        // when a quote or variable inside it is the incomplete construct.
+        std::size_t activeCommandBegin = std::string_view::npos;
         bool error = false;
         std::size_t errorPos = 0;
         std::string message;

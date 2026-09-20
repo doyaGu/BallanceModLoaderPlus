@@ -225,14 +225,6 @@ namespace utils {
                             size_t bufferSize,
                             size_t *outRequiredSize = nullptr);
 
-    template <typename T>
-    bool AppendUnique(std::vector<T> &values, const T &value) {
-        if (std::find(values.begin(), values.end(), value) != values.end())
-            return false;
-        values.emplace_back(value);
-        return true;
-    }
-
     // Encoding conversion functions
     inline std::wstring Utf8ToUtf16(const std::string &str) {
         return ToWString(str, true);

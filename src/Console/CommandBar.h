@@ -7,11 +7,14 @@
 #define BML_COMMANDBAR_H
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "BML/Bui.h"
+#include "Console/CommandBarTheme.h"
+#include "Console/CommandInput.h"
 #include "Console/ConsoleLayout.h"
 #include "Console/Shell/ShellCompletion.h"
 #include "Console/Shell/ShellHighlighter.h"
@@ -19,6 +22,16 @@
 
 class CommandBar : public Bui::Window {
 public:
+    struct Features {
+        bool syntaxHighlighting = true;
+        bool tabCompletion = true;
+        bool historySuggestions = true;
+        bool reverseHistorySearch = true;
+        bool historyNavigation = true;
+
+        bool operator==(const Features &) const = default;
+    };
+
     CommandBar();
     ~CommandBar() override;
 
@@ -44,6 +57,12 @@ public:
     void SetHistory(BML::Shell::History *history);
     // Whether the bar stays open after a line ran.
     void SetKeepOpen(bool keepOpen) { m_KeepOpen = keepOpen; }
+    // Applies editor capabilities atomically and owns the state transition
+    // required when an active capability is turned off.
+    void SetFeatures(Features features);
+    const Features &GetFeatures() const { return m_Features; }
+    void SetSyntaxPalette(CommandBarTheme::SyntaxPalette palette) { m_SyntaxPalette = palette; }
+    const CommandBarTheme::SyntaxPalette &GetSyntaxPalette() const { return m_SyntaxPalette; }
 
 private:
     class CandidateState {
@@ -52,7 +71,7 @@ private:
         std::size_t Size() const { return m_Items.size(); }
         const std::string &operator[](std::size_t index) const { return m_Items[index]; }
 
-        bool Add(const std::string &candidate);
+        void Set(std::vector<std::string> candidates);
         void Clear();
         void BuildPages(float maxWidth);
         void Next();
@@ -75,8 +94,6 @@ private:
         float StatusWidth() const { return m_StatusWidth; }
         bool LayoutMatches(float maxWidth, ImGuiContext *context, ImFont *font, float fontSize, ImGuiID bakedId) const;
         const std::string *Selected() const;
-        std::size_t CommonPrefixLength() const;
-
     private:
         void SyncPageFromIndex();
         void UpdateStatus();
@@ -105,19 +122,16 @@ private:
     void ApplyCandidate(ImGuiInputTextCallbackData *data, std::string_view candidate, bool final);
     void InvalidateCandidates();
     void DrawCompletionSurface();
-    void NextCandidate();
-    void PrevCandidate();
-    void NextPageOfCandidates();
-    void PrevPageOfCandidates();
 
     // Editing keys, ghost suggestion, history walk
     bool HandleEditingShortcuts(ImGuiInputTextCallbackData *data);
     bool HandleSuggestionShortcuts(ImGuiInputTextCallbackData *data);
     void HandleHistoryNavigation(ImGuiInputTextCallbackData *data);
     void UpdateSuggestion(const ImGuiInputTextCallbackData *data);
+    void InvalidateSuggestion();
     void SetBufferText(ImGuiInputTextCallbackData *data, std::string_view text);
     void SetLogicalText(ImGuiInputTextCallbackData *data, std::string_view text, std::size_t logicalCursor);
-    void EnforceInputLimit(ImGuiInputTextCallbackData *data);
+    bool EnforceInputLimit(ImGuiInputTextCallbackData *data);
 
     // Reverse search
     void BeginSearch(ImGuiInputTextCallbackData *data);
@@ -129,13 +143,12 @@ private:
     // Submitting
     void SubmitLine();
     void ResetEditorState();
-    void ClearPendingLines();
-    std::string JoinPending(std::string_view lastRow) const;
-    std::size_t CurrentRowOffset() const;
+    void MarkInputChanged();
 
     // Drawing
     void DrawContinuationRows(ImDrawList *drawList, const ImVec2 &areaMin, float rowHeight);
     void DrawInputOverlay(ImDrawList *drawList, const ImVec2 &itemMin, const ImVec2 &itemMax, bool showSuggestion);
+    ImU32 ColorForSpan(BML::Shell::HighlightSpan::Kind kind) const;
     void RefreshHighlight();
     void RefreshTextMetrics();
 
@@ -161,16 +174,23 @@ private:
     bool m_VisiblePrev = false;
     bool m_FocusInputNextFrame = false;
     bool m_KeepOpen = false;
+    Features m_Features;
+    CommandBarTheme::SyntaxPalette m_SyntaxPalette = CommandBarTheme::OneDark();
 
     std::string m_Buffer;
     int m_CursorPos = 0;
-    std::vector<std::string> m_PendingLines;
+    CommandInput::Continuations m_Continuations;
     std::string m_KillBuffer;
+    std::uint64_t m_InputRevision = 1;
 
     BML::Shell::History *m_History = nullptr;
     BML::Shell::HistoryNavigator m_Navigator;
-    std::string m_NavigatedText;
+    std::uint64_t m_NavigatedInputRevision = 0;
     std::string m_Suggestion; // remainder of the suggested history entry
+    std::string m_SuggestionSource;
+    std::uint64_t m_SuggestionInputRevision = 0;
+    std::uint64_t m_SuggestionHistoryRevision = 0;
+    bool m_SuggestionSourceValid = false;
 
     bool m_SearchActive = false;
     std::string m_SearchQuery;
@@ -184,6 +204,7 @@ private:
 
     std::string m_HighlightSource;
     std::vector<BML::Shell::HighlightSpan> m_HighlightSpans;
+    std::uint64_t m_HighlightInputRevision = 0;
 
     CandidateState m_Candidates;
     BML::Shell::CompletionPlan m_Plan;

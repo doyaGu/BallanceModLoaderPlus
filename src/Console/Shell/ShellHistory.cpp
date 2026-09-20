@@ -4,6 +4,7 @@
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
+#include <iterator>
 
 #include "Console/Shell/ShellQuoting.h"
 #include "Console/Shell/ShellTypes.h"
@@ -13,21 +14,21 @@ namespace BML::Shell {
     namespace {
         constexpr std::string_view kHistoryFormatHeader = "BMLHIST2\n";
 
-        bool StartsWith(std::string_view text, std::string_view prefix) {
-            return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
-        }
-
-        void MergeEntry(std::vector<std::string> &entries, std::string entry) {
+        bool MergeEntry(std::vector<std::string> &entries, std::string entry) {
             if (entry.empty() || entry.size() > Limits::MaxLineBytes)
-                return;
+                return false;
             const auto existing = std::find(entries.begin(), entries.end(), entry);
-            if (existing != entries.end())
+            if (existing != entries.end()) {
+                if (std::next(existing) == entries.end())
+                    return false;
                 entries.erase(existing);
+            }
             entries.push_back(std::move(entry));
+            return true;
         }
 
         bool DecodeLengthPrefixed(std::string_view text, std::vector<std::string> &entries) {
-            if (!StartsWith(text, kHistoryFormatHeader))
+            if (!text.starts_with(kHistoryFormatHeader))
                 return false;
 
             std::vector<std::string> decoded;
@@ -84,7 +85,9 @@ namespace BML::Shell {
     }
 
     void History::Add(std::string entry) {
-        MergeEntry(m_Entries, std::move(entry));
+        if (!MergeEntry(m_Entries, std::move(entry)))
+            return;
+        ++m_Revision;
         if (!m_Path.empty())
             Save();
     }
@@ -93,21 +96,26 @@ namespace BML::Shell {
         if (number == 0 || number > m_Entries.size())
             return false;
         m_Entries.erase(m_Entries.begin() + static_cast<std::ptrdiff_t>(number - 1));
+        ++m_Revision;
         if (!m_Path.empty())
             Save();
         return true;
     }
 
     void History::Clear() {
+        const bool changed = !m_Entries.empty();
         m_Entries.clear();
+        if (changed)
+            ++m_Revision;
         if (!m_Path.empty())
             Save();
     }
 
     void History::FromText(std::string_view text) {
         m_Entries.clear();
-        if (StartsWith(text, kHistoryFormatHeader)) {
+        if (text.starts_with(kHistoryFormatHeader)) {
             DecodeLengthPrefixed(text, m_Entries);
+            ++m_Revision;
             return;
         }
 
@@ -126,10 +134,15 @@ namespace BML::Shell {
                 continue;
             MergeEntry(m_Entries, std::string(line));
         }
+        ++m_Revision;
     }
 
     std::string History::ToText() const {
         std::string content(kHistoryFormatHeader);
+        std::size_t capacity = content.size();
+        for (const std::string &entry : m_Entries)
+            capacity += entry.size() + 24;
+        content.reserve(capacity);
         for (const std::string &entry : m_Entries) {
             content += std::to_string(entry.size());
             content.push_back(':');
@@ -140,12 +153,21 @@ namespace BML::Shell {
     }
 
     void History::Load() {
-        m_Entries.clear();
-        if (m_Path.empty())
+        if (m_Path.empty()) {
+            if (!m_Entries.empty()) {
+                m_Entries.clear();
+                ++m_Revision;
+            }
             return;
+        }
         const std::vector<std::uint8_t> bytes = utils::ReadBinaryFileW(m_Path);
-        if (bytes.empty())
+        if (bytes.empty()) {
+            if (!m_Entries.empty()) {
+                m_Entries.clear();
+                ++m_Revision;
+            }
             return;
+        }
         FromText(std::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
     }
 
@@ -247,7 +269,7 @@ namespace BML::Shell {
                 designator = std::string(line.substr(designatorStart, j - designatorStart));
                 i = j;
                 for (auto it = m_Entries.rbegin(); it != m_Entries.rend(); ++it) {
-                    if (StartsWith(*it, prefix)) {
+                    if (it->starts_with(prefix)) {
                         entry = &*it;
                         break;
                     }
@@ -279,7 +301,7 @@ namespace BML::Shell {
         if (prefix.empty())
             return nullptr;
         for (auto it = m_Entries.rbegin(); it != m_Entries.rend(); ++it) {
-            if (it->size() > prefix.size() && StartsWith(*it, prefix))
+            if (it->size() > prefix.size() && it->starts_with(prefix))
                 return &*it;
         }
         return nullptr;
@@ -292,7 +314,7 @@ namespace BML::Shell {
     }
 
     bool HistoryNavigator::Matches(const std::string &entry, const std::string &filter) {
-        return filter.empty() || StartsWith(entry, filter);
+        return filter.empty() || entry.starts_with(filter);
     }
 
     bool HistoryNavigator::Up(const History &history, std::string_view current, std::string &text) {

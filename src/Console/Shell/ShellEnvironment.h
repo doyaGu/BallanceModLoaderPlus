@@ -39,7 +39,7 @@ namespace BML::Shell {
         void SetAlias(std::string_view name, std::string_view body);
         bool RemoveAlias(std::string_view name);
         void ClearAliases();
-        bool HasAlias(std::string_view name) const;
+        bool HasAlias(std::string_view name) const override;
         Entries Aliases() const;
         std::vector<std::string> AliasNames() const;
 

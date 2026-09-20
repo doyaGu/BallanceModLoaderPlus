@@ -11,22 +11,10 @@
 #include <string_view>
 #include <vector>
 
-#include "Console/Shell/ShellParser.h"
 #include "Console/Shell/ShellTypes.h"
 
 namespace BML::Shell {
-    struct ArgumentSplit {
-        // Words of the simple command the caret is in, quotes removed and escapes
-        // resolved, variables and substitutions kept as source text.
-        std::vector<std::string> args;
-        // The caret sits after unquoted whitespace, so a new argument is starting.
-        bool trailingSeparator = false;
-    };
-
-    // Splits the text up to the caret for ICommand::GetTabCompletion. Text after
-    // the last ; && || | or newline is the current command; an unterminated quote
-    // still yields its partial word.
-    ArgumentSplit SplitArguments(std::string_view textUpToCaret);
+    class AliasResolver;
 
     // Where candidates come from. Every list is unfiltered; Build keeps the ones
     // that start with what has been typed, ignoring case.
@@ -53,7 +41,10 @@ namespace BML::Shell {
         std::string prefix;           // what has been typed, quotes removed
         QuoteContext context = QuoteContext::Bare;
         bool followedByWhitespace = false;
+        // Exact duplicates removed while preserving provider order.
         std::vector<std::string> candidates;
+        // UTF-8 byte length shared by every candidate, compared without case.
+        std::size_t commonPrefixLength = 0;
     };
 
     CompletionPlan BuildCompletion(std::string_view text, std::size_t cursor, const CompletionProviders &providers,

@@ -18,6 +18,9 @@ namespace BML::Shell {
                 }
                 result.tokens = std::move(tokens);
                 result.incomplete = m_Incomplete;
+                result.incompleteKind = m_IncompleteKind;
+                result.incompleteBegin = m_IncompleteBegin;
+                result.activeCommandBegin = m_ActiveCommandBegin;
                 result.error = m_Error;
                 result.errorPos = m_ErrorPos;
                 result.message = m_Message;
@@ -35,10 +38,12 @@ namespace BML::Shell {
                 m_Message = std::move(message);
             }
 
-            void SetIncomplete(std::string message) {
+            void SetIncomplete(IncompleteKind kind, std::size_t begin, std::string message) {
                 if (Failed())
                     return;
                 m_Incomplete = true;
+                m_IncompleteKind = kind;
+                m_IncompleteBegin = begin;
                 m_ErrorPos = m_Text.size();
                 m_Message = std::move(message);
             }
@@ -170,7 +175,7 @@ namespace BML::Shell {
                         case '\\': {
                             if (m_Pos + 1 >= m_Text.size()) {
                                 FlushLiteral(token, literal, literalBegin);
-                                SetIncomplete("line continuation");
+                                SetIncomplete(IncompleteKind::LineContinuation, m_Pos, "line continuation");
                                 return false;
                             }
                             const char next = m_Text[m_Pos + 1];
@@ -221,8 +226,16 @@ namespace BML::Shell {
                             }
                             WordPart part;
                             const std::size_t before = m_Pos;
-                            if (!LexDollar(part))
+                            if (!LexDollar(part)) {
+                                const std::size_t after = m_Pos;
+                                m_Pos = before;
+                                FlushLiteral(token, literal, literalBegin);
+                                m_Pos = after;
+                                if (part.end == 0)
+                                    part.end = after;
+                                token.parts.push_back(std::move(part));
                                 return false;
+                            }
                             if (part.kind == WordPart::Kind::Literal) {
                                 literal.push_back('$');
                             } else {
@@ -238,8 +251,12 @@ namespace BML::Shell {
                         case '`': {
                             FlushLiteral(token, literal, literalBegin);
                             WordPart part;
-                            if (!LexBacktick(part))
+                            if (!LexBacktick(part)) {
+                                if (part.end == 0)
+                                    part.end = m_Pos;
+                                token.parts.push_back(std::move(part));
                                 return false;
+                            }
                             token.parts.push_back(std::move(part));
                             literalBegin = m_Pos;
                             sawContent = true;
@@ -278,7 +295,7 @@ namespace BML::Shell {
                 if (AtEnd()) {
                     part.text.assign(m_Text.substr(contentBegin));
                     part.end = m_Pos;
-                    SetIncomplete("unterminated single quote");
+                    SetIncomplete(IncompleteKind::SingleQuote, part.begin, "unterminated single quote");
                     return false;
                 }
                 part.text.assign(m_Text.substr(contentBegin, m_Pos - contentBegin));
@@ -296,7 +313,11 @@ namespace BML::Shell {
                     const char c = m_Text[m_Pos];
                     if (c == '\\') {
                         if (m_Pos + 1 >= m_Text.size()) {
-                            SetIncomplete("unterminated $'...'");
+                            m_Pos = m_Text.size();
+                            const std::string raw(m_Text.substr(contentBegin, m_Pos - contentBegin));
+                            part.text = utils::UnescapeString(raw.c_str());
+                            part.end = m_Pos;
+                            SetIncomplete(IncompleteKind::AnsiCQuote, part.begin, "unterminated $'...'");
                             return false;
                         }
                         m_Pos += 2;
@@ -307,7 +328,10 @@ namespace BML::Shell {
                     ++m_Pos;
                 }
                 if (AtEnd()) {
-                    SetIncomplete("unterminated $'...'");
+                    const std::string raw(m_Text.substr(contentBegin, m_Pos - contentBegin));
+                    part.text = utils::UnescapeString(raw.c_str());
+                    part.end = m_Pos;
+                    SetIncomplete(IncompleteKind::AnsiCQuote, part.begin, "unterminated $'...'");
                     return false;
                 }
                 const std::string raw(m_Text.substr(contentBegin, m_Pos - contentBegin));
@@ -348,7 +372,7 @@ namespace BML::Shell {
                         if (m_Pos + 1 >= m_Text.size()) {
                             flush();
                             part.end = m_Pos;
-                            SetIncomplete("unterminated double quote");
+                            SetIncomplete(IncompleteKind::DoubleQuote, part.begin, "unterminated double quote");
                             return false;
                         }
                         const char next = m_Text[m_Pos + 1];
@@ -365,8 +389,17 @@ namespace BML::Shell {
                     if (c == '$') {
                         WordPart child;
                         const std::size_t before = m_Pos;
-                        if (!LexDollar(child))
+                        if (!LexDollar(child)) {
+                            const std::size_t after = m_Pos;
+                            m_Pos = before;
+                            flush();
+                            m_Pos = after;
+                            if (child.end == 0)
+                                child.end = after;
+                            part.children.push_back(std::move(child));
+                            part.end = after;
                             return false;
+                        }
                         if (child.kind == WordPart::Kind::Literal) {
                             literal.push_back('$');
                             m_Pos = before + 1;
@@ -382,8 +415,13 @@ namespace BML::Shell {
                     if (c == '`') {
                         flush();
                         WordPart child;
-                        if (!LexBacktick(child))
+                        if (!LexBacktick(child)) {
+                            if (child.end == 0)
+                                child.end = m_Pos;
+                            part.children.push_back(std::move(child));
+                            part.end = m_Pos;
                             return false;
+                        }
                         part.children.push_back(std::move(child));
                         literalBegin = m_Pos;
                         continue;
@@ -394,7 +432,7 @@ namespace BML::Shell {
                 flush();
                 part.end = m_Pos;
                 if (!Failed())
-                    SetIncomplete("unterminated double quote");
+                    SetIncomplete(IncompleteKind::DoubleQuote, part.begin, "unterminated double quote");
                 return false;
             }
 
@@ -407,16 +445,24 @@ namespace BML::Shell {
                     part.kind = WordPart::Kind::Substitution;
                     m_Pos += 2;
                     const std::size_t contentBegin = m_Pos;
+                    const std::size_t outerCommandBegin = m_ActiveCommandBegin;
+                    m_ActiveCommandBegin = contentBegin;
                     std::vector<Token> inner;
-                    if (!LexSequence(inner, true))
+                    if (!LexSequence(inner, true)) {
+                        part.text.assign(m_Text.substr(contentBegin, m_Pos - contentBegin));
+                        part.end = m_Pos;
                         return false;
+                    }
                     if (AtEnd()) {
-                        SetIncomplete("unterminated $(");
+                        part.text.assign(m_Text.substr(contentBegin, m_Pos - contentBegin));
+                        part.end = m_Pos;
+                        SetIncomplete(IncompleteKind::CommandSubstitution, part.begin, "unterminated $(");
                         return false;
                     }
                     part.text.assign(m_Text.substr(contentBegin, m_Pos - contentBegin));
                     ++m_Pos; // ')'
                     part.end = m_Pos;
+                    m_ActiveCommandBegin = outerCommandBegin;
                     return true;
                 }
                 if (next == '{') {
@@ -431,7 +477,9 @@ namespace BML::Shell {
                             ++m_Pos;
                     }
                     if (AtEnd()) {
-                        SetIncomplete("unterminated ${");
+                        part.text.assign(m_Text.substr(nameBegin, m_Pos - nameBegin));
+                        part.end = m_Pos;
+                        SetIncomplete(IncompleteKind::BracedVariable, part.begin, "unterminated ${");
                         return false;
                     }
                     if (m_Pos == nameBegin || m_Text[m_Pos] != '}' ||
@@ -473,21 +521,29 @@ namespace BML::Shell {
                 part.begin = m_Pos;
                 ++m_Pos;
                 const std::size_t contentBegin = m_Pos;
+                const std::size_t outerCommandBegin = m_ActiveCommandBegin;
+                m_ActiveCommandBegin = contentBegin;
                 while (!AtEnd() && m_Text[m_Pos] != '`')
                     ++m_Pos;
                 if (AtEnd()) {
-                    SetIncomplete("unterminated backtick");
+                    part.text.assign(m_Text.substr(contentBegin, m_Pos - contentBegin));
+                    part.end = m_Pos;
+                    SetIncomplete(IncompleteKind::BacktickSubstitution, part.begin, "unterminated backtick");
                     return false;
                 }
                 part.text.assign(m_Text.substr(contentBegin, m_Pos - contentBegin));
                 ++m_Pos;
                 part.end = m_Pos;
+                m_ActiveCommandBegin = outerCommandBegin;
                 return true;
             }
 
             std::string_view m_Text;
             std::size_t m_Pos = 0;
             bool m_Incomplete = false;
+            IncompleteKind m_IncompleteKind = IncompleteKind::None;
+            std::size_t m_IncompleteBegin = 0;
+            std::size_t m_ActiveCommandBegin = std::string_view::npos;
             bool m_Error = false;
             std::size_t m_ErrorPos = 0;
             std::string m_Message;

@@ -214,6 +214,7 @@ set(BML_CONSOLE_PRIVATE_HEADERS
         Console/Shell/ShellBuiltins.h
         Console/Shell/ShellCompletion.h
         Console/Shell/ShellDispatcher.h
+        Console/Shell/ShellEditing.h
         Console/Shell/ShellEnvironment.h
         Console/Shell/ShellExecutor.h
         Console/Shell/ShellExpander.h
@@ -239,6 +240,7 @@ set(BML_CONSOLE_SOURCES
         Console/Shell/FilterCommands.cpp
         Console/Shell/ShellBuiltins.cpp
         Console/Shell/ShellCompletion.cpp
+        Console/Shell/ShellEditing.cpp
         Console/Shell/ShellEnvironment.cpp
         Console/Shell/ShellExecutor.cpp
         Console/Shell/ShellExpander.cpp

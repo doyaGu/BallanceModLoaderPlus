@@ -64,6 +64,10 @@ namespace BML::Shell {
     public:
         virtual ~AliasResolver() = default;
         virtual bool LookupAlias(std::string_view name, std::string &body) const = 0;
+        virtual bool HasAlias(std::string_view name) const {
+            std::string body;
+            return LookupAlias(name, body);
+        }
     };
 
     struct ParseResult {
@@ -76,6 +80,9 @@ namespace BML::Shell {
         bool Ok() const { return !incomplete && !error; }
     };
 
+    // Parses an existing lexer result. Editing analysis uses this overload to
+    // derive syntax roles without tokenizing the same line a second time.
+    ParseResult ParseLexed(LexResult lexed, const AliasResolver *aliases = nullptr);
     ParseResult Parse(std::string_view text, const AliasResolver *aliases = nullptr);
 }
 

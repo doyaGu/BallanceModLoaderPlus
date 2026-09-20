@@ -144,9 +144,9 @@ namespace BML::Shell {
                 return true;
             }
 
-            static Word WordFromToken(const Token &token) {
+            static Word TakeWord(Token &token) {
                 Word word;
-                word.parts = token.parts;
+                word.parts = std::move(token.parts);
                 word.begin = token.begin;
                 word.end = token.end;
                 return word;
@@ -161,10 +161,10 @@ namespace BML::Shell {
                 while (const Token *token = Cur()) {
                     if (token->kind != Token::Kind::Word)
                         break;
-                    const Word word = WordFromToken(*token);
-                    if (!word.IsBareLiteral())
+                    if (token->parts.size() != 1 ||
+                        token->parts[0].kind != WordPart::Kind::Literal)
                         break;
-                    const std::string name = word.parts[0].text;
+                    const std::string &name = token->parts[0].text;
                     if (name.empty() || active.count(name))
                         break;
                     std::string body;
@@ -234,11 +234,12 @@ namespace BML::Shell {
                 }
 
                 command.begin = token->begin;
-                while (const Token *word = Cur()) {
-                    if (word->kind != Token::Kind::Word)
+                while (!AtEnd()) {
+                    Token &word = m_Tokens[m_Index];
+                    if (word.kind != Token::Kind::Word)
                         break;
-                    command.words.push_back(WordFromToken(*word));
-                    command.end = word->end;
+                    command.end = word.end;
+                    command.words.push_back(TakeWord(word));
                     ++m_Index;
                 }
                 return true;
@@ -252,8 +253,12 @@ namespace BML::Shell {
         };
     }
 
-    ParseResult Parse(std::string_view text, const AliasResolver *aliases) {
-        Parser parser(Lex(text), aliases);
+    ParseResult ParseLexed(LexResult lexed, const AliasResolver *aliases) {
+        Parser parser(std::move(lexed), aliases);
         return parser.Run();
+    }
+
+    ParseResult Parse(std::string_view text, const AliasResolver *aliases) {
+        return ParseLexed(Lex(text), aliases);
     }
 }

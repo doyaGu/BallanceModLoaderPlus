@@ -10,6 +10,8 @@
 #include <vector>
 
 namespace BML::Shell {
+    class AliasResolver;
+
     struct HighlightSpan {
         enum class Kind {
             Plain,
@@ -27,9 +29,12 @@ namespace BML::Shell {
         std::size_t end = 0;
     };
 
-    // isCommand answers whether a bare first word names something runnable.
+    // isCommand checks registered commands. aliases lets the editing-analysis
+    // seam identify bare aliases and typed command heads revealed by alias
+    // bodies that inject operators.
     std::vector<HighlightSpan> Highlight(std::string_view text,
-                                         const std::function<bool(std::string_view)> &isCommand);
+                                         const std::function<bool(std::string_view)> &isCommand,
+                                         const AliasResolver *aliases = nullptr);
 }
 
 #endif // BML_SHELL_HIGHLIGHTER_H
