@@ -29,7 +29,7 @@ public:
     const char *GetID() override { return "BML"; }
     const char *GetVersion() override { return BML_VERSION; }
     const char *GetName() override { return "Ballance Mod Loader"; }
-    const char *GetAuthor() override { return "Gamepiaynmo & YingChe & Kakuty"; }
+    const char *GetAuthor() override { return "doyaGu & Gamepiaynmo & YingChe"; }
     const char *GetDescription() override {
         return "Implementation of functions provided by Ballance Mod Loader."
                "\n\n https://github.com/doyaGu/BallanceModLoaderPlus";

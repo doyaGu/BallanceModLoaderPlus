@@ -70,7 +70,7 @@ public:
     const char *GetID() override { return "NewBallType"; }
     const char *GetVersion() override { return BML_VERSION; }
     const char *GetName() override { return "New Ball Type"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
+    const char *GetAuthor() override { return "doyaGu & Gamepiaynmo"; }
     const char *GetDescription() override { return "Implementation of registering new ball types."; }
     DECLARE_BML_VERSION;
 
