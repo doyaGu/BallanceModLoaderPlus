@@ -290,6 +290,30 @@ TEST_F(ConfigTest, PropertyValues) {
     EXPECT_EQ(static_cast<CKKEYBOARD>(0), strProp->GetKey());
 }
 
+TEST_F(ConfigTest, PropertyEditorIsSchemaMetadata) {
+    IProperty *property = config->GetProperty("Appearance", "Accent");
+    property->SetDefaultString("#61AFEF");
+    EXPECT_EQ(BML_CONFIG_EDITOR_DEFAULT, BML_GetConfigPropertyEditor(nullptr));
+    EXPECT_EQ(0, BML_SetConfigPropertyEditor(nullptr, BML_CONFIG_EDITOR_COLOR));
+    EXPECT_EQ(BML_CONFIG_EDITOR_DEFAULT, BML_GetConfigPropertyEditor(property));
+
+    const std::uint64_t schemaBeforeEditor = config->GetSchemaRevision();
+    const std::uint64_t valueBeforeEditor = config->GetValueRevision();
+    EXPECT_EQ(1, BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR));
+    EXPECT_EQ(BML_CONFIG_EDITOR_COLOR, BML_GetConfigPropertyEditor(property));
+    EXPECT_GT(config->GetSchemaRevision(), schemaBeforeEditor);
+    EXPECT_EQ(valueBeforeEditor, config->GetValueRevision());
+    EXPECT_STREQ("#61AFEF", property->GetString());
+
+    EXPECT_EQ(0, BML_SetConfigPropertyEditor(
+                     property, static_cast<BML_ConfigPropertyEditor>(99)));
+    EXPECT_EQ(BML_CONFIG_EDITOR_COLOR, BML_GetConfigPropertyEditor(property));
+
+    const std::uint64_t stableSchema = config->GetSchemaRevision();
+    EXPECT_EQ(1, BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR));
+    EXPECT_EQ(stableSchema, config->GetSchemaRevision());
+}
+
 TEST_F(ConfigTest, VariantValueKeepsIntegerAndKeySemanticsDistinct) {
     auto *intProp = static_cast<Property *>(config->GetProperty("TestCategory", "IntProp"));
     intProp->SetDefaultInteger(10);

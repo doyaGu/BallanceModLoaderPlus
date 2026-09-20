@@ -80,6 +80,7 @@
 ?CheckDependencies@IMod@@IAE_NXZ
 ?CleanupResources@Bui@@YAXPAVCKContext@@@Z
 ?ClearDependencies@IMod@@IAE_NXZ
+?ColorButton@Bui@@YA_NPBDPAUImVec4@@H@Z
 ?Create2DText@ExecuteBB@@YAPAVCKBehavior@@PAV2@PAVCK2dEntity@@W4FontType@1@PBDHVVxRect@@UVx2DVector@@5PAVCKMaterial@@M6H@Z
 ?CreateBB@ScriptHelper@@YAPAVCKBehavior@@PAV2@UCKGUID@@_N@Z
 ?CreateHookBlock@ExecuteBB@@YAPAVCKBehavior@@PAV2@P6AHPBUCKBehaviorContext@@PAX@Z2HH@Z

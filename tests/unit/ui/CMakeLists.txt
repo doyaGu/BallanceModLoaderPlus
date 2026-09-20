@@ -2,6 +2,12 @@ add_bml_test(CursorVisibilityPolicyTest
         SOURCES CursorVisibilityPolicyTest.cpp
 )
 
+add_bml_test(ColorCodecTest
+        SOURCES
+        ColorCodecTest.cpp
+        ${BML_SOURCE_DIR}/UI/ColorCodec.cpp
+)
+
 add_bml_test(ImeStateTest
         SOURCES
         ImeStateTest.cpp

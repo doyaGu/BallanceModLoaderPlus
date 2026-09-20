@@ -18,7 +18,9 @@ endif()
 foreach(required_export
         BML_GetInterface
         BML_RegisterInterface
-        BML_UnregisterInterface)
+        BML_UnregisterInterface
+        BML_GetConfigPropertyEditor
+        BML_SetConfigPropertyEditor)
     string(FIND "${exports}" "${required_export}" required_export_index)
     if(required_export_index EQUAL -1)
         message(FATAL_ERROR
