@@ -146,7 +146,7 @@ private void OnHelloCommand(const BML::ModContext &in ctx,
 ### 逐步追踪：玩家输入 `/hello toggle` 时发生了什么
 
 1. 玩家按 `/` 打开命令栏，输入 `hello toggle`，按回车
-2. BML 解析输入，将第一个空格前的部分 `hello` 作为命令名查找
+2. BML 按 shell 规则解析输入（空格分词，引号、`$变量`、`;`、`|` 等都有效），把第一个词 `hello` 作为命令名查找
 3. BML 在注册表中找到名为 `hello` 的条目
 4. BML 构造 `CommandEvent` 对象：`CommandName = "hello"`，`ArgCount = 1`，`GetArg(0) = "toggle"`，`ArgsText = "toggle"`
 5. BML 通过之前保存的 `execute` 句柄调用 `OnHelloCommand`

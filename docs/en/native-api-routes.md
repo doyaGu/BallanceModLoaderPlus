@@ -95,7 +95,7 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Add pages to your own entry in the Mods menu | none | `BML::ModMenu::Page` from `ModMenu.hpp` | `ModMenu.h` is the pure C interface; the C++ facade is one-way over it. Each registration appends one native-styled details action and routes it to a fully custom ImGui page. Version 1.0 is Native Mod only. |
 | Loader events | the `IMessageReceiver` virtuals on `IMod` | none | Handle the synchronous callback. Copy the required data into mod-owned storage if work must be deferred. |
 | Cheat mode | `EnableCheat` to set, `IsCheatEnabled` to read | `Runtime::ReadState` reads it | Read either, set through the frozen C++. |
-| Console commands | `RegisterCommand` plus an `ICommand` subclass | none | Frozen C++ to register. Removing one again is a C export, `BML_UnregisterCommand`, because `IBML` could not grow the function. |
+| Console commands | `RegisterCommand` plus an `ICommand` subclass | none | Frozen C++ to register. Removing one again is a C export, `BML_UnregisterCommand`, because `IBML` could not grow the function. The exit status and the piped input of a running command are C exports too, `BML_SetCommandStatus` and `BML_GetCommandInput`, because `Execute` returns `void`. |
 | Configuration | `IMod::GetConfig` plus `IConfig` and `IProperty` | none | Frozen C++ only. |
 | Timers | `AddTimer`, `AddTimerLoop` | none | Frozen C++ only. |
 | Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |

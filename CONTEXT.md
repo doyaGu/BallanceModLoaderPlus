@@ -41,8 +41,10 @@ the 1.0 Interface.
 
 **Built-in Console** — Command bar, message board, history, commands, and
 configuration. One viewport layout places the message board above the command
-bar and a single transient completion or IME row below it. Clicking outside an
-open command session or entering a new scene closes it and releases keyboard
+bar and a single transient completion, reverse-search, or IME row below it.
+Continuation rows grow upward and move the message-board boundary with them;
+they remain one logical command for completion and history. Clicking outside
+an open command session or entering a new scene closes it and releases keyboard
 capture.
 
 **Built-in HUD** — HUD tree, title, FPS, speedrun timer, cheat indicator,

@@ -65,8 +65,41 @@ found and loaded. Script authors can also use `script status` and
 | `ModLoader/Fonts` | Optional fonts used by the BML+ interface |
 | `ModLoader/Themes` | Command-bar color themes |
 
-The `/` command bar provides command history and completion. Run `help` to see
-the commands available in the current installation.
+## Command line
+
+Press `/` to open the command bar. It reads a line the way a POSIX shell does:
+
+- Words are separated by unquoted spaces. `'...'` is literal, `"..."` keeps
+  spaces and allows `$NAME` inside, and `$'...'` resolves escapes such as `\n`
+  and `\e`. A backslash escapes only shell characters, so
+  `map load C:\Maps\x.nmo` needs no quoting.
+- `a; b` runs both, `a && b` runs `b` only when `a` succeeded, `a || b` only
+  when it failed, and `a | b` feeds what `a` printed into `b`. `$?` holds the
+  status of the last command. `# ...` is a comment.
+- `set NAME VALUE` defines a variable for this session, `set -U NAME VALUE`
+  keeps it across sessions, `set -e NAME` removes it, and `$NAME` or `${NAME}`
+  inserts it. `$(cmd)` inserts what `cmd` printed.
+- `alias name='cmd args'` defines a shortcut for the first word of a line;
+  `alias` lists them and `unalias name` removes one. Aliases persist.
+- `history` numbers past lines; `!!`, `!n`, `!-n`, and `!text` rerun them.
+- Filters for pipelines: `grep`, `head`, `tail`, `wc`, `sort`, `uniq`, and
+  `xargs`. `true` and `false` set a status without doing anything.
+
+Editing keys: Tab completes commands, aliases, `$` variables, and a command's
+own arguments, also after `;` or `|`. Up and Down walk the history, keeping the
+text being typed and filtering by it. A grey suggestion from history follows the
+caret; Right or End accepts it. Ctrl+R searches the history, Ctrl+A and Ctrl+E
+jump to the line ends, Ctrl+U, Ctrl+K, and Ctrl+W cut to the start, to the end,
+or one word, Ctrl+Y pastes what was cut, and Ctrl+L clears the board. An
+unfinished line, such as an open quote or a trailing `&&`, asks for another row
+instead of running. Continuation rows grow upward so the completion/search/IME
+rail stays below the row being edited and the message board stays above the
+whole command. The physical rows are saved and recalled as one history entry.
+
+Variables, aliases, and history are stored in `ModLoader/CommandBar.shell.json`
+and `ModLoader/CommandBar.history`. Set `CommandBar.KeepOpen` in `BML.cfg` to
+keep the bar open after a command runs. Run `help` to see the commands available
+in the current installation.
 
 ## Update BML+
 

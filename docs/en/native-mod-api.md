@@ -58,7 +58,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | --- | --- |
 | `Version.h`, `Defines.h` | Version macros, export macros, status codes, and base definitions |
 | `Result.hpp` | Reusable C++ result carrying a BML status code, an optional value, and an optional module-specific diagnostic |
-| `BML.h` | C ABI for version, loader and mod directories, command unregistration, memory, encoding, path, file, and Zip utilities |
+| `BML.h` | C ABI for version, loader and mod directories, command unregistration, command status and piped input, memory, encoding, path, file, and Zip utilities |
 | `BMLAll.h` | Convenience header that includes the complete native SDK surface |
 | `IMod.h`, `IMessageReceiver.h` | Mod metadata, lifecycle, gameplay, and engine callbacks |
 | `IBML.h` | Loader services, CK managers, lookup, commands, timers, and dependencies |
@@ -221,6 +221,25 @@ property API; use the explicit conversion functions in `BML.h` when needed.
 `ICommand` provides the command name, aliases, description, cheat flag,
 execution, Tab completion, and basic Integer, Float, and Boolean parsers.
 `ILogger` provides three log levels.
+
+The console shell splits a line before `Execute` runs: unquoted whitespace
+separates words, `'...'`, `"..."`, and `$'...'` quote them, `$NAME` and `$(...)`
+expand, and `;`, `&&`, `||`, and `|` separate commands, so `Execute` receives
+one command at a time with quotes already removed. `args[0]` is the word that
+named the command, which is the alias when one was typed. A backslash outside
+quotes escapes only shell characters and stays literal otherwise, so Windows
+paths pass through unquoted. There is no word splitting after expansion: one
+word in the line is one element of `args`. Lines handed to
+`IBML::ExecuteCommand` go through the same shell.
+
+`Execute` returns `void`, so two C exports in `BML.h` carry the rest of the
+shell contract. `BML_SetCommandStatus(int)` marks the running command failed
+for `&&`, `||`, and `$?`; without it a command counts as succeeded unless it
+throws or cannot be found. `BML_GetCommandInput(size_t *)` returns the text
+piped into the running command by `other | this`, or null when nothing was
+piped; the pointer belongs to the loader and lives until `Execute` returns.
+Output written with `SendIngameMessage` during a pipeline stage goes to the
+next stage rather than to the board.
 
 `IBML::RegisterCommand` takes a raw `ICommand *` and the loader never deletes
 it. Registration returns `void` and only writes to the log when it fails, which

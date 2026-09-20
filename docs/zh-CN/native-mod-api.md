@@ -203,6 +203,22 @@ Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和
 `ICommand` 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
 Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志级别。
 
+控制台 shell 会在 `Execute` 运行前拆分整行：未加引号的空白分隔单词，`'...'`、
+`"..."`、`$'...'` 是引号形式，`$NAME` 与 `$(...)` 会展开，`;`、`&&`、`||`、`|`
+分隔命令，因此 `Execute` 每次只收到一条命令，且引号已经去掉。`args[0]` 是命名
+该命令的那个词，输入的是别名时就是别名。引号之外的反斜杠只转义 shell 字符，
+其他情况原样保留，所以 Windows 路径不加引号也能通过。展开之后不再按空格拆分：
+一行里的一个词就是 `args` 的一个元素。交给 `IBML::ExecuteCommand` 的字符串走
+同一套 shell。
+
+`Execute` 返回 `void`，所以 shell 约定的另一半由 `BML.h` 中的两个 C 导出承担。
+`BML_SetCommandStatus(int)` 把正在运行的命令标记为失败，供 `&&`、`||` 和 `$?`
+使用；不调用它，命令只有在抛出异常或找不到时才算失败。
+`BML_GetCommandInput(size_t *)` 返回 `other | this` 管道送进当前命令的文本，
+没有管道时返回空指针；指针属于 Loader，在 `Execute` 返回前有效。作为管道中间
+环节运行时，通过 `SendIngameMessage` 写出的内容会交给下一环节，而不是显示在
+消息板上。
+
 `IBML::RegisterCommand` 接收裸 `ICommand *`，Loader 从不删除它。注册成功时没有
 任何返回信息，只在失败时写日志；失败的情况包括命令为空指针、命令名或别名非法、
 命令名已被注册。

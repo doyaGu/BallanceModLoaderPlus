@@ -58,7 +58,34 @@ id 的开发目录和 zip 包。新增 Mod 或修改依赖后应重启 Player。
 | `ModLoader/Fonts` | BML+ 界面使用的可选字体 |
 | `ModLoader/Themes` | 命令栏配色主题 |
 
-命令栏支持历史和补全。输入 `help` 可以查看当前安装提供的命令。
+## 命令行
+
+按 `/` 打开命令栏。它按 POSIX shell 的方式读取一行：
+
+- 未加引号的空格分隔单词。`'...'` 按字面保留，`"..."` 保留空格并允许其中的
+  `$NAME`，`$'...'` 解析 `\n`、`\e` 之类的转义。反斜杠只转义 shell 字符，
+  因此 `map load C:\Maps\x.nmo` 不需要加引号。
+- `a; b` 依次运行两者，`a && b` 只在 `a` 成功时运行 `b`，`a || b` 只在失败时
+  运行，`a | b` 把 `a` 的输出交给 `b`。`$?` 是上一条命令的状态。`# ...` 是注释。
+- `set NAME VALUE` 定义本次会话的变量，`set -U NAME VALUE` 跨会话保留，
+  `set -e NAME` 删除，`$NAME` 或 `${NAME}` 插入其值。`$(cmd)` 插入 `cmd` 的输出。
+- `alias name='cmd args'` 为一行的第一个词定义缩写；`alias` 列出全部，
+  `unalias name` 删除一个。别名会持久保存。
+- `history` 给历史行编号；`!!`、`!n`、`!-n`、`!text` 重新执行它们。
+- 管道过滤器：`grep`、`head`、`tail`、`wc`、`sort`、`uniq`、`xargs`。`true`
+  和 `false` 只设置状态，不做别的。
+
+编辑按键：Tab 补全命令、别名、`$` 变量和命令自己的参数，在 `;` 或 `|` 之后同样
+有效。上下方向键遍历历史，保留正在输入的文字并按它过滤。光标后面会出现来自
+历史的灰色建议，按 Right 或 End 接受。Ctrl+R 搜索历史，Ctrl+A 与 Ctrl+E 跳到
+行首行尾，Ctrl+U、Ctrl+K、Ctrl+W 分别剪切到行首、到行尾或一个词，Ctrl+Y 粘贴
+剪切的内容，Ctrl+L 清空消息板。未写完的行（例如没有闭合的引号或末尾的 `&&`）
+会要求再输入一行，而不是直接运行。续行向上扩展，因此补全、搜索或输入法候选栏
+始终位于当前编辑行下方，消息板位于整条命令上方；这些物理行在历史中仍是一条命令。
+
+变量、别名与历史保存在 `ModLoader/CommandBar.shell.json` 和
+`ModLoader/CommandBar.history`。在 `BML.cfg` 中设置 `CommandBar.KeepOpen`
+可以让命令运行后命令栏保持打开。输入 `help` 可以查看当前安装提供的命令。
 
 ## 更新 BML+
 
