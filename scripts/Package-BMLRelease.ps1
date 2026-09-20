@@ -39,6 +39,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'lib\BMLProject.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'lib\BMLReleaseFiles.psm1') -Force
 
 function Copy-RequiredFile {
     param(
@@ -112,10 +113,10 @@ function Get-BMLVersionHeaderFullVersion {
     return $match.Matches[0].Groups[1].Value
 }
 
-function Assert-BMLSdkStage {
+function Assert-BMLSdkDirectory {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$StageDir,
+        [string]$SdkDir,
 
         [switch]$RequireAngelScript
     )
@@ -167,7 +168,7 @@ function Assert-BMLSdkStage {
         'scripts\bml.py',
         'scripts\lib\BMLProject.psm1'
     )) {
-        Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
+        Assert-BMLPath -Path (Join-Path $SdkDir $relative) -Type Leaf
     }
 
     if ($RequireAngelScript) {
@@ -189,7 +190,7 @@ function Assert-BMLSdkStage {
             'docs\api\bml-script-mod-api.as',
             'docs\api\bml-imgui-api.as'
         )) {
-            Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
+            Assert-BMLPath -Path (Join-Path $SdkDir $relative) -Type Leaf
         }
     } else {
         foreach ($relative in @(
@@ -199,8 +200,8 @@ function Assert-BMLSdkStage {
             'share\BML\docs\zh-CN\script-mod-tutorial',
             'docs\api\as.predefined'
         )) {
-            if (Test-Path -LiteralPath (Join-Path $StageDir $relative)) {
-                throw "SDK stage contains AngelScript author assets but script support was not requested: $relative"
+            if (Test-Path -LiteralPath (Join-Path $SdkDir $relative)) {
+                throw "SDK directory contains AngelScript author files but script support was not requested: $relative"
             }
         }
     }
@@ -213,36 +214,36 @@ function Assert-BMLSdkStage {
         'include\BML\RefCount.h',
         'include\BML\Timer.h'
     )) {
-        $forbidden = Join-Path $StageDir $relative
+        $forbidden = Join-Path $SdkDir $relative
         if (Test-Path -LiteralPath $forbidden) {
-            throw "SDK stage contains a removed or internal header: $relative"
+            throw "SDK directory contains a removed or internal header: $relative"
         }
     }
 
     foreach ($relative in @('docs\en', 'docs\zh-CN')) {
-        $duplicateDocs = Join-Path $StageDir $relative
+        $duplicateDocs = Join-Path $SdkDir $relative
         if (Test-Path -LiteralPath $duplicateDocs) {
-            throw "SDK stage contains duplicate author documentation: $relative"
+            throw "SDK directory contains duplicate author documentation: $relative"
         }
     }
 
-    $bmlTargets = Get-Content -LiteralPath (Join-Path $StageDir 'lib\cmake\BML\BMLTargets.cmake') -Raw
+    $bmlTargets = Get-Content -LiteralPath (Join-Path $SdkDir 'lib\cmake\BML\BMLTargets.cmake') -Raw
     foreach ($dependency in @('VirtoolsSDK::CK2', 'VirtoolsSDK::VxMath')) {
         if (-not $bmlTargets.Contains($dependency)) {
             throw "SDK target export does not use the required namespaced dependency: $dependency"
         }
     }
 
-    foreach ($file in Get-ChildItem -LiteralPath $StageDir -File -Recurse -Force) {
-        $relative = (Get-RelativeZipPath -BaseDir $StageDir -Path $file.FullName).ToLowerInvariant()
+    foreach ($file in Get-ChildItem -LiteralPath $SdkDir -File -Recurse -Force) {
+        $relative = (Get-RelativeZipPath -BaseDir $SdkDir -Path $file.FullName).ToLowerInvariant()
         if ($relative -match '(^|/)__pycache__(/|$)' -or $relative -match '\.py[co]$') {
-            throw "SDK stage contains a Python cache file: $relative"
+            throw "SDK directory contains a Python cache file: $relative"
         }
         if ($relative -match '^include/(gtest|gmock)/' -or
             $relative -match '^lib/(gtest|gmock)(_main)?\.(lib|a)$' -or
             $relative -match '^lib/cmake/gtest/' -or
             $relative -match '^lib/pkgconfig/(gtest|gmock)') {
-            throw "SDK stage contains GoogleTest development files: $relative"
+            throw "SDK directory contains GoogleTest development files: $relative"
         }
     }
 }
@@ -288,12 +289,12 @@ function New-UpdaterManifestObject {
     param(
         [string]$Version,
         [string]$PackagePath,
-        [string]$PackageStage
+        [string]$PackageDirectory
     )
 
     $managedFiles = @()
-    foreach ($file in Get-ChildItem -LiteralPath $PackageStage -File -Recurse) {
-        $relative = Get-RelativeZipPath -BaseDir $PackageStage -Path $file.FullName
+    foreach ($file in Get-ChildItem -LiteralPath $PackageDirectory -File -Recurse) {
+        $relative = Get-RelativeZipPath -BaseDir $PackageDirectory -Path $file.FullName
         if (-not (Test-UpdaterManagedPath -RelativePath $relative)) {
             throw "Updater package contains forbidden managed path: $relative"
         }
@@ -324,25 +325,10 @@ function Write-UpdaterManifestSignature {
         [string]$CngKeyName
     )
 
-    if (-not $CngKeyName) {
-        throw 'Updater manifest signing requires -SigningCngKeyName, or pass -SkipUpdateSigning for local unsigned packaging.'
-    }
-
-    $key = [System.Security.Cryptography.CngKey]::Open($CngKeyName)
-    $ecdsa = [System.Security.Cryptography.ECDsaCng]::new($key)
-    try {
-        $bytes = [System.IO.File]::ReadAllBytes($ManifestPath)
-        $sha = [System.Security.Cryptography.SHA256]::Create()
-        $hash = $sha.ComputeHash($bytes)
-        $signature = $ecdsa.SignHash($hash)
-        if ($signature.Length -ne 64) {
-            throw "CNG ECDSA signature must be IEEE P1363 r||s format; got $($signature.Length) bytes."
-        }
-        [System.IO.File]::WriteAllText($SignaturePath, [System.Convert]::ToBase64String($signature), [System.Text.Encoding]::ASCII)
-    } finally {
-        $ecdsa.Dispose()
-        $key.Dispose()
-    }
+    Write-BMLCngSignature `
+        -InputPath $ManifestPath `
+        -SignaturePath $SignaturePath `
+        -CngKeyName $CngKeyName
 }
 
 function Write-Utf8NoBomText {
@@ -472,7 +458,7 @@ $runtimeSource = if ($RuntimeSourceDir) {
 $ckasRuntime = if ($CKAngelScriptRuntimeDir) { [System.IO.Path]::GetFullPath($CKAngelScriptRuntimeDir) } else { $null }
 $ckasRuntimeDll = if ($ckasRuntime) { Get-CKAngelScriptRuntimeDll -RootDir $ckasRuntime } else { $null }
 $output = [System.IO.Path]::GetFullPath($OutputDir)
-$stageRoot = Join-Path $output '_stage'
+$zipContentsRoot = Join-Path $output '_zip-contents'
 
 if ($ckasRuntime -and -not $IncludeAngelScript) {
     throw '-CKAngelScriptRuntimeDir requires -IncludeAngelScript.'
@@ -534,33 +520,33 @@ if ($IncludeAngelScript) {
 }
 
 New-BMLCleanDirectory $output
-New-BMLCleanDirectory $stageRoot
+New-BMLCleanDirectory $zipContentsRoot
 
-$runtimeStage = Join-Path $stageRoot 'runtime'
-New-BMLCleanDirectory $runtimeStage
-Copy-BMLDirectoryContents -SourceDir $runtimeSource -DestinationDir $runtimeStage
-Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLPlus.dll') -Destination (Join-Path $runtimeStage 'BuildingBlocks\BMLPlus.dll')
-Copy-RequiredFile -Source (Join-Path $releaseBin 'Updater.exe') -Destination (Join-Path $runtimeStage 'Bin\Updater.exe')
-Write-UpdaterBootstrapReadme -DestinationDir (Join-Path $runtimeStage 'Bin') -Version $Version
-Write-UpdaterSourcesJson -DestinationDir (Join-Path $runtimeStage 'ModLoader\Updater') -BaseUrl $UpdaterBaseUrl -DefaultChannel $UpdaterDefaultChannel
-Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'LICENSE') -Destination (Join-Path $runtimeStage 'LICENSE')
-Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README.md') -Destination (Join-Path $runtimeStage 'README.md')
-Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README_zh-CN.md') -Destination (Join-Path $runtimeStage 'README_zh-CN.md')
+$runtimeFiles = Join-Path $zipContentsRoot 'runtime'
+New-BMLCleanDirectory $runtimeFiles
+Copy-BMLDirectoryContents -SourceDir $runtimeSource -DestinationDir $runtimeFiles
+Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLPlus.dll') -Destination (Join-Path $runtimeFiles 'BuildingBlocks\BMLPlus.dll')
+Copy-RequiredFile -Source (Join-Path $releaseBin 'Updater.exe') -Destination (Join-Path $runtimeFiles 'Bin\Updater.exe')
+Write-UpdaterBootstrapReadme -DestinationDir (Join-Path $runtimeFiles 'Bin') -Version $Version
+Write-UpdaterSourcesJson -DestinationDir (Join-Path $runtimeFiles 'ModLoader\Updater') -BaseUrl $UpdaterBaseUrl -DefaultChannel $UpdaterDefaultChannel
+Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'LICENSE') -Destination (Join-Path $runtimeFiles 'LICENSE')
+Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README.md') -Destination (Join-Path $runtimeFiles 'README.md')
+Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README_zh-CN.md') -Destination (Join-Path $runtimeFiles 'README_zh-CN.md')
 
 if ($IncludeAngelScript) {
-    Copy-RequiredFile -Source $ckasRuntimeDll -Destination (Join-Path $runtimeStage 'BuildingBlocks\AngelScript.dll')
+    Copy-RequiredFile -Source $ckasRuntimeDll -Destination (Join-Path $runtimeFiles 'BuildingBlocks\AngelScript.dll')
 }
 
-New-BMLZipFromDirectory -SourceDir $runtimeStage -ZipPath (Join-Path $output "BMLPlus-$Version.zip")
+New-BMLZipFromDirectory -SourceDir $runtimeFiles -ZipPath (Join-Path $output "BMLPlus-$Version.zip")
 
-$updaterStage = Join-Path $stageRoot 'updater-runtime'
-Copy-BMLDirectoryFresh -SourceDir $runtimeStage -DestinationDir $updaterStage
+$updaterFiles = Join-Path $zipContentsRoot 'updater-runtime'
+Copy-BMLDirectoryFresh -SourceDir $runtimeFiles -DestinationDir $updaterFiles
 foreach ($forbidden in @(
-    (Join-Path $updaterStage 'Bin\Updater.exe'),
-    (Join-Path $updaterStage 'Bin\Updater-README.txt'),
-    (Join-Path $updaterStage 'ModLoader\Updater'),
-    (Join-Path $updaterStage 'ModLoader\Mods'),
-    (Join-Path $updaterStage 'ModLoader\Configs')
+    (Join-Path $updaterFiles 'Bin\Updater.exe'),
+    (Join-Path $updaterFiles 'Bin\Updater-README.txt'),
+    (Join-Path $updaterFiles 'ModLoader\Updater'),
+    (Join-Path $updaterFiles 'ModLoader\Mods'),
+    (Join-Path $updaterFiles 'ModLoader\Configs')
 )) {
     if (Test-Path -LiteralPath $forbidden) {
         Remove-Item -LiteralPath $forbidden -Recurse -Force
@@ -568,9 +554,9 @@ foreach ($forbidden in @(
 }
 
 $updaterZip = Join-Path $output "BMLPlus-Update-$Version.zip"
-New-BMLZipFromDirectory -SourceDir $updaterStage -ZipPath $updaterZip
+New-BMLZipFromDirectory -SourceDir $updaterFiles -ZipPath $updaterZip
 $updaterManifest = Join-Path $output "BMLPlus-Update-$Version.manifest.json"
-$manifestObject = New-UpdaterManifestObject -Version $Version -PackagePath $updaterZip -PackageStage $updaterStage
+$manifestObject = New-UpdaterManifestObject -Version $Version -PackagePath $updaterZip -PackageDirectory $updaterFiles
 Write-Utf8NoBomText -Path $updaterManifest -Text (($manifestObject | ConvertTo-Json -Depth 6) + "`n")
 $updaterManifestSignature = "$updaterManifest.sig"
 if ($SkipUpdateSigning) {
@@ -579,29 +565,29 @@ if ($SkipUpdateSigning) {
     Write-UpdaterManifestSignature -ManifestPath $updaterManifest -SignaturePath $updaterManifestSignature -CngKeyName $SigningCngKeyName
 }
 
-$releaseSdkStage = Join-Path $stageRoot 'sdk-release'
-New-BMLCleanDirectory $releaseSdkStage
-Copy-BMLDirectoryContents -SourceDir $releaseInstall -DestinationDir $releaseSdkStage
+$releaseSdkFiles = Join-Path $zipContentsRoot 'sdk-release'
+New-BMLCleanDirectory $releaseSdkFiles
+Copy-BMLDirectoryContents -SourceDir $releaseInstall -DestinationDir $releaseSdkFiles
 
 if ($IncludeAngelScript) {
-    Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkStage 'include')
+    Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkFiles 'include')
 }
 
-Assert-BMLSdkStage -StageDir $releaseSdkStage -RequireAngelScript:$IncludeAngelScript
-New-BMLZipFromDirectory -SourceDir $releaseSdkStage -ZipPath (Join-Path $output "BMLPlus-SDK-$Version-Release.zip")
+Assert-BMLSdkDirectory -SdkDir $releaseSdkFiles -RequireAngelScript:$IncludeAngelScript
+New-BMLZipFromDirectory -SourceDir $releaseSdkFiles -ZipPath (Join-Path $output "BMLPlus-SDK-$Version-Release.zip")
 
-$debugStage = Join-Path $stageRoot 'sdk-debug'
-New-BMLCleanDirectory $debugStage
-Copy-BMLDirectoryContents -SourceDir $debugInstall -DestinationDir $debugStage
-Copy-RequiredFile -Source (Join-Path $debugBin 'BMLPlus.pdb') -Destination (Join-Path $debugStage 'bin\BMLPlus.pdb')
+$debugSdkFiles = Join-Path $zipContentsRoot 'sdk-debug'
+New-BMLCleanDirectory $debugSdkFiles
+Copy-BMLDirectoryContents -SourceDir $debugInstall -DestinationDir $debugSdkFiles
+Copy-RequiredFile -Source (Join-Path $debugBin 'BMLPlus.pdb') -Destination (Join-Path $debugSdkFiles 'bin\BMLPlus.pdb')
 if ($IncludeAngelScript) {
-    Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $debugStage 'include')
+    Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $debugSdkFiles 'include')
 }
 
-Assert-BMLSdkStage -StageDir $debugStage -RequireAngelScript:$IncludeAngelScript
-New-BMLZipFromDirectory -SourceDir $debugStage -ZipPath (Join-Path $output "BMLPlus-SDK-$Version-Debug.zip")
+Assert-BMLSdkDirectory -SdkDir $debugSdkFiles -RequireAngelScript:$IncludeAngelScript
+New-BMLZipFromDirectory -SourceDir $debugSdkFiles -ZipPath (Join-Path $output "BMLPlus-SDK-$Version-Debug.zip")
 
-Remove-Item -LiteralPath $stageRoot -Recurse -Force
+Remove-Item -LiteralPath $zipContentsRoot -Recurse -Force
 
 Get-ChildItem -LiteralPath $output -Filter '*.zip' | ForEach-Object {
     Write-Host "Created $($_.FullName)"
