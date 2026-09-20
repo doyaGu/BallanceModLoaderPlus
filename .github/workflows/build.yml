@@ -18,7 +18,9 @@ env:
   PROJECT_NAME: BallanceModLoaderPlus
   BASE_BUILD_DIR: ${{ github.workspace }}\build
   BASE_DIST_DIR: ${{ github.workspace }}\dist
+  VIRTOOLS_SDK_REF: 175bcb12d829c687359b90615be53524cdba0132
   CKANGELSCRIPT_VERSION: v0.4.0
+  CKANGELSCRIPT_RELEASE_SHA256: 67bc7b48deb901e105481497e727b06d5ec2658f1e8c09dc630dbdf1cb1dbcc8
 
 jobs:
   validate-release:
@@ -27,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Validate release version
         shell: pwsh
@@ -56,25 +58,30 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: recursive
 
       - name: Checkout Virtools SDK
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: doyaGu/Virtools-SDK-2.1
+          ref: ${{ env.VIRTOOLS_SDK_REF }}
           path: Virtools-SDK-2.1
 
       - name: Download CKAngelScript release
         shell: pwsh
         run: |
-          $downloadDir = "${{ github.workspace }}\artifacts\ckangelscript"
-          $extractDir = "${{ github.workspace }}\artifacts\ckangelscript-release"
+          $downloadDir = "${{ github.workspace }}\third-party\ckangelscript-download"
+          $extractDir = "${{ github.workspace }}\third-party\ckangelscript-release"
           New-Item -ItemType Directory -Force -Path $downloadDir, $extractDir | Out-Null
           $archive = Join-Path $downloadDir "CKAngelScript-$env:CKANGELSCRIPT_VERSION-Release.zip"
           $url = "https://github.com/doyaGu/CKAngelScript/releases/download/$env:CKANGELSCRIPT_VERSION/CKAngelScript-$env:CKANGELSCRIPT_VERSION-Release.zip"
           Invoke-WebRequest -Uri $url -OutFile $archive
+          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -cne $env:CKANGELSCRIPT_RELEASE_SHA256) {
+            throw "CKAngelScript release hash mismatch: expected $env:CKANGELSCRIPT_RELEASE_SHA256, got $actualHash"
+          }
           Expand-Archive -LiteralPath $archive -DestinationPath $extractDir -Force
           foreach ($required in @(
             (Join-Path $extractDir 'bin\AngelScript.dll'),
@@ -90,14 +97,14 @@ jobs:
         shell: pwsh
         run: cmake --version
 
-      - name: Set build metadata
+      - name: Set tag and commit variables
         shell: pwsh
         run: |
           $shortSha = git rev-parse --short HEAD
           "SHORT_SHA=$shortSha" >> $env:GITHUB_ENV
 
       - name: Setup MSVC
-        uses: TheMrMilchmann/setup-msvc-dev@v4.0.0
+        uses: TheMrMilchmann/setup-msvc-dev@79dac248aac9d0059f86eae9d8b5bfab4e95e97c # v4.0.0
         with:
           arch: x86
 
@@ -111,7 +118,7 @@ jobs:
             -DVIRTOOLS_SDK_PATH="${{ github.workspace }}\Virtools-SDK-2.1" `
             -DBML_ENABLE_ANGELSCRIPT=ON `
             -DBML_BUILD_TESTS=ON `
-            -DCKANGELSCRIPT_ROOT="${{ github.workspace }}\artifacts\ckangelscript-release" `
+            -DCKANGELSCRIPT_ROOT="${{ github.workspace }}\third-party\ckangelscript-release" `
             -DCMAKE_INSTALL_PREFIX="${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}"
 
       - name: Build the project
@@ -128,17 +135,17 @@ jobs:
           cmake --install "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}"
           --prefix "${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}"
 
-      - name: Upload main SDK distribution artifact
+      - name: Upload main-branch SDK directory
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: BMLPlus-${{ env.SHORT_SHA }}-${{ matrix.configuration }}
           path: ${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}
           retention-days: 14
 
-      - name: Upload release SDK distribution artifact
+      - name: Upload tagged SDK directory
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-SDK-${{ matrix.configuration }}
           path: ${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}
@@ -146,7 +153,7 @@ jobs:
 
       - name: Upload release runtime binary
         if: startsWith(github.ref, 'refs/tags/v') && matrix.configuration == 'Release'
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Runtime-Binary
           path: |
@@ -156,7 +163,7 @@ jobs:
 
       - name: Upload debug symbols
         if: startsWith(github.ref, 'refs/tags/v') && matrix.configuration == 'Debug'
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Debug-Symbols
           path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\BMLPlus.pdb
@@ -170,47 +177,52 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Checkout Virtools SDK
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: doyaGu/Virtools-SDK-2.1
+          ref: ${{ env.VIRTOOLS_SDK_REF }}
           path: Virtools-SDK-2.1
 
       - name: Download Release SDK distribution
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-SDK-Release
-          path: ${{ github.workspace }}\artifacts\sdk-release
+          path: ${{ github.workspace }}\tag-build-output\sdk-release
 
       - name: Download Debug SDK distribution
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-SDK-Debug
-          path: ${{ github.workspace }}\artifacts\sdk-debug
+          path: ${{ github.workspace }}\tag-build-output\sdk-debug
 
       - name: Download runtime binary
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Runtime-Binary
-          path: ${{ github.workspace }}\artifacts\runtime-bin
+          path: ${{ github.workspace }}\tag-build-output\runtime-bin
 
       - name: Download debug symbols
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Debug-Symbols
-          path: ${{ github.workspace }}\artifacts\debug-bin
+          path: ${{ github.workspace }}\tag-build-output\debug-bin
 
       - name: Download CKAngelScript release
         shell: pwsh
         run: |
-          $downloadDir = "${{ github.workspace }}\artifacts\ckangelscript"
-          $extractDir = "${{ github.workspace }}\artifacts\ckangelscript-release"
+          $downloadDir = "${{ github.workspace }}\third-party\ckangelscript-download"
+          $extractDir = "${{ github.workspace }}\third-party\ckangelscript-release"
           New-Item -ItemType Directory -Force -Path $downloadDir, $extractDir | Out-Null
           $archive = Join-Path $downloadDir "CKAngelScript-$env:CKANGELSCRIPT_VERSION-Release.zip"
           $url = "https://github.com/doyaGu/CKAngelScript/releases/download/$env:CKANGELSCRIPT_VERSION/CKAngelScript-$env:CKANGELSCRIPT_VERSION-Release.zip"
           Invoke-WebRequest -Uri $url -OutFile $archive
+          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -cne $env:CKANGELSCRIPT_RELEASE_SHA256) {
+            throw "CKAngelScript release hash mismatch: expected $env:CKANGELSCRIPT_RELEASE_SHA256, got $actualHash"
+          }
           Expand-Archive -LiteralPath $archive -DestinationPath $extractDir -Force
           foreach ($required in @(
             (Join-Path $extractDir 'bin\AngelScript.dll'),
@@ -230,12 +242,12 @@ jobs:
         run: |
           $packageArgs = @{
             Version = "${{ github.ref_name }}"
-            ReleaseInstallDir = "${{ github.workspace }}\artifacts\sdk-release"
-            DebugInstallDir = "${{ github.workspace }}\artifacts\sdk-debug"
-            ReleaseBinaryDir = "${{ github.workspace }}\artifacts\runtime-bin"
-            DebugBinaryDir = "${{ github.workspace }}\artifacts\debug-bin"
+            ReleaseInstallDir = "${{ github.workspace }}\tag-build-output\sdk-release"
+            DebugInstallDir = "${{ github.workspace }}\tag-build-output\sdk-debug"
+            ReleaseBinaryDir = "${{ github.workspace }}\tag-build-output\runtime-bin"
+            DebugBinaryDir = "${{ github.workspace }}\tag-build-output\debug-bin"
             OutputDir = "${{ github.workspace }}\packages"
-            CKAngelScriptRuntimeDir = "${{ github.workspace }}\artifacts\ckangelscript-release"
+            CKAngelScriptRuntimeDir = "${{ github.workspace }}\third-party\ckangelscript-release"
             IncludeAngelScript = $true
             SkipUpdateSigning = $true
           }
@@ -247,8 +259,17 @@ jobs:
           }
           .\scripts\Package-BMLRelease.ps1 @packageArgs
 
+          Import-Module .\scripts\lib\BMLReleaseFiles.psm1 -Force
+          Assert-BMLReleaseFiles `
+            -Directory "${{ github.workspace }}\packages" `
+            -Version "${{ github.ref_name }}" `
+            -SignatureState Unsigned
+          Assert-BMLUpdaterManifestMatchesPackage `
+            -Directory "${{ github.workspace }}\packages" `
+            -Version "${{ github.ref_name }}"
+
       - name: Setup MSVC
-        uses: TheMrMilchmann/setup-msvc-dev@v4.0.0
+        uses: TheMrMilchmann/setup-msvc-dev@79dac248aac9d0059f86eae9d8b5bfab4e95e97c # v4.0.0
         with:
           arch: x86
 
@@ -286,53 +307,11 @@ jobs:
             }
           }
 
-      - name: Upload release package artifact
-        uses: actions/upload-artifact@v7.0.1
+      - name: Upload four ZIP files and updater manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: BMLPlus-${{ github.ref_name }}-Release-Packages
-          path: ${{ github.workspace }}\packages\*.zip
+          name: BMLPlus-${{ github.ref_name }}-Unsigned-Release-Files
+          path: |
+            ${{ github.workspace }}\packages\*.zip
+            ${{ github.workspace }}\packages\*.manifest.json
           retention-days: 30
-
-  draft-release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [ package-release ]
-    runs-on: windows-latest
-
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v6.0.2
-
-      - name: Download release packages
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: BMLPlus-${{ github.ref_name }}-Release-Packages
-          path: ${{ github.workspace }}\packages
-
-      - name: Create or update draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          $tag = $env:GITHUB_REF_NAME
-          $assets = @(Get-ChildItem -LiteralPath "${{ github.workspace }}\packages" -Filter '*.zip')
-          if ($assets.Count -ne 4) {
-            throw "Expected 4 release packages, found $($assets.Count)"
-          }
-
-          $assetPaths = @($assets | ForEach-Object { $_.FullName })
-          $releaseJson = gh release view $tag --json isDraft 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag @assetPaths --draft --title $tag --notes "Draft release for $tag." --verify-tag
-            exit $LASTEXITCODE
-          }
-
-          $release = $releaseJson | ConvertFrom-Json
-          if (-not $release.isDraft) {
-            Write-Host "Release $tag already exists and is not a draft; skipping asset upload."
-            exit 0
-          }
-
-          gh release upload $tag @assetPaths --clobber
