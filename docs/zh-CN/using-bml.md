@@ -87,6 +87,16 @@ id 的开发目录和 zip 包。新增 Mod 或修改依赖后应重启 Player。
 `ModLoader/CommandBar.history`。在 `BML.cfg` 中设置 `CommandBar.KeepOpen`
 可以让命令运行后命令栏保持打开。输入 `help` 可以查看当前安装提供的命令。
 
+`CommandBar` 配置分类还提供独立开关，可分别控制语法高亮、Tab 补全及候选栏、
+历史内联建议、Ctrl+R 反向搜索，以及上下方向键的历史导航。关闭命令栏时的定时通知
+和打开命令栏时的历史消息也可以通过 `ShowNotifications` 与 `ShowScrollback` 分别控制。
+这些设置可以在 Mod 菜单中修改，并会立即生效。
+
+语法高亮默认采用 Atom One Dark 配色。可以在 `CommandBarTheme` 分类中用
+`#RRGGBB` 或 `#RRGGBBAA` 分别修改每一种语法角色；格式无效时会回退到该角色的
+One Dark 默认颜色。有效的颜色值在 Mod 菜单中会使用调色盘按钮，主题修改同样会
+立即生效。
+
 ## 更新 BML+
 
 手动覆盖是默认且便于恢复的更新方式：

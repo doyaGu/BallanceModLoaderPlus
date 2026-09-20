@@ -54,6 +54,28 @@ they remain one logical command for completion and history. Clicking outside
 an open command session or entering a new scene closes it and releases keyboard
 capture.
 
+**Shell Editing Analysis** — The private Built-in Console Module that interprets
+incomplete shell source at a caret. It owns quote context, replacement ranges,
+alias-expanded command/argument roles, and typed command-head ranges shared by
+completion and syntax highlighting; execution remains owned by the strict
+Parser.
+
+**Command Bar Feature Policy** — The private Built-in Console policy that
+enables or disables syntax highlighting, Tab completion, history suggestions,
+reverse search, and history navigation as independent capabilities. CommandBar
+owns the state transitions required when a capability is disabled.
+
+**Command Bar Syntax Theme** — The private Built-in Console palette that maps
+shell highlight roles to configurable RGBA colours. Atom One Dark is the
+default; its Settings adapter owns role metadata and adapts persisted hex
+strings into the palette, Console wires it to Config, and CommandBar only
+consumes typed colours.
+
+**Message Board Display Policy** — The private Built-in Console policy that
+independently controls timed notifications with the command bar closed and
+stored scrollback with it open. Messages remain recorded and logged even when
+one or both presentations are disabled.
+
 **Built-in HUD** — HUD tree, title, FPS, speedrun timer, cheat indicator,
 commands, and configuration.
 

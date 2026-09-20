@@ -101,6 +101,19 @@ and `ModLoader/CommandBar.history`. Set `CommandBar.KeepOpen` in `BML.cfg` to
 keep the bar open after a command runs. Run `help` to see the commands available
 in the current installation.
 
+The `CommandBar` configuration category also provides independent switches for
+syntax highlighting, Tab completion and its candidate rail, inline history
+suggestions, Ctrl+R reverse search, and Up/Down history navigation. Timed
+notifications and the scrollback shown while the command bar is open can be
+controlled separately with `ShowNotifications` and `ShowScrollback`. These
+settings can be changed from the Mod Menu and take effect immediately.
+
+Syntax highlighting uses the Atom One Dark palette by default. Every role can
+be customised independently in the `CommandBarTheme` category with a
+`#RRGGBB` or `#RRGGBBAA` value; malformed values fall back to that role's One
+Dark default. Valid colour values use a palette button in the Mod Menu, and
+theme changes take effect immediately.
+
 ## Update BML+
 
 Manual update is the normal recovery-safe path:
