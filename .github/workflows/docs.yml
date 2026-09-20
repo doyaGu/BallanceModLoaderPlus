@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: docs-${{ github.ref }}
@@ -20,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Python
-        uses: actions/setup-python@v6.1.0
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
         with:
           python-version: "3.12"
           cache: pip
@@ -38,15 +38,44 @@ jobs:
       - name: Build Simplified Chinese documentation
         run: mkdocs build --strict --config-file mkdocs.zh-CN.yml
 
-      - name: Checkout gh-pages
+      - name: Protect updater namespace
+        shell: bash
+        run: |
+          if [ -e site/updates ]; then
+            echo "Documentation output must not claim the reserved /updates namespace."
+            exit 1
+          fi
+
+      - name: Upload documentation site
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: actions/checkout@v6.0.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: documentation-site-${{ github.sha }}
+          path: site
+          retention-days: 1
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [ build ]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download documentation site
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: documentation-site-${{ github.sha }}
+          path: site
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: gh-pages
           path: gh-pages
 
       - name: Copy documentation to Pages root
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         shell: bash
         run: |
           find gh-pages -mindepth 1 -maxdepth 1 \
@@ -57,14 +86,12 @@ jobs:
           cp -a site/. gh-pages/
 
       - name: Configure Git author
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         working-directory: gh-pages
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Deploy to gh-pages
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         working-directory: gh-pages
         shell: bash
         run: |
