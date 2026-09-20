@@ -56,11 +56,11 @@ id 的开发目录和 zip 包。新增 Mod 或修改依赖后应重启 Player。
 | `ModLoader/Configs` | BML+ 与各 Mod 的配置 |
 | `ModLoader/ModLoader.log` | Loader、依赖和 Mod 诊断信息 |
 | `ModLoader/Fonts` | BML+ 界面使用的可选字体 |
-| `ModLoader/Themes` | 命令栏配色主题 |
+| `ModLoader/Themes` | 控制台输出使用的 ANSI 调色板主题 |
 
 ## 命令行
 
-按 `/` 打开命令栏。它按 POSIX shell 的方式读取一行：
+按 `/` 打开命令栏。它支持下列 shell 风格语法：
 
 - 未加引号的空格分隔单词。`'...'` 按字面保留，`"..."` 保留空格并允许其中的
   `$NAME`，`$'...'` 解析 `\n`、`\e` 之类的转义。反斜杠只转义 shell 字符，

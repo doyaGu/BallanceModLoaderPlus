@@ -72,7 +72,7 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 | 在 Mods 菜单中扩展自己的 Mod 详情页 | 无 | `ModMenu.hpp` 的 `BML::ModMenu::Page` | `ModMenu.h` 是纯 C 接口，C++ facade 单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。 |
 | Loader 事件 | `IMod` 上的 `IMessageReceiver` 虚函数 | 无 | 处理同步回调；需要延后执行时，把必要数据复制到 Mod 自己拥有的存储中。 |
 | 作弊模式 | 写用 `EnableCheat`，读用 `IsCheatEnabled` | `Runtime::ReadState` 可读 | 读两者皆可，写走旧式 C++。 |
-| 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | 无 | 注册走旧式 C++。注销是 C 导出 `BML_UnregisterCommand`，因为 `IBML` 已经无法再加函数。正在运行的命令的退出状态和管道输入同样是 C 导出 `BML_SetCommandStatus` 与 `BML_GetCommandInput`，因为 `Execute` 返回 `void`。 |
+| 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | `BML_UnregisterCommand`、`BML_SetCommandStatus`、`BML_GetCommandInput` | 注册仍走冻结的 C++ 接口；C 导出补齐命令的生命周期与执行约定，不改动任何虚表。 |
 | 配置 | `IMod::GetConfig` 加 `IConfig`、`IProperty` | `BML_GetConfigPropertyEditor`、`BML_SetConfigPropertyEditor` 与候选值元数据函数 | 值仍走冻结的 C++ 接口；追加的 C 导出只附加不落盘的 Mod 菜单编辑器元数据，不改虚表。 |
 | 定时器 | `AddTimer`、`AddTimerLoop` | 无 | 只有旧式 C++。 |
 | 退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染 | `ExitGame`、`SetIC`、`RestoreIC`、`Show`、`RegisterBallType` 等注册族、`SkipRenderForNextTick` | 无 | 只有旧式 C++。 |

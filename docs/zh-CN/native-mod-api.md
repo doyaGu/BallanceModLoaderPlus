@@ -212,13 +212,9 @@ Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和
 `ICommand` 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
 Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志级别。
 
-控制台 shell 会在 `Execute` 运行前拆分整行：未加引号的空白分隔单词，`'...'`、
-`"..."`、`$'...'` 是引号形式，`$NAME` 与 `$(...)` 会展开，`;`、`&&`、`||`、`|`
-分隔命令，因此 `Execute` 每次只收到一条命令，且引号已经去掉。`args[0]` 是命名
-该命令的那个词，输入的是别名时就是别名。引号之外的反斜杠只转义 shell 字符，
-其他情况原样保留，所以 Windows 路径不加引号也能通过。展开之后不再按空格拆分：
-一行里的一个词就是 `args` 的一个元素。交给 `IBML::ExecuteCommand` 的字符串走
-同一套 shell。
+命令栏会在 `Execute` 运行前解析整行。每次调用只收到一条已经去除引号的命令；
+`args[0]` 保留玩家实际输入的命令名或别名。`IBML::ExecuteCommand` 使用同一解析器。
+面向玩家的完整语法见[《使用 BML+》中的命令行说明](using-bml.md)。
 
 `Execute` 返回 `void`，所以 shell 约定的另一半由 `BML.h` 中的两个 C 导出承担。
 `BML_SetCommandStatus(int)` 把正在运行的命令标记为失败，供 `&&`、`||` 和 `$?`

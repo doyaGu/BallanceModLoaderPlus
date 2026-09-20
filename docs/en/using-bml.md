@@ -63,11 +63,11 @@ found and loaded. Script authors can also use `script status` and
 | `ModLoader/Configs` | BML+ and per-mod configuration |
 | `ModLoader/ModLoader.log` | Loader, dependency, and mod diagnostics |
 | `ModLoader/Fonts` | Optional fonts used by the BML+ interface |
-| `ModLoader/Themes` | Command-bar color themes |
+| `ModLoader/Themes` | ANSI palettes used by console output |
 
 ## Command line
 
-Press `/` to open the command bar. It reads a line the way a POSIX shell does:
+Press `/` to open the command bar. It accepts shell-style syntax:
 
 - Words are separated by unquoted spaces. `'...'` is literal, `"..."` keeps
   spaces and allows `$NAME` inside, and `$'...'` resolves escapes such as `\n`

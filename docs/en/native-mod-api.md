@@ -232,15 +232,10 @@ metadata.
 execution, Tab completion, and basic Integer, Float, and Boolean parsers.
 `ILogger` provides three log levels.
 
-The console shell splits a line before `Execute` runs: unquoted whitespace
-separates words, `'...'`, `"..."`, and `$'...'` quote them, `$NAME` and `$(...)`
-expand, and `;`, `&&`, `||`, and `|` separate commands, so `Execute` receives
-one command at a time with quotes already removed. `args[0]` is the word that
-named the command, which is the alias when one was typed. A backslash outside
-quotes escapes only shell characters and stays literal otherwise, so Windows
-paths pass through unquoted. There is no word splitting after expansion: one
-word in the line is one element of `args`. Lines handed to
-`IBML::ExecuteCommand` go through the same shell.
+The command bar parses a line before `Execute` runs. Each call receives one
+command with quoting removed; `args[0]` preserves the command name or alias
+that the player typed. `IBML::ExecuteCommand` uses the same parser. See the
+[command-line guide](using-bml.md#command-line) for the user-facing syntax.
 
 `Execute` returns `void`, so two C exports in `BML.h` carry the rest of the
 shell contract. `BML_SetCommandStatus(int)` marks the running command failed
