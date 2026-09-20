@@ -43,6 +43,7 @@ Mod 作者应使用已发布的 BML+ SDK。只有修改 BML+ 本身时才需要�
 - [简体中文文档](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/)
 - [English documentation](https://doyagu.github.io/BallanceModLoaderPlus/)
 - [发布包](https://github.com/doyaGu/BallanceModLoaderPlus/releases)
+- [维护者发布操作手册](RELEASING.md)
 - [问题反馈](https://github.com/doyaGu/BallanceModLoaderPlus/issues)
 - [BallancePlayer](https://github.com/doyaGu/BallancePlayer)
 

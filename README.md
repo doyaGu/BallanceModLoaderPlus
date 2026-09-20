@@ -48,6 +48,7 @@ quoting, `;`, `&&`, `||`, pipes, `$NAME`, aliases, and history expansion. The
 - [Documentation](https://doyagu.github.io/BallanceModLoaderPlus/)
 - [Simplified Chinese documentation](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/)
 - [Releases](https://github.com/doyaGu/BallanceModLoaderPlus/releases)
+- [Maintainer release runbook](RELEASING.md)
 - [Issues](https://github.com/doyaGu/BallanceModLoaderPlus/issues)
 - [BallancePlayer](https://github.com/doyaGu/BallancePlayer)
 
