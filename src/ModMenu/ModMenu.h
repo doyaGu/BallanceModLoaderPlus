@@ -16,6 +16,7 @@ public:
     bool Open();
     bool Close();
     bool CloseForShutdown();
+    bool IsOpen() const;
     void OnProcess();
 
 private:

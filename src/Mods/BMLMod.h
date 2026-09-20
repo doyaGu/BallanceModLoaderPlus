@@ -113,6 +113,7 @@ private:
     void InitGUI();
     FontCommandContext GetFontCommandContext() const;
     void ConfigureUiFonts();
+    void RefreshFontChoices();
     static void ApplyUiFontSetting(BMLMod &mod, IProperty *property);
     static void ApplyUnlockFrameRateSetting(BMLMod &mod, IProperty *property);
     static void ApplyFrameRateLimitSetting(BMLMod &mod, IProperty *property);

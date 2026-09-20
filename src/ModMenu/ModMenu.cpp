@@ -175,6 +175,10 @@ bool ModMenu::CloseForShutdown() {
     return m_State && m_State->Close(State::CloseDestination::Shutdown);
 }
 
+bool ModMenu::IsOpen() const {
+    return m_State && m_State->routes.IsOpen();
+}
+
 void ModMenu::OnProcess() {
     if (!m_State)
         return;

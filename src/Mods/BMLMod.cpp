@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <vector>
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"
@@ -30,6 +31,40 @@ constexpr std::size_t GameFontRoleCount = static_cast<std::size_t>(BML::GameFont
 constexpr unsigned long GameFontAcquireDelay = 1;
 
 using BoundGameFontRoles = std::bitset<GameFontRoleCount>;
+
+void SetChoiceEditor(IProperty *property,
+                     const std::vector<std::string> &choices) {
+    if (!property)
+        return;
+
+    std::vector<const char *> values;
+    values.reserve(choices.size());
+    for (const std::string &choice : choices)
+        values.push_back(choice.c_str());
+    if (!BML_SetConfigPropertyChoices(property, values.data(), values.size()))
+        return;
+    BML_SetConfigPropertyEditor(
+        property, choices.empty() ? BML_CONFIG_EDITOR_DEFAULT
+                                  : BML_CONFIG_EDITOR_CHOICE);
+}
+
+void ConfigureFontChoiceEditors(IProperty *primary, IProperty *fallbacks,
+                                const Ui::FontRuntime *runtime) {
+    std::vector<std::string> catalog = runtime
+        ? runtime->ListLoaderFaces()
+        : std::vector<std::string>();
+
+    SetChoiceEditor(primary, catalog);
+
+    std::vector<std::string> fallbackChoices;
+    fallbackChoices.reserve(catalog.size() + 1);
+    fallbackChoices.emplace_back();
+    for (const std::string &face : catalog) {
+        if (face.find(';') == std::string::npos)
+            fallbackChoices.push_back(face);
+    }
+    SetChoiceEditor(fallbacks, fallbackChoices);
+}
 
 void CollectGameFontRoles(const Behavior::Graph &graph,
                           BML::GameFontCatalog &catalog,
@@ -309,6 +344,8 @@ void BMLMod::ClearIngameMessages() {
 }
 
 void BMLMod::OpenModsMenu() {
+    if (!m_ModMenu.IsOpen())
+        RefreshFontChoices();
     if (!m_ModMenu.Open())
         GetLogger()->Error("Cannot open the Mods menu route");
 }
@@ -379,16 +416,17 @@ void BMLMod::InitConfigs() {
 
     GetConfig()->SetCategoryComment("GUI", "GUI Settings");
 
-    m_FontFilename->SetComment("Primary UI font. Use a filename from ModLoader\\Fonts or an explicit TTF/OTF/TTC path.");
+    m_FontFilename->SetComment(
+        "Primary UI font. Add TTF/OTF/TTC files to ModLoader\\Fonts; use the font command for explicit paths.");
     m_FontFilename->SetDefaultString("unifont.otf");
 
     m_FontSize->SetComment("Logical UI font size at a 1200-pixel viewport height (8-96).");
     m_FontSize->SetDefaultFloat(32.0f);
 
     m_FontFallbacks->SetComment(
-        "Optional fallback UI fonts, separated by semicolons. Each entry may be a filename from "
-        "ModLoader\\Fonts or an explicit TTF/OTF/TTC path.");
+        "Optional fallback UI fonts. The menu selects one file; use the font fallback command for an ordered list.");
     m_FontFallbacks->SetDefaultString("");
+    RefreshFontChoices();
 
     m_UseSystemFontFallbacks->SetComment("Use Windows symbol and emoji fonts after configured fonts.");
     m_UseSystemFontFallbacks->SetDefaultBoolean(true);
@@ -419,6 +457,12 @@ void BMLMod::ConfigureUiFonts() {
         return;
 
     runtime->Configure(GetFontCommandContext().ReadProfile());
+}
+
+void BMLMod::RefreshFontChoices() {
+    const ModContext *context = GetRuntimeContext();
+    ConfigureFontChoiceEditors(m_FontFilename, m_FontFallbacks,
+                               context ? context->GetUiFontRuntime() : nullptr);
 }
 
 FontCommandContext BMLMod::GetFontCommandContext() const {

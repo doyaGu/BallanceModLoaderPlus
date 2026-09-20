@@ -20,6 +20,8 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
         IM_CHECK(OpenConfigCategory(ctx, "GUI", "**/FontFilename"));
         IM_CHECK(MenuPagesContain(ctx, {"FontFilename", "FontSize", "FontFallbacks",
                                        "UseSystemFontFallbacks", "EnableIniSettings"}));
+        IM_CHECK(WaitForItem(ctx, "**/FontFilename/##RadioNext"));
+        IM_CHECK(WaitForItem(ctx, "**/FontFallbacks/##RadioNext"));
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "Graphics", "**/UnlockFrameRate"));

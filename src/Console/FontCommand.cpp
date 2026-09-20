@@ -405,6 +405,11 @@ void CommandFont::ExecuteFallback(IBML &bml, const std::vector<std::string> &arg
             BML::Shell::Fail(&bml, "Usage: font fallback add <file>\n");
             return;
         }
+        if (face.find(';') != std::string::npos) {
+            BML::Shell::Fail(
+                &bml, "Fallback font names cannot contain ';'.\n");
+            return;
+        }
 
         std::vector<std::string> faces = m_Context.ReadFallbackFaces();
         if (ContainsFace(faces, face)) {
@@ -569,7 +574,13 @@ const std::vector<std::string> CommandFont::GetTabCompletion(IBML *, const std::
         return {"add", "remove", "clear"};
     if (args.size() == 4 && EqualArgument(args[1], "fallback") &&
         EqualArgument(args[2], "add")) {
-        return m_KnownFaces;
+        std::vector<std::string> faces;
+        faces.reserve(m_KnownFaces.size());
+        for (const std::string &face : m_KnownFaces) {
+            if (face.find(';') == std::string::npos)
+                faces.push_back(face);
+        }
+        return faces;
     }
     if (args.size() == 4 && EqualArgument(args[1], "fallback") &&
         EqualArgument(args[2], "remove")) {
