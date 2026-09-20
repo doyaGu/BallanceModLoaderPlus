@@ -2,6 +2,7 @@
 #define BML_CONSOLE_H
 
 #include <cstddef>
+#include <variant>
 
 #include "Console/CommandBar.h"
 #include "Console/MessageBoard.h"
@@ -40,14 +41,22 @@ public:
     BML::Shell::History &GetHistory() { return m_History; }
 
 private:
+    using SettingDefault = std::variant<bool, int, float, const char *>;
+
     struct Setting {
+        const char *category;
         const char *key;
         IProperty *Console::*property;
+        SettingDefault defaultValue;
+        const char *comment;
         void (*apply)(Console &console, IProperty *property);
     };
 
     static const Setting *GetSettings(size_t &count);
+    static void DefineSetting(const Setting &setting, IProperty *property);
     void ApplySetting(const Setting &setting, IProperty *property);
+    void ApplyCommandBarFeatures();
+    void ApplyMessageBoardDisplayPolicy();
 
     static void OnCommandOutput(const char *message, void *userdata);
     void RegisterCommands(IBML &bml, HUDRuntime &hud, const FontCommandContext &fontContext);
@@ -57,6 +66,7 @@ private:
     bool m_OutputCallbackInstalled = false;
     BML::Shell::History m_History;
     CommandBar m_CommandBar;
+    CommandBarTheme::Settings m_SyntaxThemeSettings;
     MessageBoard m_MessageBoard;
 
     IProperty *m_MessageDuration = nullptr;
@@ -65,6 +75,13 @@ private:
     IProperty *m_MessageBackgroundAlpha = nullptr;
     IProperty *m_FadeMaxAlpha = nullptr;
     IProperty *m_KeepOpen = nullptr;
+    IProperty *m_EnableSyntaxHighlighting = nullptr;
+    IProperty *m_EnableTabCompletion = nullptr;
+    IProperty *m_EnableHistorySuggestions = nullptr;
+    IProperty *m_EnableReverseHistorySearch = nullptr;
+    IProperty *m_EnableHistoryNavigation = nullptr;
+    IProperty *m_ShowNotifications = nullptr;
+    IProperty *m_ShowScrollback = nullptr;
 };
 
 #endif // BML_CONSOLE_H

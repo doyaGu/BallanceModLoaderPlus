@@ -202,7 +202,7 @@ set(BML_CONFIG_SOURCES
 
 set(BML_CONSOLE_PRIVATE_HEADERS
         Console/CommandBar.h
-        Console/CommandCompletion.h
+        Console/CommandBarTheme.h
         Console/CommandContext.h
         Console/CommandInput.h
         Console/Commands.h
@@ -229,7 +229,7 @@ set(BML_CONSOLE_PRIVATE_HEADERS
 
 set(BML_CONSOLE_SOURCES
         Console/CommandBar.cpp
-        Console/CommandCompletion.cpp
+        Console/CommandBarTheme.cpp
         Console/CommandContext.cpp
         Console/CommandInput.cpp
         Console/Commands.cpp

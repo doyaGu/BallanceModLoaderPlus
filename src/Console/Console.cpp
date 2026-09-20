@@ -20,35 +20,63 @@
 #include "UI/Ime/Presentation.h"
 
 inline constexpr wchar_t HistoryFileName[] = L"CommandBar.history";
+inline constexpr char CommandBarCategory[] = "CommandBar";
 
 const Console::Setting *Console::GetSettings(size_t &count) {
     static const Setting settings[] = {
-        {"MessageDuration", &Console::m_MessageDuration,
+        {CommandBarCategory, "MessageDuration", &Console::m_MessageDuration, 6.0f,
+         "Maximum visible time of each notification message, in seconds (default: 6)",
          [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetMaxTimer(std::max(2000.0f, property->GetFloat() * 1000.0f));
          }},
-        {"TabColumns", &Console::m_TabColumns,
+        {CommandBarCategory, "TabColumns", &Console::m_TabColumns, 4,
+         "Tab width in columns for message wrapping (1..64, default: 4)",
          [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetTabColumns(std::max(1, property->GetInteger()));
          }},
-        {"LineSpacing", &Console::m_LineSpacing,
+        {CommandBarCategory, "LineSpacing", &Console::m_LineSpacing, -1.0f,
+         "Line spacing between wrapped lines in messages (-1 to follow ImGui style).",
          [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetLineSpacing(property->GetFloat());
          }},
-        {"MessageBackgroundAlpha", &Console::m_MessageBackgroundAlpha,
+        {CommandBarCategory, "MessageBackgroundAlpha", &Console::m_MessageBackgroundAlpha, 0.80f,
+         "Alpha scale for message backgrounds (0..1, default: 0.80)",
          [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
          }},
-        {"FadeMaxAlpha", &Console::m_FadeMaxAlpha,
+        {CommandBarCategory, "FadeMaxAlpha", &Console::m_FadeMaxAlpha, 1.0f,
+         "Maximum text/background alpha in notifications (0..1, default: 1.0)",
          [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetFadeMaxAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
          }},
-        {"KeepOpen", &Console::m_KeepOpen,
+        {CommandBarCategory, "KeepOpen", &Console::m_KeepOpen, false,
+         "Keep the command bar open after a command runs (default: false)",
          [](Console &console, IProperty *property) {
              console.m_CommandBar.SetKeepOpen(property->GetBoolean());
          }},
+        {CommandBarCategory, "EnableSyntaxHighlighting", &Console::m_EnableSyntaxHighlighting, true,
+         "Colour commands, strings, variables, operators, comments, and syntax errors.",
+         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+        {CommandBarCategory, "EnableTabCompletion", &Console::m_EnableTabCompletion, true,
+         "Enable Tab completion and the completion candidate rail.",
+         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+        {CommandBarCategory, "EnableHistorySuggestions", &Console::m_EnableHistorySuggestions, true,
+         "Show and accept inline suggestions from command history.",
+         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+        {CommandBarCategory, "EnableReverseHistorySearch", &Console::m_EnableReverseHistorySearch, true,
+         "Enable Ctrl+R reverse history search and its transient rail.",
+         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+        {CommandBarCategory, "EnableHistoryNavigation", &Console::m_EnableHistoryNavigation, true,
+         "Enable filtered command-history navigation with Up and Down.",
+         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+        {CommandBarCategory, "ShowNotifications", &Console::m_ShowNotifications, true,
+         "Show timed notification messages while the command bar is closed.",
+         [](Console &console, IProperty *) { console.ApplyMessageBoardDisplayPolicy(); }},
+        {CommandBarCategory, "ShowScrollback", &Console::m_ShowScrollback, true,
+         "Show stored message scrollback while the command bar is open.",
+         [](Console &console, IProperty *) { console.ApplyMessageBoardDisplayPolicy(); }},
     };
-    static_assert(sizeof(settings) / sizeof(settings[0]) == 6,
+    static_assert(sizeof(settings) / sizeof(settings[0]) == 13,
                   "Every built-in console config property must have one settings-table entry");
 
     count = sizeof(settings) / sizeof(settings[0]);
@@ -59,28 +87,28 @@ void Console::InitConfig(IConfig &config) {
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
-        this->*settings[i].property = config.GetProperty("CommandBar", settings[i].key);
+        const Setting &setting = settings[i];
+        IProperty *property = config.GetProperty(setting.category, setting.key);
+        this->*setting.property = property;
+        DefineSetting(setting, property);
     }
 
-    config.SetCategoryComment("CommandBar", "Command Bar Settings");
+    config.SetCategoryComment(CommandBarCategory, "Command Bar Settings");
+    m_SyntaxThemeSettings.Define(config);
+}
 
-    m_MessageDuration->SetComment("Maximum visible time of each notification message, in seconds (default: 6)");
-    m_MessageDuration->SetDefaultFloat(6);
-
-    m_TabColumns->SetComment("Tab width in columns for message wrapping (1..64, default: 4)");
-    m_TabColumns->SetDefaultInteger(4);
-
-    m_LineSpacing->SetComment("Line spacing between wrapped lines in messages (-1 to follow ImGui style).");
-    m_LineSpacing->SetDefaultFloat(-1.0f);
-
-    m_MessageBackgroundAlpha->SetComment("Alpha scale for message backgrounds (0..1, default: 0.80)");
-    m_MessageBackgroundAlpha->SetDefaultFloat(0.80f);
-
-    m_FadeMaxAlpha->SetComment("Maximum text/background alpha in notifications (0..1, default: 1.0)");
-    m_FadeMaxAlpha->SetDefaultFloat(1.0f);
-
-    m_KeepOpen->SetComment("Keep the command bar open after a command runs (default: false)");
-    m_KeepOpen->SetDefaultBoolean(false);
+void Console::DefineSetting(const Setting &setting, IProperty *property) {
+    if (!property)
+        return;
+    property->SetComment(setting.comment);
+    if (const bool *value = std::get_if<bool>(&setting.defaultValue))
+        property->SetDefaultBoolean(*value);
+    else if (const int *value = std::get_if<int>(&setting.defaultValue))
+        property->SetDefaultInteger(*value);
+    else if (const float *value = std::get_if<float>(&setting.defaultValue))
+        property->SetDefaultFloat(*value);
+    else if (const char *const *value = std::get_if<const char *>(&setting.defaultValue))
+        property->SetDefaultString(*value);
 }
 
 void Console::ApplyConfig() {
@@ -89,10 +117,11 @@ void Console::ApplyConfig() {
     for (size_t i = 0; i < count; ++i) {
         ApplySetting(settings[i], this->*settings[i].property);
     }
+    m_CommandBar.SetSyntaxPalette(m_SyntaxThemeSettings.ReadPalette());
 }
 
 bool Console::OnModifyConfig(const char *category, const char *key, IProperty *property) {
-    if (!property || !utils::CStringEqual(category, "CommandBar")) {
+    if (!property || !category || !key) {
         return false;
     }
 
@@ -100,11 +129,17 @@ bool Console::OnModifyConfig(const char *category, const char *key, IProperty *p
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
         const Setting &setting = settings[i];
-        if (this->*setting.property != property || !utils::CStringEqual(key, setting.key)) {
+        if (this->*setting.property != property || !utils::CStringEqual(category, setting.category) ||
+            !utils::CStringEqual(key, setting.key)) {
             continue;
         }
 
         ApplySetting(setting, property);
+        return true;
+    }
+
+    if (m_SyntaxThemeSettings.Owns(category, key, property)) {
+        m_CommandBar.SetSyntaxPalette(m_SyntaxThemeSettings.ReadPalette());
         return true;
     }
 
@@ -115,6 +150,29 @@ void Console::ApplySetting(const Setting &setting, IProperty *property) {
     if (setting.apply && property) {
         setting.apply(*this, property);
     }
+}
+
+void Console::ApplyCommandBarFeatures() {
+    if (!m_EnableSyntaxHighlighting || !m_EnableTabCompletion || !m_EnableHistorySuggestions ||
+        !m_EnableReverseHistorySearch || !m_EnableHistoryNavigation) {
+        return;
+    }
+    m_CommandBar.SetFeatures(CommandBar::Features{
+        m_EnableSyntaxHighlighting->GetBoolean(),
+        m_EnableTabCompletion->GetBoolean(),
+        m_EnableHistorySuggestions->GetBoolean(),
+        m_EnableReverseHistorySearch->GetBoolean(),
+        m_EnableHistoryNavigation->GetBoolean(),
+    });
+}
+
+void Console::ApplyMessageBoardDisplayPolicy() {
+    if (!m_ShowNotifications || !m_ShowScrollback)
+        return;
+    m_MessageBoard.SetDisplayPolicy(MessageBoard::DisplayPolicy{
+        m_ShowNotifications->GetBoolean(),
+        m_ShowScrollback->GetBoolean(),
+    });
 }
 
 void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, HUDRuntime &hud,
@@ -173,6 +231,7 @@ void Console::OnProcess() {
     m_MessageBoard.SetFrameLayout(layout);
     m_CommandBar.SetCompositionActive(Overlay::Ime::Presentation::IsActive());
     m_MessageBoard.SetCommandBarVisible(visible);
+    m_MessageBoard.AdvanceNotificationTimers();
     m_MessageBoard.Render();
     m_CommandBar.Render();
 

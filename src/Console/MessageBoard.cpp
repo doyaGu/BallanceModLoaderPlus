@@ -78,7 +78,7 @@ void MessageBoard::SetCommandBarVisible(bool visible) {
 
         if (visible) {
             m_ScrollToBottom = true;
-            if (m_MessageCount > 0)
+            if (HasVisibleContent())
                 Show();
             else
                 Hide();
@@ -87,10 +87,31 @@ void MessageBoard::SetCommandBarVisible(bool visible) {
             m_ScrollY = 0.0f;
             m_MaxScrollY = 0.0f;
             m_ScrollToBottom = true;
-            if (m_DisplayMessageCount == 0)
+            if (!HasVisibleContent())
                 Hide();
         }
     }
+}
+
+void MessageBoard::SetDisplayPolicy(DisplayPolicy policy) {
+    if (m_DisplayPolicy == policy)
+        return;
+
+    m_DisplayPolicy = policy;
+    if (!policy.notifications) {
+        for (int index = 0; index < m_MessageCount; ++index)
+            MessageAt(index).timer = 0.0f;
+        m_DisplayMessageCount = 0;
+    }
+
+    m_ScrollY = 0.0f;
+    m_MaxScrollY = 0.0f;
+    m_ScrollToBottom = true;
+    InvalidateMessageRows();
+    if (HasVisibleContent())
+        Show();
+    else
+        Hide();
 }
 
 void MessageBoard::SetScrollPosition(float scrollY) {
@@ -116,15 +137,16 @@ void MessageBoard::ScrollToBottom() {
 // =============================================================================
 
 bool MessageBoard::ShouldShowMessage(const MessageUnit &msg) const {
-    return m_IsCommandBarVisible || msg.GetTimer() > 0;
+    if (m_IsCommandBarVisible)
+        return m_DisplayPolicy.scrollback;
+    return m_DisplayPolicy.notifications && msg.GetTimer() > 0;
 }
 
 float MessageBoard::GetMessageAlpha(const MessageUnit &msg, float maximumAlpha) const {
-    if (m_IsCommandBarVisible) {
-        return maximumAlpha;
-    }
+    if (m_IsCommandBarVisible)
+        return m_DisplayPolicy.scrollback ? maximumAlpha : 0.0f;
 
-    if (msg.GetTimer() <= 0) {
+    if (!m_DisplayPolicy.notifications || msg.GetTimer() <= 0) {
         return 0.0f;
     }
 
@@ -133,10 +155,9 @@ float MessageBoard::GetMessageAlpha(const MessageUnit &msg, float maximumAlpha) 
 }
 
 bool MessageBoard::HasVisibleContent() const {
-    if (m_IsCommandBarVisible) {
-        return m_MessageCount > 0;
-    }
-    return m_DisplayMessageCount > 0;
+    if (m_IsCommandBarVisible)
+        return m_DisplayPolicy.scrollback && m_MessageCount > 0;
+    return m_DisplayPolicy.notifications && m_DisplayMessageCount > 0;
 }
 
 MessageBoard::FrameLayout MessageBoard::CaptureFrameLayout() const {
@@ -557,6 +578,17 @@ void MessageBoard::UpdateTimers(float deltaTime) {
         InvalidateMessageRows();
 }
 
+void MessageBoard::AdvanceNotificationTimers() {
+    if (!m_DisplayPolicy.notifications || m_DisplayMessageCount == 0)
+        return;
+
+    CKStats stats;
+    BML_GetCKContext()->GetProfileStats(&stats);
+    UpdateTimers(stats.TotalFrameTime);
+    if (!HasVisibleContent())
+        Hide();
+}
+
 void MessageBoard::AddMessageInternal(const char *msg) {
     if (!msg) return;
 
@@ -568,6 +600,9 @@ void MessageBoard::AddMessageInternal(const char *msg) {
 
 void MessageBoard::AddMessageInternal(MessageUnit message) {
     const int capacity = static_cast<int>(m_Messages.size());
+
+    if (!m_DisplayPolicy.notifications)
+        message.timer = 0.0f;
 
     // Update display count
     if (m_MessageCount == capacity && MessageAt(m_MessageCount - 1).GetTimer() > 0) {
@@ -583,29 +618,23 @@ void MessageBoard::AddMessageInternal(MessageUnit message) {
     if (m_MessageCount < capacity) {
         ++m_MessageCount;
     }
-    ++m_DisplayMessageCount;
+    if (m_Messages[m_MessageHead].GetTimer() > 0)
+        ++m_DisplayMessageCount;
 
     // Auto-scroll to bottom for new messages
     if (m_IsCommandBarVisible && (m_ScrollToBottom || m_MaxScrollY <= 0.0f)) {
         m_ScrollToBottom = true;
     }
-    Show();
+    if (HasVisibleContent())
+        Show();
+    else
+        Hide();
     InvalidateMessageRows();
 }
 
 void MessageBoard::OnPostEnd() {
     ImGui::PopStyleVar(3);
     m_FrameLayout.reset();
-
-    // Update timers
-    CKStats stats;
-    BML_GetCKContext()->GetProfileStats(&stats);
-    UpdateTimers(stats.TotalFrameTime);
-
-    // Hide if no visible content
-    if (!HasVisibleContent()) {
-        Hide();
-    }
 }
 
 // =============================================================================

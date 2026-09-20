@@ -36,6 +36,15 @@ class MessageBoard : public Bui::Window {
 public:
     using ConsoleColor = AnsiText::ConsoleColor;
 
+    struct DisplayPolicy {
+        // Timed messages shown while the command bar is closed.
+        bool notifications = true;
+        // Stored messages shown while the command bar is open.
+        bool scrollback = true;
+
+        bool operator==(const DisplayPolicy &) const = default;
+    };
+
     struct MessageUnit {
         AnsiText::AnsiString ansiText;
         float timer = 0.0f;
@@ -88,7 +97,10 @@ public:
 
     // Settings
     void SetMaxTimer(float maxTimer) { m_MaxTimer = std::max(100.0f, maxTimer); }
+    void SetDisplayPolicy(DisplayPolicy policy);
+    const DisplayPolicy &GetDisplayPolicy() const { return m_DisplayPolicy; }
     void SetCommandBarVisible(bool visible);
+    void AdvanceNotificationTimers();
     void SetFrameLayout(const ConsoleLayout::Stack &layout) { m_ConsoleLayout = layout; }
 
     // Scrolling control (only active when command bar is visible)
@@ -217,6 +229,7 @@ private:
     // Configuration
     bool m_IsCommandBarVisible = false;
     float m_MaxTimer = 6000.0f;
+    DisplayPolicy m_DisplayPolicy;
 
     // Scrolling state
     float m_ScrollY = 0.0f;
