@@ -17,6 +17,9 @@ class Config;
 class Property : public IProperty {
     friend class Config;
     friend class Category;
+    friend BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property);
+    friend int BML_SetConfigPropertyEditor(IProperty *property,
+                                           BML_ConfigPropertyEditor editor);
 
 public:
     using Value = ConfigValue;
@@ -59,8 +62,12 @@ public:
     void SetModified(PropertyType previousType);
 
 private:
+    BML_ConfigPropertyEditor GetEditorMetadata() const;
+    bool SetEditorMetadata(BML_ConfigPropertyEditor editor);
+
     Value m_Value = 0;
     PropertyType m_Type = INTEGER;
+    BML_ConfigPropertyEditor m_Editor = BML_CONFIG_EDITOR_DEFAULT;
     std::size_t m_Hash = 0;
     std::string m_Comment;
     std::string m_Category;

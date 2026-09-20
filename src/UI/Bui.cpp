@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -19,6 +20,7 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include "UI/BuiInternal.h"
+#include "UI/ColorCodec.h"
 #ifndef BML_UI_AUTOMATION_TEST
 #include "BML/InputHook.h"
 #include "Loader/ModContext.h"
@@ -1353,6 +1355,66 @@ namespace Bui {
         ImGui::PopStyleColor(4);
         EndOptionInput(row);
         return changed;
+    }
+
+    bool ColorButton(const char *label, ImVec4 *color, ImGuiColorEditFlags flags) {
+        if (!color)
+            return false;
+
+        OptionRow row;
+        if (!BeginOptionRow(label, row))
+            return false;
+        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
+
+        BeginOptionInput(row);
+#ifdef IMGUI_ENABLE_TEST_ENGINE
+        ImGui::PushID("ColorPicker");
+        const ImGuiID swatchId = ImGui::GetID("##ColorButton");
+        ImGui::PopID();
+#endif
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
+        const bool changed = ImGui::ColorEdit4("ColorPicker", &color->x,
+                                                flags | ImGuiColorEditFlags_NoLabel);
+        ImGui::PopStyleColor();
+
+#ifdef IMGUI_ENABLE_TEST_ENGINE
+        ImGui::PushID("ColorPicker");
+        const bool pickerOpen = ImGui::IsPopupOpen("picker");
+        ImGui::PopID();
+        ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(
+            swatchId, "ColorSwatch",
+            ImGuiItemStatusFlags_Openable | (pickerOpen ? ImGuiItemStatusFlags_Opened : 0));
+#endif
+        EndOptionInput(row);
+        return changed;
+    }
+
+    bool ColorStringButton(const char *label, std::string *value) {
+        if (!value)
+            return false;
+        const std::optional<UiColor::Rgba8> parsed = UiColor::ParseHex(*value);
+        if (!parsed)
+            return InputTextButton(label, value);
+
+        constexpr float ByteScale = 1.0f / 255.0f;
+        ImVec4 color(
+            parsed->red * ByteScale,
+            parsed->green * ByteScale,
+            parsed->blue * ByteScale,
+            parsed->alpha * ByteScale);
+        if (!ColorButton(label, &color))
+            return false;
+
+        auto channel = [](float component) {
+            return static_cast<std::uint8_t>(
+                std::lround(std::clamp(component, 0.0f, 1.0f) * 255.0f));
+        };
+        const UiColor::Rgba8 edited{
+            channel(color.x), channel(color.y), channel(color.z), channel(color.w),
+        };
+        *value = UiColor::FormatHex(edited, edited.alpha != 0xFF);
+        return true;
     }
 
     void WrappedText(const char *text, float width, float baseX, float scale) {

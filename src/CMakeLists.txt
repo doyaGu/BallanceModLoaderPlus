@@ -328,6 +328,7 @@ set(BML_UI_PRIVATE_HEADERS
         UI/AnsiPalette.h
         UI/AnsiText.h
         UI/BuiInternal.h
+        UI/ColorCodec.h
         UI/Ime/Presentation.h
         UI/Ime/NativePresentation.h
         UI/Ime/PresentationOwnership.h
@@ -348,6 +349,7 @@ set(BML_UI_SOURCES
         UI/AnsiPalette.cpp
         UI/AnsiText.cpp
         UI/Bui.cpp
+        UI/ColorCodec.cpp
         UI/Ime/Presentation.cpp
         UI/Ime/NativePresentation.cpp
         UI/Ime/RailLayout.cpp

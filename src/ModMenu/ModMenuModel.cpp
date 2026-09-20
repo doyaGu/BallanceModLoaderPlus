@@ -315,6 +315,7 @@ ModMenuDocument ModMenuModel::BuildDocument(IMod *mod, const ModMenuOwner &owner
                 setting.description = SafeText(sourceSetting->GetComment());
                 setting.type = sourceSetting->GetType();
                 setting.value = sourceSetting->GetValue();
+                setting.editor = BML_GetConfigPropertyEditor(sourceSetting);
                 category.settings.push_back(std::move(setting));
             }
 

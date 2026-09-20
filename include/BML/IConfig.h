@@ -31,6 +31,13 @@
 
 #include "BML/Defines.h"
 
+// Optional presentation semantic for loader-owned configuration UIs. It is
+// schema metadata rather than part of the persisted value or PropertyType.
+typedef enum BML_ConfigPropertyEditor {
+    BML_CONFIG_EDITOR_DEFAULT = 0,
+    BML_CONFIG_EDITOR_COLOR = 1,
+} BML_ConfigPropertyEditor;
+
 // One setting. The loader owns it, it lives as long as the config does, and a Mod
 // may keep the pointer.
 class BML_EXPORT IProperty {
@@ -94,6 +101,17 @@ public:
 
     virtual PropertyType GetType() = 0;
 };
+
+BML_BEGIN_CDECLS
+
+// ABI-safe extensions for the frozen IProperty interface. The colour editor is
+// meaningful for STRING properties containing #RRGGBB or #RRGGBBAA. Metadata is
+// not persisted. Get returns DEFAULT for null or unsupported property objects;
+// Set returns 1 on success and 0 for null, unsupported, or invalid input.
+BML_EXPORT BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property);
+BML_EXPORT int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor);
+
+BML_END_CDECLS
 
 class BML_EXPORT IConfig {
 public:

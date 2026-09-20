@@ -526,6 +526,31 @@ void Property::SetComment(const char *comment) {
         m_Config->TouchSchema();
 }
 
+BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property) {
+    const auto *concrete = dynamic_cast<const Property *>(property);
+    return concrete ? concrete->GetEditorMetadata() : BML_CONFIG_EDITOR_DEFAULT;
+}
+
+int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor) {
+    auto *concrete = dynamic_cast<Property *>(property);
+    return concrete && concrete->SetEditorMetadata(editor) ? 1 : 0;
+}
+
+BML_ConfigPropertyEditor Property::GetEditorMetadata() const {
+    return m_Editor;
+}
+
+bool Property::SetEditorMetadata(BML_ConfigPropertyEditor editor) {
+    if (editor != BML_CONFIG_EDITOR_DEFAULT && editor != BML_CONFIG_EDITOR_COLOR)
+        return false;
+    if (m_Editor == editor)
+        return true;
+    m_Editor = editor;
+    if (m_Config)
+        m_Config->TouchSchema();
+    return true;
+}
+
 const char *Property::GetString() {
     if (m_Type != STRING)
         return "";

@@ -2,6 +2,7 @@ add_executable(BuiAutomationTest
         BuiAutomationMain.cpp
         BuiAutomationTests.cpp
         ${BML_SOURCE_DIR}/UI/Bui.cpp
+        ${BML_SOURCE_DIR}/UI/ColorCodec.cpp
         ${IMGUI_SOURCE_DIR}/imgui.cpp
         ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp

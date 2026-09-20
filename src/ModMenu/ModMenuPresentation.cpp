@@ -468,7 +468,10 @@ struct ModMenuPresentation::State {
             switch (setting.type) {
             case IProperty::STRING: {
                 std::string next = std::get<std::string>(*source);
-                if (Bui::InputTextButton(setting.label.c_str(), &next))
+                const bool changed = setting.editor == BML_CONFIG_EDITOR_COLOR
+                    ? Bui::ColorStringButton(setting.label.c_str(), &next)
+                    : Bui::InputTextButton(setting.label.c_str(), &next);
+                if (changed)
                     model.EditSetting(setting.key, std::move(next));
                 break;
             }

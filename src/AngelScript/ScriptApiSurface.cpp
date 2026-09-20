@@ -181,6 +181,13 @@ static const ScriptEnumValueDescriptor kConfigPropertyTypeValues[] = {
     {"CONFIG_PROPERTY_NONE", IProperty::NONE, "ConfigPropertyType::CONFIG_PROPERTY_NONE"},
 };
 
+static const ScriptEnumValueDescriptor kConfigPropertyEditorValues[] = {
+    {"CONFIG_EDITOR_DEFAULT", BML_CONFIG_EDITOR_DEFAULT,
+     "ConfigPropertyEditor::CONFIG_EDITOR_DEFAULT"},
+    {"CONFIG_EDITOR_COLOR", BML_CONFIG_EDITOR_COLOR,
+     "ConfigPropertyEditor::CONFIG_EDITOR_COLOR"},
+};
+
 static const ScriptEnumValueDescriptor kTimerStateValues[] = {
     {"TIMER_IDLE", Timer::IDLE, "TimerState::TIMER_IDLE"},
     {"TIMER_RUNNING", Timer::RUNNING, "TimerState::TIMER_RUNNING"},
@@ -233,6 +240,7 @@ static const ScriptEnumDescriptor kEnums[] = {
     {"CursorPointer", "enum CursorPointer", kCursorPointerValues, sizeof(kCursorPointerValues) / sizeof(kCursorPointerValues[0])},
     {"CommandEventPhase", "enum CommandEventPhase", kCommandEventPhaseValues, sizeof(kCommandEventPhaseValues) / sizeof(kCommandEventPhaseValues[0])},
     {"ConfigPropertyType", "enum ConfigPropertyType", kConfigPropertyTypeValues, sizeof(kConfigPropertyTypeValues) / sizeof(kConfigPropertyTypeValues[0])},
+    {"ConfigPropertyEditor", "enum ConfigPropertyEditor", kConfigPropertyEditorValues, sizeof(kConfigPropertyEditorValues) / sizeof(kConfigPropertyEditorValues[0])},
     {"TimerState", "enum TimerState", kTimerStateValues, sizeof(kTimerStateValues) / sizeof(kTimerStateValues[0])},
     {"TimerType", "enum TimerType", kTimerTypeValues, sizeof(kTimerTypeValues) / sizeof(kTimerTypeValues[0])},
     {"TimerTimeBase", "enum TimerTimeBase", kTimerTimeBaseValues, sizeof(kTimerTimeBaseValues) / sizeof(kTimerTimeBaseValues[0])},

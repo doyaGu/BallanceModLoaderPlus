@@ -298,7 +298,8 @@ namespace Bui {
     BML_EXPORT bool RadioButton(const char *label, int *currentItem, const char *const items[], int itemCount);
 
     // An OPTION row with the label on the left and an ImGui input field in it, which is
-    // ImGui::InputText, InputFloat, and InputInt with the game's look around them. They
+    // ImGui::InputText, InputFloat, InputInt, or ColorEdit4 with the game's look around
+    // the field. ColorButton shows a swatch that opens ImGui's picker and supports alpha. They
     // return what those return, meaning true on every frame the player changed the
     // value rather than once when done, so a Mod saving to its config on each true
     // writes on every keystroke; pass ImGuiInputTextFlags_EnterReturnsTrue for the
@@ -317,6 +318,13 @@ namespace Bui {
                                      ImGuiInputTextFlags flags = 0);
     BML_EXPORT bool InputIntButton(const char *label, int *value, int step = 1,
                                    int stepFast = 100, ImGuiInputTextFlags flags = 0);
+    BML_EXPORT bool ColorButton(
+        const char *label, ImVec4 *color,
+        ImGuiColorEditFlags flags = ImGuiColorEditFlags_DisplayHex |
+                                    ImGuiColorEditFlags_Uint8 |
+                                    ImGuiColorEditFlags_PickerHueBar |
+                                    ImGuiColorEditFlags_AlphaBar |
+                                    ImGuiColorEditFlags_AlphaPreviewHalf);
 
     // Plain text, centred and broken across lines, for the paragraph on a page rather
     // than for a widget. Unlike the rest of this header the measurements here are

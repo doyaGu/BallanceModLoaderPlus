@@ -1017,6 +1017,11 @@ public:
         return property ? static_cast<int>(property->GetType()) : static_cast<int>(IProperty::NONE);
     }
 
+    int GetEditor() const {
+        IProperty *property = ResolveProperty();
+        return static_cast<int>(BML_GetConfigPropertyEditor(property));
+    }
+
     std::string GetString(const std::string &defaultValue) const {
         IProperty *property = ResolveProperty();
         if (!property || property->GetType() != IProperty::STRING)
@@ -1073,6 +1078,11 @@ public:
     void SetComment(const std::string &comment) const {
         if (IProperty *property = ResolveProperty())
             property->SetComment(comment.c_str());
+    }
+
+    void SetEditor(int editor) const {
+        if (IProperty *property = ResolveProperty())
+            BML_SetConfigPropertyEditor(property, static_cast<BML_ConfigPropertyEditor>(editor));
     }
 
     void SetDefaultString(const std::string &value) const {
@@ -2234,6 +2244,13 @@ bool BMLAS_UI_InputFloatButton(const std::string &label, float &value, float ste
     return Bui::InputFloatButton(label.c_str(), &value, step, stepFast);
 }
 
+bool BMLAS_UI_ColorButton(const std::string &label, ImVec4 &color) {
+    if (!BMLAS_UI_BeginRenderCall())
+        return false;
+    Bui::ImGuiContextScope scope;
+    return Bui::ColorButton(label.c_str(), &color);
+}
+
 bool BMLAS_UI_SearchBar(std::string &text, float x, float y, float width) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
@@ -2840,6 +2857,8 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ConfigProperty", "bool IsValid() const", "bool ConfigProperty::IsValid() const", asMETHOD(BMLAS_ConfigPropertyRef, IsValid), asCALL_THISCALL},
     {"ConfigProperty", "ConfigPropertyType get_Type() const", "ConfigPropertyType ConfigProperty::get_Type() const", asMETHOD(BMLAS_ConfigPropertyRef, GetType), asCALL_THISCALL},
     {"ConfigProperty", "ConfigPropertyType GetType() const", "ConfigPropertyType ConfigProperty::GetType() const", asMETHOD(BMLAS_ConfigPropertyRef, GetType), asCALL_THISCALL},
+    {"ConfigProperty", "ConfigPropertyEditor get_Editor() const", "ConfigPropertyEditor ConfigProperty::get_Editor() const", asMETHOD(BMLAS_ConfigPropertyRef, GetEditor), asCALL_THISCALL},
+    {"ConfigProperty", "ConfigPropertyEditor GetEditor() const", "ConfigPropertyEditor ConfigProperty::GetEditor() const", asMETHOD(BMLAS_ConfigPropertyRef, GetEditor), asCALL_THISCALL},
     {"ConfigProperty", "string GetString(const string &in defaultValue = \"\") const", "string ConfigProperty::GetString(const string &in defaultValue) const", BML_AS_GENERIC_METHOD(&BMLAS_ConfigPropertyRef::GetString), asCALL_GENERIC},
     {"ConfigProperty", "bool GetBoolean(bool defaultValue = false) const", "bool ConfigProperty::GetBoolean(bool defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetBoolean), asCALL_THISCALL},
     {"ConfigProperty", "int GetInteger(int defaultValue = 0) const", "int ConfigProperty::GetInteger(int defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetInteger), asCALL_THISCALL},
@@ -2851,6 +2870,7 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ConfigProperty", "void SetFloat(float value) const", "void ConfigProperty::SetFloat(float value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetFloat), asCALL_THISCALL},
     {"ConfigProperty", "void SetKey(CKKEYBOARD value) const", "void ConfigProperty::SetKey(CKKEYBOARD value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetKey), asCALL_THISCALL},
     {"ConfigProperty", "void SetComment(const string &in comment) const", "void ConfigProperty::SetComment(const string &in comment) const", BML_AS_GENERIC_METHOD(&BMLAS_ConfigPropertyRef::SetComment), asCALL_GENERIC},
+    {"ConfigProperty", "void SetEditor(ConfigPropertyEditor editor) const", "void ConfigProperty::SetEditor(ConfigPropertyEditor editor) const", asMETHOD(BMLAS_ConfigPropertyRef, SetEditor), asCALL_THISCALL},
     {"ConfigProperty", "void SetDefaultString(const string &in value) const", "void ConfigProperty::SetDefaultString(const string &in value) const", BML_AS_GENERIC_METHOD(&BMLAS_ConfigPropertyRef::SetDefaultString), asCALL_GENERIC},
     {"ConfigProperty", "void SetDefaultBoolean(bool value) const", "void ConfigProperty::SetDefaultBoolean(bool value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultBoolean), asCALL_THISCALL},
     {"ConfigProperty", "void SetDefaultInteger(int value) const", "void ConfigProperty::SetDefaultInteger(int value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultInteger), asCALL_THISCALL},
@@ -3266,6 +3286,7 @@ static const ScriptUiFunctionRegistration kUiFunctionRegistrations[] = {
     {"bool InputTextButton(const string &in label, string &inout value, int maxLength = 256)", "BML::UI::InputTextButton", BML_AS_GENERIC_FUNCTION(&BMLAS_UI_InputTextButton), asCALL_GENERIC},
     {"bool InputIntButton(const string &in label, int &inout value, int step = 1, int stepFast = 100)", "BML::UI::InputIntButton", BML_AS_GENERIC_FUNCTION(&BMLAS_UI_InputIntButton), asCALL_GENERIC},
     {"bool InputFloatButton(const string &in label, float &inout value, float step = 0.0f, float stepFast = 0.0f)", "BML::UI::InputFloatButton", BML_AS_GENERIC_FUNCTION(&BMLAS_UI_InputFloatButton), asCALL_GENERIC},
+    {"bool ColorButton(const string &in label, ImVec4 &inout color)", "BML::UI::ColorButton", BML_AS_GENERIC_FUNCTION(&BMLAS_UI_ColorButton), asCALL_GENERIC},
     {"bool SearchBar(string &inout text, float x = 0.4f, float y = 0.18f, float width = 0.2f)", "BML::UI::SearchBar", BML_AS_GENERIC_FUNCTION(&BMLAS_UI_SearchBar), asCALL_GENERIC},
     {"void PlayMenuClickSound()", "BML::UI::PlayMenuClickSound", asFUNCTION(BMLAS_UI_PlayMenuClickSound), asCALL_CDECL},
     {"int CKKeyToImGuiKey(CKKEYBOARD key)", "BML::UI::CKKeyToImGuiKey", asFUNCTION(BMLAS_UI_CKKeyToImGuiKey), asCALL_CDECL},

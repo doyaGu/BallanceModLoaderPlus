@@ -14,6 +14,7 @@ namespace Bui {
                          ImGuiInputTextFlags flags = 0,
                          ImGuiInputTextCallback callback = nullptr,
                          void *userData = nullptr);
+    bool ColorStringButton(const char *label, std::string *value);
 }
 
 #endif // BML_BUI_INTERNAL_H

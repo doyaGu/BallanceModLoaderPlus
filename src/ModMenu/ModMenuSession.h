@@ -38,6 +38,7 @@ struct ModMenuSettingDocument {
     std::string description;
     IProperty::PropertyType type = IProperty::NONE;
     ModMenuSettingValue value = 0;
+    BML_ConfigPropertyEditor editor = BML_CONFIG_EDITOR_DEFAULT;
 };
 
 struct ModMenuCategoryKey {
