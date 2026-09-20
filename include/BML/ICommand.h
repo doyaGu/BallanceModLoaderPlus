@@ -56,13 +56,22 @@ public:
     // OnPostCommandExecute run. Do not check IBML::IsCheatEnabled again in Execute.
     virtual bool IsCheat() = 0;
 
-    // Runs the command. args[0] is the word the player typed, so it is the alias
-    // when that is what was used, and the arguments start at args[1]. The line is
-    // split on ASCII whitespace outside double quotes. Quote delimiters are removed,
-    // allowing one argument to contain whitespace; quotes cannot be escaped. Write
-    // output with IBML::SendIngameMessage. An exception thrown here is caught by the loader,
-    // logged, and shown to the player, and it skips the OnPostCommandExecute
-    // broadcast.
+    // Runs the command. args[0] is the word that named the command, so it is the
+    // alias when that is what was used, or the first word of a shell alias body
+    // when the player typed a shell alias; the arguments start at args[1]. The
+    // console shell has already split the line the way a POSIX shell does: words
+    // are separated by unquoted whitespace, '...' is literal, "..." and $'...'
+    // remove their quotes and resolve escapes, $NAME and $(...) are expanded, and
+    // ; && || and | separate commands, so Execute sees one command at a time with
+    // clean argument text. A backslash outside quotes escapes only a shell
+    // metacharacter; in front of any other character it stays, so a Windows path
+    // needs no quoting. There is no word splitting after expansion: one word in the
+    // line is one element of args. Write output with IBML::SendIngameMessage; when
+    // the command is a pipeline stage that output goes to the next stage instead
+    // of the board. Report a failure with BML_SetCommandStatus so `&&`, `||`, and
+    // $? see it, and read piped text with BML_GetCommandInput. An exception thrown
+    // here is caught by the loader, logged, shown to the player, counts as a
+    // failure, and skips the OnPostCommandExecute broadcast.
     virtual void Execute(IBML *bml, const std::vector<std::string> &args) = 0;
 
     // Asked when the player presses Tab. args is the line up to the caret split the

@@ -11,6 +11,7 @@
 #include <limits>
 
 #include "BML/BML.h"
+#include "Console/Shell/ShellIo.h"
 #include "Loader/ModContext.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -177,6 +178,27 @@ int BML_UnregisterCommand(const char *name) {
         return BML_ERROR_FAIL;
 
     return context->UnregisterCommand(_ReturnAddress(), name);
+}
+
+int BML_SetCommandStatus(int status) {
+    ModContext *context = BML_GetModContext();
+    if (!context || !context->IsMainThread())
+        return 0;
+    return BML::Shell::SetStatus(status) ? 1 : 0;
+}
+
+const char *BML_GetCommandInput(size_t *length) {
+    if (length)
+        *length = 0;
+    ModContext *context = BML_GetModContext();
+    if (!context || !context->IsMainThread())
+        return nullptr;
+    const std::string *input = BML::Shell::GetInput();
+    if (!input)
+        return nullptr;
+    if (length)
+        *length = input->size();
+    return input->c_str();
 }
 
 void *BML_Malloc(size_t size) {

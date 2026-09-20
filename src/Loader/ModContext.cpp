@@ -21,6 +21,8 @@
 #include "Api/BuiltinCapabilities.h"
 #include "Api/InterfaceRegistry.h"
 
+#include "Console/Shell/ShellExecutor.h"
+#include "Console/Shell/ShellIo.h"
 #include "Hooks/RenderHook.h"
 #include "UI/FontRuntime.h"
 #include "UI/Overlay.h"
@@ -50,6 +52,8 @@ namespace {
     constexpr wchar_t kTempDirectoryName[] = L"Temp";
     constexpr wchar_t kInstanceDirectoryName[] = L"Instance";
     constexpr wchar_t kPackagesDirectoryName[] = L"Packages";
+
+    constexpr wchar_t kShellStateFileName[] = L"CommandBar.shell.json";
 
     HMODULE ModuleFromAddress(const void *address) {
         if (!address)
@@ -255,8 +259,42 @@ ModContext::ModContext(CKContext *context)
     m_ScriptHotReload = std::make_unique<BML::ScriptModHotReloadService>(this, *m_ScriptDevTools);
     m_ScriptDevTools->SetHotReload(*m_ScriptHotReload);
 #endif
+    m_ShellDispatcher = std::make_unique<ShellDispatcher>(*this);
+    m_Shell = std::make_unique<BML::Shell::Executor>(*m_ShellDispatcher, &m_ShellEnvironment, &m_ShellEnvironment);
     g_ModContext = this;
 }
+
+// The seam between the shell executor and the loader. Every simple command of a
+// line comes back through Invoke; captured output is routed by the sink stack.
+class ModContext::ShellDispatcher final : public BML::Shell::IDispatcher {
+public:
+    explicit ShellDispatcher(ModContext &context) : m_Context(context) {}
+
+    int Invoke(const std::vector<std::string> &args, const std::string *input) override {
+        return m_Context.InvokeCommandArgs(args, input);
+    }
+
+    void WriteError(std::string_view message) override {
+        m_Context.WriteShellError(message);
+    }
+
+    void PushSink(BML::Shell::OutputSink *sink) override {
+        m_Context.m_OutputSinks.push_back(sink);
+    }
+
+    void PopSink() override {
+        if (!m_Context.m_OutputSinks.empty())
+            m_Context.m_OutputSinks.pop_back();
+    }
+
+    void LogExecute(std::string_view line) override {
+        if (m_Context.m_Logger)
+            m_Context.m_Logger->Info("Execute Command: %s", std::string(line).c_str());
+    }
+
+private:
+    ModContext &m_Context;
+};
 
 ModContext::~ModContext() {
     Shutdown();
@@ -277,6 +315,8 @@ bool ModContext::Init() {
 
     m_Logger->Info("Initializing Mod Loader Plus version " BML_VERSION);
     m_Logger->Info("Website: https://github.com/doyaGu/BallanceModLoaderPlus");
+
+    LoadShellEnvironment();
 
 #ifdef _DEBUG
     m_Logger->Info("Player.exe Address: 0x%08x", ::GetModuleHandleA("Player.exe"));
@@ -1269,13 +1309,28 @@ std::vector<std::string> ModContext::CompleteCommand(
 }
 
 void ModContext::ExecuteCommand(const char *cmd) {
-    if (!IsMainThread() || !cmd || cmd[0] == '\0')
+    if (!cmd || cmd[0] == '\0')
         return;
+    ExecuteCommandLine(cmd);
+}
 
-    const auto args = CommandContext::ParseCommandLine(cmd);
-    if (args.empty()) {
-        m_BMLMod->AddIngameMessage("Error: Empty command");
-        return;
+int ModContext::ExecuteCommandLine(const char *line) {
+    if (!IsMainThread() || !line || !m_Shell)
+        return BML::Shell::Status::Failure;
+
+    auto invocationLock = m_CommandInvocationGate.LockCall();
+    const int status = m_Shell->Execute(line);
+    if (m_ShellEnvironment.IsDirty())
+        SaveShellEnvironment();
+    return status;
+}
+
+int ModContext::InvokeCommandArgs(const std::vector<std::string> &args, const std::string *input) {
+    if (!IsMainThread())
+        return BML::Shell::Status::Failure;
+    if (args.empty() || args[0].empty()) {
+        WriteShellError(BML::Shell::FormatError("Error: Empty command"));
+        return BML::Shell::Status::Unknown;
     }
 
     auto invocationLock = m_CommandInvocationGate.LockCall();
@@ -1286,27 +1341,58 @@ void ModContext::ExecuteCommand(const char *cmd) {
         m_CommandContext.GetCommandInvocation(args[0].c_str(), command, commandInfo);
     }
     if (!command) {
-        m_BMLMod->AddIngameMessage(("Error: Unknown Command " + args[0]).c_str());
-        return;
+        WriteShellError(BML::Shell::FormatError("Error: Unknown Command " + args[0]));
+        return BML::Shell::Status::Unknown;
     }
 
     if (commandInfo.Cheat && !IsCheatEnabled()) {
-        m_BMLMod->AddIngameMessage(("Error: Can not execute cheat command " + args[0]).c_str());
-        return;
+        WriteShellError(BML::Shell::FormatError("Error: Can not execute cheat command " + args[0]));
+        return BML::Shell::Status::CheatRefused;
     }
-
-    m_Logger->Info("Execute Command: %s", cmd);
 
     try {
         BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
-        command->Execute(this, args);
+        int status = BML::Shell::Status::Ok;
+        {
+            BML::Shell::InvocationScope scope(input);
+            command->Execute(this, args);
+            status = scope.Status();
+        }
         BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
+        return status;
     } catch (const std::exception &e) {
-        m_Logger->Error("Exception executing command '%s': %s", cmd, e.what());
-        m_BMLMod->AddIngameMessage(("Error: Command failed - " + std::string(e.what())).c_str());
+        m_Logger->Error("Exception executing command '%s': %s", args[0].c_str(), e.what());
+        WriteShellError(BML::Shell::FormatError("Error: Command failed - " + std::string(e.what())));
     } catch (...) {
-        m_Logger->Error("Unknown exception executing command '%s'", cmd);
-        m_BMLMod->AddIngameMessage("Error: Command failed with unknown exception");
+        m_Logger->Error("Unknown exception executing command '%s'", args[0].c_str());
+        WriteShellError(BML::Shell::FormatError("Error: Command failed with unknown exception"));
+    }
+    return BML::Shell::Status::Failure;
+}
+
+void ModContext::WriteShellError(std::string_view message) {
+    if (m_BMLMod)
+        m_BMLMod->AddIngameMessage(std::string(message).c_str());
+}
+
+std::wstring ModContext::GetShellEnvironmentPath() const {
+    if (m_LoaderDir.empty())
+        return {};
+    return utils::CombinePathW(m_LoaderDir, kShellStateFileName);
+}
+
+void ModContext::LoadShellEnvironment() {
+    std::string error;
+    if (!m_ShellEnvironment.Load(GetShellEnvironmentPath(), error) && m_Logger)
+        m_Logger->Warn("Failed to load the shell state file: %s", error.c_str());
+}
+
+void ModContext::SaveShellEnvironment() {
+    std::string error;
+    if (m_ShellEnvironment.Save(GetShellEnvironmentPath(), error)) {
+        m_ShellEnvironment.ClearDirty();
+    } else if (m_Logger) {
+        m_Logger->Warn("Failed to save the shell state file: %s", error.c_str());
     }
 }
 
@@ -1691,6 +1777,11 @@ void ModContext::EnableCheat(bool enable) {
 }
 
 void ModContext::SendIngameMessage(const char *msg) {
+    // While a pipeline stage or a $(...) runs, its output belongs to the shell.
+    if (IsMainThread() && !m_OutputSinks.empty()) {
+        m_OutputSinks.back()->Write(msg ? msg : "");
+        return;
+    }
     if (m_BMLMod)
         m_BMLMod->AddIngameMessage(msg ? msg : "");
 }

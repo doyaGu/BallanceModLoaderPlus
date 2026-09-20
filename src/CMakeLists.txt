@@ -204,22 +204,50 @@ set(BML_CONSOLE_PRIVATE_HEADERS
         Console/CommandBar.h
         Console/CommandCompletion.h
         Console/CommandContext.h
+        Console/CommandInput.h
         Console/Commands.h
         Console/Console.h
         Console/ConsoleLayout.h
         Console/FontCommand.h
         Console/MessageBoard.h
+        Console/Shell/FilterCommands.h
+        Console/Shell/ShellBuiltins.h
+        Console/Shell/ShellCompletion.h
+        Console/Shell/ShellDispatcher.h
+        Console/Shell/ShellEnvironment.h
+        Console/Shell/ShellExecutor.h
+        Console/Shell/ShellExpander.h
+        Console/Shell/ShellHighlighter.h
+        Console/Shell/ShellHistory.h
+        Console/Shell/ShellIo.h
+        Console/Shell/ShellLexer.h
+        Console/Shell/ShellParser.h
+        Console/Shell/ShellQuoting.h
+        Console/Shell/ShellTypes.h
 )
 
 set(BML_CONSOLE_SOURCES
         Console/CommandBar.cpp
         Console/CommandCompletion.cpp
         Console/CommandContext.cpp
+        Console/CommandInput.cpp
         Console/Commands.cpp
         Console/Console.cpp
         Console/ConsoleLayout.cpp
         Console/FontCommand.cpp
         Console/MessageBoard.cpp
+        Console/Shell/FilterCommands.cpp
+        Console/Shell/ShellBuiltins.cpp
+        Console/Shell/ShellCompletion.cpp
+        Console/Shell/ShellEnvironment.cpp
+        Console/Shell/ShellExecutor.cpp
+        Console/Shell/ShellExpander.cpp
+        Console/Shell/ShellHighlighter.cpp
+        Console/Shell/ShellHistory.cpp
+        Console/Shell/ShellIo.cpp
+        Console/Shell/ShellLexer.cpp
+        Console/Shell/ShellParser.cpp
+        Console/Shell/ShellQuoting.cpp
 )
 
 set(BML_HUD_PRIVATE_HEADERS

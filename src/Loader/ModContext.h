@@ -19,6 +19,7 @@
 #include "Loader/NativeModRegistry.h"
 #include "DataShare/DataShare.hpp"
 #include "Console/CommandContext.h"
+#include "Console/Shell/ShellEnvironment.h"
 #include "Api/ObjectRefs.h"
 #include "HookUtils.h"
 #include "Imc/ImcRuntime.h"
@@ -41,6 +42,11 @@
 typedef BML_LoaderDirectory DirectoryType;
 
 class ModContext;
+
+namespace BML::Shell {
+    class Executor;
+    class OutputSink;
+}
 class BMLMod;
 class NewBallTypeMod;
 
@@ -191,6 +197,21 @@ public:
     ICommand *GetCommand(int index) const override;
     ICommand *FindCommand(const char *name) const override;
     void ExecuteCommand(const char *cmd) override;
+
+    // Runs one line through the console shell (quoting, ; && || and |, $NAME,
+    // $(...), aliases) and returns the status of its last pipeline. Diagnostics go
+    // to the message board. Game thread only.
+    int ExecuteCommandLine(const char *line);
+
+    // Runs one already-split command with no shell parsing: lookup, cheat gate,
+    // OnPre/OnPostCommandExecute, Execute. input is the text piped into it or
+    // null. Returns a BML::Shell::Status value. Game thread only.
+    int InvokeCommandArgs(const std::vector<std::string> &args, const std::string *input = nullptr);
+
+    BML::Shell::Environment &GetShellEnvironment() { return m_ShellEnvironment; }
+    // Writes universal variables and aliases to disk when they changed.
+    void SaveShellEnvironment();
+
     std::vector<BML::CommandContext::CommandInfo> GetCommandSnapshot() const;
     bool GetCommandInfo(int index, BML::CommandContext::CommandInfo &info) const;
     bool FindCommandInfo(const char *name, BML::CommandContext::CommandInfo &info) const;
@@ -513,6 +534,11 @@ private:
     BML::CommandContext::UnregisterResult UnregisterOwnedCommand(
         const void *registrar, const char *name);
 
+    class ShellDispatcher;
+    void WriteShellError(std::string_view message);
+    std::wstring GetShellEnvironmentPath() const;
+    void LoadShellEnvironment();
+
     int EvaluateDependencies(IMod *mod, std::string *diagnostic) const;
     int EvaluateActivationDependencies(IMod *mod, std::string *diagnostic) const;
     bool ResolveDependencies();
@@ -561,6 +587,10 @@ private:
     std::string m_ConfigDirUtf8;
 
     BML::CommandContext m_CommandContext;
+    std::unique_ptr<ShellDispatcher> m_ShellDispatcher;
+    std::unique_ptr<BML::Shell::Executor> m_Shell;
+    BML::Shell::Environment m_ShellEnvironment;
+    std::vector<BML::Shell::OutputSink *> m_OutputSinks;
     BML::DataShare *m_DataShare = nullptr;
 
     FILE *m_Logfile = nullptr;

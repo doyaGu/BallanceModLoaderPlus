@@ -266,9 +266,10 @@ public:
     virtual void OnUnphysicalize(CK3dEntity *target) {}
 
     // Every command the loader runs, whoever registered it, which is how a Mod
-    // watches the command bar without owning a command. args[0] is the command name
-    // as it was typed, so the arguments start at args[1], and both callbacks see the
-    // same vector. Neither runs for a line that names no known command or for a
+    // watches the command bar without owning a command. A line such as `a; b | c`
+    // fires them once per simple command, after the shell has split and expanded
+    // its words. args[0] is the word that named the command, so the arguments start
+    // at args[1], and both callbacks see the same vector. Neither runs for a line that names no known command or for a
     // cheat command refused because cheats are off, and OnPostCommandExecute is
     // skipped when the command itself throws.
     virtual void OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {}

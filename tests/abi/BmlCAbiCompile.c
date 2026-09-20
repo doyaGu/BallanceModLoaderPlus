@@ -187,6 +187,18 @@ int BML_TestCAbiUnregisterCommand(const char *name) {
     return result == BML_OK;
 }
 
+// The two halves of the shell's exit-status and pipe contract. Outside a running
+// command the first answers 0 and the second null with a zero length.
+int BML_TestCAbiCommandStatusAndInput(void) {
+    size_t length = 1;
+    const char *input = BML_GetCommandInput(&length);
+    if (BML_SetCommandStatus(1) != 0)
+        return 0;
+    if (input != NULL || length != 0)
+        return 0;
+    return BML_GetCommandInput(NULL) == NULL;
+}
+
 // Interface.h and every interface struct built on it have to compile as C, since
 // a Mod that is not written in C++ reaches this capability only through them.
 // This walks the whole sequence a C caller goes through: the lookup, the member

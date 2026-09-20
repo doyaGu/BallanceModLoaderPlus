@@ -119,6 +119,23 @@ BML_EXPORT char *BML_GetModRootUtf8(const char *modId);
 // than allowing the object to delete itself while one of its methods is active.
 BML_EXPORT int BML_UnregisterCommand(const char *name);
 
+// The other half of ICommand::Execute, which is frozen at returning void. The
+// console shell runs command lists such as `a && b` and `a || b` and exposes the
+// status of the last command as $?, so a command that fails needs a way to say so:
+// call this from inside Execute with any non-zero value and the shell treats the
+// command as failed. Without a call the command counts as succeeded unless it
+// throws, names no known command, or is a cheat command refused with cheats off.
+// Returns 1 when a command is running on the game thread and the status was
+// recorded, 0 anywhere else.
+BML_EXPORT int BML_SetCommandStatus(int status);
+
+// The text piped into the running command by `other | this`, one line per
+// message the previous stage printed, newline-terminated. Null, and *length set
+// to 0, when nothing was piped or no command is running. The pointer belongs to
+// the loader and stays valid only until Execute returns; do not free it. length
+// may be null.
+BML_EXPORT const char *BML_GetCommandInput(size_t *length);
+
 // The loader's heap. A Mod needs these only for memory that crosses the boundary,
 // which is what the ModDependency ids do, and for releasing what the functions
 // below return. BML_Malloc and BML_Calloc treat a zero size as a failure and return
