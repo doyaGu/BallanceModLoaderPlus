@@ -14,6 +14,7 @@ class MapListPage : public Bui::Page {
 public:
     explicit MapListPage(MapMenuState &state) : m_State(state) {}
 
+    void OnEnter(Bui::PageEnterReason) override;
     Bui::PageAction OnFrame() override;
 
 private:
@@ -28,6 +29,7 @@ private:
     Bui::Pagination m_Pagination;
     std::uint64_t m_CatalogRevision = 0;
     int m_Count = 0;
+    bool m_FocusFirstEntry = true;
     char m_MapSearchBuf[1024] = {};
     // Store pointers to entries to support recursive results across subfolders
     std::vector<MapEntry *> m_MapSearchResult;

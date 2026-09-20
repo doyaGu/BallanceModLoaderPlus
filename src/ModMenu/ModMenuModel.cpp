@@ -316,6 +316,25 @@ ModMenuDocument ModMenuModel::BuildDocument(IMod *mod, const ModMenuOwner &owner
                 setting.type = sourceSetting->GetType();
                 setting.value = sourceSetting->GetValue();
                 setting.editor = BML_GetConfigPropertyEditor(sourceSetting);
+                if (setting.editor == BML_CONFIG_EDITOR_CHOICE &&
+                    setting.type == IProperty::STRING) {
+                    const std::size_t choiceCount =
+                        BML_GetConfigPropertyChoiceCount(sourceSetting);
+                    setting.choices.reserve(choiceCount + 1);
+                    for (std::size_t choiceIndex = 0;
+                         choiceIndex < choiceCount; ++choiceIndex) {
+                        const char *choice = BML_GetConfigPropertyChoice(
+                            sourceSetting, choiceIndex);
+                        if (choice)
+                            setting.choices.emplace_back(choice);
+                    }
+                    const std::string &current =
+                        std::get<std::string>(setting.value);
+                    if (std::find(setting.choices.begin(), setting.choices.end(),
+                                  current) == setting.choices.end()) {
+                        setting.choices.push_back(current);
+                    }
+                }
                 category.settings.push_back(std::move(setting));
             }
 

@@ -257,6 +257,7 @@ struct ModMenuPresentation::State {
         versionLine.clear();
         statusLine.clear();
         keyCapture.reset();
+        focusFirstListItem = true;
         resetInformationScroll = true;
         comment.Clear();
     }
@@ -279,6 +280,7 @@ struct ModMenuPresentation::State {
             detailsPagination = {};
             settingPagination = {};
             selectedCategory.clear();
+            focusFirstListItem = true;
             resetInformationScroll = true;
         }
 
@@ -294,6 +296,7 @@ struct ModMenuPresentation::State {
         selectedCategory.assign(category);
         settingPagination = {};
         keyCapture.reset();
+        focusFirstListItem = true;
         comment.Clear();
     }
 
@@ -307,11 +310,6 @@ struct ModMenuPresentation::State {
             return false;
         }
 
-        if (modPagination.CanPrevious() && Bui::NavLeft())
-            modPagination.Previous();
-        if (modPagination.CanNext() && Bui::NavRight())
-            modPagination.Next();
-
         const int first = modPagination.GetFirstItem();
         for (int row = 0; row < PageSize; ++row) {
             const int index = first + row;
@@ -320,6 +318,10 @@ struct ModMenuPresentation::State {
 
             const ModMenuModSummary &mod = mods[static_cast<std::size_t>(index)];
             viewport.SetCursor(ListX, ListY + ListSpacing * static_cast<float>(row));
+            if (focusFirstListItem) {
+                ImGui::SetKeyboardFocusHere();
+                focusFirstListItem = false;
+            }
             ImGui::PushID(mod.owner.id.c_str());
             const bool pressed = Bui::MainButton(mod.name.c_str());
             ImGui::PopID();
@@ -327,6 +329,15 @@ struct ModMenuPresentation::State {
                 observedOwner.reset();
                 return true;
             }
+        }
+
+        if (modPagination.CanPrevious() && Bui::NavLeft()) {
+            modPagination.Previous();
+            focusFirstListItem = true;
+        }
+        if (modPagination.CanNext() && Bui::NavRight()) {
+            modPagination.Next();
+            focusFirstListItem = true;
         }
         return false;
     }
@@ -392,11 +403,15 @@ struct ModMenuPresentation::State {
             const std::string &description = category ? category->description
                                                       : page->description;
             viewport.SetCursor(DetailsX, DetailsY + DetailsSpacing * static_cast<float>(row));
+            if (focusFirstListItem) {
+                ImGui::SetKeyboardFocusHere();
+                focusFirstListItem = false;
+            }
             ImGui::PushID(static_cast<int>(detailsAction.index()));
             ImGui::PushID(id.c_str());
             bool selected = true;
             const bool pressed = Bui::LevelButton(label.c_str(), &selected);
-            if (ImGui::IsItemHovered()) {
+            if (ImGui::IsItemHovered() || ImGui::IsItemFocused()) {
                 if (category)
                     comment.ObserveDetailsAction(category->key, label, description);
                 else
@@ -426,10 +441,12 @@ struct ModMenuPresentation::State {
         bool pageChanged = false;
         if (detailsPagination.CanPrevious() && Bui::NavLeft(0.35f, 0.59f)) {
             detailsPagination.Previous();
+            focusFirstListItem = true;
             pageChanged = true;
         }
         if (detailsPagination.CanNext() && Bui::NavRight(0.6138f, 0.59f)) {
             detailsPagination.Next();
+            focusFirstListItem = true;
             pageChanged = true;
         }
 
@@ -468,9 +485,24 @@ struct ModMenuPresentation::State {
             switch (setting.type) {
             case IProperty::STRING: {
                 std::string next = std::get<std::string>(*source);
-                const bool changed = setting.editor == BML_CONFIG_EDITOR_COLOR
-                    ? Bui::ColorStringButton(setting.label.c_str(), &next)
-                    : Bui::InputTextButton(setting.label.c_str(), &next);
+                bool changed = false;
+                if (setting.editor == BML_CONFIG_EDITOR_CHOICE &&
+                    setting.choices.size() > 1) {
+                    const auto selected = std::find(
+                        setting.choices.begin(), setting.choices.end(), next);
+                    int selectedIndex = selected == setting.choices.end()
+                        ? 0
+                        : static_cast<int>(selected - setting.choices.begin());
+                    if (Bui::RadioButton(setting.label.c_str(), &selectedIndex,
+                                         setting.choices, "None")) {
+                        next = setting.choices[static_cast<std::size_t>(selectedIndex)];
+                        changed = true;
+                    }
+                } else if (setting.editor == BML_CONFIG_EDITOR_COLOR) {
+                    changed = Bui::ColorStringButton(setting.label.c_str(), &next);
+                } else {
+                    changed = Bui::InputTextButton(setting.label.c_str(), &next);
+                }
                 if (changed)
                     model.EditSetting(setting.key, std::move(next));
                 break;
@@ -521,17 +553,6 @@ struct ModMenuPresentation::State {
             return;
         }
 
-        if (settingPagination.CanPrevious() && Bui::NavLeft()) {
-            settingPagination.Previous();
-            keyCapture.reset();
-            comment.Clear();
-        }
-        if (settingPagination.CanNext() && Bui::NavRight()) {
-            settingPagination.Next();
-            keyCapture.reset();
-            comment.Clear();
-        }
-
         const int first = settingPagination.GetFirstItem();
         bool commentOnPage = false;
         for (int row = 0; row < PageSize; ++row) {
@@ -542,13 +563,30 @@ struct ModMenuPresentation::State {
             const ModMenuSettingDocument &setting =
                 category.settings[static_cast<std::size_t>(index)];
             viewport.SetCursor(ListX, ListY + ListSpacing * static_cast<float>(row));
+            if (focusFirstListItem) {
+                ImGui::SetKeyboardFocusHere();
+                focusFirstListItem = false;
+            }
             ImGui::PushID(setting.key.property.c_str());
             DrawSetting(model, setting);
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered() || ImGui::IsItemFocused())
                 comment.ObserveSetting(setting.key, setting.label, setting.description);
             if (comment.IsSetting(setting.key))
                 commentOnPage = true;
             ImGui::PopID();
+        }
+
+        if (settingPagination.CanPrevious() && Bui::NavLeft()) {
+            settingPagination.Previous();
+            focusFirstListItem = true;
+            keyCapture.reset();
+            comment.Clear();
+        }
+        if (settingPagination.CanNext() && Bui::NavRight()) {
+            settingPagination.Next();
+            focusFirstListItem = true;
+            keyCapture.reset();
+            comment.Clear();
         }
 
         if (!commentOnPage)
@@ -587,6 +625,7 @@ struct ModMenuPresentation::State {
     std::string versionLine;
     std::string statusLine;
     std::optional<ModMenuSettingKey> keyCapture;
+    bool focusFirstListItem = true;
     bool resetInformationScroll = true;
     CommentPanelState comment;
     ViewportLayout viewport;

@@ -248,6 +248,7 @@ void CustomMaps::OnProcess() {
                                                   ImGuiWindowFlags_NoSavedSettings;
 
         if (ImGui::Begin("Button_Custom_Maps", nullptr, buttonFlags)) {
+            ImGui::SetNextItemShortcut(ImGuiKey_RightArrow, ImGuiInputFlags_RouteGlobal);
             if (Bui::RightButton("Enter_Custom_Maps")) {
                 m_ExitStart->ActivateInput(0);
                 m_ExitStart->Activate();

@@ -77,6 +77,10 @@ bool MapMenu::Render() {
     return m_Routes.Render();
 }
 
+void MapListPage::OnEnter(Bui::PageEnterReason) {
+    m_FocusFirstEntry = true;
+}
+
 void MapListPage::SyncCatalog() {
     if (m_CatalogRevision == m_State.GetCatalogRevision())
         return;
@@ -85,6 +89,7 @@ void MapListPage::SyncCatalog() {
     ClearSearch();
     m_Count = 0;
     m_Pagination.Reset();
+    m_FocusFirstEntry = true;
 }
 
 Bui::PageAction MapListPage::OnFrame() {
@@ -101,6 +106,10 @@ Bui::PageAction MapListPage::OnFrame() {
         const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
         ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.4f, vpSize.y * 0.18f));
         ImGui::SetNextItemWidth(vpSize.x * 0.2f);
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_F)) {
+            ImGui::SetKeyboardFocusHere();
+            m_FocusFirstEntry = false;
+        }
 
         if (ImGui::InputText("##SearchBar", m_MapSearchBuf, IM_ARRAYSIZE(m_MapSearchBuf))) {
             OnSearchMaps();
@@ -124,11 +133,6 @@ Bui::PageAction MapListPage::OnFrame() {
             ? static_cast<int>(m_MapSearchResult.size())
             : static_cast<int>(maps->children.size());
         m_Pagination.Update(m_Count, 10);
-
-        if (m_Pagination.CanPrevious() && Bui::NavLeft(0.36f, 0.4f))
-            m_Pagination.Previous();
-        if (m_Pagination.CanNext() && Bui::NavRight(0.6238f, 0.4f))
-            m_Pagination.Next();
     }
 
     if (m_Count > 0) {
@@ -139,6 +143,10 @@ Bui::PageAction MapListPage::OnFrame() {
             Bui::Entries([&](std::size_t index) {
                 if (n + index >= m_MapSearchResult.size())
                     return false;
+                if (m_FocusFirstEntry) {
+                    ImGui::SetKeyboardFocusHere();
+                    m_FocusFirstEntry = false;
+                }
                 return OnDrawEntry(m_MapSearchResult[n + index], &v);
             }, 0.4031f, 0.23f, 0.06f, 10);
         } else {
@@ -148,10 +156,23 @@ Bui::PageAction MapListPage::OnFrame() {
                 Bui::Entries([&](std::size_t index) {
                     if (n + index >= entries.size())
                         return false;
+                    if (m_FocusFirstEntry) {
+                        ImGui::SetKeyboardFocusHere();
+                        m_FocusFirstEntry = false;
+                    }
                     return OnDrawEntry(entries[n + index], &v);
                 }, 0.4031f, 0.23f, 0.06f, 10);
             }
         }
+    }
+
+    if (m_Pagination.CanPrevious() && Bui::NavLeft(0.36f, 0.4f)) {
+        m_Pagination.Previous();
+        m_FocusFirstEntry = true;
+    }
+    if (m_Pagination.CanNext() && Bui::NavRight(0.6238f, 0.4f)) {
+        m_Pagination.Next();
+        m_FocusFirstEntry = true;
     }
 
     if (Bui::NavBack()) {
@@ -160,6 +181,7 @@ Bui::PageAction MapListPage::OnFrame() {
             m_State.SetCurrentMaps(current->parent);
             m_Pagination.Reset();
             ClearSearch();
+            m_FocusFirstEntry = true;
         } else {
             return Bui::PageAction::Back();
         }
@@ -276,6 +298,7 @@ bool MapListPage::OnDrawEntry(MapEntry *entry, bool *v) {
             // When entering a folder from search or normal list, reset to first page and clear search
             m_Pagination.Reset();
             ClearSearch();
+            m_FocusFirstEntry = true;
         }
 
         ImGui::PopStyleColor();
@@ -283,7 +306,7 @@ bool MapListPage::OnDrawEntry(MapEntry *entry, bool *v) {
 
     ImGui::PopFont();
 
-    if (m_State.ShouldShowTooltip() && ImGui::IsItemHovered()) {
+    if (m_State.ShouldShowTooltip() && (ImGui::IsItemHovered() || ImGui::IsItemFocused())) {
         ImGui::SetTooltip("%s", entry->name.c_str());
     }
 

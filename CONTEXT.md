@@ -35,7 +35,9 @@ through `BML_GetConfigPropertyEditor` / `BML_SetConfigPropertyEditor`, keeping
 the frozen IProperty vtable unchanged. It selects a Built-in Mod Menu editor
 without changing the stored value type. The default follows PropertyType; the
 colour editor keeps STRING storage while presenting `#RRGGBB` or `#RRGGBBAA`
-through Bui.
+through Bui. The choice editor copies an ordered set of STRING values through
+the additive C interface and presents it through Bui::RadioButton; a stored
+value outside that set remains available until the player chooses another.
 
 **Mod Menu Page** — An optional Native Mod page registered with a stable id,
 label, description, and draw callback. The loader keys it by owner and
