@@ -39,9 +39,8 @@ required when changing BML+ itself.
 package. Use the full `BMLPlus-<version>.zip` archive for manual installation
 and recovery.
 
-Press `/` in game to open the command bar. It understands shell syntax:
-quoting, `;`, `&&`, `||`, pipes, `$NAME`, aliases, and history expansion. The
-`bml` command prints the loader version and loaded mods.
+Press `/` in game to open the command bar. The `bml` command prints the loader
+version and loaded mods.
 
 ## Project links
 
