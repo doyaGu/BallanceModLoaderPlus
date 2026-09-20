@@ -73,6 +73,7 @@ if (BML_BUILD_UI_AUTOMATION)
 endif ()
 
 add_subdirectory(smoke)
+add_subdirectory(release)
 add_subdirectory(player)
 if (BML_BUILD_UPDATER)
     add_subdirectory(updater)
