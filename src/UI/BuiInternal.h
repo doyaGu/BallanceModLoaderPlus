@@ -2,6 +2,7 @@
 #define BML_BUI_INTERNAL_H
 
 #include <string>
+#include <vector>
 
 #include "BML/Bui.h"
 
@@ -15,6 +16,9 @@ namespace Bui {
                          ImGuiInputTextCallback callback = nullptr,
                          void *userData = nullptr);
     bool ColorStringButton(const char *label, std::string *value);
+    bool RadioButton(const char *label, int *currentItem,
+                     const std::vector<std::string> &items,
+                     const char *emptyItemLabel = nullptr);
 }
 
 #endif // BML_BUI_INTERNAL_H

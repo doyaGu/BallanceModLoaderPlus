@@ -279,17 +279,19 @@ namespace Bui {
     // it; these write through it and the change is visible on the next frame.
     //
     // KeyButton records a key binding. listening is the Mod's own bool saying the row is
-    // listening: clicking the row sets it, the next key the player presses is written
+    // listening: activating the row sets it, the next key the player presses is written
     // into keyChord and clears it, and a click anywhere else cancels and clears it as
-    // well. It returns true in both of those cases, so read keyChord rather than
-    // treating a true return as a new binding.
+    // well. While listening it owns keyboard input, so the captured key cannot also
+    // activate menu navigation. It returns true for capture and cancellation, so read
+    // keyChord rather than treating every true return as a new binding.
     //
-    // YesNoButton draws a Yes and a No next to the label and returns true when the
-    // player picks the one that was not set. Clicking the row itself outside those two
-    // also flips value, but reports nothing, so read value rather than counting the returns.
+    // YesNoButton is one keyboard navigation item. Enter or Space flips value, Left
+    // chooses No, and Right chooses Yes. Its two visible choices remain separately
+    // clickable with the mouse. It returns true whenever value changes.
     //
-    // RadioButton cycles currentItem through items with a minus and a plus at the end
-    // of the row, wrapping past either end, and returns true only on a frame the index
+    // RadioButton is likewise one keyboard navigation item. Left moves back, while
+    // Right, Enter, and Space move forward; both directions wrap. Its minus and plus
+    // controls remain separately clickable. It returns true only on a frame the index
     // moved. items has to hold itemCount entries that outlive the call; a null entry
     // draws as empty, and a currentItem outside the range is shown as 0 but only
     // written back once the player moves it.
@@ -303,10 +305,12 @@ namespace Bui {
     // return what those return, meaning true on every frame the player changed the
     // value rather than once when done, so a Mod saving to its config on each true
     // writes on every keystroke; pass ImGuiInputTextFlags_EnterReturnsTrue for the
-    // other behaviour. buffer has to hold bufferSize bytes and is both what is shown and
-    // where the text ends up. The ImGui item ends inside a group these close
-    // themselves, so ImGui::IsItemDeactivatedAfterEdit and the rest of the item queries
-    // asked after the call answer about the row, not about the field. The step pair
+    // other behaviour. The decorative OPTION row is not a separate keyboard stop;
+    // navigation lands directly on the embedded editor. buffer has to hold bufferSize
+    // bytes and is both what is shown and where the text ends up. The ImGui item ends
+    // inside a group these close themselves, so ImGui::IsItemDeactivatedAfterEdit and
+    // the rest of the item queries asked after the call answer about the row, not about
+    // the field. The step pair
     // reaches ImGui unchanged, which is why InputIntButton shows the small plus and
     // minus of ImGui and InputFloatButton, defaulting to a step of 0, does not.
     BML_EXPORT bool InputTextButton(const char *label, char *buffer, std::size_t bufferSize,
@@ -363,11 +367,11 @@ namespace Bui {
 
     // The three arrows the game's pages carry, drawn where the game draws them: the
     // two at the top for the previous and next page and the Back one at the bottom.
-    // Each returns true when its button is clicked and also when the key that goes with
-    // it is pressed, PageUp, PageDown, and Escape, and that key is read whether or not
-    // the mouse is anywhere near the button. So a page calling NavBack closes on Escape
-    // without arranging anything, and a page that wants Escape for something else does
-    // not call it.
+    // Each returns true when its button is clicked and also when the focused menu
+    // receives the key that goes with it: PageUp, PageDown, or Escape. An active
+    // editor keeps those keys, so Escape first leaves or cancels text/key input rather
+    // than navigating away. A page calling NavBack therefore needs no separate Escape
+    // handler, while a page that reserves Escape for itself does not call it.
     //
     // Call one only when the move it stands for is possible, since it draws the arrow
     // as well as reading it. Pagination below keeps the corresponding list state.
@@ -690,7 +694,9 @@ namespace Bui {
     // mutation while OnEnter, OnFrame, OnLeave, or a session callback is running
     // returns false. OnFrame's returned action is applied after drawing. History is
     // capped at 32 routes, and an operation that would exceed it returns false without
-    // leaving the current Page.
+    // leaving the current Page. Entering a route transfers keyboard navigation to its
+    // first focusable item, so a stale item id from the previous Page cannot retain
+    // focus.
     //
     // Menu is final so ownership is composed rather than inherited: declare the state
     // Pages refer to before the Menu member, and C++ then destroys Menu and its Pages
@@ -800,6 +806,10 @@ namespace Bui {
                 if (drawContents) {
                     ImGuiIdGuard idGuard(page);
                     DispatchGuard guard(m_Dispatching);
+                    if (m_FocusFirstItem) {
+                        ImGui::SetKeyboardFocusHere();
+                        m_FocusFirstItem = false;
+                    }
                     action = page->OnFrame();
                 }
             } catch (...) {
@@ -894,6 +904,7 @@ namespace Bui {
             LeaveCurrent(leaveReason);
 
             m_CurrentPage = std::move(next);
+            m_FocusFirstItem = true;
             try {
                 EnterCurrent(enterReason);
             } catch (...) {
@@ -921,6 +932,7 @@ namespace Bui {
                 if (!HasPage(target))
                     continue;
                 m_CurrentPage = std::move(target);
+                m_FocusFirstItem = true;
                 try {
                     EnterCurrent(PageEnterReason::Back);
                 } catch (...) {
@@ -1027,6 +1039,7 @@ namespace Bui {
         SessionCallback m_OnClose;
         bool m_SessionOpen = false;
         bool m_Dispatching = false;
+        bool m_FocusFirstItem = false;
         std::vector<std::string> m_PageStack;
         std::unordered_map<std::string, std::unique_ptr<Page>> m_Pages;
     };

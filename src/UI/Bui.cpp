@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -1077,8 +1078,9 @@ namespace Bui {
             g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable |
                 (*listening ? ImGuiItemStatusFlags_Checked : 0));
 
+        const bool wasListening = *listening;
         bool changed = false;
-        if (*listening) {
+        if (wasListening) {
             if ((!ImGui::IsItemHovered() && ImGui::GetIO().MouseClicked[0]) || SetKeyChordFromIO(keyChord)) {
                 *listening = false;
                 changed = true;
@@ -1086,6 +1088,11 @@ namespace Bui {
         } else if (pressed) {
             *listening = true;
             PlayMenuClickSound();
+        }
+        if (*listening || wasListening) {
+            if (g.ActiveId != id)
+                ImGui::SetActiveID(id, window);
+            ImGui::SetActiveIdUsingAllKeyboardKeys();
         }
 
         ImDrawList *drawList = window->DrawList;
@@ -1137,10 +1144,11 @@ namespace Bui {
         bool hovered = false;
         bool held = false;
         bool pressed = false;
+        bool focused = false;
         float activeTimer = 0.0f;
     };
 
-    static bool BeginOptionRow(const char *label, OptionRow &row) {
+    static bool BeginOptionRow(const char *label, OptionRow &row, bool navigation = true) {
         if (!label)
             return false;
 
@@ -1156,7 +1164,9 @@ namespace Bui {
 
         ImGui::BeginGroup();
         ImGui::ItemSize(row.bounds);
-        if (!ImGui::ItemAdd(row.bounds, row.id)) {
+        const ImGuiItemFlags itemFlags = navigation
+            ? ImGuiItemFlags_None : ImGuiItemFlags_NoNav;
+        if (!ImGui::ItemAdd(row.bounds, row.id, nullptr, itemFlags)) {
             ImGui::EndGroup();
             return false;
         }
@@ -1164,6 +1174,7 @@ namespace Bui {
         row.pressed = ImGui::ButtonBehavior(
             row.bounds, row.id, &row.hovered, &row.held,
             ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
+        row.focused = ImGui::IsItemFocused();
         ImGuiContext &context = *GImGui;
         row.activeTimer = row.held ? context.ActiveIdTimer : (row.hovered ? context.HoveredIdTimer : 0.0f);
 
@@ -1182,6 +1193,24 @@ namespace Bui {
     static void ReportOptionRow(const OptionRow &row, ImGuiItemStatusFlags extraStatus = 0) {
         ImGuiContext &g = *GImGui;
         IMGUI_TEST_ENGINE_ITEM_INFO(row.id, row.label, g.LastItemData.StatusFlags | extraStatus);
+    }
+
+    static ImGuiItemStatusFlags CheckableStatus(bool checked) {
+#ifdef IMGUI_ENABLE_TEST_ENGINE
+        return ImGuiItemStatusFlags_Checkable |
+               (checked ? ImGuiItemStatusFlags_Checked : 0);
+#else
+        (void) checked;
+        return 0;
+#endif
+    }
+
+    static ImGuiItemStatusFlags InputableStatus() {
+#ifdef IMGUI_ENABLE_TEST_ENGINE
+        return ImGuiItemStatusFlags_Inputable;
+#else
+        return 0;
+#endif
     }
 
     static void EndOptionRow(const OptionRow &row) {
@@ -1213,32 +1242,71 @@ namespace Bui {
         const bool originalValue = *value;
         if (row.pressed)
             *value = !*value;
-        ReportOptionRow(row, ImGuiItemStatusFlags_Checkable |
-                             (*value ? ImGuiItemStatusFlags_Checked : 0));
+        if (row.focused && ImGui::Shortcut(ImGuiKey_LeftArrow, ImGuiInputFlags_Repeat))
+            *value = false;
+        if (row.focused && ImGui::Shortcut(ImGuiKey_RightArrow, ImGuiInputFlags_Repeat))
+            *value = true;
+        ReportOptionRow(row, CheckableStatus(*value));
 
         const float spacing = row.size.x * 0.05f;
         ImGui::SetCursorScreenPos(
             ImVec2(row.position.x + row.size.x * 0.27f, row.position.y + row.size.y * 0.43f));
         ImGui::PushID(label);
+        ImGui::PushItemFlag(ImGuiItemFlags_NoNav, true);
         bool yesSelected = *value;
         const bool yesPressed = SmallButton("Yes", &yesSelected);
         ImGui::SameLine(0.0f, spacing);
         bool noSelected = !*value;
         const bool noPressed = SmallButton("No", &noSelected);
+        ImGui::PopItemFlag();
         ImGui::PopID();
         EndOptionRow(row);
 
-        if (!yesPressed && !noPressed)
-            return false;
-
-        *value = yesPressed;
+        if (yesPressed || noPressed)
+            *value = yesPressed;
         return *value != originalValue;
     }
 
-    bool RadioButton(const char *label, int *currentItem, const char *const items[], int itemCount) {
-        if (!currentItem || !items || itemCount <= 0)
+    class RadioItems final {
+    public:
+        RadioItems(const char *const items[], int count)
+            : m_Items(items), m_Count(count) {}
+
+        RadioItems(const std::vector<std::string> &items, const char *emptyItemLabel)
+            : m_Strings(&items), m_EmptyItemLabel(emptyItemLabel),
+              m_Count(items.size() <= static_cast<std::size_t>(std::numeric_limits<int>::max())
+                          ? static_cast<int>(items.size())
+                          : 0) {}
+
+        bool IsValid() const {
+            return m_Count > 0 && (m_Items || m_Strings);
+        }
+
+        int GetCount() const {
+            return m_Count;
+        }
+
+        const char *GetText(int index) const {
+            const char *text = m_Strings ? (*m_Strings)[static_cast<std::size_t>(index)].c_str()
+                                         : m_Items[index];
+            if (text && text[0] == '\0' && m_EmptyItemLabel)
+                return m_EmptyItemLabel;
+            return text ? text : "";
+        }
+
+    private:
+        const char *const *m_Items = nullptr;
+        const std::vector<std::string> *m_Strings = nullptr;
+        const char *m_EmptyItemLabel = nullptr;
+        int m_Count = 0;
+    };
+
+    static bool DrawRadioButton(const char *label, int *currentItem,
+                                const RadioItems &items) {
+        if (!currentItem || !items.IsValid())
             return false;
 
+        const int itemCount = items.GetCount();
         int selectedItem = *currentItem;
         if (selectedItem < 0 || selectedItem >= itemCount)
             selectedItem = 0;
@@ -1257,30 +1325,44 @@ namespace Bui {
         const ImVec2 textMax(row.position.x + row.size.x * 0.80f,
                              row.position.y + row.size.y * 0.90f);
 
-        bool changed = false;
+        bool previousPressed = row.focused &&
+            ImGui::Shortcut(ImGuiKey_LeftArrow, ImGuiInputFlags_Repeat);
+        bool nextPressed = row.pressed || (row.focused &&
+            ImGui::Shortcut(ImGuiKey_RightArrow, ImGuiInputFlags_Repeat));
         ImGui::PushID(label);
+        ImGui::PushItemFlag(ImGuiItemFlags_NoNav, true);
         ImGui::SetCursorScreenPos(previousPosition);
-        if (MinusButton("##RadioPrev")) {
+        previousPressed = MinusButton("##RadioPrev") || previousPressed;
+        if (previousPressed)
             selectedItem = (selectedItem + itemCount - 1) % itemCount;
-            changed = true;
-        }
 
         ImGui::SetCursorScreenPos(nextPosition);
-        if (PlusButton("##RadioNext")) {
+        nextPressed = PlusButton("##RadioNext") || nextPressed;
+        if (nextPressed)
             selectedItem = (selectedItem + 1) % itemCount;
-            changed = true;
-        }
+        ImGui::PopItemFlag();
 
-        const char *currentText = items[selectedItem] ? items[selectedItem] : "";
+        const char *currentText = items.GetText(selectedItem);
         const ImVec2 currentTextSize = ImGui::CalcTextSize(currentText, nullptr, true);
         RenderMarqueeText(row.window->DrawList, textMin, textMax, currentText, &currentTextSize,
                           row.hovered || row.held, row.activeTimer, &row.bounds);
         ImGui::PopID();
         EndOptionRow(row);
 
+        const bool changed = previousPressed || nextPressed;
         if (changed)
             *currentItem = selectedItem;
         return changed;
+    }
+
+    bool RadioButton(const char *label, int *currentItem, const char *const items[], int itemCount) {
+        return DrawRadioButton(label, currentItem, RadioItems(items, itemCount));
+    }
+
+    bool RadioButton(const char *label, int *currentItem,
+                     const std::vector<std::string> &items,
+                     const char *emptyItemLabel) {
+        return DrawRadioButton(label, currentItem, RadioItems(items, emptyItemLabel));
     }
 
     bool InputTextButton(const char *label, char *buffer, std::size_t bufferSize,
@@ -1289,9 +1371,9 @@ namespace Bui {
             return false;
 
         OptionRow row;
-        if (!BeginOptionRow(label, row))
+        if (!BeginOptionRow(label, row, false))
             return false;
-        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
+        ReportOptionRow(row, InputableStatus());
 
         BeginOptionInput(row);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
@@ -1307,9 +1389,9 @@ namespace Bui {
             return false;
 
         OptionRow row;
-        if (!BeginOptionRow(label, row))
+        if (!BeginOptionRow(label, row, false))
             return false;
-        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
+        ReportOptionRow(row, InputableStatus());
 
         BeginOptionInput(row);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
@@ -1325,9 +1407,9 @@ namespace Bui {
             return false;
 
         OptionRow row;
-        if (!BeginOptionRow(label, row))
+        if (!BeginOptionRow(label, row, false))
             return false;
-        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
+        ReportOptionRow(row, InputableStatus());
 
         BeginOptionInput(row);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
@@ -1342,9 +1424,9 @@ namespace Bui {
             return false;
 
         OptionRow row;
-        if (!BeginOptionRow(label, row))
+        if (!BeginOptionRow(label, row, false))
             return false;
-        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
+        ReportOptionRow(row, InputableStatus());
 
         BeginOptionInput(row);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
@@ -1362,9 +1444,9 @@ namespace Bui {
             return false;
 
         OptionRow row;
-        if (!BeginOptionRow(label, row))
+        if (!BeginOptionRow(label, row, false))
             return false;
-        ReportOptionRow(row, ImGuiItemStatusFlags_Inputable);
+        ReportOptionRow(row, InputableStatus());
 
         BeginOptionInput(row);
 #ifdef IMGUI_ENABLE_TEST_ENGINE
@@ -1448,19 +1530,25 @@ namespace Bui {
 
     bool NavLeft(float x, float y) {
         return At(x, y, []() {
-            return LeftButton("PrevPage") || ImGui::IsKeyPressed(ImGuiKey_PageUp);
+            const bool shortcut = !ImGui::IsAnyItemActive() &&
+                                  ImGui::Shortcut(ImGuiKey_PageUp);
+            return LeftButton("PrevPage") || shortcut;
         });
     }
 
     bool NavRight(float x, float y) {
         return At(x, y, []() {
-            return RightButton("NextPage") || ImGui::IsKeyPressed(ImGuiKey_PageDown);
+            const bool shortcut = !ImGui::IsAnyItemActive() &&
+                                  ImGui::Shortcut(ImGuiKey_PageDown);
+            return RightButton("NextPage") || shortcut;
         });
     }
 
     bool NavBack(float x, float y) {
         return At(x, y, []() {
-            return BackButton("Back") || ImGui::IsKeyPressed(ImGuiKey_Escape);
+            const bool shortcut = !ImGui::IsAnyItemActive() &&
+                                  ImGui::Shortcut(ImGuiKey_Escape);
+            return BackButton("Back") || shortcut;
         });
     }
 
