@@ -4,6 +4,7 @@
 #include <cstddef>
 
 #include "BML/IBML.h"
+#include "Console/Shell/ShellIo.h"
 #include "CustomMaps/CustomMaps.h"
 #include "StringUtils.h"
 
@@ -12,6 +13,10 @@ namespace {
 
 void Report(IBML &bml, const std::string &message) {
     bml.SendIngameMessage(message.c_str());
+}
+
+void ReportFailure(IBML &bml, const std::string &message) {
+    BML::Shell::Fail(&bml, message);
 }
 
 } // namespace
@@ -25,7 +30,7 @@ void MapCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
         std::string error;
         const std::vector<std::string> paths = m_Maps.ListMaps(fragment, error);
         if (!error.empty()) {
-            Report(*bml, "map list: " + error);
+            ReportFailure(*bml, "map list: " + error);
         } else if (paths.empty()) {
             Report(*bml, "map list: no matching maps");
         } else {
@@ -44,14 +49,14 @@ void MapCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
         const std::string relativePath = utils::JoinString(args, ' ', 2);
         std::string error;
         if (!m_Maps.LoadFromCommand(relativePath, error))
-            Report(*bml, "map load: " + error);
+            ReportFailure(*bml, "map load: " + error);
         else
             Report(*bml, "map load: loading " + relativePath);
         return;
     }
 
-    Report(*bml,
-           "Usage: map list [name fragment] | load \"<path relative to ModLoader/Maps>\"");
+    ReportFailure(*bml,
+                  "Usage: map list [name fragment] | load \"<path relative to ModLoader/Maps>\"");
 }
 
 const std::vector<std::string> MapCommand::GetTabCompletion(

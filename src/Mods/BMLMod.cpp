@@ -361,17 +361,6 @@ void BMLMod::AdjustFrameRate(bool sync, float limit) {
     }
 }
 
-void BMLMod::PrintHistory() {
-    m_Console.PrintHistory();
-}
-
-void BMLMod::ClearHistory() {
-    m_Console.ClearHistory();
-}
-
-void BMLMod::ExecuteHistory(int index) {
-    m_Console.ExecuteHistory(index);
-}
 
 int BMLMod::GetHUD() {
     return m_HUD.GetMode();

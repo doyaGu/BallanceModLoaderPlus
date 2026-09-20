@@ -1,5 +1,7 @@
 #include "Console/FontCommand.h"
 
+#include "Console/Shell/ShellIo.h"
+
 #include <algorithm>
 #include <charconv>
 #include <cerrno>
@@ -67,17 +69,10 @@ bool ContainsFace(const std::vector<std::string> &faces, const std::string &cand
 }
 
 std::string ReadFaceArgument(const std::vector<std::string> &args, std::size_t first) {
+    // The shell has already removed quotes, so a face name typed as one quoted
+    // word or as several bare words arrives here the same way.
     std::string value = utils::JoinString(args, ' ', first);
     utils::TrimString(value);
-    if (value.size() >= 2) {
-        const char firstCharacter = value.front();
-        const char lastCharacter = value.back();
-        if ((firstCharacter == '"' && lastCharacter == '"') ||
-            (firstCharacter == '\'' && lastCharacter == '\'')) {
-            value = value.substr(1, value.size() - 2);
-            utils::TrimString(value);
-        }
-    }
     return value;
 }
 
@@ -188,7 +183,7 @@ CommandFont::CommandFont(FontCommandContext context) : m_Context(context) {
 bool CommandFont::EnsureAvailable(IBML &bml) const {
     if (m_Context.IsComplete())
         return true;
-    bml.SendIngameMessage("Font runtime is unavailable.\n");
+    BML::Shell::Fail(&bml, "Font runtime is unavailable.\n");
     return false;
 }
 
@@ -277,11 +272,11 @@ void CommandFont::CheckText(IBML &bml, const std::string &text) const {
 
     const Ui::FontCoverage coverage = m_Context.Runtime->InspectText(text);
     if (!coverage.ValidUtf8) {
-        bml.SendIngameMessage("The sample is not valid UTF-8.\n");
+        BML::Shell::Fail(&bml, "The sample is not valid UTF-8.\n");
         return;
     }
     if (!coverage.FontAvailable) {
-        bml.SendIngameMessage("No applied runtime font is available yet.\n");
+        BML::Shell::Fail(&bml, "No applied runtime font is available yet.\n");
         return;
     }
 
@@ -361,7 +356,7 @@ void CommandFont::ExecutePrimary(IBML &bml, const std::vector<std::string> &args
     if (EqualArgument(face, "default"))
         face = Ui::FontProfile().PrimaryFace;
     if (face.empty()) {
-        bml.SendIngameMessage("Usage: font primary <file|default>\n");
+        BML::Shell::Fail(&bml, "Usage: font primary <file|default>\n");
         return;
     }
 
@@ -382,8 +377,7 @@ void CommandFont::ExecuteSize(IBML &bml, const std::vector<std::string> &args) {
     float size = Ui::FontProfile().ReferenceSize;
     if (!EqualArgument(args[2], "default") &&
         !ParseReferenceSize(args[2], size)) {
-        bml.SendIngameMessage(
-            "Font size must be a number from 8 through 96.\n");
+        BML::Shell::Fail(&bml, "Font size must be a number from 8 through 96.\n");
         return;
     }
 
@@ -408,7 +402,7 @@ void CommandFont::ExecuteFallback(IBML &bml, const std::vector<std::string> &arg
     if (EqualArgument(args[2], "add")) {
         const std::string face = ReadFaceArgument(args, 3);
         if (face.empty()) {
-            bml.SendIngameMessage("Usage: font fallback add <file>\n");
+            BML::Shell::Fail(&bml, "Usage: font fallback add <file>\n");
             return;
         }
 
@@ -430,7 +424,7 @@ void CommandFont::ExecuteFallback(IBML &bml, const std::vector<std::string> &arg
     if (EqualArgument(args[2], "remove")) {
         const std::string requested = ReadFaceArgument(args, 3);
         if (requested.empty()) {
-            bml.SendIngameMessage(
+            BML::Shell::Fail(&bml,
                 "Usage: font fallback remove <index|file>\n");
             return;
         }
@@ -449,7 +443,7 @@ void CommandFont::ExecuteFallback(IBML &bml, const std::vector<std::string> &arg
             }
         }
         if (!found) {
-            SendLine(bml, "Fallback font not found: " + requested);
+            BML::Shell::Fail(&bml, "Fallback font not found: " + requested);
             return;
         }
 
@@ -461,7 +455,7 @@ void CommandFont::ExecuteFallback(IBML &bml, const std::vector<std::string> &arg
         return;
     }
 
-    bml.SendIngameMessage("Usage: font fallback [add|remove|clear]\n");
+    BML::Shell::Fail(&bml, "Usage: font fallback [add|remove|clear]\n");
 }
 
 void CommandFont::ExecuteSystemFallbacks(IBML &bml, const std::vector<std::string> &args) {
@@ -478,7 +472,7 @@ void CommandFont::ExecuteSystemFallbacks(IBML &bml, const std::vector<std::strin
 
     bool enabled = false;
     if (!ParseSwitch(args[2], enabled)) {
-        bml.SendIngameMessage("Usage: font system <on|off>\n");
+        BML::Shell::Fail(&bml, "Usage: font system <on|off>\n");
         return;
     }
     m_Context.UseWindowsFallbacks->SetBoolean(enabled);
@@ -514,7 +508,7 @@ void CommandFont::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (EqualArgument(args[1], "check")) {
         const std::string text = utils::JoinString(args, ' ', 2);
         if (text.empty())
-            bml->SendIngameMessage("Usage: font check <text>\n");
+            BML::Shell::Fail(bml, "Usage: font check <text>\n");
         else
             CheckText(*bml, text);
         return;
@@ -555,8 +549,8 @@ void CommandFont::Execute(IBML *bml, const std::vector<std::string> &args) {
         return;
     }
 
-    SendLine(*bml, "Unknown font action: " + args[1] +
-                   ". Use 'font help'.");
+    BML::Shell::Fail(bml, "Unknown font action: " + args[1] +
+                          ". Use 'font help'.");
 }
 
 const std::vector<std::string> CommandFont::GetTabCompletion(IBML *, const std::vector<std::string> &args) {

@@ -5,6 +5,7 @@
 
 #include "Console/CommandBar.h"
 #include "Console/MessageBoard.h"
+#include "Console/Shell/ShellHistory.h"
 
 class HUDRuntime;
 class IBML;
@@ -32,9 +33,11 @@ public:
     void AddMessage(const char *message);
     void ClearMessages();
 
-    void PrintHistory();
+    // Prints numbered history entries, oldest first; lastCount 0 prints all.
+    void PrintHistory(std::size_t lastCount = 0);
     void ClearHistory();
-    void ExecuteHistory(int index);
+    bool EraseHistory(std::size_t number);
+    BML::Shell::History &GetHistory() { return m_History; }
 
 private:
     struct Setting {
@@ -52,6 +55,7 @@ private:
     BML::CommandContext *m_Commands = nullptr;
     ILogger *m_Logger = nullptr;
     bool m_OutputCallbackInstalled = false;
+    BML::Shell::History m_History;
     CommandBar m_CommandBar;
     MessageBoard m_MessageBoard;
 
@@ -60,6 +64,7 @@ private:
     IProperty *m_LineSpacing = nullptr;
     IProperty *m_MessageBackgroundAlpha = nullptr;
     IProperty *m_FadeMaxAlpha = nullptr;
+    IProperty *m_KeepOpen = nullptr;
 };
 
 #endif // BML_CONSOLE_H

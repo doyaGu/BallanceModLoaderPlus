@@ -71,8 +71,6 @@ namespace BML {
 
         static char *AllocPrintfV(const char *format, va_list args);
 
-        static std::vector<std::string> ParseCommandLine(
-            const char *cmd, bool *trailingSeparator = nullptr);
         static bool IsValidCommandAlias(const char *alias);
         static bool IsValidCommandName(const char *name);
         static std::string NormalizeCommandName(const char *name);

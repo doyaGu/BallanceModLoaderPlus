@@ -90,12 +90,12 @@ public:
 
     std::string GetName() override { return "history"; }
     std::string GetAlias() override { return ""; }
-    std::string GetDescription() override { return "Manage command history."; }
+    std::string GetDescription() override { return "Show or edit the command history; rerun entries with !n."; }
     bool IsCheat() override { return false; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
         if (args.size() == 2)
-            return {"clear"};
+            return {"clear", "-c", "-d"};
         return {};
     }
 

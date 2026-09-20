@@ -2,10 +2,12 @@
 
 #include <sstream>
 #include <cctype>
+#include <cstdlib>
 
 #include "BML/IBML.h"
 #include "BML/BML.h"
 #include "Console/Console.h"
+#include "Console/Shell/ShellIo.h"
 #include "HUD/HUDRuntime.h"
 
 #include "Loader/ModContext.h"
@@ -163,18 +165,36 @@ void CommandClear::Execute(IBML *bml, const std::vector<std::string> &args) {
     m_Console->ClearMessages();
 }
 
+// history            print every entry, oldest first, numbered for !n
+// history N          print the last N entries
+// history clear | -c forget everything
+// history -d N       forget entry N
 void CommandHistory::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() == 1) {
         m_Console->PrintHistory();
-    } else if (args.size() == 2) {
-        if (args[1] == "clear") {
-            m_Console->ClearHistory();
-        } else {
-            int i = ParseInteger(args[1]);
-            if (i != 0)
-                m_Console->ExecuteHistory(i + 1);
+        return;
+    }
+    if (args.size() == 2 && (args[1] == "clear" || args[1] == "-c")) {
+        m_Console->ClearHistory();
+        return;
+    }
+    if (args.size() == 3 && args[1] == "-d") {
+        char *end = nullptr;
+        const long number = std::strtol(args[2].c_str(), &end, 10);
+        if (!end || *end != '\0' || number <= 0 || !m_Console->EraseHistory(static_cast<std::size_t>(number))) {
+            BML::Shell::Fail(bml, "history: no entry " + args[2]);
+        }
+        return;
+    }
+    if (args.size() == 2) {
+        char *end = nullptr;
+        const long count = std::strtol(args[1].c_str(), &end, 10);
+        if (end && *end == '\0' && count > 0) {
+            m_Console->PrintHistory(static_cast<std::size_t>(count));
+            return;
         }
     }
+    BML::Shell::Fail(bml, "usage: history [N] | history clear | history -d N");
 }
 
 void CommandExit::Execute(IBML *bml, const std::vector<std::string> &args) {
@@ -233,42 +253,10 @@ static AlignY ParseAlignY(const std::string &s, bool &ok) {
     return AlignY::Top;
 }
 
-// Join args from index, robustly strip a single pair of surrounding double quotes (if present),
-// then unescape C/Unicode-style sequences. Keeps inner escaped quotes (\").
-static std::string JoinStripQuotesUnescape(const std::vector<std::string> &args, size_t start) {
-    // Pre-reserve to reduce reallocations
-    size_t total = 0;
-    for (size_t i = start; i < args.size(); ++i) total += args[i].size() + 1;
-    if (total) --total;
-    std::string s; s.reserve(total);
-    for (size_t i = start; i < args.size(); ++i) {
-        if (i > start) s.push_back(' ');
-        s.append(args[i]);
-    }
-
-    // Compute trimmed extents without altering content yet
-    size_t i = 0, j = s.size();
-    while (i < j && isspace((unsigned char)s[i])) ++i;
-    while (j > i && isspace((unsigned char)s[j - 1])) --j;
-
-    auto is_unescaped_trailing_quote = [&](size_t pos) {
-        // s[pos] is '"'; count preceding backslashes
-        size_t k = pos; size_t bs = 0;
-        while (k > i && s[k - 1] == '\\') { ++bs; --k; }
-        return (bs % 2) == 0; // even => not escaped
-    };
-
-    if (j > i + 1 && s[i] == '"' && s[j - 1] == '"' && is_unescaped_trailing_quote(j - 1)) {
-        // Strip only the outer pair spanning the full non-space range
-        s = s.substr(i + 1, (j - 1) - (i + 1));
-    } else if (i != 0 || j != s.size()) {
-        // No outer quotes: slice to trimmed content
-        s = s.substr(i, j - i);
-    }
-
-    // Unescape sequences like \n, \t, \", \xHH, \uXXXX, etc.
-    s = utils::UnescapeString(s.c_str());
-    return s;
+// The shell already removed quotes and resolved escapes, so the text of a
+// multi-word argument is simply the remaining words joined by single spaces.
+static std::string JoinArguments(const std::vector<std::string> &args, size_t start) {
+    return utils::JoinString(args, ' ', start);
 }
 
 void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
@@ -300,7 +288,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (dot == std::string::npos) {
             auto e = hud.GetOrCreate(id);
             if (args.size() >= 4) {
-                std::string txt = JoinStripQuotesUnescape(args, 3);
+                std::string txt = JoinArguments(args, 3);
                 if (auto textElement = HUDCast<HUDText>(e)) {
                     textElement->SetText(txt.c_str());
                 }
@@ -310,9 +298,9 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             std::string contId = id.substr(0, dot);
             std::string childId = id.substr(dot + 1);
             auto child = hud.GetOrCreateChild(contId, childId);
-            if (!child) { bml->SendIngameMessage("[hud] container not found\n"); return; }
+            if (!child) { BML::Shell::Fail(bml, "[hud] container not found\n"); return; }
             if (args.size() >= 4) {
-                std::string txt = JoinStripQuotesUnescape(args, 3);
+                std::string txt = JoinArguments(args, 3);
                 if (auto textElement = HUDCast<HUDText>(child)) {
                     textElement->SetText(txt.c_str());
                 }
@@ -332,7 +320,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             std::string childName = id.substr(lastDot + 1);
             auto pe = hud.FindByPath(parentPath);
             auto pc = HUDCast<HUDContainer>(pe);
-            if (!pc) { bml->SendIngameMessage("[hud] parent container not found\n"); return; }
+            if (!pc) { BML::Shell::Fail(bml, "[hud] parent container not found\n"); return; }
             HUDLayoutKind kind = (args[1] == std::string("hstack")) ? HUDLayoutKind::Horizontal : HUDLayoutKind::Vertical;
             c = pc->AddContainerChild(kind, childName, 1);
         }
@@ -349,7 +337,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             std::string childName = id.substr(lastDot + 1);
             auto pe = hud.FindByPath(parentPath);
             auto pc = HUDCast<HUDContainer>(pe);
-            if (!pc) { bml->SendIngameMessage("[hud] parent container not found\n"); return; }
+            if (!pc) { BML::Shell::Fail(bml, "[hud] parent container not found\n"); return; }
             c = pc->AddContainerChild(HUDLayoutKind::Grid, childName, cols);
         }
         bml->SendIngameMessage(("[hud] grid '" + id + "' created\n").c_str());
@@ -360,8 +348,8 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         const std::string &childId = args[4];
         auto cont = (containerId.find('.') == std::string::npos) ? hud.Find(containerId) : hud.FindByPath(containerId);
         auto c = HUDCast<HUDContainer>(cont);
-        if (!c) { bml->SendIngameMessage("[hud] container not found\n"); return; }
-        std::string txt = JoinStripQuotesUnescape(args, 5);
+        if (!c) { BML::Shell::Fail(bml, "[hud] container not found\n"); return; }
+        std::string txt = JoinArguments(args, 5);
         auto child = c->AddChildNamed(childId, "");
         if (!txt.empty()) {
             if (child) {
@@ -377,9 +365,9 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         const std::string &dst = args[3];
         std::string newName = (args.size() >= 5) ? args[4] : std::string();
         auto dest = hud.EnsureContainerPath(dst, HUDLayoutKind::Vertical);
-        if (!dest) { bml->SendIngameMessage("[hud] invalid destination\n"); return; }
+        if (!dest) { BML::Shell::Fail(bml, "[hud] invalid destination\n"); return; }
         auto up = hud.StealByPath(src);
-        if (!up) { bml->SendIngameMessage("[hud] source not found\n"); return; }
+        if (!up) { BML::Shell::Fail(bml, "[hud] source not found\n"); return; }
         // If no newName provided, derive from src last segment
         if (newName.empty()) {
             size_t dot = src.find_last_of('.');
@@ -396,12 +384,12 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (dot == std::string::npos) {
             // root-level
             auto e = hud.Find(path);
-            if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
+            if (!e) { BML::Shell::Fail(bml, "[hud] not found\n"); return; }
             // Update global name mapping
             // Remove old
             // Simple: steal and reattach to root with new name
             auto up = hud.StealByPath(path);
-            if (!up) { bml->SendIngameMessage("[hud] rename failed\n"); return; }
+            if (!up) { BML::Shell::Fail(bml, "[hud] rename failed\n"); return; }
             hud.AttachToRoot(std::move(up), newName);
             bml->SendIngameMessage("[hud] renamed\n");
         } else {
@@ -409,10 +397,10 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             std::string oldName = path.substr(dot + 1);
             auto pe = hud.FindByPath(parentPath);
             auto pc = HUDCast<HUDContainer>(pe);
-            if (!pc) { bml->SendIngameMessage("[hud] parent not found\n"); return; }
+            if (!pc) { BML::Shell::Fail(bml, "[hud] parent not found\n"); return; }
             // Re-map
             auto up = pc->StealChild(oldName);
-            if (!up) { bml->SendIngameMessage("[hud] child not found\n"); return; }
+            if (!up) { BML::Shell::Fail(bml, "[hud] child not found\n"); return; }
             pc->InsertChild(std::move(up), newName);
             bml->SendIngameMessage("[hud] renamed\n");
         }
@@ -423,11 +411,11 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         const std::string &dst = args[3];
         std::string newName = (args.size() >= 5) ? args[4] : std::string();
         auto srcE = hud.FindByPath(src);
-        if (!srcE) { bml->SendIngameMessage("[hud] source not found\n"); return; }
+        if (!srcE) { BML::Shell::Fail(bml, "[hud] source not found\n"); return; }
         auto dest = hud.EnsureContainerPath(dst, HUDLayoutKind::Vertical);
-        if (!dest) { bml->SendIngameMessage("[hud] invalid destination\n"); return; }
+        if (!dest) { BML::Shell::Fail(bml, "[hud] invalid destination\n"); return; }
         auto up = hud.CloneElement(srcE);
-        if (!up) { bml->SendIngameMessage("[hud] copy failed\n"); return; }
+        if (!up) { BML::Shell::Fail(bml, "[hud] copy failed\n"); return; }
         if (newName.empty()) { size_t dot = src.find_last_of('.'); newName = (dot == std::string::npos) ? src : src.substr(dot + 1); }
         hud.AttachToContainer(dest, std::move(up), newName);
         bml->SendIngameMessage("[hud] copied\n");
@@ -437,9 +425,9 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         const std::string &src = args[2];
         std::string newName = (args.size() >= 4) ? args[3] : std::string();
         auto srcE = hud.FindByPath(src);
-        if (!srcE) { bml->SendIngameMessage("[hud] source not found\n"); return; }
+        if (!srcE) { BML::Shell::Fail(bml, "[hud] source not found\n"); return; }
         auto up = hud.CloneElement(srcE);
-        if (!up) { bml->SendIngameMessage("[hud] clone failed\n"); return; }
+        if (!up) { BML::Shell::Fail(bml, "[hud] clone failed\n"); return; }
         if (newName.empty()) { size_t dot = src.find_last_of('.'); newName = (dot == std::string::npos) ? src : src.substr(dot + 1); }
         // If active page is set and default container mapping exists, attach under it; else root
         if (!hud.GetActivePage().empty()) {
@@ -540,8 +528,8 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() >= 3 && args[1] == "text") {
         const std::string &id = args[2];
         auto e = (id.find('.') == std::string::npos) ? hud.GetOrCreate(id) : hud.FindByPath(id);
-        if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
-        std::string txt = JoinStripQuotesUnescape(args, 3);
+        if (!e) { BML::Shell::Fail(bml, "[hud] not found\n"); return; }
+        std::string txt = JoinArguments(args, 3);
         if (auto textElement = HUDCast<HUDText>(e)) {
             textElement->SetText(txt.c_str());
         }
@@ -550,7 +538,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() >= 3 && args[1] == "del") {
         const std::string &id = args[2];
         auto e = (id.find('.') == std::string::npos) ? hud.Find(id) : hud.FindByPath(id);
-        if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
+        if (!e) { BML::Shell::Fail(bml, "[hud] not found\n"); return; }
         auto c = HUDCast<HUDContainer>(e);
         if (c) {
             bool confirmed = false;
@@ -559,12 +547,15 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
                 if (f == "--yes" || f == "-y" || f == "--force") { confirmed = true; break; }
             }
             if (!confirmed && c->GetChildCount() > 0) {
-                bml->SendIngameMessage("[hud] container not empty. Use --yes to confirm.\n");
+                BML::Shell::Fail(bml, "[hud] container not empty. Use --yes to confirm.\n");
                 return;
             }
         }
         auto up = hud.StealByPath(id);
-        bml->SendIngameMessage(up ? "[hud] removed\n" : "[hud] remove failed\n");
+        if (up)
+            bml->SendIngameMessage("[hud] removed\n");
+        else
+            BML::Shell::Fail(bml, "[hud] remove failed\n");
         return;
     }
     if (args.size() == 2 && args[1] == "list") {
@@ -578,7 +569,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() >= 3 && args[1] == "get") {
         const std::string &id = args[2];
         auto e = (id.find('.') == std::string::npos) ? hud.Find(id) : hud.FindByPath(id);
-        if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
+        if (!e) { BML::Shell::Fail(bml, "[hud] not found\n"); return; }
         std::string info = "[hud] "; info += id; info += ": "; info += (e->IsVisible()?"visible":"hidden"); info += "; page="; info += e->GetPage(); info += "\n";
         bml->SendIngameMessage(info.c_str());
         return;
@@ -589,7 +580,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         const std::string what = utils::ToLower(args[3]);
         if (what == "pos") {
             bool ok=false; AnchorPoint ap = ParseAnchor(args[4], ok);
-            if (!ok) { bml->SendIngameMessage("[hud] pos <anchor> [x y]\n"); return; }
+            if (!ok) { BML::Shell::Fail(bml, "[hud] pos <anchor> [x y]\n"); return; }
             float ox = 0.0f, oy = 0.0f;
             if (args.size() >= 7) { ox = (float) atof(args[5].c_str()); oy = (float) atof(args[6].c_str()); }
             e->SetAnchor(ap); e->SetOffsetPixels(ox, oy); return;
@@ -603,8 +594,18 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         }
         if (what == "visible" && args.size() >= 5) { e->SetVisible(ParseBoolean(args[4])); return; }
         if (what == "panel" && args.size() >= 5) { e->EnablePanel(ParseBoolean(args[4])); return; }
-        if (what == "panel_bg" && args.size() >= 5) { ImU32 col; if (ParseColor(args[4], col)) { e->SetPanelBgColor(col); } return; }
-        if (what == "panel_border" && args.size() >= 5) { ImU32 col; if (ParseColor(args[4], col)) { e->SetPanelBorderColor(col); } return; }
+        if (what == "panel_bg" && args.size() >= 5) {
+            ImU32 col;
+            if (!ParseColor(args[4], col)) { BML::Shell::Fail(bml, "[hud] invalid panel background color\n"); return; }
+            e->SetPanelBgColor(col);
+            return;
+        }
+        if (what == "panel_border" && args.size() >= 5) {
+            ImU32 col;
+            if (!ParseColor(args[4], col)) { BML::Shell::Fail(bml, "[hud] invalid panel border color\n"); return; }
+            e->SetPanelBorderColor(col);
+            return;
+        }
         if (what == "padding" && args.size() >= 5) { e->SetPanelPadding((float) atof(args[4].c_str())); return; }
         if (what == "border_thickness" && args.size() >= 5) { e->SetPanelBorderThickness((float) atof(args[4].c_str())); return; }
         if (what == "rounding" && args.size() >= 5) { e->SetPanelRounding((float) atof(args[4].c_str())); return; }
@@ -614,13 +615,32 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (c) {
             if (what == "spacing" && args.size() >= 5) { c->SetSpacing((float)atof(args[4].c_str())); return; }
             if (what == "cols" && args.size() >= 5) { c->SetGridCols(std::max(1, ParseInteger(args[4]))); return; }
-            if (what == "align_x" && args.size() >= 5) { bool ok = true; c->SetAlignX(ParseAlignX(args[4], ok)); return; }
-            if (what == "align_y" && args.size() >= 5) { bool ok = true; c->SetAlignY(ParseAlignY(args[4], ok)); return; }
-            if (what == "cell_align_x" && args.size() >= 5) { bool ok = true; c->SetCellAlignX(ParseAlignX(args[4], ok)); return; }
-            if (what == "cell_align_y" && args.size() >= 5) { bool ok = true; c->SetCellAlignY(ParseAlignY(args[4], ok)); return; }
+            if (what == "align_x" && args.size() >= 5) {
+                bool ok = true; const AlignX value = ParseAlignX(args[4], ok);
+                if (!ok) { BML::Shell::Fail(bml, "[hud] invalid horizontal alignment\n"); return; }
+                c->SetAlignX(value); return;
+            }
+            if (what == "align_y" && args.size() >= 5) {
+                bool ok = true; const AlignY value = ParseAlignY(args[4], ok);
+                if (!ok) { BML::Shell::Fail(bml, "[hud] invalid vertical alignment\n"); return; }
+                c->SetAlignY(value); return;
+            }
+            if (what == "cell_align_x" && args.size() >= 5) {
+                bool ok = true; const AlignX value = ParseAlignX(args[4], ok);
+                if (!ok) { BML::Shell::Fail(bml, "[hud] invalid cell horizontal alignment\n"); return; }
+                c->SetCellAlignX(value); return;
+            }
+            if (what == "cell_align_y" && args.size() >= 5) {
+                bool ok = true; const AlignY value = ParseAlignY(args[4], ok);
+                if (!ok) { BML::Shell::Fail(bml, "[hud] invalid cell vertical alignment\n"); return; }
+                c->SetCellAlignY(value); return;
+            }
         }
+        BML::Shell::Fail(bml, "[hud] unknown or incomplete property\n");
         return;
     }
+
+    BML::Shell::Fail(bml, "Usage: hud <action>; use 'hud help' for commands.\n");
 }
 
 const std::vector<std::string> CommandHUD::GetTabCompletion(IBML *bml, const std::vector<std::string> &args) {
@@ -703,7 +723,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         bml->SendIngameMessage(line.c_str());
     } else if (args[1] == "theme") {
         if (args.size() < 3) {
-            bml->SendIngameMessage("Usage: palette theme <name>\n");
+            BML::Shell::Fail(bml, "Usage: palette theme <name>\n");
             return;
         }
         const std::string &name = args[2];
@@ -719,7 +739,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
                                   : (std::string("[palette] theme set to ") + name + ", reloaded.\n");
             bml->SendIngameMessage(msg.c_str());
         } else if (!ok) {
-            bml->SendIngameMessage("[palette] failed to update config.\n");
+            BML::Shell::Fail(bml, "[palette] failed to update config.\n");
         } else {
             bml->SendIngameMessage("[palette] no config found, using default.\n");
         }
@@ -748,22 +768,12 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
     } else if (args[1] == "set") {
         // palette set <option> <value>
         if (args.size() < 4) {
-            bml->SendIngameMessage("Usage: palette set <cube|gray|mix_strength|mix_space|toning|tone_brightness|tone_saturation> <value>\n");
+            BML::Shell::Fail(bml, "Usage: palette set <cube|gray|mix_strength|mix_space|toning|tone_brightness|tone_saturation> <value>\n");
             return;
         }
         std::string opt = utils::ToLower(args[2]);
-        // Join remaining tokens to accept values like "70 %" with space or quoted
-        std::string val;
-        for (size_t i = 3; i < args.size(); ++i) {
-            if (i > 3) val.push_back(' ');
-            val += args[i];
-        }
-        // Strip surrounding quotes and trim
-        val = utils::TrimStringCopy(val);
-        if (!val.empty() && ((val.front() == '"' && val.back() == '"') || (val.front() == '\'' && val.back() == '\'')) && val.size() >= 2) {
-            val = val.substr(1, val.size() - 2);
-            val = utils::TrimStringCopy(val);
-        }
+        // Join remaining words to accept values like "70 %" typed with a space.
+        std::string val = utils::TrimStringCopy(utils::JoinString(args, ' ', 3));
         // Normalize some common shorthands
         if (opt == "linear") opt = "mix_space";
         if (opt == "mix") opt = "mix_strength";
@@ -778,11 +788,11 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         } else if (!ok) {
             // Provide range tips for numeric keys
             if (opt == "mix_strength") {
-                bml->SendIngameMessage("[palette] invalid mix_strength. Expect 0..1 or percent (e.g., 70%).\n");
+                BML::Shell::Fail(bml, "[palette] invalid mix_strength. Expect 0..1 or percent (e.g., 70%).\n");
             } else if (opt == "tone_brightness" || opt == "tone_saturation") {
-                bml->SendIngameMessage("[palette] invalid value. Expect in [-1..1].\n");
+                BML::Shell::Fail(bml, "[palette] invalid value. Expect in [-1..1].\n");
             } else {
-                bml->SendIngameMessage("[palette] failed to update config.\n");
+                BML::Shell::Fail(bml, "[palette] failed to update config.\n");
             }
         } else {
             bml->SendIngameMessage("[palette] no config found, using default.\n");
@@ -790,7 +800,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
     } else if (args[1] == "get") {
         // palette get <option>
         if (args.size() < 3) {
-            bml->SendIngameMessage("Usage: palette get <theme|cube|gray|mix_strength|mix_space|toning|tone_brightness|tone_saturation>\n");
+            BML::Shell::Fail(bml, "Usage: palette get <theme|cube|gray|mix_strength|mix_space|toning|tone_brightness|tone_saturation>\n");
             return;
         }
         std::string key = utils::ToLower(args[2]);
@@ -817,7 +827,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         } else if (key == "tone_saturation") {
             snprintf(buf, sizeof(buf), "[palette] tone_saturation = %.2f\n", pal.GetToneSaturation());
         } else {
-            bml->SendIngameMessage("[palette] unknown option.\n");
+            BML::Shell::Fail(bml, "[palette] unknown option.\n");
             return;
         }
         if (buf[0]) bml->SendIngameMessage(buf);
@@ -828,8 +838,10 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         bool ok = pal.ResetThemeOptions();
         const bool loaded = palette.ReloadFromFile();
         if (ok && loaded) bml->SendIngameMessage("[palette] theme reset. Using defaults.\n");
-        else if (!ok) bml->SendIngameMessage("[palette] failed to update config.\n");
+        else if (!ok) BML::Shell::Fail(bml, "[palette] failed to update config.\n");
         else bml->SendIngameMessage("[palette] no config found, using default.\n");
+    } else {
+        BML::Shell::Fail(bml, "Unknown palette action: " + args[1]);
     }
 }
 
@@ -869,7 +881,7 @@ void CommandScript::Execute(IBML *bml, const std::vector<std::string> &args) {
 #if BML_ENABLE_ANGELSCRIPT
     auto *context = dynamic_cast<ModContext *>(bml);
     if (!context || !context->GetScriptDevTools()) {
-        bml->SendIngameMessage("Script developer tools unavailable.");
+        BML::Shell::Fail(bml, "Script developer tools unavailable.");
         return;
     }
 
@@ -877,7 +889,7 @@ void CommandScript::Execute(IBML *bml, const std::vector<std::string> &args) {
         bml->SendIngameMessage(line.c_str());
 #else
     if (bml)
-        bml->SendIngameMessage("Script developer tools unavailable: AngelScript is disabled in this build.");
+        BML::Shell::Fail(bml, "Script developer tools unavailable: AngelScript is disabled in this build.");
 #endif
 }
 

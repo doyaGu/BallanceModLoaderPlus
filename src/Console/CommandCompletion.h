@@ -3,18 +3,12 @@
 
 #include <cstddef>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace CommandCompletion {
-    struct TokenRange {
-        std::size_t begin = 0;
-        std::size_t end = 0;
-        bool followedByWhitespace = false;
-    };
-
+    // Length in bytes of the prefix every candidate shares, comparing codepoints
+    // without regard to case.
     std::size_t CommonPrefixLength(const std::vector<std::string> &candidates) noexcept;
-    TokenRange FindTokenRange(std::string_view text, std::size_t cursor) noexcept;
 }
 
 #endif // BML_COMMANDCOMPLETION_H

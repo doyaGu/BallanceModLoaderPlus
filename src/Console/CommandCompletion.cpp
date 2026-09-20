@@ -49,19 +49,4 @@ namespace CommandCompletion {
         }
         return prefixLength;
     }
-
-    TokenRange FindTokenRange(std::string_view text, std::size_t cursor) noexcept {
-        cursor = std::min(cursor, text.size());
-
-        std::size_t begin = cursor;
-        while (begin > 0 && !std::isspace(static_cast<unsigned char>(text[begin - 1])))
-            --begin;
-
-        std::size_t end = cursor;
-        while (end < text.size() && !std::isspace(static_cast<unsigned char>(text[end])))
-            ++end;
-
-        return {begin, end,
-                end < text.size() && std::isspace(static_cast<unsigned char>(text[end])) != 0};
-    }
 }
