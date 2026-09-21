@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "Console/CommandContext.h"
+#include "Console/Shell/ShellIo.h"
+#include "Console/Shell/ShellTypes.h"
 #include "ScriptAngelScriptHandle.h"
 #include "ScriptFunctionSupport.h"
 #include "Loader/ModContext.h"
@@ -24,6 +26,12 @@ static constexpr const char *kCommandCompleteDecl =
     "void Complete(const BML::ModContext &in, const BML::CommandEvent &in, BML::CommandCompletion &inout)";
 
 struct ScriptCommandEntry {
+    ScriptCommandEntry() = default;
+    ScriptCommandEntry(const ScriptCommandEntry &) = delete;
+    ScriptCommandEntry &operator=(const ScriptCommandEntry &) = delete;
+    ScriptCommandEntry(ScriptCommandEntry &&other) noexcept;
+    ~ScriptCommandEntry();
+
     std::string Name;
     std::string Alias;
     std::string Description;
@@ -37,9 +45,7 @@ struct ScriptCommandEntry {
     asIScriptFunction *ExecuteMethod = nullptr;
     asIScriptFunction *CompleteMethod = nullptr;
     bool OwnsFunctionRefs = false;
-    std::unique_ptr<ICommand> Command;
-    int ActiveCalls = 0;
-    bool PendingUnregister = false;
+    std::shared_ptr<ICommand> Command;
 #ifdef BML_TEST
     std::function<void(const std::vector<std::string> &)> TestExecute;
 #endif
@@ -52,8 +58,7 @@ public:
     ScriptModContextView *ContextView = nullptr;
     bool Active = false;
     unsigned int NextGeneration = 1;
-    std::unordered_map<std::string, ScriptCommandEntry> Commands;
-    std::vector<std::unique_ptr<ICommand>> RetiredCommands;
+    std::unordered_map<std::string, std::shared_ptr<ScriptCommandEntry>> Commands;
 };
 
 struct CommandCallArgs {
@@ -304,43 +309,93 @@ static void ReleaseScriptCommandObject(ScriptCommandEntry &entry) {
     }
 }
 
+ScriptCommandEntry::ScriptCommandEntry(ScriptCommandEntry &&other) noexcept
+    : Name(std::move(other.Name)),
+      Alias(std::move(other.Alias)),
+      Description(std::move(other.Description)),
+      Usage(std::move(other.Usage)),
+      Category(std::move(other.Category)),
+      Cheat(other.Cheat),
+      Hidden(other.Hidden),
+      Enabled(other.Enabled),
+      Generation(other.Generation),
+      Object(std::exchange(other.Object, nullptr)),
+      ExecuteMethod(std::exchange(other.ExecuteMethod, nullptr)),
+      CompleteMethod(std::exchange(other.CompleteMethod, nullptr)),
+      OwnsFunctionRefs(std::exchange(other.OwnsFunctionRefs, false)),
+#ifdef BML_TEST
+      Command(std::move(other.Command)),
+      TestExecute(std::move(other.TestExecute))
+#else
+      Command(std::move(other.Command))
+#endif
+{}
+
+ScriptCommandEntry::~ScriptCommandEntry() {
+    ReleaseScriptCommandObject(*this);
+}
+
+static std::shared_ptr<ICommand> CreateScriptCommand(
+    const std::shared_ptr<ScriptCommandServiceState> &state,
+    const std::shared_ptr<ScriptCommandEntry> &entry);
+
 static ScriptCommandRef *RegisterCommandEntry(
     const std::shared_ptr<ScriptCommandServiceState> &state,
     const std::string &key,
     ScriptCommandEntry &&entry) {
     const unsigned int generation = entry.Generation;
-    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(state, key, generation);
-    if (!ref) {
-        ReleaseScriptCommandObject(entry);
-        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-            "Unable to create command reference."));
-        return nullptr;
-    }
-
-    ICommand *command = entry.Command.get();
-    ScriptCommandEntry *stored = nullptr;
+    std::shared_ptr<ScriptCommandEntry> stored;
     try {
-        auto [position, inserted] = state->Commands.emplace(key, std::move(entry));
-        if (!inserted) {
-            ref->Release();
-            ReleaseScriptCommandObject(entry);
-            return nullptr;
-        }
-        stored = &position->second;
+        stored = std::make_shared<ScriptCommandEntry>(std::move(entry));
     } catch (const std::bad_alloc &) {
-        ref->Release();
-        ReleaseScriptCommandObject(entry);
         state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
             "Unable to retain registered command."));
         return nullptr;
     }
 
-    // Script commands have their own ActiveCalls/PendingUnregister lifetime
-    // protocol, including self-unregistration from Execute, so they keep using the
-    // script service's registrar directly.
-    if (!state->Context->GetCommandContext().RegisterCommand(state.get(), command)) {
+    try {
+        stored->Command = CreateScriptCommand(state, stored);
+    } catch (const std::bad_alloc &) {
+        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create command wrapper."));
+        return nullptr;
+    }
+
+    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(state, key, generation);
+    if (!ref) {
+        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create command reference."));
+        return nullptr;
+    }
+
+    try {
+        auto [position, inserted] = state->Commands.emplace(key, stored);
+        if (!inserted) {
+            ref->Release();
+            return nullptr;
+        }
+    } catch (const std::bad_alloc &) {
+        ref->Release();
+        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to retain registered command."));
+        return nullptr;
+    }
+
+    // The registry retains the complete script entry for every acquired call,
+    // so removal can stop new lookup without invalidating an in-progress
+    // Execute or Complete callback.
+    CommandContext::CommandInfo info;
+    info.Name = stored->Name;
+    info.Alias = stored->Alias;
+    info.Description = stored->Description;
+    info.Usage = stored->Usage;
+    info.Category = stored->Category;
+    info.Cheat = stored->Cheat;
+    info.Hidden = stored->Hidden;
+    info.Enabled = stored->Enabled;
+    if (!state->Context->GetCommandContext().RegisterCommand(
+            state.get(), stored->Command.get(), std::move(info), stored)) {
         const std::string commandName = stored->Name;
-        ReleaseScriptCommandObject(*stored);
         state->Commands.erase(key);
         ref->Release();
         state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
@@ -351,21 +406,6 @@ static ScriptCommandRef *RegisterCommandEntry(
     return ref;
 }
 
-static void FinishCommandCall(const std::shared_ptr<ScriptCommandServiceState> &state, const std::string &key) {
-    if (!state)
-        return;
-    auto it = state->Commands.find(key);
-    if (it == state->Commands.end())
-        return;
-    if (it->second.ActiveCalls > 0)
-        --it->second.ActiveCalls;
-    if (it->second.PendingUnregister && it->second.ActiveCalls == 0) {
-        ReleaseScriptCommandObject(it->second);
-        state->RetiredCommands.push_back(std::move(it->second.Command));
-        state->Commands.erase(it);
-    }
-}
-
 #ifdef BML_TEST
 static bool InvokeTestCommand(const std::shared_ptr<ScriptCommandServiceState> &state,
                               const std::string &key,
@@ -374,12 +414,12 @@ static bool InvokeTestCommand(const std::shared_ptr<ScriptCommandServiceState> &
         return false;
 
     auto it = state->Commands.find(key);
-    if (it == state->Commands.end() || !it->second.Enabled || !it->second.TestExecute)
+    if (it == state->Commands.end() || !it->second->Enabled ||
+        !it->second->TestExecute)
         return false;
 
-    ++it->second.ActiveCalls;
-    it->second.TestExecute(args);
-    FinishCommandCall(state, key);
+    const std::shared_ptr<ScriptCommandEntry> entry = it->second;
+    entry->TestExecute(args);
     return true;
 }
 #endif
@@ -387,13 +427,13 @@ static bool InvokeTestCommand(const std::shared_ptr<ScriptCommandServiceState> &
 class ScriptCommand final : public ICommand {
 public:
     ScriptCommand(std::weak_ptr<ScriptCommandServiceState> state,
-                  std::string key,
+                  std::weak_ptr<ScriptCommandEntry> entry,
                   std::string name,
                   std::string alias,
                   std::string description,
                   bool cheat)
         : m_State(std::move(state)),
-          m_Key(std::move(key)),
+          m_Entry(std::move(entry)),
           m_Name(std::move(name)),
           m_Alias(std::move(alias)),
           m_Description(std::move(description)),
@@ -411,24 +451,24 @@ public:
         if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
             return;
 
-        const std::string key = m_Key;
-        auto it = state->Commands.find(key);
-        if (it == state->Commands.end() || !it->second.ExecuteMethod || !it->second.Enabled)
+        const std::shared_ptr<ScriptCommandEntry> entry = m_Entry.lock();
+        if (!entry || !entry->ExecuteMethod)
             return;
-        ++it->second.ActiveCalls;
 
         ScriptCommandEventView event(ScriptCommandEventExecute, this, &args);
         CommandCallArgs callArgs = {state->Owner, state->ContextView, &event, nullptr};
         ScriptDiagnostic diagnostic;
-        const bool ok = ExecutePreparedMethod(it->second.Object,
-                                              it->second.ExecuteMethod,
+        const bool ok = ExecutePreparedMethod(entry->Object,
+                                              entry->ExecuteMethod,
                                               callArgs,
                                               false,
                                               "Command callback failed",
                                               diagnostic);
-        FinishCommandCall(state, key);
-        if (!ok && state->Owner)
-            state->Owner->SetLoadFailure(diagnostic);
+        if (!ok) {
+            Shell::SetStatus(Shell::Status::Failure);
+            if (state->Owner)
+                state->Owner->SetLoadFailure(diagnostic);
+        }
     }
 
     const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &args) override {
@@ -438,24 +478,21 @@ public:
         if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
             return {};
 
-        const std::string key = m_Key;
-        auto it = state->Commands.find(key);
-        if (it == state->Commands.end() || !it->second.CompleteMethod || !it->second.Enabled)
+        const std::shared_ptr<ScriptCommandEntry> entry = m_Entry.lock();
+        if (!entry || !entry->CompleteMethod)
             return {};
-        ++it->second.ActiveCalls;
 
         std::vector<std::string> completions;
         ScriptCommandCompletion completion(&completions);
         ScriptCommandEventView event(ScriptCommandEventComplete, this, &args);
         CommandCallArgs callArgs = {state->Owner, state->ContextView, &event, &completion};
         ScriptDiagnostic diagnostic;
-        const bool ok = ExecutePreparedMethod(it->second.Object,
-                                              it->second.CompleteMethod,
+        const bool ok = ExecutePreparedMethod(entry->Object,
+                                              entry->CompleteMethod,
                                               callArgs,
                                               true,
                                               "Command completion callback failed",
                                               diagnostic);
-        FinishCommandCall(state, key);
         if (!ok) {
             if (state->Owner)
                 state->Owner->SetLoadFailure(diagnostic);
@@ -466,12 +503,20 @@ public:
 
 private:
     std::weak_ptr<ScriptCommandServiceState> m_State;
-    std::string m_Key;
+    std::weak_ptr<ScriptCommandEntry> m_Entry;
     std::string m_Name;
     std::string m_Alias;
     std::string m_Description;
     bool m_Cheat = false;
 };
+
+static std::shared_ptr<ICommand> CreateScriptCommand(
+    const std::shared_ptr<ScriptCommandServiceState> &state,
+    const std::shared_ptr<ScriptCommandEntry> &entry) {
+    return std::make_shared<ScriptCommand>(
+        state, entry, entry->Name, entry->Alias,
+        entry->Description, entry->Cheat);
+}
 
 void ScriptCommandCompletion::Add(const std::string &value) const {
     if (m_Items && !value.empty())
@@ -506,7 +551,8 @@ bool ScriptCommandRef::IsValid() const {
     if (!state || !state->Active)
         return false;
     auto it = state->Commands.find(m_Key);
-    return it != state->Commands.end() && it->second.Generation == m_Generation && !it->second.PendingUnregister;
+    return it != state->Commands.end() &&
+        it->second->Generation == m_Generation;
 }
 
 std::string ScriptCommandRef::GetName() const {
@@ -514,7 +560,9 @@ std::string ScriptCommandRef::GetName() const {
     if (!state)
         return {};
     auto it = state->Commands.find(m_Key);
-    return it != state->Commands.end() && it->second.Generation == m_Generation ? it->second.Name : std::string();
+    return it != state->Commands.end() && it->second->Generation == m_Generation
+        ? it->second->Name
+        : std::string();
 }
 
 std::string ScriptCommandRef::GetAlias() const {
@@ -522,7 +570,9 @@ std::string ScriptCommandRef::GetAlias() const {
     if (!state)
         return {};
     auto it = state->Commands.find(m_Key);
-    return it != state->Commands.end() && it->second.Generation == m_Generation ? it->second.Alias : std::string();
+    return it != state->Commands.end() && it->second->Generation == m_Generation
+        ? it->second->Alias
+        : std::string();
 }
 
 bool ScriptCommandRef::IsCheat() const {
@@ -530,7 +580,8 @@ bool ScriptCommandRef::IsCheat() const {
     if (!state)
         return false;
     auto it = state->Commands.find(m_Key);
-    return it != state->Commands.end() && it->second.Generation == m_Generation && it->second.Cheat;
+    return it != state->Commands.end() &&
+        it->second->Generation == m_Generation && it->second->Cheat;
 }
 
 bool ScriptCommandRef::IsEnabled() const {
@@ -538,7 +589,8 @@ bool ScriptCommandRef::IsEnabled() const {
     if (!state)
         return false;
     auto it = state->Commands.find(m_Key);
-    return it != state->Commands.end() && it->second.Generation == m_Generation && it->second.Enabled;
+    return it != state->Commands.end() &&
+        it->second->Generation == m_Generation && it->second->Enabled;
 }
 
 bool ScriptCommandRef::SetEnabled(bool enabled) {
@@ -546,9 +598,12 @@ bool ScriptCommandRef::SetEnabled(bool enabled) {
     if (!state || !state->Active)
         return false;
     auto it = state->Commands.find(m_Key);
-    if (it == state->Commands.end() || it->second.Generation != m_Generation || it->second.PendingUnregister)
+    if (it == state->Commands.end() || it->second->Generation != m_Generation)
         return false;
-    it->second.Enabled = enabled;
+    if (!state->Context ||
+        !state->Context->SetCommandEnabled(it->second->Command.get(), enabled))
+        return false;
+    it->second->Enabled = enabled;
     return true;
 }
 
@@ -557,9 +612,9 @@ bool ScriptCommandRef::Unregister() {
     if (!state || !state->Active || !state->Owner)
         return false;
     auto it = state->Commands.find(m_Key);
-    if (it == state->Commands.end() || it->second.Generation != m_Generation)
+    if (it == state->Commands.end() || it->second->Generation != m_Generation)
         return false;
-    return state->Owner->UnregisterScriptCommand(it->second.Name);
+    return state->Owner->UnregisterScriptCommand(it->second->Name);
 }
 
 ScriptCommandService::ScriptCommandService() : m_State(std::make_shared<ScriptCommandServiceState>()) {}
@@ -643,13 +698,6 @@ ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {
     entry.Generation = m_State->NextGeneration++;
     ScriptObjectHandle retained = ScriptObjectHandle::Retain(command);
     entry.Object = retained.Detach();
-    entry.Command.reset(new (std::nothrow) ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
-    if (!entry.Command) {
-        ReleaseScriptCommandObject(entry);
-        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-            "Unable to create command wrapper."));
-        return nullptr;
-    }
 
     return RegisterCommandEntry(m_State, key, std::move(entry));
 }
@@ -708,13 +756,6 @@ ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &
     entry.CompleteMethod = complete;
     entry.OwnsFunctionRefs = true;
     entry.Generation = m_State->NextGeneration++;
-    entry.Command.reset(new (std::nothrow) ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
-    if (!entry.Command) {
-        ReleaseScriptCommandObject(entry);
-        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-            "Unable to create command wrapper."));
-        return nullptr;
-    }
 
     return RegisterCommandEntry(m_State, key, std::move(entry));
 }
@@ -728,16 +769,11 @@ bool ScriptCommandService::Unregister(const std::string &name) {
         return false;
 
     const auto result = m_State->Context->GetCommandContext().UnregisterCommand(
-        m_State.get(), it->second.Name.c_str());
+        m_State.get(), it->second->Name.c_str());
     if (result != CommandContext::UnregisterResult::Success &&
         result != CommandContext::UnregisterResult::NotFound) {
         return false;
     }
-    if (it->second.ActiveCalls > 0) {
-        it->second.PendingUnregister = true;
-        return true;
-    }
-    ReleaseScriptCommandObject(it->second);
     m_State->Commands.erase(it);
     return true;
 }
@@ -751,11 +787,7 @@ void ScriptCommandService::Release(ScriptDiagnostic *) {
     if (releasedState->Context) {
         releasedState->Context->GetCommandContext().UnregisterCommands(releasedState.get());
     }
-    for (auto &entry : releasedState->Commands) {
-        ReleaseScriptCommandObject(entry.second);
-    }
     releasedState->Commands.clear();
-    releasedState->RetiredCommands.clear();
     m_State.reset();
 }
 
@@ -783,7 +815,13 @@ ScriptCommandRef *ScriptCommandService::AddTestCommandForRelease(const std::stri
     ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
     if (!ref)
         return nullptr;
-    m_State->Commands.emplace(key, std::move(entry));
+    try {
+        m_State->Commands.emplace(
+            key, std::make_shared<ScriptCommandEntry>(std::move(entry)));
+    } catch (const std::bad_alloc &) {
+        ref->Release();
+        return nullptr;
+    }
     return ref;
 }
 
