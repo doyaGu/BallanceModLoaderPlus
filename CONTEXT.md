@@ -76,6 +76,14 @@ alias-expanded command/argument roles, and typed command-head ranges shared by
 completion and syntax highlighting; execution remains owned by the strict
 Parser.
 
+**DataShare Registry** — The process-wide, named byte store behind the public C
+API. Handles retain store instances; queued one-shot requests carry an owning
+Mod identity and are cancelled before that Mod DLL is released. The registry
+owns byte values and request bookkeeping, not a typed schema or a callable Mod
+service. Callback and cleanup dispatch enters the shared Mod invocation gate
+before the DataShare callback lock, so owner retirement cannot race DLL unload
+or invert those locks.
+
 **Command Bar Feature Policy** — The private Built-in Console policy that
 enables or disables syntax highlighting, Tab completion, history suggestions,
 reverse search, and history navigation as independent capabilities. CommandBar

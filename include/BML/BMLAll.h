@@ -29,6 +29,7 @@
 #include "BML/IMessageReceiver.h"
 #include "BML/IMod.h"
 #include "BML/DataShare.h"
+#include "BML/DataShare.hpp"
 #include "BML/Types.h"
 #include "BML/Behavior.h"
 #include "BML/Behavior.hpp"

@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "DataShare/DataShare.h"
 #include "Loader/ModContext.h"
 #include "ScriptAngelScriptHandle.h"
 #include "ScriptFunctionSupport.h"
@@ -32,6 +33,7 @@ struct ScriptDataShareRequestEntry {
     ScriptDataShareRequestType Type = ScriptDataShareRequestType::String;
     std::string Key;
     std::string Name;
+    BML_DataShareRequest NativeRequest = BML_DATASHARE_INVALID_REQUEST;
     int ActiveCalls = 0;
     int QueuedCalls = 0;
     bool PendingCancel = false;
@@ -65,6 +67,7 @@ public:
     ScriptMod *Owner = nullptr;
     ScriptModRuntime *Runtime = nullptr;
     ScriptModContextView *ContextView = nullptr;
+    std::string OwnerId;
     bool Active = false;
     int NextRequestId = 1;
     unsigned int NextGeneration = 1;
@@ -327,6 +330,21 @@ static void RetireRequestEntry(const std::shared_ptr<ScriptDataShareServiceState
         return;
     std::lock_guard<std::mutex> guard(state->Mutex);
     RetireRequestEntryLocked(state, id);
+}
+
+static void CancelDataShareRequest(const std::string &name,
+                                   const std::string &ownerId,
+                                   BML_DataShareRequest request) noexcept {
+    if (request == BML_DATASHARE_INVALID_REQUEST)
+        return;
+
+    BML_DataShare *share = BML_GetDataShare(name.empty() ? nullptr : name.c_str());
+    if (!share)
+        return;
+    auto *implementation = reinterpret_cast<DataShareStore *>(share);
+    const std::string *owner = ownerId.empty() ? nullptr : &ownerId;
+    (void) implementation->CancelRequest(request, owner);
+    BML_DataShare_Release(share);
 }
 
 static bool ExecuteDataShareReceive(asIScriptObject *object,
@@ -610,13 +628,24 @@ bool ScriptDataShareRequestRef::Cancel() {
     std::shared_ptr<ScriptDataShareServiceState> state = m_State.lock();
     if (!state)
         return false;
-    std::lock_guard<std::mutex> guard(state->Mutex);
-    if (!state->Active)
-        return false;
-    auto it = state->Requests.find(m_Id);
-    if (it == state->Requests.end() || it->second.Generation != m_Generation || it->second.Canceled)
-        return false;
-    CancelRequestEntryLocked(state, m_Id);
+    std::string name;
+    std::string ownerId;
+    BML_DataShareRequest nativeRequest = BML_DATASHARE_INVALID_REQUEST;
+    {
+        std::lock_guard<std::mutex> guard(state->Mutex);
+        if (!state->Active)
+            return false;
+        auto it = state->Requests.find(m_Id);
+        if (it == state->Requests.end() ||
+            it->second.Generation != m_Generation || it->second.Canceled)
+            return false;
+        name = it->second.Name;
+        ownerId = state->OwnerId;
+        nativeRequest = it->second.NativeRequest;
+        it->second.NativeRequest = BML_DATASHARE_INVALID_REQUEST;
+        CancelRequestEntryLocked(state, m_Id);
+    }
+    CancelDataShareRequest(name, ownerId, nativeRequest);
     return true;
 }
 
@@ -639,13 +668,19 @@ bool ScriptDataShareService::Bind(ModContext *context,
             return false;
         }
     }
-    std::lock_guard<std::mutex> guard(m_State->Mutex);
-    m_State->Context = context;
-    m_State->Owner = owner;
-    m_State->Runtime = runtime;
-    m_State->ContextView = contextView;
-    m_State->Active = true;
-    return true;
+    try {
+        const char *ownerId = owner ? owner->GetID() : nullptr;
+        std::lock_guard<std::mutex> guard(m_State->Mutex);
+        m_State->Context = context;
+        m_State->Owner = owner;
+        m_State->Runtime = runtime;
+        m_State->ContextView = contextView;
+        m_State->OwnerId = ownerId ? ownerId : "";
+        m_State->Active = true;
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 ScriptDataShareRequestRef *ScriptDataShareService::Request(asIScriptObject *request) {
@@ -706,6 +741,7 @@ ScriptDataShareRequestRef *ScriptDataShareService::Request(asIScriptObject *requ
     int requestId = 0;
     unsigned int generation = 0;
     std::string requestKey;
+    std::string requestName;
     {
         std::lock_guard<std::mutex> guard(state->Mutex);
         if (!state->Active) {
@@ -717,6 +753,7 @@ ScriptDataShareRequestRef *ScriptDataShareService::Request(asIScriptObject *requ
         entry.Generation = state->NextGeneration++;
         generation = entry.Generation;
         requestKey = entry.Key;
+        requestName = entry.Name;
         state->Requests.emplace(nextId, std::move(entry));
         requestId = nextId;
     }
@@ -742,8 +779,25 @@ ScriptDataShareRequestRef *ScriptDataShareService::Request(asIScriptObject *requ
         return nullptr;
     }
 
-    BML_DataShare_Request(share, requestKey.c_str(), OnDataShareRequest, cookie, CleanupDataShareRequest);
+    const BML_DataShareRequest nativeRequest = BML_DataShare_RequestForOwner(
+        share, owner->GetID(), requestKey.c_str(), OnDataShareRequest, cookie,
+        CleanupDataShareRequest);
     BML_DataShare_Release(share);
+
+    bool requestAlive = false;
+    {
+        std::lock_guard<std::mutex> guard(state->Mutex);
+        const auto it = state->Requests.find(requestId);
+        if (it != state->Requests.end() && it->second.Generation == generation) {
+            it->second.NativeRequest = nativeRequest;
+            requestAlive = true;
+        }
+    }
+    if (!requestAlive) {
+        CancelDataShareRequest(requestName, owner->GetID(), nativeRequest);
+        ref->Release();
+        return nullptr;
+    }
     return ref;
 }
 
@@ -830,8 +884,25 @@ ScriptDataShareRequestRef *ScriptDataShareService::Request(const std::string &ke
         return nullptr;
     }
 
-    BML_DataShare_Request(share, requestKey.c_str(), OnDataShareRequest, cookie, CleanupDataShareRequest);
+    const BML_DataShareRequest nativeRequest = BML_DataShare_RequestForOwner(
+        share, owner->GetID(), requestKey.c_str(), OnDataShareRequest, cookie,
+        CleanupDataShareRequest);
     BML_DataShare_Release(share);
+
+    bool requestAlive = false;
+    {
+        std::lock_guard<std::mutex> guard(state->Mutex);
+        const auto it = state->Requests.find(requestId);
+        if (it != state->Requests.end() && it->second.Generation == generation) {
+            it->second.NativeRequest = nativeRequest;
+            requestAlive = true;
+        }
+    }
+    if (!requestAlive) {
+        CancelDataShareRequest(name, owner->GetID(), nativeRequest);
+        ref->Release();
+        return nullptr;
+    }
     return ref;
 }
 
@@ -852,6 +923,29 @@ void ScriptDataShareService::Release(ScriptDiagnostic *) {
         return;
 
     std::shared_ptr<ScriptDataShareServiceState> releasedState = m_State;
+    for (;;) {
+        std::string name;
+        std::string ownerId;
+        BML_DataShareRequest nativeRequest = BML_DATASHARE_INVALID_REQUEST;
+        {
+            std::lock_guard<std::mutex> guard(releasedState->Mutex);
+            const auto pending = std::find_if(
+                releasedState->Requests.begin(), releasedState->Requests.end(),
+                [](const auto &entry) {
+                    return entry.second.NativeRequest !=
+                        BML_DATASHARE_INVALID_REQUEST;
+                });
+            if (pending == releasedState->Requests.end())
+                break;
+            name = pending->second.Name;
+            ownerId = releasedState->OwnerId;
+            nativeRequest = pending->second.NativeRequest;
+            pending->second.NativeRequest = BML_DATASHARE_INVALID_REQUEST;
+            pending->second.Canceled = true;
+        }
+        CancelDataShareRequest(name, ownerId, nativeRequest);
+    }
+
     std::unordered_map<int, ScriptDataShareRequestEntry> retiredRequests;
     {
         std::lock_guard<std::mutex> guard(releasedState->Mutex);
@@ -938,8 +1032,25 @@ ScriptDataShareRequestRef *ScriptDataShareService::AddTestRequestForRelease(cons
         BML_DataShare_Release(share);
         return nullptr;
     }
-    BML_DataShare_Request(share, key.c_str(), OnDataShareRequest, cookie, CleanupDataShareRequest);
+    const BML_DataShareRequest nativeRequest = BML_DataShare_Request(
+        share, key.c_str(), OnDataShareRequest, cookie,
+        CleanupDataShareRequest);
     BML_DataShare_Release(share);
+
+    bool requestAlive = false;
+    {
+        std::lock_guard<std::mutex> guard(state->Mutex);
+        const auto it = state->Requests.find(requestId);
+        if (it != state->Requests.end() && it->second.Generation == generation) {
+            it->second.NativeRequest = nativeRequest;
+            requestAlive = true;
+        }
+    }
+    if (!requestAlive) {
+        CancelDataShareRequest({}, {}, nativeRequest);
+        ref->Release();
+        return nullptr;
+    }
     return ref;
 }
 #endif

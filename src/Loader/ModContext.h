@@ -17,7 +17,7 @@
 #include "Config/Config.h"
 #include "Config/ConfigStore.h"
 #include "Loader/NativeModRegistry.h"
-#include "DataShare/DataShare.hpp"
+#include "DataShare/DataShare.h"
 #include "Console/CommandContext.h"
 #include "Console/Shell/ShellEnvironment.h"
 #include "Api/ObjectRefs.h"
@@ -599,7 +599,7 @@ private:
     std::unique_ptr<BML::Shell::Executor> m_Shell;
     BML::Shell::Environment m_ShellEnvironment;
     std::vector<BML::Shell::OutputSink *> m_OutputSinks;
-    BML::DataShare *m_DataShare = nullptr;
+    BML::DataShareStore *m_DataShare = nullptr;
 
     FILE *m_Logfile = nullptr;
     ILogger *m_Logger = nullptr;

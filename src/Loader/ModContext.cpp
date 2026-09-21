@@ -1,5 +1,6 @@
 #include "Loader/ModContext.h"
 
+#include <exception>
 #include <unordered_set>
 #include <queue>
 #include <stdexcept>
@@ -178,6 +179,33 @@ namespace {
 
 ModContext *g_ModContext = nullptr;
 
+namespace {
+    bool ResolveDataShareOwner(const void *callerAddress, const char *ownerId,
+                               const void *callbackAddress,
+                               const void *cleanupAddress,
+                               std::string &owner) {
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return false;
+
+        owner = context->GetNativeModOwnerId(callerAddress, ownerId);
+        if (owner.empty() || (ownerId && owner != ownerId))
+            return false;
+
+        if ((!callbackAddress ||
+             context->NativeModOwnsAddress(owner, callbackAddress)) &&
+            (!cleanupAddress ||
+             context->NativeModOwnsAddress(owner, cleanupAddress)))
+            return true;
+
+        const HMODULE loader = ModuleFromAddress(
+            reinterpret_cast<const void *>(&BML_GetModContext));
+        return loader && ModuleFromAddress(callerAddress) == loader &&
+               ModuleFromAddress(callbackAddress) == loader &&
+               (!cleanupAddress || ModuleFromAddress(cleanupAddress) == loader);
+    }
+}
+
 ModContext *BML_GetModContext() {
     return g_ModContext;
 }
@@ -254,7 +282,7 @@ ModContext::ModContext(CKContext *context)
     m_CommandApi = std::make_unique<BML::Api::CommandApi>(*this);
     m_ImcRuntime.SetInvocationGate(&m_ModInvocationGate);
     m_CKContext = context;
-    m_DataShare = DataShare::GetInstance("BML");
+    m_DataShare = DataShareStore::GetInstance("BML");
     if (m_DataShare) m_DataShare->AddRef();
 #if BML_ENABLE_ANGELSCRIPT
     m_ScriptDevTools = std::make_unique<BML::ScriptDevToolsService>(this);
@@ -264,6 +292,8 @@ ModContext::ModContext(CKContext *context)
     m_ShellDispatcher = std::make_unique<ShellDispatcher>(*this);
     m_Shell = std::make_unique<BML::Shell::Executor>(*m_ShellDispatcher, &m_ShellEnvironment, &m_ShellEnvironment);
     g_ModContext = this;
+    DataShareStore::SetOwnerResolver(&ResolveDataShareOwner);
+    DataShareStore::SetInvocationGate(&m_ModInvocationGate);
 }
 
 // The seam between the shell executor and the loader. Every simple command of a
@@ -301,6 +331,8 @@ private:
 ModContext::~ModContext() {
     Shutdown();
     if (m_DataShare) m_DataShare->Release();
+    DataShareStore::SetInvocationGate(nullptr);
+    DataShareStore::SetOwnerResolver(nullptr);
     g_ModContext = nullptr;
 }
 
@@ -1668,7 +1700,7 @@ std::wstring ModContext::GetModRootDirectory(const void *callerAddress, const ch
 BML_DataShare *ModContext::GetDataShare(const char *name) {
     if (!name || !*name)
         return reinterpret_cast<BML_DataShare *>(m_DataShare);
-    return reinterpret_cast<BML_DataShare *>(BML::DataShare::GetInstance(name));
+    return reinterpret_cast<BML_DataShare *>(BML::DataShareStore::GetInstance(name));
 }
 
 void ModContext::SetIC(CKBeObject *obj, bool hierarchy) {
@@ -2441,7 +2473,7 @@ void ModContext::DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLab
         return;
 
     constexpr const char *EXIT_SYMBOL = "BMLExit";
-    typedef void (*BMLExitFunc)(IMod *);
+    typedef void (BML_CDECL *BMLExitFunc)(IMod *);
 
     try {
         auto func = reinterpret_cast<BMLExitFunc>(
@@ -2481,7 +2513,7 @@ IMod *ModContext::LoadMod(const std::wstring &path) {
         return nullptr;
 
     constexpr const char *ENTRY_SYMBOL = "BMLEntry";
-    typedef IMod *(*BMLEntryFunc)(IBML *);
+    typedef IMod *(BML_CDECL *BMLEntryFunc)(IBML *);
 
     auto func = reinterpret_cast<BMLEntryFunc>(::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), ENTRY_SYMBOL));
     if (!func) {
@@ -2898,65 +2930,15 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         return false;
     }
     auto invocationLock = m_ModInvocationGate.LockMutation();
-    std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
-
-    // Reject duplicates
-    if (m_ModIndex.find(modId) != m_ModIndex.end()) {
-        m_Logger->Error("Mod registration failed: duplicate id %s.", modId.c_str());
-        return false;
-    }
-    if (std::find(m_Mods.begin(), m_Mods.end(), mod) != m_Mods.end()) {
-        m_Logger->Error("Mod registration failed: the Mod pointer is already registered.");
-        return false;
-    }
-
-    // Record the mod in our registries.  Roll the vector back if allocating
-    // the index entry fails so both views keep the same membership.
-    m_Mods.push_back(mod);
-    bool indexed = false;
-    try {
-        const auto indexResult = m_ModIndex.emplace(modId, m_Mods.size() - 1);
-        if (!indexResult.second) {
-            m_Mods.pop_back();
-            m_Logger->Error("Mod registration failed: inconsistent id index for %s.",
-                            modId.c_str());
+    {
+        std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+        if (m_ModIndex.find(modId) != m_ModIndex.end()) {
+            m_Logger->Error("Mod registration failed: duplicate id %s.", modId.c_str());
             return false;
         }
-        indexed = true;
-
-        const auto generationResult = m_ModGenerations.emplace(mod, m_NextModGeneration);
-        if (!generationResult.second) {
-            m_ModIndex.erase(modId);
-            m_Mods.pop_back();
-            m_Logger->Error("Mod registration failed: inconsistent generation index for %s.",
-                            modId.c_str());
+        if (std::find(m_Mods.begin(), m_Mods.end(), mod) != m_Mods.end()) {
+            m_Logger->Error("Mod registration failed: the Mod pointer is already registered.");
             return false;
-        }
-    } catch (...) {
-        if (indexed)
-            m_ModIndex.erase(modId);
-        m_ModGenerations.erase(mod);
-        m_Mods.pop_back();
-        throw;
-    }
-
-    // A registered DLL owns its handle once and records Mod ids rather than
-    // pointers. There is no reverse registry to synchronize.
-    if (dllHandle) {
-        try {
-            if (!m_NativeModRegistry.Add(dllHandle, modId)) {
-                m_ModIndex.erase(modId);
-                m_ModGenerations.erase(mod);
-                m_Mods.pop_back();
-                m_Logger->Error("Mod registration failed: inconsistent native DLL ownership for %s.",
-                                modId.c_str());
-                return false;
-            }
-        } catch (...) {
-            m_ModIndex.erase(modId);
-            m_ModGenerations.erase(mod);
-            m_Mods.pop_back();
-            throw;
         }
     }
 
@@ -2964,27 +2946,103 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
     try {
         behaviorOwner = m_BehaviorSessions.RegisterOwner(modId);
     } catch (...) {
-        if (dllHandle)
-            (void) m_NativeModRegistry.Remove(modId);
-        m_ModIndex.erase(modId);
-        m_ModGenerations.erase(mod);
-        m_Mods.pop_back();
-        throw;
+        m_Logger->Error("Mod registration failed: cannot register Behavior owner %s.",
+                        modId.c_str());
+        return false;
     }
     if (behaviorOwner == 0) {
-        if (dllHandle)
-            (void) m_NativeModRegistry.Remove(modId);
-        m_ModIndex.erase(modId);
-        m_ModGenerations.erase(mod);
-        m_Mods.pop_back();
         m_Logger->Error("Mod registration failed: cannot register Behavior owner %s.",
                         modId.c_str());
         return false;
     }
 
-    ++m_NextModGeneration;
-    ++m_ModRegistryRevision;
-    return true;
+    if (!BML::DataShareStore::ActivateCallbacksFromOwner(modId)) {
+        try {
+            (void) m_BehaviorSessions.RetireOwner(modId);
+        } catch (...) {
+        }
+        m_Logger->Error("Mod registration failed: cannot register DataShare owner %s.",
+                        modId.c_str());
+        return false;
+    }
+
+    const char *registryError = nullptr;
+    std::exception_ptr registryException;
+    bool registered = false;
+    {
+        std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+        bool appended = false;
+        bool indexed = false;
+        bool generated = false;
+        bool nativeRegistered = false;
+        try {
+            if (m_ModIndex.find(modId) != m_ModIndex.end()) {
+                registryError = "duplicate id";
+            } else if (std::find(m_Mods.begin(), m_Mods.end(), mod) != m_Mods.end()) {
+                registryError = "duplicate Mod pointer";
+            } else {
+                m_Mods.push_back(mod);
+                appended = true;
+
+                indexed = m_ModIndex.emplace(modId, m_Mods.size() - 1).second;
+                if (!indexed) {
+                    registryError = "inconsistent id index";
+                } else {
+                    generated = m_ModGenerations.emplace(mod, m_NextModGeneration).second;
+                    if (!generated) {
+                        registryError = "inconsistent generation index";
+                    } else if (dllHandle) {
+                        nativeRegistered = m_NativeModRegistry.Add(dllHandle, modId);
+                        if (!nativeRegistered)
+                            registryError = "inconsistent native DLL ownership";
+                    }
+                }
+
+                if (!registryError) {
+                    ++m_NextModGeneration;
+                    ++m_ModRegistryRevision;
+                    registered = true;
+                }
+            }
+        } catch (...) {
+            registryException = std::current_exception();
+        }
+
+        if (!registered) {
+            if (nativeRegistered)
+                (void) m_NativeModRegistry.Remove(modId);
+            if (generated)
+                m_ModGenerations.erase(mod);
+            if (indexed)
+                m_ModIndex.erase(modId);
+            if (appended)
+                m_Mods.pop_back();
+        }
+    }
+
+    if (registered)
+        return true;
+
+    (void) BML::DataShareStore::RetireCallbacksFromOwner(modId);
+    try {
+        (void) m_BehaviorSessions.RetireOwner(modId);
+    } catch (...) {
+    }
+
+    if (registryException) {
+        try {
+            std::rethrow_exception(registryException);
+        } catch (const std::exception &e) {
+            m_Logger->Error("Mod registration failed for %s: %s", modId.c_str(), e.what());
+        } catch (...) {
+            m_Logger->Error("Mod registration failed for %s: unknown registry exception.",
+                            modId.c_str());
+        }
+    } else {
+        m_Logger->Error("Mod registration failed for %s: %s.", modId.c_str(),
+                        registryError ? registryError : "registry update failed");
+    }
+    return false;
 }
 
 std::string ModContext::GetNativeImcOwnerId(
@@ -3060,6 +3118,13 @@ bool ModContext::NativeModOwnsAddress(
 bool ModContext::CleanupModRegistrations(const std::string &ownerId) noexcept {
     if (m_CommandApi && !m_CommandApi->CleanupOwner(ownerId))
         return false;
+
+    if (!BML::DataShareStore::RetireCallbacksFromOwner(ownerId)) {
+        if (m_Logger)
+            m_Logger->Error("Failed to clean DataShare requests for Mod %s.",
+                            ownerId.c_str());
+        return false;
+    }
 
     try {
         m_ImcRuntime.CleanupOwner(ownerId);

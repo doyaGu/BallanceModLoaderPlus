@@ -4,7 +4,7 @@
  *
  * Loader-internal header. It is deliberately absent from BML_PUBLIC_HEADERS in
  * src/CMakeLists.txt and is not installed into the SDK, so a Mod cannot include
- * it. Its only consumer is src/DataShare.hpp, which uses it to refcount the
+ * it. Its only consumer is DataShareStore, which uses it to refcount the
  * entries a Mod reaches through the BML_DataShare* C functions in DataShare.h.
  */
 #ifndef BML_REFCOUNT_H

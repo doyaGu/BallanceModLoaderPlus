@@ -8,6 +8,7 @@
 #include "AngelScript/ScriptDataShareService.h"
 #include "AngelScript/ScriptTimerService.h"
 #include "BML/DataShare.h"
+#include "DataShare/DataShare.h"
 #include "BML/Timer.h"
 
 namespace BML {
@@ -18,13 +19,13 @@ protected:
     void SetUp() override {
         Timer::CancelAll();
         Timer::ProcessAll(0, 0.0f);
-        BML_DataShare_DestroyAll();
+        DataShareStore::ResetRegistryForTests();
     }
 
     void TearDown() override {
         Timer::CancelAll();
         Timer::ProcessAll(0, 0.0f);
-        BML_DataShare_DestroyAll();
+        DataShareStore::ResetRegistryForTests();
     }
 };
 

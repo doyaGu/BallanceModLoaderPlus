@@ -89,8 +89,9 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IBML.h
         ${BML_INCLUDE_DIR}/BML/IMod.h
         ${BML_INCLUDE_DIR}/BML/DataShare.h
-        ${BML_INCLUDE_DIR}/BML/Imc.h
+        ${BML_INCLUDE_DIR}/BML/DataShare.hpp
         ${BML_INCLUDE_DIR}/BML/Types.h
+        ${BML_INCLUDE_DIR}/BML/Imc.h
         ${BML_INCLUDE_DIR}/BML/ImcWire.hpp
         ${BML_INCLUDE_DIR}/BML/Imc.hpp
         ${BML_INCLUDE_DIR}/BML/TypeConvert.h
@@ -178,7 +179,7 @@ if (BML_BUILD_TESTS)
 endif ()
 
 set(BML_DATA_SHARE_PRIVATE_HEADERS
-        DataShare/DataShare.hpp
+        DataShare/DataShare.h
 )
 
 set(BML_DATA_SHARE_SOURCES
