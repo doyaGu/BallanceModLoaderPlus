@@ -79,6 +79,8 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Interface.hpp
         ${BML_INCLUDE_DIR}/BML/ModInterface.hpp
         ${BML_INCLUDE_DIR}/BML/BML.h
+        ${BML_INCLUDE_DIR}/BML/Command.h
+        ${BML_INCLUDE_DIR}/BML/Command.hpp
 
         ${BML_INCLUDE_DIR}/BML/ILogger.h
         ${BML_INCLUDE_DIR}/BML/ICommand.h
@@ -150,6 +152,7 @@ set(BML_LOADER_SOURCES
 set(BML_API_PRIVATE_HEADERS
         Api/BehaviorApi.h
         Api/BuiltinCapabilities.h
+        Api/CommandApi.h
         Api/ExecuteBBAdapter.h
         Api/InterfaceRegistry.h
         Api/ObjectRefs.h
@@ -159,6 +162,7 @@ set(BML_API_SOURCES
         Api/BehaviorApi.cpp
         Api/BmlApi.cpp
         Api/BuiltinCapabilities.cpp
+        Api/CommandApi.cpp
         Api/Errors.cpp
         Api/ExecuteBB.cpp
         Api/ExecuteBBAdapter.cpp

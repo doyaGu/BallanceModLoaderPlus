@@ -2,6 +2,9 @@
 #define BML_COMMANDCONTEXT_H
 
 #include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -17,7 +20,12 @@ namespace BML {
             std::string Name;
             std::string Alias;
             std::string Description;
+            std::string Usage;
+            std::string Category;
             bool Cheat = false;
+            bool Hidden = false;
+            bool Enabled = true;
+            std::uint64_t Handle = 0;
         };
 
         enum class UnregisterResult {
@@ -27,6 +35,15 @@ namespace BML {
             AccessDenied,
             Busy,
             InternalError,
+        };
+
+        struct CommandCall {
+            ICommand *Command = nullptr;
+            CommandInfo Info;
+
+        private:
+            friend class CommandContext;
+            std::shared_ptr<void> Lifetime;
         };
 
         CommandContext();
@@ -41,16 +58,19 @@ namespace BML {
 
         bool RegisterCommand(const void *registrar, ICommand *cmd);
         bool RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info);
+        bool RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info,
+                             std::shared_ptr<void> lifetime);
         UnregisterResult UnregisterCommand(const void *registrar, const char *name);
         void UnregisterCommands(const void *registrar);
 
-        size_t GetCommandCount() const;
-        ICommand *GetCommandByIndex(size_t index) const;
+        std::size_t GetCommandCount() const;
+        ICommand *GetCommandByIndex(std::size_t index) const;
         ICommand *GetCommandByName(const char *name) const;
-        bool GetCommandInvocation(const char *name, ICommand *&command, CommandInfo &info) const;
+        bool AcquireCommand(const char *name, CommandCall &call) const;
         std::vector<CommandInfo> GetCommandSnapshot() const;
-        bool GetCommandInfoByIndex(size_t index, CommandInfo &info) const;
+        bool GetCommandInfoByIndex(std::size_t index, CommandInfo &info) const;
         bool GetCommandInfoByName(const char *name, CommandInfo &info) const;
+        bool SetCommandEnabled(ICommand *command, bool enabled);
 
         bool IsCheatEnabled() const noexcept { return m_CheatEnabled; }
         bool SetCheatEnabled(bool enabled) noexcept;
@@ -82,13 +102,14 @@ namespace BML {
             CommandInfo Info;
             std::string NameKey;
             std::string AliasKey;
+            std::shared_ptr<void> Lifetime;
         };
 
         struct CommandKeyHash {
             using is_transparent = void;
 
-            size_t operator()(const std::string &key) const noexcept;
-            size_t operator()(const char *key) const noexcept;
+            std::size_t operator()(const std::string &key) const noexcept;
+            std::size_t operator()(const char *key) const noexcept;
         };
 
         struct CommandKeyEqual {

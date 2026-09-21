@@ -7,11 +7,10 @@
 
 #include <utf8.h>
 
+#include "BML/Command.h"
 #include "HashUtils.h"
 #include "Logging/Logger.h"
 #include "StringUtils.h"
-
-#define MAX_CMD_NAME_LENGTH 256
 
 using namespace BML;
 
@@ -72,10 +71,10 @@ namespace {
             cursor = utf8codepoint(cursor, &codepoint);
 
             const utf8_int32_t folded = utf8lwrcodepoint(codepoint);
-            const size_t bytes = utf8codepointsize(folded);
+            const std::size_t bytes = utf8codepointsize(folded);
             char encoded[4] = {};
             utf8catcodepoint(reinterpret_cast<utf8_int8_t *>(encoded), folded, bytes);
-            for (size_t index = 0; index < bytes; ++index) {
+            for (std::size_t index = 0; index < bytes; ++index) {
                 if (!visitor(static_cast<unsigned char>(encoded[index]))) {
                     return false;
                 }
@@ -85,8 +84,8 @@ namespace {
         return true;
     }
 
-    size_t HashCommandKey(const char *name) {
-        size_t hash = utils::Fnv1aSizeInit();
+    std::size_t HashCommandKey(const char *name) {
+        std::size_t hash = utils::Fnv1aSizeInit();
         VisitNormalizedCommandKeyBytes(name, [&hash](unsigned char byte) {
             hash = utils::Fnv1aSizeAppendByte(hash, byte);
             return true;
@@ -95,7 +94,7 @@ namespace {
     }
 
     bool EqualsCommandKey(std::string_view normalized, const char *name) {
-        size_t index = 0;
+        std::size_t index = 0;
         const bool matched = VisitNormalizedCommandKeyBytes(name, [&normalized, &index](unsigned char byte) {
             if (index >= normalized.size()) {
                 return false;
@@ -111,8 +110,8 @@ namespace {
         return matched && index == normalized.size();
     }
 
-    size_t MeasureNormalizedCommandKeyBytes(const char *name) {
-        size_t size = 0;
+    std::size_t MeasureNormalizedCommandKeyBytes(const char *name) {
+        std::size_t size = 0;
         VisitNormalizedCommandKeyBytes(name, [&size](unsigned char) {
             ++size;
             return true;
@@ -121,7 +120,7 @@ namespace {
     }
 
     void WriteNormalizedCommandKey(std::string &normalized, const char *name) {
-        size_t index = 0;
+        std::size_t index = 0;
         VisitNormalizedCommandKeyBytes(name, [&normalized, &index](unsigned char byte) {
             if (index < normalized.size()) {
                 normalized[index++] = static_cast<char>(byte);
@@ -138,11 +137,11 @@ CommandContext::CommandContext() = default;
 
 CommandContext::~CommandContext() = default;
 
-size_t CommandContext::CommandKeyHash::operator()(const std::string &key) const noexcept {
+std::size_t CommandContext::CommandKeyHash::operator()(const std::string &key) const noexcept {
     return utils::Fnv1aSize(key);
 }
 
-size_t CommandContext::CommandKeyHash::operator()(const char *key) const noexcept {
+std::size_t CommandContext::CommandKeyHash::operator()(const char *key) const noexcept {
     return HashCommandKey(key);
 }
 
@@ -171,6 +170,11 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd) {
 }
 
 bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info) {
+    return RegisterCommand(registrar, cmd, std::move(info), {});
+}
+
+bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info,
+                                     std::shared_ptr<void> lifetime) {
     if (!registrar || !cmd)
         return false;
 
@@ -198,6 +202,7 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, Comma
         if (aliasKey == nameKey || m_CommandMap.find(aliasKey) != m_CommandMap.end()) {
             Logger::GetDefault()->Warn("Command Alias Conflict: %s is redefined.", alias.c_str());
             aliasKey.clear();
+            info.Alias.clear();
         }
     }
 
@@ -207,6 +212,7 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, Comma
     entry.Info = std::move(info);
     entry.NameKey = nameKey;
     entry.AliasKey = aliasKey;
+    entry.Lifetime = std::move(lifetime);
 
     try {
         const auto [nameIt, nameInserted] = m_CommandMap.emplace(nameKey, cmd);
@@ -247,7 +253,7 @@ std::string CommandContext::NormalizeCommandName(const char *name) {
         return normalized;
     }
 
-    size_t normalizedBytes = 0;
+    std::size_t normalizedBytes = 0;
     normalizedBytes = MeasureNormalizedCommandKeyBytes(name);
 
     std::string normalized(normalizedBytes, '\0');
@@ -300,11 +306,11 @@ void CommandContext::UnregisterCommands(const void *registrar) {
                      m_Commands.end());
 }
 
-size_t CommandContext::GetCommandCount() const {
+std::size_t CommandContext::GetCommandCount() const {
     return m_Commands.size();
 }
 
-ICommand *CommandContext::GetCommandByIndex(size_t index) const {
+ICommand *CommandContext::GetCommandByIndex(std::size_t index) const {
     if (index >= m_Commands.size())
         return nullptr;
     return m_Commands[index].Command;
@@ -321,8 +327,9 @@ ICommand *CommandContext::GetCommandByName(const char *name) const {
     return it->second;
 }
 
-bool CommandContext::GetCommandInvocation(const char *name, ICommand *&command, CommandInfo &info) const {
-    command = GetCommandByName(name);
+bool CommandContext::AcquireCommand(const char *name, CommandCall &call) const {
+    call = {};
+    ICommand *command = GetCommandByName(name);
     if (!command)
         return false;
 
@@ -331,11 +338,12 @@ bool CommandContext::GetCommandInvocation(const char *name, ICommand *&command, 
                                         return item.Command == command;
                                     });
     if (entry == m_Commands.end()) {
-        command = nullptr;
         return false;
     }
 
-    info = entry->Info;
+    call.Command = command;
+    call.Info = entry->Info;
+    call.Lifetime = entry->Lifetime;
     return true;
 }
 
@@ -347,7 +355,8 @@ std::vector<CommandContext::CommandInfo> CommandContext::GetCommandSnapshot() co
     return snapshot;
 }
 
-bool CommandContext::GetCommandInfoByIndex(size_t index, CommandInfo &info) const {
+bool CommandContext::GetCommandInfoByIndex(
+    std::size_t index, CommandInfo &info) const {
     if (index >= m_Commands.size())
         return false;
     info = m_Commands[index].Info;
@@ -355,8 +364,31 @@ bool CommandContext::GetCommandInfoByIndex(size_t index, CommandInfo &info) cons
 }
 
 bool CommandContext::GetCommandInfoByName(const char *name, CommandInfo &info) const {
-    ICommand *command = nullptr;
-    return GetCommandInvocation(name, command, info);
+    ICommand *command = GetCommandByName(name);
+    if (!command)
+        return false;
+
+    const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
+                                    [command](const Entry &item) {
+                                        return item.Command == command;
+                                    });
+    if (entry == m_Commands.end())
+        return false;
+    info = entry->Info;
+    return true;
+}
+
+bool CommandContext::SetCommandEnabled(ICommand *command, bool enabled) {
+    if (!command)
+        return false;
+    const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
+                                    [command](const Entry &item) {
+                                        return item.Command == command;
+                                    });
+    if (entry == m_Commands.end())
+        return false;
+    entry->Info.Enabled = enabled;
+    return true;
 }
 
 bool CommandContext::SetCheatEnabled(bool enabled) noexcept {
@@ -402,7 +434,7 @@ char *CommandContext::AllocPrintfV(const char *format, va_list args) {
     std::string message;
     utils::FormatStringV(format, args, message);
 
-    const size_t bufferSize = message.size() + 1;
+    const std::size_t bufferSize = message.size() + 1;
     auto *string = new char[bufferSize];
     std::memcpy(string, message.c_str(), bufferSize);
     return string;
@@ -412,8 +444,8 @@ bool CommandContext::IsValidCommandName(const char *name) {
     if (!name || name[0] == '\0')
         return false;
 
-    size_t size = strnlen(name, MAX_CMD_NAME_LENGTH + 1);
-    if (size > MAX_CMD_NAME_LENGTH)
+    const std::size_t size = strnlen(name, BML_COMMAND_MAX_NAME_BYTES + 1);
+    if (size > BML_COMMAND_MAX_NAME_BYTES)
         return false;
 
     if (utf8valid(reinterpret_cast<const utf8_int8_t *>(name)) != nullptr)
@@ -451,8 +483,8 @@ bool CommandContext::IsValidCommandAlias(const char *alias) {
     if (!alias || alias[0] == '\0')
         return false;
 
-    size_t size = strnlen(alias, MAX_CMD_NAME_LENGTH + 1);
-    if (size > MAX_CMD_NAME_LENGTH)
+    const std::size_t size = strnlen(alias, BML_COMMAND_MAX_NAME_BYTES + 1);
+    if (size > BML_COMMAND_MAX_NAME_BYTES)
         return false;
 
     if (utf8valid(reinterpret_cast<const utf8_int8_t *>(alias)) != nullptr)

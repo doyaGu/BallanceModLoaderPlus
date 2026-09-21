@@ -19,6 +19,7 @@
 
 #include "Api/BuiltinCapabilities.h"
 #include "Api/BehaviorApi.h"
+#include "Api/CommandApi.h"
 #include "Api/InterfaceRegistry.h"
 #if BML_ENABLE_BEHAVIOR_TEST_INTERFACE
 #include "Api/BehaviorTestApi.h"
@@ -448,6 +449,8 @@ const InterfaceEntry kInterfaces[] = {
 #endif
     {BML_BEHAVIOR_INTERFACE_ID, BML_BEHAVIOR_INTERFACE_MAJOR,
      &BML::Api::BehaviorInterface()},
+    {BML_COMMAND_INTERFACE_ID, BML_COMMAND_INTERFACE_MAJOR,
+     &BML::Api::CommandInterface()},
     {BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &kGameplayInterface},
     {BML_MOD_MENU_INTERFACE_ID, BML_MOD_MENU_INTERFACE_MAJOR, &ModMenuInterface},
     {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},

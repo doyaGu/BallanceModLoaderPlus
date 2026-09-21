@@ -21,6 +21,7 @@
 #include "Api/BuiltinCapabilities.h"
 #include "Api/InterfaceRegistry.h"
 
+#include "Api/CommandApi.h"
 #include "Console/Shell/ShellExecutor.h"
 #include "Console/Shell/ShellIo.h"
 #include "Hooks/RenderHook.h"
@@ -250,6 +251,7 @@ ModContext::ModContext(CKContext *context)
       m_PhysicsForce(context, m_Behaviors),
       m_ExecuteBB(m_Behaviors, m_PhysicsForce) {
     assert(context != nullptr);
+    m_CommandApi = std::make_unique<BML::Api::CommandApi>(*this);
     m_ImcRuntime.SetInvocationGate(&m_ModInvocationGate);
     m_CKContext = context;
     m_DataShare = DataShare::GetInstance("BML");
@@ -1283,7 +1285,8 @@ bool ModContext::GetCommandInfo(int index, BML::CommandContext::CommandInfo &inf
     if (!IsMainThread() || index < 0)
         return false;
     std::lock_guard<std::mutex> lock(m_Mutex);
-    return m_CommandContext.GetCommandInfoByIndex(static_cast<size_t>(index), info);
+    return m_CommandContext.GetCommandInfoByIndex(
+        static_cast<std::size_t>(index), info);
 }
 
 bool ModContext::FindCommandInfo(
@@ -1294,18 +1297,29 @@ bool ModContext::FindCommandInfo(
     return m_CommandContext.GetCommandInfoByName(name, info);
 }
 
+bool ModContext::SetCommandEnabled(ICommand *command, bool enabled) {
+    if (!IsMainThread())
+        return false;
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_CommandContext.SetCommandEnabled(command, enabled);
+}
+
 std::vector<std::string> ModContext::CompleteCommand(
     const char *name, const std::vector<std::string> &args) {
     if (!IsMainThread() || !name || name[0] == '\0')
         return {};
 
     auto invocationLock = m_CommandInvocationGate.LockCall();
-    ICommand *command = nullptr;
+    BML::CommandContext::CommandCall call;
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        command = m_CommandContext.GetCommandByName(name);
+        m_CommandContext.AcquireCommand(name, call);
     }
-    return command ? command->GetTabCompletion(this, args) : std::vector<std::string>();
+    std::vector<std::string> completions;
+    if (call.Command && call.Info.Enabled)
+        completions = call.Command->GetTabCompletion(this, args);
+    m_CommandApi->FlushPending();
+    return completions;
 }
 
 void ModContext::ExecuteCommand(const char *cmd) {
@@ -1334,32 +1348,36 @@ int ModContext::InvokeCommandArgs(const std::vector<std::string> &args, const st
     }
 
     auto invocationLock = m_CommandInvocationGate.LockCall();
-    ICommand *command = nullptr;
-    BML::CommandContext::CommandInfo commandInfo;
+    BML::CommandContext::CommandCall call;
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        m_CommandContext.GetCommandInvocation(args[0].c_str(), command, commandInfo);
+        m_CommandContext.AcquireCommand(args[0].c_str(), call);
     }
-    if (!command) {
+    if (!call.Command) {
         WriteShellError(BML::Shell::FormatError("Error: Unknown Command " + args[0]));
         return BML::Shell::Status::Unknown;
     }
 
-    if (commandInfo.Cheat && !IsCheatEnabled()) {
+    if (!call.Info.Enabled) {
+        WriteShellError(BML::Shell::FormatError(
+            "Error: Command is disabled " + call.Info.Name));
+        return BML::Shell::Status::Disabled;
+    }
+
+    if (call.Info.Cheat && !IsCheatEnabled()) {
         WriteShellError(BML::Shell::FormatError("Error: Can not execute cheat command " + args[0]));
         return BML::Shell::Status::CheatRefused;
     }
 
+    int status = BML::Shell::Status::Failure;
     try {
-        BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
-        int status = BML::Shell::Status::Ok;
+        BroadcastCallback(&IMod::OnPreCommandExecute, call.Command, args);
         {
             BML::Shell::InvocationScope scope(input);
-            command->Execute(this, args);
+            call.Command->Execute(this, args);
             status = scope.Status();
         }
-        BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
-        return status;
+        BroadcastCallback(&IMod::OnPostCommandExecute, call.Command, args);
     } catch (const std::exception &e) {
         m_Logger->Error("Exception executing command '%s': %s", args[0].c_str(), e.what());
         WriteShellError(BML::Shell::FormatError("Error: Command failed - " + std::string(e.what())));
@@ -1367,7 +1385,8 @@ int ModContext::InvokeCommandArgs(const std::vector<std::string> &args, const st
         m_Logger->Error("Unknown exception executing command '%s'", args[0].c_str());
         WriteShellError(BML::Shell::FormatError("Error: Command failed with unknown exception"));
     }
-    return BML::Shell::Status::Failure;
+    m_CommandApi->FlushPending();
+    return status;
 }
 
 void ModContext::WriteShellError(std::string_view message) {
@@ -3038,7 +3057,10 @@ bool ModContext::NativeModOwnsAddress(
     return m_NativeModRegistry.Owns(module, ownerId);
 }
 
-void ModContext::CleanupModRegistrations(const std::string &ownerId) noexcept {
+bool ModContext::CleanupModRegistrations(const std::string &ownerId) noexcept {
+    if (m_CommandApi && !m_CommandApi->CleanupOwner(ownerId))
+        return false;
+
     try {
         m_ImcRuntime.CleanupOwner(ownerId);
     } catch (...) {
@@ -3056,6 +3078,7 @@ void ModContext::CleanupModRegistrations(const std::string &ownerId) noexcept {
     }
 
     BML::Api::UnregisterInterfacesForOwner(ownerId);
+    return true;
 }
 
 void ModContext::RetireModBehaviorState(const std::string &ownerId) noexcept {
@@ -3091,7 +3114,7 @@ void ModContext::RetireModBehaviorState(const std::string &ownerId) noexcept {
 
 void ModContext::CleanupModState(const std::string &ownerId) noexcept {
     RetireModBehaviorState(ownerId);
-    CleanupModRegistrations(ownerId);
+    (void) CleanupModRegistrations(ownerId);
 }
 
 bool ModContext::UnregisterMod(IMod *mod) {
@@ -3138,7 +3161,8 @@ bool ModContext::UnregisterMod(IMod *mod) {
             return false;
         }
         m_BehaviorSessions.RetireOwner(modIdCopy);
-        CleanupModRegistrations(modIdCopy);
+        if (!CleanupModRegistrations(modIdCopy))
+            return false;
 #if BML_ENABLE_ANGELSCRIPT
         if (m_ScriptHotReload) {
             if (auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod))

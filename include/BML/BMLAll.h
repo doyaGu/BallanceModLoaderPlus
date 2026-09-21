@@ -6,7 +6,8 @@
 // headers instead: IMod.h for the class to derive from, which already brings IBML.h,
 // IConfig.h, ILogger.h, and IMessageReceiver.h with it, then Bui.h or Gui.h for a
 // user interface, InputHook.h for the keyboard and mouse, and Runtime.h, Scene.h,
-// Gameplay.h, UI.h, or Speedrun.h for what the legacy interfaces do not cover.
+// Gameplay.h, Command.hpp, UI.h, or Speedrun.h for what the legacy interfaces do
+// not cover.
 #ifndef BMLALL_H
 #define BMLALL_H
 
@@ -17,6 +18,8 @@
 #include "BML/Interface.hpp"
 #include "BML/ModInterface.hpp"
 #include "BML/BML.h"
+#include "BML/Command.h"
+#include "BML/Command.hpp"
 #include "BML/Guids.h"
 
 #include "BML/IBML.h"

@@ -29,7 +29,7 @@ class IBML;
 
 class BML_EXPORT ICommand {
 public:
-    // What the player types. It has to be at most 255 bytes and valid UTF-8, start
+    // What the player types. It has to be at most 256 bytes and valid UTF-8, start
     // with an ASCII letter or an underscore, and hold nothing but ASCII letters,
     // digits, underscore, hyphen, and dot, except that codepoints above 127 are
     // allowed anywhere. Registration fails and logs an error otherwise.

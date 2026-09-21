@@ -51,6 +51,9 @@ class BMLMod;
 class NewBallTypeMod;
 
 namespace BML {
+namespace Api {
+class CommandApi;
+}
 namespace UI {
 class FontRuntime;
 }
@@ -70,6 +73,8 @@ CKContext *BML_GetCKContext();
 CKRenderContext *BML_GetRenderContext();
 
 class ModContext final : public IBML {
+    friend class BML::Api::CommandApi;
+
     // Native DLL identity normally identifies a Mod owner. Built-in Mods share
     // BMLPlus.dll, so their active invocation supplies the missing identity.
     // The linked stack keeps nested broadcasts exact without allocating.
@@ -215,6 +220,7 @@ public:
     std::vector<BML::CommandContext::CommandInfo> GetCommandSnapshot() const;
     bool GetCommandInfo(int index, BML::CommandContext::CommandInfo &info) const;
     bool FindCommandInfo(const char *name, BML::CommandContext::CommandInfo &info) const;
+    bool SetCommandEnabled(ICommand *command, bool enabled);
     std::vector<std::string> CompleteCommand(
         const char *name, const std::vector<std::string> &args);
 
@@ -238,6 +244,7 @@ public:
     std::wstring GetModRootDirectory(const void *callerAddress, const char *modId) const;
 
     BML::CommandContext &GetCommandContext() { return m_CommandContext; }
+    BML::Api::CommandApi &GetCommandApi() { return *m_CommandApi; }
     BML_DataShare *GetDataShare(const char *name = nullptr);
 
     CKContext *GetCKContext() override { return m_CKContext; }
@@ -548,7 +555,7 @@ private:
     void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
     BML::Behavior::Internal::Status RetireBehaviorEdits(const std::string &ownerId);
     void RetireModBehaviorState(const std::string &ownerId) noexcept;
-    void CleanupModRegistrations(const std::string &ownerId) noexcept;
+    bool CleanupModRegistrations(const std::string &ownerId) noexcept;
     void CleanupModState(const std::string &ownerId) noexcept;
     void DeactivateActiveMods(bool dispatchPendingNotifications);
     void RollbackModActivation();
@@ -587,6 +594,7 @@ private:
     std::string m_ConfigDirUtf8;
 
     BML::CommandContext m_CommandContext;
+    std::unique_ptr<BML::Api::CommandApi> m_CommandApi;
     std::unique_ptr<ShellDispatcher> m_ShellDispatcher;
     std::unique_ptr<BML::Shell::Executor> m_Shell;
     BML::Shell::Environment m_ShellEnvironment;
