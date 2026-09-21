@@ -19,7 +19,7 @@ mod 在自己机器上跑通之后，下一步是让别的玩家也能用。
 附加到入口类的元数据是 BML+ 识别和管理 Mod 的依据：
 
 ```angelscript
-[bml.mod id="complete.mod" name="Complete Mod" version="1.0.0" author="YourName" bml="0.3.13" description="A complete tutorial mod"]
+[bml.mod id="complete.mod" name="Complete Mod" version="1.0.0" author="YourName" bml="0.3.14" description="A complete tutorial mod"]
 class CompleteMod {
 }
 ```
@@ -71,7 +71,7 @@ class CompleteMod {
 
 ## BML+ 版本要求
 
-`bml="0.3.13"` 表示需要 BML+ 0.3.13 或更高版本。版本不满足时 Mod 不会被加载，日志会提示不匹配。
+`bml="0.3.14"` 表示需要 BML+ 0.3.14 或更高版本。版本不满足时 Mod 不会被加载，日志会提示不匹配。
 
 判断方法：检查用到的 API 是在哪个版本引入的。基础回调（`OnLoad`、`OnUnload`、`GetConfig`）可以保持较低要求；用了新 API 就更新到对应版本。不确定时写你开发环境的 BML 版本，至少保证测试过的环境匹配。
 
@@ -187,7 +187,7 @@ CompleteMod.zip
 - 确认每个阶段 mod 的行为正常，没有残留对象或崩溃
 - 如果 mod 有 OnUnload 清理逻辑，确认卸载时不报错
 
-如果你声明了 `bml="0.3.13"` 但手头只有更新的 BML 版本，至少在发布说明中注明实际测试的版本。
+如果你声明了 `bml="0.3.14"` 但手头只有更新的 BML 版本，至少在发布说明中注明实际测试的版本。
 
 ---
 
@@ -200,12 +200,12 @@ CompleteMod.zip
 ```text
 Complete Mod v1.0.0
 
-需要：BML+ 0.3.13 或更新版本。
+需要：BML+ 0.3.14 或更新版本。
 安装：把 CompleteMod.zip 直接放入 ModLoader/Mods/，不要解压。
 命令：cmod [spawn|despawn|push|status|window]
 配置：ShowWindow, AutoSpawn
 卸载：删除 mod 文件。如需清掉设置，删除 ModLoader/Configs/complete.mod.cfg。
-已验证：Ballance Player + BML+ 0.3.13
+已验证：Ballance Player + BML+ 0.3.14
 ```
 
 每一条都是对用户的承诺：安装路径要写完整（不要假设用户知道 `Mods` 在哪）；命令和配置要列全（用户不一定会看源码）；卸载说明要包含配置文件路径。

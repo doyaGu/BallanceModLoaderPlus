@@ -3,7 +3,7 @@
          version="1.0.0"
          author="BML+"
          description="Test-only HookBlock lifecycle probe"
-         bml="0.3.13"]
+         bml="0.3.14"]
 class LifecyclePlayerTest {
     BML::HookBlockRef@ hook;
     int callbackCount = 0;

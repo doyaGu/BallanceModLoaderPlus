@@ -157,7 +157,7 @@ GameEvent 与 Virtools 消息并不是一一对应关系。
 下面这个脚本每帧读取 IngameParameter 和 CurrentLevel，用 ImGui 显示当前 Gameplay 状态。保存为 `ModLoader/Mods/GameplayMonitor.mod.as`：
 
 ```angelscript
-[bml.mod id="gameplay.monitor" name="Gameplay Monitor" version="1.0.0" author="Tutorial" bml="0.3.13" description="Monitor Gameplay state machine"]
+[bml.mod id="gameplay.monitor" name="Gameplay Monitor" version="1.0.0" author="Tutorial" bml="0.3.14" description="Monitor Gameplay state machine"]
 class GameplayMonitor {
     private CKDataArray@ ingameParam = null;
     private CKDataArray@ currentLevel = null;

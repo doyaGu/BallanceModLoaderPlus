@@ -3,7 +3,7 @@
          version="1.0.0"
          author="BML+"
          description="Registers a command backed by persistent configuration"
-         bml="0.3.13"]
+         bml="0.3.14"]
 class CommandConfigExample {
     private BML::ConfigProperty@ enabledProperty;
     private bool enabled = true;

@@ -154,7 +154,7 @@ CKKEY_LCONTROL           左 Ctrl
 把本节的内容整合起来，`HelloMod.mod.as` 现在应该是：
 
 ```angelscript
-[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.13" description="Minimal tutorial script mod"]
+[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.14" description="Minimal tutorial script mod"]
 class HelloMod {
     void OnLoad(const BML::ModContext &in ctx) {
         BML::UI::AddMessage("HelloMod loaded.");

@@ -3,7 +3,7 @@
          version="1.0.0"
          author="BML+"
          description="Toggles a small ImGui window with F9"
-         bml="0.3.13"]
+         bml="0.3.14"]
 class InputUiExample {
     private bool visible = true;
 

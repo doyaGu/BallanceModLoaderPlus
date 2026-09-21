@@ -11,7 +11,7 @@
 在 `ModLoader/Mods/` 下新建一个文件，命名为 `HelloMod.mod.as`：
 
 ```angelscript
-[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.13" description="Minimal tutorial script mod"]
+[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.14" description="Minimal tutorial script mod"]
 class HelloMod {
     void OnLoad(const BML::ModContext &in ctx) {
         ctx.LogInfo("HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
@@ -48,7 +48,7 @@ class HelloMod {
 ### 元数据行
 
 ```angelscript
-[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.13" description="Minimal tutorial script mod"]
+[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.14" description="Minimal tutorial script mod"]
 ```
 
 这是附加到入口类上的 AngelScript 元数据。`bml.mod` 声明 Mod 身份和版本要求，

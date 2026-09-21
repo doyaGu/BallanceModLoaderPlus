@@ -3,7 +3,7 @@
          version="1.0.0"
          author="BML+"
          description="Reads level state and the active ball"
-         bml="0.3.13"]
+         bml="0.3.14"]
 class GameStateExample {
     void OnLoad(const BML::ModContext &in ctx) {
         ctx.LogInfo("Game state example loaded; enter a level");

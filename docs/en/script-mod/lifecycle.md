@@ -9,7 +9,7 @@ lifetime of script-owned resources.
 
 ```angelscript
 [bml.mod id="example.core" name="Example Core" version="1.2.0"
-         author="You" description="Example" bml="0.3.13"]
+         author="You" description="Example" bml="0.3.14"]
 class ExampleCore {
 }
 ```

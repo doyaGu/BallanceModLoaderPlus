@@ -184,7 +184,7 @@ public:
     // Which loader the Mod needs, filled in by DECLARE_BML_VERSION from the SDK
     // headers it is compiled against. A loader older than this refuses to register
     // the Mod, logging that it requires that version, so an SDK function added in
-    // 0.3.13 cannot be reached by a Mod that a 0.3.12 loader has accepted.
+    // 0.3.14 cannot be reached by a Mod that a 0.3.13 loader has accepted.
     virtual BMLVersion GetBMLVersion() = 0;
 
     // The first callback, and where the setting up belongs: registering commands,

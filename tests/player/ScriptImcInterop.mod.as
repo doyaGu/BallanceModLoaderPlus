@@ -5,7 +5,7 @@
          version="1.0.0"
          author="BML"
          description="Exercises generated IMC bindings from an ASMod"
-         bml="0.3.13"]
+         bml="0.3.14"]
 class ScriptImcInterop {
     Test::Scriptinterop::Provider provider;
     BML::ImcSubscriptionRef@ nativeNotice;

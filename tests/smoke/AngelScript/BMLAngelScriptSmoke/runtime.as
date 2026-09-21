@@ -1,5 +1,5 @@
-[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.3.13" description="Smoke test for BML's built-in AngelScript capability APIs."]
-[bml.require id="BML" version="0.3.13"]
+[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.3.14" description="Smoke test for BML's built-in AngelScript capability APIs."]
+[bml.require id="BML" version="0.3.14"]
 
 class BMLBindingsSmokeMod {
   bool loggedGameplay = false;

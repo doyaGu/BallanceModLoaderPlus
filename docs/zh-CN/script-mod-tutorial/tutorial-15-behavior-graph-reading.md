@@ -357,7 +357,7 @@ graph-edit interface。
 下面这段代码不读取行为图，而是观察行为图执行后的状态变化。当玩家经过检查点时，行为图会更新 Checkpoints 表和 IngameParameter 表，脚本能看到变化：
 
 ```angelscript
-[bml.mod id="bgwatch.script" name="BG Watcher" version="1.0.0" author="Tutorial" bml="0.3.13" description="Observe behavior graph effects"]
+[bml.mod id="bgwatch.script" name="BG Watcher" version="1.0.0" author="Tutorial" bml="0.3.14" description="Observe behavior graph effects"]
 class BGWatcher {
     private int lastSector = 0;
     private int lastCheckpointIndex = -1;
