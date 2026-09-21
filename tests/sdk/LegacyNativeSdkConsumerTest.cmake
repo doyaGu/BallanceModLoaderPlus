@@ -115,9 +115,6 @@ set(consumer_source_dir "${work_root}/NativeQuickStartMod")
 foreach(required_sdk_path
         "${install_root}/lib/cmake/BML/BMLConfig.cmake"
         "${install_root}/lib/BMLPlus.lib"
-        "${install_root}/include/BML/Command.hpp"
-        "${install_root}/include/BML/DataShare.hpp"
-        "${install_root}/include/BML/ModMenu.hpp"
         "${native_template}/CMakeLists.txt"
         "${native_template}/src/HelloMod.cpp"
         "${native_scaffolder}")
