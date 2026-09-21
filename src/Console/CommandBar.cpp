@@ -118,6 +118,8 @@ namespace {
         providers.commandNames = [] {
             std::vector<std::string> names;
             for (const auto &command : BML_GetModContext()->GetCommandSnapshot()) {
+                if (command.Hidden || !command.Enabled)
+                    continue;
                 const std::string name = NormalizeCandidateEncoding(command.Name);
                 if (!name.empty())
                     names.push_back(name);

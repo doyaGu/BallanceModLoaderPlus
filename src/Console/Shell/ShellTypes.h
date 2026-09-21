@@ -6,6 +6,8 @@
 
 #include <cstddef>
 
+#include "BML/Command.h"
+
 namespace BML::Shell {
     // Which quoting the caret or a word part sits in. Bare is unquoted text.
     enum class QuoteContext {
@@ -16,15 +18,16 @@ namespace BML::Shell {
     };
 
     namespace Status {
-        constexpr int Ok = 0;
-        constexpr int Failure = 1;
-        constexpr int Syntax = 2;
-        constexpr int CheatRefused = 126;
-        constexpr int Unknown = 127;
+        constexpr int Ok = BML_COMMAND_STATUS_SUCCESS;
+        constexpr int Failure = BML_COMMAND_STATUS_FAILURE;
+        constexpr int Syntax = BML_COMMAND_STATUS_SYNTAX;
+        constexpr int Disabled = BML_COMMAND_STATUS_DISABLED;
+        constexpr int CheatRefused = BML_COMMAND_STATUS_CHEAT_REFUSED;
+        constexpr int Unknown = BML_COMMAND_STATUS_UNKNOWN;
     }
 
     namespace Limits {
-        constexpr std::size_t MaxLineBytes = 65535;
+        constexpr std::size_t MaxLineBytes = BML_COMMAND_MAX_LINE_BYTES;
         constexpr std::size_t MaxPipelineStages = 16;
         constexpr std::size_t MaxCommandsPerLine = 64;
         constexpr std::size_t MaxAliasDepth = 16;

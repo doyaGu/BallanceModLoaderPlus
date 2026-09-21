@@ -1,5 +1,6 @@
 #include "Console/Commands.h"
 
+#include <algorithm>
 #include <sstream>
 #include <cctype>
 #include <cstdlib>
@@ -36,13 +37,22 @@ void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
 
 void CommandHelp::Execute(IBML *bml, const std::vector<std::string> &args) {
     const auto commands = BML_GetModContext()->GetCommandSnapshot();
-    bml->SendIngameMessage((std::to_string(commands.size()) + " Existing Commands:").data());
+    const std::size_t visibleCount = static_cast<std::size_t>(std::count_if(
+        commands.begin(), commands.end(),
+        [](const BML::CommandContext::CommandInfo &command) {
+            return !command.Hidden;
+        }));
+    bml->SendIngameMessage((std::to_string(visibleCount) + " Existing Commands:").data());
     for (const auto &command : commands) {
+        if (command.Hidden)
+            continue;
         std::string str = std::string("\t") + command.Name;
         if (!command.Alias.empty())
             str += "(" + command.Alias + ")";
         if (command.Cheat)
             str += "[Cheat]";
+        if (!command.Enabled)
+            str += "[Disabled]";
         str += ": " + command.Description;
         bml->SendIngameMessage(str.data());
     }
