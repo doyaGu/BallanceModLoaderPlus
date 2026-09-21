@@ -1,6 +1,7 @@
 #include "BML/BML.h"
 #include "BML/Behavior.h"
 #include "BML/Command.h"
+#include "BML/DataShare.h"
 #include "BML/Gameplay.h"
 #include "BML/ModMenu.h"
 #include "BML/Runtime.h"
@@ -12,6 +13,15 @@
 #include <string.h>
 
 #define BML_C_ABI_ASSERT(name, expression) typedef char name[(expression) ? 1 : -1]
+
+#if defined(_MSC_VER)
+typedef struct BML_CallerPackingProbe {
+    char Prefix;
+    uint64_t Value;
+} BML_CallerPackingProbe;
+BML_C_ABI_ASSERT(BmlHeadersRestoreCallerPacking,
+                 offsetof(BML_CallerPackingProbe, Value) == 1u);
+#endif
 
 BML_C_ABI_ASSERT(BmlBehaviorGuidSize, sizeof(BML_BehaviorGuid) == 8u);
 BML_C_ABI_ASSERT(BmlBehaviorStatusSize, sizeof(BML_BehaviorStatus) == 296u);
@@ -73,7 +83,7 @@ BML_C_ABI_ASSERT(BmlCommandInterfaceSize,
                  sizeof(BML_CommandInterface) == 36u);
 BML_C_ABI_ASSERT(BmlModMenuPageFrameSize,
                  sizeof(BML_ModMenuPageFrame) == 8u);
-BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 32u);
+BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 36u);
 BML_C_ABI_ASSERT(BmlModMenuInterfaceSize, sizeof(BML_ModMenuInterface) == 20u);
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 24u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 108u);
@@ -118,7 +128,7 @@ BML_C_ABI_ASSERT(BmlBehaviorScriptEditSize,
 #else
 BML_C_ABI_ASSERT(BmlModMenuPageFrameSize,
                  sizeof(BML_ModMenuPageFrame) == 16u);
-BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 64u);
+BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 72u);
 BML_C_ABI_ASSERT(BmlModMenuInterfaceSize, sizeof(BML_ModMenuInterface) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
@@ -177,6 +187,17 @@ const char *BML_TestCAbiLoaderPath(void) {
 void BML_TestCAbiModRoot(void) {
     char *root = BML_GetModRootUtf8(NULL);
     BML_FreeString(root);
+}
+
+int BML_TestCAbiDataShareCancellation(BML_DataShare *share,
+                                      BML_DataShareRequest request) {
+    int (BML_CDECL *cancel)(BML_DataShare *, BML_DataShareRequest) =
+        &BML_DataShare_CancelRequest;
+    int (BML_CDECL *cancelForOwner)(BML_DataShare *, const char *,
+                                    BML_DataShareRequest) =
+        &BML_DataShare_CancelRequestForOwner;
+    return cancel != NULL && cancelForOwner != NULL &&
+        (request == BML_DATASHARE_INVALID_REQUEST || share != NULL);
 }
 
 int BML_TestCAbiProviderInterface(const BML_InterfaceHeader *interfacePtr) {
@@ -431,6 +452,10 @@ static int BML_CDECL BML_TestCAbiLeaveModMenuPage(
         : BML_ERROR_MALFORMED_MESSAGE;
 }
 
+static void BML_CDECL BML_TestCAbiReleaseModMenuPage(void *userData) {
+    (void) userData;
+}
+
 int BML_TestCAbiModMenuInterface(void *userData) {
     const void *found = NULL;
     const BML_ModMenuInterface *menu = NULL;
@@ -443,6 +468,7 @@ int BML_TestCAbiModMenuInterface(void *userData) {
         &BML_TestCAbiDrawModMenuPage,
         &BML_TestCAbiEnterModMenuPage,
         &BML_TestCAbiLeaveModMenuPage,
+        &BML_TestCAbiReleaseModMenuPage,
     };
 
     if (BML_GetInterface(BML_MOD_MENU_INTERFACE_ID, BML_MOD_MENU_INTERFACE_MAJOR, &found) != BML_OK)

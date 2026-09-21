@@ -115,6 +115,9 @@ set(consumer_source_dir "${work_root}/NativeQuickStartMod")
 foreach(required_sdk_path
         "${install_root}/lib/cmake/BML/BMLConfig.cmake"
         "${install_root}/lib/BMLPlus.lib"
+        "${install_root}/include/BML/Command.hpp"
+        "${install_root}/include/BML/DataShare.hpp"
+        "${install_root}/include/BML/ModMenu.hpp"
         "${native_template}/CMakeLists.txt"
         "${native_template}/src/HelloMod.cpp"
         "${native_scaffolder}")
@@ -142,13 +145,16 @@ endif()
 
 file(READ "${consumer_source_dir}/src/QuickStartMod.cpp" generated_native_source)
 
-# Compile a real slice of the installed Behavior C++ facade from outside the
-# BML source tree.  The function is deliberately not called by the template
-# Mod: this test proves that the installed headers and import library are
-# sufficient for authoring, while the Player probes exercise the live path.
-set(behavior_facade_probe [=[
+# Compile real slices of the installed C++ facades from outside the BML source
+# tree. These functions are deliberately not called by the template Mod: this
+# test proves that the installed headers and import library are sufficient for
+# authoring, while the Player probes exercise the live paths.
+set(public_facade_probe [=[
 #include <BML/Behavior.hpp>
+#include <BML/Command.hpp>
+#include <BML/DataShare.hpp>
 #include <BML/Interface.hpp>
+#include <BML/ModMenu.hpp>
 #include <BML/ModInterface.hpp>
 #include <imgui.h>
 
@@ -175,12 +181,40 @@ int BML_CDECL ReadInstalledValue(int input, int *outValue) {
 constexpr auto kInstalledInterface =
     BML::Interfaces::MakeInterface<InstalledTraits>(0, &ReadInstalledValue);
 
+void BML_CDECL ReceiveInstalledValue(
+    const char *, const void *, std::size_t, void *) {}
+
+void BML_CDECL ReleaseInstalledValue(const char *, void *) {}
+
+int ExecuteInstalledCommand(const BML::Command::Invocation &invocation) {
+    return invocation.Write("installed") == BML_OK
+        ? BML_COMMAND_STATUS_SUCCESS
+        : BML_COMMAND_STATUS_FAILURE;
+}
+
+class InstalledPage final : public BML::ModMenu::Page {
+public:
+    InstalledPage() : Page("installed", "Installed SDK") {}
+
+protected:
+    BML::ModMenu::PageAction OnFrame() override {
+        return BML::ModMenu::PageAction::None;
+    }
+};
+
 static_assert(std::is_move_constructible_v<BML::Behavior::Session>);
 static_assert(!std::is_copy_constructible_v<BML::Behavior::Session>);
 static_assert(std::is_copy_constructible_v<BML::Behavior::Block>);
 static_assert(std::is_move_constructible_v<BML::Interfaces::Publication<InstalledTraits>>);
 static_assert(!std::is_copy_constructible_v<BML::Interfaces::Publication<InstalledTraits>>);
 static_assert(!std::is_copy_constructible_v<BML::Interfaces::RequiredInterface<InstalledTraits>>);
+static_assert(std::is_copy_constructible_v<BML::DataShare>);
+static_assert(std::is_move_constructible_v<BML::DataShare>);
+static_assert(!std::is_copy_constructible_v<BML::DataShareRequest>);
+static_assert(std::is_move_constructible_v<BML::DataShareRequest>);
+static_assert(!std::is_copy_constructible_v<BML::Command::Registration>);
+static_assert(!std::is_move_constructible_v<InstalledPage>);
+
 [[maybe_unused]] void CompileBehaviorAuthoringSurface() {
     using namespace BML::Behavior;
     auto session = Session::Open();
@@ -204,12 +238,40 @@ static_assert(!std::is_copy_constructible_v<BML::Interfaces::RequiredInterface<I
     (void)required.Open();
     (void)optional.Open();
 }
+
+[[maybe_unused]] void CompileInstalledFacadeSurface() {
+    BML::DataShare share("installed-sdk");
+    const char value[] = "value";
+    (void) share.Set("key", value, sizeof(value));
+    BML::DataShareRequest request = share.Request(
+        "pending", &ReceiveInstalledValue, nullptr, &ReleaseInstalledValue);
+    (void) request.Cancel();
+
+    BML::Command::Definition definition;
+    definition.Name = "installed";
+    BML::Command::Registration command;
+    (void) command.Register(definition, &ExecuteInstalledCommand);
+    (void) command.Unregister();
+
+    InstalledPage page;
+    (void) page.Register();
+    (void) page.Unregister();
+}
 } // namespace
 
 ]=])
-string(PREPEND generated_native_source "${behavior_facade_probe}")
+string(PREPEND generated_native_source "${public_facade_probe}")
 file(WRITE "${consumer_source_dir}/src/QuickStartMod.cpp"
      "${generated_native_source}")
+
+# The installed headers must keep their x86 ABI even when the consumer changes
+# MSVC's default calling convention and packing.
+file(APPEND "${consumer_source_dir}/CMakeLists.txt" [=[
+
+if(MSVC)
+    target_compile_options(QuickStartMod PRIVATE /Gz /Zp1)
+endif()
+]=])
 
 foreach(required_fragment
         "return \"sdk.quick-start\";"

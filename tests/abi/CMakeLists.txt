@@ -12,9 +12,24 @@ add_library(CommandCppAbiCompile OBJECT CommandCppAbiCompile.cpp)
 target_include_directories(CommandCppAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(CommandCppAbiCompile PROPERTIES FOLDER "Tests")
 
+add_library(DataShareCppAbiCompile OBJECT DataShareCppAbiCompile.cpp)
+target_include_directories(DataShareCppAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
+set_target_properties(DataShareCppAbiCompile PROPERTIES FOLDER "Tests")
+
 add_library(BehaviorCAbiCompile OBJECT BehaviorCAbiCompile.c)
 target_include_directories(BehaviorCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(BehaviorCAbiCompile PROPERTIES FOLDER "Tests")
+
+if (MSVC)
+    foreach(BML_ADVERSE_ABI_TARGET IN ITEMS
+            ImcCAbiCompile
+            BmlCAbiCompile
+            CommandCppAbiCompile
+            DataShareCppAbiCompile
+            BehaviorCAbiCompile)
+        target_compile_options(${BML_ADVERSE_ABI_TARGET} PRIVATE /Gz /Zp1 /WX)
+    endforeach()
+endif ()
 
 # This target deliberately does not use add_bml_test(): its ImGui configuration
 # must arrive through BML's public usage requirements, exactly as it does for a
