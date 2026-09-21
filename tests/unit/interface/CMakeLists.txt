@@ -6,6 +6,10 @@ add_bml_test(InterfaceAuthoringTest
         SOURCES InterfaceAuthoringTest.cpp
 )
 
+add_bml_test(CommandAuthoringTest
+        SOURCES CommandAuthoringTest.cpp
+)
+
 add_bml_test(InterfaceRegistryTest
         SOURCES
         InterfaceRegistryTest.cpp

@@ -28,6 +28,10 @@ bool ModContext::FindCommandInfo(
     return false;
 }
 
+bool ModContext::SetCommandEnabled(ICommand *, bool) {
+    return true;
+}
+
 const char *CKAngelScriptAdapter::StatusName(CKAS_STATUS) {
     return "CKAS_TEST";
 }
@@ -35,6 +39,16 @@ const char *CKAngelScriptAdapter::StatusName(CKAS_STATUS) {
 namespace BML {
 
 bool CommandContext::RegisterCommand(const void *, ICommand *) {
+    return false;
+}
+
+bool CommandContext::RegisterCommand(
+    const void *, ICommand *, CommandInfo) {
+    return false;
+}
+
+bool CommandContext::RegisterCommand(
+    const void *, ICommand *, CommandInfo, std::shared_ptr<void>) {
     return false;
 }
 

@@ -1,5 +1,6 @@
 #include "BML/BML.h"
 #include "BML/Behavior.h"
+#include "BML/Command.h"
 #include "BML/Gameplay.h"
 #include "BML/ModMenu.h"
 #include "BML/Runtime.h"
@@ -59,6 +60,17 @@ BML_C_ABI_ASSERT(BmlBehaviorScriptInfoSize,
                  sizeof(BML_BehaviorScriptInfo) == 352u);
 
 #if UINTPTR_MAX == UINT32_MAX
+BML_C_ABI_ASSERT(BmlCommandInvocationSize,
+                 sizeof(BML_CommandInvocation) == 36u);
+BML_C_ABI_ASSERT(BmlCommandCompletionRequestSize,
+                 sizeof(BML_CommandCompletionRequest) == 28u);
+BML_C_ABI_ASSERT(BmlCommandCompletionSize,
+                 sizeof(BML_CommandCompletion) == 12u);
+BML_C_ABI_ASSERT(BmlCommandDefinitionSize,
+                 sizeof(BML_CommandDefinition) == 44u);
+BML_C_ABI_ASSERT(BmlCommandInfoSize, sizeof(BML_CommandInfo) == 40u);
+BML_C_ABI_ASSERT(BmlCommandInterfaceSize,
+                 sizeof(BML_CommandInterface) == 36u);
 BML_C_ABI_ASSERT(BmlModMenuPageFrameSize,
                  sizeof(BML_ModMenuPageFrame) == 8u);
 BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 32u);
@@ -187,7 +199,7 @@ int BML_TestCAbiUnregisterCommand(const char *name) {
     return result == BML_OK;
 }
 
-// The two halves of the shell's exit-status and pipe contract. Outside a running
+// The two halves of the shell's exit-status and pipe behavior. Outside a running
 // command the first answers 0 and the second null with a zero length.
 int BML_TestCAbiCommandStatusAndInput(void) {
     size_t length = 1;
@@ -216,6 +228,78 @@ int BML_TestCAbiSpeedrunInterface(void) {
     if (speedrun->ReadTimerState(&state) != BML_OK)
         return 0;
     return state.ElapsedTime >= 0.0f;
+}
+
+static int BML_CDECL BML_TestCAbiExecuteCommand(
+    void *userData, const BML_CommandInvocation *invocation) {
+    if (userData == NULL || invocation == NULL ||
+        invocation->StructSize < BML_COMMAND_INVOCATION_1_0_SIZE)
+        return 1;
+    return invocation->Write(
+        invocation->OutputContext, "executed", sizeof("executed") - 1u) == BML_OK
+        ? 0
+        : 1;
+}
+
+static int BML_CDECL BML_TestCAbiCompleteCommand(
+    void *userData, const BML_CommandCompletionRequest *request,
+    const BML_CommandCompletion *completion) {
+    if (userData == NULL || request == NULL || completion == NULL ||
+        request->StructSize < BML_COMMAND_COMPLETION_REQUEST_1_0_SIZE ||
+        completion->StructSize < BML_COMMAND_COMPLETION_1_0_SIZE)
+        return BML_ERROR_INVALID_PARAMETER;
+    return completion->Add(
+        completion->Context, request->Prefix,
+        request->Prefix != NULL ? strlen(request->Prefix) : 0u);
+}
+
+static int BML_CDECL BML_TestCAbiVisitCommand(
+    void *userData, const BML_CommandInfo *info) {
+    int *count = (int *) userData;
+    if (count == NULL || info == NULL ||
+        info->StructSize < BML_COMMAND_INFO_1_0_SIZE)
+        return BML_ERROR_MALFORMED_MESSAGE;
+    ++*count;
+    return BML_OK;
+}
+
+int BML_TestCAbiCommandInterface(void *userData) {
+    const void *found = NULL;
+    const BML_CommandInterface *command = NULL;
+    BML_CommandHandle handle = BML_COMMAND_INVALID_HANDLE;
+    int commandStatus = 1;
+    int visited = 0;
+    const BML_CommandDefinition definition = {
+        sizeof(BML_CommandDefinition),
+        "c-abi-command",
+        "cabi",
+        "C ABI command",
+        "c-abi-command",
+        "test",
+        BML_COMMAND_NONE,
+        userData,
+        &BML_TestCAbiExecuteCommand,
+        &BML_TestCAbiCompleteCommand,
+        NULL,
+    };
+
+    if (BML_GetInterface(BML_COMMAND_INTERFACE_ID,
+                         BML_COMMAND_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    command = (const BML_CommandInterface *) found;
+    if (!BML_IFACE_HAS(command, BML_CommandInterface, ExecuteLine))
+        return 0;
+    if (command->Register(NULL, &definition, &handle) != BML_OK)
+        return 0;
+    if (command->SetEnabled(NULL, handle, 1) != BML_OK)
+        return 0;
+    if (command->Find("cabi", &BML_TestCAbiVisitCommand, &visited) != BML_OK ||
+        command->Visit(&BML_TestCAbiVisitCommand, &visited) != BML_OK ||
+        visited < 2)
+        return 0;
+    if (command->ExecuteLine("c-abi-command", &commandStatus) != BML_OK)
+        return 0;
+    return command->Unregister(NULL, handle) == BML_OK && commandStatus == 0;
 }
 
 // The runtime interface fills three out structs rather than one, so this checks

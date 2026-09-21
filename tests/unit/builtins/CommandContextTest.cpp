@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <memory>
+
 #include "Console/CommandContext.h"
 #include "Logging/Logger.h"
 
@@ -124,11 +126,72 @@ TEST_F(CommandContextTest, InvocationUsesRegisteredMetadataSnapshot) {
     ASSERT_TRUE(Register(command));
     command->SetCheat(false);
 
-    ICommand *resolved = nullptr;
+    BML::CommandContext::CommandCall call;
+    ASSERT_TRUE(ctx->AcquireCommand("TP", call));
+    EXPECT_EQ(command, call.Command);
+    EXPECT_TRUE(call.Info.Cheat);
+}
+
+TEST_F(CommandContextTest, AcquiredCommandKeepsOwnedImplementationAliveAfterRemoval) {
+    auto command = std::make_shared<TestCommand>("temporary");
+    std::weak_ptr<TestCommand> lifetime = command;
     BML::CommandContext::CommandInfo info;
-    ASSERT_TRUE(ctx->GetCommandInvocation("TP", resolved, info));
-    EXPECT_EQ(command, resolved);
-    EXPECT_TRUE(info.Cheat);
+    info.Name = command->GetName();
+    info.Description = command->GetDescription();
+    ASSERT_TRUE(ctx->RegisterCommand(this, command.get(), std::move(info), command));
+
+    BML::CommandContext::CommandCall call;
+    ASSERT_TRUE(ctx->AcquireCommand("temporary", call));
+    command.reset();
+    ASSERT_EQ(Unregister("temporary"),
+              BML::CommandContext::UnregisterResult::Success);
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("temporary"));
+    ASSERT_FALSE(lifetime.expired());
+    call.Command->Execute(nullptr, {"temporary"});
+    EXPECT_EQ(1, lifetime.lock()->m_ExecuteCount);
+
+    call = {};
+    EXPECT_TRUE(lifetime.expired());
+}
+
+TEST_F(CommandContextTest, ExtendedMetadataAndEnabledStateLiveInRegistry) {
+    auto *command = MakeCommand("teleport", "tp");
+    BML::CommandContext::CommandInfo registered;
+    registered.Name = "teleport";
+    registered.Alias = "tp";
+    registered.Description = "Move an entity";
+    registered.Usage = "teleport <name>";
+    registered.Category = "world";
+    registered.Hidden = true;
+    registered.Enabled = false;
+    registered.Handle = 42;
+    ASSERT_TRUE(ctx->RegisterCommand(this, command, registered));
+
+    BML::CommandContext::CommandCall call;
+    ASSERT_TRUE(ctx->AcquireCommand("tp", call));
+    EXPECT_EQ(command, call.Command);
+    EXPECT_EQ(registered.Usage, call.Info.Usage);
+    EXPECT_EQ(registered.Category, call.Info.Category);
+    EXPECT_EQ(registered.Hidden, call.Info.Hidden);
+    EXPECT_EQ(registered.Enabled, call.Info.Enabled);
+    EXPECT_EQ(registered.Handle, call.Info.Handle);
+
+    ASSERT_TRUE(ctx->SetCommandEnabled(command, true));
+    BML::CommandContext::CommandInfo info;
+    ASSERT_TRUE(ctx->GetCommandInfoByName("teleport", info));
+    EXPECT_TRUE(info.Enabled);
+}
+
+TEST_F(CommandContextTest, DroppedConflictingAliasIsNotReportedAsActive) {
+    auto *first = MakeCommand("first", "shared");
+    auto *second = MakeCommand("second", "shared");
+    ASSERT_TRUE(Register(first));
+    ASSERT_TRUE(Register(second));
+
+    BML::CommandContext::CommandInfo info;
+    ASSERT_TRUE(ctx->GetCommandInfoByName("second", info));
+    EXPECT_TRUE(info.Alias.empty());
+    EXPECT_EQ(first, ctx->GetCommandByName("shared"));
 }
 
 TEST_F(CommandContextTest, RegisterNullCommand) {

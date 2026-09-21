@@ -5,6 +5,7 @@
 // Offsets are the x86 MSVC layout, the only platform the loader ships on.
 #include "BML/Gameplay.h"
 #include "BML/Behavior.h"
+#include "BML/Command.h"
 #include "BML/Interface.h"
 #include "BML/ModMenu.h"
 #include "BML/Runtime.h"
@@ -50,6 +51,65 @@ TEST(InterfaceStructOffsets, RuntimeInterface) {
     EXPECT_GOLDEN_OFFSET(BML_RuntimeInterface, ReadClock, 16);
     EXPECT_GOLDEN_OFFSET(BML_RuntimeInterface, ReadScore, 20);
     ExpectGrowthRules<BML_RuntimeInterface>("bml.runtime", 24, 0, BML_RUNTIME_INTERFACE_MINOR);
+}
+
+TEST(InterfaceStructOffsets, CommandRecordsAndInterface) {
+    EXPECT_GOLDEN_OFFSET(BML_CommandInvocation, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInvocation, Name, 4);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInvocation, InvokedAs, 8);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInvocation, ArgumentCount, 12);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInvocation, Arguments, 16);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInvocation, Input, 20);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInvocation, InputLength, 24);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInvocation, OutputContext, 28);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInvocation, Write, 32);
+    EXPECT_EQ(sizeof(BML_CommandInvocation), static_cast<std::size_t>(36));
+
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletionRequest, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletionRequest, Name, 4);
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletionRequest, InvokedAs, 8);
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletionRequest, ArgumentCount, 12);
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletionRequest, Arguments, 16);
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletionRequest, ActiveArgument, 20);
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletionRequest, Prefix, 24);
+    EXPECT_EQ(sizeof(BML_CommandCompletionRequest), static_cast<std::size_t>(28));
+
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletion, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletion, Context, 4);
+    EXPECT_GOLDEN_OFFSET(BML_CommandCompletion, Add, 8);
+    EXPECT_EQ(sizeof(BML_CommandCompletion), static_cast<std::size_t>(12));
+
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, Name, 4);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, Alias, 8);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, Description, 12);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, Usage, 16);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, Category, 20);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, Flags, 24);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, UserData, 28);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, Execute, 32);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, Complete, 36);
+    EXPECT_GOLDEN_OFFSET(BML_CommandDefinition, Release, 40);
+    EXPECT_EQ(sizeof(BML_CommandDefinition), static_cast<std::size_t>(44));
+
+    EXPECT_GOLDEN_OFFSET(BML_CommandInfo, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInfo, Handle, 8);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInfo, Name, 16);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInfo, Alias, 20);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInfo, Description, 24);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInfo, Usage, 28);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInfo, Category, 32);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInfo, Flags, 36);
+    EXPECT_EQ(sizeof(BML_CommandInfo), static_cast<std::size_t>(40));
+
+    EXPECT_GOLDEN_OFFSET(BML_CommandInterface, Register, 12);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInterface, Unregister, 16);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInterface, SetEnabled, 20);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInterface, Visit, 24);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInterface, Find, 28);
+    EXPECT_GOLDEN_OFFSET(BML_CommandInterface, ExecuteLine, 32);
+    ExpectGrowthRules<BML_CommandInterface>("bml.command", 36, 0,
+                                            BML_COMMAND_INTERFACE_MINOR);
 }
 
 TEST(InterfaceStructOffsets, BehaviorInterface) {

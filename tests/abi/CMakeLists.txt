@@ -8,6 +8,10 @@ add_library(BmlCAbiCompile OBJECT BmlCAbiCompile.c)
 target_include_directories(BmlCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(BmlCAbiCompile PROPERTIES FOLDER "Tests")
 
+add_library(CommandCppAbiCompile OBJECT CommandCppAbiCompile.cpp)
+target_include_directories(CommandCppAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
+set_target_properties(CommandCppAbiCompile PROPERTIES FOLDER "Tests")
+
 add_library(BehaviorCAbiCompile OBJECT BehaviorCAbiCompile.c)
 target_include_directories(BehaviorCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(BehaviorCAbiCompile PROPERTIES FOLDER "Tests")
