@@ -4525,6 +4525,34 @@ TEST(BehaviorAuthoring, DoesNotReusePatchBindingsAfterARejectedReplacement) {
     EXPECT_GT(g_State.PatchBindings.front(), rejectedBinding);
 }
 
+TEST(BehaviorAuthoring, UsesLatestBindingWhenAnEditIsResubmitted) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    Graph graph = inspected.Take();
+
+    Edit edit;
+    const auto node = edit.Root().Require("Counter_Active");
+    auto applied = graph.Apply("resubmitted-binding", edit);
+    ASSERT_TRUE(applied);
+    Patch patch = applied.Take();
+    ASSERT_EQ(g_State.PatchBindings.size(), 1u);
+    const std::uint64_t firstBinding = g_State.PatchBindings.front();
+
+    auto replaced = patch.Replace(On(graph, edit));
+    ASSERT_TRUE(replaced);
+    ASSERT_EQ(g_State.PatchBindings.size(), 1u);
+    const std::uint64_t replacementBinding = g_State.PatchBindings.front();
+    ASSERT_GT(replacementBinding, firstBinding);
+
+    auto resolved = patch.Resolve(node);
+    ASSERT_TRUE(resolved);
+    EXPECT_EQ(g_State.ResolvedBinding, replacementBinding);
+}
+
 TEST(BehaviorAuthoring, DoesNotReusePlanBindingsAfterARejectedReplacement) {
     g_State = {};
     auto opened = Session::Open();

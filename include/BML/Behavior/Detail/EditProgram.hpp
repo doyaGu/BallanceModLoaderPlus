@@ -1627,11 +1627,11 @@ Result<BML_ObjectRef> Patch::Resolve(const Handle &node) const {
         return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
     const std::owner_less<std::weak_ptr<Detail::EditProgram>> before;
     const auto symbols = std::find_if(
-        m_Edits.begin(), m_Edits.end(), [&](const Detail::PatchSymbols &item) {
+        m_Edits.rbegin(), m_Edits.rend(), [&](const Detail::PatchSymbols &item) {
             return !before(item.Edit, node.m_Edit) &&
                    !before(node.m_Edit, item.Edit);
         });
-    if (symbols == m_Edits.end() || !node.m_Id ||
+    if (symbols == m_Edits.rend() || !node.m_Id ||
         node.m_Id >= symbols->HandleLimit ||
         node.m_Scope >= symbols->HandleLimit) {
         Status status;
@@ -1658,11 +1658,11 @@ Result<BML_BehaviorPortRef> Patch::ResolvePort(const Handle &port) const {
         return Result<BML_BehaviorPortRef>::Failure(BML_ERROR_INVALID_HANDLE);
     const std::owner_less<std::weak_ptr<Detail::EditProgram>> before;
     const auto symbols = std::find_if(
-        m_Edits.begin(), m_Edits.end(), [&](const Detail::PatchSymbols &item) {
+        m_Edits.rbegin(), m_Edits.rend(), [&](const Detail::PatchSymbols &item) {
             return !before(item.Edit, port.m_Edit) &&
                    !before(port.m_Edit, item.Edit);
         });
-    if (symbols == m_Edits.end() || !port.m_Id ||
+    if (symbols == m_Edits.rend() || !port.m_Id ||
         port.m_Id >= symbols->HandleLimit ||
         port.m_Scope >= symbols->HandleLimit) {
         Status status;

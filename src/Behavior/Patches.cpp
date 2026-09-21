@@ -44,11 +44,11 @@ Status ExtendDefinitionBindings(
 
 bool SameTarget(const Patches::Target &left,
                 const Patches::Target &right) noexcept {
+    // Bindings identify one submission's symbols; they do not change the CK
+    // edit. RebuildSymbols publishes the current binding after reconciliation.
     return left.Graph == right.Graph &&
         left.Fingerprint == right.Fingerprint &&
-        left.Binding == right.Binding &&
-        left.Body && right.Body && left.Body->SameAs(*right.Body) &&
-        left.Symbols == right.Symbols;
+        left.Body && right.Body && left.Body->SameAs(*right.Body);
 }
 
 std::size_t CommonPrefix(const std::vector<Patches::Target> &left,
