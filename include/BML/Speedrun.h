@@ -4,7 +4,8 @@
 // so including this header still costs nothing at link time.
 //
 // Interface.h explains the header, the version rules, and BML_IFACE_HAS. Every
-// function here runs on the calling thread, so call them from the game thread.
+// function here runs on the calling thread and answers BML_ERROR_WRONG_THREAD
+// outside the game thread.
 //
 // There is exactly one timer, the one the loader shows on its own HUD, and the
 // loader keeps driving it: it resets on level start, pauses on level pause and
@@ -19,6 +20,8 @@
 #include "BML/Interface.h"
 
 BML_BEGIN_CDECLS
+
+#pragma pack(push, 8)
 
 #define BML_SPEEDRUN_INTERFACE_ID "bml.speedrun"
 #define BML_SPEEDRUN_INTERFACE_MAJOR 1
@@ -37,24 +40,26 @@ typedef struct BML_SpeedrunInterface {
 
     // Answers BML_ERROR_INVALID_PARAMETER for a null out and BML_ERROR_FAIL
     // before the loader has initialized. Nothing else fails.
-    int (*ReadTimerState)(BML_SpeedrunTimerState *out);
+    int (BML_CDECL *ReadTimerState)(BML_SpeedrunTimerState *out);
 
     // Toggles only the visibility of the HUD timer element, without writing the
     // loader's ShowSR configuration entry. The loader restores the configured
     // value on the next level start, and hides the element on level exit. Use
     // UI::SetHUDMode with HUD_SR for a lasting change.
-    int (*SetTimerVisible)(int visible);
+    int (BML_CDECL *SetTimerVisible)(int visible);
 
     // Resumes counting from the current elapsed time rather than from zero. Call
     // ResetTimer first for a fresh run.
-    int (*StartTimer)(void);
+    int (BML_CDECL *StartTimer)(void);
 
     // Stops counting and keeps the elapsed time.
-    int (*PauseTimer)(void);
+    int (BML_CDECL *PauseTimer)(void);
 
     // Zeroes the elapsed time and leaves the timer stopped.
-    int (*ResetTimer)(void);
+    int (BML_CDECL *ResetTimer)(void);
 } BML_SpeedrunInterface;
+
+#pragma pack(pop)
 
 BML_END_CDECLS
 

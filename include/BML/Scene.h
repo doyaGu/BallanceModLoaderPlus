@@ -28,6 +28,8 @@
 
 BML_BEGIN_CDECLS
 
+#pragma pack(push, 8)
+
 #define BML_SCENE_INTERFACE_ID "bml.scene"
 #define BML_SCENE_INTERFACE_MAJOR 1
 #define BML_SCENE_INTERFACE_MINOR 0
@@ -64,21 +66,24 @@ typedef struct BML_SceneInterface {
     BML_InterfaceHeader Header;
 
     // Answers BML_ERROR_OBJECT_INVALID when the reference is stale.
-    int (*ReadObject)(BML_ObjectRef object, BML_SceneObjectInfo *out);
+    int (BML_CDECL *ReadObject)(BML_ObjectRef object, BML_SceneObjectInfo *out);
 
     // Answers BML_ERROR_OBJECT_INVALID when the reference is stale and also when it
     // resolves to an object that is not a CK3dEntity.
-    int (*ReadEntityTransform)(BML_ObjectRef object, BML_SceneEntityTransform *out);
+    int (BML_CDECL *ReadEntityTransform)(BML_ObjectRef object, BML_SceneEntityTransform *out);
 
     // Looks up by name across every class, like CKContext::GetObjectByName. Writes
     // a null ref and still answers BML_OK when nothing matches.
-    int (*FindObject)(const char *name, BML_ObjectRef *out);
+    int (BML_CDECL *FindObject)(const char *name, BML_ObjectRef *out);
 
     // classId is a CK_CLASSID. This is the counterpart of the IBML GetXxxByName
     // family: pass CKCID_3DOBJECT here instead of calling IBML::Get3dObjectByName.
     // Writes a null ref and still answers BML_OK when nothing matches.
-    int (*FindObjectOfClass)(const char *name, int classId, BML_ObjectRef *out);
+    int (BML_CDECL *FindObjectOfClass)(const char *name, int classId,
+                                       BML_ObjectRef *out);
 } BML_SceneInterface;
+
+#pragma pack(pop)
 
 BML_END_CDECLS
 

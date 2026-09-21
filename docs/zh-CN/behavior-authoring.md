@@ -34,7 +34,9 @@ static void UseBehavior(void) {
 }
 ```
 
-每个带 `StructSize` 的输入或输出结构都必须由调用方先填写该字段。输入字符串和数组只借用到调用返回；Frame、Graph 和 Layout 的变长结果使用无部分写入的 caller-buffer 协议。`BML_BEHAVIOR_HAS_1_0` 是完整 1.0 surface 的 capability gate，后续 minor 增加的成员再单独使用 `BML_IFACE_HAS` 检查。
+每个带 `StructSize` 的结构都应先填写该字段。1.0 的数据结构布局不再改变；后续次版本可以在 `BML_BehaviorInterface` 末尾追加函数指针，需要更多数据时则新增结构类型，不扩展现有结构。
+
+输入字符串和数组只在调用期间借用。Frame、Graph 和 Layout 的变长读取要么写入完整结果，要么只报告所需缓冲区大小。完整 1.0 API 使用 `BML_BEHAVIOR_HAS_1_0` 检查，后续新增成员使用 `BML_IFACE_HAS`。
 
 这不意味着 BML 提供纯 C 的 Mod 启动协议：现有 Native Mod host 仍由 `IMod` 定义。链接进同一个 Native Mod DLL 的 C 翻译单元或其他语言适配层可以直接调用 C seam，并仍遵守 Mod ownership、game thread、world reset 和 `BML_ObjectRef` 生命周期。它是独立的 Behavior seam，不是脱离 BML Runtime 的独立库。
 

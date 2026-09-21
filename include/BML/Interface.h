@@ -49,6 +49,8 @@
 
 BML_BEGIN_CDECLS
 
+#pragma pack(push, 8)
+
 // The first member of every interface struct. InterfaceId points at a string
 // literal the provider owns, and matches the id BML_GetInterface was asked for.
 typedef struct BML_InterfaceHeader {
@@ -93,6 +95,8 @@ BML_EXPORT int BML_CDECL BML_RegisterInterface(
 // registration answers BML_ERROR_ACCESS_DENIED. This is game-thread-only.
 BML_EXPORT int BML_CDECL BML_UnregisterInterface(
     const char *ownerId, const char *interfaceId, uint16_t majorVersion);
+
+#pragma pack(pop)
 
 BML_END_CDECLS
 

@@ -34,6 +34,8 @@
 
 BML_BEGIN_CDECLS
 
+#pragma pack(push, 8)
+
 #define BML_GAMEPLAY_INTERFACE_ID "bml.gameplay"
 #define BML_GAMEPLAY_INTERFACE_MAJOR 1
 #define BML_GAMEPLAY_INTERFACE_MINOR 0
@@ -96,20 +98,22 @@ typedef struct BML_GameplayResetpoint {
 typedef struct BML_GameplayInterface {
     BML_InterfaceHeader Header;
 
-    int (*ReadLevel)(BML_GameplayLevelState *out);
-    int (*ReadEnergy)(BML_GameplayEnergyState *out);
+    int (BML_CDECL *ReadLevel)(BML_GameplayLevelState *out);
+    int (BML_CDECL *ReadEnergy)(BML_GameplayEnergyState *out);
 
     // How many rows the AllLevel array has right now.
-    int (*ReadCatalogCount)(size_t *out);
+    int (BML_CDECL *ReadCatalogCount)(size_t *out);
     // Answers BML_ERROR_NOT_FOUND when index is past the last row.
-    int (*ReadCatalogEntry)(size_t index, BML_GameplayCatalogEntry *out);
+    int (BML_CDECL *ReadCatalogEntry)(size_t index, BML_GameplayCatalogEntry *out);
 
-    int (*ReadCheckpointCount)(size_t *out);
-    int (*ReadCheckpoint)(size_t index, BML_GameplayCheckpoint *out);
+    int (BML_CDECL *ReadCheckpointCount)(size_t *out);
+    int (BML_CDECL *ReadCheckpoint)(size_t index, BML_GameplayCheckpoint *out);
 
-    int (*ReadResetpointCount)(size_t *out);
-    int (*ReadResetpoint)(size_t index, BML_GameplayResetpoint *out);
+    int (BML_CDECL *ReadResetpointCount)(size_t *out);
+    int (BML_CDECL *ReadResetpoint)(size_t index, BML_GameplayResetpoint *out);
 } BML_GameplayInterface;
+
+#pragma pack(pop)
 
 BML_END_CDECLS
 
@@ -159,7 +163,8 @@ inline const BML_GameplayInterface *Interface() {
 // at a time. out is replaced only once the whole list is in hand, so a level
 // change partway through leaves the caller's vector as it was.
 template <typename Value, typename Row, typename Convert>
-int ReadList(int (*readCount)(std::size_t *), int (*readRow)(std::size_t, Row *),
+int ReadList(int (BML_CDECL *readCount)(std::size_t *),
+             int (BML_CDECL *readRow)(std::size_t, Row *),
              std::vector<Value> &out, Convert convert) {
     std::size_t count = 0;
     int status = readCount(&count);

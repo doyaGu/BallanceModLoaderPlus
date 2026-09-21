@@ -25,6 +25,8 @@
 
 BML_BEGIN_CDECLS
 
+#pragma pack(push, 8)
+
 #define BML_UI_INTERFACE_ID "bml.ui"
 #define BML_UI_INTERFACE_MAJOR 1
 #define BML_UI_INTERFACE_MINOR 0
@@ -35,7 +37,7 @@ typedef enum BML_UIHUDElement {
     BML_UI_HUD_TITLE = 1,
     BML_UI_HUD_FPS = 2,
     BML_UI_HUD_SR = 4,
-    _BML_UI_HUD_ELEMENT_FORCE_32BIT = 0x7fffffff
+    BML_UI_HUD_ELEMENT_FORCE_32BIT = 0x7fffffff
 } BML_UIHUDElement;
 
 // Mode is a bitmask of the BML_UIHUDElement values above. This is a C struct and
@@ -48,22 +50,22 @@ typedef struct BML_UIHUDState {
 typedef struct BML_UIInterface {
     BML_InterfaceHeader Header;
 
-    int (*ReadHUDState)(BML_UIHUDState *out);
+    int (BML_CDECL *ReadHUDState)(BML_UIHUDState *out);
 
     // Appends one line to the loader's ingame message list, the same list
     // IBML::SendIngameMessage writes to. Older lines scroll off on their own.
-    int (*AddMessage)(const char *message);
-    int (*ClearMessages)(void);
+    int (BML_CDECL *AddMessage)(const char *message);
+    int (BML_CDECL *ClearMessages)(void);
 
-    int (*OpenModsMenu)(void);
-    int (*CloseModsMenu)(void);
-    int (*OpenMapMenu)(void);
-    int (*CloseMapMenu)(void);
+    int (BML_CDECL *OpenModsMenu)(void);
+    int (BML_CDECL *CloseModsMenu)(void);
+    int (BML_CDECL *OpenMapMenu)(void);
+    int (BML_CDECL *CloseMapMenu)(void);
 
     // Replaces the whole HUD bitmask, so read it first and mask if you only mean
     // to change one element. This writes the loader's own ShowTitle, ShowFPS, and
     // ShowSR configuration entries, so the change persists across restarts.
-    int (*SetHUDMode)(int mode);
+    int (BML_CDECL *SetHUDMode)(int mode);
 
     // These two only toggle the visibility of the HUD element and do not write the
     // configuration, so they are not the same as setting one bit through
@@ -71,9 +73,11 @@ typedef struct BML_UIInterface {
     // restores that configured value whenever it rebuilds the HUD, which includes
     // every level load. Use them for a temporary hide and SetHUDMode for a lasting
     // change.
-    int (*ShowTitle)(int visible);
-    int (*ShowFPS)(int visible);
+    int (BML_CDECL *ShowTitle)(int visible);
+    int (BML_CDECL *ShowFPS)(int visible);
 } BML_UIInterface;
+
+#pragma pack(pop)
 
 BML_END_CDECLS
 

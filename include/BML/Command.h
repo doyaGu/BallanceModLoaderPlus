@@ -13,6 +13,8 @@
 
 BML_BEGIN_CDECLS
 
+#pragma pack(push, 8)
+
 #define BML_COMMAND_INTERFACE_ID "bml.command"
 #define BML_COMMAND_INTERFACE_MAJOR 1
 #define BML_COMMAND_INTERFACE_MINOR 0
@@ -62,7 +64,8 @@ typedef struct BML_CommandCompletion BML_CommandCompletion;
 typedef int (BML_CDECL *BML_CommandWrite)(
     void *context, const char *text, size_t length);
 
-// Adds one unfiltered UTF-8 completion candidate without embedded null bytes.
+// Adds one non-empty, unfiltered UTF-8 completion candidate without embedded
+// null bytes.
 // The context and function are valid only during Complete. The command bar
 // performs prefix filtering and duplicate removal after the callback returns.
 typedef int (BML_CDECL *BML_CommandAddCompletion)(
@@ -209,6 +212,8 @@ typedef struct BML_CommandInterface {
     // from the command's shell status.
     int (BML_CDECL *ExecuteLine)(const char *line, int *outStatus);
 } BML_CommandInterface;
+
+#pragma pack(pop)
 
 BML_END_CDECLS
 

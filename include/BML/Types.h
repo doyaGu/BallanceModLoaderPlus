@@ -22,6 +22,8 @@
 
 BML_BEGIN_CDECLS
 
+#pragma pack(push, 8)
+
 #define BML_OBJECT_DOMAIN_VIRTOOLS 1u
 
 /* An interface-issued object reference. A zero Domain denotes null. Slot and
@@ -83,6 +85,8 @@ typedef struct BML_Mat4 {
     float m20, m21, m22, m23;
     float m30, m31, m32, m33;
 } BML_Mat4;
+
+#pragma pack(pop)
 
 BML_END_CDECLS
 

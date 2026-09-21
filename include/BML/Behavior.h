@@ -5,6 +5,13 @@
 // through its Ins and Outs. Values passed in are borrowed for the duration of a
 // call. Run frames returned by TakeFrames are copied into caller-owned buffers
 // and contain no process pointers.
+//
+// The data-record layouts declared by bml.behavior 1.0 are immutable. Their
+// StructSize fields identify the complete 1.0 record and let the loader reject
+// truncated storage; fields are not appended to these nested records. A later
+// minor version grows only BML_BehaviorInterface by appending function pointers
+// that use newly named record types. This keeps arrays, nested records, and
+// caller-provided strides unambiguous across SDK versions.
 #ifndef BML_BEHAVIOR_H
 #define BML_BEHAVIOR_H
 
@@ -15,11 +22,7 @@
 #error "bml.behavior is a Win32 Virtools 2.1 interface"
 #endif
 
-#if defined(_WIN32) && !defined(_WIN64)
-#define BML_BEHAVIOR_CALL __cdecl
-#else
-#define BML_BEHAVIOR_CALL
-#endif
+#define BML_BEHAVIOR_CALL BML_CDECL
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
@@ -301,7 +304,9 @@ typedef struct BML_BehaviorStatus {
     char Message[BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY];
 } BML_BehaviorStatus;
 
-// A caller that supplies Status initializes StructSize to sizeof(Status).
+// A caller that supplies Status initializes StructSize to sizeof(Status). The
+// same rule applies to every 1.0 record containing StructSize; those layouts are
+// fixed for interface major version 1.
 // Whenever that size is valid, a Behavior function which accepts Status clears
 // and writes it before returning. Error == BML_BEHAVIOR_ERROR_NONE means the
 // outer BML_* result alone describes a generic argument, thread, availability,

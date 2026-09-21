@@ -34,7 +34,9 @@ static void UseBehavior(void) {
 }
 ```
 
-The caller must initialize `StructSize` in every input or output record that has that member. Input strings and arrays are borrowed only for the call. Variable-size Frame, Graph, and Layout results use the all-or-nothing caller-buffer protocol. `BML_BEHAVIOR_HAS_1_0` is the capability check for the complete 1.0 surface; use `BML_IFACE_HAS` separately for members appended by a later minor.
+Initialize `StructSize` in every record that contains it. The layouts of all 1.0 data records are fixed. Later minor versions may append function pointers to `BML_BehaviorInterface`; new data uses a newly named record instead of extending an existing one.
+
+Input strings and arrays are borrowed only for the call. Variable-size Frame, Graph, and Layout reads either write the complete result or report the required buffer size. Use `BML_BEHAVIOR_HAS_1_0` for the full 1.0 API and `BML_IFACE_HAS` for members added later.
 
 This does not add a pure C Mod bootstrap: the existing Native Mod host is still defined by `IMod`. A C translation unit or another language adapter linked into the same Native Mod DLL can call this seam directly while following the same Mod ownership, game-thread, world-reset, and `BML_ObjectRef` lifetime rules. It is an independent Behavior seam, not a library independent of the BML Runtime.
 

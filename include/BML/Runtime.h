@@ -4,7 +4,8 @@
 // header still costs nothing at link time.
 //
 // Interface.h explains the header, the version rules, and BML_IFACE_HAS. Every
-// function here runs on the calling thread, so call them from the game thread.
+// function here runs on the calling thread and answers BML_ERROR_WRONG_THREAD
+// outside the game thread.
 //
 // Each read fills its out parameter only when it answers BML_OK, and answers
 // BML_ERROR_INVALID_PARAMETER for a null out or BML_ERROR_FAIL before the loader
@@ -21,6 +22,8 @@
 #include "BML/Interface.h"
 
 BML_BEGIN_CDECLS
+
+#pragma pack(push, 8)
 
 #define BML_RUNTIME_INTERFACE_ID "bml.runtime"
 #define BML_RUNTIME_INTERFACE_MAJOR 1
@@ -58,13 +61,15 @@ typedef struct BML_RuntimeScore {
 typedef struct BML_RuntimeInterface {
     BML_InterfaceHeader Header;
 
-    int (*ReadState)(BML_RuntimeState *out);
+    int (BML_CDECL *ReadState)(BML_RuntimeState *out);
 
     // Answers BML_ERROR_UNAVAILABLE when the Virtools time manager is not up yet.
-    int (*ReadClock)(BML_RuntimeClock *out);
+    int (BML_CDECL *ReadClock)(BML_RuntimeClock *out);
 
-    int (*ReadScore)(BML_RuntimeScore *out);
+    int (BML_CDECL *ReadScore)(BML_RuntimeScore *out);
 } BML_RuntimeInterface;
+
+#pragma pack(pop)
 
 BML_END_CDECLS
 

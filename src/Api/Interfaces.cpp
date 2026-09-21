@@ -48,10 +48,9 @@ int Serve(Body &&body) {
     }
 }
 
-// The gameplay, scene, and UI thunks touch the game's data arrays, its objects,
-// and the UI the loader draws from the main thread, so they refuse a call from anywhere else rather than racing the
-// frame that draws it. The reads refuse too, so there is one rule per interface
-// rather than one per member.
+// Runtime, speedrun, gameplay, scene, and UI all read or mutate state owned by
+// the game thread, so they refuse calls from anywhere else rather than racing a
+// frame. Keeping one rule per interface also makes reads and writes predictable.
 template <typename Body>
 int ServeOnMainThread(Body &&body) {
     return Serve([&body](ModContext &context) {
@@ -61,10 +60,10 @@ int ServeOnMainThread(Body &&body) {
     });
 }
 
-int RuntimeReadState(BML_RuntimeState *out) {
+int BML_CDECL RuntimeReadState(BML_RuntimeState *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
-    return Serve([out](ModContext &context) {
+    return ServeOnMainThread([out](ModContext &context) {
         const BML::GameSessionSnapshot session = context.ReadGameSession();
         out->InGame = session.IsInGame() ? 1 : 0;
         out->InLevel = session.IsInLevel() ? 1 : 0;
@@ -75,10 +74,10 @@ int RuntimeReadState(BML_RuntimeState *out) {
     });
 }
 
-int RuntimeReadClock(BML_RuntimeClock *out) {
+int BML_CDECL RuntimeReadClock(BML_RuntimeClock *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
-    return Serve([out](ModContext &context) {
+    return ServeOnMainThread([out](ModContext &context) {
         CKTimeManager *time = context.GetTimeManager();
         if (!time)
             return BML_ERROR_UNAVAILABLE;
@@ -93,54 +92,54 @@ int RuntimeReadClock(BML_RuntimeClock *out) {
     });
 }
 
-int RuntimeReadScore(BML_RuntimeScore *out) {
+int BML_CDECL RuntimeReadScore(BML_RuntimeScore *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
-    return Serve([out](ModContext &context) {
+    return ServeOnMainThread([out](ModContext &context) {
         out->SR = context.GetSRScore();
         out->HS = context.GetHSScore();
         return BML_OK;
     });
 }
 
-int SpeedrunReadTimerState(BML_SpeedrunTimerState *out) {
+int BML_CDECL SpeedrunReadTimerState(BML_SpeedrunTimerState *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
-    return Serve([out](ModContext &context) {
+    return ServeOnMainThread([out](ModContext &context) {
         out->ElapsedTime = context.GetSRTime();
         return BML_OK;
     });
 }
 
-int SpeedrunSetTimerVisible(int visible) {
-    return Serve([visible](ModContext &context) {
+int BML_CDECL SpeedrunSetTimerVisible(int visible) {
+    return ServeOnMainThread([visible](ModContext &context) {
         context.ShowSRTimer(visible != 0);
         return BML_OK;
     });
 }
 
-int SpeedrunStartTimer() {
-    return Serve([](ModContext &context) {
+int BML_CDECL SpeedrunStartTimer() {
+    return ServeOnMainThread([](ModContext &context) {
         context.StartSRTimer();
         return BML_OK;
     });
 }
 
-int SpeedrunPauseTimer() {
-    return Serve([](ModContext &context) {
+int BML_CDECL SpeedrunPauseTimer() {
+    return ServeOnMainThread([](ModContext &context) {
         context.PauseSRTimer();
         return BML_OK;
     });
 }
 
-int SpeedrunResetTimer() {
-    return Serve([](ModContext &context) {
+int BML_CDECL SpeedrunResetTimer() {
+    return ServeOnMainThread([](ModContext &context) {
         context.ResetSRTimer();
         return BML_OK;
     });
 }
 
-int GameplayReadLevel(BML_GameplayLevelState *out) {
+int BML_CDECL GameplayReadLevel(BML_GameplayLevelState *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([out](ModContext &context) {
@@ -148,7 +147,7 @@ int GameplayReadLevel(BML_GameplayLevelState *out) {
     });
 }
 
-int GameplayReadEnergy(BML_GameplayEnergyState *out) {
+int BML_CDECL GameplayReadEnergy(BML_GameplayEnergyState *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([out](ModContext &context) {
@@ -156,7 +155,7 @@ int GameplayReadEnergy(BML_GameplayEnergyState *out) {
     });
 }
 
-int GameplayReadCatalogCount(size_t *out) {
+int BML_CDECL GameplayReadCatalogCount(size_t *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([out](ModContext &context) {
@@ -164,7 +163,7 @@ int GameplayReadCatalogCount(size_t *out) {
     });
 }
 
-int GameplayReadCatalogEntry(size_t index, BML_GameplayCatalogEntry *out) {
+int BML_CDECL GameplayReadCatalogEntry(size_t index, BML_GameplayCatalogEntry *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([index, out](ModContext &context) {
@@ -172,7 +171,7 @@ int GameplayReadCatalogEntry(size_t index, BML_GameplayCatalogEntry *out) {
     });
 }
 
-int GameplayReadCheckpointCount(size_t *out) {
+int BML_CDECL GameplayReadCheckpointCount(size_t *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([out](ModContext &context) {
@@ -180,7 +179,7 @@ int GameplayReadCheckpointCount(size_t *out) {
     });
 }
 
-int GameplayReadCheckpoint(size_t index, BML_GameplayCheckpoint *out) {
+int BML_CDECL GameplayReadCheckpoint(size_t index, BML_GameplayCheckpoint *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([index, out](ModContext &context) {
@@ -188,7 +187,7 @@ int GameplayReadCheckpoint(size_t index, BML_GameplayCheckpoint *out) {
     });
 }
 
-int GameplayReadResetpointCount(size_t *out) {
+int BML_CDECL GameplayReadResetpointCount(size_t *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([out](ModContext &context) {
@@ -196,7 +195,7 @@ int GameplayReadResetpointCount(size_t *out) {
     });
 }
 
-int GameplayReadResetpoint(size_t index, BML_GameplayResetpoint *out) {
+int BML_CDECL GameplayReadResetpoint(size_t index, BML_GameplayResetpoint *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([index, out](ModContext &context) {
@@ -204,7 +203,7 @@ int GameplayReadResetpoint(size_t index, BML_GameplayResetpoint *out) {
     });
 }
 
-int SceneReadObject(BML_ObjectRef object, BML_SceneObjectInfo *out) {
+int BML_CDECL SceneReadObject(BML_ObjectRef object, BML_SceneObjectInfo *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([object, out](ModContext &context) {
@@ -212,7 +211,7 @@ int SceneReadObject(BML_ObjectRef object, BML_SceneObjectInfo *out) {
     });
 }
 
-int SceneReadEntityTransform(BML_ObjectRef object, BML_SceneEntityTransform *out) {
+int BML_CDECL SceneReadEntityTransform(BML_ObjectRef object, BML_SceneEntityTransform *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([object, out](ModContext &context) {
@@ -220,7 +219,7 @@ int SceneReadEntityTransform(BML_ObjectRef object, BML_SceneEntityTransform *out
     });
 }
 
-int SceneFindObject(const char *name, BML_ObjectRef *out) {
+int BML_CDECL SceneFindObject(const char *name, BML_ObjectRef *out) {
     if (!name || !out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([name, out](ModContext &context) {
@@ -228,7 +227,7 @@ int SceneFindObject(const char *name, BML_ObjectRef *out) {
     });
 }
 
-int SceneFindObjectOfClass(const char *name, int classId, BML_ObjectRef *out) {
+int BML_CDECL SceneFindObjectOfClass(const char *name, int classId, BML_ObjectRef *out) {
     if (!name || !out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([name, classId, out](ModContext &context) {
@@ -236,7 +235,7 @@ int SceneFindObjectOfClass(const char *name, int classId, BML_ObjectRef *out) {
     });
 }
 
-int UIReadHUDState(BML_UIHUDState *out) {
+int BML_CDECL UIReadHUDState(BML_UIHUDState *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([out](ModContext &context) {
@@ -245,7 +244,7 @@ int UIReadHUDState(BML_UIHUDState *out) {
     });
 }
 
-int UIAddMessage(const char *message) {
+int BML_CDECL UIAddMessage(const char *message) {
     if (!message)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([message](ModContext &context) {
@@ -254,56 +253,56 @@ int UIAddMessage(const char *message) {
     });
 }
 
-int UIClearMessages() {
+int BML_CDECL UIClearMessages() {
     return ServeOnMainThread([](ModContext &context) {
         context.ClearIngameMessages();
         return BML_OK;
     });
 }
 
-int UIOpenModsMenu() {
+int BML_CDECL UIOpenModsMenu() {
     return ServeOnMainThread([](ModContext &context) {
         context.OpenModsMenu();
         return BML_OK;
     });
 }
 
-int UICloseModsMenu() {
+int BML_CDECL UICloseModsMenu() {
     return ServeOnMainThread([](ModContext &context) {
         context.CloseModsMenu();
         return BML_OK;
     });
 }
 
-int UIOpenMapMenu() {
+int BML_CDECL UIOpenMapMenu() {
     return ServeOnMainThread([](ModContext &context) {
         context.OpenMapMenu();
         return BML_OK;
     });
 }
 
-int UICloseMapMenu() {
+int BML_CDECL UICloseMapMenu() {
     return ServeOnMainThread([](ModContext &context) {
         context.CloseMapMenu();
         return BML_OK;
     });
 }
 
-int UISetHUDMode(int mode) {
+int BML_CDECL UISetHUDMode(int mode) {
     return ServeOnMainThread([mode](ModContext &context) {
         context.SetHUD(mode);
         return BML_OK;
     });
 }
 
-int UIShowTitle(int visible) {
+int BML_CDECL UIShowTitle(int visible) {
     return ServeOnMainThread([visible](ModContext &context) {
         context.ShowTitle(visible != 0);
         return BML_OK;
     });
 }
 
-int UIShowFPS(int visible) {
+int BML_CDECL UIShowFPS(int visible) {
     return ServeOnMainThread([visible](ModContext &context) {
         context.ShowFPS(visible != 0);
         return BML_OK;
