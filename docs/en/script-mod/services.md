@@ -230,4 +230,11 @@ requirement, enabled state, and completion are optional. Duplicate names or
 aliases fail registration. Self-unregister is delayed until the callback
 returns.
 
+Script commands intentionally expose a smaller shell surface than native
+`bml.command`: `Execute` returns `void`, and `CommandEvent` does not carry
+pipeline input or an output writer. A callback that finishes normally counts as
+successful; a script callback failure makes the shell stage fail. Use the
+native Command interface when a command must choose its own shell status or
+consume and produce pipeline data explicitly.
+
 Next: [Engine and UI](engine-ui.md).

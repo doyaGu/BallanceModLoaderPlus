@@ -35,6 +35,11 @@ funcdef void CommandCompletionCallback(const BML::ModContext &in ctx, const BML:
 
 阶段值：`COMMAND_EVENT_PRE`、`COMMAND_EVENT_POST`、`COMMAND_EVENT_EXECUTE`、`COMMAND_EVENT_COMPLETE`。
 
+Script Command 的 shell 能力有意小于 Native `bml.command`：`Execute` 返回 `void`，
+`CommandEvent` 不提供管道输入和输出 writer。回调正常结束时该阶段视为成功，脚本回调失败
+时该阶段失败。需要自行返回 shell status，或显式读写 pipeline 数据时，应使用 Native
+Command 接口。
+
 ## 补全
 
 ```angelscript
