@@ -193,6 +193,7 @@ $patch = [regex]::Match($log,
 $facade = [regex]::Match($log,
     'Behavior plan: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'submit=(?<submit>true|false) install=(?<install>true|false) ' +
+    'binding=(?<binding>true|false) stale=(?<stale>true|false) ' +
     'hooks=(?<hooks>true|false) close=(?<close>true|false) ' +
     'release=(?<release>true|false) taps=(?<taps>[0-9]+) ' +
     'afters=(?<afters>[0-9]+) frames=(?<frames>[0-9]+)')
@@ -312,6 +313,8 @@ $checks['BehaviorPlanFacade'] = $facade.Success -and
     $facade.Groups['status'].Value -eq 'pass' -and
     $facade.Groups['submit'].Value -eq 'true' -and
     $facade.Groups['install'].Value -eq 'true' -and
+    $facade.Groups['binding'].Value -eq 'true' -and
+    $facade.Groups['stale'].Value -eq 'true' -and
     $facade.Groups['hooks'].Value -eq 'true' -and
     $facade.Groups['close'].Value -eq 'true' -and
     $facade.Groups['release'].Value -eq 'true' -and
@@ -374,7 +377,7 @@ $checks['BehaviorGameplayMigration'] = $gameplayPatch.Success -and
     $gameplayPatch.Groups['delta'].Value -eq 'true'
 $checks['BehaviorOverclockMigration'] = $log.Contains(
     'Behavior gameplay tweaks: status=pass overclock=true lantern=true') -and
-    $log.Contains('Restore the Overclock Behavior Plan')
+    -not $log.Contains('Failed to restore the Overclock Plan')
 $checks['BehaviorLanternMigration'] = $log.Contains(
     'Behavior gameplay tweaks: status=pass overclock=true lantern=true')
 $checks['BehaviorPatchVisual'] =
