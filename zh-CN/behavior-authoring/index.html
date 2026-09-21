@@ -2181,7 +2181,8 @@
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="n">behavior</span><span class="o">-&gt;</span><span class="n">CloseSession</span><span class="p">(</span><span class="n">session</span><span class="p">);</span>
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="p">}</span>
 </code></pre></div>
-<p>每个带 <code>StructSize</code> 的输入或输出结构都必须由调用方先填写该字段。输入字符串和数组只借用到调用返回；Frame、Graph 和 Layout 的变长结果使用无部分写入的 caller-buffer 协议。<code>BML_BEHAVIOR_HAS_1_0</code> 是完整 1.0 surface 的 capability gate，后续 minor 增加的成员再单独使用 <code>BML_IFACE_HAS</code> 检查。</p>
+<p>每个带 <code>StructSize</code> 的结构都应先填写该字段。1.0 的数据结构布局不再改变；后续次版本可以在 <code>BML_BehaviorInterface</code> 末尾追加函数指针，需要更多数据时则新增结构类型，不扩展现有结构。</p>
+<p>输入字符串和数组只在调用期间借用。Frame、Graph 和 Layout 的变长读取要么写入完整结果，要么只报告所需缓冲区大小。完整 1.0 API 使用 <code>BML_BEHAVIOR_HAS_1_0</code> 检查，后续新增成员使用 <code>BML_IFACE_HAS</code>。</p>
 <p>这不意味着 BML 提供纯 C 的 Mod 启动协议：现有 Native Mod host 仍由 <code>IMod</code> 定义。链接进同一个 Native Mod DLL 的 C 翻译单元或其他语言适配层可以直接调用 C seam，并仍遵守 Mod ownership、game thread、world reset 和 <code>BML_ObjectRef</code> 生命周期。它是独立的 Behavior seam，不是脱离 BML Runtime 的独立库。</p>
 <h2 id="1">1. 对象模型<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Prototype -&gt; Block -&gt; Call / Task / Instance -&gt; Frames

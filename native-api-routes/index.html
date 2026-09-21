@@ -1060,18 +1060,16 @@ has a member added after it. That is why capability added after the freeze
 arrives as an interface struct, and each one ships with an inline C++ namespace
 over it, so using one looks like calling a function.</p>
 <p>The <code>BML_*</code> functions of <code>BML.h</code> are the third spelling. They are plain C with
-no vtable involved, so they can be added to freely. Only two kinds of capability
-belong there. The first is a utility that touches neither the game nor loader
-state: strings, paths, files, encoding, and allocation, which is where the
-loader and mod directory queries sit. The second is the other half of an
-operation whose first half is frozen in C++, which is how
-<code>BML_UnregisterCommand</code> came to stand beside <code>IBML::RegisterCommand</code>. Splitting
-one pair of operations across two mechanisms reads worse than either choice
-alone, so the reverse operation follows the forward one.</p>
+no vtable involved. New entries there are process-independent utilities:
+strings, paths, files, encoding, allocation, and directory queries. A few older
+exports complete frozen C++ operations; <code>BML_UnregisterCommand</code>,
+<code>BML_SetCommandStatus</code>, and <code>BML_GetCommandInput</code> remain supported for legacy
+<code>ICommand</code>, but that split API is not the growth path. The complete modern
+Command capability is the versioned <code>bml.command</code> interface.</p>
 <p>One question decides which of the three a new loader capability belongs to: who
 serves it. The loader serving something a Mod reads or drives is a built-in
-interface struct. A utility that touches neither the game nor loader state, or
-the reverse of an operation frozen in C++, is a C export. A Mod service normally
+interface struct. A utility that touches neither the game nor loader state is a
+C export. A Mod service normally
 uses IMC; a native-only base Mod may call <code>BML_RegisterInterface</code> when it must
 return process-local pointers without encoding and can impose a required Mod
 dependency on every consumer.</p>
@@ -1182,13 +1180,13 @@ declared in the header of the same name under <code>include/BML/</code>; the res
 <tr>
 <td>Console commands</td>
 <td><code>RegisterCommand</code> plus an <code>ICommand</code> subclass</td>
-<td>none</td>
-<td>Frozen C++ to register. Removing one again is a C export, <code>BML_UnregisterCommand</code>, because <code>IBML</code> could not grow the function. The exit status and the piped input of a running command are C exports too, <code>BML_SetCommandStatus</code> and <code>BML_GetCommandInput</code>, because <code>Execute</code> returns <code>void</code>.</td>
+<td><code>BML::Command::Registration</code> from <code>Command.hpp</code>, backed by <code>bml.command</code></td>
+<td>New Native Mods should use the versioned Command interface. It copies metadata, returns an owner-scoped handle, auto-cleans before DLL unload, returns shell status directly, and passes pipeline input and output explicitly. The three <code>BML.h</code> exports remain legacy adapters only.</td>
 </tr>
 <tr>
 <td>Configuration</td>
 <td><code>IMod::GetConfig</code> plus <code>IConfig</code> and <code>IProperty</code></td>
-<td><code>BML_GetConfigPropertyEditor</code>, <code>BML_SetConfigPropertyEditor</code></td>
+<td><code>BML_GetConfigPropertyEditor</code>, <code>BML_SetConfigPropertyEditor</code>, and the choice metadata functions</td>
 <td>Values stay on the frozen C++ interface; the additive C exports attach non-persisted Mod Menu editor metadata without changing its vtable.</td>
 </tr>
 <tr>

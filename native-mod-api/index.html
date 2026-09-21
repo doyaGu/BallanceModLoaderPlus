@@ -1274,8 +1274,8 @@ installed <code>include/BML</code> directory defines the supported native API.</
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="n">DECLARE_BML_VERSION</span><span class="p">;</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">};</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">MOD_EXPORT</span><span class="w"> </span><span class="n">IMod</span><span class="w"> </span><span class="o">*</span><span class="n">BMLEntry</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">bml</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">MOD_EXPORT</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">BMLExit</span><span class="p">(</span><span class="n">IMod</span><span class="w"> </span><span class="o">*</span><span class="n">mod</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">delete</span><span class="w"> </span><span class="n">mod</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">BML_MOD_ENTRY</span><span class="p">(</span><span class="n">IMod</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="n">BMLEntry</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">bml</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">BML_MOD_ENTRY</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">BMLExit</span><span class="p">(</span><span class="n">IMod</span><span class="w"> </span><span class="o">*</span><span class="n">mod</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">delete</span><span class="w"> </span><span class="n">mod</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
 <p>The object returned by <code>BMLEntry</code> is allocated by the Mod DLL. Export
 <code>BMLExit</code> and destroy that same object there so allocation and deallocation use
@@ -1283,6 +1283,8 @@ the same C++ runtime. BML calls <code>BMLExit</code> when registration fails aft
 creation and when a loaded native Mod is unloaded. For compatibility, BML can
 still load an older DLL without <code>BMLExit</code>, but it logs a warning and cannot
 destroy that Mod instance safely.</p>
+<p>Use <code>BML_MOD_ENTRY</code> for both exports. It fixes their C linkage and calling
+convention even when the Mod project changes the compiler defaults.</p>
 <p>Use the CMake helper installed with the SDK:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="w"> </span><span class="s">MyMod.cpp</span><span class="p">)</span>
@@ -1342,8 +1344,8 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 <td>Info, Warn, and Error logging</td>
 </tr>
 <tr>
-<td><code>DataShare.h</code></td>
-<td>Low-level, named in-process byte sharing</td>
+<td><code>DataShare.h</code> / <code>DataShare.hpp</code></td>
+<td>Named in-process byte sharing through the C ABI or the RAII C++ facade</td>
 </tr>
 <tr>
 <td><code>Types.h</code>, <code>TypeConvert.h</code></td>
@@ -1358,15 +1360,15 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 <td>Virtools Building Block discovery, authoring, execution, graph inspection, and editing</td>
 </tr>
 <tr>
-<td><code>Runtime.h</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>Speedrun.h</code>, <code>UI.h</code></td>
-<td>Loader capabilities reached through an interface struct, with inline C++ wrappers</td>
+<td><code>Command.h/.hpp</code>, <code>Runtime.h</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>Speedrun.h</code>, <code>UI.h</code></td>
+<td>Loader capabilities reached through an interface struct, with C++ facades</td>
 </tr>
 <tr>
 <td><code>ModMenu.h</code>, <code>ModMenu.hpp</code></td>
 <td>Pure C Mods-menu page interface and its type-safe C++ authoring layer</td>
 </tr>
 <tr>
-<td><code>Imc.h</code>, <code>ImcWire.hpp</code>, <code>ImcCpp.hpp</code></td>
+<td><code>Imc.h</code>, <code>Imc.hpp</code>, <code>ImcWire.hpp</code></td>
 <td>IMC C/C++ runtime and wire format</td>
 </tr>
 <tr>
@@ -1516,21 +1518,39 @@ The frozen <code>IProperty</code> vtable is not extended for presentation hints.
 call the <code>IConfig.h</code> C extension
 <code>BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR)</code> after
 <code>SetDefaultString</code> to present a <code>#RRGGBB</code> or <code>#RRGGBBAA</code> string with the Mod
-Menu colour picker. <code>BML_GetConfigPropertyEditor</code> reads the non-persisted hint.</p>
-<p><code>ICommand</code> provides the command name, aliases, description, cheat flag,
-execution, Tab completion, and basic Integer, Float, and Boolean parsers.
-<code>ILogger</code> provides three log levels.</p>
-<p>The console shell splits a line before <code>Execute</code> runs: unquoted whitespace
-separates words, <code>'...'</code>, <code>"..."</code>, and <code>$'...'</code> quote them, <code>$NAME</code> and <code>$(...)</code>
-expand, and <code>;</code>, <code>&amp;&amp;</code>, <code>||</code>, and <code>|</code> separate commands, so <code>Execute</code> receives
-one command at a time with quotes already removed. <code>args[0]</code> is the word that
-named the command, which is the alias when one was typed. A backslash outside
-quotes escapes only shell characters and stays literal otherwise, so Windows
-paths pass through unquoted. There is no word splitting after expansion: one
-word in the line is one element of <code>args</code>. Lines handed to
-<code>IBML::ExecuteCommand</code> go through the same shell.</p>
+Menu colour picker. For a finite string setting, copy its values with
+<code>BML_SetConfigPropertyChoices</code> and select <code>BML_CONFIG_EDITOR_CHOICE</code> to show a
+RadioButton instead of a text field; an empty value is shown as <code>None</code>.
+The current stored value remains selectable even when it is not in the list.
+<code>BML_GetConfigPropertyEditor</code> and the choice accessors read this non-persisted
+metadata.</p>
+<p>New Native Mods author commands through <code>Command.hpp</code>. Its
+<code>BML::Command::Registration</code> is a one-way C++ facade over the stable
+<code>bml.command</code> table in <code>Command.h</code>: registration copies name, alias,
+description, usage, category, and policy flags, then returns an owner-scoped
+handle. The execution callback receives the canonical name, the word actually
+typed, arguments without the command word, pipeline input, and an output
+writer; its non-negative return value is the shell status. Completion writes
+candidates through a bounded collector and receives a separate cursor request
+with the active argument and prefix, so it cannot emit command output or read
+pipeline input. No STL object crosses the DLL ABI.
+Commands may be hidden or disabled, can be inspected through <code>Visit</code> and
+<code>Find</code>, and are removed before their owner DLL is released. A <code>Registration</code>
+may also be unregistered or destroyed during command dispatch: lookup stops
+immediately, while the acquired command and callback state stay alive until
+that dispatch returns. C callers that supply <code>BML_CommandDefinition::Release</code>
+transfer ownership of <code>UserData</code> after successful registration; the loader
+calls it once after removal and the last in-progress dispatch.</p>
+<p><code>ICommand</code> is the compatible legacy adapter. It still provides command
+metadata, execution, Tab completion, and basic Integer, Float, and Boolean
+parsers. <code>ILogger</code> provides three log levels.</p>
+<p>For legacy <code>ICommand</code>, the command bar parses a line before <code>Execute</code> runs.
+Each call receives one command with quoting removed; <code>args[0]</code> preserves the
+command name or alias that the player typed. <code>IBML::ExecuteCommand</code> uses the
+same parser. See the <a href="../using-bml/#command-line">command-line guide</a> for the
+user-facing syntax.</p>
 <p><code>Execute</code> returns <code>void</code>, so two C exports in <code>BML.h</code> carry the rest of the
-shell contract. <code>BML_SetCommandStatus(int)</code> marks the running command failed
+shell behavior. <code>BML_SetCommandStatus(int)</code> marks the running command failed
 for <code>&amp;&amp;</code>, <code>||</code>, and <code>$?</code>; without it a command counts as succeeded unless it
 throws or cannot be found. <code>BML_GetCommandInput(size_t *)</code> returns the text
 piped into the running command by <code>other | this</code>, or null when nothing was
@@ -1553,7 +1573,7 @@ by remembering which module called <code>RegisterCommand</code>. Asking about so
 command answers <code>BML_ERROR_ACCESS_DENIED</code>, an unknown name answers
 <code>BML_ERROR_NOT_FOUND</code>, and the name is matched the way the console matches it, so
 the alias names the command too. Call it from the game thread.</p>
-<p>Without that call, a registered command stays in the command table until the
+<p>Without that call, a legacy command stays in the command table until the
 process ends. In particular, do not delete an <code>ICommand</code> in <code>OnUnload</code> while it is
 still registered: unloading a mod does not remove its commands by itself, so a
 deleted command leaves a dangling entry that the console will still try to run.</p>
@@ -1569,6 +1589,7 @@ also declares an inline C++ namespace that folds the lookup and the argument
 checks in:</p>
 <ul>
 <li><code>BML::Runtime</code> for runtime state, clock, and scores;</li>
+<li><code>BML::Command</code> for owner-scoped command registration, discovery, and shell execution;</li>
 <li><code>BML::Scene</code> for object information, transforms, and named lookup;</li>
 <li><code>BML::Gameplay</code> for level, energy, catalog, checkpoint, and reset data;</li>
 <li><code>BML::UI</code> for the message board, mod/map menus, and HUD;</li>
@@ -1655,13 +1676,21 @@ ends it immediately after <code>OnProcess</code> returns:</p>
 ImGui assertion. <code>BML::UI</code> message, menu, and HUD calls are not affected,
 because they change loader state instead of recording draw commands.</p>
 <h2 id="c-api-ownership">C API ownership<a class="headerlink" href="#c-api-ownership" title="Permanent link">&para;</a></h2>
-<p><code>BML.h</code> and <code>DataShare.h</code> are callable through the C ABI. Release strings,
+<p><code>BML.h</code> and <code>DataShare.h</code> are callable through the C ABI. C++ Mods can include
+<code>DataShare.hpp</code> for owning handles and cancellable requests without depending on
+loader implementation types. Release strings,
 wide strings, string arrays, wide-string arrays, and binary buffers allocated
 by BML with the matching <code>BML_Free*</code> function. Do not call CRT <code>free</code> across a
 DLL boundary.</p>
 <p><code>BML_DataShare_Get</code> returns a borrowed pointer. It becomes invalid when the
 same key is set or removed or when the instance is destroyed. Use
-<code>BML_DataShare_CopyEx</code> when a stable copy is required.</p>
+<code>BML_DataShare_CopyEx</code> when a stable copy is required. A queued
+<code>BML_DataShare_Request</code> returns an owner-scoped request handle; cancel it with
+<code>BML_DataShare_CancelRequest</code> when its own lifetime ends. The loader cancels any
+remaining requests before releasing the owning Mod DLL. Worker threads and
+DLLs that host more than one Mod should use <code>BML_DataShare_RequestForOwner</code> and
+<code>BML_DataShare_CancelRequestForOwner</code>. Stop worker threads before <code>OnUnload</code>
+returns; no public API call may race release of its calling DLL.</p>
 <h2 id="where-the-loader-and-your-mod-live">Where the loader and your mod live<a class="headerlink" href="#where-the-loader-and-your-mod-live" title="Permanent link">&para;</a></h2>
 <p><code>BML.h</code> answers both questions a mod has about the file system:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1">// The loader's own directories. Borrowed, valid for the process, never freed.</span>

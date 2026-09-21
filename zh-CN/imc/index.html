@@ -2137,7 +2137,7 @@
 <td>面向 ASMod Client/Provider 的同一套类型与路由；传输细节留在 <code>BML::Detail</code></td>
 </tr>
 <tr>
-<td><code>BML/ImcCpp.hpp</code></td>
+<td><code>BML/Imc.hpp</code></td>
 <td>面向自定义集成的通用 C++ RAII 包装，以及生成的绑定复用的 Client、Subscription 和 RPC 机制</td>
 </tr>
 <tr>
@@ -2154,6 +2154,9 @@
 消息本身已经携带载荷类型，因此载荷不会重复保存 Schema ID 或描述哈希。字段使用
 类似 Protobuf 的 Varint Tag，将永久字段 ID 和物理线类型组合起来。定长标量没有
 冗余长度，只有字符串、复合值和打包数组使用长度分隔。</p>
+<p><code>BML/Imc.h</code> 的底层结构使用 <code>Size</code> 校验调用方存储空间，并不表示可以扩展原结构。
+这些 1.0 布局在当前 major 版本内固定；后续运行时 API 需要更多字段时，应新增命名结构
+与函数。生成的载荷 Record 则通过带 tag 的 wire field 和 lock file 独立演进。</p>
 <h2 id="_3">接口身份与兼容性<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>API ID 使用小写字母和数字组成的点分段形式，例如 <code>example.echo</code>。对应的生成头为
 <code>example_echo_imc.hpp</code>，C++ 命名空间为
@@ -2235,7 +2238,7 @@ Record。</p>
 <li><a href="../imc-author-guide/">创建类型化 IMC API</a></li>
 <li><a href="../native-api-routes/">原生 API 该走哪条路</a></li>
 <li>C ABI：<code>BML/Imc.h</code></li>
-<li>C++ 包装：<code>BML/ImcCpp.hpp</code></li>
+<li>C++ 包装：<code>BML/Imc.hpp</code></li>
 <li>线格式编解码：<code>BML/ImcWire.hpp</code></li>
 </ul>
 

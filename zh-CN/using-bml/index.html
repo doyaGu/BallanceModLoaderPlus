@@ -2175,12 +2175,12 @@ id 的开发目录和 zip 包。新增 Mod 或修改依赖后应重启 Player。
 </tr>
 <tr>
 <td><code>ModLoader/Themes</code></td>
-<td>命令栏配色主题</td>
+<td>控制台输出使用的 ANSI 调色板主题</td>
 </tr>
 </tbody>
 </table>
 <h2 id="_2">命令行<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>按 <code>/</code> 打开命令栏。它按 POSIX shell 的方式读取一行：</p>
+<p>按 <code>/</code> 打开命令栏。它支持下列 shell 风格语法：</p>
 <ul>
 <li>未加引号的空格分隔单词。<code>'...'</code> 按字面保留，<code>"..."</code> 保留空格并允许其中的
   <code>$NAME</code>，<code>$'...'</code> 解析 <code>\n</code>、<code>\e</code> 之类的转义。反斜杠只转义 shell 字符，

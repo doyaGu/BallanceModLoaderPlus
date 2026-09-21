@@ -14923,6 +14923,12 @@ enum ConfigPropertyType {
   CONFIG_PROPERTY_NONE = 5
 }
 
+enum ConfigPropertyEditor {
+  CONFIG_EDITOR_DEFAULT = 0,
+  CONFIG_EDITOR_COLOR = 1,
+  CONFIG_EDITOR_CHOICE = 2
+}
+
 enum TimerState {
   TIMER_IDLE = 0,
   TIMER_RUNNING = 1,
@@ -15592,6 +15598,8 @@ class ConfigProperty {
   bool IsValid() const;
   ConfigPropertyType get_Type() const;
   ConfigPropertyType GetType() const;
+  ConfigPropertyEditor get_Editor() const;
+  ConfigPropertyEditor GetEditor() const;
   string GetString(const string &in defaultValue = "") const;
   bool GetBoolean(bool defaultValue = false) const;
   int GetInteger(int defaultValue = 0) const;
@@ -15603,6 +15611,8 @@ class ConfigProperty {
   void SetFloat(float value) const;
   void SetKey(CKKEYBOARD value) const;
   void SetComment(const string &in comment) const;
+  void SetEditor(ConfigPropertyEditor editor) const;
+  bool SetChoices(const array<string> &in choices) const;
   void SetDefaultString(const string &in value) const;
   void SetDefaultBoolean(bool value) const;
   void SetDefaultInteger(int value) const;

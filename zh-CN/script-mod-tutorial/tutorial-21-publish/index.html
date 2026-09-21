@@ -2803,7 +2803,7 @@
 <hr />
 <h2 id="mod">Mod 身份：元数据<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h2>
 <p>附加到入口类的元数据是 BML+ 识别和管理 Mod 的依据：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">"complete.mod"</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">"Complete Mod"</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">"1.0.0"</span><span class="w"> </span><span class="n">author</span><span class="o">=</span><span class="s">"YourName"</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">"0.3.13"</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">"A complete tutorial mod"</span><span class="p">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">"complete.mod"</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">"Complete Mod"</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">"1.0.0"</span><span class="w"> </span><span class="n">author</span><span class="o">=</span><span class="s">"YourName"</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">"0.3.14"</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">"A complete tutorial mod"</span><span class="p">]</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">CompleteMod</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">}</span>
 </code></pre></div>
@@ -2893,7 +2893,7 @@
 <p>主版本号变化意味着"用户可能需要重新配置"。这是对用户最重要的信号。</p>
 <hr />
 <h2 id="bml">BML+ 版本要求<a class="headerlink" href="#bml" title="Permanent link">&para;</a></h2>
-<p><code>bml="0.3.13"</code> 表示需要 BML+ 0.3.13 或更高版本。版本不满足时 Mod 不会被加载，日志会提示不匹配。</p>
+<p><code>bml="0.3.14"</code> 表示需要 BML+ 0.3.14 或更高版本。版本不满足时 Mod 不会被加载，日志会提示不匹配。</p>
 <p>判断方法：检查用到的 API 是在哪个版本引入的。基础回调（<code>OnLoad</code>、<code>OnUnload</code>、<code>GetConfig</code>）可以保持较低要求；用了新 API 就更新到对应版本。不确定时写你开发环境的 BML 版本，至少保证测试过的环境匹配。</p>
 <hr />
 <h2 id="_6">文件结构<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
@@ -2994,19 +2994,19 @@
 <li>确认每个阶段 mod 的行为正常，没有残留对象或崩溃</li>
 <li>如果 mod 有 OnUnload 清理逻辑，确认卸载时不报错</li>
 </ul>
-<p>如果你声明了 <code>bml="0.3.13"</code> 但手头只有更新的 BML 版本，至少在发布说明中注明实际测试的版本。</p>
+<p>如果你声明了 <code>bml="0.3.14"</code> 但手头只有更新的 BML 版本，至少在发布说明中注明实际测试的版本。</p>
 <hr />
 <h2 id="_12">发布说明<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h2>
 <p>每个版本都应该附带说明文档。发布说明写给"准备安装这个 mod 的玩家"看，内容要从玩家视角出发。</p>
 <h3 id="_13">模板<a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Complete Mod v1.0.0
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>需要：BML+ 0.3.13 或更新版本。
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>需要：BML+ 0.3.14 或更新版本。
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>安装：把 CompleteMod.zip 直接放入 ModLoader/Mods/，不要解压。
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>命令：cmod [spawn|despawn|push|status|window]
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>配置：ShowWindow, AutoSpawn
 <a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>卸载：删除 mod 文件。如需清掉设置，删除 ModLoader/Configs/complete.mod.cfg。
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>已验证：Ballance Player + BML+ 0.3.13
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>已验证：Ballance Player + BML+ 0.3.14
 </code></pre></div>
 <p>每一条都是对用户的承诺：安装路径要写完整（不要假设用户知道 <code>Mods</code> 在哪）；命令和配置要列全（用户不一定会看源码）；卸载说明要包含配置文件路径。</p>
 <h3 id="_14">更新说明<a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>

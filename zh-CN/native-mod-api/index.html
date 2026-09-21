@@ -2171,13 +2171,15 @@
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="n">DECLARE_BML_VERSION</span><span class="p">;</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">};</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">MOD_EXPORT</span><span class="w"> </span><span class="n">IMod</span><span class="w"> </span><span class="o">*</span><span class="n">BMLEntry</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">bml</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">MOD_EXPORT</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">BMLExit</span><span class="p">(</span><span class="n">IMod</span><span class="w"> </span><span class="o">*</span><span class="n">mod</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">delete</span><span class="w"> </span><span class="n">mod</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">BML_MOD_ENTRY</span><span class="p">(</span><span class="n">IMod</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="n">BMLEntry</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">bml</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">BML_MOD_ENTRY</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">BMLExit</span><span class="p">(</span><span class="n">IMod</span><span class="w"> </span><span class="o">*</span><span class="n">mod</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">delete</span><span class="w"> </span><span class="n">mod</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
 <p><code>BMLEntry</code> 返回的对象由 Mod DLL 分配。Mod 应导出 <code>BMLExit</code>，并在其中销毁
 同一个对象，确保分配与释放使用相同的 C++ 运行库。对象创建后若注册失败，或
 已加载的原生 Mod 被卸载，BML 都会调用 <code>BMLExit</code>。为兼容旧 Mod，缺少
 <code>BMLExit</code> 的 DLL 仍可加载，但 BML 会记录警告，且无法安全销毁该 Mod 实例。</p>
+<p>两个导出都应使用 <code>BML_MOD_ENTRY</code>。即使 Mod 项目更改了编译器的默认选项，
+它也会固定 C linkage 和 calling convention。</p>
 <p>推荐通过安装包提供的 CMake 函数创建目标：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="w"> </span><span class="s">MyMod.cpp</span><span class="p">)</span>
@@ -2236,8 +2238,8 @@ C 符号 <code>BMLEntry</code> 和 <code>BMLExit</code>。入口缺失或被 C++
 <td>Info、Warn、Error 日志</td>
 </tr>
 <tr>
-<td><code>DataShare.h</code></td>
-<td>低层、同进程的命名字节数据共享</td>
+<td><code>DataShare.h</code> / <code>DataShare.hpp</code></td>
+<td>通过 C ABI 或 RAII C++ 封装使用的进程内命名字节共享</td>
 </tr>
 <tr>
 <td><code>Types.h</code>, <code>TypeConvert.h</code></td>
@@ -2252,15 +2254,15 @@ C 符号 <code>BMLEntry</code> 和 <code>BMLExit</code>。入口缺失或被 C++
 <td>Virtools Building Block 发现、编写、执行、行为图检查与编辑</td>
 </tr>
 <tr>
-<td><code>Runtime.h</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>Speedrun.h</code>, <code>UI.h</code></td>
-<td>通过接口结构体取用的 Loader 能力，附带内联 C++ 包装</td>
+<td><code>Command.h/.hpp</code>, <code>Runtime.h</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>Speedrun.h</code>, <code>UI.h</code></td>
+<td>通过接口结构体取用的 Loader 能力，附带 C++ 封装</td>
 </tr>
 <tr>
 <td><code>ModMenu.h</code>, <code>ModMenu.hpp</code></td>
 <td>纯 C 的 Mods 菜单页面接口，以及其强类型 C++ 编写层</td>
 </tr>
 <tr>
-<td><code>Imc.h</code>, <code>ImcWire.hpp</code>, <code>ImcCpp.hpp</code></td>
+<td><code>Imc.h</code>, <code>Imc.hpp</code>, <code>ImcWire.hpp</code></td>
 <td>IMC C/C++ 运行时与线格式</td>
 </tr>
 <tr>
@@ -2396,17 +2398,27 @@ Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和
 <code>SetDefaultString</code> 后，可用
 <code>IConfig.h</code> 的 C 扩展
 <code>BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR)</code> 让 Mod 菜单以
-调色盘编辑 <code>#RRGGBB</code> 或 <code>#RRGGBBAA</code>；<code>BML_GetConfigPropertyEditor</code> 可读取这项
-不写入配置文件的提示。</p>
-<p><code>ICommand</code> 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
-Integer、Float、Boolean 的基础解析函数。<code>ILogger</code> 提供三个日志级别。</p>
-<p>控制台 shell 会在 <code>Execute</code> 运行前拆分整行：未加引号的空白分隔单词，<code>'...'</code>、
-<code>"..."</code>、<code>$'...'</code> 是引号形式，<code>$NAME</code> 与 <code>$(...)</code> 会展开，<code>;</code>、<code>&amp;&amp;</code>、<code>||</code>、<code>|</code>
-分隔命令，因此 <code>Execute</code> 每次只收到一条命令，且引号已经去掉。<code>args[0]</code> 是命名
-该命令的那个词，输入的是别名时就是别名。引号之外的反斜杠只转义 shell 字符，
-其他情况原样保留，所以 Windows 路径不加引号也能通过。展开之后不再按空格拆分：
-一行里的一个词就是 <code>args</code> 的一个元素。交给 <code>IBML::ExecuteCommand</code> 的字符串走
-同一套 shell。</p>
+调色盘编辑 <code>#RRGGBB</code> 或 <code>#RRGGBBAA</code>。有限选项的字符串属性可先用
+<code>BML_SetConfigPropertyChoices</code> 复制候选值，再选择
+<code>BML_CONFIG_EDITOR_CHOICE</code>，Mod 菜单就会用 RadioButton 代替文本框；空字符串
+显示为 <code>None</code>，当前值即使不在列表中也仍可选择。<code>BML_GetConfigPropertyEditor</code>
+和候选值读取函数可读取这些不写入配置文件的元数据。</p>
+<p>新 Native Mod 通过 <code>Command.hpp</code> 编写命令。<code>BML::Command::Registration</code> 是
+<code>Command.h</code> 中稳定 <code>bml.command</code> 函数表的单向 C++ 封装：注册时复制名称、别名、
+说明、用法、分类及策略标记，并返回受所有者约束的句柄。执行回调会直接收到规范名称、
+实际输入的名称、去掉命令头的参数、管道输入和输出函数；它返回的非负整数就是 shell
+状态。补全接收独立的光标请求，其中明确给出当前参数和前缀，并通过有容量上限的收集器
+写入候选；它不能产生命令输出或读取管道输入，也不让 STL 对象跨 DLL ABI。命令可隐藏或禁用，
+可通过 <code>Visit</code>、<code>Find</code> 检查，并会在所属 DLL 释放前自动移除。<code>Registration</code> 也可以在
+命令派发期间注销或析构：命令会立即停止参与查找，已取得的命令对象和回调状态则保留到
+本次派发返回为止。C 调用方若提供 <code>BML_CommandDefinition::Release</code>，注册成功后即把
+<code>UserData</code> 的所有权交给 Loader；命令移除且最后一次派发结束后，Loader 会调用它一次。</p>
+<p><code>ICommand</code> 是继续保留的旧接口适配层，仍提供命令元数据、执行、Tab 补全及
+Integer、Float、Boolean 基础解析。<code>ILogger</code> 提供三个日志级别。</p>
+<p>对于旧式 <code>ICommand</code>，命令栏会在 <code>Execute</code> 运行前解析整行。每次调用只收到一条
+已经去除引号的命令；
+<code>args[0]</code> 保留玩家实际输入的命令名或别名。<code>IBML::ExecuteCommand</code> 使用同一解析器。
+面向玩家的完整语法见<a href="../using-bml/">《使用 BML+》中的命令行说明</a>。</p>
 <p><code>Execute</code> 返回 <code>void</code>，所以 shell 约定的另一半由 <code>BML.h</code> 中的两个 C 导出承担。
 <code>BML_SetCommandStatus(int)</code> 把正在运行的命令标记为失败，供 <code>&amp;&amp;</code>、<code>||</code> 和 <code>$?</code>
 使用；不调用它，命令只有在抛出异常或找不到时才算失败。
@@ -2427,7 +2439,7 @@ Integer、Float、Boolean 的基础解析函数。<code>ILogger</code> 提供三
 <code>RegisterCommand</code>，据此判断：注销别人的命令返回 <code>BML_ERROR_ACCESS_DENIED</code>，名字
 不存在返回 <code>BML_ERROR_NOT_FOUND</code>。名字的匹配方式与控制台一致，因此用别名也能指到
 同一个命令。该函数应在游戏线程调用。</p>
-<p>不调用它，注册过的命令就会一直留在命令表里直到进程结束。特别注意：命令还在注册
+<p>不调用它，legacy 命令就会一直留在命令表里直到进程结束。特别注意：命令还在注册
 状态时不要在 <code>OnUnload</code> 里删除 <code>ICommand</code>，卸载 Mod 本身不会移除它注册的命令，
 删除后命令表里会留下悬空指针，控制台仍会尝试执行它。</p>
 <p><code>ParseFloat</code> 的默认取值范围是整个有限 float 范围。早期版本的默认下界是
@@ -2439,6 +2451,7 @@ Integer、Float、Boolean 的基础解析函数。<code>ILogger</code> 提供三
 每个头文件里还声明了一层 inline C++ 命名空间，把取用与参数检查折进去：</p>
 <ul>
 <li><code>BML::Runtime</code>：运行状态、时钟和分数。</li>
+<li><code>BML::Command</code>：受所有者约束的命令注册、发现和 shell 执行。</li>
 <li><code>BML::Scene</code>：对象信息、实体变换和按名查找。</li>
 <li><code>BML::Gameplay</code>：关卡、能量、目录、检查点和重置点。</li>
 <li><code>BML::UI</code>：消息板、Mod/地图菜单和 HUD。</li>
@@ -2519,12 +2532,18 @@ Mod 通常应使用 <code>Behavior.hpp</code>，由它持有字符串、数组�
 消息、菜单和 HUD 调用不受影响，因为它们修改的是 Loader 状态，而不是记录绘制
 命令。</p>
 <h2 id="c-api">C API 的所有权<a class="headerlink" href="#c-api" title="Permanent link">&para;</a></h2>
-<p><code>BML.h</code> 和 <code>DataShare.h</code> 可由 C ABI 调用。凡是 BML 返回的新分配字符串、宽
+<p><code>BML.h</code> 和 <code>DataShare.h</code> 可由 C ABI 调用；C++ Mod 可以包含
+<code>DataShare.hpp</code>，以 RAII 管理句柄和可取消请求，而不依赖 Loader 私有实现。
+凡是 BML 返回的新分配字符串、宽
 字符串、字符串数组、宽字符串数组或二进制缓冲区，都应使用对应的
 <code>BML_Free*</code> 函数释放，
 不要跨 DLL 直接调用 CRT <code>free</code>。<code>BML_DataShare_Get</code> 返回借用指针；同一键
 再次 Set/Remove 或实例销毁后立即失效，需要稳定副本时使用
-<code>BML_DataShare_CopyEx</code>。</p>
+<code>BML_DataShare_CopyEx</code>。排队的 <code>BML_DataShare_Request</code> 会返回归属于当前 Mod 的
+request handle；自身生命期结束时用 <code>BML_DataShare_CancelRequest</code> 取消。Loader 会在
+释放 Mod DLL 前取消其余请求。worker thread 或同一 DLL 承载多个 Mod 时，应使用
+<code>BML_DataShare_RequestForOwner</code> 和 <code>BML_DataShare_CancelRequestForOwner</code>。应在
+<code>OnUnload</code> 返回前停止 worker thread；公开 API 调用不能与调用方 DLL 的释放并发。</p>
 <h2 id="loader-mod">Loader 与 Mod 所在目录<a class="headerlink" href="#loader-mod" title="Permanent link">&para;</a></h2>
 <p>Mod 关于文件系统的两个问题都由 <code>BML.h</code> 回答：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1">// Loader 自己的目录。借用指针，进程期间有效，不要释放。</span>

@@ -160,7 +160,8 @@ enum ConfigPropertyType {
 
 enum ConfigPropertyEditor {
   CONFIG_EDITOR_DEFAULT = 0,
-  CONFIG_EDITOR_COLOR = 1
+  CONFIG_EDITOR_COLOR = 1,
+  CONFIG_EDITOR_CHOICE = 2
 }
 
 enum TimerState {
@@ -849,6 +850,7 @@ class ConfigProperty {
   void SetKey(CKKEYBOARD value) const;
   void SetComment(const string &in comment) const;
   void SetEditor(ConfigPropertyEditor editor) const;
+  bool SetChoices(const array<string> &in choices) const;
   void SetDefaultString(const string &in value) const;
   void SetDefaultBoolean(bool value) const;
   void SetDefaultInteger(int value) const;

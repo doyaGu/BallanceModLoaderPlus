@@ -1944,15 +1944,14 @@
 询问正在运行的 Loader 有没有它之后才加进来的成员。这就是冻结之后新增的能力都以
 interface struct 形式出现的原因，而且每个都配了一层 inline C++ 命名空间，用起来和
 调用普通函数一样。</p>
-<p><code>BML.h</code> 里的 <code>BML_*</code> 函数是第三种写法。它们是纯 C，不涉及任何 vtable，所以可以
-自由增加。但能落在这里的只有两类。一类是与游戏和 Loader 状态无关的纯工具：字符串、
-路径、文件、编码与内存分配，Loader 与 Mod 目录查询属于这一类。另一类是补齐一个另
-一半冻结在 C++ 里的操作，<code>BML_UnregisterCommand</code> 就是这样站到 <code>IBML::RegisterCommand</code>
-旁边的。把一对操作的正反两半拆到两种机制上，比任选一种都更难读，所以反向操作跟着
-正向走。</p>
+<p><code>BML.h</code> 里的 <code>BML_*</code> 函数是第三种写法。它们是纯 C，不涉及任何 vtable。新增项只放
+与游戏和 Loader 状态无关的工具：字符串、路径、文件、编码、内存分配和目录查询。
+其中仍保留少数补齐冻结 C++ 操作的旧导出；<code>BML_UnregisterCommand</code>、
+<code>BML_SetCommandStatus</code> 和 <code>BML_GetCommandInput</code> 继续服务 legacy <code>ICommand</code>，但这种拆分
+接口不再扩展。完整的现代 Command 能力由版本化 <code>bml.command</code> interface 提供。</p>
 <p>新 Loader 能力该落在哪一种，由一个问题决定：谁来提供它。Loader 提供、Mod 读取或
-驱动的，是内建 interface struct。与游戏和 Loader 状态无关的纯工具，或者某个已冻结
-在 C++ 里的操作的反向操作，走 C 导出。Mod 间普通服务走 IMC；只有必须无编码传递
+驱动的，是内建 interface struct。与游戏和 Loader 状态无关的纯工具走 C 导出。
+Mod 间普通服务走 IMC；只有必须无编码传递
 进程内指针、且能要求所有使用方声明必需 Mod 依赖的原生基础 Mod，才调用
 <code>BML_RegisterInterface</code>。</p>
 <p>冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
@@ -2041,7 +2040,7 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 <td>在 Mods 菜单中扩展自己的 Mod 详情页</td>
 <td>无</td>
 <td><code>ModMenu.hpp</code> 的 <code>BML::ModMenu::Page</code></td>
-<td><code>ModMenu.h</code> 是纯 C 接口，C++ facade 单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。</td>
+<td><code>ModMenu.h</code> 是纯 C 接口，C++ 封装单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。</td>
 </tr>
 <tr>
 <td>Loader 事件</td>
@@ -2058,13 +2057,13 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 <tr>
 <td>控制台命令</td>
 <td><code>RegisterCommand</code> 加 <code>ICommand</code> 子类</td>
-<td>无</td>
-<td>注册走旧式 C++。注销是 C 导出 <code>BML_UnregisterCommand</code>，因为 <code>IBML</code> 已经无法再加函数。正在运行的命令的退出状态和管道输入同样是 C 导出 <code>BML_SetCommandStatus</code> 与 <code>BML_GetCommandInput</code>，因为 <code>Execute</code> 返回 <code>void</code>。</td>
+<td><code>Command.hpp</code> 的 <code>BML::Command::Registration</code>，底层为 <code>bml.command</code></td>
+<td>新 Native Mod 使用版本化 Command 接口。它复制元数据、返回受所有者约束的句柄、在 DLL 卸载前自动清理，并显式传入管道输入与输出、直接返回 shell 状态。<code>BML.h</code> 的三个导出仅作为旧接口适配层保留。</td>
 </tr>
 <tr>
 <td>配置</td>
 <td><code>IMod::GetConfig</code> 加 <code>IConfig</code>、<code>IProperty</code></td>
-<td><code>BML_GetConfigPropertyEditor</code>、<code>BML_SetConfigPropertyEditor</code></td>
+<td><code>BML_GetConfigPropertyEditor</code>、<code>BML_SetConfigPropertyEditor</code> 与候选值元数据函数</td>
 <td>值仍走冻结的 C++ 接口；追加的 C 导出只附加不落盘的 Mod 菜单编辑器元数据，不改虚表。</td>
 </tr>
 <tr>

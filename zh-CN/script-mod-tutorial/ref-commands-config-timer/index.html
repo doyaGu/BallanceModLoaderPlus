@@ -2158,6 +2158,10 @@
 </tbody>
 </table>
 <p>阶段值：<code>COMMAND_EVENT_PRE</code>、<code>COMMAND_EVENT_POST</code>、<code>COMMAND_EVENT_EXECUTE</code>、<code>COMMAND_EVENT_COMPLETE</code>。</p>
+<p>Script Command 的 shell 能力有意小于 Native <code>bml.command</code>：<code>Execute</code> 返回 <code>void</code>，
+<code>CommandEvent</code> 不提供管道输入和输出 writer。回调正常结束时该阶段视为成功，脚本回调失败
+时该阶段失败。需要自行返回 shell status，或显式读写 pipeline 数据时，应使用 Native
+Command 接口。</p>
 <h2 id="_4">补全<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnComplete</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CommandEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">event</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CommandCompletion</span><span class="w"> </span><span class="o">&amp;</span><span class="n">inout</span><span class="w"> </span><span class="n">completions</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="n">completions</span><span class="p">.</span><span class="n">Add</span><span class="p">(</span><span class="s">"status"</span><span class="p">);</span>
@@ -2194,6 +2198,10 @@
 <tr>
 <td>SetEditor(CONFIG_EDITOR_COLOR)</td>
 <td>让字符串属性在 Mod 菜单中使用调色盘；支持 <code>#RRGGBB</code>、<code>#RRGGBBAA</code>，无效值仍可用文本框修复</td>
+</tr>
+<tr>
+<td>SetChoices(values) + SetEditor(CONFIG_EDITOR_CHOICE)</td>
+<td>为字符串属性提供有限候选值，并在 Mod 菜单中使用 RadioButton</td>
 </tr>
 <tr>
 <td>GetBoolean/String/Integer/Float(default)</td>

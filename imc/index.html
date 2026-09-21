@@ -1247,7 +1247,7 @@ Most mods should not construct <code>BML_ImcMessage</code> values directly.</p>
 <td>The same typed payloads and routes for ASMod Clients and Providers; transport details stay under <code>BML::Detail</code></td>
 </tr>
 <tr>
-<td><code>BML/ImcCpp.hpp</code></td>
+<td><code>BML/Imc.hpp</code></td>
 <td>Generic C++ RAII wrappers, plus the client, subscription, and RPC machinery the generated bindings reuse</td>
 </tr>
 <tr>
@@ -1269,6 +1269,11 @@ so the payload does not repeat a schema ID or descriptor hash. Each field uses
 a Protobuf-style varint tag that combines its permanent ID and physical wire
 kind. Fixed-width scalars carry no redundant length; only strings, composite
 values, and packed arrays are length-delimited.</p>
+<p>The low-level records in <code>BML/Imc.h</code> use <code>Size</code> to validate caller storage, not
+as permission to grow an existing type. Their 1.0 layouts are fixed for this
+major version. A later runtime API that needs more fields adds a newly named
+record and function; generated payload records evolve separately through their
+tagged wire fields and lock file.</p>
 <h2 id="interface-identity-and-compatibility">Interface identity and compatibility<a class="headerlink" href="#interface-identity-and-compatibility" title="Permanent link">&para;</a></h2>
 <p>An API ID uses lowercase alphanumeric dot-separated segments, such as
 <code>example.echo</code>. The generated header for that ID is
@@ -1372,7 +1377,7 @@ still need stable records.</p>
 <li><a href="../imc-author-guide/">Create a typed IMC API</a></li>
 <li><a href="../native-api-routes/">Which native API to use</a></li>
 <li>C ABI: <code>BML/Imc.h</code></li>
-<li>C++ wrappers: <code>BML/ImcCpp.hpp</code></li>
+<li>C++ wrappers: <code>BML/Imc.hpp</code></li>
 <li>wire codec: <code>BML/ImcWire.hpp</code></li>
 </ul>
 

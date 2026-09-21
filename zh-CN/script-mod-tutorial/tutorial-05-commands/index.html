@@ -2383,7 +2383,7 @@
 <h3 id="hello-toggle">逐步追踪：玩家输入 <code>/hello toggle</code> 时发生了什么<a class="headerlink" href="#hello-toggle" title="Permanent link">&para;</a></h3>
 <ol>
 <li>玩家按 <code>/</code> 打开命令栏，输入 <code>hello toggle</code>，按回车</li>
-<li>BML 按 shell 规则解析输入（空格分词，引号、<code>$变量</code>、<code>;</code>、<code>|</code> 等都有效），把第一个词 <code>hello</code> 作为命令名查找</li>
+<li>BML 解析输入，把第一个词 <code>hello</code> 作为命令名查找</li>
 <li>BML 在注册表中找到名为 <code>hello</code> 的条目</li>
 <li>BML 构造 <code>CommandEvent</code> 对象：<code>CommandName = "hello"</code>，<code>ArgCount = 1</code>，<code>GetArg(0) = "toggle"</code>，<code>ArgsText = "toggle"</code></li>
 <li>BML 通过之前保存的 <code>execute</code> 句柄调用 <code>OnHelloCommand</code></li>
