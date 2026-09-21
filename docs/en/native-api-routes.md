@@ -43,19 +43,17 @@ arrives as an interface struct, and each one ships with an inline C++ namespace
 over it, so using one looks like calling a function.
 
 The `BML_*` functions of `BML.h` are the third spelling. They are plain C with
-no vtable involved, so they can be added to freely. Only two kinds of capability
-belong there. The first is a utility that touches neither the game nor loader
-state: strings, paths, files, encoding, and allocation, which is where the
-loader and mod directory queries sit. The second is the other half of an
-operation whose first half is frozen in C++, which is how
-`BML_UnregisterCommand` came to stand beside `IBML::RegisterCommand`. Splitting
-one pair of operations across two mechanisms reads worse than either choice
-alone, so the reverse operation follows the forward one.
+no vtable involved. New entries there are process-independent utilities:
+strings, paths, files, encoding, allocation, and directory queries. A few older
+exports complete frozen C++ operations; `BML_UnregisterCommand`,
+`BML_SetCommandStatus`, and `BML_GetCommandInput` remain supported for legacy
+`ICommand`, but that split API is not the growth path. The complete modern
+Command capability is the versioned `bml.command` interface.
 
 One question decides which of the three a new loader capability belongs to: who
 serves it. The loader serving something a Mod reads or drives is a built-in
-interface struct. A utility that touches neither the game nor loader state, or
-the reverse of an operation frozen in C++, is a C export. A Mod service normally
+interface struct. A utility that touches neither the game nor loader state is a
+C export. A Mod service normally
 uses IMC; a native-only base Mod may call `BML_RegisterInterface` when it must
 return process-local pointers without encoding and can impose a required Mod
 dependency on every consumer.
@@ -95,7 +93,7 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Add pages to your own entry in the Mods menu | none | `BML::ModMenu::Page` from `ModMenu.hpp` | `ModMenu.h` is the pure C interface; the C++ facade is one-way over it. Each registration appends one native-styled details action and routes it to a fully custom ImGui page. Version 1.0 is Native Mod only. |
 | Loader events | the `IMessageReceiver` virtuals on `IMod` | none | Handle the synchronous callback. Copy the required data into mod-owned storage if work must be deferred. |
 | Cheat mode | `EnableCheat` to set, `IsCheatEnabled` to read | `Runtime::ReadState` reads it | Read either, set through the frozen C++. |
-| Console commands | `RegisterCommand` plus an `ICommand` subclass | `BML_UnregisterCommand`, `BML_SetCommandStatus`, `BML_GetCommandInput` | Registration stays on the frozen C++ interface. The C exports complete its lifecycle and execution contract without changing either vtable. |
+| Console commands | `RegisterCommand` plus an `ICommand` subclass | `BML::Command::Registration` from `Command.hpp`, backed by `bml.command` | New Native Mods should use the versioned Command interface. It copies metadata, returns an owner-scoped handle, auto-cleans before DLL unload, returns shell status directly, and passes pipeline input and output explicitly. The three `BML.h` exports remain legacy adapters only. |
 | Configuration | `IMod::GetConfig` plus `IConfig` and `IProperty` | `BML_GetConfigPropertyEditor`, `BML_SetConfigPropertyEditor`, and the choice metadata functions | Values stay on the frozen C++ interface; the additive C exports attach non-persisted Mod Menu editor metadata without changing its vtable. |
 | Timers | `AddTimer`, `AddTimerLoop` | none | Frozen C++ only. |
 | Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |

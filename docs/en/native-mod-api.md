@@ -69,7 +69,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | `Types.h`, `TypeConvert.h` | Object references, vectors, and matrices, plus conversions to and from the Virtools types |
 | `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
 | `Behavior.h`, `Behavior.hpp` | Virtools Building Block discovery, authoring, execution, graph inspection, and editing |
-| `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with inline C++ wrappers |
+| `Command.h/.hpp`, `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with C++ facades |
 | `ModMenu.h`, `ModMenu.hpp` | Pure C Mods-menu page interface and its type-safe C++ authoring layer |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ runtime and wire format |
 | `Bui.h` | Ballance-style ImGui widgets |
@@ -228,17 +228,36 @@ The current stored value remains selectable even when it is not in the list.
 `BML_GetConfigPropertyEditor` and the choice accessors read this non-persisted
 metadata.
 
-`ICommand` provides the command name, aliases, description, cheat flag,
-execution, Tab completion, and basic Integer, Float, and Boolean parsers.
-`ILogger` provides three log levels.
+New Native Mods author commands through `Command.hpp`. Its
+`BML::Command::Registration` is a one-way C++ facade over the stable
+`bml.command` table in `Command.h`: registration copies name, alias,
+description, usage, category, and policy flags, then returns an owner-scoped
+handle. The execution callback receives the canonical name, the word actually
+typed, arguments without the command word, pipeline input, and an output
+writer; its non-negative return value is the shell status. Completion writes
+candidates through a bounded collector and receives a separate cursor request
+with the active argument and prefix, so it cannot emit command output or read
+pipeline input. No STL object crosses the DLL ABI.
+Commands may be hidden or disabled, can be inspected through `Visit` and
+`Find`, and are removed before their owner DLL is released. A `Registration`
+may also be unregistered or destroyed during command dispatch: lookup stops
+immediately, while the acquired command and callback state stay alive until
+that dispatch returns. C callers that supply `BML_CommandDefinition::Release`
+transfer ownership of `UserData` after successful registration; the loader
+calls it once after removal and the last in-progress dispatch.
 
-The command bar parses a line before `Execute` runs. Each call receives one
-command with quoting removed; `args[0]` preserves the command name or alias
-that the player typed. `IBML::ExecuteCommand` uses the same parser. See the
-[command-line guide](using-bml.md#command-line) for the user-facing syntax.
+`ICommand` is the compatible legacy adapter. It still provides command
+metadata, execution, Tab completion, and basic Integer, Float, and Boolean
+parsers. `ILogger` provides three log levels.
+
+For legacy `ICommand`, the command bar parses a line before `Execute` runs.
+Each call receives one command with quoting removed; `args[0]` preserves the
+command name or alias that the player typed. `IBML::ExecuteCommand` uses the
+same parser. See the [command-line guide](using-bml.md#command-line) for the
+user-facing syntax.
 
 `Execute` returns `void`, so two C exports in `BML.h` carry the rest of the
-shell contract. `BML_SetCommandStatus(int)` marks the running command failed
+shell behavior. `BML_SetCommandStatus(int)` marks the running command failed
 for `&&`, `||`, and `$?`; without it a command counts as succeeded unless it
 throws or cannot be found. `BML_GetCommandInput(size_t *)` returns the text
 piped into the running command by `other | this`, or null when nothing was
@@ -267,7 +286,7 @@ command answers `BML_ERROR_ACCESS_DENIED`, an unknown name answers
 `BML_ERROR_NOT_FOUND`, and the name is matched the way the console matches it, so
 the alias names the command too. Call it from the game thread.
 
-Without that call, a registered command stays in the command table until the
+Without that call, a legacy command stays in the command table until the
 process ends. In particular, do not delete an `ICommand` in `OnUnload` while it is
 still registered: unloading a mod does not remove its commands by itself, so a
 deleted command leaves a dangling entry that the console will still try to run.
@@ -286,6 +305,7 @@ also declares an inline C++ namespace that folds the lookup and the argument
 checks in:
 
 - `BML::Runtime` for runtime state, clock, and scores;
+- `BML::Command` for owner-scoped command registration, discovery, and shell execution;
 - `BML::Scene` for object information, transforms, and named lookup;
 - `BML::Gameplay` for level, energy, catalog, checkpoint, and reset data;
 - `BML::UI` for the message board, mod/map menus, and HUD;

@@ -56,6 +56,20 @@ they remain one logical command for completion and history. Clicking outside
 an open command session or entering a new scene closes it and releases keyboard
 capture.
 
+**Command Authoring** — The public versioned `bml.command` C Interface and its
+header-only C++ facade. A registration copies descriptive metadata, retains
+owner callbacks behind a checked handle, and supplies execution with explicit
+arguments, pipeline input, output, and shell status. Legacy `ICommand` remains
+a compatibility adapter rather than the growth path for Native Mods.
+
+**Command Registry** — The private Built-in Console Module shared by Native C,
+legacy C++, and AngelScript command adapters. It owns lookup, canonical
+metadata, and enabled and hidden policy. An acquired command retains the
+lifetime token supplied by its adapter through pre-callbacks, execution,
+post-callbacks, or completion; removal only stops new lookup. Each adapter owns
+the final release of its foreign callback state. The Shell Executor owns
+parsing, expansion, pipelines, and conditional execution.
+
 **Shell Editing Analysis** — The private Built-in Console Module that interprets
 incomplete shell source at a caret. It owns quote context, replacement ranges,
 alias-expanded command/argument roles, and typed command-head ranges shared by

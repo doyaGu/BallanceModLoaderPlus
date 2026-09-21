@@ -28,16 +28,15 @@ interface struct 没有这个问题。BML 注册表交出的是一个函数指�
 interface struct 形式出现的原因，而且每个都配了一层 inline C++ 命名空间，用起来和
 调用普通函数一样。
 
-`BML.h` 里的 `BML_*` 函数是第三种写法。它们是纯 C，不涉及任何 vtable，所以可以
-自由增加。但能落在这里的只有两类。一类是与游戏和 Loader 状态无关的纯工具：字符串、
-路径、文件、编码与内存分配，Loader 与 Mod 目录查询属于这一类。另一类是补齐一个另
-一半冻结在 C++ 里的操作，`BML_UnregisterCommand` 就是这样站到 `IBML::RegisterCommand`
-旁边的。把一对操作的正反两半拆到两种机制上，比任选一种都更难读，所以反向操作跟着
-正向走。
+`BML.h` 里的 `BML_*` 函数是第三种写法。它们是纯 C，不涉及任何 vtable。新增项只放
+与游戏和 Loader 状态无关的工具：字符串、路径、文件、编码、内存分配和目录查询。
+其中仍保留少数补齐冻结 C++ 操作的旧导出；`BML_UnregisterCommand`、
+`BML_SetCommandStatus` 和 `BML_GetCommandInput` 继续服务 legacy `ICommand`，但这种拆分
+接口不再扩展。完整的现代 Command 能力由版本化 `bml.command` interface 提供。
 
 新 Loader 能力该落在哪一种，由一个问题决定：谁来提供它。Loader 提供、Mod 读取或
-驱动的，是内建 interface struct。与游戏和 Loader 状态无关的纯工具，或者某个已冻结
-在 C++ 里的操作的反向操作，走 C 导出。Mod 间普通服务走 IMC；只有必须无编码传递
+驱动的，是内建 interface struct。与游戏和 Loader 状态无关的纯工具走 C 导出。
+Mod 间普通服务走 IMC；只有必须无编码传递
 进程内指针、且能要求所有使用方声明必需 Mod 依赖的原生基础 Mod，才调用
 `BML_RegisterInterface`。
 
@@ -69,10 +68,10 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 | 关卡状态、能量、检查点、重置点、关卡目录 | `GetArrayByName` 加 `CKDataArray` 按列读取 | `Gameplay::ReadLevel`、`ReadEnergy`、`ReadCheckpoints`、`ReadResetpoints`、`ReadCatalog` | 走 interface struct。它已经知道游戏那些数组的列顺序，而这正是最容易写错的部分。集合类读取会整份拷贝，属于初始化或换关时做的事，不适合每帧调用。 |
 | 游戏内消息板 | `SendIngameMessage` | `UI::AddMessage`、`UI::ClearMessages` | 两者皆可。清空消息板只有门面能做。 |
 | HUD 各部分、Mod 菜单、地图菜单 | 无 | `UI::SetHUDMode`、`ShowTitle`、`ShowFPS`、`OpenModsMenu`、`CloseModsMenu`、`OpenMapMenu`、`CloseMapMenu` | 只有 interface struct。 |
-| 在 Mods 菜单中扩展自己的 Mod 详情页 | 无 | `ModMenu.hpp` 的 `BML::ModMenu::Page` | `ModMenu.h` 是纯 C 接口，C++ facade 单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。 |
+| 在 Mods 菜单中扩展自己的 Mod 详情页 | 无 | `ModMenu.hpp` 的 `BML::ModMenu::Page` | `ModMenu.h` 是纯 C 接口，C++ 封装单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。 |
 | Loader 事件 | `IMod` 上的 `IMessageReceiver` 虚函数 | 无 | 处理同步回调；需要延后执行时，把必要数据复制到 Mod 自己拥有的存储中。 |
 | 作弊模式 | 写用 `EnableCheat`，读用 `IsCheatEnabled` | `Runtime::ReadState` 可读 | 读两者皆可，写走旧式 C++。 |
-| 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | `BML_UnregisterCommand`、`BML_SetCommandStatus`、`BML_GetCommandInput` | 注册仍走冻结的 C++ 接口；C 导出补齐命令的生命周期与执行约定，不改动任何虚表。 |
+| 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | `Command.hpp` 的 `BML::Command::Registration`，底层为 `bml.command` | 新 Native Mod 使用版本化 Command 接口。它复制元数据、返回受所有者约束的句柄、在 DLL 卸载前自动清理，并显式传入管道输入与输出、直接返回 shell 状态。`BML.h` 的三个导出仅作为旧接口适配层保留。 |
 | 配置 | `IMod::GetConfig` 加 `IConfig`、`IProperty` | `BML_GetConfigPropertyEditor`、`BML_SetConfigPropertyEditor` 与候选值元数据函数 | 值仍走冻结的 C++ 接口；追加的 C 导出只附加不落盘的 Mod 菜单编辑器元数据，不改虚表。 |
 | 定时器 | `AddTimer`、`AddTimerLoop` | 无 | 只有旧式 C++。 |
 | 退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染 | `ExitGame`、`SetIC`、`RestoreIC`、`Show`、`RegisterBallType` 等注册族、`SkipRenderForNextTick` | 无 | 只有旧式 C++。 |

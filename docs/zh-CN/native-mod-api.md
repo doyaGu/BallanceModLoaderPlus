@@ -65,7 +65,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `Types.h`, `TypeConvert.h` | 对象引用、向量与矩阵，以及与 Virtools 类型之间的互转 |
 | `Interface.h` | Loader 交出的带版本接口结构体，以及取用它的方式 |
 | `Behavior.h`, `Behavior.hpp` | Virtools Building Block 发现、编写、执行、行为图检查与编辑 |
-| `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带内联 C++ 包装 |
+| `Command.h/.hpp`, `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带 C++ 封装 |
 | `ModMenu.h`, `ModMenu.hpp` | 纯 C 的 Mods 菜单页面接口，以及其强类型 C++ 编写层 |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ 运行时与线格式 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |
@@ -209,10 +209,22 @@ Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和
 显示为 `None`，当前值即使不在列表中也仍可选择。`BML_GetConfigPropertyEditor`
 和候选值读取函数可读取这些不写入配置文件的元数据。
 
-`ICommand` 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
-Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志级别。
+新 Native Mod 通过 `Command.hpp` 编写命令。`BML::Command::Registration` 是
+`Command.h` 中稳定 `bml.command` 函数表的单向 C++ 封装：注册时复制名称、别名、
+说明、用法、分类及策略标记，并返回受所有者约束的句柄。执行回调会直接收到规范名称、
+实际输入的名称、去掉命令头的参数、管道输入和输出函数；它返回的非负整数就是 shell
+状态。补全接收独立的光标请求，其中明确给出当前参数和前缀，并通过有容量上限的收集器
+写入候选；它不能产生命令输出或读取管道输入，也不让 STL 对象跨 DLL ABI。命令可隐藏或禁用，
+可通过 `Visit`、`Find` 检查，并会在所属 DLL 释放前自动移除。`Registration` 也可以在
+命令派发期间注销或析构：命令会立即停止参与查找，已取得的命令对象和回调状态则保留到
+本次派发返回为止。C 调用方若提供 `BML_CommandDefinition::Release`，注册成功后即把
+`UserData` 的所有权交给 Loader；命令移除且最后一次派发结束后，Loader 会调用它一次。
 
-命令栏会在 `Execute` 运行前解析整行。每次调用只收到一条已经去除引号的命令；
+`ICommand` 是继续保留的旧接口适配层，仍提供命令元数据、执行、Tab 补全及
+Integer、Float、Boolean 基础解析。`ILogger` 提供三个日志级别。
+
+对于旧式 `ICommand`，命令栏会在 `Execute` 运行前解析整行。每次调用只收到一条
+已经去除引号的命令；
 `args[0]` 保留玩家实际输入的命令名或别名。`IBML::ExecuteCommand` 使用同一解析器。
 面向玩家的完整语法见[《使用 BML+》中的命令行说明](using-bml.md)。
 
@@ -242,7 +254,7 @@ void MyMod::OnUnload() {
 不存在返回 `BML_ERROR_NOT_FOUND`。名字的匹配方式与控制台一致，因此用别名也能指到
 同一个命令。该函数应在游戏线程调用。
 
-不调用它，注册过的命令就会一直留在命令表里直到进程结束。特别注意：命令还在注册
+不调用它，legacy 命令就会一直留在命令表里直到进程结束。特别注意：命令还在注册
 状态时不要在 `OnUnload` 里删除 `ICommand`，卸载 Mod 本身不会移除它注册的命令，
 删除后命令表里会留下悬空指针，控制台仍会尝试执行它。
 
@@ -257,6 +269,7 @@ void MyMod::OnUnload() {
 每个头文件里还声明了一层 inline C++ 命名空间，把取用与参数检查折进去：
 
 - `BML::Runtime`：运行状态、时钟和分数。
+- `BML::Command`：受所有者约束的命令注册、发现和 shell 执行。
 - `BML::Scene`：对象信息、实体变换和按名查找。
 - `BML::Gameplay`：关卡、能量、目录、检查点和重置点。
 - `BML::UI`：消息板、Mod/地图菜单和 HUD。
