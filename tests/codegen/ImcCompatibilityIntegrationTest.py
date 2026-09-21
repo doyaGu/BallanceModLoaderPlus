@@ -83,7 +83,7 @@ def main() -> int:
 
         source = root / "compatibility.cpp"
         source.write_text(
-            '#include "BML/ImcCpp.hpp"\n'
+            '#include "BML/Imc.hpp"\n'
             '#include <cstdint>\n'
             '#include <vector>\n'
             'namespace OldBinding {\n'

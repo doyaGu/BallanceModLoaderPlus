@@ -61,7 +61,7 @@ IMC has three public layers; the generated layer has one surface per language:
 | --- | --- |
 | Generated `*_imc.hpp` | Typed payloads, codecs, clients, providers, futures, and subscriptions |
 | Generated `*_imc.as` | The same typed payloads and routes for ASMod Clients and Providers; transport details stay under `BML::Detail` |
-| `BML/ImcCpp.hpp` | Generic C++ RAII wrappers, plus the client, subscription, and RPC machinery the generated bindings reuse |
+| `BML/Imc.hpp` | Generic C++ RAII wrappers, plus the client, subscription, and RPC machinery the generated bindings reuse |
 | `BML/Imc.h` | Fixed-layout C ABI used across DLL boundaries |
 
 The C ABI exports `BML_Imc_*` functions and uses only C scalars, fixed-layout
@@ -78,6 +78,12 @@ so the payload does not repeat a schema ID or descriptor hash. Each field uses
 a Protobuf-style varint tag that combines its permanent ID and physical wire
 kind. Fixed-width scalars carry no redundant length; only strings, composite
 values, and packed arrays are length-delimited.
+
+The low-level records in `BML/Imc.h` use `Size` to validate caller storage, not
+as permission to grow an existing type. Their 1.0 layouts are fixed for this
+major version. A later runtime API that needs more fields adds a newly named
+record and function; generated payload records evolve separately through their
+tagged wire fields and lock file.
 
 ## Interface identity and compatibility
 
@@ -204,5 +210,5 @@ still need stable records.
 - [Create a typed IMC API](imc-author-guide.md)
 - [Which native API to use](native-api-routes.md)
 - C ABI: `BML/Imc.h`
-- C++ wrappers: `BML/ImcCpp.hpp`
+- C++ wrappers: `BML/Imc.hpp`
 - wire codec: `BML/ImcWire.hpp`

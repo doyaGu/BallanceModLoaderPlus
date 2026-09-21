@@ -807,7 +807,7 @@ int ImcRuntime::RegisterRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
     if (!owned)
         return BML_ERROR_INVALID_HANDLE;
     if (!handler || rpcId == BML_IMC_INVALID_ID ||
-        (options && options->Size < sizeof(BML_ImcRpcRegistrationOptions))) {
+        (options && options->Size < BML_IMC_RPC_REGISTRATION_OPTIONS_1_0_SIZE)) {
         m_State->ReleaseClientRef(owned);
         return BML_ERROR_INVALID_PARAMETER;
     }
@@ -876,9 +876,9 @@ int ImcRuntime::CallRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
     if (!owned)
         return BML_ERROR_INVALID_HANDLE;
     if (rpcId == BML_IMC_INVALID_ID ||
-        (request && (request->Size < sizeof(BML_ImcMessage) ||
+        (request && (request->Size < BML_IMC_MESSAGE_1_0_SIZE ||
                      (request->DataSize != 0 && !request->Data))) ||
-        (options && options->Size < sizeof(BML_ImcCallOptions))) {
+        (options && options->Size < BML_IMC_CALL_OPTIONS_1_0_SIZE)) {
         m_State->ReleaseClientRef(owned);
         return BML_ERROR_INVALID_PARAMETER;
     }
@@ -1051,7 +1051,7 @@ int ImcRuntime::FutureGetResult(BML_ImcFuture future, BML_ImcMessage *outMessage
     auto *owned = m_State->AcquireFuture(future);
     if (!owned)
         return BML_ERROR_INVALID_HANDLE;
-    if (!outMessage || outMessage->Size < sizeof(BML_ImcMessage)) {
+    if (!outMessage || outMessage->Size < BML_IMC_MESSAGE_1_0_SIZE) {
         m_State->ReleaseFutureRef(owned);
         return BML_ERROR_INVALID_PARAMETER;
     }
@@ -1151,7 +1151,7 @@ int ImcRuntime::Subscribe(BML_ImcClient client, BML_ImcTopicId topicId,
     if (!owned)
         return BML_ERROR_INVALID_HANDLE;
     if (!handler || topicId == BML_IMC_INVALID_ID ||
-        (options && options->Size < sizeof(BML_ImcSubscribeOptions))) {
+        (options && options->Size < BML_IMC_SUBSCRIBE_OPTIONS_1_0_SIZE)) {
         m_State->ReleaseClientRef(owned);
         return BML_ERROR_INVALID_PARAMETER;
     }
@@ -1269,7 +1269,7 @@ int ImcRuntime::Publish(BML_ImcClient client, BML_ImcTopicId topicId,
     if (!owned)
         return BML_ERROR_INVALID_HANDLE;
     if (topicId == BML_IMC_INVALID_ID || !message ||
-        message->Size < sizeof(BML_ImcMessage) ||
+        message->Size < BML_IMC_MESSAGE_1_0_SIZE ||
         (message->DataSize != 0 && !message->Data)) {
         m_State->ReleaseClientRef(owned);
         return BML_ERROR_INVALID_PARAMETER;
@@ -1647,7 +1647,7 @@ int ImcRuntime::GetStats(BML_ImcClient client, BML_ImcStats *outStats) {
     auto *owned = m_State->AcquireClient(client);
     if (!owned)
         return BML_ERROR_INVALID_HANDLE;
-    if (!outStats || outStats->Size < sizeof(BML_ImcStats)) {
+    if (!outStats || outStats->Size < BML_IMC_STATS_1_0_SIZE) {
         m_State->ReleaseClientRef(owned);
         return BML_ERROR_INVALID_PARAMETER;
     }

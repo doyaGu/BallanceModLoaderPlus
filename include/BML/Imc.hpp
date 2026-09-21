@@ -35,8 +35,8 @@
 // Nothing here throws out: an exception during a decode becomes BML_ERROR_OUT_OF_MEMORY or
 // BML_ERROR_FAIL, which is the same as the C ABI does, since a handler is called from the
 // loader and an exception must not cross back into it.
-#ifndef BML_IMCCPP_HPP
-#define BML_IMCCPP_HPP
+#ifndef BML_IMC_HPP
+#define BML_IMC_HPP
 
 #include "BML/ImcWire.hpp"
 
@@ -256,7 +256,7 @@ template <class Value, class SizeFunction, class EncodeFunction>
     status = encodeFunction(value, buffer.Data(), size);
     if (status != BML_OK) return status;
     message = {};
-    message.Size = sizeof(BML_ImcMessage);
+    message.Size = BML_IMC_MESSAGE_1_0_SIZE;
     message.Data = buffer.Data();
     message.DataSize = size;
     message.PayloadType = payloadType;
@@ -482,7 +482,9 @@ public:
     }
 
 private:
-    static void Dispatch(BML_ImcTopicId, const BML_ImcMessage *message, void *userdata) noexcept {
+    static void BML_CDECL Dispatch(BML_ImcTopicId,
+                                   const BML_ImcMessage *message,
+                                   void *userdata) noexcept {
         auto *self = static_cast<TopicSubscription *>(userdata);
         if (!self || !self->m_Handler) return;
         Value value{};
@@ -533,8 +535,9 @@ template <class Input, class Output, class Handler,
 struct RpcBinding {
     using Slot = RpcSlot<Handler>;
 
-    [[nodiscard]] static int Thunk(BML_ImcRpcId, const BML_ImcMessage *request,
-                                   BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int BML_CDECL Thunk(
+        BML_ImcRpcId, const BML_ImcMessage *request,
+        BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<Slot *>(userdata);
         if (!slot || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         // A handler is allowed to destroy its own provider, which destroys this slot. Copy
@@ -548,7 +551,8 @@ struct RpcBinding {
         (void)response;
         try {
             if constexpr (std::is_void_v<Input>) {
-                if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0))
+                if (request && (request->Size < BML_IMC_MESSAGE_1_0_SIZE ||
+                                request->DataSize != 0))
                     return BML_ERROR_MALFORMED_MESSAGE;
                 if constexpr (std::is_void_v<Output>) {
                     return function(handlerUserdata);
@@ -561,7 +565,7 @@ struct RpcBinding {
                         : status;
                 }
             } else {
-                if (!request || request->Size < sizeof(BML_ImcMessage))
+                if (!request || request->Size < BML_IMC_MESSAGE_1_0_SIZE)
                     return BML_ERROR_MALFORMED_MESSAGE;
                 if (request->PayloadType != requestPayload)
                     return BML_ERROR_TYPE_MISMATCH;
@@ -612,4 +616,4 @@ template <class Handler>
 
 } // namespace BML::Imc
 
-#endif // BML_IMCCPP_HPP
+#endif // BML_IMC_HPP

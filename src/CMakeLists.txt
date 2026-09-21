@@ -92,7 +92,7 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Imc.h
         ${BML_INCLUDE_DIR}/BML/Types.h
         ${BML_INCLUDE_DIR}/BML/ImcWire.hpp
-        ${BML_INCLUDE_DIR}/BML/ImcCpp.hpp
+        ${BML_INCLUDE_DIR}/BML/Imc.hpp
         ${BML_INCLUDE_DIR}/BML/TypeConvert.h
         ${BML_INCLUDE_DIR}/BML/Behavior.h
         ${BML_PUBLIC_BEHAVIOR_CPP_HEADERS}

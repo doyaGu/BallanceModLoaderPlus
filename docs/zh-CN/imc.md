@@ -52,7 +52,7 @@ IMC 有三层公开接口；生成层按语言提供两种门面：
 | --- | --- |
 | 生成的 `*_imc.hpp` | 类型化载荷、编解码器、Client、Provider、Future 和 Subscription |
 | 生成的 `*_imc.as` | 面向 ASMod Client/Provider 的同一套类型与路由；传输细节留在 `BML::Detail` |
-| `BML/ImcCpp.hpp` | 面向自定义集成的通用 C++ RAII 包装，以及生成的绑定复用的 Client、Subscription 和 RPC 机制 |
+| `BML/Imc.hpp` | 面向自定义集成的通用 C++ RAII 包装，以及生成的绑定复用的 Client、Subscription 和 RPC 机制 |
 | `BML/Imc.h` | 跨 DLL 使用的固定布局 C ABI |
 
 C ABI 只导出 `BML_Imc_*` 函数，并只使用 C 标量、固定布局结构体、字节区间、
@@ -64,6 +64,10 @@ C ABI 只导出 `BML_Imc_*` 函数，并只使用 C 标量、固定布局结构�
 消息本身已经携带载荷类型，因此载荷不会重复保存 Schema ID 或描述哈希。字段使用
 类似 Protobuf 的 Varint Tag，将永久字段 ID 和物理线类型组合起来。定长标量没有
 冗余长度，只有字符串、复合值和打包数组使用长度分隔。
+
+`BML/Imc.h` 的底层结构使用 `Size` 校验调用方存储空间，并不表示可以扩展原结构。
+这些 1.0 布局在当前 major 版本内固定；后续运行时 API 需要更多字段时，应新增命名结构
+与函数。生成的载荷 Record 则通过带 tag 的 wire field 和 lock file 独立演进。
 
 ## 接口身份与兼容性
 
@@ -168,5 +172,5 @@ Record。
 - [创建类型化 IMC API](imc-author-guide.md)
 - [原生 API 该走哪条路](native-api-routes.md)
 - C ABI：`BML/Imc.h`
-- C++ 包装：`BML/ImcCpp.hpp`
+- C++ 包装：`BML/Imc.hpp`
 - 线格式编解码：`BML/ImcWire.hpp`

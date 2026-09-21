@@ -1016,7 +1016,8 @@ template <class Record>
 template <class Record>
 [[nodiscard]] inline int Decode(const BML_ImcMessage &message, Record &out,
                                 const FieldCodec<Record> *fields, std::size_t count) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data))
+    if (message.Size < BML_IMC_MESSAGE_1_0_SIZE ||
+        (message.DataSize && !message.Data))
         return BML_ERROR_INVALID_PARAMETER;
     Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
