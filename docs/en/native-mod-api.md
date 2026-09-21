@@ -23,8 +23,8 @@ public:
     DECLARE_BML_VERSION;
 };
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml) { return new MyMod(bml); }
-MOD_EXPORT void BMLExit(IMod *mod) { delete mod; }
+BML_MOD_ENTRY(IMod *) BMLEntry(IBML *bml) { return new MyMod(bml); }
+BML_MOD_ENTRY(void) BMLExit(IMod *mod) { delete mod; }
 ```
 
 The object returned by `BMLEntry` is allocated by the Mod DLL. Export
@@ -33,6 +33,9 @@ the same C++ runtime. BML calls `BMLExit` when registration fails after object
 creation and when a loaded native Mod is unloaded. For compatibility, BML can
 still load an older DLL without `BMLExit`, but it logs a warning and cannot
 destroy that Mod instance safely.
+
+Use `BML_MOD_ENTRY` for both exports. It fixes their C linkage and calling
+convention even when the Mod project changes the compiler defaults.
 
 Use the CMake helper installed with the SDK:
 
@@ -65,13 +68,13 @@ and deploy the Mod under `ModLoader/Mods`.
 | `ICommand.h` | Command execution, completion, and basic argument parsing |
 | `IConfig.h` | Typed configuration properties |
 | `ILogger.h` | Info, Warn, and Error logging |
-| `DataShare.h` | Low-level, named in-process byte sharing |
+| `DataShare.h` / `DataShare.hpp` | Named in-process byte sharing through the C ABI or the RAII C++ facade |
 | `Types.h`, `TypeConvert.h` | Object references, vectors, and matrices, plus conversions to and from the Virtools types |
 | `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
 | `Behavior.h`, `Behavior.hpp` | Virtools Building Block discovery, authoring, execution, graph inspection, and editing |
 | `Command.h/.hpp`, `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with C++ facades |
 | `ModMenu.h`, `ModMenu.hpp` | Pure C Mods-menu page interface and its type-safe C++ authoring layer |
-| `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ runtime and wire format |
+| `Imc.h`, `Imc.hpp`, `ImcWire.hpp` | IMC C/C++ runtime and wire format |
 | `Bui.h` | Ballance-style ImGui widgets |
 | `Gui.h`, `Gui/*.h` | `BGui` wrappers around Virtools entities and behaviours |
 | `InputHook.h` | Keyboard, mouse, controller state, and paired input-block tokens |
@@ -389,14 +392,22 @@ because they change loader state instead of recording draw commands.
 
 ## C API ownership
 
-`BML.h` and `DataShare.h` are callable through the C ABI. Release strings,
+`BML.h` and `DataShare.h` are callable through the C ABI. C++ Mods can include
+`DataShare.hpp` for owning handles and cancellable requests without depending on
+loader implementation types. Release strings,
 wide strings, string arrays, wide-string arrays, and binary buffers allocated
 by BML with the matching `BML_Free*` function. Do not call CRT `free` across a
 DLL boundary.
 
 `BML_DataShare_Get` returns a borrowed pointer. It becomes invalid when the
 same key is set or removed or when the instance is destroyed. Use
-`BML_DataShare_CopyEx` when a stable copy is required.
+`BML_DataShare_CopyEx` when a stable copy is required. A queued
+`BML_DataShare_Request` returns an owner-scoped request handle; cancel it with
+`BML_DataShare_CancelRequest` when its own lifetime ends. The loader cancels any
+remaining requests before releasing the owning Mod DLL. Worker threads and
+DLLs that host more than one Mod should use `BML_DataShare_RequestForOwner` and
+`BML_DataShare_CancelRequestForOwner`. Stop worker threads before `OnUnload`
+returns; no public API call may race release of its calling DLL.
 
 ## Where the loader and your mod live
 

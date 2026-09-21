@@ -200,8 +200,10 @@ public:
     // detaches registrations. It tears the Mod's IMC state down right after this
     // returns, saves the configs once every Mod has been through, and ignores any
     // timer scheduled from here. A config write here is saved but does not cause a
-    // later OnModifyConfig callback. Commands cannot be withdrawn, so do not delete
-    // anything the loader still points at.
+    // later OnModifyConfig callback. Commands registered through the legacy
+    // RegisterCommand path remain until loader teardown. Commands registered
+    // through bml.command may be unregistered, and all remaining registrations
+    // are detached before the Mod DLL is released.
     virtual void OnUnload() {}
 
     // Runs during the loader's config flush after IProperty::SetString or one of its

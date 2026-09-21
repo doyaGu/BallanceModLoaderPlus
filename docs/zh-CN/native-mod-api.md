@@ -22,14 +22,17 @@ public:
     DECLARE_BML_VERSION;
 };
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml) { return new MyMod(bml); }
-MOD_EXPORT void BMLExit(IMod *mod) { delete mod; }
+BML_MOD_ENTRY(IMod *) BMLEntry(IBML *bml) { return new MyMod(bml); }
+BML_MOD_ENTRY(void) BMLExit(IMod *mod) { delete mod; }
 ```
 
 `BMLEntry` 返回的对象由 Mod DLL 分配。Mod 应导出 `BMLExit`，并在其中销毁
 同一个对象，确保分配与释放使用相同的 C++ 运行库。对象创建后若注册失败，或
 已加载的原生 Mod 被卸载，BML 都会调用 `BMLExit`。为兼容旧 Mod，缺少
 `BMLExit` 的 DLL 仍可加载，但 BML 会记录警告，且无法安全销毁该 Mod 实例。
+
+两个导出都应使用 `BML_MOD_ENTRY`。即使 Mod 项目更改了编译器的默认选项，
+它也会固定 C linkage 和 calling convention。
 
 推荐通过安装包提供的 CMake 函数创建目标：
 
@@ -61,13 +64,13 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `ICommand.h` | 命令执行、补全和基础参数解析 |
 | `IConfig.h` | 类型化配置属性 |
 | `ILogger.h` | Info、Warn、Error 日志 |
-| `DataShare.h` | 低层、同进程的命名字节数据共享 |
+| `DataShare.h` / `DataShare.hpp` | 通过 C ABI 或 RAII C++ 封装使用的进程内命名字节共享 |
 | `Types.h`, `TypeConvert.h` | 对象引用、向量与矩阵，以及与 Virtools 类型之间的互转 |
 | `Interface.h` | Loader 交出的带版本接口结构体，以及取用它的方式 |
 | `Behavior.h`, `Behavior.hpp` | Virtools Building Block 发现、编写、执行、行为图检查与编辑 |
 | `Command.h/.hpp`, `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带 C++ 封装 |
 | `ModMenu.h`, `ModMenu.hpp` | 纯 C 的 Mods 菜单页面接口，以及其强类型 C++ 编写层 |
-| `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ 运行时与线格式 |
+| `Imc.h`, `Imc.hpp`, `ImcWire.hpp` | IMC C/C++ 运行时与线格式 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |
 | `Gui.h`, `Gui/*.h` | `BGui` Virtools 实体/行为 UI 封装 |
 | `InputHook.h` | 键盘、鼠标、手柄状态与可配对的输入屏蔽令牌 |
@@ -347,12 +350,18 @@ ImGui 帧由 Loader 掌管。它在 Mod 回调之前开帧，并在 `OnProcess` 
 
 ## C API 的所有权
 
-`BML.h` 和 `DataShare.h` 可由 C ABI 调用。凡是 BML 返回的新分配字符串、宽
+`BML.h` 和 `DataShare.h` 可由 C ABI 调用；C++ Mod 可以包含
+`DataShare.hpp`，以 RAII 管理句柄和可取消请求，而不依赖 Loader 私有实现。
+凡是 BML 返回的新分配字符串、宽
 字符串、字符串数组、宽字符串数组或二进制缓冲区，都应使用对应的
 `BML_Free*` 函数释放，
 不要跨 DLL 直接调用 CRT `free`。`BML_DataShare_Get` 返回借用指针；同一键
 再次 Set/Remove 或实例销毁后立即失效，需要稳定副本时使用
-`BML_DataShare_CopyEx`。
+`BML_DataShare_CopyEx`。排队的 `BML_DataShare_Request` 会返回归属于当前 Mod 的
+request handle；自身生命期结束时用 `BML_DataShare_CancelRequest` 取消。Loader 会在
+释放 Mod DLL 前取消其余请求。worker thread 或同一 DLL 承载多个 Mod 时，应使用
+`BML_DataShare_RequestForOwner` 和 `BML_DataShare_CancelRequestForOwner`。应在
+`OnUnload` 返回前停止 worker thread；公开 API 调用不能与调用方 DLL 的释放并发。
 
 ## Loader 与 Mod 所在目录
 
