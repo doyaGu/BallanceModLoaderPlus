@@ -4462,6 +4462,38 @@ TEST(BehaviorAuthoring, UsesRevisionedPlanInstances) {
     EXPECT_EQ(malformed.Code(), BML_ERROR_MALFORMED_MESSAGE);
 }
 
+TEST(BehaviorAuthoring, ClosedPlanInstancesReleaseAuthorCallbacks) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    auto alive = std::make_shared<int>(0);
+    Plan::Instance instance;
+    {
+        Edit edit;
+        edit.Root().Tap(edit.Root().Root().Out(), [alive] {
+            (void) alive;
+        });
+        auto submitted = session.Plan(
+            "instance-lifetime", Scripts::One("Gameplay_Events"), edit);
+        ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+        Plan plan = submitted.Take();
+
+        auto instances = plan.Instances();
+        ASSERT_TRUE(instances) << instances.GetStatus().Message;
+        ASSERT_EQ(instances->size(), 1u);
+        instance = std::move(instances->front());
+        EXPECT_TRUE(instance);
+        EXPECT_EQ(alive.use_count(), 2);
+
+        ASSERT_EQ(plan.Close().Value(), CloseState::Closed);
+    }
+
+    EXPECT_EQ(alive.use_count(), 1);
+    EXPECT_FALSE(instance);
+}
+
 TEST(BehaviorAuthoring, DoesNotReusePatchBindingsAfterARejectedReplacement) {
     g_State = {};
     auto opened = Session::Open();

@@ -668,7 +668,7 @@ private:
     std::shared_ptr<Detail::SessionState> m_Session;
     BML_BehaviorPlan m_Plan = nullptr;
     BML_BehaviorPlanInstance m_Wire{};
-    std::shared_ptr<Detail::EditProgram> m_Edit;
+    std::weak_ptr<Detail::EditProgram> m_Edit;
     std::uint32_t m_HandleLimit = 0;
 
     friend class Plan;

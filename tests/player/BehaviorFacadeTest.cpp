@@ -1194,10 +1194,20 @@ private:
     }
 
     void WaitSessionRetired() {
-        if (*m_RetirementCalls && Restored() &&
-            m_RetirementCalls.use_count() == 1) {
+        if (*m_RetirementCalls && Restored()) {
+            const auto planClosed = m_RetirementPlan.Close();
+            const auto waitingClosed = m_RetirementWaitingPlan.Close();
+            const auto patchClosed = m_RetirementPatch.Close();
+            const bool facadesClosed = planClosed && waitingClosed &&
+                patchClosed &&
+                planClosed.Value() == BML::Behavior::CloseState::Closed &&
+                waitingClosed.Value() == BML::Behavior::CloseState::Closed &&
+                patchClosed.Value() == BML::Behavior::CloseState::Closed &&
+                !m_RetirementPlan && !m_RetirementWaitingPlan &&
+                !m_RetirementPatch;
             const auto peer = m_RetirementPeerPlan.Info();
             const bool passed = *m_RetirementCalls == 1 &&
+                m_RetirementCalls.use_count() == 1 && facadesClosed &&
                 m_SessionCloseCode == BML_OK && peer &&
                 peer->State != PlanState::Retiring &&
                 m_Session.Reference(m_Graph) &&
@@ -1209,9 +1219,6 @@ private:
                 Finish(false, "session-close-state");
                 return;
             }
-            m_RetirementPlan = {};
-            m_RetirementWaitingPlan = {};
-            m_RetirementPatch = {};
             m_RetirementSession.Reset();
             m_State = State::AttachBlock;
             return;

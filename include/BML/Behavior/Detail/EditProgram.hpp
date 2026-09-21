@@ -1686,7 +1686,8 @@ Result<BML_BehaviorPortRef> Patch::ResolvePort(const Handle &port) const {
 
 inline Plan::Instance::operator bool() const noexcept {
     return m_Session && m_Session->Api && m_Session->Handle && m_Plan &&
-        m_Wire.StructSize >= sizeof(m_Wire) && m_Edit && m_HandleLimit;
+        m_Wire.StructSize >= sizeof(m_Wire) && !m_Edit.expired() &&
+        m_HandleLimit;
 }
 
 inline Result<BML_BehaviorPortRef> Plan::Instance::ResolvePort(
