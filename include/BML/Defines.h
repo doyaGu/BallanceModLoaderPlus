@@ -56,7 +56,11 @@
 #endif
 #endif // !BML_CDECL
 
+// Legacy export prefix. New entry points should use BML_MOD_ENTRY so their
+// calling convention is independent of the Mod project's compiler defaults.
 #define MOD_EXPORT extern "C" __declspec(dllexport)
+#define BML_MOD_ENTRY(return_type) \
+    extern "C" __declspec(dllexport) return_type BML_CDECL
 
 #ifndef MAX_PATH
 #define MAX_PATH 260
@@ -216,7 +220,7 @@
 
 BML_BEGIN_CDECLS
 
-BML_EXPORT const char *BML_GetErrorString(int errorCode);
+BML_EXPORT const char *BML_CDECL BML_GetErrorString(int errorCode);
 
 BML_END_CDECLS
 

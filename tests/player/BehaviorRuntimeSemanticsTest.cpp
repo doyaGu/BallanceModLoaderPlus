@@ -124,10 +124,10 @@ private:
 
 BML_PLAYER_PROBE_READ_EXPORT()
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml) {
+BML_MOD_ENTRY(IMod *) BMLEntry(IBML *bml) {
     return new BehaviorRuntimeSemanticsTest(bml);
 }
 
-MOD_EXPORT void BMLExit(IMod *mod) {
+BML_MOD_ENTRY(void) BMLExit(IMod *mod) {
     delete mod;
 }

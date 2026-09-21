@@ -66,10 +66,10 @@ private:
     std::unique_ptr<CommandHello> m_Command;
 };
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml) {
+BML_MOD_ENTRY(IMod *) BMLEntry(IBML *bml) {
     return new HelloMod(bml);
 }
 
-MOD_EXPORT void BMLExit(IMod *mod) {
+BML_MOD_ENTRY(void) BMLExit(IMod *mod) {
     delete mod;
 }
