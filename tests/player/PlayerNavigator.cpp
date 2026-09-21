@@ -11,7 +11,6 @@ namespace BML::PlayerTest {
 namespace {
 
 struct LocatedNode {
-    Behavior::Graph Graph;
     Behavior::Node Node;
     CKBehavior *Native = nullptr;
 
@@ -69,7 +68,7 @@ LocatedNode FindFirst(Behavior::Session &session, CKBehavior *root,
                 return nested;
         }
         if (Matches(node, name, inputCount, outputCount, pinCount, poutCount))
-            return {graph, node, native};
+            return {node, native};
     }
     return {};
 }
@@ -166,19 +165,26 @@ PlayerNavigator::Step PlayerNavigator::ChooseLevel() {
         m_Error = "level-menu-path-not-found";
         return Step::Failed;
     }
+    auto inspected = m_Behavior.Inspect(levelMenu.Native);
+    if (!inspected) {
+        m_Error = "level-menu-inspection-failed";
+        return Step::Failed;
+    }
+    Behavior::Graph levelMenuGraph = inspected.Take();
 
     CKBehavior *buttonBehavior = nullptr;
     Behavior::Node buttonNode;
-    for (Behavior::Node node : levelMenu.Graph.Nodes()) {
+    for (Behavior::Node node : levelMenuGraph.Nodes()) {
         CKBehavior *candidate = NativeChild(levelMenu.Native, node);
         if (!candidate || node.Name() != "TT PushButton2" ||
-            !node.Out(2) ||
-            !candidate->GetTargetParameter()) {
+            !node.Out(2) || !candidate->GetTargetParameter()) {
             continue;
         }
         CKParameter *targetSource =
             candidate->GetTargetParameter()->GetRealSource();
-        if (targetSource && targetSource->GetValueObject() == levelButton) {
+        CKObject *targetObject = targetSource
+            ? targetSource->GetValueObject() : nullptr;
+        if (targetObject == levelButton) {
             buttonBehavior = candidate;
             buttonNode = node;
             break;
@@ -191,9 +197,9 @@ PlayerNavigator::Step PlayerNavigator::ChooseLevel() {
 
     Behavior::Node selectorNode;
     Behavior::Port selectorInput;
-    for (Behavior::Link link : levelMenu.Graph.Outgoing(buttonNode.Out(2))) {
+    for (Behavior::Link link : levelMenuGraph.Outgoing(buttonNode.Out(2))) {
         Behavior::Port target = link.Target();
-        Behavior::Node candidate = NodeById(levelMenu.Graph, target.Node());
+        Behavior::Node candidate = NodeById(levelMenuGraph, target.Node());
         if (candidate && candidate.Name() == "Parameter Selector") {
             selectorNode = candidate;
             selectorInput = target;
