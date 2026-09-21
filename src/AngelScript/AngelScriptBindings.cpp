@@ -2915,7 +2915,7 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ConfigProperty", "void SetKey(CKKEYBOARD value) const", "void ConfigProperty::SetKey(CKKEYBOARD value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetKey), asCALL_THISCALL},
     {"ConfigProperty", "void SetComment(const string &in comment) const", "void ConfigProperty::SetComment(const string &in comment) const", BML_AS_GENERIC_METHOD(&BMLAS_ConfigPropertyRef::SetComment), asCALL_GENERIC},
     {"ConfigProperty", "void SetEditor(ConfigPropertyEditor editor) const", "void ConfigProperty::SetEditor(ConfigPropertyEditor editor) const", asMETHOD(BMLAS_ConfigPropertyRef, SetEditor), asCALL_THISCALL},
-    {"ConfigProperty", "bool SetChoices(const array<string> &in choices) const", "bool ConfigProperty::SetChoices(const array<string> &in choices) const", asMETHOD(BMLAS_ConfigPropertyRef, SetChoices), asCALL_THISCALL},
+    {"ConfigProperty", "bool SetChoices(const array<string> &in choices) const", "bool ConfigProperty::SetChoices(const array<string> &in choices) const", BML_AS_GENERIC_METHOD(&BMLAS_ConfigPropertyRef::SetChoices), asCALL_GENERIC},
     {"ConfigProperty", "void SetDefaultString(const string &in value) const", "void ConfigProperty::SetDefaultString(const string &in value) const", BML_AS_GENERIC_METHOD(&BMLAS_ConfigPropertyRef::SetDefaultString), asCALL_GENERIC},
     {"ConfigProperty", "void SetDefaultBoolean(bool value) const", "void ConfigProperty::SetDefaultBoolean(bool value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultBoolean), asCALL_THISCALL},
     {"ConfigProperty", "void SetDefaultInteger(int value) const", "void ConfigProperty::SetDefaultInteger(int value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultInteger), asCALL_THISCALL},
@@ -4059,6 +4059,12 @@ int RegisterBMLAngelScript(asIScriptEngine *engine,
             return asERROR;
     }
 
+    const int imguiResult = RegisterImGuiBindings(engine, errorMessage);
+    if (imguiResult < 0) {
+        engine->SetDefaultNamespace("");
+        return imguiResult;
+    }
+
     BML_AS_REGISTER(engine->SetDefaultNamespace("BML"), "namespace BML");
 
     const int facadeResult = RegisterScriptFacade(engine, errorMessage);
@@ -4071,12 +4077,6 @@ int RegisterBMLAngelScript(asIScriptEngine *engine,
     if (behaviorResult < 0) {
         engine->SetDefaultNamespace("");
         return behaviorResult;
-    }
-
-    const int imguiResult = RegisterImGuiBindings(engine, errorMessage);
-    if (imguiResult < 0) {
-        engine->SetDefaultNamespace("");
-        return imguiResult;
     }
 
     engine->SetDefaultNamespace("");
