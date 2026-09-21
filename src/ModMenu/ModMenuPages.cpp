@@ -12,6 +12,15 @@ namespace {
     }
 }
 
+ModMenuPages::Callbacks::~Callbacks() noexcept {
+    if (!release)
+        return;
+    try {
+        release(userData);
+    } catch (...) {
+    }
+}
+
 int ModMenuPages::Register(std::string owner, const BML_ModMenuPage &page) {
     if (owner.empty() || page.StructSize < RequiredPageSize ||
         !page.Id || page.Id[0] == '\0' || !page.Label || page.Label[0] == '\0' ||
@@ -27,16 +36,17 @@ int ModMenuPages::Register(std::string owner, const BML_ModMenuPage &page) {
     }
 
     Page registeredPage;
+    registeredPage.callbacks = std::make_shared<Callbacks>();
     registeredPage.info.key.owner = owner;
     registeredPage.info.key.id = page.Id;
     registeredPage.info.label = page.Label;
     registeredPage.info.description = page.Description ? page.Description : "";
-    registeredPage.userData = page.UserData;
-    registeredPage.draw = page.Draw;
+    registeredPage.callbacks->userData = page.UserData;
+    registeredPage.callbacks->draw = page.Draw;
     if (HasMember(page, offsetof(BML_ModMenuPage, Enter), sizeof(page.Enter)))
-        registeredPage.enter = page.Enter;
+        registeredPage.callbacks->enter = page.Enter;
     if (HasMember(page, offsetof(BML_ModMenuPage, Leave), sizeof(page.Leave)))
-        registeredPage.leave = page.Leave;
+        registeredPage.callbacks->leave = page.Leave;
 
     if (!ownerState) {
         OwnerState newOwner;
@@ -50,6 +60,8 @@ int ModMenuPages::Register(std::string owner, const BML_ModMenuPage &page) {
 
     ownerState->revision = NextSequence();
     ownerState->pages.back().info.key.generation = ownerState->revision;
+    if (HasMember(page, offsetof(BML_ModMenuPage, Release), sizeof(page.Release)))
+        ownerState->pages.back().callbacks->release = page.Release;
     return BML_OK;
 }
 
@@ -104,10 +116,11 @@ int ModMenuPages::Enter(const ModMenuPageKey &key) const noexcept {
     if (!page)
         return BML_ERROR_NOT_FOUND;
 
-    const BML_ModMenuPageEnter enter = page->enter;
+    const std::shared_ptr<Callbacks> callbacks = page->callbacks;
+    const BML_ModMenuPageEnter enter = callbacks->enter;
     if (!enter)
         return BML_OK;
-    void *const userData = page->userData;
+    void *const userData = callbacks->userData;
     try {
         return enter(userData);
     } catch (...) {
@@ -120,8 +133,9 @@ int ModMenuPages::Draw(const ModMenuPageKey &key, BML_ModMenuPageAction &action)
     if (!page)
         return BML_ERROR_NOT_FOUND;
 
-    const BML_ModMenuPageDraw draw = page->draw;
-    void *const userData = page->userData;
+    const std::shared_ptr<Callbacks> callbacks = page->callbacks;
+    const BML_ModMenuPageDraw draw = callbacks->draw;
+    void *const userData = callbacks->userData;
     BML_ModMenuPageFrame frame = {
         sizeof(BML_ModMenuPageFrame),
         BML_MOD_MENU_PAGE_NONE,
@@ -145,10 +159,11 @@ int ModMenuPages::Leave(const ModMenuPageKey &key,
     if (!page)
         return BML_ERROR_NOT_FOUND;
 
-    const BML_ModMenuPageLeave leave = page->leave;
+    const std::shared_ptr<Callbacks> callbacks = page->callbacks;
+    const BML_ModMenuPageLeave leave = callbacks->leave;
     if (!leave)
         return BML_OK;
-    void *const userData = page->userData;
+    void *const userData = callbacks->userData;
     try {
         return leave(userData, reason);
     } catch (...) {

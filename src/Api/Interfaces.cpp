@@ -334,12 +334,19 @@ int BML_CDECL ModMenuRegisterPage(
             offsetof(BML_ModMenuPage, Enter) + sizeof(BML_ModMenuPageEnter);
         const bool hasLeave = page->StructSize >=
             offsetof(BML_ModMenuPage, Leave) + sizeof(BML_ModMenuPageLeave);
+        const bool hasRelease = page->StructSize >=
+            offsetof(BML_ModMenuPage, Release) + sizeof(BML_ModMenuPageRelease);
         if (hasEnter && page->Enter &&
             !context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Enter))) {
             return BML_ERROR_ACCESS_DENIED;
         }
         if (hasLeave && page->Leave &&
             !context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Leave))) {
+            return BML_ERROR_ACCESS_DENIED;
+        }
+        if (hasRelease && page->Release &&
+            !context->NativeModOwnsAddress(
+                owner, reinterpret_cast<const void *>(page->Release))) {
             return BML_ERROR_ACCESS_DENIED;
         }
         return context->GetModMenuPages().Register(owner, *page);

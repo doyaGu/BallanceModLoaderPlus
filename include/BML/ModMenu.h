@@ -8,15 +8,19 @@
 // page. Draw widgets directly; do not begin or end an ImGui frame. The loader
 // copies Id, Label, and Description during registration. UserData and the
 // callbacks remain owned by the Mod and must stay valid until the page is
-// unregistered; every callback address must belong to the owner DLL. Do not
-// destroy a page from one of its own callbacks. Remaining pages are removed
-// before the owner DLL is released.
+// unregistered; every callback address must belong to the owner DLL. When
+// Release is non-null, successful registration transfers one UserData reference
+// to the loader and Release returns it after the last active callback during
+// unregistration or owner cleanup. Do not destroy a page from one of its own
+// callbacks. Remaining pages are removed before the owner DLL is released.
 #ifndef BML_MOD_MENU_H
 #define BML_MOD_MENU_H
 
 #include "BML/Interface.h"
 
 BML_BEGIN_CDECLS
+
+#pragma pack(push, 8)
 
 #define BML_MOD_MENU_INTERFACE_ID "bml.mod-menu"
 #define BML_MOD_MENU_INTERFACE_MAJOR 1
@@ -26,13 +30,13 @@ typedef enum BML_ModMenuPageAction {
     BML_MOD_MENU_PAGE_NONE = 0,
     BML_MOD_MENU_PAGE_BACK = 1,
     BML_MOD_MENU_PAGE_CLOSE = 2,
-    _BML_MOD_MENU_PAGE_ACTION_FORCE_32BIT = 0x7fffffff
+    BML_MOD_MENU_PAGE_ACTION_FORCE_32BIT = 0x7fffffff
 } BML_ModMenuPageAction;
 
 typedef enum BML_ModMenuPageLeaveReason {
     BML_MOD_MENU_PAGE_LEAVE_BACK = 0,
     BML_MOD_MENU_PAGE_LEAVE_CLOSE = 1,
-    _BML_MOD_MENU_PAGE_LEAVE_REASON_FORCE_32BIT = 0x7fffffff
+    BML_MOD_MENU_PAGE_LEAVE_REASON_FORCE_32BIT = 0x7fffffff
 } BML_ModMenuPageLeaveReason;
 
 // The loader initializes this frame before every Draw call. Draw returns a
@@ -53,6 +57,7 @@ typedef int (BML_CDECL *BML_ModMenuPageDraw)(
 typedef int (BML_CDECL *BML_ModMenuPageEnter)(void *userData);
 typedef int (BML_CDECL *BML_ModMenuPageLeave)(
     void *userData, BML_ModMenuPageLeaveReason reason);
+typedef void (BML_CDECL *BML_ModMenuPageRelease)(void *userData);
 
 typedef struct BML_ModMenuPage {
     size_t StructSize;
@@ -63,10 +68,12 @@ typedef struct BML_ModMenuPage {
     BML_ModMenuPageDraw Draw;
     BML_ModMenuPageEnter Enter;
     BML_ModMenuPageLeave Leave;
+    BML_ModMenuPageRelease Release;
 } BML_ModMenuPage;
 
 #define BML_MOD_MENU_PAGE_1_0_SIZE                                           \
-    (offsetof(BML_ModMenuPage, Leave) + sizeof(((BML_ModMenuPage *) 0)->Leave))
+    (offsetof(BML_ModMenuPage, Release) +                                    \
+     sizeof(((BML_ModMenuPage *) 0)->Release))
 
 typedef struct BML_ModMenuInterface {
     BML_InterfaceHeader Header;
@@ -77,6 +84,8 @@ typedef struct BML_ModMenuInterface {
     int (BML_CDECL *RegisterPage)(const char *ownerId, const BML_ModMenuPage *page);
     int (BML_CDECL *UnregisterPage)(const char *ownerId, const char *pageId);
 } BML_ModMenuInterface;
+
+#pragma pack(pop)
 
 BML_END_CDECLS
 

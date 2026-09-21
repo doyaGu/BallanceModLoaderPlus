@@ -55,6 +55,7 @@ namespace {
             &DrawPage,
             &EnterPage,
             &LeavePage,
+            nullptr,
         };
     }
 
@@ -71,6 +72,7 @@ namespace {
         ModMenuPages *pages = nullptr;
         const char *owner = nullptr;
         const char *page = nullptr;
+        int releases = 0;
     };
 
     int BML_CDECL DrawAndRemovePage(
@@ -79,6 +81,10 @@ namespace {
         EXPECT_EQ(state.pages->Unregister(state.owner, state.page), BML_OK);
         frame->Action = BML_MOD_MENU_PAGE_BACK;
         return BML_OK;
+    }
+
+    void BML_CDECL ReleaseSelfRemovingPage(void *userData) {
+        ++static_cast<SelfRemovingState *>(userData)->releases;
     }
 
     ModMenuPages *facadePages = nullptr;
@@ -295,7 +301,7 @@ TEST(ModMenuPagesTest, RejectsInvalidActionsAndSurvivesSelfRemoval) {
 
     SelfRemovingState removingState{&pages, "sample.mod", "removing"};
     const BML_ModMenuPage removing = {
-        offsetof(BML_ModMenuPage, Enter),
+        sizeof(BML_ModMenuPage),
         "removing",
         "Removing",
         "",
@@ -303,11 +309,13 @@ TEST(ModMenuPagesTest, RejectsInvalidActionsAndSurvivesSelfRemoval) {
         &DrawAndRemovePage,
         nullptr,
         nullptr,
+        &ReleaseSelfRemovingPage,
     };
     ASSERT_EQ(pages.Register("sample.mod", removing), BML_OK);
     const ModMenuPageKey removingKey = KeyOf(pages, "sample.mod", "removing");
     EXPECT_EQ(pages.Draw(removingKey, action), BML_OK);
     EXPECT_EQ(action, BML_MOD_MENU_PAGE_BACK);
+    EXPECT_EQ(removingState.releases, 1);
     EXPECT_EQ(pages.Draw(removingKey, action), BML_ERROR_NOT_FOUND);
 }
 

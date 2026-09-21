@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -42,12 +43,19 @@ public:
     int Leave(const ModMenuPageKey &key, BML_ModMenuPageLeaveReason reason) const noexcept;
 
 private:
-    struct Page {
-        ModMenuPageInfo info;
+    struct Callbacks {
+        ~Callbacks() noexcept;
+
         void *userData = nullptr;
         BML_ModMenuPageDraw draw = nullptr;
         BML_ModMenuPageEnter enter = nullptr;
         BML_ModMenuPageLeave leave = nullptr;
+        BML_ModMenuPageRelease release = nullptr;
+    };
+
+    struct Page {
+        ModMenuPageInfo info;
+        std::shared_ptr<Callbacks> callbacks;
     };
 
     struct OwnerState {

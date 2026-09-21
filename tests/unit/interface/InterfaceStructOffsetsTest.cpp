@@ -308,7 +308,8 @@ TEST(InterfaceStructOffsets, ModMenuPageAndInterface) {
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Draw, 20);
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Enter, 24);
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Leave, 28);
-    EXPECT_EQ(sizeof(BML_ModMenuPage), static_cast<std::size_t>(32));
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Release, 32);
+    EXPECT_EQ(sizeof(BML_ModMenuPage), static_cast<std::size_t>(36));
 
     EXPECT_GOLDEN_OFFSET(BML_ModMenuInterface, RegisterPage, 12);
     EXPECT_GOLDEN_OFFSET(BML_ModMenuInterface, UnregisterPage, 16);
