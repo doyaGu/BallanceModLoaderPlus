@@ -105,13 +105,17 @@ public:
 
 BML_BEGIN_CDECLS
 
-// ABI-safe extensions for the frozen IProperty interface. COLOR is meaningful
-// for STRING properties containing #RRGGBB or #RRGGBBAA. CHOICE presents a
+// Additive helpers for the legacy C++ IProperty interface. These exports still
+// exchange IProperty pointers and therefore require the same C++ ABI as the
+// legacy Native Mod SDK; they are not a language-neutral C interface. COLOR is
+// meaningful for STRING properties containing #RRGGBB or #RRGGBBAA. CHOICE presents a
 // STRING property's ordered finite choices. Metadata is not
 // persisted. Get returns DEFAULT for null or unsupported property objects; Set
 // returns 1 on success and 0 for null, unsupported, or invalid input.
-BML_EXPORT BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property);
-BML_EXPORT int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor);
+BML_EXPORT BML_ConfigPropertyEditor BML_CDECL BML_GetConfigPropertyEditor(
+    const IProperty *property);
+BML_EXPORT int BML_CDECL BML_SetConfigPropertyEditor(
+    IProperty *property, BML_ConfigPropertyEditor editor);
 
 // Replaces the copied choice metadata in display order. An empty string is a
 // valid choice; its presentation is chosen by the editor. Passing a null
@@ -121,10 +125,13 @@ BML_EXPORT int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigProper
 // return 0/null for a null or unsupported property or an out-of-range index;
 // Set returns 0 for those properties, invalid input, duplicates, or allocation
 // failure.
-BML_EXPORT size_t BML_GetConfigPropertyChoiceCount(const IProperty *property);
-BML_EXPORT const char *BML_GetConfigPropertyChoice(const IProperty *property, size_t index);
-BML_EXPORT int BML_SetConfigPropertyChoices(IProperty *property,
-                                            const char *const choices[], size_t count);
+BML_EXPORT size_t BML_CDECL BML_GetConfigPropertyChoiceCount(
+    const IProperty *property);
+BML_EXPORT const char *BML_CDECL BML_GetConfigPropertyChoice(
+    const IProperty *property, size_t index);
+BML_EXPORT int BML_CDECL BML_SetConfigPropertyChoices(IProperty *property,
+                                                       const char *const choices[],
+                                                       size_t count);
 
 BML_END_CDECLS
 

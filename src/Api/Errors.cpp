@@ -1,7 +1,7 @@
 #include "BML/Defines.h"
 
 
-const char *BML_GetErrorString(int errorCode) {
+const char *BML_CDECL BML_GetErrorString(int errorCode) {
     switch (errorCode) {
         /* General error codes */
         case BML_OK:

@@ -527,29 +527,29 @@ void Property::SetComment(const char *comment) {
         m_Config->TouchSchema();
 }
 
-BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property) {
+BML_ConfigPropertyEditor BML_CDECL BML_GetConfigPropertyEditor(const IProperty *property) {
     const auto *concrete = dynamic_cast<const Property *>(property);
     return concrete ? concrete->GetEditorMetadata() : BML_CONFIG_EDITOR_DEFAULT;
 }
 
-int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor) {
+int BML_CDECL BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor) {
     auto *concrete = dynamic_cast<Property *>(property);
     return concrete && concrete->SetEditorMetadata(editor) ? 1 : 0;
 }
 
-size_t BML_GetConfigPropertyChoiceCount(const IProperty *property) {
+size_t BML_CDECL BML_GetConfigPropertyChoiceCount(const IProperty *property) {
     const auto *concrete = dynamic_cast<const Property *>(property);
     return concrete ? concrete->m_Choices.size() : 0;
 }
 
-const char *BML_GetConfigPropertyChoice(const IProperty *property, size_t index) {
+const char *BML_CDECL BML_GetConfigPropertyChoice(const IProperty *property, size_t index) {
     const auto *concrete = dynamic_cast<const Property *>(property);
     return concrete && index < concrete->m_Choices.size()
         ? concrete->m_Choices[index].c_str()
         : nullptr;
 }
 
-int BML_SetConfigPropertyChoices(IProperty *property,
+int BML_CDECL BML_SetConfigPropertyChoices(IProperty *property,
                                  const char *const choices[], size_t count) {
     auto *concrete = dynamic_cast<Property *>(property);
     if (!concrete)

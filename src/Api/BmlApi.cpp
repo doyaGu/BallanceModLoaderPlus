@@ -118,17 +118,17 @@ T **AllocatePointerArray(size_t count) {
 }
 }
 
-void BML_GetVersion(int *major, int *minor, int *patch) {
+void BML_CDECL BML_GetVersion(int *major, int *minor, int *patch) {
     if (major) *major = BML_MAJOR_VERSION;
     if (minor) *minor = BML_MINOR_VERSION;
     if (patch) *patch = BML_PATCH_VERSION;
 }
 
-const char *BML_GetVersionString() {
+const char *BML_CDECL BML_GetVersionString() {
     return BML_VERSION;
 }
 
-const wchar_t *BML_GetLoaderPathW(BML_LoaderDirectory directory) {
+const wchar_t *BML_CDECL BML_GetLoaderPathW(BML_LoaderDirectory directory) {
     ModContext *context = BML_GetModContext();
     if (!context)
         return nullptr;
@@ -137,7 +137,7 @@ const wchar_t *BML_GetLoaderPathW(BML_LoaderDirectory directory) {
     return path && *path ? path : nullptr;
 }
 
-const char *BML_GetLoaderPathUtf8(BML_LoaderDirectory directory) {
+const char *BML_CDECL BML_GetLoaderPathUtf8(BML_LoaderDirectory directory) {
     ModContext *context = BML_GetModContext();
     if (!context)
         return nullptr;
@@ -146,7 +146,7 @@ const char *BML_GetLoaderPathUtf8(BML_LoaderDirectory directory) {
     return path && *path ? path : nullptr;
 }
 
-wchar_t *BML_GetModRootW(const char *modId) {
+wchar_t *BML_CDECL BML_GetModRootW(const char *modId) {
     try {
         ModContext *context = BML_GetModContext();
         if (!context)
@@ -159,7 +159,7 @@ wchar_t *BML_GetModRootW(const char *modId) {
     }
 }
 
-char *BML_GetModRootUtf8(const char *modId) {
+char *BML_CDECL BML_GetModRootUtf8(const char *modId) {
     try {
         ModContext *context = BML_GetModContext();
         if (!context)
@@ -172,7 +172,7 @@ char *BML_GetModRootUtf8(const char *modId) {
     }
 }
 
-int BML_UnregisterCommand(const char *name) {
+int BML_CDECL BML_UnregisterCommand(const char *name) {
     ModContext *context = BML_GetModContext();
     if (!context)
         return BML_ERROR_FAIL;
@@ -180,14 +180,14 @@ int BML_UnregisterCommand(const char *name) {
     return context->UnregisterCommand(_ReturnAddress(), name);
 }
 
-int BML_SetCommandStatus(int status) {
+int BML_CDECL BML_SetCommandStatus(int status) {
     ModContext *context = BML_GetModContext();
     if (!context || !context->IsMainThread())
         return 0;
     return BML::Shell::SetStatus(status) ? 1 : 0;
 }
 
-const char *BML_GetCommandInput(size_t *length) {
+const char *BML_CDECL BML_GetCommandInput(size_t *length) {
     if (length)
         *length = 0;
     ModContext *context = BML_GetModContext();
@@ -201,19 +201,19 @@ const char *BML_GetCommandInput(size_t *length) {
     return input->c_str();
 }
 
-void *BML_Malloc(size_t size) {
+void *BML_CDECL BML_Malloc(size_t size) {
     if (size == 0)
         return nullptr;
     return malloc(size);
 }
 
-void *BML_Calloc(size_t num, size_t size) {
+void *BML_CDECL BML_Calloc(size_t num, size_t size) {
     if (num == 0 || size == 0)
         return nullptr;
     return calloc(num, size);
 }
 
-void *BML_Realloc(void *ptr, size_t size) {
+void *BML_CDECL BML_Realloc(void *ptr, size_t size) {
     if (size == 0) {
         free(ptr);
         return nullptr;
@@ -221,19 +221,19 @@ void *BML_Realloc(void *ptr, size_t size) {
     return realloc(ptr, size);
 }
 
-void BML_Free(void *ptr) {
+void BML_CDECL BML_Free(void *ptr) {
     return free(ptr);
 }
 
-void BML_FreeString(char *str) {
+void BML_CDECL BML_FreeString(char *str) {
     free(str);
 }
 
-void BML_FreeWString(wchar_t *wstr) {
+void BML_CDECL BML_FreeWString(wchar_t *wstr) {
     free(wstr);
 }
 
-void BML_FreeStringArray(char **strings, size_t count) {
+void BML_CDECL BML_FreeStringArray(char **strings, size_t count) {
     if (!strings) return;
     for (size_t i = 0; i < count; ++i) {
         free(strings[i]);
@@ -241,7 +241,7 @@ void BML_FreeStringArray(char **strings, size_t count) {
     free(strings);
 }
 
-void BML_FreeWStringArray(wchar_t **strings, size_t count) {
+void BML_CDECL BML_FreeWStringArray(wchar_t **strings, size_t count) {
     if (!strings) return;
     for (size_t i = 0; i < count; ++i) {
         free(strings[i]);
@@ -249,7 +249,7 @@ void BML_FreeWStringArray(wchar_t **strings, size_t count) {
     free(strings);
 }
 
-char *BML_Strdup(const char *str) {
+char *BML_CDECL BML_Strdup(const char *str) {
     if (!str)
         return nullptr;
 
@@ -281,7 +281,7 @@ static char **MakeSingleStringArray(const char *str, size_t *count) {
 }
 
 // String splitting
-char **BML_SplitString(const char *str, const char *delim, size_t *count) {
+char **BML_CDECL BML_SplitString(const char *str, const char *delim, size_t *count) {
     if (!str || !delim || !count) {
         if (count) *count = 0;
         return nullptr;
@@ -357,7 +357,7 @@ char **BML_SplitString(const char *str, const char *delim, size_t *count) {
     return result;
 }
 
-char **BML_SplitStringChar(const char *str, char delim, size_t *count) {
+char **BML_CDECL BML_SplitStringChar(const char *str, char delim, size_t *count) {
     if (!str || !count) {
         if (count) *count = 0;
         return nullptr;
@@ -432,7 +432,7 @@ char **BML_SplitStringChar(const char *str, char delim, size_t *count) {
 }
 
 // String trimming - in-place modification using the same algorithm as C++
-void BML_TrimString(char *str) {
+void BML_CDECL BML_TrimString(char *str) {
     if (!str) return;
 
     size_t len = strlen(str);
@@ -467,7 +467,7 @@ void BML_TrimString(char *str) {
     }
 }
 
-char *BML_TrimStringCopy(const char *str) {
+char *BML_CDECL BML_TrimStringCopy(const char *str) {
     if (!str) return nullptr;
 
     char *copy = BML_Strdup(str);
@@ -478,7 +478,7 @@ char *BML_TrimStringCopy(const char *str) {
 }
 
 // String joining
-char *BML_JoinString(const char **strings, size_t count, const char *delim) {
+char *BML_CDECL BML_JoinString(const char **strings, size_t count, const char *delim) {
     if (!strings || count == 0) return BML_Strdup("");
     if (!delim) delim = "";
 
@@ -521,7 +521,7 @@ char *BML_JoinString(const char **strings, size_t count, const char *delim) {
     return result;
 }
 
-char *BML_JoinStringChar(const char **strings, size_t count, char delim) {
+char *BML_CDECL BML_JoinStringChar(const char **strings, size_t count, char delim) {
     if (!strings || count == 0) return BML_Strdup("");
 
     // Calculate total length needed
@@ -558,7 +558,7 @@ char *BML_JoinStringChar(const char **strings, size_t count, char delim) {
 }
 
 // Case conversion - use locale-aware conversion like the C++ version
-char *BML_ToLower(const char *str) {
+char *BML_CDECL BML_ToLower(const char *str) {
     if (!str) return nullptr;
 
     size_t len = strlen(str);
@@ -573,7 +573,7 @@ char *BML_ToLower(const char *str) {
     return result;
 }
 
-char *BML_ToUpper(const char *str) {
+char *BML_CDECL BML_ToUpper(const char *str) {
     if (!str) return nullptr;
 
     size_t len = strlen(str);
@@ -589,7 +589,7 @@ char *BML_ToUpper(const char *str) {
 }
 
 // String comparison functions - reuse C++ logic without string conversion
-int BML_StartsWith(const char *str, const char *prefix, int caseSensitive) {
+int BML_CDECL BML_StartsWith(const char *str, const char *prefix, int caseSensitive) {
     if (!str || !prefix) return 0;
 
     size_t strLen = strlen(str);
@@ -604,7 +604,7 @@ int BML_StartsWith(const char *str, const char *prefix, int caseSensitive) {
     }
 }
 
-int BML_EndsWith(const char *str, const char *suffix, int caseSensitive) {
+int BML_CDECL BML_EndsWith(const char *str, const char *suffix, int caseSensitive) {
     if (!str || !suffix) return 0;
 
     size_t strLen = strlen(str);
@@ -621,7 +621,7 @@ int BML_EndsWith(const char *str, const char *suffix, int caseSensitive) {
     }
 }
 
-int BML_Contains(const char *str, const char *substr, int caseSensitive) {
+int BML_CDECL BML_Contains(const char *str, const char *substr, int caseSensitive) {
     if (!str || !substr) return 0;
 
     if (caseSensitive) {
@@ -646,14 +646,14 @@ int BML_Contains(const char *str, const char *substr, int caseSensitive) {
 }
 
 // String conversion functions - direct calls to C++ implementations
-wchar_t *BML_ToWString(const char *str, int isUtf8) {
+wchar_t *BML_CDECL BML_ToWString(const char *str, int isUtf8) {
     if (!str) return nullptr;
 
     std::wstring result = utils::ToWString(str, isUtf8 != 0);
     return CopyWString(result);
 }
 
-char *BML_ToString(const wchar_t *wstr, int toUtf8) {
+char *BML_CDECL BML_ToString(const wchar_t *wstr, int toUtf8) {
     if (!wstr) return nullptr;
 
     std::string result = utils::ToString(wstr, toUtf8 != 0);
@@ -661,227 +661,227 @@ char *BML_ToString(const wchar_t *wstr, int toUtf8) {
 }
 
 // Legacy conversion functions - direct calls
-wchar_t *BML_Utf8ToUtf16(const char *str) {
+wchar_t *BML_CDECL BML_Utf8ToUtf16(const char *str) {
     if (!str) return nullptr;
     std::wstring result = utils::Utf8ToUtf16(str);
     return CopyWString(result);
 }
 
-char *BML_Utf16ToUtf8(const wchar_t *wstr) {
+char *BML_CDECL BML_Utf16ToUtf8(const wchar_t *wstr) {
     if (!wstr) return nullptr;
     std::string result = utils::Utf16ToUtf8(wstr);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_AnsiToUtf16(const char *str) {
+wchar_t *BML_CDECL BML_AnsiToUtf16(const char *str) {
     if (!str) return nullptr;
     std::wstring result = utils::AnsiToUtf16(str);
     return CopyWString(result);
 }
 
-char *BML_Utf16ToAnsi(const wchar_t *wstr) {
+char *BML_CDECL BML_Utf16ToAnsi(const wchar_t *wstr) {
     if (!wstr) return nullptr;
     std::string result = utils::Utf16ToAnsi(wstr);
     return BML_Strdup(result.c_str());
 }
 
 // Hash functions - direct calls
-size_t BML_HashString(const char *str) {
+size_t BML_CDECL BML_HashString(const char *str) {
     return utils::HashString(str);
 }
 
-size_t BML_HashWString(const wchar_t *str) {
+size_t BML_CDECL BML_HashWString(const wchar_t *str) {
     return utils::HashString(str);
 }
 
 // String escape/unescape - direct calls to C++ implementations
-char *BML_UnescapeString(const char *str) {
+char *BML_CDECL BML_UnescapeString(const char *str) {
     if (!str) return nullptr;
     std::string result = utils::UnescapeString(str);
     return BML_Strdup(result.c_str());
 }
 
-char *BML_EscapeString(const char *str) {
+char *BML_CDECL BML_EscapeString(const char *str) {
     if (!str) return nullptr;
     std::string result = utils::EscapeString(str);
     return BML_Strdup(result.c_str());
 }
 
-char *BML_StripAnsiCodes(const char *str) {
+char *BML_CDECL BML_StripAnsiCodes(const char *str) {
     if (!str) return nullptr;
     std::string result = utils::StripAnsiCodes(str);
     return BML_Strdup(result.c_str());
 }
 
 // File existence checks - direct calls
-int BML_FileExistsA(const char *file) {
+int BML_CDECL BML_FileExistsA(const char *file) {
     return file ? (utils::FileExistsA(file) ? 1 : 0) : 0;
 }
 
-int BML_FileExistsW(const wchar_t *file) {
+int BML_CDECL BML_FileExistsW(const wchar_t *file) {
     return file ? (utils::FileExistsW(file) ? 1 : 0) : 0;
 }
 
-int BML_FileExistsUtf8(const char *file) {
+int BML_CDECL BML_FileExistsUtf8(const char *file) {
     return file ? (utils::FileExistsUtf8(file) ? 1 : 0) : 0;
 }
 
 // Directory existence checks
-int BML_DirectoryExistsA(const char *dir) {
+int BML_CDECL BML_DirectoryExistsA(const char *dir) {
     return dir ? (utils::DirectoryExistsA(dir) ? 1 : 0) : 0;
 }
 
-int BML_DirectoryExistsW(const wchar_t *dir) {
+int BML_CDECL BML_DirectoryExistsW(const wchar_t *dir) {
     return dir ? (utils::DirectoryExistsW(dir) ? 1 : 0) : 0;
 }
 
-int BML_DirectoryExistsUtf8(const char *dir) {
+int BML_CDECL BML_DirectoryExistsUtf8(const char *dir) {
     return dir ? (utils::DirectoryExistsUtf8(dir) ? 1 : 0) : 0;
 }
 
 // Path existence checks
-int BML_PathExistsA(const char *path) {
+int BML_CDECL BML_PathExistsA(const char *path) {
     return path ? (utils::PathExistsA(path) ? 1 : 0) : 0;
 }
 
-int BML_PathExistsW(const wchar_t *path) {
+int BML_CDECL BML_PathExistsW(const wchar_t *path) {
     return path ? (utils::PathExistsW(path) ? 1 : 0) : 0;
 }
 
-int BML_PathExistsUtf8(const char *path) {
+int BML_CDECL BML_PathExistsUtf8(const char *path) {
     return path ? (utils::PathExistsUtf8(path) ? 1 : 0) : 0;
 }
 
 // Directory creation
-int BML_CreateDirectoryA(const char *dir) {
+int BML_CDECL BML_CreateDirectoryA(const char *dir) {
     return dir ? (utils::CreateDirectoryA(dir) ? 1 : 0) : 0;
 }
 
-int BML_CreateDirectoryW(const wchar_t *dir) {
+int BML_CDECL BML_CreateDirectoryW(const wchar_t *dir) {
     return dir ? (utils::CreateDirectoryW(dir) ? 1 : 0) : 0;
 }
 
-int BML_CreateDirectoryUtf8(const char *dir) {
+int BML_CDECL BML_CreateDirectoryUtf8(const char *dir) {
     return dir ? (utils::CreateDirectoryUtf8(dir) ? 1 : 0) : 0;
 }
 
 // Create directory tree
-int BML_CreateFileTreeA(const char *path) {
+int BML_CDECL BML_CreateFileTreeA(const char *path) {
     return path ? (utils::CreateFileTreeA(path) ? 1 : 0) : 0;
 }
 
-int BML_CreateFileTreeW(const wchar_t *path) {
+int BML_CDECL BML_CreateFileTreeW(const wchar_t *path) {
     return path ? (utils::CreateFileTreeW(path) ? 1 : 0) : 0;
 }
 
-int BML_CreateFileTreeUtf8(const char *path) {
+int BML_CDECL BML_CreateFileTreeUtf8(const char *path) {
     return path ? (utils::CreateFileTreeUtf8(path) ? 1 : 0) : 0;
 }
 
 // File deletion
-int BML_DeleteFileA(const char *path) {
+int BML_CDECL BML_DeleteFileA(const char *path) {
     return path ? (utils::DeleteFileA(path) ? 1 : 0) : 0;
 }
 
-int BML_DeleteFileW(const wchar_t *path) {
+int BML_CDECL BML_DeleteFileW(const wchar_t *path) {
     return path ? (utils::DeleteFileW(path) ? 1 : 0) : 0;
 }
 
-int BML_DeleteFileUtf8(const char *path) {
+int BML_CDECL BML_DeleteFileUtf8(const char *path) {
     return path ? (utils::DeleteFileUtf8(path) ? 1 : 0) : 0;
 }
 
 // Directory deletion
-int BML_DeleteDirectoryA(const char *path) {
+int BML_CDECL BML_DeleteDirectoryA(const char *path) {
     return path ? (utils::DeleteDirectoryA(path) ? 1 : 0) : 0;
 }
 
-int BML_DeleteDirectoryW(const wchar_t *path) {
+int BML_CDECL BML_DeleteDirectoryW(const wchar_t *path) {
     return path ? (utils::DeleteDirectoryW(path) ? 1 : 0) : 0;
 }
 
-int BML_DeleteDirectoryUtf8(const char *path) {
+int BML_CDECL BML_DeleteDirectoryUtf8(const char *path) {
     return path ? (utils::DeleteDirectoryUtf8(path) ? 1 : 0) : 0;
 }
 
 // File copying
-int BML_CopyFileA(const char *path, const char *dest) {
+int BML_CDECL BML_CopyFileA(const char *path, const char *dest) {
     return (path && dest) ? (utils::CopyFileA(path, dest) ? 1 : 0) : 0;
 }
 
-int BML_CopyFileW(const wchar_t *path, const wchar_t *dest) {
+int BML_CDECL BML_CopyFileW(const wchar_t *path, const wchar_t *dest) {
     return (path && dest) ? (utils::CopyFileW(path, dest) ? 1 : 0) : 0;
 }
 
-int BML_CopyFileUtf8(const char *path, const char *dest) {
+int BML_CDECL BML_CopyFileUtf8(const char *path, const char *dest) {
     return (path && dest) ? (utils::CopyFileUtf8(path, dest) ? 1 : 0) : 0;
 }
 
 // File moving
-int BML_MoveFileA(const char *path, const char *dest) {
+int BML_CDECL BML_MoveFileA(const char *path, const char *dest) {
     return (path && dest) ? (utils::MoveFileA(path, dest) ? 1 : 0) : 0;
 }
 
-int BML_MoveFileW(const wchar_t *path, const wchar_t *dest) {
+int BML_CDECL BML_MoveFileW(const wchar_t *path, const wchar_t *dest) {
     return (path && dest) ? (utils::MoveFileW(path, dest) ? 1 : 0) : 0;
 }
 
-int BML_MoveFileUtf8(const char *path, const char *dest) {
+int BML_CDECL BML_MoveFileUtf8(const char *path, const char *dest) {
     return (path && dest) ? (utils::MoveFileUtf8(path, dest) ? 1 : 0) : 0;
 }
 
 // Zip extraction
-int BML_ExtractZipA(const char *path, const char *dest) {
+int BML_CDECL BML_ExtractZipA(const char *path, const char *dest) {
     return (path && dest) ? (utils::ExtractZipA(path, dest) ? 1 : 0) : 0;
 }
 
-int BML_ExtractZipW(const wchar_t *path, const wchar_t *dest) {
+int BML_CDECL BML_ExtractZipW(const wchar_t *path, const wchar_t *dest) {
     return (path && dest) ? (utils::ExtractZipW(path, dest) ? 1 : 0) : 0;
 }
 
-int BML_ExtractZipUtf8(const char *path, const char *dest) {
+int BML_CDECL BML_ExtractZipUtf8(const char *path, const char *dest) {
     return (path && dest) ? (utils::ExtractZipUtf8(path, dest) ? 1 : 0) : 0;
 }
 
 // Path manipulation - direct calls
-char *BML_GetDriveA(const char *path) {
+char *BML_CDECL BML_GetDriveA(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::GetDriveA(path);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_GetDriveW(const wchar_t *path) {
+wchar_t *BML_CDECL BML_GetDriveW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::GetDriveW(path);
     return CopyWString(result);
 }
 
-char *BML_GetDriveUtf8(const char *path) {
+char *BML_CDECL BML_GetDriveUtf8(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::GetDriveUtf8(path);
     return BML_Strdup(result.c_str());
 }
 
-char *BML_GetDirectoryA(const char *path) {
+char *BML_CDECL BML_GetDirectoryA(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::GetDirectoryA(path);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_GetDirectoryW(const wchar_t *path) {
+wchar_t *BML_CDECL BML_GetDirectoryW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::GetDirectoryW(path);
     return CopyWString(result);
 }
 
-char *BML_GetDirectoryUtf8(const char *path) {
+char *BML_CDECL BML_GetDirectoryUtf8(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::GetDirectoryUtf8(path);
     return BML_Strdup(result.c_str());
 }
 
 // Drive and directory as separate outputs
-int BML_GetDriveAndDirectoryA(const char *path, char **drive, char **directory) {
+int BML_CDECL BML_GetDriveAndDirectoryA(const char *path, char **drive, char **directory) {
     if (!drive || !directory) return 0;
     ResetPointerPair(drive, directory);
     if (!path) return 0;
@@ -901,7 +901,7 @@ int BML_GetDriveAndDirectoryA(const char *path, char **drive, char **directory) 
     return 0;
 }
 
-int BML_GetDriveAndDirectoryW(const wchar_t *path, wchar_t **drive, wchar_t **directory) {
+int BML_CDECL BML_GetDriveAndDirectoryW(const wchar_t *path, wchar_t **drive, wchar_t **directory) {
     if (!drive || !directory) return 0;
     ResetPointerPair(drive, directory);
     if (!path) return 0;
@@ -922,7 +922,7 @@ int BML_GetDriveAndDirectoryW(const wchar_t *path, wchar_t **drive, wchar_t **di
     return 0;
 }
 
-int BML_GetDriveAndDirectoryUtf8(const char *path, char **drive, char **directory) {
+int BML_CDECL BML_GetDriveAndDirectoryUtf8(const char *path, char **drive, char **directory) {
     if (!drive || !directory) return 0;
     ResetPointerPair(drive, directory);
     if (!path) return 0;
@@ -942,255 +942,255 @@ int BML_GetDriveAndDirectoryUtf8(const char *path, char **drive, char **director
     return 0;
 }
 
-char *BML_GetFileNameA(const char *path) {
+char *BML_CDECL BML_GetFileNameA(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::GetFileNameA(path);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_GetFileNameW(const wchar_t *path) {
+wchar_t *BML_CDECL BML_GetFileNameW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::GetFileNameW(path);
     return CopyWString(result);
 }
 
-char *BML_GetFileNameUtf8(const char *path) {
+char *BML_CDECL BML_GetFileNameUtf8(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::GetFileNameUtf8(path);
     return BML_Strdup(result.c_str());
 }
 
-char *BML_GetExtensionA(const char *path) {
+char *BML_CDECL BML_GetExtensionA(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::GetExtensionA(path);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_GetExtensionW(const wchar_t *path) {
+wchar_t *BML_CDECL BML_GetExtensionW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::GetExtensionW(path);
     return CopyWString(result);
 }
 
-char *BML_GetExtensionUtf8(const char *path) {
+char *BML_CDECL BML_GetExtensionUtf8(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::GetExtensionUtf8(path);
     return BML_Strdup(result.c_str());
 }
 
-char *BML_RemoveExtensionA(const char *path) {
+char *BML_CDECL BML_RemoveExtensionA(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::RemoveExtensionA(path);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_RemoveExtensionW(const wchar_t *path) {
+wchar_t *BML_CDECL BML_RemoveExtensionW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::RemoveExtensionW(path);
     return CopyWString(result);
 }
 
-char *BML_RemoveExtensionUtf8(const char *path) {
+char *BML_CDECL BML_RemoveExtensionUtf8(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::RemoveExtensionUtf8(path);
     return BML_Strdup(result.c_str());
 }
 
-char *BML_CombinePathA(const char *path1, const char *path2) {
+char *BML_CDECL BML_CombinePathA(const char *path1, const char *path2) {
     if (!path1 || !path2) return nullptr;
     std::string result = utils::CombinePathA(path1, path2);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_CombinePathW(const wchar_t *path1, const wchar_t *path2) {
+wchar_t *BML_CDECL BML_CombinePathW(const wchar_t *path1, const wchar_t *path2) {
     if (!path1 || !path2) return nullptr;
     std::wstring result = utils::CombinePathW(path1, path2);
     return CopyWString(result);
 }
 
-char *BML_CombinePathUtf8(const char *path1, const char *path2) {
+char *BML_CDECL BML_CombinePathUtf8(const char *path1, const char *path2) {
     if (!path1 || !path2) return nullptr;
     std::string result = utils::CombinePathUtf8(path1, path2);
     return BML_Strdup(result.c_str());
 }
 
-char *BML_NormalizePathA(const char *path) {
+char *BML_CDECL BML_NormalizePathA(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::NormalizePathA(path);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_NormalizePathW(const wchar_t *path) {
+wchar_t *BML_CDECL BML_NormalizePathW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::NormalizePathW(path);
     return CopyWString(result);
 }
 
-char *BML_NormalizePathUtf8(const char *path) {
+char *BML_CDECL BML_NormalizePathUtf8(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::NormalizePathUtf8(path);
     return BML_Strdup(result.c_str());
 }
 
 // Path validation
-int BML_IsPathValidA(const char *path) {
+int BML_CDECL BML_IsPathValidA(const char *path) {
     return path ? (utils::IsPathValidA(path) ? 1 : 0) : 0;
 }
 
-int BML_IsPathValidW(const wchar_t *path) {
+int BML_CDECL BML_IsPathValidW(const wchar_t *path) {
     return path ? (utils::IsPathValidW(path) ? 1 : 0) : 0;
 }
 
-int BML_IsPathValidUtf8(const char *path) {
+int BML_CDECL BML_IsPathValidUtf8(const char *path) {
     return path ? (utils::IsPathValidUtf8(path) ? 1 : 0) : 0;
 }
 
 // Path type checks
-int BML_IsAbsolutePathA(const char *path) {
+int BML_CDECL BML_IsAbsolutePathA(const char *path) {
     return path ? (utils::IsAbsolutePathA(path) ? 1 : 0) : 0;
 }
 
-int BML_IsAbsolutePathW(const wchar_t *path) {
+int BML_CDECL BML_IsAbsolutePathW(const wchar_t *path) {
     return path ? (utils::IsAbsolutePathW(path) ? 1 : 0) : 0;
 }
 
-int BML_IsAbsolutePathUtf8(const char *path) {
+int BML_CDECL BML_IsAbsolutePathUtf8(const char *path) {
     return path ? (utils::IsAbsolutePathUtf8(path) ? 1 : 0) : 0;
 }
 
-int BML_IsRelativePathA(const char *path) {
+int BML_CDECL BML_IsRelativePathA(const char *path) {
     return path ? (utils::IsRelativePathA(path) ? 1 : 0) : 0;
 }
 
-int BML_IsRelativePathW(const wchar_t *path) {
+int BML_CDECL BML_IsRelativePathW(const wchar_t *path) {
     return path ? (utils::IsRelativePathW(path) ? 1 : 0) : 0;
 }
 
-int BML_IsRelativePathUtf8(const char *path) {
+int BML_CDECL BML_IsRelativePathUtf8(const char *path) {
     return path ? (utils::IsRelativePathUtf8(path) ? 1 : 0) : 0;
 }
 
-int BML_IsPathRootedA(const char *path) {
+int BML_CDECL BML_IsPathRootedA(const char *path) {
     return path ? (utils::IsPathRootedA(path) ? 1 : 0) : 0;
 }
 
-int BML_IsPathRootedW(const wchar_t *path) {
+int BML_CDECL BML_IsPathRootedW(const wchar_t *path) {
     return path ? (utils::IsPathRootedW(path) ? 1 : 0) : 0;
 }
 
-int BML_IsPathRootedUtf8(const char *path) {
+int BML_CDECL BML_IsPathRootedUtf8(const char *path) {
     return path ? (utils::IsPathRootedUtf8(path) ? 1 : 0) : 0;
 }
 
 // Path resolution
-char *BML_ResolvePathA(const char *path) {
+char *BML_CDECL BML_ResolvePathA(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::ResolvePathA(path);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_ResolvePathW(const wchar_t *path) {
+wchar_t *BML_CDECL BML_ResolvePathW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::ResolvePathW(path);
     return CopyWString(result);
 }
 
-char *BML_ResolvePathUtf8(const char *path) {
+char *BML_CDECL BML_ResolvePathUtf8(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::ResolvePathUtf8(path);
     return BML_Strdup(result.c_str());
 }
 
-char *BML_MakeRelativePathA(const char *path, const char *basePath) {
+char *BML_CDECL BML_MakeRelativePathA(const char *path, const char *basePath) {
     if (!path || !basePath) return nullptr;
     std::string result = utils::MakeRelativePathA(path, basePath);
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_MakeRelativePathW(const wchar_t *path, const wchar_t *basePath) {
+wchar_t *BML_CDECL BML_MakeRelativePathW(const wchar_t *path, const wchar_t *basePath) {
     if (!path || !basePath) return nullptr;
     std::wstring result = utils::MakeRelativePathW(path, basePath);
     return CopyWString(result);
 }
 
-char *BML_MakeRelativePathUtf8(const char *path, const char *basePath) {
+char *BML_CDECL BML_MakeRelativePathUtf8(const char *path, const char *basePath) {
     if (!path || !basePath) return nullptr;
     std::string result = utils::MakeRelativePathUtf8(path, basePath);
     return BML_Strdup(result.c_str());
 }
 
 // System paths
-char *BML_GetTempPathA() {
+char *BML_CDECL BML_GetTempPathA() {
     std::string result = utils::GetTempPathA();
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_GetTempPathW() {
+wchar_t *BML_CDECL BML_GetTempPathW() {
     std::wstring result = utils::GetTempPathW();
     return CopyWString(result);
 }
 
-char *BML_GetTempPathUtf8() {
+char *BML_CDECL BML_GetTempPathUtf8() {
     std::string result = utils::GetTempPathUtf8();
     return BML_Strdup(result.c_str());
 }
 
-char *BML_GetCurrentDirectoryA() {
+char *BML_CDECL BML_GetCurrentDirectoryA() {
     std::string result = utils::GetCurrentDirectoryA();
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_GetCurrentDirectoryW() {
+wchar_t *BML_CDECL BML_GetCurrentDirectoryW() {
     std::wstring result = utils::GetCurrentDirectoryW();
     return CopyWString(result);
 }
 
-char *BML_GetCurrentDirectoryUtf8() {
+char *BML_CDECL BML_GetCurrentDirectoryUtf8() {
     std::string result = utils::GetCurrentDirectoryUtf8();
     return BML_Strdup(result.c_str());
 }
 
-int BML_SetCurrentDirectoryA(const char *path) {
+int BML_CDECL BML_SetCurrentDirectoryA(const char *path) {
     return path ? (utils::SetCurrentDirectoryA(path) ? 1 : 0) : 0;
 }
 
-int BML_SetCurrentDirectoryW(const wchar_t *path) {
+int BML_CDECL BML_SetCurrentDirectoryW(const wchar_t *path) {
     return path ? (utils::SetCurrentDirectoryW(path) ? 1 : 0) : 0;
 }
 
-int BML_SetCurrentDirectoryUtf8(const char *path) {
+int BML_CDECL BML_SetCurrentDirectoryUtf8(const char *path) {
     return path ? (utils::SetCurrentDirectoryUtf8(path) ? 1 : 0) : 0;
 }
 
-char *BML_GetExecutablePathA() {
+char *BML_CDECL BML_GetExecutablePathA() {
     std::string result = utils::GetExecutablePathA();
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_GetExecutablePathW() {
+wchar_t *BML_CDECL BML_GetExecutablePathW() {
     std::wstring result = utils::GetExecutablePathW();
     return CopyWString(result);
 }
 
-char *BML_GetExecutablePathUtf8() {
+char *BML_CDECL BML_GetExecutablePathUtf8() {
     std::string result = utils::GetExecutablePathUtf8();
     return BML_Strdup(result.c_str());
 }
 
 // File properties
-int64_t BML_GetFileSizeA(const char *path) {
+int64_t BML_CDECL BML_GetFileSizeA(const char *path) {
     return path ? utils::GetFileSizeA(path) : -1;
 }
 
-int64_t BML_GetFileSizeW(const wchar_t *path) {
+int64_t BML_CDECL BML_GetFileSizeW(const wchar_t *path) {
     return path ? utils::GetFileSizeW(path) : -1;
 }
 
-int64_t BML_GetFileSizeUtf8(const char *path) {
+int64_t BML_CDECL BML_GetFileSizeUtf8(const char *path) {
     return path ? utils::GetFileSizeUtf8(path) : -1;
 }
 
-int BML_GetFileTimeA(const char *path, int64_t *creationTime, int64_t *lastAccessTime, int64_t *lastWriteTime) {
+int BML_CDECL BML_GetFileTimeA(const char *path, int64_t *creationTime, int64_t *lastAccessTime, int64_t *lastWriteTime) {
     if (!path || !utils::PathExistsA(path))
         return StoreMissingFileTimeResult(creationTime, lastAccessTime, lastWriteTime);
 
@@ -1199,7 +1199,7 @@ int BML_GetFileTimeA(const char *path, int64_t *creationTime, int64_t *lastAcces
     return 1;
 }
 
-int BML_GetFileTimeW(const wchar_t *path, int64_t *creationTime, int64_t *lastAccessTime, int64_t *lastWriteTime) {
+int BML_CDECL BML_GetFileTimeW(const wchar_t *path, int64_t *creationTime, int64_t *lastAccessTime, int64_t *lastWriteTime) {
     if (!path || !utils::PathExistsW(path))
         return StoreMissingFileTimeResult(creationTime, lastAccessTime, lastWriteTime);
 
@@ -1208,7 +1208,7 @@ int BML_GetFileTimeW(const wchar_t *path, int64_t *creationTime, int64_t *lastAc
     return 1;
 }
 
-int BML_GetFileTimeUtf8(const char *path, int64_t *creationTime, int64_t *lastAccessTime, int64_t *lastWriteTime) {
+int BML_CDECL BML_GetFileTimeUtf8(const char *path, int64_t *creationTime, int64_t *lastAccessTime, int64_t *lastWriteTime) {
     if (!path || !utils::PathExistsUtf8(path))
         return StoreMissingFileTimeResult(creationTime, lastAccessTime, lastWriteTime);
 
@@ -1218,7 +1218,7 @@ int BML_GetFileTimeUtf8(const char *path, int64_t *creationTime, int64_t *lastAc
 }
 
 // File I/O
-char *BML_ReadTextFileA(const char *path) {
+char *BML_CDECL BML_ReadTextFileA(const char *path) {
     if (!path) return nullptr;
     const int64_t fileSize = utils::GetFileSizeA(path);
     if (fileSize < 0) return nullptr;
@@ -1228,7 +1228,7 @@ char *BML_ReadTextFileA(const char *path) {
     return BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_ReadTextFileW(const wchar_t *path) {
+wchar_t *BML_CDECL BML_ReadTextFileW(const wchar_t *path) {
     if (!path) return nullptr;
     const int64_t fileSize = utils::GetFileSizeW(path);
     if (fileSize < 0) return nullptr;
@@ -1238,7 +1238,7 @@ wchar_t *BML_ReadTextFileW(const wchar_t *path) {
     return CopyWString(result);
 }
 
-char *BML_ReadTextFileUtf8(const char *path) {
+char *BML_CDECL BML_ReadTextFileUtf8(const char *path) {
     if (!path) return nullptr;
     const int64_t fileSize = utils::GetFileSizeUtf8(path);
     if (fileSize < 0) return nullptr;
@@ -1248,19 +1248,19 @@ char *BML_ReadTextFileUtf8(const char *path) {
     return BML_Strdup(result.c_str());
 }
 
-int BML_WriteTextFileA(const char *path, const char *content) {
+int BML_CDECL BML_WriteTextFileA(const char *path, const char *content) {
     return (path && content) ? (utils::WriteTextFileA(path, content) ? 1 : 0) : 0;
 }
 
-int BML_WriteTextFileW(const wchar_t *path, const wchar_t *content) {
+int BML_CDECL BML_WriteTextFileW(const wchar_t *path, const wchar_t *content) {
     return (path && content) ? (utils::WriteTextFileW(path, content) ? 1 : 0) : 0;
 }
 
-int BML_WriteTextFileUtf8(const char *path, const char *content) {
+int BML_CDECL BML_WriteTextFileUtf8(const char *path, const char *content) {
     return (path && content) ? (utils::WriteTextFileUtf8(path, content) ? 1 : 0) : 0;
 }
 
-int BML_ReadBinaryFileA(const char *path, uint8_t **data, size_t *size) {
+int BML_CDECL BML_ReadBinaryFileA(const char *path, uint8_t **data, size_t *size) {
     if (!data || !size) return 0;
     ResetBinaryFileOutput(data, size);
     if (!path) return 0;
@@ -1273,7 +1273,7 @@ int BML_ReadBinaryFileA(const char *path, uint8_t **data, size_t *size) {
     return result.empty() ? 0 : CopyBinaryFileResult(result, data, size);
 }
 
-int BML_ReadBinaryFileW(const wchar_t *path, uint8_t **data, size_t *size) {
+int BML_CDECL BML_ReadBinaryFileW(const wchar_t *path, uint8_t **data, size_t *size) {
     if (!data || !size) return 0;
     ResetBinaryFileOutput(data, size);
     if (!path) return 0;
@@ -1286,7 +1286,7 @@ int BML_ReadBinaryFileW(const wchar_t *path, uint8_t **data, size_t *size) {
     return result.empty() ? 0 : CopyBinaryFileResult(result, data, size);
 }
 
-int BML_ReadBinaryFileUtf8(const char *path, uint8_t **data, size_t *size) {
+int BML_CDECL BML_ReadBinaryFileUtf8(const char *path, uint8_t **data, size_t *size) {
     if (!data || !size) return 0;
     ResetBinaryFileOutput(data, size);
     if (!path) return 0;
@@ -1299,32 +1299,32 @@ int BML_ReadBinaryFileUtf8(const char *path, uint8_t **data, size_t *size) {
     return result.empty() ? 0 : CopyBinaryFileResult(result, data, size);
 }
 
-int BML_WriteBinaryFileA(const char *path, const uint8_t *data, size_t size) {
+int BML_CDECL BML_WriteBinaryFileA(const char *path, const uint8_t *data, size_t size) {
     if (!path || (!data && size != 0)) return 0;
     std::vector<uint8_t> vec = MakeBinaryFileBuffer(data, size);
     return utils::WriteBinaryFileA(path, vec) ? 1 : 0;
 }
 
-int BML_WriteBinaryFileW(const wchar_t *path, const uint8_t *data, size_t size) {
+int BML_CDECL BML_WriteBinaryFileW(const wchar_t *path, const uint8_t *data, size_t size) {
     if (!path || (!data && size != 0)) return 0;
     std::vector<uint8_t> vec = MakeBinaryFileBuffer(data, size);
     return utils::WriteBinaryFileW(path, vec) ? 1 : 0;
 }
 
-int BML_WriteBinaryFileUtf8(const char *path, const uint8_t *data, size_t size) {
+int BML_CDECL BML_WriteBinaryFileUtf8(const char *path, const uint8_t *data, size_t size) {
     if (!path || (!data && size != 0)) return 0;
     std::vector<uint8_t> vec = MakeBinaryFileBuffer(data, size);
     return utils::WriteBinaryFileUtf8(path, vec) ? 1 : 0;
 }
 
 // Create temporary files
-char *BML_CreateTempFileA(const char *prefix) {
+char *BML_CDECL BML_CreateTempFileA(const char *prefix) {
     std::string prefixStr = prefix ? prefix : "";
     std::string result = utils::CreateTempFileA(prefixStr);
     return result.empty() ? nullptr : BML_Strdup(result.c_str());
 }
 
-wchar_t *BML_CreateTempFileW(const wchar_t *prefix) {
+wchar_t *BML_CDECL BML_CreateTempFileW(const wchar_t *prefix) {
     std::wstring prefixStr = prefix ? prefix : L"";
     std::wstring result = utils::CreateTempFileW(prefixStr);
     if (result.empty()) return nullptr;
@@ -1332,14 +1332,14 @@ wchar_t *BML_CreateTempFileW(const wchar_t *prefix) {
     return CopyWString(result);
 }
 
-char *BML_CreateTempFileUtf8(const char *prefix) {
+char *BML_CDECL BML_CreateTempFileUtf8(const char *prefix) {
     std::string prefixStr = prefix ? prefix : "";
     std::string result = utils::CreateTempFileUtf8(prefixStr);
     return result.empty() ? nullptr : BML_Strdup(result.c_str());
 }
 
 // Directory listing
-char **BML_ListFilesA(const char *dir, const char *pattern, size_t *count) {
+char **BML_CDECL BML_ListFilesA(const char *dir, const char *pattern, size_t *count) {
     if (!dir || !count) {
         if (count) *count = 0;
         return nullptr;
@@ -1372,7 +1372,7 @@ char **BML_ListFilesA(const char *dir, const char *pattern, size_t *count) {
     return arr;
 }
 
-wchar_t **BML_ListFilesW(const wchar_t *dir, const wchar_t *pattern, size_t *count) {
+wchar_t **BML_CDECL BML_ListFilesW(const wchar_t *dir, const wchar_t *pattern, size_t *count) {
     if (!dir || !count) {
         if (count) *count = 0;
         return nullptr;
@@ -1405,7 +1405,7 @@ wchar_t **BML_ListFilesW(const wchar_t *dir, const wchar_t *pattern, size_t *cou
     return arr;
 }
 
-char **BML_ListFilesUtf8(const char *dir, const char *pattern, size_t *count) {
+char **BML_CDECL BML_ListFilesUtf8(const char *dir, const char *pattern, size_t *count) {
     if (!dir || !count) {
         if (count) *count = 0;
         return nullptr;
@@ -1438,7 +1438,7 @@ char **BML_ListFilesUtf8(const char *dir, const char *pattern, size_t *count) {
     return arr;
 }
 
-char **BML_ListDirectoriesA(const char *dir, const char *pattern, size_t *count) {
+char **BML_CDECL BML_ListDirectoriesA(const char *dir, const char *pattern, size_t *count) {
     if (!dir || !count) {
         if (count) *count = 0;
         return nullptr;
@@ -1471,7 +1471,7 @@ char **BML_ListDirectoriesA(const char *dir, const char *pattern, size_t *count)
     return arr;
 }
 
-wchar_t **BML_ListDirectoriesW(const wchar_t *dir, const wchar_t *pattern, size_t *count) {
+wchar_t **BML_CDECL BML_ListDirectoriesW(const wchar_t *dir, const wchar_t *pattern, size_t *count) {
     if (!dir || !count) {
         if (count) *count = 0;
         return nullptr;
@@ -1504,7 +1504,7 @@ wchar_t **BML_ListDirectoriesW(const wchar_t *dir, const wchar_t *pattern, size_
     return arr;
 }
 
-char **BML_ListDirectoriesUtf8(const char *dir, const char *pattern, size_t *count) {
+char **BML_CDECL BML_ListDirectoriesUtf8(const char *dir, const char *pattern, size_t *count) {
     if (!dir || !count) {
         if (count) *count = 0;
         return nullptr;
