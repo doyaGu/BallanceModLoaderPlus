@@ -1,0 +1,6 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(BML CONFIG)
+include("${CMAKE_CURRENT_LIST_DIR}/IVPTargets.cmake")
+check_required_components(IVP)
