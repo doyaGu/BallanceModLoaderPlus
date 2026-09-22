@@ -1,0 +1,27 @@
+namespace	function	signature	disposition	source	note
+	ivp_byte_swap2	void(ushort&)	reconstructed-nearby	ivp_utility/ivu_memory.cxx	Layout-independent two-byte reversal from the nearby implementation.
+	ivp_byte_swap4	void(uint&)	reconstructed-nearby	ivp_utility/ivu_memory.cxx	Layout-independent four-byte reversal from the nearby implementation.
+	ivp_calloc_aligned	void*(int,int)	reconstructed-adjacent-version	ivp/ivp_utility/ivu_memory.cxx	The Ballance-near declaration has no body; the adjacent implementation confirms zeroed payload allocation through the same aligned allocator metadata.
+	ivp_memory_check	void(void*)	reconstructed-nearby	ivp_utility/ivu_memory.cxx	The nearby public implementation is an intentional no-op in this build configuration.
+	ivp_message	void(const char*,...)	reconstructed-nearby	ivp_utility/ivu_string.cxx	Bounded Mod-side formatting; no retail body or engine-owned state exists.
+	ivp_srand	void(int)	reconstructed-nearby	ivp_utility/ivu_os_dep.cxx	Writes the exact DLL-owned IVP_RAND_SEED used by retained ivp_rand.
+	p_atof	IVP_DOUBLE(const char*)	reconstructed-nearby	ivp_utility/ivu_string.cxx	Null-tolerant numeric conversion without IVP object state.
+	p_atoi	int(const char*)	reconstructed-nearby	ivp_utility/ivu_string.cxx	Null-tolerant numeric conversion without IVP object state.
+	p_export_error	IVP_ERROR_STRING(const char*,...)	reconstructed-nearby	ivp_utility/ivu_string.cxx	Bounded formatting with a process-local public error buffer allocated through retail p_strdup.
+	p_free	void(void*)	reconstructed-nearby	ivp_utility/ivu_memory.cxx	The stripped wrapper is free(data); the reconstruction routes through Ballance's imported MSVCRT scalar delete entry to preserve heap ownership.
+	p_get_error	IVP_ERROR_STRING()	reconstructed-nearby	ivp_utility/ivu_string.cxx	Returns the reconstructed public error buffer; the retail DLL retained no corresponding state.
+	p_get_float	IVP_DOUBLE()	reconstructed-nearby	ivp_utility/ivu_string.cxx	Consumes the same reconstructed token state and applies the nearby null-safe conversion.
+	p_get_next_token	char*()	reconstructed-nearby	ivp_utility/ivu_string.cxx	Consumes the same reconstructed strtok state with IVP_WHITESPACE.
+	p_get_num	int()	reconstructed-nearby	ivp_utility/ivu_string.cxx	Consumes the same reconstructed token state and applies the nearby null-safe conversion.
+	p_get_string	char*()	reconstructed-nearby	ivp_utility/ivu_string.cxx	Duplicates the remainder through retained p_strdup so returned ownership stays on the retail heap.
+	p_get_time	long()	reconstructed-nearby	ivp_utility/ivu_string.cxx	Returns Unix time narrowed to the Ballance x86 long ABI.
+	p_make_string	char*(const char*,...)	reconstructed-nearby	ivp_utility/ivu_string.cxx	Bounded formatting followed by retained p_strdup; compatible output for strings that fit the nearby 10000-byte buffer.
+	p_make_string_fast	char*(const char*,...)	reconstructed-nearby	ivp_utility/ivu_string.cxx	Uses the same bounded reconstruction rather than reproducing the nearby unchecked vsprintf overflow.
+	p_print_error	void()	reconstructed-nearby	ivp_utility/ivu_string.cxx	Prints the reconstructed public error state; no engine-owned buffer is present in Ballance.
+	p_read_first_token	char*(FILE*)	reconstructed-nearby	ivp_utility/ivu_string.cxx	Recreates comment skipping and tokenization for caller-owned FILE streams.
+	p_str_tok	char*(char*,const char*)	reconstructed-nearby	ivp_utility/ivu_string.cxx	Recreates token continuation and the original carriage-return truncation.
+	strcasecmp	int(const char*,const char*)	reconstructed-nearby	ivp_utility/ivu_string.cxx	Portable ASCII folding reproduces Ballance's Windows case-insensitive comparison for IVP identifiers.
+	p_error_message	void()	retail-omitted	ivp_utility/ivu_string.hxx	Declaration only in both inspected source revisions; no Ballance symbol, implementation, state, or callsite establishes semantics.
+	p_error_message	void(const char*,...)	retail-omitted	ivp_utility/ivu_string.hxx	Declaration only in both inspected source revisions; no Ballance symbol, implementation, state, or callsite establishes variadic semantics.
+	p_realloc	void*(void*,int)	retail-omitted	physics_RT.dll imports	Ballance retains no body and does not import MSVCRT realloc; copying safely is impossible because the old allocation size is not available.
+	replace_slash	void(const char*,char*)	retail-omitted	ivp_utility/ivu_string.hxx	Declaration only in both inspected source revisions; no body or callsite establishes which slash direction and aliasing rules are required.

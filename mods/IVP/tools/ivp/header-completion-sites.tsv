@@ -1,0 +1,10 @@
+defining_header	owner	methods	declaration_header	reason
+include/BML/IVP/Actuator.h	IVP_Core	get_diff_surface_speed_of_two_cores	include/BML/IVP/Core.h	Requires the complete actuator/anchor model.
+include/BML/IVP/Actuator.h	IVP_Environment	create_check_dist;create_stabilizer;create_suspension;create_force;create_torque;create_rotmot	include/BML/IVP/Environment.h	Factories require complete concrete actuator types.
+include/BML/IVP/Cache.h	IVP_Real_Object	get_cache_object_no_lock;get_cache_object	include/BML/IVP/Object.h	Requires the complete cache object and manager types.
+include/BML/IVP/Controller.h	IVP_Environment	create_controller_motion	include/BML/IVP/Environment.h	Factory requires the complete motion controller type.
+include/BML/IVP/Environment.h	IVP_Core	clip_velocity;apply_velocity_limit;revive_adjacent_to_unmoveable;values_changed_recalc_redundants	include/BML/IVP/Core.h	Requires complete environment managers and object/contact collaborators.
+include/BML/IVP/Environment.h	IVP_Real_Object	recheck_collision_filter;force_grow_friction_system;delete_and_check_vicinity;recalc_exact_mindists_of_object;recalc_invalid_mindists_of_object;beam_object_to_new_position;unlink_contact_points_for_object;do_radar_checking;disable_simulation;add_listener_object;remove_listener_object	include/BML/IVP/Object.h	Requires complete environment, contact, radar, cache, hull, and simulation types.
+include/BML/IVP/Forcefield.h	IVP_Controller_Manager	add_controller_to_core;remove_controller_from_core	include/BML/IVP/Controller.h	Requires the complete Forcefield attachment callback.
+include/BML/IVP/Object.h	IVP_Core	reset_time;ensure_all_core_objs_in_simulation;ensure_all_core_objs_in_simulation_now	include/BML/IVP/Core.h	Requires the complete IVP_Real_Object interface.
+include/BML/IVP/SimulationUnit.h	IVP_Real_Object	change_unmovable_flag	include/BML/IVP/Object.h	Requires complete Simulation Unit ownership and manager types.

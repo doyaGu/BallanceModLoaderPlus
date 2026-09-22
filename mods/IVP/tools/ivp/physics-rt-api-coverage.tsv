@@ -1,0 +1,682 @@
+rva	symbol	category	disposition	public_header	probe	address_id
+0002F3B0	IVP_Collision_Delegator_Root_Mindist::object_is_removed_from_collision_detection	collision-mindist	typed-wrapper	include/BML/IVP/Collision.h	Address::CollisionDelegatorRootMindistObjectRemoved	CollisionDelegatorRootMindistObjectRemoved
+0002F3E0	IVP_Collision_Delegator_Root_Mindist::environment_is_going_to_be_deleted_event	collision-mindist	typed-wrapper	include/BML/IVP/Collision.h	Address::CollisionDelegatorRootMindistEnvironmentDeleted	CollisionDelegatorRootMindistEnvironmentDeleted
+0002F3F0	IVP_Collision_Delegator_Root_Mindist::collision_is_going_to_be_deleted_event	collision-mindist	typed-wrapper	include/BML/IVP/Collision.h	Address::CollisionDelegatorRootMindistCollisionDeleted	CollisionDelegatorRootMindistCollisionDeleted
+0002F430	IVP_Collision_Delegator_Root_Mindist::delegate_collisions_for_object	collision-mindist	typed-wrapper	include/BML/IVP/Collision.h	Address::CollisionDelegatorRootMindistDelegateCollisions	CollisionDelegatorRootMindistDelegateCollisions
+0002F5A0	IVP_Collision_Delegator_Root_Mindist::IVP_Collision_Delegator_Root_Mindist	collision-mindist	typed-wrapper	include/BML/IVP/Collision.h	Address::CollisionDelegatorRootMindistConstruct	CollisionDelegatorRootMindistConstruct
+00009A40	IVP_Real_Object::unlink_contact_points	object-core	typed-wrapper	include/BML/IVP/Object.h	unlink_contact_points(IVP_BOOL	RealObjectUnlinkContactPoints
+00009610	IVP_Real_Object::update_exact_mindist_events_of_object	object-core	typed-wrapper	include/BML/IVP/Object.h	update_exact_mindist_events_of_object	RealObjectUpdateExactMindistEvents
+00009350	IVP_Real_Object::enable_collision_detection	object-core	typed-wrapper	include/BML/IVP/Object.h	enable_collision_detection	RealObjectEnableCollision
+00009B00	IVP_Object::IVP_Object(IVP_Cluster *, const IVP_Template_Object *)	object-hierarchy	typed-wrapper	include/BML/IVP/Object.h	IVP_Object(IVP_Cluster *father	ObjectConstruct
+00009B60	IVP_Object::IVP_Object(IVP_Environment *)	object-hierarchy	typed-wrapper	include/BML/IVP/Object.h	explicit IVP_Object(IVP_Environment *targetEnvironment)	ObjectConstructRoot
+00009BA0	IVP_Object::~IVP_Object	object-hierarchy	typed-wrapper	include/BML/IVP/Object.h	virtual ~IVP_Object()	ObjectDestruct
+00009570	IVP_Real_Object::add_listener_collision	object-core	typed-wrapper	include/BML/IVP/Object.h	add_listener_collision	RealObjectAddCollisionListener
+00009590	IVP_Real_Object::remove_listener_collision	object-core	typed-wrapper	include/BML/IVP/Object.h	remove_listener_collision	RealObjectRemoveCollisionListener
+00009990	IVP_Real_Object deleting helper	object-core	typed-wrapper	include/BML/IVP/Object.h	void destroy()	RealObjectDestroy
+00009C40	IVP_Real_Object::get_m_world_f_object_AT	object-core	typed-wrapper	include/BML/IVP/Object.h	get_m_world_f_object_AT	RealObjectGetCurrentMatrix
+0000A2D0	IVP_Real_Object::convert_to_phantom	object-core	typed-wrapper	include/BML/IVP/Object.h	convert_to_phantom	RealObjectConvertToPhantom
+000108A0	IVP_Controller_Phantom::~IVP_Controller_Phantom	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	~IVP_Controller_Phantom	ControllerPhantomDestruct
+00010D00	IVP_Controller_Phantom::IVP_Controller_Phantom	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	IVP_Controller_Phantom(	ControllerPhantomConstruct
+000109E0	IVP_Controller_Phantom::mindist_entered_volume	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	mindist_entered_volume	ControllerPhantomMindistEnteredVolume
+00010B70	IVP_Controller_Phantom::mindist_left_volume	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	mindist_left_volume	ControllerPhantomMindistLeftVolume
+0000A3E0	IVP_Real_Object::async_push_object_ws	object-core	typed-wrapper	include/BML/IVP/Object.h	async_push_object_ws	RealObjectPushWorld
+0000A460	IVP_Real_Object::ensure_in_simulation	object-core	typed-wrapper	include/BML/IVP/Object.h	ensure_in_simulation	RealObjectEnsureSimulation
+0000B0F0	IVP_Controller::~IVP_Controller reached from an SEH cleanup tail	controller-constraint	typed-wrapper	include/BML/IVP/Controller.h	virtual ~IVP_Controller()	ControllerDestruct
+0000B600	IVP_U_Vector_Base::increment_mem	math-container	typed-wrapper	include/BML/IVP/Types.h	increment_mem	VectorIncrementMemory
+0000B670	??0IVP_Hash@@QAE@HHPAX@Z	math-container	typed-wrapper	include/BML/IVP/StringHash.h	IVP_Hash(	HashConstruct
+0000B6A0	??1IVP_Hash@@QAE@XZ	math-container	typed-wrapper	include/BML/IVP/StringHash.h	~IVP_Hash()	HashDestruct
+0000B6F0	?find@IVP_Hash@@QBEPAXPBD@Z	math-container	typed-wrapper	include/BML/IVP/StringHash.h	void *find(	HashFind
+0000B770	?add@IVP_Hash@@QAEXPBDPAX@Z	math-container	typed-wrapper	include/BML/IVP/StringHash.h	void add(	HashAdd
+0000B7F0	IVP_U_String_Hash::IVP_U_String_Hash	math-container	typed-wrapper	include/BML/IVP/StringHash.h	IVP_U_String_Hash(int	StringHashConstruct
+0000B820	IVP_U_String_Hash::find	math-container	typed-wrapper	include/BML/IVP/StringHash.h	void *find(	StringHashFind
+0000B8C0	IVP_U_String_Hash::add	math-container	typed-wrapper	include/BML/IVP/StringHash.h	void add(	StringHashAdd
+0000BD00	IVP_SurfaceManager_Polygon non-deleting destructor used by adapter deleting thunk	adapter-internal	adapter-internal			""
+0000BDA0	IVP_Material_Manager::IVP_Material_Manager	material	typed-wrapper	include/BML/IVP/Material.h	IVP_Material_Manager(IVP_BOOL	MaterialManagerConstruct
+0000BF00	IVP_Material_Simple::IVP_Material_Simple	material	typed-wrapper	include/BML/IVP/Material.h	IVP_Material_Simple(	MaterialSimpleConstruct
+0000C510	IVP_Core::calc_at_matrix	object-core	typed-wrapper	include/BML/IVP/Core.h	calc_at_matrix	CoreCalculateMatrixAt
+0000C830	IVP_Core::async_push_core	object-core	typed-wrapper	include/BML/IVP/Core.h	async_push_core(	CoreAsyncPush
+0000E030	IVP_U_Float_Point::fast_normize	math-container	typed-wrapper	include/BML/IVP/Types.h	IVP_RETURN_TYPE fast_normize()	FloatPointFastNormalize
+0000E120	IVP_U_Point::normize	math-container	typed-wrapper	include/BML/IVP/Types.h	IVP_RETURN_TYPE normize()	PointNormalize
+0000E480	IVP_U_Float_Point::real_length	math-container	typed-wrapper	include/BML/IVP/Types.h	IVP_DOUBLE real_length() const	FloatPointRealLength
+0000E7F0	IVP_U_Float_Hesse::calc_hesse	math-container	typed-wrapper	include/BML/IVP/Types.h	void calc_hesse(	FloatHesseCalculate
+0000E8C0	IVP_U_Float_Hesse::normize	math-container	typed-wrapper	include/BML/IVP/Types.h	struct IVP_U_Float_Hesse	FloatHesseNormalize
+0000EB00	IVP_U_Matrix::init	math-container	typed-wrapper	include/BML/IVP/Types.h	void init(	MatrixInitialize
+0000F3E0	IVP_U_Matrix::vimult4	math-container	typed-wrapper	include/BML/IVP/Types.h	void vimult4(	MatrixInverseTransformPoint
+0000F760	IVP_U_Matrix3::vimult3	math-container	typed-wrapper	include/BML/IVP/Types.h	void vimult3(	Matrix3InverseTransformPoint
+0000F830	IVP_U_Matrix::shift_os	math-container	typed-wrapper	include/BML/IVP/Types.h	void shift_os(	MatrixShiftObject
+000104C0	IVP_Attacher_To_Cores_Buoyancy::IVP_Attacher_To_Cores_Buoyancy	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	IVP_Attacher_To_Cores_Buoyancy *create	BuoyancyAttacherConstruct
+00010650	IVP_Attacher_To_Cores_Buoyancy::~IVP_Attacher_To_Cores_Buoyancy	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	~IVP_Attacher_To_Cores_Buoyancy()	BuoyancyAttacherDestruct
+000106B0	IVP_Attacher_To_Cores<IVP_Controller_Buoyancy>::element_added	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	BuoyancyAttacherElementAdded	BuoyancyAttacherElementAdded
+00010720	IVP_Attacher_To_Cores<IVP_Controller_Buoyancy>::element_removed	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	BuoyancyAttacherElementRemoved	BuoyancyAttacherElementRemoved
+00010740	IVP_Attacher_To_Cores<IVP_Controller_Buoyancy>::pset_is_going_to_be_deleted	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	BuoyancyAttacherSetDeleted	BuoyancyAttacherSetDeleted
+00010820	IVP_Liquid_Surface_Descriptor_Simple::IVP_Liquid_Surface_Descriptor_Simple	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	IVP_Liquid_Surface_Descriptor_Simple(	LiquidSurfaceSimpleConstruct
+00010880	IVP_Template_Phantom::IVP_Template_Phantom	buoyancy-phantom	typed-wrapper	include/BML/IVP/Templates.h	IVP_Template_Phantom()	TemplatePhantomConstruct
+00011B10	IVP_Controller_Manager::add_controller_to_core	controller-constraint	typed-wrapper	include/BML/IVP/Controller.h	add_controller_to_core	ControllerManagerAddToCore
+00011B20	IVP_Controller_Manager::remove_controller_from_core	controller-constraint	typed-wrapper	include/BML/IVP/Controller.h	remove_controller_from_core	ControllerManagerRemoveFromCore
+00012570	IVP_Template_Constraint::IVP_Template_Constraint	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	IVP_Template_Constraint()	TemplateConstraintConstruct
+00012870	IVP_Template_Constraint::set_constraint_ws	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	void set_constraint_ws(	TemplateConstraintSetWorld
+00012960	IVP_Template_Constraint::limit_translation_axis	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	void limit_translation_axis(	TemplateConstraintLimitTranslation
+00012990	IVP_Template_Constraint::limit_rotation_axis	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	void limit_rotation_axis(	TemplateConstraintLimitRotation
+000129C0	IVP_Environment::create_constraint	controller-constraint	typed-wrapper	include/BML/IVP/Environment.h	create_constraint(	EnvironmentCreateConstraint
+00013270	IVP_Environment::~IVP_Environment	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	void destroy()	EnvironmentDestruct
+00013680	IVP_Environment::set_gravity	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	void set_gravity(	EnvironmentSetGravity
+00013700	IVP_Environment::create_spring	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	create_spring(	EnvironmentCreateSpring
+000137E0	IVP_Environment_Manager::create_environment	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	create_environment(	EnvironmentManagerCreateEnvironment
+000138B0	IVP_Environment_Manager::get_environment_manager	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	get_environment_manager()	EnvironmentManagerGet
+000138C0	IVP_Environment::simulate_dtime	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	simulate_dtime(	EnvironmentSimulateDelta
+00013920	IVP_Draw_Vector_Debug::~IVP_Draw_Vector_Debug	environment-debug	typed-wrapper	include/BML/IVP/Environment.h	Address::DrawVectorDebugDestruct	DrawVectorDebugDestruct
+00013940	IVP_Environment::delete_draw_vector_debug	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	delete_draw_vector_debug()	EnvironmentDeleteDrawVectors
+000139A0	IVP_Environment::create_polygon	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	create_polygon(	EnvironmentCreatePolygon
+00013A10	IVP_Environment::create_ball	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	create_ball(	EnvironmentCreateBall
+00013A80	IVP_Environment::add_listener_object_global	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	add_listener_object_global	EnvironmentAddObjectListener
+00013AC0	IVP_Environment::fire_event_object_created	environment-listener	typed-wrapper	include/BML/IVP/Environment.h	fire_event_object_created(	EnvironmentFireObjectCreated
+00013AF0	IVP_Environment::fire_event_object_deleted	environment-listener	typed-wrapper	include/BML/IVP/Environment.h	fire_event_object_deleted(	EnvironmentFireObjectDeleted
+00013B20	IVP_Environment::fire_event_object_frozen	environment-listener	typed-wrapper	include/BML/IVP/Environment.h	fire_event_object_frozen(	EnvironmentFireObjectFrozen
+00013B50	IVP_Environment::fire_event_object_revived	environment-listener	typed-wrapper	include/BML/IVP/Environment.h	fire_event_object_revived(	EnvironmentFireObjectRevived
+00013C70	IVP_Environment::add_listener_collision_global	environment-factory	typed-wrapper	include/BML/IVP/Environment.h	add_listener_collision_global	EnvironmentAddCollisionListener
+00013E70	IVP_Template_Two_Point::IVP_Template_Two_Point	anchor	typed-wrapper	include/BML/IVP/Actuator.h	IVP_Template_Two_Point()	TemplateTwoPointConstruct
+00013E80	IVP_Template_Anchor::set_anchor_position_ws	anchor	typed-wrapper	include/BML/IVP/Actuator.h	set_anchor_position_ws	TemplateAnchorSetWorldPosition
+00014200	IVP_Template_Spring::IVP_Template_Spring	anchor	typed-wrapper	include/BML/IVP/Actuator.h	IVP_Template_Spring()	TemplateSpringConstruct
+00014970	IVP_Collision_Filter_Coll_Group_Ident::IVP_Collision_Filter_Coll_Group_Ident	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	IVP_Collision_Filter_Coll_Group_Ident(	CollisionFilterGroupIdentConstruct
+00014B80	IVP_Collision_Filter_Exclusive_Pair::IVP_Collision_Filter_Exclusive_Pair	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	IVP_Collision_Filter_Exclusive_Pair()	CollisionFilterExclusivePairConstruct
+00014C70	IVP_Meta_Collision_Filter::add_collision_filter	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	void add_collision_filter(	CollisionFilterMetaAdd
+00014D40	IVP_Meta_Collision_Filter::IVP_Meta_Collision_Filter	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	IVP_Meta_Collision_Filter(IVP_BOOL	CollisionFilterMetaConstruct
+00014CE0	IVP_Meta_Collision_Filter::~IVP_Meta_Collision_Filter	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	~IVP_Meta_Collision_Filter()	CollisionFilterMetaDestruct
+00014FA0	IVP_PerformanceCounter_Simple::IVP_PerformanceCounter_Simple	performance-active	typed-wrapper	include/BML/IVP/Performance.h	IVP_PerformanceCounter_Simple()	PerformanceCounterSimpleConstruct
+00015160	IVP_U_Active_Value_Manager::IVP_U_Active_Value_Manager	performance-active	typed-wrapper	include/BML/IVP/ActiveValue.h	IVP_U_Active_Value_Manager(IVP_BOOL	ActiveValueManagerConstruct
+00015E70	IVP_Application_Environment::IVP_Application_Environment	template-application	typed-wrapper	include/BML/IVP/Environment.h	IVP_Application_Environment()	ApplicationEnvironmentConstruct
+00015EC0	IVP_Template_Object::set_name	template-application	typed-wrapper	include/BML/IVP/Templates.h	void set_name(	TemplateObjectSetName
+00015EF0	IVP_Template_Real_Object::IVP_Template_Real_Object	template-application	typed-wrapper	include/BML/IVP/Templates.h	IVP_Template_Real_Object()	TemplateRealObjectConstruct
+00015F60	IVP_Template_Object::~IVP_Template_Object	template-application	typed-wrapper	include/BML/IVP/Templates.h	~IVP_Template_Object()	TemplateObjectDestruct
+00015F70	IVP_Template_Real_Object::set_nocoll_group_ident	template-application	typed-wrapper	include/BML/IVP/Templates.h	void set_nocoll_group_ident(	TemplateRealObjectSetNoCollGroup
+00015FE0	IVP_Mindist_Settings::set_collision_tolerance	environment-listener	typed-wrapper	include/BML/IVP/Environment.h	set_global_collision_tolerance(	MindistSettingsSetCollisionTolerance
+00028270	IVP_Constraint_Local::IVP_Constraint_Local	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	IVP_Constraint_Local(	ConstraintLocalConstruct
+000284D0	IVP_Constraint_Local internal template initializer	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	ConstraintLocalInitialize	ConstraintLocalInitialize
+00028950	IVP_Constraint_Local::core_is_going_to_be_deleted_event via retail vtable slot 0	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	core_is_going_to_be_deleted_event(	ConstraintLocalCoreDeleted
+00028960	IVP_Constraint_Local::do_simulation_controller via retail vtable slot 4	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	do_simulation_controller(	ConstraintLocalSimulate
+0002A210	IVP_Constraint_Local::change_fixing_point_Ros via retail vtable slot 7	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_fixing_point_Ros(	ConstraintLocalChangeFixingPoint
+0002A2E0	IVP_Constraint_Local::change_target_fixing_point_Ros via retail vtable slot 8	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_target_fixing_point_Ros(	ConstraintLocalChangeTargetFixingPoint
+0002A380	IVP_Constraint_Local::change_translation_axes_Ros via retail vtable slot 9	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_translation_axes_Ros(	ConstraintLocalChangeTranslationAxes
+0002A430	IVP_Constraint_Local::change_target_translation_axes_Ros via retail vtable slot 10	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_target_translation_axes_Ros(	ConstraintLocalChangeTargetTranslationAxes
+0002A4A0	IVP_Constraint_Local::fix_translation_axis via retail vtable slot 11	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	fix_translation_axis(	ConstraintLocalFixTranslationAxis
+0002A4D0	IVP_Constraint_Local::free_translation_axis via retail vtable slot 12	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	free_translation_axis(	ConstraintLocalFreeTranslationAxis
+0002A500	IVP_Constraint_Local::limit_translation_axis via retail vtable slot 13	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	limit_translation_axis(	ConstraintLocalLimitTranslationAxis
+0002A540	IVP_Constraint_Local::change_max_translation_impulse via retail vtable slot 14	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_max_translation_impulse(	ConstraintLocalChangeMaxTranslationImpulse
+0002A5C0	IVP_Constraint_Local::change_rotation_axes_Ros via retail vtable slot 15	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_rotation_axes_Ros(	ConstraintLocalChangeRotationAxes
+0002A6C0	IVP_Constraint_Local::change_target_rotation_axes_Ros via retail vtable slot 16	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_target_rotation_axes_Ros(	ConstraintLocalChangeTargetRotationAxes
+0002A760	IVP_Constraint_Local::fix_rotation_axis via retail vtable slot 17	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	fix_rotation_axis(	ConstraintLocalFixRotationAxis
+0002A790	IVP_Constraint_Local::free_rotation_axis via retail vtable slot 18	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	free_rotation_axis(	ConstraintLocalFreeRotationAxis
+0002A7C0	IVP_Constraint_Local::limit_rotation_axis via retail vtable slot 19	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	limit_rotation_axis(	ConstraintLocalLimitRotationAxis
+0002A800	IVP_Constraint_Local::change_max_rotation_impulse via retail vtable slot 20	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_max_rotation_impulse(	ConstraintLocalChangeMaxRotationImpulse
+0002A880	IVP_Constraint_Local::change_Aos_to_relaxe_constraint via retail vtable slot 21	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_Aos_to_relaxe_constraint(	ConstraintLocalRelaxAttached
+0002A920	IVP_Constraint_Local::change_Ros_to_relaxe_constraint via retail vtable slot 22	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	change_Ros_to_relaxe_constraint(	ConstraintLocalRelaxReference
+00038290	IVP_SurfaceBuilder_Ledge_Soup::IVP_SurfaceBuilder_Ledge_Soup	surface-builder	typed-wrapper	include/BML/IVP/SurfaceBuilder.h	IVP_SurfaceBuilder_Ledge_Soup()	SurfaceBuilderLedgeSoupConstruct
+00038340	IVP_SurfaceBuilder_Ledge_Soup::~IVP_SurfaceBuilder_Ledge_Soup	surface-builder	typed-wrapper	include/BML/IVP/SurfaceBuilder.h	~IVP_SurfaceBuilder_Ledge_Soup()	SurfaceBuilderLedgeSoupDestruct
+00038430	IVP_SurfaceBuilder_Ledge_Soup::insert_ledge	surface-builder	typed-wrapper	include/BML/IVP/SurfaceBuilder.h	void insert_ledge(	SurfaceBuilderLedgeSoupInsert
+000384B0	IVP_SurfaceBuilder_Ledge_Soup::compile	surface-builder	typed-wrapper	include/BML/IVP/SurfaceBuilder.h	IVP_Compact_Surface *compile(	SurfaceBuilderLedgeSoupCompile
+0003AE20	IVP_SurfaceBuilder_Pointsoup::convert_pointsoup_to_compact_ledge	surface-builder	typed-wrapper	include/BML/IVP/SurfaceBuilder.h	convert_pointsoup_to_compact_ledge	SurfaceBuilderPointsoupToLedge
+0003BF80	IVP_Template_Polygon::IVP_Template_Polygon	surface-builder	typed-wrapper	include/BML/IVP/Templates.h	IVP_Template_Polygon()	TemplatePolygonConstruct
+0003BFA0	IVP_Template_Polygon::~IVP_Template_Polygon	surface-builder	typed-wrapper	include/BML/IVP/Templates.h	~IVP_Template_Polygon()	TemplatePolygonDestruct
+0003C000	IVP_Template_Surface::IVP_Template_Surface	surface-builder	typed-wrapper	include/BML/IVP/Templates.h	IVP_Template_Surface()	TemplateSurfaceConstruct
+0003C020	IVP_Template_Surface::close_surface	surface-builder	typed-wrapper	include/BML/IVP/Templates.h	void close_surface()	TemplateSurfaceClose
+0003C050	IVP_Template_Surface::get_surface_index	surface-builder	typed-wrapper	include/BML/IVP/Templates.h	int get_surface_index()	TemplateSurfaceGetIndex
+00033D80	IVP_Great_Matrix_Many_Zero::matrix_check_unequation_line	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	matrix_check_unequation_line(	GreatMatrixCheckUnequationLine
+00033DE0	IVP_Great_Matrix_Many_Zero::add_multiple_line	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	void add_multiple_line(	GreatMatrixAddMultipleLine
+00033E50	IVP_Great_Matrix_Many_Zero::solve_great_matrix_many_zero	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	solve_great_matrix_many_zero()	GreatMatrixSolve
+00033E70	IVP_Great_Matrix_Many_Zero::align_matrix_values	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	void align_matrix_values()	GreatMatrixAlignValues
+00033E80	IVP_Great_Matrix_Many_Zero::find_pivot_in_column	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	find_pivot_in_column(	GreatMatrixFindPivot
+00033F00	IVP_Great_Matrix_Many_Zero::exchange_rows	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	void exchange_rows(	GreatMatrixExchangeRows
+00033F80	IVP_Great_Matrix_Many_Zero::transform_to_lower_null_triangle	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	transform_to_lower_null_triangle()	GreatMatrixTransformLowerNull
+00034030	IVP_Great_Matrix_Many_Zero::solve_lower_null_matrix	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	solve_lower_null_matrix()	GreatMatrixSolveLowerNull
+00034100	IVP_Great_Matrix_Many_Zero::IVP_Great_Matrix_Many_Zero	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	IVP_Great_Matrix_Many_Zero()	GreatMatrixConstruct
+00034120	IVP_Great_Matrix_Many_Zero::fill_from_bigger_matrix	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	fill_from_bigger_matrix(	GreatMatrixFillFromBigger
+00034270	IVP_Great_Matrix_Many_Zero::mult_aligned	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	void mult_aligned()	GreatMatrixMultiplyAligned
+000346E0	IVP_Linear_Constraint_Solver::init_and_solve_lc	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	init_and_solve_lc(	LinearConstraintSolverSolve
+00035780	IVP_Incr_L_U_Matrix::normize_row_L	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	normize_row_L(	IncrementalLuNormalizeRowL
+000357F0	IVP_Incr_L_U_Matrix::normize_row	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	normize_row(	IncrementalLuNormalizeRow
+000358A0	IVP_Incr_L_U_Matrix::exchange_rows_l_u	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	exchange_rows_l_u(	IncrementalLuExchangeRows
+00035950	IVP_Incr_L_U_Matrix::pivot_search_l_u	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	pivot_search_l_u(	IncrementalLuPivotSearch
+000359D0	IVP_Incr_L_U_Matrix::add_neg_row_to_row_l_u	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	add_neg_row_to_row_l_u(	IncrementalLuAddNegativeRow
+00035A80	IVP_Incr_L_U_Matrix::subtract_row_L	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	subtract_row_L(	IncrementalLuSubtractRowL
+00035AE0	IVP_Incr_L_U_Matrix::l_u_decomposition_with_pivoting	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	l_u_decomposition_with_pivoting()	IncrementalLuDecompose
+00035BE0	IVP_Incr_L_U_Matrix::increment_l_u	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	increment_l_u()	IncrementalLuIncrement
+00035D00	IVP_Incr_L_U_Matrix::decrement_l_u	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	decrement_l_u(	IncrementalLuDecrement
+00035E80	IVP_Incr_L_U_Matrix::exchange_columns_L	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	exchange_columns_L(	IncrementalLuExchangeColumnsL
+00035EE0	IVP_Incr_L_U_Matrix::exchange_columns_U	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	exchange_columns_U(	IncrementalLuExchangeColumnsU
+00035F40	IVP_Incr_L_U_Matrix::mult_vec_with_L	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	mult_vec_with_L()	IncrementalLuMultiplyVectorL
+00035F90	IVP_Incr_L_U_Matrix::solve_vec_with_U	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	solve_vec_with_U()	IncrementalLuSolveVectorU
+00035FF0	IVP_Incr_L_U_Matrix::solve_lin_equ	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	solve_lin_equ()	IncrementalLuSolveLinearEquation
+00036030	IVP_Incr_L_U_Matrix::add_neg_row_L	matrix-solver	typed-wrapper	include/BML/IVP/GreatMatrix.h	add_neg_row_L(	IncrementalLuAddNegativeRowL
+000300F0	IVP_U_Min_List::IVP_U_Min_List	math-container	typed-wrapper	include/BML/IVP/MinList.h	explicit IVP_U_Min_List(int size = 4)	MinListConstruct
+00030170	IVP_U_Min_List::~IVP_U_Min_List	math-container	typed-wrapper	include/BML/IVP/MinList.h	~IVP_U_Min_List()	MinListDestruct
+00033A30	IVP_Solver_Core_Reaction::init_reaction_solver_translation_ws	reaction-solver	typed-wrapper	include/BML/IVP/Reaction.h	init_reaction_solver_translation_ws(	SolverCoreReactionInitTranslation
+00033AD0	IVP_Solver_Core_Reaction::exert_impulse_dim2	reaction-solver	typed-wrapper	include/BML/IVP/Reaction.h	exert_impulse_dim2(	SolverCoreReactionExertImpulse2
+000376D0	IVP_Constraint::change_fixing_point_Ros / change_target_fixing_point_Ros	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void change_fixing_point_Ros(	ConstraintChangeFixingPoint
+000376E0	IVP_Constraint::change_translation_axes_Ros / change_target_translation_axes_Ros	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void change_translation_axes_Ros(	ConstraintChangeTranslationAxes
+000376F0	IVP_Constraint::fix_translation_axis	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void fix_translation_axis(	ConstraintFixTranslationAxis
+00037700	IVP_Constraint::free_translation_axis	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void free_translation_axis(	ConstraintFreeTranslationAxis
+00037710	IVP_Constraint::limit_translation_axis	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void limit_translation_axis(	ConstraintLimitTranslationAxis
+00037720	IVP_Constraint::change_max_translation_impulse	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void change_max_translation_impulse(	ConstraintChangeMaxTranslationImpulse
+00037730	IVP_Constraint::change_rotation_axes_Ros / change_target_rotation_axes_Ros	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void change_rotation_axes_Ros(	ConstraintChangeRotationAxes
+00037740	IVP_Constraint::fix_rotation_axis	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void fix_rotation_axis(	ConstraintFixRotationAxis
+00037750	IVP_Constraint::free_rotation_axis	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void free_rotation_axis(	ConstraintFreeRotationAxis
+00037760	IVP_Constraint::limit_rotation_axis	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void limit_rotation_axis(	ConstraintLimitRotationAxis
+00037770	IVP_Constraint::change_max_rotation_impulse	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void change_max_rotation_impulse(	ConstraintChangeMaxRotationImpulse
+00037780	IVP_Constraint::change_Aos_to_relaxe_constraint / change_Ros_to_relaxe_constraint	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	virtual void change_Aos_to_relaxe_constraint()	ConstraintRelax
+0000FD30	IVP_U_Float_Point::add(pair)	math-container	typed-wrapper	include/BML/IVP/Types.h	void add(const IVP_U_Float_Point *left, const IVP_U_Float_Point *right)	FloatPointAddPair
+00010290	IVP_U_Float_Point::add_multiple(pair)	math-container	typed-wrapper	include/BML/IVP/Types.h	void add_multiple(const IVP_U_Float_Point *base,	FloatPointAddMultiplePair
+0001B060	IVP_U_Float_Point::dot_product	math-container	typed-wrapper	include/BML/IVP/Types.h	IVP_DOUBLE dot_product(const IVP_U_Float_Point *other) const	FloatPointDotProduct
+0001E7A0	IVP_U_Float_Point::quad_length	math-container	typed-wrapper	include/BML/IVP/Types.h	IVP_DOUBLE quad_length() const	FloatPointQuadraticLength
+000107B0	IVP_U_Float_Point::set(components)	math-container	typed-wrapper	include/BML/IVP/Types.h	void set(IVP_FLOAT x, IVP_FLOAT y, IVP_FLOAT z)	FloatPointSetComponents
+0000FD00	IVP_U_Float_Point::set(point)	math-container	typed-wrapper	include/BML/IVP/Types.h	void set(const IVP_U_Float_Point *source)	FloatPointSet
+00036AC0	IVP_U_Float_Point::set_multiple	math-container	typed-wrapper	include/BML/IVP/Types.h	void set_multiple(const IVP_U_Float_Point *value, IVP_DOUBLE factor)	FloatPointSetMultiple
+00036B00	IVP_U_Float_Point::set_negative	math-container	typed-wrapper	include/BML/IVP/Types.h	void set_negative(const IVP_U_Float_Point *source)	FloatPointSetNegative
+0001D020	IVP_U_Float_Point::set_pairwise_mult	math-container	typed-wrapper	include/BML/IVP/Types.h	void set_pairwise_mult(const IVP_U_Float_Point *left,	FloatPointSetPairwiseMultiply
+000102D0	IVP_U_Float_Point::subtract(pair)	math-container	typed-wrapper	include/BML/IVP/Types.h	void subtract(const IVP_U_Float_Point *left,	FloatPointSubtractPair
+0000E8A0	IVP_U_Float_Hesse::calc_hesse_val	math-container	typed-wrapper	include/BML/IVP/Types.h	void calc_hesse_val(const IVP_U_Float_Point *point)	FloatHesseCalculateValue
+0000E770	IVP_U_Float_Hesse::proj_on_plane	math-container	typed-wrapper	include/BML/IVP/Types.h	void proj_on_plane(const IVP_U_Float_Point *point,	FloatHesseProjectPlane
+0000F920	IVP_U_Matrix3::set_col(point)	math-container	typed-wrapper	include/BML/IVP/Types.h	void set_col(IVP_COORDINATE_INDEX column, const IVP_U_Point *input)	Matrix3SetColumnPoint
+00012470	IVP_U_Point::add_multiple(mixed)	math-container	typed-wrapper	include/BML/IVP/Types.h	const IVP_U_Float_Point *value, IVP_DOUBLE factor)	PointAddMultipleMixed
+00027B30	IVP_U_Point::inline_set_vert_to_area_defined_by_three_points(float)	math-container	typed-wrapper	include/BML/IVP/Types.h	const IVP_U_Float_Point *point2) {	PointSetAreaNormalFloat
+0000EDA0	IVP_U_Point::set(point)	math-container	typed-wrapper	include/BML/IVP/Types.h	void set(const IVP_U_Point *source)	PointSet
+0003BF40	IVP_U_Point::set_multiple(float)	math-container	typed-wrapper	include/BML/IVP/Types.h	void set_multiple(const IVP_U_Float_Point *value, IVP_DOUBLE factor)	PointSetMultipleFloat
+0000EAC0	IVP_U_Point::set_negative	math-container	typed-wrapper	include/BML/IVP/Types.h	void set_negative(const IVP_U_Point *source)	PointSetNegative
+000107D0	IVP_Liquid_Surface_Descriptor_Simple::calc_liquid_surface	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	void calc_liquid_surface(	LiquidSurfaceSimpleCalculate
+0000BEE0	IVP_Material_Simple::get_elasticity	material	typed-wrapper	include/BML/IVP/Material.h	IVP_DOUBLE get_elasticity() override	MaterialSimpleGetElasticity
+0000BED0	IVP_Material_Simple::get_friction_factor	material	typed-wrapper	include/BML/IVP/Material.h	IVP_DOUBLE get_friction_factor() override	MaterialSimpleGetFriction
+0000BF80	IVP_Material_Simple::get_name	material	typed-wrapper	include/BML/IVP/Material.h	const char *get_name() override	MaterialSimpleGetName
+00012010	IVP_Standard_Gravity_Controller::do_simulation_controller	controller-constraint	typed-wrapper	include/BML/IVP/Controller.h	IVP_Standard_Gravity_Controller	StandardGravitySimulate
+00022170	IVP_Standard_Gravity_Controller::core_is_going_to_be_deleted_event	controller-constraint	typed-wrapper	include/BML/IVP/Controller.h	void core_is_going_to_be_deleted_event(IVP_Core *core) override	StandardGravityCoreDeleted
+00015E90	IVP_Template_Object::IVP_Template_Object	object-core	typed-wrapper	include/BML/IVP/Templates.h	IVP_Template_Object()	TemplateObjectConstruct
+00015D80	IVP_U_Active_Terminal_Double::set_double	active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	virtual void set_double(	ActiveTerminalDoubleSet
+00015D30	IVP_U_Active_Terminal_Double::update_float	active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	void update_float() override	ActiveTerminalDoubleUpdate
+00015DF0	IVP_U_Active_Terminal_Int::set_int	active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	virtual void set_int(int newValue	ActiveTerminalIntSet
+00015D60	IVP_U_Active_Terminal_Int::update_int	active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	void update_int() override	ActiveTerminalIntUpdate
+00013FA0	IVP_Actuator::get_associated_controlled_cores	controller-constraint	typed-wrapper	include/BML/IVP/Actuator.h	IVP_U_Vector<IVP_Core> *get_associated_controlled_cores() override	ActuatorGetControlledCores
+00013FB0	IVP_Actuator::get_controller_priority	controller-constraint	typed-wrapper	include/BML/IVP/Actuator.h	IVP_CONTROLLER_PRIORITY get_controller_priority() override	ActuatorGetPriority
+00013FE0	IVP_Actuator::~IVP_Actuator	controller-constraint	typed-wrapper	include/BML/IVP/Actuator.h	~IVP_Actuator() override	ActuatorDestruct
+00010630	IVP_Attacher_To_Cores_Buoyancy::get_parameters_per_core	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	get_parameters_per_core(IVP_Core *core)	BuoyancyAttacherGetParameters
+00010640	IVP_Attacher_To_Cores_Buoyancy::get_buoyancy_surface	buoyancy-phantom	typed-wrapper	include/BML/IVP/Buoyancy.h	get_buoyancy_surface(	BuoyancyAttacherGetSurface
+00028240	IVP_Constraint::get_associated_controlled_cores	controller-constraint	typed-wrapper	include/BML/IVP/Constraint.h	IVP_U_Vector<IVP_Core> *get_associated_controlled_cores() override	ConstraintGetControlledCores
+00004C20	IVP_Controller::reset_time	controller-constraint	typed-wrapper	include/BML/IVP/Controller.h	virtual void reset_time(IVP_Time offset)	ControllerResetTime
+0000BF40	IVP_Material_Simple::get_second_friction_factor	material	typed-wrapper	include/BML/IVP/Material.h	IVP_DOUBLE get_second_friction_factor() override	MaterialSimpleGetSecondFriction
+00013230	IVP_Standard_Gravity_Controller::get_controller_priority	controller-constraint	typed-wrapper	include/BML/IVP/Controller.h	IVP_CONTROLLER_PRIORITY get_controller_priority() override	StandardGravityGetPriority
+00027B10	IVP_U_Point::dot_product(float point)	math-container	typed-wrapper	include/BML/IVP/Types.h	IVP_DOUBLE dot_product(const IVP_U_Float_Point *other) const	PointDotFloat
+0002D8E0	IVP_Range_Manager::IVP_Range_Manager	collision-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	IVP_Range_Manager(	RangeManagerConstruct
+0002D970	IVP_Range_Manager::environment_will_be_deleted	collision-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	virtual void environment_will_be_deleted(	RangeManagerEnvironmentDeleted
+0002D990	IVP_Range_Manager::get_coll_range_intra_objects	collision-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	virtual void get_coll_range_intra_objects(	RangeManagerGetIntraObjectRanges
+0002DAB0	IVP_Range_Manager::get_coll_range_in_world	collision-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	virtual IVP_DOUBLE get_coll_range_in_world(	RangeManagerGetWorldRange
+0000BB00	IVP_SurfaceManager_Polygon::insert_all_ledges_hitting_ray	surface	typed-wrapper	include/BML/IVP/Surface.h	void insert_all_ledges_hitting_ray(	SurfaceManagerPolygonRaycast
+0000BB30	IVP_SurfaceManager_Polygon::get_all_ledges_within_radius	surface	typed-wrapper	include/BML/IVP/Surface.h	void get_all_ledges_within_radius(	SurfaceManagerPolygonGetLedgesInRadius
+0000BBE0	IVP_SurfaceManager_Polygon::get_all_terminal_ledges	surface	typed-wrapper	include/BML/IVP/Surface.h	void get_all_terminal_ledges(	SurfaceManagerPolygonGetTerminalLedges
+0000BC20	IVP_SurfaceManager_Polygon::get_rotation_inertia	surface	typed-wrapper	include/BML/IVP/Surface.h	void get_rotation_inertia(	SurfaceManagerPolygonGetInertia
+0000BC40	IVP_SurfaceManager_Polygon::get_radius_and_radius_dev_to_given_center	surface	typed-wrapper	include/BML/IVP/Surface.h	void get_radius_and_radius_dev_to_given_center(	SurfaceManagerPolygonGetRadius
+0000BCD0	IVP_SurfaceManager_Polygon::get_single_convex	surface	typed-wrapper	include/BML/IVP/Surface.h	const IVP_Compact_Ledge *get_single_convex() const override	SurfaceManagerPolygonGetSingleConvex
+0000BCF0	IVP_SurfaceManager_Polygon::get_type	surface	typed-wrapper	include/BML/IVP/Surface.h	IVP_SURMAN_TYPE get_type() override	SurfaceManagerPolygonGetType
+0000BC00	IVP_SurfaceManager_Polygon::get_mass_center	surface	typed-wrapper	include/BML/IVP/Surface.h	void get_mass_center(	SurfaceManagerPolygonGetMassCenter
+0000A490	IVP_SurfaceManager_Polygon reference no-op pair	surface	typed-wrapper	include/BML/IVP/Surface.h	void add_reference_to_ledge(	SurfaceManagerPolygonReferenceNoop
+00060B90	IVP_BetterDebugmanager::is_debug_enabled	debug	typed-wrapper	include/BML/IVP/Debug.h	IVP_BOOL is_debug_enabled(	BetterDebugIsEnabled
+00060BC0	IVP_BetterDebugmanager::dprint	debug	typed-wrapper	include/BML/IVP/Debug.h	void dprint(	BetterDebugPrint
+00060C10	IVP_BetterDebugmanager::output_function	debug	typed-wrapper	include/BML/IVP/Debug.h	virtual void output_function(	BetterDebugOutput
+00060C30	IVP_BetterDebugmanager::IVP_BetterDebugmanager	debug	typed-wrapper	include/BML/IVP/Debug.h	IVP_BetterDebugmanager()	BetterDebugCtor
+0003AC00	IVP_SurfaceBuilder_Pointsoup::convert_triangle_to_compace_ledge	surface-builder	typed-wrapper	include/BML/IVP/SurfaceBuilder.h	convert_triangle_to_compace_ledge(	SurfaceBuilderPointsoupTriangleToLedge
+0003A2D0	IVP_SurMan_PS_Plane::get_qlen_of_all_edges	surface-builder	typed-wrapper	include/BML/IVP/SurfaceBuilder.h	IVP_DOUBLE get_qlen_of_all_edges()	SurManPsPlaneGetEdgeQuadLength
+00021550	IVP_Compact_Ledge_Solver::calc_qlen_PF_F_space used by IVP_SurfaceManager_Grid	surface-grid	typed-wrapper	include/BML/IVP/Grid.h	CompactLedgeSolverPointTriangleDistance	CompactLedgeSolverPointTriangleDistance
+00020100	ivp_malloc_aligned used by IVP_GridBuilder_Array	surface-grid	typed-wrapper	include/BML/IVP/Grid.h	Address::AllocateAligned	AllocateAligned
+00020130	ivp_free_aligned used by IVP_SurfaceBuilder_Pointsoup::cleanup	surface-builder	typed-wrapper	include/BML/IVP/SurfaceBuilder.h	static void cleanup()	FreeAligned
+0002DB50	IVP_BetterStatisticsmanager::IVP_BetterStatisticsmanager	statistics	typed-wrapper	include/BML/IVP/Performance.h	IVP_BetterStatisticsmanager()	BetterStatisticsmanagerCtor
+0002DC00	IVP_OV_Element::IVP_OV_Element	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVElementConstruct	OVElementConstruct
+0002DC70	IVP_OV_Element::~IVP_OV_Element (complete retail body)	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVElementDestruct	OVElementDestruct
+0002DD00	IVP_OV_Element::add_to_hull_manager (binary-attributed retail body)	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVElementAddToHullManager	OVElementAddToHullManager
+0002DDA0	IVP_OV_Element::get_type	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVElementGetType	OVElementGetType
+0002DDB0	IVP_OV_Element::hull_manager_is_going_to_be_deleted_event (binary-attributed retail body)	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVElementHullManagerDeleted	OVElementHullManagerDeleted
+0002DDC0	IVP_OV_Element::hull_limit_exceeded_event	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVElementHullLimitExceeded	OVElementHullLimitExceeded
+0002DDE0	IVP_OV_Element::add_oo_collision	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVElementAddCollision	OVElementAddCollision
+0002DE30	IVP_OV_Element::remove_oo_collision	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVElementRemoveCollision	OVElementRemoveCollision
+0002DEA0	IVP_OV_Node::IVP_OV_Node	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVNodeConstruct	OVNodeConstruct
+0002DEF0	IVP_OV_Node::~IVP_OV_Node (private complete retail body)	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVNodeDestruct	OVNodeDestruct
+0002DFF0	IVP_OV_Tree_Manager::IVP_OV_Tree_Manager	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVTreeManagerConstruct	OVTreeManagerConstruct
+0002E0E0	IVP_OV_Tree_Manager::~IVP_OV_Tree_Manager (complete retail body)	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVTreeManagerDestruct	OVTreeManagerDestruct
+0002EC10	IVP_OV_Tree_Manager::insert_ov_element	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVTreeManagerInsertElement	OVTreeManagerInsertElement
+0002EEC0	IVP_OV_Tree_Manager::remove_ov_element	public-broadphase	typed-wrapper	include/BML/IVP/Broadphase.h	Address::OVTreeManagerRemoveElement	OVTreeManagerRemoveElement
+0001C7D0	IVP_Core::union_find_get_father	simulation-unit	typed-wrapper	include/BML/IVP/Core.h	IVP_Core *union_find_get_father()	CoreUnionFindFather
+00014900	IVP_Collision_Filter_Coll_Group_Ident::check_objects_for_collision_detection	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::CollisionFilterGroupIdentCheck	CollisionFilterGroupIdentCheck
+00014990	IVP_Collision_Filter_Coll_Group_Ident::environment_will_be_deleted	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::CollisionFilterGroupIdentEnvironmentDelete	CollisionFilterGroupIdentEnvironmentDelete
+00014B70	IVP_Collision_Filter_Exclusive_Pair::environment_will_be_deleted	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::CollisionFilterExclusivePairEnvironmentDelete	CollisionFilterExclusivePairEnvironmentDelete
+00014CA0	IVP_Meta_Collision_Filter::check_objects_for_collision_detection	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::CollisionFilterMetaCheck	CollisionFilterMetaCheck
+00014D90	IVP_Meta_Collision_Filter::environment_will_be_deleted	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::CollisionFilterMetaEnvironmentDelete	CollisionFilterMetaEnvironmentDelete
+00060C70	IVP_BetterDebugmanager::~IVP_BetterDebugmanager	debug	typed-wrapper	include/BML/IVP/Debug.h	Address::BetterDebugDestruct	BetterDebugDestruct
+0002F570	IVP_Collision_Delegator::~IVP_Collision_Delegator	collision	typed-wrapper	include/BML/IVP/Collision.h	Address::CollisionDelegatorDestruct	CollisionDelegatorDestruct
+000148D0	IVP_Collision_Filter::~IVP_Collision_Filter	collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::CollisionFilterDestruct	CollisionFilterDestruct
+0000BE00	IVP_Material::~IVP_Material	material	typed-wrapper	include/BML/IVP/Material.h	Address::MaterialDestruct	MaterialDestruct
+00014F70	IVP_PerformanceCounter::~IVP_PerformanceCounter	performance	typed-wrapper	include/BML/IVP/Performance.h	Address::PerformanceCounterDestruct	PerformanceCounterDestruct
+00022160	IVP_SurfaceManager::~IVP_SurfaceManager	surface	typed-wrapper	include/BML/IVP/Surface.h	Address::SurfaceManagerDestruct	SurfaceManagerDestruct
+000161D0	IVP_Synapse::~IVP_Synapse	mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::SynapseDestruct	SynapseDestruct
+000159D0	IVP_U_Active_Value::~IVP_U_Active_Value	active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueDestruct	ActiveValueDestruct
+000093D0	?set_new_m_object_f_core@IVP_Real_Object@@UAEXPBVIVP_U_Matrix@@@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectSetMatrixCoreFromObject	RealObjectSetMatrixCoreFromObject
+00009520	?set_new_quat_object_f_core@IVP_Real_Object@@MAEXPBVIVP_U_Quat@@PBVIVP_U_Point@@@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectSetQuatCoreFromObject	RealObjectSetQuatCoreFromObject
+000095B0	?insert_anchor@IVP_Real_Object@@QAEXPAVIVP_Anchor@@@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectInsertAnchor	RealObjectInsertAnchor
+000095E0	?remove_anchor@IVP_Real_Object@@QAEXPAVIVP_Anchor@@@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectRemoveAnchor	RealObjectRemoveAnchor
+00009670	?revive_object_for_simulation@IVP_Real_Object@@QAEXXZ	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectRevive	RealObjectRevive
+000099A0	?recalc_invalid_mindists_of_object@IVP_Real_Object@@IAEXXZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::RealObjectRecalculateInvalidMindists	RealObjectRecalculateInvalidMindists
+000099F0	?get_all_near_mindists@IVP_Real_Object@@IAEXXZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::RealObjectGetAllNearMindists	RealObjectGetAllNearMindists
+00009BE0	?calc_m_core_f_object@IVP_Real_Object@@QAEXPAVIVP_U_Matrix@@@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectCalculateCoreFromObject	RealObjectCalculateCoreFromObject
+00009D70	?calc_at_matrix@IVP_Real_Object@@QBEXVIVP_Time@@PAVIVP_U_Matrix@@@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectCalculateMatrixAt	RealObjectCalculateMatrixAt
+00009F00	?init_object_core@IVP_Real_Object@@QAEXPAVIVP_Environment@@PBVIVP_Template_Real_Object@@@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectInitializeCore	RealObjectInitializeCore
+0000A2B0	?get_collision_check_reference_count@IVP_Real_Object@@QAEHXZ	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectCollisionReferenceCount	RealObjectCollisionReferenceCount
+0000A350	?async_add_speed_object_ws@IVP_Real_Object@@QAEXPBVIVP_U_Float_Point@@@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectAddSpeedWorld	RealObjectAddSpeedWorld
+0000A3A0	?async_add_rot_speed_object_cs@IVP_Real_Object@@QAEXPBVIVP_U_Float_Point@@@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::RealObjectAddAngularSpeedCore	RealObjectAddAngularSpeedCore
+0000A630	?find_table@IVP_Object_Callback_Table_Hash@@QAEPAVIVP_Object_Callback_Table@@PAVIVP_Real_Object@@@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::ObjectCallbackTableFind	ObjectCallbackTableFind
+0000AC70	?remove_table@IVP_Object_Callback_Table_Hash@@QAEPAVIVP_Object_Callback_Table@@PAVIVP_Real_Object@@@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::ObjectCallbackTableRemove	ObjectCallbackTableRemove
+0000AEA0	?revive_simulation_core@IVP_Core@@QAE?AW4IVP_BOOL@@XZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreRevive	CoreRevive
+0000AF90	?fire_event_object_frozen@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreFireObjectFrozen	CoreFireObjectFrozen
+0000AFE0	?freeze_simulation_core@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreFreezeSimulation	CoreFreezeSimulation
+0000B000	??0IVP_Friction_System@@QAE@PAVIVP_Environment@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemConstruct	FrictionSystemConstruct
+0000B0D0	??_GIVP_Friction_System@@UAEPAXI@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::FrictionSystemScalarDeletingDestructor	FrictionSystemScalarDeletingDestructor
+0000B100	??1IVP_Friction_System@@UAE@XZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemDestruct	FrictionSystemDestruct
+0000B190	?fs_recalc_all_contact_points@IVP_Friction_System@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemRecalculateAllContacts	FrictionSystemRecalculateAllContacts
+0000B210	?dist_removed_update_pair_info@IVP_Friction_System@@QAE?AW4IVP_BOOL@@PAVIVP_Contact_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemUpdateRemovedPair	FrictionSystemUpdateRemovedPair
+0000B290	?remove_dist_from_system@IVP_Friction_System@@QAEXPAVIVP_Contact_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemRemoveDistance	FrictionSystemRemoveDistance
+0000B2C0	?dist_added_update_pair_info@IVP_Friction_System@@QAEXPAVIVP_Contact_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemUpdateAddedPair	FrictionSystemUpdateAddedPair
+0000B360	?add_dist_to_system@IVP_Friction_System@@QAEXPAVIVP_Contact_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemAddDistance	FrictionSystemAddDistance
+0000B390	?add_core_to_system@IVP_Friction_System@@QAEXPAVIVP_Core@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemAddCore	FrictionSystemAddCore
+0000B410	?remove_core_from_system@IVP_Friction_System@@QAEXPAVIVP_Core@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemRemoveCore	FrictionSystemRemoveCore
+0000B4D0	?remove_revive_core@IVP_Environment@@AAEXPAVIVP_Core@@@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::EnvironmentRemoveReviveCore	EnvironmentRemoveReviveCore
+0000B540	?add_revive_core@IVP_Environment@@AAEXPAVIVP_Core@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::EnvironmentAddReviveCore	EnvironmentAddReviveCore
+0000BD10	?get_friction_factor@IVP_Material_Manager@@UAENPAUIVP_Contact_Situation@@@Z	public-material	typed-wrapper	include/BML/IVP/Material.h	Address::MaterialManagerGetFriction	MaterialManagerGetFriction
+0000BD40	?get_elasticity@IVP_Material_Manager@@UAENPAUIVP_Contact_Situation@@@Z	public-material	typed-wrapper	include/BML/IVP/Material.h	Address::MaterialManagerGetElasticity	MaterialManagerGetElasticity
+0000BD70	?get_adhesion@IVP_Material_Manager@@UAENPAUIVP_Contact_Situation@@@Z	public-material	typed-wrapper	include/BML/IVP/Material.h	Address::MaterialManagerGetAdhesion	MaterialManagerGetAdhesion
+0000BDC0	?environment_will_be_deleted@IVP_Material_Manager@@UAEXPAVIVP_Environment@@@Z	public-material	typed-wrapper	include/BML/IVP/Material.h	Address::MaterialManagerEnvironmentDelete	MaterialManagerEnvironmentDelete
+0000BE30	?get_material_by_index@IVP_Material_Manager@@UAEPAVIVP_Material@@PBVIVP_U_Point@@H@Z	public-material	typed-wrapper	include/BML/IVP/Material.h	Address::MaterialManagerGetByIndex	MaterialManagerGetByIndex
+0000BF90	?get_surface_speed_on_test@IVP_Core@@QBEXPBVIVP_U_Float_Point@@00PAV2@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreGetSurfaceSpeedOnTest	CoreGetSurfaceSpeedOnTest
+0000C0B0	?get_diff_surface_speed_of_two_cores@IVP_Core@@SAXPBV1@0PBVIVP_U_Float_Point@@1PAV2@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreGetDifferentialSurfaceSpeed	CoreGetDifferentialSurfaceSpeed
+0000C150	?get_diff_surface_speed_of_two_cores_on_test@IVP_Core@@SAXPBV1@0PBVIVP_U_Float_Point@@11111PAV2@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreGetDifferentialSurfaceSpeedOnTest	CoreGetDifferentialSurfaceSpeedOnTest
+0000C390	?calc_virt_mass@IVP_Core@@QBENPBVIVP_U_Float_Point@@0@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreCalculateVirtualMass	CoreCalculateVirtualMass
+0000C200	IVP_Core::calc_virt_mass_worst_case (binary-attributed retail body)	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreCalculateVirtualMassWorstCase	CoreCalculateVirtualMassWorstCase
+0000C480	?get_energy_on_test@IVP_Core@@QAENPBVIVP_U_Float_Point@@0@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreGetEnergyOnTest	CoreGetEnergyOnTest
+0000C4F0	?set_radius@IVP_Core@@QAEXMM@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreSetRadius	CoreSetRadius
+0000C5F0	?abort_all_async_pushes@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreAbortAsyncPushes	CoreAbortAsyncPushes
+0000C610	?global_damp_core@IVP_Core@@QAEXN@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreGlobalDamp	CoreGlobalDamp
+0000C6A0	?damp_object@IVP_Core@@QAEXNPBVIVP_U_Float_Point@@N@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreDampObject	CoreDampObject
+0000C810	?get_surface_speed@IVP_Core@@QBEXPBVIVP_U_Float_Point@@PAV2@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreGetSurfaceSpeed	CoreGetSurfaceSpeed
+0000C8B0	?push_core@IVP_Core@@QAEXPBVIVP_U_Float_Point@@00@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CorePush	CorePush
+0000C940	?async_push_core_ws@IVP_Core@@QAEXPBVIVP_U_Point@@PBVIVP_U_Float_Point@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreAsyncPushWorld	CoreAsyncPushWorld
+0000CA80	?test_push_core@IVP_Core@@QBEXPBVIVP_U_Float_Point@@00PAV2@1@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreTestPush	CoreTestPush
+0000CB20	?test_rot_push_core_multiple_cs@IVP_Core@@QAEXPBVIVP_U_Float_Point@@NPAV2@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreTestRotationalPushCore	CoreTestRotationalPushCore
+0000CB70	?rot_push_core_cs@IVP_Core@@QAEXPBVIVP_U_Float_Point@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreRotationalPushCore	CoreRotationalPushCore
+0000CBD0	?commit_all_async_pushes@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreCommitAsyncPushes	CoreCommitAsyncPushes
+0000CC70	?calc_next_PSI_matrix_zero_speed@IVP_Core@@QAEXPAVIVP_Event_Sim@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreCalculateNextMatrixZeroSpeed	CoreCalculateNextMatrixZeroSpeed
+0000CCF0	?unlink_obj_from_core_and_maybe_destroy@IVP_Core@@QAEXPAVIVP_Real_Object@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreUnlinkObject	CoreUnlinkObject
+0000CD80	?stop_movement_without_collision_recheck@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreStopMovement	CoreStopMovement
+0000CE20	?stop_physical_movement@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreStopPhysicalMovement	CoreStopPhysicalMovement
+0000CEC0	?reset_freeze_check_values@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreResetFreezeCheckValues	CoreResetFreezeCheckValues
+0000CF20	?init_core_for_simulation@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreInitializeForSimulation	CoreInitializeForSimulation
+0000CFA0	?synchronize_with_rot_z@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreSynchronizeWithRotation	CoreSynchronizeWithRotation
+0000D140	?undo_synchronize_rot_z@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreUndoSynchronizeRotation	CoreUndoSynchronizeRotation
+0000D1A0	?calc_calc@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreCalculateRedundantValues	CoreCalculateRedundantValues
+0000D270	?transform_PSI_matrizes_core@IVP_Core@@QAEXPBVIVP_U_Matrix@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreTransformPsiMatrices	CoreTransformPsiMatrices
+0000D2F0	?init@IVP_Core@@IAEXPAVIVP_Real_Object@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreInitialize	CoreInitialize
+0000D400	??0IVP_Core@@QAE@PAVIVP_Real_Object@@PBVIVP_U_Quat@@PBVIVP_U_Point@@W4IVP_BOOL@@3@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreConstruct	CoreConstruct
+0000D580	??1IVP_Core@@QAE@XZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreDestruct	CoreDestruct
+0000D680	?calc_movement_state@IVP_Core@@QAE?AW4IVP_Movement_Type@@VIVP_Time@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreCalculateMovementState	CoreCalculateMovementState
+0000D930	?update_exact_mindist_events_of_core@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreUpdateExactMindistEvents	CoreUpdateExactMindistEvents
+0000D960	?get_friction_info@IVP_Core@@QAEPAVIVP_Friction_Info_For_Core@@PAVIVP_Friction_System@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreGetFrictionInfo	CoreGetFrictionInfo
+0000D9A0	?moveable_core_has_friction_info@IVP_Core@@QAEPAVIVP_Friction_Info_For_Core@@XZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreMoveableHasFrictionInfo	CoreMoveableHasFrictionInfo
+0000D9B0	?add_friction_info@IVP_Core@@QAEXPAVIVP_Friction_Info_For_Core@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreAddFrictionInfo	CoreAddFrictionInfo
+0000DA50	?unlink_friction_info@IVP_Core@@QAEXPAVIVP_Friction_Info_For_Core@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreUnlinkFrictionInfo	CoreUnlinkFrictionInfo
+0000DA80	?delete_friction_info@IVP_Core@@QAEXPAVIVP_Friction_Info_For_Core@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreDeleteFrictionInfo	CoreDeleteFrictionInfo
+0000DAB0	?ensure_core_to_be_in_simulation@IVP_Core@@QAEXXZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreEnsureSimulation	CoreEnsureSimulation
+0000DAE0	?isqrt_float@IVP_Inline_Math@@SAMM@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::InlineMathInverseSqrtFloat	InlineMathInverseSqrtFloat
+0000DB80	?isqrt_double@IVP_Inline_Math@@SANN@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::InlineMathInverseSqrtDouble	InlineMathInverseSqrtDouble
+0000DC40	?set_interpolate@IVP_U_Point@@QAEXPBV1@0N@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointInterpolate	PointInterpolate
+0000DCB0	?set_interpolate@IVP_U_Point@@QAEXPBVIVP_U_Float_Point@@0N@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointInterpolateFloat	PointInterpolateFloat
+0000DD50	?fast_normize@IVP_U_Point@@QAE?AW4IVP_RETURN_TYPE@@XZ	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointFastNormalize	PointFastNormalize
+0000DE30	?real_length_plus_normize@IVP_U_Point@@QAENXZ	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointLengthAndNormalize	PointLengthAndNormalize
+0000DF30	?real_length_plus_normize@IVP_U_Float_Point@@QAENXZ	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::FloatPointLengthAndNormalize	FloatPointLengthAndNormalize
+0000E220	?set_orthogonal_part@IVP_U_Float_Point@@QAEXPBV1@0@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::FloatPointOrthogonalPart	FloatPointOrthogonalPart
+0000E280	?calc_cross_product@IVP_U_Point@@QAEXPBV1@0@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointCrossProduct	PointCrossProduct
+0000E2C0	?calc_cross_product@IVP_U_Float_Point@@QAEXPBV1@0@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::FloatPointCrossProduct	FloatPointCrossProduct
+0000E300	?solve_quadratic_equation_accurate@IVP_U_Point@@QAEXPBV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointSolveQuadratic	PointSolveQuadratic
+0000E3C0	?is_parallel@IVP_U_Point@@QBE?AW4IVP_BOOL@@PBV1@N@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointIsParallel	PointIsParallel
+0000E4B0	?line_min@IVP_U_Point@@QAEXPBV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointLineMin	PointLineMin
+0000E4F0	?line_max@IVP_U_Point@@QAEXPBV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointLineMax	PointLineMax
+0000E530	?proj_on_plane@IVP_U_Hesse@@QBEXPBVIVP_U_Point@@PAV2@@Z	public-geometry	typed-wrapper	include/BML/IVP/Geometry.h	Address::HesseProjectOnPlane	HesseProjectOnPlane
+0000E5C0	?calc_hesse@IVP_U_Hesse@@QAEXPBVIVP_U_Point@@00@Z	public-geometry	typed-wrapper	include/BML/IVP/Geometry.h	Address::HesseCalculate	HesseCalculate
+0000E680	?calc_hesse@IVP_U_Hesse@@QAEXPBVIVP_U_Float_Point@@00@Z	public-geometry	typed-wrapper	include/BML/IVP/Geometry.h	Address::HesseCalculateFromFloat	HesseCalculateFromFloat
+0000E740	?normize@IVP_U_Hesse@@QAEXXZ	public-geometry	typed-wrapper	include/BML/IVP/Geometry.h	Address::HesseNormalize	HesseNormalize
+0000E8F0	?real_invert@IVP_U_Matrix@@QAE?AW4IVP_RETURN_TYPE@@N@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixInvert	MatrixInvert
+0000EB30	?init3@IVP_U_Matrix3@@QAEXXZ	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::Matrix3Initialize	Matrix3Initialize
+0000EB60	?init_normized3_col@IVP_U_Matrix3@@QAEXPBVIVP_U_Point@@W4IVP_COORDINATE_INDEX@@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::Matrix3InitializeNormalizedColumn	Matrix3InitializeNormalizedColumn
+0000EC90	?mmult4@IVP_U_Matrix@@QBEXPBV1@PAV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixMultiply	MatrixMultiply
+0000EDE0	?mimult4@IVP_U_Matrix@@QBEXPBV1@PAV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixInverseMultiply	MatrixInverseMultiply
+0000EF10	?mmult3@IVP_U_Matrix3@@QBEXPBV1@PAV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::Matrix3Multiply	Matrix3Multiply
+0000EFE0	?mimult3@IVP_U_Matrix3@@QBEXPBV1@PAV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::Matrix3InverseMultiply	Matrix3InverseMultiply
+0000F0E0	?mi2mult4@IVP_U_Matrix@@QBEXPBV1@PAV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixMultiplyInverse	MatrixMultiplyInverse
+0000F140	?mi2mult3@IVP_U_Matrix3@@QBEXPBV1@PAV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::Matrix3MultiplyInverse	Matrix3MultiplyInverse
+0000F210	?transpose3@IVP_U_Matrix3@@QAEXXZ	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::Matrix3Transpose	Matrix3Transpose
+0000F250	?set_transpose3@IVP_U_Matrix3@@QAEXPBV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::Matrix3SetTranspose	Matrix3SetTranspose
+0000F2C0	?set_transpose@IVP_U_Matrix@@QAEXPBV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixSetTranspose	MatrixSetTranspose
+0000F370	?vimult4@IVP_U_Matrix@@QBEXPBVIVP_U_Point@@PAVIVP_U_Float_Point@@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixInverseTransformPointToFloat	MatrixInverseTransformPointToFloat
+0000F450	?vimult4@IVP_U_Matrix@@QBEXPBVIVP_U_Float_Point@@PAV2@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixInverseTransformFloatPoint	MatrixInverseTransformFloatPoint
+0000F4C0	?vmult4@IVP_U_Matrix@@QBEXPBVIVP_U_Float_Point@@PAV2@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixTransformFloatPoint	MatrixTransformFloatPoint
+0000F550	?vmult4@IVP_U_Matrix@@QBEXPBVIVP_U_Point@@PAV2@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixTransformPoint	MatrixTransformPoint
+0000F5F0	?vmult4@IVP_U_Matrix@@QBEXPBVIVP_U_Float_Point@@PAVIVP_U_Point@@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::MatrixTransformFloatPointToPoint	MatrixTransformFloatPointToPoint
+0000F690	?vmult3@IVP_U_Matrix3@@QBEXPBVIVP_U_Float_Point@@PAV2@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::Matrix3TransformFloatPoint	Matrix3TransformFloatPoint
+0000F6F0	?vmult3@IVP_U_Matrix3@@QBEXPBVIVP_U_Point@@PAV2@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::Matrix3TransformPoint	Matrix3TransformPoint
+0000F870	?calc_an_orthogonal@IVP_U_Point@@QAEXPBV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::PointCalculateOrthogonal	PointCalculateOrthogonal
+00011300	?sim_unit_calc_redundants@IVP_Simulation_Unit@@QAEXXZ	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitCalculateRedundants	SimulationUnitCalculateRedundants
+00011370	?controller_is_known_to_sim_unit@IVP_Simulation_Unit@@QAE?AW4IVP_BOOL@@PAVIVP_Controller@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitKnowsController	SimulationUnitKnowsController
+000113B0	?add_controlled_core_for_controller@IVP_Simulation_Unit@@QAEXPAVIVP_Controller@@PAVIVP_Core@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitAddControlledCore	SimulationUnitAddControlledCore
+00011410	?add_controller_unit_sim@IVP_Simulation_Unit@@QAEXPAVIVP_Controller@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitAddController	SimulationUnitAddController
+00011470	?split_sim_unit@IVP_Simulation_Unit@@QAEXPAVIVP_Core@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitSplit	SimulationUnitSplit
+000115B0	?perform_test_and_split@IVP_Simulation_Unit@@QAEXXZ	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitPerformSplitTest	SimulationUnitPerformSplitTest
+000115E0	?sim_unit_union_find_test@IVP_Simulation_Unit@@QAEPAVIVP_Core@@XZ	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitUnionFindTest	SimulationUnitUnionFindTest
+00011690	?clean_sim_unit@IVP_Simulation_Unit@@QAEXXZ	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitClean	SimulationUnitClean
+00011720	?throw_cores_into_my_sim_unit@IVP_Simulation_Unit@@QAEXPAV1@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitThrowCores	SimulationUnitThrowCores
+00011770	?fusion_simulation_unities@IVP_Simulation_Unit@@QAEXPAV1@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitFuse	SimulationUnitFuse
+00011790	?get_pos_of_controller@IVP_Simulation_Unit@@QAEHPAVIVP_Controller@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitFindController	SimulationUnitFindController
+000117C0	?sim_unit_remove_core@IVP_Simulation_Unit@@QAEXPAVIVP_Core@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitRemoveCoreAndOwnership	SimulationUnitRemoveCoreAndOwnership
+00011890	??1IVP_Simulation_Unit@@QAE@XZ	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitDestruct	SimulationUnitDestruct
+00011920	??0IVP_Simulation_Unit@@QAE@XZ	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitConstruct	SimulationUnitConstruct
+00011970	?rem_sim_unit_controller@IVP_Simulation_Unit@@QAEXPAVIVP_Controller@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitRemoveController	SimulationUnitRemoveController
+000119D0	?add_sim_unit_core@IVP_Simulation_Unit@@QAEXPAVIVP_Core@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitAddCore	SimulationUnitAddCore
+00011A00	?rem_sim_unit_core@IVP_Simulation_Unit@@QAEXPAVIVP_Core@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitRemoveCore	SimulationUnitRemoveCore
+00011A60	?remove_controller_from_environment@IVP_Controller_Manager@@SAXPAVIVP_Controller_Dependent@@W4IVP_BOOL@@@Z	public-controller	typed-wrapper	include/BML/IVP/Controller.h	Address::ControllerManagerRemoveFromEnvironment	ControllerManagerRemoveFromEnvironment
+00011AD0	?ensure_controller_in_simulation@IVP_Controller_Manager@@QAEXPAVIVP_Controller_Dependent@@@Z	public-controller	typed-wrapper	include/BML/IVP/Controller.h	Address::ControllerManagerEnsureSimulation	ControllerManagerEnsureSimulation
+00011B30	?announce_controller_to_environment@IVP_Controller_Manager@@QAEXPAVIVP_Controller_Dependent@@@Z	public-controller	typed-wrapper	include/BML/IVP/Controller.h	Address::ControllerManagerAnnounce	ControllerManagerAnnounce
+00011C00	?rem_core_controller@IVP_Core@@QAEXPAVIVP_Controller@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreRemoveController	CoreRemoveController
+00011C70	?add_core_controller@IVP_Core@@QAEXPAVIVP_Controller@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreAddController	CoreAddController
+00011CC0	?add_controller_of_core@IVP_Simulation_Unit@@QAEXPAVIVP_Core@@PAVIVP_Controller@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitAddControllerForCore	SimulationUnitAddControllerForCore
+00011D00	?remove_controller_of_core@IVP_Simulation_Unit@@QAEXPAVIVP_Core@@PAVIVP_Controller@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitRemoveControllerForCore	SimulationUnitRemoveControllerForCore
+00011DB0	?sim_unit_sort_controllers@IVP_Simulation_Unit@@QAEXXZ	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitSortControllers	SimulationUnitSortControllers
+00011E40	?sim_unit_exchange_controllers@IVP_Simulation_Unit@@QAEXHH@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitExchangeControllers	SimulationUnitExchangeControllers
+00011E70	??0IVP_Sim_Units_Manager@@QAE@PAVIVP_Environment@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitsManagerConstruct	SimulationUnitsManagerConstruct
+00011ED0	?add_unit_to_slot@IVP_Sim_Units_Manager@@QAEXPAVIVP_Simulation_Unit@@PAPAV2@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitsManagerAddToSlot	SimulationUnitsManagerAddToSlot
+00011EF0	?add_sim_unit_to_manager@IVP_Sim_Units_Manager@@QAEXPAVIVP_Simulation_Unit@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::SimulationUnitsManagerAdd	SimulationUnitsManagerAdd
+00011F20	?rem_unit_from_slot@IVP_Sim_Units_Manager@@QAEXPAVIVP_Simulation_Unit@@PAPAV2@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitsManagerRemoveFromSlot	SimulationUnitsManagerRemoveFromSlot
+00011F50	?rem_sim_unit_from_manager@IVP_Sim_Units_Manager@@QAEXPAVIVP_Simulation_Unit@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitsManagerRemove	SimulationUnitsManagerRemove
+00011F80	?sim_unit_revive_for_simulation@IVP_Simulation_Unit@@QAEXPAVIVP_Environment@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitRevive	SimulationUnitRevive
+00011FE0	?set_standard_gravity@IVP_Standard_Gravity_Controller@@QAEXPAVIVP_U_Point@@@Z	public-controller	typed-wrapper	include/BML/IVP/Controller.h	Address::StandardGravitySet	StandardGravitySet
+000120B0	?sim_unit_clear_movement_check_values@IVP_Simulation_Unit@@QAEXXZ	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitClearMovementChecks	SimulationUnitClearMovementChecks
+000120D0	?do_sim_unit_union_find@IVP_Simulation_Unit@@QAEXXZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::SimulationUnitUnionFind	SimulationUnitUnionFind
+000120F0	?sim_unit_calc_movement_state@IVP_Simulation_Unit@@QAE?AW4IVP_BOOL@@PAVIVP_Environment@@@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::SimulationUnitCalculateMovementState	SimulationUnitCalculateMovementState
+000121B0	?simulate_single_sim_unit_psi@IVP_Simulation_Unit@@QAEXPAVIVP_Event_Sim@@PAV?$IVP_U_Vector@VIVP_Core@@@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitSimulatePsi	SimulationUnitSimulatePsi
+000124C0	?simulate_sim_units_psi@IVP_Sim_Units_Manager@@QAEXPAVIVP_Environment@@PAV?$IVP_U_Vector@VIVP_Core@@@@@Z	public-simulation-unit	typed-wrapper	include/BML/IVP/SimulationUnit.h	Address::SimulationUnitsManagerSimulatePsi	SimulationUnitsManagerSimulatePsi
+00012690	?set_constraint_Ros@IVP_Template_Constraint@@QAEXPAVIVP_Real_Object@@PBVIVP_U_Point@@1II0PBVIVP_U_Matrix@@@Z	public-constraint	typed-wrapper	include/BML/IVP/Constraint.h	Address::TemplateConstraintSetRos	TemplateConstraintSetRos
+00012A40	??0IVP_Freeze_Manager@@QAE@XZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::FreezeManagerConstruct	FreezeManagerConstruct
+00012A50	?init_freeze_manager@IVP_Freeze_Manager@@QAEXXZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::FreezeManagerInitialize	FreezeManagerInitialize
+00013240	?set_delta_PSI_time@IVP_Environment@@QAEXN@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::EnvironmentSetFixedStep	EnvironmentSetFixedStep
+00013650	?fire_object_is_removed_from_collision_detection@IVP_Environment@@QAEXPAVIVP_Real_Object@@@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::EnvironmentNotifyCollisionRemoval	EnvironmentNotifyCollisionRemoval
+000137D0	?get_root_cluster@IVP_Environment@@QAEPAVIVP_Cluster@@XZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::EnvironmentGetRootCluster	EnvironmentGetRootCluster
+000138F0	?set_current_time@IVP_Environment@@QAEXVIVP_Time@@@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::EnvironmentSetCurrentTime	EnvironmentSetCurrentTime
+00013EA0	?init_anchor@IVP_Anchor@@QAEXPAVIVP_Actuator@@PAVIVP_Template_Anchor@@@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::AnchorInitialize	AnchorInitialize
+00013F60	??0IVP_Actuator@@QAE@PAVIVP_Environment@@@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorConstruct	ActuatorConstruct
+00014020	??0IVP_Actuator_Two_Point@@QAE@PAVIVP_Environment@@PAVIVP_Template_Two_Point@@W4IVP_ACTUATOR_TYPE@@@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorTwoPointConstruct	ActuatorTwoPointConstruct
+000141C0	?ensure_actuator_in_simulation@IVP_Actuator_Two_Point@@QAEXXZ	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorEnsureSimulation	ActuatorEnsureSimulation
+000141E0	??1IVP_Anchor@@AAE@XZ	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::AnchorDestruct	AnchorDestruct
+000141F0	?object_is_going_to_be_deleted_event@IVP_Anchor@@QAEXPAVIVP_Real_Object@@@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::AnchorObjectDeleted	AnchorObjectDeleted
+00014220	?fire_event_spring_broken@IVP_Actuator_Spring@@AAEXXZ	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorSpringFireBroken	ActuatorSpringFireBroken
+00014250	??0IVP_Actuator_Spring@@IAE@PAVIVP_Environment@@PAVIVP_Template_Spring@@W4IVP_ACTUATOR_TYPE@@@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorSpringConstruct	ActuatorSpringConstruct
+00014370	?set_len@IVP_Actuator_Spring@@QAEXN@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorSpringSetLength	ActuatorSpringSetLength
+00014390	?set_constant@IVP_Actuator_Spring@@QAEXN@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorSpringSetConstant	ActuatorSpringSetConstant
+000143B0	?set_damp@IVP_Actuator_Spring@@QAEXN@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorSpringSetDamping	ActuatorSpringSetDamping
+000143D0	?set_rel_pos_damp@IVP_Actuator_Spring@@QAEXN@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorSpringSetRelativePositionDamping	ActuatorSpringSetRelativePositionDamping
+00014440	?active_float_changed@IVP_Actuator_Spring_Active@@EAEXPAVIVP_U_Active_Float@@@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorSpringActiveFloatChanged	ActuatorSpringActiveFloatChanged
+000144D0	??0IVP_Actuator_Spring_Active@@IAE@PAVIVP_Environment@@PAVIVP_Template_Spring@@@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorSpringActiveConstruct	ActuatorSpringActiveConstruct
+000146D0	?do_simulation_controller@IVP_Actuator_Spring@@UAEXPAVIVP_Event_Sim@@PAV?$IVP_U_Vector@VIVP_Core@@@@@Z	public-actuator	typed-wrapper	include/BML/IVP/Actuator.h	Address::ActuatorSpringDoSimulation	ActuatorSpringDoSimulation
+000149E0	unknown_libname_57	public-collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::CollisionFilterExclusivePairHash	CollisionFilterExclusivePairHash
+00014B30	?check_objects_for_collision_detection@IVP_Collision_Filter_Exclusive_Pair@@UAE?AW4IVP_BOOL@@PAVIVP_Real_Object@@0@Z	public-collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::CollisionFilterExclusivePairCheck	CollisionFilterExclusivePairCheck
+00014C10	??1IVP_Collision_Filter_Exclusive_Pair@@UAE@XZ	public-collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::CollisionFilterExclusivePairDestruct	CollisionFilterExclusivePairDestruct
+00014E00	?reset_and_print_performance_counters@IVP_PerformanceCounter_Simple@@UAEXVIVP_Time@@@Z	public-performance	typed-wrapper	include/BML/IVP/Performance.h	Address::PerformanceCounterSimpleReset	PerformanceCounterSimpleReset
+00014F60	?environment_is_going_to_be_deleted@IVP_PerformanceCounter_Simple@@UAEXPAVIVP_Environment@@@Z	public-performance	typed-wrapper	include/BML/IVP/Performance.h	Address::PerformanceCounterSimpleEnvironmentDelete	PerformanceCounterSimpleEnvironmentDelete
+00014FE0	?pcount@IVP_PerformanceCounter_Simple@@UAEXW4IVP_PERFORMANCE_ELEMENT@@@Z	public-performance	typed-wrapper	include/BML/IVP/Performance.h	Address::PerformanceCounterSimpleCount	PerformanceCounterSimpleCount
+00015050	?start_pcount@IVP_PerformanceCounter_Simple@@UAEXXZ	public-performance	typed-wrapper	include/BML/IVP/Performance.h	Address::PerformanceCounterSimpleStart	PerformanceCounterSimpleStart
+00015260	?environment_will_be_deleted@IVP_U_Active_Value_Manager@@UAEXPAVIVP_Environment@@@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerEnvironmentDelete	ActiveValueManagerEnvironmentDelete
+000152A0	??1IVP_U_Active_Value_Manager@@UAE@XZ	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerDestruct	ActiveValueManagerDestruct
+00015360	?init_active_values_generic@IVP_U_Active_Value_Manager@@UAEXXZ	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerInitialize	ActiveValueManagerInitialize
+00015410	?insert_active_float@IVP_U_Active_Value_Manager@@UAEXPAVIVP_U_Active_Float@@@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerInsertFloat	ActiveValueManagerInsertFloat
+00015490	?insert_active_int@IVP_U_Active_Value_Manager@@UAEXPAVIVP_U_Active_Int@@@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerInsertInt	ActiveValueManagerInsertInt
+00015520	?remove_active_float@IVP_U_Active_Value_Manager@@UAEXPAVIVP_U_Active_Float@@@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerRemoveFloat	ActiveValueManagerRemoveFloat
+00015560	?remove_active_int@IVP_U_Active_Value_Manager@@UAEXPAVIVP_U_Active_Int@@@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerRemoveInt	ActiveValueManagerRemoveInt
+000155A0	?delay_active_float@IVP_U_Active_Value_Manager@@UAEXPAVIVP_U_Active_Float_Delayed@@@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerDelayFloat	ActiveValueManagerDelayFloat
+000155F0	?delay_active_int@IVP_U_Active_Value_Manager@@UAEXPAVIVP_U_Active_Int_Delayed@@@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerDelayInt	ActiveValueManagerDelayInt
+00015640	?update_delayed_active_values@IVP_U_Active_Value_Manager@@UAEXXZ	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerUpdateDelayed	ActiveValueManagerUpdateDelayed
+000156D0	?refresh_psi_active_values@IVP_U_Active_Value_Manager@@UAEXPAVIVP_Environment@@@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerRefreshPsi	ActiveValueManagerRefreshPsi
+00015700	?install_active_float@IVP_U_Active_Value_Manager@@UAEPAVIVP_U_Active_Float@@PBDN@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerInstallFloat	ActiveValueManagerInstallFloat
+000157A0	?create_active_float@IVP_U_Active_Value_Manager@@UAEPAVIVP_U_Active_Terminal_Double@@PBDN@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerCreateFloat	ActiveValueManagerCreateFloat
+00015840	?create_active_int@IVP_U_Active_Value_Manager@@UAEPAVIVP_U_Active_Terminal_Int@@PBDH@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerCreateInt	ActiveValueManagerCreateInt
+000158E0	?install_active_int@IVP_U_Active_Value_Manager@@UAEPAVIVP_U_Active_Int@@PBDH@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueManagerInstallInt	ActiveValueManagerInstallInt
+00015980	??0IVP_U_Active_Value@@QAE@PBD@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveValueConstruct	ActiveValueConstruct
+00015A00	??0IVP_U_Active_Float@@QAE@PBD@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveFloatConstruct	ActiveFloatConstruct
+00015A80	??0IVP_U_Active_Int@@QAE@PBD@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveIntConstruct	ActiveIntConstruct
+00015C50	??0IVP_U_Active_Terminal_Double@@QAE@PBDN@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveTerminalDoubleConstruct	ActiveTerminalDoubleConstruct
+00015CC0	??0IVP_U_Active_Terminal_Int@@QAE@PBDH@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::ActiveTerminalIntConstruct	ActiveTerminalIntConstruct
+00015E50	??0IVP_Statistic_Manager@@QAE@XZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::StatisticManagerConstruct	StatisticManagerConstruct
+00016470	?get_ledge@IVP_Synapse@@QBEPBVIVP_Compact_Ledge@@XZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::SynapseGetLedge	SynapseGetLedge
+00016490	?init_mindist@IVP_Mindist@@QAEXPAVIVP_Real_Object@@0PBVIVP_Compact_Edge@@1@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistInitialize	MindistInitialize
+00016610	?init_synapse_real@IVP_Synapse@@QAEXPAVIVP_Mindist_Base@@PAVIVP_Real_Object@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::SynapseInitialize	SynapseInitialize
+00016630	?update_synapse@IVP_Synapse_Real@@QAEXPBVIVP_Compact_Edge@@W4IVP_SYNAPSE_POLYGON_STATUS@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::SynapseRealUpdate	SynapseRealUpdate
+00016650	?create_exact_mindists@IVP_Mindist_Manager@@SAXPAVIVP_Real_Object@@0NPAV?$IVP_U_FVector@VIVP_Collision@@@@PBVIVP_Compact_Ledge@@222PAVIVP_Collision_Delegator@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerCreateExact	MindistManagerCreateExact
+00016E30	?insert_exact_mindist@IVP_Mindist_Manager@@QAEXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerInsertExact	MindistManagerInsertExact
+00016EF0	?insert_invalid_mindist@IVP_Mindist_Manager@@QAEXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerInsertInvalid	MindistManagerInsertInvalid
+00016F70	?exact_mindist_went_invalid@IVP_Mindist@@UAEXPAVIVP_Mindist_Manager@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistExactWentInvalid	MindistExactWentInvalid
+00016F90	?insert_and_recalc_exact_mindist@IVP_Mindist_Manager@@QAEXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerInsertAndRecalcExact	MindistManagerInsertAndRecalcExact
+000170A0	?insert_and_recalc_phantom_mindist@IVP_Mindist_Manager@@QAEXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerInsertAndRecalcPhantom	MindistManagerInsertAndRecalcPhantom
+00017140	?recheck_ov_element@IVP_Mindist_Manager@@QAEXPAVIVP_Real_Object@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerRecheckOvElement	MindistManagerRecheckOvElement
+000176E0	?enable_collision_detection_for_object@IVP_Mindist_Manager@@QAEXPAVIVP_Real_Object@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerEnableCollision	MindistManagerEnableCollision
+00017770	?recalc_all_exact_mindists_events@IVP_Mindist_Manager@@QAEXXZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerRecalcAllEvents	MindistManagerRecalcAllEvents
+00017790	unnamed retail body (MindistManagerRecalcAllWheels)	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerRecalcAllWheels	MindistManagerRecalcAllWheels
+00017850	?recalc_all_exact_mindists@IVP_Mindist_Manager@@QAEXXZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerRecalcAllExact	MindistManagerRecalcAllExact
+00017870	?update_exact_mindist_events@IVP_Mindist@@QAEXW4IVP_BOOL@@W4IVP_MINDIST_EVENT_HINT@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistUpdateExactEvents	MindistUpdateExactEvents
+00017CF0	unnamed retail body (SynapseHullManagerReset)	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::SynapseHullManagerReset	SynapseHullManagerReset
+00017D10	?hull_limit_exceeded_event@IVP_Synapse@@MAEXPAVIVP_Hull_Manager@@M@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::SynapseHullLimitExceeded	SynapseHullLimitExceeded
+00017D30	?hull_manager_is_going_to_be_deleted_event@IVP_Synapse@@MAEXPAVIVP_Hull_Manager@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::SynapseHullManagerDeleted	SynapseHullManagerDeleted
+00018040	?create_cp_in_advance_pretension@IVP_Mindist@@QAEXPAVIVP_Real_Object@@M@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistCreatePretensionContact	MindistCreatePretensionContact
+000181B0	?simulate_time_event@IVP_Mindist@@UAEXPAVIVP_Environment@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistSimulateTimeEvent	MindistSimulateTimeEvent
+00018230	?remove_exact_mindist@IVP_Mindist_Manager@@QAEXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerRemoveExact	MindistManagerRemoveExact
+00018310	?remove_invalid_mindist@IVP_Mindist_Manager@@QAEXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerRemoveInvalid	MindistManagerRemoveInvalid
+00018390	?remove_hull_mindist@IVP_Mindist_Manager@@QAEXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerRemoveHull	MindistManagerRemoveHull
+000183C0	unnamed retail body (MindistManagerInsertHullPair)	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerInsertHullPair	MindistManagerInsertHullPair
+00018480	?insert_hull_mindist@IVP_Mindist_Manager@@SAXPAVIVP_Mindist@@M@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerInsertHull	MindistManagerInsertHull
+00018540	?insert_lazy_hull_mindist@IVP_Mindist_Manager@@SAXPAVIVP_Mindist@@MM@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerInsertLazyHullPair	MindistManagerInsertLazyHullPair
+000185A0	?insert_lazy_hull_mindist@IVP_Mindist_Manager@@SAXPAVIVP_Mindist@@M@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerInsertLazyHull	MindistManagerInsertLazyHull
+00018660	?mindist_entered_phantom@IVP_Mindist_Manager@@SAXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerEnteredPhantom	MindistManagerEnteredPhantom
+000186A0	?mindist_left_phantom@IVP_Mindist_Manager@@SAXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerLeftPhantom	MindistManagerLeftPhantom
+000186E0	??0IVP_Mindist_Manager@@QAE@PAVIVP_Environment@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerConstruct	MindistManagerConstruct
+00018710	??1IVP_Mindist_Manager@@QAE@XZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerDestruct	MindistManagerDestruct
+000187A0	?recalc_exact_mindist@IVP_Mindist_Manager@@QAEXPAVIVP_Mindist@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistManagerRecalcExact	MindistManagerRecalcExact
+00018910	?invalid_cache_object@IVP_Cache_Object_Manager@@SAXPAVIVP_Real_Object@@@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheManagerInvalidObject	CacheManagerInvalidObject
+00018930	?get_cache_object@IVP_Cache_Object_Manager@@QAEPAVIVP_Cache_Object@@PAVIVP_Real_Object@@@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheManagerGetObject	CacheManagerGetObject
+000189C0	??0IVP_Cache_Object_Manager@@QAE@H@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheManagerConstruct	CacheManagerConstruct
+000189F0	??1IVP_Cache_Object_Manager@@QAE@XZ	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheManagerDestruct	CacheManagerDestruct
+00018A40	?update_cache_object@IVP_Cache_Object@@QAEXXZ	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheObjectUpdate	CacheObjectUpdate
+00018CA0	?transform_position_to_object_coords@IVP_Cache_Object@@QBEXPBVIVP_U_Point@@PAV2@@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheTransformPositionToObject	CacheTransformPositionToObject
+00018D10	?transform_position_to_world_coords@IVP_Cache_Object@@QBEXPBVIVP_U_Float_Point@@PAVIVP_U_Point@@@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheTransformPositionToWorld	CacheTransformPositionToWorld
+00018DC0	?transform_vector_to_object_coords@IVP_Cache_Object@@QBEXPBVIVP_U_Point@@PAV2@@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheTransformVectorToObject	CacheTransformVectorToObject
+00018E30	?transform_vector_to_object_coords@IVP_Cache_Object@@QBEXPBVIVP_U_Float_Point@@PAV2@@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheTransformFloatVectorToObject	CacheTransformFloatVectorToObject
+00018EA0	?transform_vector_to_world_coords@IVP_Cache_Object@@QBEXPBVIVP_U_Point@@PAV2@@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheTransformVectorToWorld	CacheTransformVectorToWorld
+00018F10	?transform_vector_to_world_coords@IVP_Cache_Object@@QBEXPBVIVP_U_Float_Point@@PAV2@@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::CacheTransformFloatVectorToWorld	CacheTransformFloatVectorToWorld
+0002B300	?p_init@IVP_U_Matrix_Cache@@AAEXPAVIVP_Cache_Object@@@Z	public-cache	typed-wrapper	include/BML/IVP/Cache.h	Address::MatrixCacheInitialize	MatrixCacheInitialize
+00037790	?calc_nullstelle@IVP_3D_Solver@@IAE?AVIVP_Time@@V2@0NNNPAVIVP_Real_Object@@1@Z	public-collision-solver	typed-wrapper	include/BML/IVP/CollisionSolver.h	Address::Solver3DCalculateZero	Solver3DCalculateZero
+00037910	?find_first_t_for_value_max_dev@IVP_3D_Solver@@QAE?AW4IVP_BOOL@@NVIVP_Time@@0HPAVIVP_U_Matrix_Cache@@1PANPAV3@@Z	public-collision-solver	typed-wrapper	include/BML/IVP/CollisionSolver.h	Address::Solver3DFindFirstMaxDeviation	Solver3DFindFirstMaxDeviation
+00037B30	?find_first_t_for_value_coll@IVP_3D_Solver@@QAE?AW4IVP_BOOL@@NNVIVP_Time@@0PAVIVP_U_Matrix_Cache@@1PANPAV3@@Z	public-collision-solver	typed-wrapper	include/BML/IVP/CollisionSolver.h	Address::Solver3DFindFirstCollision	Solver3DFindFirstCollision
+00018F80	?set_very_fast_multiple@IVP_U_Quat@@QAEXPBVIVP_U_Float_Point@@N@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionSetVeryFastMultiple	QuaternionSetVeryFastMultiple
+00019010	?set_fast_multiple_with_clip@IVP_U_Quat@@QAEXPBVIVP_U_Float_Point@@N@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionSetFastMultipleWithClip	QuaternionSetFastMultipleWithClip
+000190C0	?set_matrix@IVP_U_Quat@@QBEXPAVIVP_U_Matrix3@@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionWriteMatrix	QuaternionWriteMatrix
+000191B0	?set_quaternion@IVP_U_Quat@@QAEXPBVIVP_U_Matrix3@@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionSetFromMatrix	QuaternionSetFromMatrix
+00019320	?set_interpolate_smoothly@IVP_U_Quat@@QAEXPBV1@0N@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionInterpolateSmoothly	QuaternionInterpolateSmoothly
+000194E0	?normize_quat@IVP_U_Quat@@QAEXXZ	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionNormalize	QuaternionNormalize
+00019540	?fast_normize_quat@IVP_U_Quat@@QAEXXZ	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionFastNormalize	QuaternionFastNormalize
+000195F0	?set_invert_unit_quat@IVP_U_Quat@@QAEXPBV1@@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionSetInverseUnit	QuaternionSetInverseUnit
+00019620	?set_invert_mult@IVP_U_Quat@@QAEXPBV1@0@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionSetInverseMultiply	QuaternionSetInverseMultiply
+00019770	?mindist_rescue_push@IVP_Mindist@@MAEXXZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRescuePush	MindistRescuePush
+000197F0	unnamed retail body (MindistRecalcInvalid)	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRecalcInvalid	MindistRecalcInvalid
+00019950	unnamed retail body (MindistRecalc)	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRecalc	MindistRecalc
+00019A80	?get_sorted_synapse@IVP_Mindist@@QBEPAVIVP_Synapse_Real@@H@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistGetSortedSynapse	MindistGetSortedSynapse
+0001A740	??0IVP_Hull_Manager_Base@@QAE@XZ	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::HullManagerBaseConstruct	HullManagerBaseConstruct
+0001A7A0	??1IVP_Hull_Manager_Base@@QAE@XZ	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::HullManagerBaseDestruct	HullManagerBaseDestruct
+0001A820	?reset_times@IVP_Hull_Manager@@AAEXXZ	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::HullManagerResetTimes	HullManagerResetTimes
+0001A8B0	??0IVP_Contact_Point@@QAE@PAVIVP_Mindist@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointConstruct	ContactPointConstruct
+0001AA20	?two_values_friction@IVP_Contact_Point@@AAENPAVIVP_U_Float_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointTwoValuesFriction	ContactPointTwoValuesFriction
+0001AD90	?get_and_set_real_friction_len@IVP_Contact_Point@@AAENPAVIVP_U_Float_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointGetSetRealFrictionLength	ContactPointGetSetRealFrictionLength
+0001AE40	?static_friction_single@IVP_Contact_Point@@AAEXPBVIVP_Event_Sim@@MM@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointStaticFrictionSingle	ContactPointStaticFrictionSingle
+0001B080	?friction_force_local_constraint_2d@IVP_Contact_Point@@AAEMPBVIVP_Event_Sim@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointFrictionConstraint2D	ContactPointFrictionConstraint2D
+0001B8B0	?friction_force_local_constraint_1d@IVP_Contact_Point@@AAEXPBVIVP_Event_Sim@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointFrictionConstraint1D	ContactPointFrictionConstraint1D
+0001BC20	?calc_friction_forces@IVP_Friction_System@@QAEXPBVIVP_Event_Sim@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemCalcForces	FrictionSystemCalcForces
+0001BD90	?ease_the_friction_force@IVP_Contact_Point@@AAEXPAVIVP_U_Float_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointEaseFrictionForce	ContactPointEaseFrictionForce
+0001BDF0	?ease_two_mindists@IVP_Friction_Solver@@SAXPAVIVP_Contact_Point@@0PAVIVP_U_Float_Point@@1N@Z	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverEaseTwoMindists	FrictionSolverEaseTwoMindists
+0001C070	?ease_friction_pair@IVP_Friction_Solver@@SAXPAVIVP_Friction_Core_Pair@@PAVIVP_U_Memory@@@Z	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverEasePair	FrictionSolverEasePair
+0001C1F0	?ease_friction_forces@IVP_Friction_System@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemEaseForces	FrictionSystemEaseForces
+0001C230	??1IVP_Contact_Point@@AAE@XZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::ContactPointDestruct	ContactPointDestruct
+0001C350	??0IVP_Friction_Solver@@QAE@PAVIVP_Friction_System@@PBVIVP_Event_Sim@@@Z	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverConstruct	FrictionSolverConstruct
+0001C460	?delete_friction_distance@IVP_Friction_System@@QAEXPAVIVP_Contact_Point@@@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::FrictionSystemDeleteDistance	FrictionSystemDeleteDistance
+0001C550	?apply_real_friction@IVP_Friction_System@@QAEXPBVIVP_Event_Sim@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemApplyRealFriction	FrictionSystemApplyRealFriction
+0001C570	?fusion_friction_systems@IVP_Friction_System@@QAEXPAV1@@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::FrictionSystemFusion	FrictionSystemFusion
+0001C680	?number_of_pair_dists@IVP_Friction_Core_Pair@@QAEHXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionCorePairDistanceCount	FrictionCorePairDistanceCount
+0001C690	?del_fr_dist_obj_pairs@IVP_Friction_Core_Pair@@QAEXPAVIVP_Contact_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionCorePairRemoveDistance	FrictionCorePairRemoveDistance
+0001C6F0	?add_fr_pair@IVP_Friction_System@@QAEXPAVIVP_Friction_Core_Pair@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemAddPair	FrictionSystemAddPair
+0001C720	?del_fr_pair@IVP_Friction_System@@QAEXPAVIVP_Friction_Core_Pair@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemRemovePair	FrictionSystemRemovePair
+0001C780	?get_pair_info_for_objs@IVP_Friction_System@@QAEPAVIVP_Friction_Core_Pair@@PAVIVP_Core@@0@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemGetPairInfo	FrictionSystemGetPairInfo
+0001C7F0	?union_find_fr_sys@IVP_Friction_System@@QAEPAVIVP_Core@@XZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemUnionFind	FrictionSystemUnionFind
+0001C8A0	?split_friction_system@IVP_Friction_System@@QAEXPAVIVP_Core@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemSplit	FrictionSystemSplit
+0001CBC0	?reset_time@IVP_Friction_System@@UAEXVIVP_Time@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemResetTime	FrictionSystemResetTime
+0001CC20	?check_all_fr_mindists_to_be_valid@IVP_Friction_Core_Pair@@QAEHPAVIVP_Friction_System@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionCorePairCheckMindists	FrictionCorePairCheckMindists
+0001CC90	?remove_energy_gained_by_real_friction@IVP_Friction_System@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemRemoveGainedEnergy	FrictionSystemRemoveGainedEnergy
+0001CCB0	?clear_integrated_anti_energy@IVP_Friction_System@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemClearIntegratedEnergy	FrictionSystemClearIntegratedEnergy
+0001CCD0	?remove_energy_gained_by_real_friction@IVP_Friction_Core_Pair@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionCorePairRemoveGainedEnergy	FrictionCorePairRemoveGainedEnergy
+0001CD60	?calc_energy_potential@IVP_Mutual_Energizer@@SANNNNNN@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::MutualEnergizerCalculatePotential	MutualEnergizerCalculatePotential
+0001CDB0	?init_mutual_energizer@IVP_Mutual_Energizer@@QAEXPAVIVP_Core@@0@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::MutualEnergizerInitialize	MutualEnergizerInitialize
+0001D060	?calc_energy_potential@IVP_Mutual_Energizer@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::MutualEnergizerCalculate	MutualEnergizerCalculate
+0001D0E0	?destroy_percent_energy@IVP_Mutual_Energizer@@QAEXN@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::MutualEnergizerDestroyPercent	MutualEnergizerDestroyPercent
+0001D340	??0IVP_Friction_Core_Pair@@QAE@XZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionCorePairConstruct	FrictionCorePairConstruct
+0001D380	?find_pair_of_cores@IVP_Friction_System@@QAEPAVIVP_Friction_Core_Pair@@PAVIVP_Core@@0@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemFindPair	FrictionSystemFindPair
+0001D3D0	?calc_virtual_mass_of_mindist@IVP_Contact_Point@@AAEXXZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::ContactPointCalculateVirtualMass	ContactPointCalculateVirtualMass
+0001D4D0	?grow_friction_system@IVP_Core@@QAE?AW4IVP_BOOL@@XZ	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CoreGrowFrictionSystem	CoreGrowFrictionSystem
+0001D600	?get_associated_controlled_cores@IVP_Friction_System@@UAEPAV?$IVP_U_Vector@VIVP_Core@@@@XZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemGetAssociatedCores	FrictionSystemGetAssociatedCores
+0001D610	?do_simulation_controller@IVP_Friction_Sys_Energy@@UAEXPAVIVP_Event_Sim@@PAV?$IVP_U_Vector@VIVP_Core@@@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionEnergyControllerDoSimulation	FrictionEnergyControllerDoSimulation
+0001D660	?do_simulation_single_friction@IVP_Friction_Sys_Static@@AAEXPAVIVP_Event_Sim@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionStaticControllerDoSingle	FrictionStaticControllerDoSingle
+0001D6C0	?do_simulation_controller@IVP_Friction_Sys_Static@@UAEXPAVIVP_Event_Sim@@PAV?$IVP_U_Vector@VIVP_Core@@@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionStaticControllerDoSimulation	FrictionStaticControllerDoSimulation
+0001D750	?do_simulation_controller@IVP_Friction_System@@UAEXPAVIVP_Event_Sim@@PAV?$IVP_U_Vector@VIVP_Core@@@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemDoSimulation	FrictionSystemDoSimulation
+0001D830	?get_material_index@IVP_Synapse_Friction@@QBEHXZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::SynapseFrictionGetMaterialIndex	SynapseFrictionGetMaterialIndex
+0001D840	?is_same_as@IVP_Synapse_Friction@@QBE?AW4IVP_BOOL@@PBVIVP_Synapse_Real@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::SynapseFrictionIsSameAs	SynapseFrictionIsSameAs
+0001D910	?is_same_as@IVP_Contact_Point@@ABE?AW4IVP_BOOL@@PBVIVP_Mindist@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointIsSameMindist	ContactPointIsSameMindist
+0001D9A0	?core_is_going_to_be_deleted_event@IVP_Friction_Sys_Static@@UAEXPAVIVP_Core@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionStaticControllerCoreDeleted	FrictionStaticControllerCoreDeleted
+0001DA10	?p_strdup@@YAPADPBD@Z	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::DuplicateString	DuplicateString
+0001DB30	??0IVP_VHash@@IAE@H@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashConstruct	VHashConstruct
+0001DB80	??1IVP_VHash@@UAE@XZ	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashDestruct	VHashDestruct
+0001DBB0	?rehash@IVP_VHash@@AAEXH@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashRehash	VHashRehash
+0001DC60	?add_elem@IVP_VHash@@QAEXPBXH@Z	public-collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::VHashAdd	VHashAdd
+0001DD10	?remove_elem@IVP_VHash@@QAEPAXPBXI@Z	public-collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::VHashRemove	VHashRemove
+0001DE10	?find_elem@IVP_VHash@@QBEPAXPBXI@Z	public-collision-filter	typed-wrapper	include/BML/IVP/CollisionFilter.h	Address::VHashFind	VHashFind
+0001DE80	??0IVP_VHash_Store@@QAE@H@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashStoreConstruct	VHashStoreConstruct
+0001DEB0	??1IVP_VHash_Store@@QAE@XZ	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashStoreDestruct	VHashStoreDestruct
+0001DF60	?add_elem@IVP_VHash_Store@@QAEXPAX0@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashStoreAdd	VHashStoreAdd
+0001DFB0	?add_elem@IVP_VHash_Store@@QAEXPAX0H@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashStoreAddHashed	VHashStoreAddHashed
+0001E070	?remove_elem@IVP_VHash_Store@@QAEPAXPAX@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashStoreRemove	VHashStoreRemove
+0001E0C0	?remove_elem@IVP_VHash_Store@@QAEPAXPAXI@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashStoreRemoveHashed	VHashStoreRemoveHashed
+0001E1B0	?find_elem@IVP_VHash_Store@@QAEPAXPAX@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashStoreFind	VHashStoreFind
+0001E200	?find_elem@IVP_VHash_Store@@QAEPAXPAXI@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashStoreFindHashed	VHashStoreFindHashed
+0001E260	?change_elem@IVP_VHash_Store@@QAEXPAX0@Z	public-set	typed-wrapper	include/BML/IVP/Set.h	Address::VHashStoreChange	VHashStoreChange
+0001E300	?calc_next_PSI_matrix@IVP_Calc_Next_PSI_Solver@@QAEXPAVIVP_Event_Sim@@PAV?$IVP_U_Vector@VIVP_Hull_Manager_Base@@@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CalcNextPsiMatrix	CalcNextPsiMatrix
+0001E730	?are_events_in_hull@IVP_Hull_Manager@@QAE?AW4IVP_BOOL@@XZ	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::HullManagerAreEventsInHull	HullManagerAreEventsInHull
+0001E750	?increase_hull_by_x@IVP_Hull_Manager@@QAEXVIVP_Time@@MMM@Z	public-object	typed-wrapper	include/BML/IVP/Object.h	Address::HullManagerIncreaseByX	HullManagerIncreaseByX
+0001E7C0	?set_mult_quat@IVP_U_Quat@@QAEXPBV1@0@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::QuaternionSetMultiply	QuaternionSetMultiply
+0001E870	?calc_psi_rotation_axis@IVP_Calc_Next_PSI_Solver@@AAEXPBVIVP_U_Quat@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CalcNextPsiRotationAxis	CalcNextPsiRotationAxis
+0001EA50	?commit_all_calc_next_PSI_matrix@IVP_Calc_Next_PSI_Solver@@SAXPAVIVP_Environment@@PAV?$IVP_U_Vector@VIVP_Core@@@@PAV?$IVP_U_Vector@VIVP_Hull_Manager_Base@@@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CalcNextPsiCommitAll	CalcNextPsiCommitAll
+0001EB10	?commit_all_hull_managers@IVP_Calc_Next_PSI_Solver@@SAXPAVIVP_Environment@@PAV?$IVP_U_Vector@VIVP_Hull_Manager_Base@@@@@Z	public-core	typed-wrapper	include/BML/IVP/Core.h	Address::CalcNextPsiCommitAllHulls	CalcNextPsiCommitAllHulls
+0001EE70	?p_calc_friction_qr_PF@IVP_Contact_Point@@AAEXPBVIVP_U_Point@@PBVIVP_Compact_Edge@@PAVIVP_Cache_Ledge_Point@@PAVIVP_Impact_Solver_Long_Term@@PAVIVP_U_Float_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointCalculateFrictionPointFace	ContactPointCalculateFrictionPointFace
+0001F050	?p_calc_friction_s_PP@IVP_Contact_Point@@AAEXPBVIVP_U_Point@@0PAVIVP_Impact_Solver_Long_Term@@PAVIVP_U_Float_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointCalculateFrictionPointPoint	ContactPointCalculateFrictionPointPoint
+0001F160	?p_calc_friction_s_PK@IVP_Contact_Point@@AAEXPBVIVP_U_Point@@PBVIVP_Compact_Edge@@PAVIVP_Cache_Ledge_Point@@PAVIVP_Impact_Solver_Long_Term@@PAVIVP_U_Float_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointCalculateFrictionPointEdge	ContactPointCalculateFrictionPointEdge
+0001F3B0	?p_calc_friction_ss_KK@IVP_Contact_Point@@AAEXPBVIVP_Compact_Edge@@0PAVIVP_Cache_Ledge_Point@@1PAVIVP_Impact_Solver_Long_Term@@PAVIVP_U_Float_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointCalculateFrictionEdgeEdge	ContactPointCalculateFrictionEdgeEdge
+0001F850	?reset_time@IVP_Contact_Point@@AAEXVIVP_Time@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointResetTime	ContactPointResetTime
+0001F860	?recalc_friction_s_vals@IVP_Contact_Point@@QAEXXZ	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::ContactPointRecalculateFriction	ContactPointRecalculateFriction
+0001FFE0	?get_associated_contact_point@IVP_Friction_Manager@@SAPAVIVP_Contact_Point@@PAVIVP_Mindist@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionManagerGetAssociatedContact	FrictionManagerGetAssociatedContact
+00020030	?generate_contact_point@IVP_Friction_Manager@@SAPAVIVP_Contact_Point@@PAVIVP_Mindist@@PAW4IVP_BOOL@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionManagerGenerateContact	FrictionManagerGenerateContact
+000200C0	?p_malloc@@YAPAXI@Z	public-constraint-car	typed-wrapper	include/BML/IVP/ConstraintCar.h	Address::Allocate	Allocate
+000200D0	?p_calloc@@YAPADHH@Z	public-interpolation	typed-wrapper	include/BML/IVP/Interpolation.h	Address::AllocateZeroed	AllocateZeroed
+0000D110	?get_mem@IVP_U_Memory@@QAEPAXI@Z	public-memory	typed-wrapper	include/BML/IVP/Memory.h	void *get_mem(	MemoryGet
+00020140	??1IVP_U_Memory@@QAE@XZ	public-memory	typed-wrapper	include/BML/IVP/Memory.h	~IVP_U_Memory()	MemoryDestruct
+00020150	?init_mem_transaction_usage@IVP_U_Memory@@QAEXPADH@Z	public-memory	typed-wrapper	include/BML/IVP/Memory.h	void init_mem_transaction_usage(	MemoryInitTransaction
+000201B0	?free_mem_transaction@IVP_U_Memory@@AAEXXZ	public-memory	typed-wrapper	include/BML/IVP/Memory.h	Address::MemoryFreeTransaction	MemoryFreeTransaction
+00020210	?neuer_sp_block@IVP_U_Memory@@QAEPADI@Z	public-memory	typed-wrapper	include/BML/IVP/Memory.h	char *neuer_sp_block(	MemoryNewBlock
+00020260	??0IVP_U_Memory@@QAE@XZ	public-memory	typed-wrapper	include/BML/IVP/Memory.h	IVP_U_Memory()	MemoryConstruct
+00020270	?init_mem@IVP_U_Memory@@QAEXXZ	public-memory	typed-wrapper	include/BML/IVP/Memory.h	void init_mem()	MemoryInit
+00020290	?free_mem@IVP_U_Memory@@QAEXXZ	public-memory	typed-wrapper	include/BML/IVP/Memory.h	void free_mem()	MemoryFree
+00021A50	?increment_mem@IVP_U_BigVector_Base@@QAEXXZ	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::BigVectorIncrementMemory	BigVectorIncrementMemory
+00021AB0	sub_10021AB0 (retail IVP_Ray_Solver_Os::check_ray_against_compact_ledge_os void-return body)	public-ray	typed-wrapper	include/BML/IVP/Ray.h	Address::RaySolverObjectCheckCompactLedge	RaySolverObjectCheckCompactLedge
+00021EE0	?check_ray_against_ledge_tree_node_os@IVP_Ray_Solver_Os@@QAEXPBVIVP_Compact_Ledgetree_Node@@@Z	public-ray	typed-wrapper	include/BML/IVP/Ray.h	Address::RaySolverObjectCheckLedgeTree	RaySolverObjectCheckLedgeTree
+00022010	?check_ray_against_compact_surface_os@IVP_Ray_Solver_Os@@QAEXPBVIVP_Compact_Surface@@@Z	public-ray	typed-wrapper	include/BML/IVP/Ray.h	Address::RaySolverObjectCheckCompactSurface	RaySolverObjectCheckCompactSurface
+00022030	??0IVP_Ray_Solver_Os@@QAE@PAVIVP_Ray_Solver@@PAVIVP_Real_Object@@@Z	public-ray	typed-wrapper	include/BML/IVP/Ray.h	Address::RaySolverObjectConstruct	RaySolverObjectConstruct
+00022180	?try_to_generate_managed_friction@IVP_Mindist@@QAEPAVIVP_Contact_Point@@PAPAVIVP_Friction_System@@PAW4IVP_BOOL@@PAVIVP_Simulation_Unit@@W44@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistTryManagedFriction	MindistTryManagedFriction
+00023FA0	?get_material_info@IVP_Contact_Point@@QAEXQAPAVIVP_Material@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointGetMaterialInfo	ContactPointGetMaterialInfo
+00024040	?read_materials_for_contact_situation@IVP_Contact_Point@@AAEXPAVIVP_Impact_Solver_Long_Term@@@Z	public-environment	typed-wrapper	include/BML/IVP/Environment.h	Address::ContactPointReadMaterials	ContactPointReadMaterials
+000240A0	?do_impact@IVP_Mindist@@UAEXXZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistDoImpact	MindistDoImpact
+00024140	?do_impact_long_term@IVP_Impact_Solver_Long_Term@@QAEXQAPAVIVP_Core@@MPAVIVP_Contact_Point@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ImpactSolverLongTermDoImpact	ImpactSolverLongTermDoImpact
+000248A0	?get_rot_speed_uncertainty@IVP_Contact_Point@@AAEMXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointGetRotationUncertainty	ContactPointGetRotationUncertainty
+00024930	?get_rescue_speed_impact@IVP_Contact_Point@@AAEMPAVIVP_Environment@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointGetRescueSpeed	ContactPointGetRescueSpeed
+000249B0	?calc_coll_distance@IVP_Contact_Point@@AAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::ContactPointCalculateCollisionDistance	ContactPointCalculateCollisionDistance
+00028210	??0IVP_Constraint_Local_Anchor@@QAE@XZ	public-constraint	typed-wrapper	include/BML/IVP/Constraint.h	Address::ConstraintLocalAnchorConstruct	ConstraintLocalAnchorConstruct
+0002EF70	?simulate_time_events@IVP_Event_Manager_Standard@@EAEXPAVIVP_Time_Manager@@PAVIVP_Environment@@VIVP_Time@@@Z	public-time-manager	typed-wrapper	include/BML/IVP/TimeManager.h	Address::EventManagerStandardSimulate	EventManagerStandardSimulate
+0002F010	?simulate_variable_time_step@IVP_Event_Manager@@UAEXPAVIVP_Time_Manager@@PAVIVP_Environment@@PAVIVP_Time_Event_PSI@@M@Z	public-time-manager	typed-wrapper	include/BML/IVP/TimeManager.h	Address::EventManagerSimulateVariable	EventManagerSimulateVariable
+0002F0B0	??0IVP_Time_Manager@@QAE@XZ	public-time-manager	typed-wrapper	include/BML/IVP/TimeManager.h	Address::TimeManagerConstruct	TimeManagerConstruct
+0002F170	??1IVP_Time_Manager@@QAE@XZ	public-time-manager	typed-wrapper	include/BML/IVP/TimeManager.h	Address::TimeManagerDestruct	TimeManagerDestruct
+0002F1D0	?insert_event@IVP_Time_Manager@@QAEXPAVIVP_Time_Event@@VIVP_Time@@@Z	public-time-manager	typed-wrapper	include/BML/IVP/TimeManager.h	Address::TimeManagerInsertEvent	TimeManagerInsertEvent
+0002F200	?remove_event@IVP_Time_Manager@@QAEXPAVIVP_Time_Event@@@Z	public-time-manager	typed-wrapper	include/BML/IVP/TimeManager.h	Address::TimeManagerRemoveEvent	TimeManagerRemoveEvent
+0002F250	?event_loop@IVP_Time_Manager@@QAEXPAVIVP_Environment@@VIVP_Time@@@Z	public-time-manager	typed-wrapper	include/BML/IVP/TimeManager.h	Address::TimeManagerEventLoop	TimeManagerEventLoop
+0002F2A0	?env_set_current_time@IVP_Time_Manager@@QAEXPAVIVP_Environment@@VIVP_Time@@@Z	public-time-manager	typed-wrapper	include/BML/IVP/TimeManager.h	Address::TimeManagerSetEnvironmentTime	TimeManagerSetEnvironmentTime
+0002F5E0	??0IVP_Anomaly_Limits@@QAE@W4IVP_BOOL@@@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyLimitsConstruct	AnomalyLimitsConstruct
+0002F630	??1IVP_Anomaly_Limits@@UAE@XZ	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyLimitsDestruct	AnomalyLimitsDestruct
+0002F640	?environment_will_be_deleted@IVP_Anomaly_Limits@@UAEXPAVIVP_Environment@@@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyLimitsEnvironmentDeleted	AnomalyLimitsEnvironmentDeleted
+0002F660	??0IVP_Anomaly_Manager@@QAE@W4IVP_BOOL@@@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyManagerConstruct	AnomalyManagerConstruct
+0002F6A0	??1IVP_Anomaly_Manager@@UAE@XZ	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyManagerDestruct	AnomalyManagerDestruct
+0002F6B0	?environment_will_be_deleted@IVP_Anomaly_Manager@@UAEXPAVIVP_Environment@@@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyManagerEnvironmentDeleted	AnomalyManagerEnvironmentDeleted
+0002F6D0	?max_velocity_exceeded@IVP_Anomaly_Manager@@UAEXPAVIVP_Anomaly_Limits@@PAVIVP_Core@@PAVIVP_U_Float_Point@@@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyManagerMaxVelocity	AnomalyManagerMaxVelocity
+0002F720	?max_angular_velocity_exceeded@IVP_Anomaly_Manager@@UAEXPAVIVP_Anomaly_Limits@@PAVIVP_Core@@PAVIVP_U_Float_Point@@@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyManagerMaxAngularVelocity	AnomalyManagerMaxAngularVelocity
+0002F780	?solve_inter_penetration_simple@IVP_Anomaly_Manager@@QAEXPAVIVP_Real_Object@@0@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyManagerSolvePenetrationSimple	AnomalyManagerSolvePenetrationSimple
+0002F8F0	?inter_penetration@IVP_Anomaly_Manager@@UAEXPAVIVP_Mindist@@PAVIVP_Real_Object@@1@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyManagerInterPenetration	AnomalyManagerInterPenetration
+0002FC80	?get_push_speed_penetration@IVP_Anomaly_Manager@@UAEMPAVIVP_Real_Object@@0@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyManagerPushSpeedPenetration	AnomalyManagerPushSpeedPenetration
+0002FCC0	?max_collisions_exceeded_check_freezing@IVP_Anomaly_Manager@@UAE?AW4IVP_BOOL@@PAVIVP_Anomaly_Limits@@PAVIVP_Core@@@Z	public-anomaly	typed-wrapper	include/BML/IVP/Anomaly.h	Address::AnomalyManagerMaxCollisions	AnomalyManagerMaxCollisions
+00030180	unnamed retail body (MinListAdd)	public-min-list	typed-wrapper	include/BML/IVP/MinList.h	Address::MinListAdd	MinListAdd
+00030470	?remove_minlist_elem@IVP_U_Min_List@@QAEXI@Z	public-min-list	typed-wrapper	include/BML/IVP/MinList.h	Address::MinListRemove	MinListRemove
+00030540	?do_impact@IVP_Mindist_Recursive@@UAEXXZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRecursiveDoImpact	MindistRecursiveDoImpact
+00030710	?exact_mindist_went_invalid@IVP_Mindist_Recursive@@UAEXPAVIVP_Mindist_Manager@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRecursiveExactWentInvalid	MindistRecursiveExactWentInvalid
+000307F0	?delete_all_children@IVP_Mindist_Recursive@@AAEXXZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRecursiveDeleteAllChildren	MindistRecursiveDeleteAllChildren
+000309C0	?collision_is_going_to_be_deleted_event@IVP_Mindist_Recursive@@EAEXPAVIVP_Collision@@@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRecursiveCollisionDeleted	MindistRecursiveCollisionDeleted
+00030A30	?recheck_recursive_childs@IVP_Mindist_Recursive@@AAEXN@Z	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRecursiveRecheckChildren	MindistRecursiveRecheckChildren
+00030AF0	?invalid_mindist_went_exact@IVP_Mindist_Recursive@@AAEXXZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRecursiveInvalidWentExact	MindistRecursiveInvalidWentExact
+00030B20	?rec_hull_limit_exceeded_event@IVP_Mindist_Recursive@@QAEXXZ	public-mindist	typed-wrapper	include/BML/IVP/Mindist.h	Address::MindistRecursiveHullLimitExceeded	MindistRecursiveHullLimitExceeded
+00036080	?test_gauss_solution_suggestion@IVP_Friction_Solver@@QAE?AW4IVP_RETURN_TYPE@@PANPAHHPAVIVP_U_Memory@@@Z	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverTestGauss	FrictionSolverTestGauss
+00036170	?factor_result_vec@IVP_Friction_Solver@@QAEXXZ	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverFactorResult	FrictionSolverFactorResult
+00036190	?normize_constraint_equ@IVP_Friction_Solver@@QAEXXZ	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverNormalizeConstraints	FrictionSolverNormalizeConstraints
+000362C0	?get_num_supposed_active_frdists@IVP_Friction_System@@QAEHXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemGetSupposedActiveCount	FrictionSystemGetSupposedActiveCount
+000362E0	?solve_linear_equation_and_push@IVP_Friction_Solver@@QAEXPAVIVP_Friction_System@@PAHHPAVIVP_U_Memory@@@Z	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverSolveAndPush	FrictionSolverSolveAndPush
+000364C0	?do_resulting_pushes@IVP_Friction_Solver@@QAEHPAVIVP_Friction_System@@@Z	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverApplyResults	FrictionSolverApplyResults
+000366A0	?setup_coords_mindists@IVP_Friction_Solver@@QAEXPAVIVP_Friction_System@@@Z	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverSetupCoordinates	FrictionSolverSetupCoordinates
+00036760	?calc_solver_PSI@IVP_Friction_Solver@@QAEHPAVIVP_Friction_System@@PAH@Z	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverCalculatePsi	FrictionSolverCalculatePsi
+00036B30	?get_closing_speed_core_i@IVP_Friction_Solver@@SANPBVIVP_Impact_Solver_Long_Term@@HPBVIVP_U_Float_Point@@PAV3@@Z	public-friction-solver	typed-wrapper	include/BML/IVP/FrictionSolver.h	Address::FrictionSolverGetClosingSpeedCore	FrictionSolverGetClosingSpeedCore
+00036B80	?reorder_mindists_for_complex@IVP_Friction_System@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemReorderMindists	FrictionSystemReorderMindists
+00036C20	?exchange_friction_dists@IVP_Friction_System@@QAEXPAVIVP_Contact_Point@@0@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemExchangeDistances	FrictionSystemExchangeDistances
+00036C60	?bubble_sort_dists_importance@IVP_Friction_System@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemBubbleSortDistances	FrictionSystemBubbleSortDistances
+00036CB0	?core_is_terminal_in_fs@IVP_Friction_System@@QAE?AW4IVP_BOOL@@PAVIVP_Core@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemCoreIsTerminal	FrictionSystemCoreIsTerminal
+00036D10	?static_fr_oversized_matrix_panic@IVP_Friction_System@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemOversizedMatrixPanic	FrictionSystemOversizedMatrixPanic
+00036D70	?do_friction_system@IVP_Friction_System@@QAEXPBVIVP_Event_Sim@@@Z	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemRun	FrictionSystemRun
+00036EC0	?kinetic_energy_of_hole_frs@IVP_Friction_System@@QAENXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemKineticEnergy	FrictionSystemKineticEnergy
+00036F80	?confirm_complex_pushes@IVP_Friction_System@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemConfirmComplexPushes	FrictionSystemConfirmComplexPushes
+00036FA0	?undo_complex_pushes@IVP_Friction_System@@QAEXXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemUndoComplexPushes	FrictionSystemUndoComplexPushes
+00036FC0	?get_max_energy_gain@IVP_Friction_System@@QAENXZ	public-friction	typed-wrapper	include/BML/IVP/Friction.h	Address::FrictionSystemGetMaxEnergyGain	FrictionSystemGetMaxEnergyGain
+00037000	??0IVP_U_Min_Hash@@QAE@H@Z	public-min-hash	typed-wrapper	include/BML/IVP/MinHash.h	Address::MinHashConstruct	MinHashConstruct
+00037050	??1IVP_U_Min_Hash@@QAE@XZ	public-min-hash	typed-wrapper	include/BML/IVP/MinHash.h	Address::MinHashDestruct	MinHashDestruct
+000371C0	?add@IVP_U_Min_Hash@@QAEXPAXN@Z	public-min-hash	typed-wrapper	include/BML/IVP/MinHash.h	Address::MinHashAdd	MinHashAdd
+00037260	?remove@IVP_U_Min_Hash@@QAEXPAX@Z	public-min-hash	typed-wrapper	include/BML/IVP/MinHash.h	Address::MinHashRemove	MinHashRemove
+000372E0	?remove_min@IVP_U_Min_Hash@@QAEXXZ	public-min-hash	typed-wrapper	include/BML/IVP/MinHash.h	Address::MinHashRemoveMinimum	MinHashRemoveMinimum
+00037300	??0IVP_U_Plain@@QAE@PBVIVP_U_Hesse@@@Z	public-geometry	typed-wrapper	include/BML/IVP/Geometry.h	Address::PlainConstructFromHesse	PlainConstructFromHesse
+000373A0	?calc_intersect_with@IVP_U_Plain@@QBE?AW4IVP_RETURN_TYPE@@PBVIVP_U_Hesse@@PAVIVP_U_Straight@@@Z	public-geometry	typed-wrapper	include/BML/IVP/Geometry.h	Address::PlainIntersectPlane	PlainIntersectPlane
+00037490	?calc_intersect_with@IVP_U_Hesse@@QBE?AW4IVP_RETURN_TYPE@@PBVIVP_U_Straight@@PAVIVP_U_Point@@@Z	public-geometry	typed-wrapper	include/BML/IVP/Geometry.h	Address::HesseIntersectStraight	HesseIntersectStraight
+000375B0	??0IVP_Constraint@@QAE@XZ	public-constraint	typed-wrapper	include/BML/IVP/Constraint.h	Address::ConstraintConstruct	ConstraintConstruct
+00037620	?activate@IVP_Constraint@@QAEXXZ	public-constraint	typed-wrapper	include/BML/IVP/Constraint.h	Address::ConstraintActivate	ConstraintActivate
+00060756	??3@YAXPAX@Z	public-calls	typed-wrapper	include/BML/IVP/Calls.h	Address::OperatorDelete	OperatorDelete
+0006075C	??2@YAPAXI@Z	public-buoyancy	typed-wrapper	include/BML/IVP/Buoyancy.h	Address::OperatorNew	OperatorNew
+00060770	free	public-active-value	typed-wrapper	include/BML/IVP/ActiveValue.h	Address::Free	Free
+0002FCD0	?ivp_rand@@YAMXZ	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::RandomFloat	RandomFloat
+0001DAB0	?p_strlen@@YAHPBD@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::StringLength	StringLength
+0001DAD0	?p_strcmp@@YAHPBD0@Z	public-types	typed-wrapper	include/BML/IVP/Types.h	Address::StringCompare	StringCompare

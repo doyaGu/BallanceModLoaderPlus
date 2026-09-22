@@ -1,0 +1,15 @@
+callsite_rva	owner	contract	slot	public_header	probe
+000012F0	IVP_Listener_Collision	deleting destructor	4	include/BML/IVP/Listeners.h	virtual ~IVP_Listener_Collision()
+0000416B	IVP_Listener_Collision	deleting destructor	4	include/BML/IVP/Listeners.h	virtual ~IVP_Listener_Collision()
+000048E2	IVP_Controller	deleting destructor	6	include/BML/IVP/Controller.h	virtual ~IVP_Controller()
+000058B8	IVP_Constraint	deleting destructor inherited from IVP_Controller	6	include/BML/IVP/Constraint.h	virtual ~IVP_Constraint()
+00005985	IVP_Constraint	deleting destructor inherited from IVP_Controller	6	include/BML/IVP/Constraint.h	virtual ~IVP_Constraint()
+00007AA8	IVP_Material	scalar deleting destructor	5	include/BML/IVP/Material.h	virtual ~IVP_Material()
+00007BD6	IVP_SurfaceManager	deleting destructor	9	include/BML/IVP/Surface.h	virtual ~IVP_SurfaceManager()
+0000A7A5	IVP_Listener_Collision	event_post_collision through a private-object listener	0	include/BML/IVP/Listeners.h	event_post_collision(
+0000A881	IVP_Listener_Collision	event_collision_object_deleted through a private-object listener	1	include/BML/IVP/Listeners.h	event_collision_object_deleted(
+0000A8D5	IVP_Listener_Collision	event_friction_created through a private-object listener	2	include/BML/IVP/Listeners.h	event_friction_created(
+0000A935	IVP_Listener_Collision	event_friction_deleted through a private-object listener	3	include/BML/IVP/Listeners.h	event_friction_deleted(
+00013BA7	IVP_Listener_Collision	event_post_collision through a global listener	0	include/BML/IVP/Listeners.h	event_post_collision(
+00013BE7	IVP_Listener_Collision	event_friction_created through a global listener	2	include/BML/IVP/Listeners.h	event_friction_created(
+00013C27	IVP_Listener_Collision	event_friction_deleted through a global listener	3	include/BML/IVP/Listeners.h	event_friction_deleted(
