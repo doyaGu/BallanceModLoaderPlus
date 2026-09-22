@@ -1,30 +1,41 @@
 set(BML_VERSION_HEADER "${BML_INCLUDE_DIR}/BML/Version.h")
-set(BML_VERSION_HEADER_ARGS
-        -DBML_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
-        -DBML_VERSION_MINOR=${PROJECT_VERSION_MINOR}
-        -DBML_VERSION_PATCH=${PROJECT_VERSION_PATCH}
-        -DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/Version.h.in
-        -DOUTPUT_FILE=${BML_VERSION_HEADER}
+set(BML_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(BML_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(BML_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+set(BML_VERSION "${PROJECT_VERSION}")
+configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/Version.h.in"
+        "${BML_VERSION_HEADER}"
+        @ONLY
+)
+
+set(BML_BUILD_VERSION_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(BML_BUILD_VERSION_HEADER "${BML_BUILD_VERSION_DIR}/BuildVersion.h")
+set(BML_BUILD_VERSION_HEADER_ARGS
+        -DBML_VERSION=${PROJECT_VERSION}
+        -DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/BuildVersion.h.in
+        -DOUTPUT_FILE=${BML_BUILD_VERSION_HEADER}
         -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
 )
 
-# Generate once during configure so the file exists before CMake validates target sources.
+# Generate once during configure so the file exists before CMake validates the
+# resource dependencies. The build target refreshes only this private header.
 execute_process(
         COMMAND "${CMAKE_COMMAND}"
-        ${BML_VERSION_HEADER_ARGS}
-        -P ${PROJECT_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake
-        RESULT_VARIABLE BML_VERSION_HEADER_RESULT
+        ${BML_BUILD_VERSION_HEADER_ARGS}
+        -P ${PROJECT_SOURCE_DIR}/cmake/GenerateBuildVersionHeader.cmake
+        RESULT_VARIABLE BML_BUILD_VERSION_HEADER_RESULT
 )
-if (NOT BML_VERSION_HEADER_RESULT EQUAL 0)
-    message(FATAL_ERROR "Failed to generate ${BML_VERSION_HEADER}")
+if (NOT BML_BUILD_VERSION_HEADER_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to generate ${BML_BUILD_VERSION_HEADER}")
 endif ()
 
-add_custom_target(BML_VersionHeader ALL
+add_custom_target(BML_BuildVersionHeader ALL
     COMMAND "${CMAKE_COMMAND}"
-        ${BML_VERSION_HEADER_ARGS}
-        -P ${PROJECT_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake
-    BYPRODUCTS "${BML_VERSION_HEADER}"
-    COMMENT "Generating Version.h with git metadata"
+        ${BML_BUILD_VERSION_HEADER_ARGS}
+        -P ${PROJECT_SOURCE_DIR}/cmake/GenerateBuildVersionHeader.cmake
+    BYPRODUCTS "${BML_BUILD_VERSION_HEADER}"
+    COMMENT "Generating private build version"
 )
 
 # The IMC code generator is an authoring tool for mods that publish their own
@@ -510,7 +521,7 @@ set(BML_SOURCES
 )
 
 set_source_files_properties(BML.rc PROPERTIES
-        OBJECT_DEPENDS "${BML_VERSION_HEADER}"
+        OBJECT_DEPENDS "${BML_BUILD_VERSION_HEADER}"
 )
 
 set(BML_ANGELSCRIPT_PRIVATE_HEADERS)
@@ -641,6 +652,7 @@ add_library(BML SHARED
         ${BML_ANGELSCRIPT_PRIVATE_HEADERS}
         ${BML_ANGELSCRIPT_SOURCES}
         ${IMGUI_SOURCES} ${IMGUI_HEADERS}
+        ${BML_BUILD_VERSION_HEADER}
 )
 
 if (BML_BUILD_UI_AUTOMATION)
@@ -649,6 +661,10 @@ endif ()
 
 target_compile_features(BML PUBLIC cxx_std_20)
 
+target_compile_options(BML PRIVATE
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/MP>
+)
+
 target_include_directories(BML
         PUBLIC
         $<BUILD_INTERFACE:${BML_INCLUDE_DIR}>
@@ -656,6 +672,7 @@ target_include_directories(BML
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${BML_BUILD_VERSION_DIR}
 )
 
 if (BML_WITH_ANGELSCRIPT)
@@ -674,7 +691,7 @@ target_link_libraries(BML
         minhook onig imm32 comctl32 ole32 oleaut32 uuid
 )
 
-add_dependencies(BML BML_VersionHeader)
+add_dependencies(BML BML_BuildVersionHeader)
 
 target_compile_definitions(BML
         PUBLIC

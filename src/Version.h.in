@@ -1,13 +1,7 @@
 // Generated at configure time from src/Version.h.in, so do not edit the copy in
-// include/BML. These are the version of the SDK a Mod is being compiled against,
-// which is what DECLARE_BML_VERSION reports and what the loader compares its own
-// version to when it decides whether to accept the Mod. To find out which loader is
-// actually running, ask BML_GetVersion from BML.h instead.
-//
-// BML_VERSION is the three release numbers as a string. BML_VERSION_FULL adds the
-// commit the loader was built from and a .dirty marker for a build with uncommitted
-// changes, so it identifies a build while BML_VERSION identifies a release; report
-// the full one in a bug report and compare against the numbers.
+// include/BML. These are the stable SDK release numbers a Mod is compiled against.
+// DECLARE_BML_VERSION reports them, and the loader uses them for compatibility.
+// To find the version of the running loader, call BML_GetVersion from BML.h.
 #ifndef BML_VERSION_H
 #define BML_VERSION_H
 
@@ -16,8 +10,11 @@
 #define BML_PATCH_VERSION @BML_VERSION_PATCH@
 #define BML_VERSION "@BML_VERSION@"
 
-#define BML_VERSION_GIT_HASH "@BML_GIT_HASH@"
-#define BML_VERSION_GIT_DIRTY @BML_GIT_DIRTY@
-#define BML_VERSION_FULL "@BML_VERSION_FULL@"
+// Kept for source compatibility with SDK releases that exposed build metadata
+// through this header. Installed headers describe a release, not one particular
+// loader binary; inspect BMLPlus.dll's version resource for its build identity.
+#define BML_VERSION_GIT_HASH "unknown"
+#define BML_VERSION_GIT_DIRTY 0
+#define BML_VERSION_FULL BML_VERSION
 
 #endif // BML_VERSION_H

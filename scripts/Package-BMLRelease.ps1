@@ -102,13 +102,13 @@ function Get-RelativeZipPath {
     return [System.Uri]::UnescapeDataString($baseUri.MakeRelativeUri($pathUri).ToString())
 }
 
-function Get-BMLVersionHeaderFullVersion {
+function Get-BMLVersionHeaderVersion {
     param([string]$VersionHeaderPath)
 
     Assert-BMLPath -Path $VersionHeaderPath -Type Leaf
-    $match = Select-String -LiteralPath $VersionHeaderPath -Pattern '^\s*#define\s+BML_VERSION_FULL\s+"([^"]+)"\s*$' | Select-Object -First 1
+    $match = Select-String -LiteralPath $VersionHeaderPath -Pattern '^\s*#define\s+BML_VERSION\s+"([^"]+)"\s*$' | Select-Object -First 1
     if (-not $match) {
-        throw "Unable to read BML_VERSION_FULL from $VersionHeaderPath"
+        throw "Unable to read BML_VERSION from $VersionHeaderPath"
     }
     return $match.Matches[0].Groups[1].Value
 }
@@ -256,11 +256,12 @@ function Assert-BMLBinaryVersionMatchesHeader {
     )
 
     Assert-BMLPath -Path $BinaryPath -Type Leaf
-    $expected = Get-BMLVersionHeaderFullVersion -VersionHeaderPath $VersionHeaderPath
+    $expected = Get-BMLVersionHeaderVersion -VersionHeaderPath $VersionHeaderPath
     $versionInfo = (Get-Item -LiteralPath $BinaryPath).VersionInfo
     $actual = if ($versionInfo.ProductVersion) { $versionInfo.ProductVersion } else { $versionInfo.FileVersion }
-    if ($actual -ne $expected) {
-        throw "$Label version resource mismatch: binary has '$actual', Version.h has '$expected'. Rebuild the target before packaging."
+    $matchesRelease = $actual -eq $expected -or $actual.StartsWith("$expected+", [System.StringComparison]::Ordinal)
+    if (-not $matchesRelease) {
+        throw "$Label release version mismatch: binary has '$actual', Version.h has '$expected'. Rebuild the target before packaging."
     }
 }
 

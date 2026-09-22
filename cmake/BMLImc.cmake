@@ -91,7 +91,7 @@ function(bml_target_imc_api target)
                     "bml_target_imc_api: target '${update_lock_target}' is reserved")
         endif()
         add_custom_target("${update_lock_target}")
-        set_property(TARGET "${update_lock_target}" PROPERTY FOLDER "BML/IMC")
+        set_property(TARGET "${update_lock_target}" PROPERTY FOLDER "Tools/IMC")
         set_property(GLOBAL PROPERTY BML_IMC_UPDATE_TARGET_INITIALIZED TRUE)
     endif()
 
@@ -112,7 +112,7 @@ function(bml_target_imc_api target)
             COMMENT "Updating IMC interface lock ${input_name}"
             VERBATIM
     )
-    set_property(TARGET "${update_step_target}" PROPERTY FOLDER "BML/IMC")
+    set_property(TARGET "${update_step_target}" PROPERTY FOLDER "Tools/IMC")
     add_dependencies("${update_lock_target}" "${update_step_target}")
 
     add_custom_command(

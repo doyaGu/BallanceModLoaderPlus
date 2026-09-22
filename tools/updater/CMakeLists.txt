@@ -43,7 +43,7 @@ target_compile_definitions(BMLUpdaterCore PUBLIC
 )
 
 set_target_properties(BMLUpdaterCore PROPERTIES
-    FOLDER "Tools/Updater"
+    FOLDER "Tools"
 )
 
 add_executable(Updater
@@ -59,7 +59,7 @@ target_link_libraries(Updater PRIVATE
 set_target_properties(Updater PROPERTIES
     OUTPUT_NAME "Updater"
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/Bin"
-    FOLDER "Tools/Updater"
+    FOLDER "Tools"
 )
 
 foreach(config ${CMAKE_CONFIGURATION_TYPES})

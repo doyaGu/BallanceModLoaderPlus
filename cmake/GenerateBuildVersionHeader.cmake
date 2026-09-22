@@ -1,12 +1,10 @@
-# GenerateVersionHeader.cmake
-# Called at build time to generate Version.h with git metadata.
+# GenerateBuildVersionHeader.cmake
+# Called at build time to generate the private build identity.
 #
 # Expected -D variables:
-#   BML_VERSION_MAJOR   - Major version number
-#   BML_VERSION_MINOR   - Minor version number
-#   BML_VERSION_PATCH   - Patch version number
-#   TEMPLATE_FILE       - Path to Version.h.in
-#   OUTPUT_FILE         - Path to output Version.h
+#   BML_VERSION         - Stable release version
+#   TEMPLATE_FILE       - Path to BuildVersion.h.in
+#   OUTPUT_FILE         - Path to output BuildVersion.h
 #   SOURCE_DIR          - Git repository root
 
 set(BML_GIT_HASH "unknown")
@@ -37,9 +35,6 @@ if(Git_FOUND AND EXISTS "${SOURCE_DIR}/.git")
     endif()
 endif()
 
-# Build version strings
-set(BML_VERSION "${BML_VERSION_MAJOR}.${BML_VERSION_MINOR}.${BML_VERSION_PATCH}")
-
 set(BML_VERSION_FULL "${BML_VERSION}")
 if(NOT BML_GIT_HASH STREQUAL "unknown")
     string(APPEND BML_VERSION_FULL "+${BML_GIT_HASH}")
@@ -48,7 +43,10 @@ if(NOT BML_GIT_HASH STREQUAL "unknown")
     endif()
 endif()
 
-# Generate to temp file, then copy only if changed to avoid unnecessary rebuilds
+# Generate to a temporary file, then replace the output only when its contents
+# changed so the resource compiler does not run on every incremental build.
+get_filename_component(output_directory "${OUTPUT_FILE}" DIRECTORY)
+file(MAKE_DIRECTORY "${output_directory}")
 configure_file("${TEMPLATE_FILE}" "${OUTPUT_FILE}.tmp" @ONLY)
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different

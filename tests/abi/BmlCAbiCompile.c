@@ -14,6 +14,14 @@
 
 #define BML_C_ABI_ASSERT(name, expression) typedef char name[(expression) ? 1 : -1]
 
+#if BML_VERSION_GIT_DIRTY
+#error Installed SDK headers must not inherit the loader working tree state.
+#endif
+
+const char *BML_TestCAbiSdkVersion(void) {
+    return BML_VERSION_FULL " " BML_VERSION_GIT_HASH;
+}
+
 #if defined(_MSC_VER)
 typedef struct BML_CallerPackingProbe {
     char Prefix;
