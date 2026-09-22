@@ -7,6 +7,7 @@ namespace UiAutomation {
 
 void Start(BMLMod &mod);
 void OnStartLevel();
+void OnBallNavActive();
 void AdvanceFrame();
 void Shutdown();
 

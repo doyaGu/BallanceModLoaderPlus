@@ -54,6 +54,7 @@ public:
     void OnPostExitLevel() override;
     void OnPauseLevel() override;
     void OnUnpauseLevel() override;
+    void OnBallNavActive() override;
     void OnCounterActive() override;
     void OnCounterInactive() override;
 

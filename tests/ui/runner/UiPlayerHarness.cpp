@@ -547,6 +547,12 @@ std::vector<InputSequence> MakeInputSequences(InputProfile profile) {
         if (profile == InputProfile::LevelOne)
             sequences.push_back({"input-start-to-level-1", InputSequenceKind::Fixed, {VK_RETURN}});
         sequences.push_back({"input-dismiss-tutorial", InputSequenceKind::Fixed, {'Q'}});
+        if (profile == InputProfile::CustomMap) {
+            sequences.push_back({"input-level-to-pause", InputSequenceKind::Fixed, {VK_ESCAPE}});
+            sequences.push_back({"input-pause-to-main", InputSequenceKind::Menu, {}});
+            sequences.push_back({"input-confirm-exit-level", InputSequenceKind::Fixed, {VK_LEFT, VK_RETURN}});
+            sequences.push_back({"input-return-to-start", InputSequenceKind::Menu, {}});
+        }
     }
     return sequences;
 }

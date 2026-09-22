@@ -27,6 +27,13 @@ void RegisterCustomMapsScenario(ImGuiTestEngine *engine) {
         ctx->ItemClick("**/BMLUiAutomation");
         IM_CHECK(WaitForItemToDisappear(ctx, "**/##SearchBar"));
         IM_CHECK(WaitForLevelStart(ctx));
+        IM_CHECK(RunNativeMenuTransition(ctx, NativeMenuTransition::LevelToPause));
+        IM_CHECK(RunNativeMenuTransition(ctx, NativeMenuTransition::PauseToMain));
+        IM_CHECK(RunNativeMenuTransition(ctx, NativeMenuTransition::ConfirmExitLevel));
+        IM_CHECK(RunNativeMenuTransition(ctx, NativeMenuTransition::ReturnToStart));
+        IM_CHECK(WaitForItem(ctx, "**/Enter_Custom_Maps"));
+        ctx->ItemClick("**/Enter_Custom_Maps");
+        IM_CHECK(WaitForItem(ctx, "**/##SearchBar"));
     };
 }
 

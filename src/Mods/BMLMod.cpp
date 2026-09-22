@@ -320,6 +320,12 @@ void BMLMod::OnPostExitLevel() {
     m_HUD.OnLevelExit();
 }
 
+void BMLMod::OnBallNavActive() {
+#if BML_ENABLE_UI_AUTOMATION
+    UiAutomation::OnBallNavActive();
+#endif
+}
+
 void BMLMod::OnPauseLevel() {
     m_HUD.PauseSRTimer();
 }

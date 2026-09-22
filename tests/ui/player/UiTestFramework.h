@@ -14,7 +14,11 @@ inline constexpr char ScenarioCategory[] = "ui_scenarios";
 enum class NativeMenuTransition {
     OptionsToMain,
     MainToStart,
+    ReturnToStart,
     StartToLevelOne,
+    LevelToPause,
+    PauseToMain,
+    ConfirmExitLevel,
 };
 
 enum class SurfaceCapture {

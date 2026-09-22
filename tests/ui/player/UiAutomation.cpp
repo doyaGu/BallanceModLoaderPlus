@@ -34,7 +34,11 @@ enum class PlayerAction : int {
     None,
     OptionsToMain,
     MainToStart,
+    ReturnToStart,
     StartToLevelOne,
+    LevelToPause,
+    PauseToMain,
+    ConfirmExitLevel,
     CaptureModMenu,
     CaptureHud,
     CaptureCustomMaps,
@@ -67,6 +71,12 @@ constexpr NativeMenuRoute OptionsToMainRoute = {
 constexpr NativeMenuRoute MainToStartRoute = {
     "input-main-to-start", "Menu_Main", "Main Menu",
     "M_Main_But_", "M_Main_But_1"};
+constexpr NativeMenuRoute ReturnToStartRoute = {
+    "input-return-to-start", "Menu_Main", "Main Menu",
+    "M_Main_But_", "M_Main_But_1"};
+constexpr NativeMenuRoute PauseToMainRoute = {
+    "input-pause-to-main", "Menu_Pause", "Pause Menu",
+    "M_Pause_But_", "M_Pause_But_4"};
 constexpr NativeMenuRoute MainToOptionsRoute = {
     "input-main-to-options", "Menu_Main", "Main Menu",
     "M_Main_But_", "M_Main_But_3"};
@@ -102,6 +112,7 @@ std::atomic_bool g_NativeReturnSucceeded = false;
 std::atomic_bool g_LevelStarted = false;
 std::atomic_bool g_LevelObserved = false;
 std::atomic_bool g_LevelSucceeded = false;
+std::atomic_bool g_ControlReady = false;
 int g_InitialHudMode = 0;
 
 std::atomic_int g_PlayerAction = static_cast<int>(PlayerAction::None);
@@ -349,6 +360,10 @@ const char *PlayerActionCheckpoint(PlayerAction action) {
     switch (action) {
     case PlayerAction::StartToLevelOne:
         return "input-start-to-level-1";
+    case PlayerAction::LevelToPause:
+        return "input-level-to-pause";
+    case PlayerAction::ConfirmExitLevel:
+        return "input-confirm-exit-level";
     case PlayerAction::CaptureModMenu:
         return "capture-mod-menu";
     case PlayerAction::CaptureHud:
@@ -372,7 +387,9 @@ bool IsCaptureAction(PlayerAction action) {
 
 bool IsMenuAction(PlayerAction action) {
     return action == PlayerAction::OptionsToMain ||
-        action == PlayerAction::MainToStart;
+        action == PlayerAction::MainToStart ||
+        action == PlayerAction::ReturnToStart ||
+        action == PlayerAction::PauseToMain;
 }
 
 const char *SurfaceName(PlayerAction action) {
@@ -408,11 +425,8 @@ void ProcessPlayerAction() {
             }
             break;
         case PlayerAction::MainToStart:
-            if (IsEntityVisible("M_Main_But_1") && !IsEntityVisible("M_Options_But_4") &&
-                !IsEntityVisible("M_Start_But_01")) {
-                const std::optional<int> row = MenuRow("Menu_Main", "Main Menu");
-                succeeded = row.has_value();
-            }
+        case PlayerAction::ReturnToStart:
+            succeeded = true;
             break;
         case PlayerAction::StartToLevelOne:
             if (IsEntityVisible("M_Start_But_01")) {
@@ -421,6 +435,21 @@ void ProcessPlayerAction() {
                     g_Logger->Info("UI automation: native_transition=start-to-level-1 "
                                    "requested=true input=keyboard");
                 }
+                succeeded = true;
+            }
+            break;
+        case PlayerAction::LevelToPause:
+            if (g_LevelObserved.load(std::memory_order_acquire)) {
+                g_ActivePlayerCheckpoint = PlayerActionCheckpoint(action);
+                succeeded = true;
+            }
+            break;
+        case PlayerAction::PauseToMain:
+            succeeded = true;
+            break;
+        case PlayerAction::ConfirmExitLevel:
+            if (IsEntityVisible("M_YesNo_But_Yes")) {
+                g_ActivePlayerCheckpoint = PlayerActionCheckpoint(action);
                 succeeded = true;
             }
             break;
@@ -470,6 +499,15 @@ void ProcessPlayerAction() {
         progress = AdvanceMenuInput(OptionsToMainRoute);
     } else if (g_ActivePlayerAction == PlayerAction::MainToStart) {
         progress = AdvanceMenuInput(MainToStartRoute);
+    } else if (g_ActivePlayerAction == PlayerAction::ReturnToStart) {
+        progress = AdvanceMenuInput(ReturnToStartRoute);
+    } else if (g_ActivePlayerAction == PlayerAction::LevelToPause) {
+        if (!g_ControlReady.load(std::memory_order_acquire))
+            return;
+        progress = AdvanceCheckpoint(UiAutomationSession::CheckpointKind::Input,
+                                     g_ActivePlayerCheckpoint.c_str());
+    } else if (g_ActivePlayerAction == PlayerAction::PauseToMain) {
+        progress = AdvanceMenuInput(PauseToMainRoute);
     } else {
         const UiAutomationSession::CheckpointKind kind =
             IsCaptureAction(g_ActivePlayerAction)
@@ -715,8 +753,16 @@ bool RunNativeMenuTransition(ImGuiTestContext *ctx, NativeMenuTransition transit
         return RunPlayerAction(ctx, PlayerAction::OptionsToMain, timeout);
     case NativeMenuTransition::MainToStart:
         return RunPlayerAction(ctx, PlayerAction::MainToStart, timeout);
+    case NativeMenuTransition::ReturnToStart:
+        return RunPlayerAction(ctx, PlayerAction::ReturnToStart, timeout);
     case NativeMenuTransition::StartToLevelOne:
         return RunPlayerAction(ctx, PlayerAction::StartToLevelOne, timeout);
+    case NativeMenuTransition::LevelToPause:
+        return RunPlayerAction(ctx, PlayerAction::LevelToPause, timeout);
+    case NativeMenuTransition::PauseToMain:
+        return RunPlayerAction(ctx, PlayerAction::PauseToMain, timeout);
+    case NativeMenuTransition::ConfirmExitLevel:
+        return RunPlayerAction(ctx, PlayerAction::ConfirmExitLevel, timeout);
     }
     return false;
 }
@@ -1061,6 +1107,7 @@ void Start(BMLMod &mod) {
     g_LevelStarted.store(false, std::memory_order_relaxed);
     g_LevelObserved.store(false, std::memory_order_relaxed);
     g_LevelSucceeded.store(false, std::memory_order_relaxed);
+    g_ControlReady.store(false, std::memory_order_relaxed);
     g_PlayerAction.store(static_cast<int>(PlayerAction::None), std::memory_order_relaxed);
     g_PlayerActionCompleted.store(0, std::memory_order_relaxed);
     g_PlayerActionSucceeded.store(false, std::memory_order_relaxed);
@@ -1074,8 +1121,14 @@ void OnStartLevel() {
     if (!g_Engine && !g_Armed)
         return;
     g_LevelStarted.store(true, std::memory_order_release);
+    g_ControlReady.store(false, std::memory_order_release);
     if (g_Logger)
         g_Logger->Info("UI automation: native_transition=level-entry observed=true");
+}
+
+void OnBallNavActive() {
+    if (g_LevelStarted.load(std::memory_order_acquire))
+        g_ControlReady.store(true, std::memory_order_release);
 }
 
 void AdvanceFrame() {
@@ -1170,6 +1223,7 @@ void Shutdown() {
     g_NativeReturnSucceeded.store(false, std::memory_order_relaxed);
     g_LevelStarted.store(false, std::memory_order_relaxed);
     g_LevelObserved.store(false, std::memory_order_relaxed);
+    g_ControlReady.store(false, std::memory_order_relaxed);
     g_LevelSucceeded.store(false, std::memory_order_relaxed);
     g_PlayerAction.store(static_cast<int>(PlayerAction::None), std::memory_order_relaxed);
     g_PlayerActionCompleted.store(0, std::memory_order_relaxed);
