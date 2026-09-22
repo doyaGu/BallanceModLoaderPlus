@@ -591,7 +591,7 @@ struct ModMenuPresentation::State {
 
         if (!commentOnPage)
             comment.Clear();
-        if (FailureText(model)[0] == '\0')
+        if (FailureText(model)[0] == '\0' && !ImGui::GetIO().WantTextInput)
             comment.Draw(viewport, "ModOptionComment", SettingCommentPanel);
     }
 
