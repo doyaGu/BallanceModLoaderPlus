@@ -20,6 +20,10 @@ enters GitHub Actions.
 - If channel validation fails, revert the channel commit. Do not move the tag or
   silently replace files in a published release.
 
+Tags such as `v0.3.14-alpha.1` produce the same five unsigned CI artifacts for
+candidate testing. They are not accepted by the signing or `stable.json`
+publication scripts. The steps below apply to the final `vX.Y.Z` tag.
+
 ## 1. Prepare the release commit
 
 1. Set `project(... VERSION X.Y.Z ...)` in `CMakeLists.txt`.

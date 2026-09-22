@@ -32,6 +32,19 @@ Assert-ContainsLiteral `
     -Expected 'BMLPlus-${{ github.ref_name }}-Unsigned-Release-Files' `
     -Message 'Tag CI must retain four ZIP files plus the unsigned updater manifest under a predictable name.'
 
+Assert-ContainsLiteral `
+    -Text $workflow `
+    -Expected '(?<base>\d+\.\d+\.\d+)' `
+    -Message 'Release CI must capture the numeric project version separately from an optional prerelease suffix.'
+Assert-ContainsLiteral `
+    -Text $workflow `
+    -Expected '(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?' `
+    -Message 'Release CI must accept versioned prerelease tags.'
+Assert-ContainsLiteral `
+    -Text $workflow `
+    -Expected '$version = $Matches.base' `
+    -Message 'Release CI must compare CMake project VERSION with the numeric part of the tag.'
+
 if ($workflow.Contains('draft-release:', [System.StringComparison]::Ordinal) -or
     $workflow.Contains('gh release create', [System.StringComparison]::Ordinal) -or
     $workflow.Contains('${{ github.token }}', [System.StringComparison]::Ordinal)) {

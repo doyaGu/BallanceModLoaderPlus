@@ -35,15 +35,15 @@ jobs:
         shell: pwsh
         run: |
           $tag = $env:GITHUB_REF_NAME
-          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
-            throw "Release tag must use vX.Y.Z format: $tag"
+          if ($tag -notmatch '^v(?<base>\d+\.\d+\.\d+)(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$') {
+            throw "Release tag must use vX.Y.Z or vX.Y.Z-prerelease format: $tag"
           }
 
           # CMakeLists.txt is the single source of truth for the release
           # version. The READMEs deliberately carry no version marker; they
           # link to the documentation site and the Releases page instead, so
           # they must not be released-version dependent.
-          $version = $tag.Substring(1)
+          $version = $Matches.base
           $cmake = Get-Content -LiteralPath 'CMakeLists.txt' -Raw
           if ($cmake -notmatch "VERSION\s+$([regex]::Escape($version))(\s|$)") {
             throw "CMakeLists.txt project VERSION must be $version"

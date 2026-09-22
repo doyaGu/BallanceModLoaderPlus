@@ -3,13 +3,17 @@ Set-StrictMode -Version Latest
 function Get-BMLReleaseFileNames {
     param(
         [Parameter(Mandatory = $true)]
-        [ValidatePattern('^v\d+\.\d+\.\d+$')]
+        [ValidatePattern('^v\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$')]
         [string]$Version,
 
         [Parameter(Mandatory = $true)]
         [ValidateSet('Unsigned', 'Signed')]
         [string]$SignatureState
     )
+
+    if ($SignatureState -eq 'Signed' -and $Version -notmatch '^v\d+\.\d+\.\d+$') {
+        throw "Prerelease packages cannot be treated as signed stable release files: $Version"
+    }
 
     $unsigned = @(
         "BMLPlus-$Version.zip",
@@ -49,7 +53,7 @@ function Assert-BMLReleaseFiles {
         [string]$Directory,
 
         [Parameter(Mandatory = $true)]
-        [ValidatePattern('^v\d+\.\d+\.\d+$')]
+        [ValidatePattern('^v\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$')]
         [string]$Version,
 
         [Parameter(Mandatory = $true)]
@@ -152,7 +156,7 @@ function Assert-BMLUpdaterManifestMatchesPackage {
         [string]$Directory,
 
         [Parameter(Mandatory = $true)]
-        [ValidatePattern('^v\d+\.\d+\.\d+$')]
+        [ValidatePattern('^v\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$')]
         [string]$Version
     )
 

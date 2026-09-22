@@ -138,6 +138,40 @@ try {
         -Path (Join-Path $unsigned $manifestName) `
         -Text (($manifest | ConvertTo-Json -Depth 6) + "`n")
 
+    $prereleaseVersion = 'v1.2.3-alpha.1'
+    $prerelease = Join-Path $tempRoot 'prerelease'
+    New-Item -ItemType Directory -Path $prerelease | Out-Null
+    foreach ($file in Get-ChildItem -LiteralPath $unsigned -File) {
+        $prereleaseName = $file.Name.Replace($version, $prereleaseVersion)
+        Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $prerelease $prereleaseName)
+    }
+    $prereleaseUpdaterName = "BMLPlus-Update-$prereleaseVersion.zip"
+    $prereleaseManifestName = "BMLPlus-Update-$prereleaseVersion.manifest.json"
+    $prereleaseManifest = Get-Content `
+        -LiteralPath (Join-Path $prerelease $prereleaseManifestName) -Raw | ConvertFrom-Json
+    $prereleaseManifest.version = $prereleaseVersion
+    $prereleaseManifest.package.fileName = $prereleaseUpdaterName
+    Write-BMLUtf8NoBomText `
+        -Path (Join-Path $prerelease $prereleaseManifestName) `
+        -Text (($prereleaseManifest | ConvertTo-Json -Depth 6) + "`n")
+    Assert-BMLReleaseFiles `
+        -Directory $prerelease -Version $prereleaseVersion -SignatureState Unsigned
+    Assert-BMLUpdaterManifestMatchesPackage `
+        -Directory $prerelease -Version $prereleaseVersion
+
+    $signedPrereleaseRejected = $false
+    try {
+        Get-BMLReleaseFileNames `
+            -Version $prereleaseVersion -SignatureState Signed | Out-Null
+    } catch {
+        $signedPrereleaseRejected = $_.Exception.Message.Contains(
+            'cannot be treated as signed stable release files',
+            [System.StringComparison]::Ordinal)
+    }
+    Assert-True `
+        -Condition $signedPrereleaseRejected `
+        -Message 'Prerelease packages must remain outside the signed stable release flow.'
+
     $zipHashes = @{}
     foreach ($zip in Get-ChildItem -LiteralPath $unsigned -Filter '*.zip') {
         $zipHashes[$zip.Name] = Get-BMLFileSha256 -Path $zip.FullName
