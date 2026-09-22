@@ -8,7 +8,9 @@ param(
 
     [string]$NativeImcSmokeMod,
 
-    [switch]$LegacyNativeSmoke,
+    [string]$NativeModsDir,
+
+    [switch]$NativeModSmoke,
 
     [ValidateRange(1, 600)]
     [int]$PlayerSeconds = 30,
@@ -279,25 +281,21 @@ if (-not $HotReloadStateSmoke -and $HotReloadStateScenario -ne 'Success') {
 
 $layout = Get-BMLProjectLayout
 $scriptSmokeRoot = Join-Path $layout.RepoRoot 'tests\smoke\AngelScript'
-$legacyNativeSmokeRoot = Join-Path $layout.RepoRoot 'packaging\runtime\ModLoader\Mods'
-$legacyNativeSmokeFixtures = @(
+$nativeModSmokeFixtures = @(
     [pscustomobject]@{
         FileName = 'CameraUtilities.bmodp'
         ModId = 'CameraUtilities'
-        ExpectedSha256 = '671D3A217D0E581B877FC9E2FD198030940D94F7615E839ED3CC7200411249C7'
-        LoadNeedle = 'Loading Mod CameraUtilities[Camera Utilities] v0.3.0'
+        LoadNeedle = 'Loading Mod CameraUtilities[Camera Utilities] v'
     },
     [pscustomobject]@{
         FileName = 'DebugUtilities.bmodp'
         ModId = 'DebugUtilities'
-        ExpectedSha256 = 'B5CB4C2EC69CF3EC26D0BFF46B5F1B446303F4893E3C3EFA3E90CF96D7A1D954'
-        LoadNeedle = 'Loading Mod DebugUtilities[Debug Utilities] v0.3.2'
+        LoadNeedle = 'Loading Mod DebugUtilities[Debug Utilities] v'
     },
     [pscustomobject]@{
         FileName = 'TravelMode.bmodp'
         ModId = 'TravelMode'
-        ExpectedSha256 = '353023505C04BAE008EFB8FB80B0247BF4B4CF4A9D82BE65EA8DFCB9F367C4BF'
-        LoadNeedle = 'Loading Mod TravelMode[Travel Mode] v0.3.0'
+        LoadNeedle = 'Loading Mod TravelMode[Travel Mode] v'
     }
 )
 $ballanceRootFull = [System.IO.Path]::GetFullPath($BallanceRoot)
@@ -335,15 +333,14 @@ if (-not $SkipInstall) {
 if ($NativeImcSmokeMod) {
     Assert-BMLPath -Path $NativeImcSmokeMod -Type Leaf
 }
-if ($LegacyNativeSmoke) {
-    foreach ($fixture in $legacyNativeSmokeFixtures) {
-        $fixturePath = Join-Path $legacyNativeSmokeRoot $fixture.FileName
+if ($NativeModSmoke) {
+    if (-not $NativeModsDir) {
+        throw '-NativeModSmoke requires -NativeModsDir pointing to the installed Mods directory.'
+    }
+    Assert-BMLPath -Path $NativeModsDir -Type Container
+    foreach ($fixture in $nativeModSmokeFixtures) {
+        $fixturePath = Join-Path $NativeModsDir $fixture.FileName
         Assert-BMLPath -Path $fixturePath -Type Leaf
-        $fixtureHash = Get-BMLOptionalHash $fixturePath
-        if (-not [string]::Equals($fixtureHash, $fixture.ExpectedSha256,
-                [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Legacy native smoke fixture hash changed: $($fixture.FileName). Expected $($fixture.ExpectedSha256), got $fixtureHash."
-        }
     }
 }
 if ($CKAngelScriptDll) {
@@ -355,7 +352,7 @@ $backupPath = $null
 $angelScriptBackupPath = $null
 $nativeImcSmokeBackupPath = $null
 $retiredNativeInteropSmokeBackupPath = $null
-$legacyNativeSmokeInstall = [System.Collections.Generic.List[object]]::new()
+$nativeModSmokeInstall = [System.Collections.Generic.List[object]]::new()
 $process = $null
 $playerExitCode = $null
 $playerTimedOut = $false
@@ -418,8 +415,8 @@ $restoreInstall = {
                 Remove-Item -LiteralPath $installedNativeImcSmokeMod -Force
             }
         }
-        if (-not $KeepInstalled -and -not $SkipSmokeInstall -and $LegacyNativeSmoke) {
-            foreach ($installedFixture in $legacyNativeSmokeInstall) {
+        if (-not $KeepInstalled -and -not $SkipSmokeInstall -and $NativeModSmoke) {
+            foreach ($installedFixture in $nativeModSmokeInstall) {
                 if ($installedFixture.BackupPath -and (Test-Path -LiteralPath $installedFixture.BackupPath)) {
                     Copy-FileWithRetry -Source $installedFixture.BackupPath -Destination $installedFixture.Destination
                     Remove-Item -LiteralPath $installedFixture.BackupPath -Force
@@ -475,23 +472,22 @@ if (-not $SkipSmokeInstall) {
         Copy-Item -LiteralPath $NativeImcSmokeMod -Destination $installedNativeImcSmokeMod -Force
     }
 
-    if ($LegacyNativeSmoke) {
-        foreach ($fixture in $legacyNativeSmokeFixtures) {
-            $source = Join-Path $legacyNativeSmokeRoot $fixture.FileName
+    if ($NativeModSmoke) {
+        foreach ($fixture in $nativeModSmokeFixtures) {
+            $source = Join-Path $NativeModsDir $fixture.FileName
             $destination = Join-Path $modsDir $fixture.FileName
             $fixtureBackupPath = $null
             if (Test-Path -LiteralPath $destination) {
                 $fixtureBackupPath = "$destination.bak-$timestamp"
                 Copy-Item -LiteralPath $destination -Destination $fixtureBackupPath
             }
-            $legacyNativeSmokeInstall.Add([pscustomobject]@{
+            $nativeModSmokeInstall.Add([pscustomobject]@{
                 FileName = $fixture.FileName
                 ModId = $fixture.ModId
                 Source = $source
                 Destination = $destination
                 BackupPath = $fixtureBackupPath
                 SourceHash = Get-BMLOptionalHash $source
-                ExpectedSha256 = $fixture.ExpectedSha256
                 InstalledHashBefore = Get-BMLOptionalHash $destination
             })
             Copy-Item -LiteralPath $source -Destination $destination -Force
@@ -663,10 +659,10 @@ if (-not $SkipPlayer) {
         Add-SmokeCheck $checks 'native-exit-callback' (Test-SmokeTextContains $modLogText 'BML native IMC smoke exit callback: received=true passed=true') 'BML native IMC smoke exit callback: received=true passed=true'
         Add-SmokeCheck $checks 'native-imc-unload' (Test-SmokeTextContains $modLogText 'BML native IMC smoke unloaded') 'BML native IMC smoke unloaded'
     }
-    if ($LegacyNativeSmoke) {
-        foreach ($fixture in $legacyNativeSmokeFixtures) {
+    if ($NativeModSmoke) {
+        foreach ($fixture in $nativeModSmokeFixtures) {
             $fileStem = [System.IO.Path]::GetFileNameWithoutExtension($fixture.FileName)
-            Add-SmokeCheck $checks "legacy-native-$($fixture.ModId)-loaded" (Test-SmokeTextContains $modLogText $fixture.LoadNeedle) $fixture.LoadNeedle
+            Add-SmokeCheck $checks "native-$($fixture.ModId)-loaded" (Test-SmokeTextContains $modLogText $fixture.LoadNeedle) $fixture.LoadNeedle
 
             $lifecycleFailure =
                 (Test-SmokeTextContains $modLogText "Failed to load $fileStem.") -or
@@ -674,7 +670,7 @@ if (-not $SkipPlayer) {
                 (Test-SmokeTextContains $modLogText "Cannot initialize Mod $($fixture.ModId):") -or
                 (Test-SmokeTextContains $modLogText "Exception in mod $($fixture.ModId) unload callback") -or
                 (Test-SmokeTextContains $modLogText "Failed to unload mod $($fixture.ModId).")
-            Add-SmokeCheck $checks "legacy-native-$($fixture.ModId)-lifecycle" (-not $lifecycleFailure) "no load, duplicate, dependency, unload callback, or unload failure for $($fixture.ModId)"
+            Add-SmokeCheck $checks "native-$($fixture.ModId)-lifecycle" (-not $lifecycleFailure) "no load, duplicate, dependency, unload callback, or unload failure for $($fixture.ModId)"
         }
     }
     Add-SmokeCheck $checks 'goodbye' (Test-SmokeTextContains $modLogText 'Goodbye!') 'Goodbye!'
@@ -712,8 +708,8 @@ $result = [pscustomobject]@{
     NativeImcSmokeBackupPath = $nativeImcSmokeBackupPath
     RetiredNativeInteropSmokeMod = $retiredNativeInteropSmokeMod
     RetiredNativeInteropSmokeBackupPath = $retiredNativeInteropSmokeBackupPath
-    LegacyNativeSmoke = [bool]$LegacyNativeSmoke
-    LegacyNativeSmokeInstall = @($legacyNativeSmokeInstall | ForEach-Object {
+    NativeModSmoke = [bool]$NativeModSmoke
+    NativeModSmokeInstall = @($nativeModSmokeInstall | ForEach-Object {
         [pscustomobject]@{
             FileName = $_.FileName
             ModId = $_.ModId
@@ -721,7 +717,6 @@ $result = [pscustomobject]@{
             Destination = $_.Destination
             BackupPath = $_.BackupPath
             SourceHash = $_.SourceHash
-            ExpectedSha256 = $_.ExpectedSha256
             InstalledHashBefore = $_.InstalledHashBefore
             InstalledHashAfter = Get-BMLOptionalHash $_.Destination
         }
