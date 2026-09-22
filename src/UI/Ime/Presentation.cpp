@@ -605,31 +605,29 @@ namespace Overlay::Ime::Presentation {
             minimumWidth,
             std::min(workWidth,
                      viewport->WorkSize.x * MaximumRailWidthRatio));
-        const float preferredWidth = preferredPlacement
-            ? preferredPlacement->width
-            : 0.0f;
-        const float windowWidth = preferredPlacement
-            ? std::clamp(preferredWidth, 1.0f, workWidth)
-            : std::clamp(prepared.desiredWidth, minimumWidth, fallbackLimit);
-        const ImVec2 windowSize(windowWidth, verticalFit.surfaceHeight);
+        Layout::HorizontalRail rail;
+        if (preferredPlacement) {
+            rail.width = std::clamp(preferredPlacement->width, 1.0f, workWidth);
+            rail.x = std::clamp(preferredPlacement->position.x, workMin.x,
+                                std::max(workMin.x, workMax.x - rail.width));
+        } else {
+            rail = Layout::FitHorizontalRail(
+                imeData.InputPos.x, prepared.desiredWidth, minimumWidth,
+                fallbackLimit, workMin.x, workMax.x);
+        }
+        const ImVec2 windowSize(rail.width, verticalFit.surfaceHeight);
 
-        const float anchorX = preferredPlacement
-            ? preferredPlacement->position.x
-            : imeData.InputPos.x;
         const float anchorTop = imeData.InputPos.y;
         const float anchorBottom = preferredPlacement
             ? preferredPlacement->position.y
             : imeData.InputPos.y + imeData.InputLineHeight + AnchorGap;
-        const float x = std::clamp(
-            anchorX, workMin.x,
-            std::max(workMin.x, workMax.x - windowSize.x));
         float y = anchorBottom;
         if (!preferredPlacement && y + windowSize.y > workMax.y)
             y = anchorTop - AnchorGap - windowSize.y;
         y = std::clamp(y, workMin.y,
                        std::max(workMin.y, workMax.y - windowSize.y));
 
-        ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
+        ImGui::SetNextWindowPos(ImVec2(rail.x, y), ImGuiCond_Always);
         ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
         ImGui::PushStyleColor(ImGuiCol_WindowBg, RailBackgroundColor);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);

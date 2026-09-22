@@ -33,6 +33,11 @@ namespace Overlay::Ime::Presentation::Layout {
         float surfaceHeight = 0.0f;
     };
 
+    struct HorizontalRail {
+        float x = 0.0f;
+        float width = 0.0f;
+    };
+
     struct CandidatePage {
         std::size_t listIndex = 0;
         std::uint32_t begin = 0;
@@ -46,6 +51,8 @@ namespace Overlay::Ime::Presentation::Layout {
     CompositionFit FitComposition(const Snapshot &snapshot, float maxWidth, float ellipsisWidth,
                                   MeasureText measure, const void *measureContext = nullptr);
     VerticalTextFit FitTextVertically(float lineHeight, float padding, GlyphVerticalBounds glyphBounds) noexcept;
+    HorizontalRail FitHorizontalRail(float anchorX, float desiredWidth, float minimumWidth,
+                                    float maximumWidth, float workMinX, float workMaxX) noexcept;
     std::vector<CandidatePage> BuildCandidatePages(const Snapshot &snapshot);
 }
 

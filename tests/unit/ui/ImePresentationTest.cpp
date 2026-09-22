@@ -81,6 +81,58 @@ TEST(ImePresentationTest, VerticalTextFitKeepsTheNormalRowHeight) {
     EXPECT_FLOAT_EQ(fit.surfaceHeight, 29.0f);
 }
 
+TEST(ImePresentationTest, CandidateRailShrinksBeforeMovingAwayFromCaret) {
+    const float minimumWidth = 40.0f;
+    const float workMinX = minimumWidth / 4.0f;
+    const float workMaxX = workMinX + minimumWidth * 3.0f;
+    const float caretX = workMinX + minimumWidth;
+    const float desiredWidth = minimumWidth * 2.5f;
+    const auto rail = Overlay::Ime::Presentation::Layout::FitHorizontalRail(
+        caretX, desiredWidth, minimumWidth, desiredWidth, workMinX, workMaxX);
+
+    EXPECT_FLOAT_EQ(rail.x, caretX);
+    EXPECT_FLOAT_EQ(rail.width, workMaxX - caretX);
+}
+
+TEST(ImePresentationTest, CandidateRailUsesMinimumWidthAtRightEdge) {
+    const float minimumWidth = 40.0f;
+    const float workMinX = minimumWidth / 4.0f;
+    const float workMaxX = workMinX + minimumWidth * 3.0f;
+    const float caretX = workMaxX - minimumWidth / 2.0f;
+    const auto rail = Overlay::Ime::Presentation::Layout::FitHorizontalRail(
+        caretX, workMaxX - workMinX, minimumWidth,
+        workMaxX - workMinX, workMinX, workMaxX);
+
+    EXPECT_FLOAT_EQ(rail.x, workMaxX - minimumWidth);
+    EXPECT_FLOAT_EQ(rail.width, minimumWidth);
+    EXPECT_GE(caretX, rail.x);
+    EXPECT_LE(caretX, rail.x + rail.width);
+}
+
+TEST(ImePresentationTest, CandidateRailFitsNarrowWorkArea) {
+    const float minimumWidth = 40.0f;
+    const float workMinX = minimumWidth / 4.0f;
+    const float workMaxX = workMinX + minimumWidth / 2.0f;
+    const float workWidth = workMaxX - workMinX;
+    const auto rail = Overlay::Ime::Presentation::Layout::FitHorizontalRail(
+        workMinX + workWidth / 2.0f, minimumWidth * 2.0f,
+        workWidth, workWidth, workMinX, workMaxX);
+
+    EXPECT_FLOAT_EQ(rail.x, workMinX);
+    EXPECT_FLOAT_EQ(rail.width, workWidth);
+}
+
+TEST(ImePresentationTest, CandidateRailHandlesWorkAreaSmallerThanMargins) {
+    const float minimumWidth = 1.0f;
+    const float workMinX = minimumWidth * 8.0f;
+    const auto rail = Overlay::Ime::Presentation::Layout::FitHorizontalRail(
+        workMinX, minimumWidth * 2.0f, minimumWidth,
+        minimumWidth, workMinX, workMinX - minimumWidth);
+
+    EXPECT_FLOAT_EQ(rail.x, workMinX);
+    EXPECT_FLOAT_EQ(rail.width, minimumWidth);
+}
+
 TEST(ImePresentationTest, CandidatePagesUseImePageBoundsAndSelectedList) {
     Overlay::Ime::Snapshot snapshot;
     Overlay::Ime::CandidateListSnapshot first;

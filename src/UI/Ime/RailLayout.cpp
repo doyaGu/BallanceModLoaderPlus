@@ -164,6 +164,17 @@ namespace Overlay::Ime::Presentation::Layout {
         return fit;
     }
 
+    HorizontalRail FitHorizontalRail(float anchorX, float desiredWidth, float minimumWidth,
+                                    float maximumWidth, float workMinX, float workMaxX) noexcept {
+        workMaxX = std::max(workMinX, workMaxX);
+        const float width = std::clamp(desiredWidth, minimumWidth, maximumWidth);
+        const float caretX = std::clamp(anchorX, workMinX, workMaxX);
+        const float roomRight = workMaxX - caretX;
+        if (roomRight >= minimumWidth)
+            return {caretX, std::min(width, roomRight)};
+        return {std::max(workMinX, workMaxX - minimumWidth), minimumWidth};
+    }
+
     std::vector<CandidatePage> BuildCandidatePages(const Snapshot &snapshot) {
         std::vector<CandidatePage> pages;
         pages.reserve(snapshot.candidateLists.size());
