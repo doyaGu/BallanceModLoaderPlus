@@ -56,7 +56,7 @@ void MapCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
 
     ReportFailure(*bml,
-                  "Usage: map list [name fragment] | load \"<path relative to ModLoader/Maps>\"");
+                  "Usage: map list [name fragment] | map load \"<path relative to ModLoader/Maps>\"");
 }
 
 const std::vector<std::string> MapCommand::GetTabCompletion(
