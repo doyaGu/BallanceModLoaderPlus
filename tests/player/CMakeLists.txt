@@ -89,6 +89,14 @@ bml_add_player_test(InterfaceConsumerTest
         ${BML_PLAYER_PROBE_SOURCES}
 )
 
+# A real Native Mod consumer for the public C++ authoring facades. The ordinary
+# Player runner covers registration, dispatch, shared data, and cleanup; the UI
+# mod-menu scenario additionally enters and draws the contributed page.
+bml_add_player_test(PublicAuthoringTest
+        PublicAuthoringTest.cpp
+        ${BML_PLAYER_PROBE_SOURCES}
+)
+
 # A single .imc interface drives both the native and ASMod facades. The probe
 # exercises RPC and topic traffic in both directions inside the shipped Player.
 bml_add_player_test(ScriptImcInteropTest

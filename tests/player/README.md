@@ -15,10 +15,11 @@ powershell -ExecutionPolicy Bypass -File tests/player/Invoke-ExecuteBBTest.ps1 `
 
 Other focused runners are `Invoke-BehaviorAcceptanceTest.ps1`,
 `Invoke-GameplayRouteTest.ps1`, `Invoke-InterfaceProviderTest.ps1`,
-`Invoke-NewBallTypeTest.ps1`, `Invoke-NativeModProfilesTest.ps1`, and
-`Invoke-ScriptImcInteropTest.ps1`. Read each runner's required build targets
-before invoking it. `GameplayRouteTest` currently reports SKIPPED while its
-authored route is under review.
+`Invoke-NewBallTypeTest.ps1`, `Invoke-NativeModProfilesTest.ps1`,
+`Invoke-PublicAuthoringTest.ps1`, and `Invoke-ScriptImcInteropTest.ps1`. Read
+each runner's required build targets before invoking it. `GameplayRouteTest`
+is not part of the 0.3.14 release scope and reports SKIPPED while its authored
+route is under review; a skipped result is never release evidence.
 
 `PlayerFlowDriver` drives the retail menu and level flow. Each installed probe
 Mod reports one result through `BMLPlayerProbeRead`; probes that need gameplay
