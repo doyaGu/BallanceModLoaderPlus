@@ -1,22 +1,9 @@
-#ifndef BML_COMMANDS_H
-#define BML_COMMANDS_H
+#ifndef BML_CONSOLE_BUILTIN_COMMANDS_H
+#define BML_CONSOLE_BUILTIN_COMMANDS_H
 
 #include "BML/ICommand.h"
 
 class Console;
-class HUDRuntime;
-
-class CommandBML : public ICommand {
-public:
-    CommandBML() = default;
-
-    std::string GetName() override { return "bml"; }
-    std::string GetAlias() override { return ""; }
-    std::string GetDescription() override { return "Show loader information and installed Mods."; }
-    bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
-};
 
 class CommandHelp : public ICommand {
 public:
@@ -28,20 +15,6 @@ public:
     bool IsCheat() override { return false; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
-};
-
-class CommandCheat : public ICommand {
-public:
-    CommandCheat() = default;
-
-    std::string GetName() override { return "cheat"; }
-    std::string GetAlias() override { return ""; }
-    std::string GetDescription() override { return "Enable or Disable Cheat Mode."; }
-    bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
-        return args.size() == 2 ? std::vector<std::string>({"true", "false"}) : std::vector<std::string>();
-    }
 };
 
 class CommandEcho : public ICommand {
@@ -115,44 +88,4 @@ public:
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
 };
 
-class CommandHUD : public ICommand {
-public:
-    explicit CommandHUD(HUDRuntime *hud);
-
-    std::string GetName() override { return "hud"; }
-    std::string GetAlias() override { return ""; }
-    std::string GetDescription() override { return "Commands for HUD."; }
-    bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
-
-private:
-    HUDRuntime *m_HUD;
-    int m_State;
-};
-
-class CommandPalette : public ICommand {
-public:
-    CommandPalette() = default;
-
-    std::string GetName() override { return "palette"; }
-    std::string GetAlias() override { return "pal"; }
-    std::string GetDescription() override { return "Manage ANSI 256-color palette."; }
-    bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
-};
-
-class CommandScript : public ICommand {
-public:
-    CommandScript() = default;
-
-    std::string GetName() override { return "script"; }
-    std::string GetAlias() override { return ""; }
-    std::string GetDescription() override { return "Manage script mods."; }
-    bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
-};
-
-#endif // BML_COMMANDS_H
+#endif // BML_CONSOLE_BUILTIN_COMMANDS_H

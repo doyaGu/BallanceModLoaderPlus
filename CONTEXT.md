@@ -68,7 +68,9 @@ metadata, and enabled and hidden policy. An acquired command retains the
 lifetime token supplied by its adapter through pre-callbacks, execution,
 post-callbacks, or completion; removal only stops new lookup. Each adapter owns
 the final release of its foreign callback state. The Shell Executor owns
-parsing, expansion, pipelines, and conditional execution.
+parsing, expansion, pipelines, and conditional execution. Console owns shell
+and command-bar commands; feature commands live in their feature Modules and
+the Built-in Loader Mod composes their registration.
 
 **Shell Editing Analysis** — The private Built-in Console Module that interprets
 incomplete shell source at a caret. It owns quote context, replacement ranges,

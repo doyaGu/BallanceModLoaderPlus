@@ -1,5 +1,5 @@
-#ifndef BML_FONT_COMMAND_H
-#define BML_FONT_COMMAND_H
+#ifndef BML_UI_FONT_COMMAND_H
+#define BML_UI_FONT_COMMAND_H
 
 #include <string>
 #include <vector>
@@ -24,9 +24,9 @@ struct FontCommandContext {
     void WriteFallbackFaces(const std::vector<std::string> &faces) const;
 };
 
-class CommandFont final : public ICommand {
+class FontCommand final : public ICommand {
 public:
-    explicit CommandFont(FontCommandContext context);
+    explicit FontCommand(FontCommandContext context);
 
     std::string GetName() override { return "font"; }
     std::string GetAlias() override { return ""; }
@@ -57,4 +57,4 @@ private:
     std::vector<std::string> m_KnownFaces;
 };
 
-#endif // BML_FONT_COMMAND_H
+#endif // BML_UI_FONT_COMMAND_H

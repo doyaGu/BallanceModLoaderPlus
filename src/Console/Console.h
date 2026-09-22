@@ -8,12 +8,10 @@
 #include "Console/MessageBoard.h"
 #include "Console/Shell/ShellHistory.h"
 
-class HUDRuntime;
 class IBML;
 class IConfig;
 class ILogger;
 class IProperty;
-struct FontCommandContext;
 
 namespace BML {
     class CommandContext;
@@ -25,8 +23,7 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, HUDRuntime &hud,
-                const FontCommandContext &fontContext);
+    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger);
     void OnUnload();
     void OnProcess();
     void CloseCommandBar();
@@ -59,7 +56,7 @@ private:
     void ApplyMessageBoardDisplayPolicy();
 
     static void OnCommandOutput(const char *message, void *userdata);
-    void RegisterCommands(IBML &bml, HUDRuntime &hud, const FontCommandContext &fontContext);
+    void RegisterCommands(IBML &bml);
 
     BML::CommandContext *m_Commands = nullptr;
     ILogger *m_Logger = nullptr;

@@ -136,12 +136,14 @@ set(BML_ROOT_SOURCES
 )
 
 set(BML_MODS_PRIVATE_HEADERS
+        Mods/BMLCommand.h
         Mods/BMLMod.h
         Mods/ModsMenuEntry.h
         Mods/NewBallTypeMod.h
 )
 
 set(BML_MODS_SOURCES
+        Mods/BMLCommand.cpp
         Mods/BMLMod.cpp
         Mods/ModsMenuEntry.cpp
         Mods/NewBallTypeMod.cpp
@@ -217,14 +219,13 @@ set(BML_CONFIG_SOURCES
 )
 
 set(BML_CONSOLE_PRIVATE_HEADERS
+        Console/BuiltinCommands.h
         Console/CommandBar.h
         Console/CommandBarTheme.h
         Console/CommandContext.h
         Console/CommandInput.h
-        Console/Commands.h
         Console/Console.h
         Console/ConsoleLayout.h
-        Console/FontCommand.h
         Console/MessageBoard.h
         Console/Shell/FilterCommands.h
         Console/Shell/ShellBuiltins.h
@@ -244,14 +245,13 @@ set(BML_CONSOLE_PRIVATE_HEADERS
 )
 
 set(BML_CONSOLE_SOURCES
+        Console/BuiltinCommands.cpp
         Console/CommandBar.cpp
         Console/CommandBarTheme.cpp
         Console/CommandContext.cpp
         Console/CommandInput.cpp
-        Console/Commands.cpp
         Console/Console.cpp
         Console/ConsoleLayout.cpp
-        Console/FontCommand.cpp
         Console/MessageBoard.cpp
         Console/Shell/FilterCommands.cpp
         Console/Shell/ShellBuiltins.cpp
@@ -271,6 +271,7 @@ set(BML_CONSOLE_SOURCES
 set(BML_HUD_PRIVATE_HEADERS
         HUD/FpsCounter.h
         HUD/HUD.h
+        HUD/HUDCommand.h
         HUD/HUDRuntime.h
         HUD/RealTimer.h
         HUD/SRTimer.h
@@ -280,6 +281,7 @@ set(BML_HUD_SOURCES
         HUD/FpsCounter.cpp
         HUD/HUD.cpp
         HUD/HUDAnimation.cpp
+        HUD/HUDCommand.cpp
         HUD/HUDRuntime.cpp
         HUD/RealTimer.cpp
         HUD/SRTimer.cpp
@@ -305,12 +307,14 @@ set(BML_CUSTOM_MAPS_SOURCES
 )
 
 set(BML_GAMEPLAY_PRIVATE_HEADERS
+        Gameplay/CheatCommand.h
         Gameplay/GameEventHooks.h
         Gameplay/GameplayTweaks.h
         Gameplay/GameSession.h
 )
 
 set(BML_GAMEPLAY_SOURCES
+        Gameplay/CheatCommand.cpp
         Gameplay/GameEventHooks.cpp
         Gameplay/GameplayTweaks.cpp
         Gameplay/GameSession.cpp
@@ -347,6 +351,7 @@ set(BML_UI_PRIVATE_HEADERS
         UI/AnsiText.h
         UI/BuiInternal.h
         UI/ColorCodec.h
+        UI/FontCommand.h
         UI/Ime/Presentation.h
         UI/Ime/NativePresentation.h
         UI/Ime/PresentationOwnership.h
@@ -360,6 +365,7 @@ set(BML_UI_PRIVATE_HEADERS
         UI/ImGuiStateRecovery.h
         UI/Overlay.h
         UI/OverlayPlatformInput.h
+        UI/PaletteCommand.h
         UI/ScriptImGui.h
 )
 
@@ -368,6 +374,7 @@ set(BML_UI_SOURCES
         UI/AnsiText.cpp
         UI/Bui.cpp
         UI/ColorCodec.cpp
+        UI/FontCommand.cpp
         UI/Ime/Presentation.cpp
         UI/Ime/NativePresentation.cpp
         UI/Ime/RailLayout.cpp
@@ -379,6 +386,7 @@ set(BML_UI_SOURCES
         UI/ImGuiStateRecovery.cpp
         UI/Overlay.cpp
         UI/OverlayPlatformInput.cpp
+        UI/PaletteCommand.cpp
         UI/ScriptImGui.cpp
         UI/Gui/Button.cpp
         UI/Gui/Element.cpp
@@ -524,10 +532,15 @@ set_source_files_properties(BML.rc PROPERTIES
         OBJECT_DEPENDS "${BML_BUILD_VERSION_HEADER}"
 )
 
-set(BML_ANGELSCRIPT_PRIVATE_HEADERS)
-set(BML_ANGELSCRIPT_SOURCES)
+# Keep the script command in both builds so the disabled variant can report why it is unavailable.
+set(BML_ANGELSCRIPT_PRIVATE_HEADERS
+        AngelScript/ScriptCommand.h
+)
+set(BML_ANGELSCRIPT_SOURCES
+        AngelScript/ScriptCommand.cpp
+)
 if (BML_WITH_ANGELSCRIPT)
-    set(BML_ANGELSCRIPT_PRIVATE_HEADERS
+    list(APPEND BML_ANGELSCRIPT_PRIVATE_HEADERS
             AngelScript/CKAngelScriptAdapter.h
             AngelScript/AngelScriptBindings.h
             AngelScript/AngelScriptImGuiBindings.h
@@ -577,7 +590,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptTimerService.h
             AngelScript/generated/BMLImGuiAngelScriptBindings.h
     )
-    set(BML_ANGELSCRIPT_SOURCES
+    list(APPEND BML_ANGELSCRIPT_SOURCES
             AngelScript/AngelScriptBindings.cpp
             AngelScript/CKAngelScriptAdapter.cpp
             AngelScript/ScriptApiSurface.cpp

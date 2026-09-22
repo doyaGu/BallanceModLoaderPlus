@@ -7,11 +7,9 @@
 #include "BML/ILogger.h"
 
 #include "UI/AnsiText.h"
-#include "HUD/HUDRuntime.h"
 #include "Console/CommandContext.h"
 #include "Console/CommandInput.h"
-#include "Console/Commands.h"
-#include "Console/FontCommand.h"
+#include "Console/BuiltinCommands.h"
 #include "Console/Shell/FilterCommands.h"
 #include "Console/Shell/ShellBuiltins.h"
 #include "Loader/ModContext.h"
@@ -175,8 +173,7 @@ void Console::ApplyMessageBoardDisplayPolicy() {
     });
 }
 
-void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, HUDRuntime &hud,
-                     const FontCommandContext &fontContext) {
+void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger) {
     m_Commands = &commands;
     m_Logger = &logger;
 
@@ -185,7 +182,7 @@ void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, 
         m_Logger->Warn("Could not register the built-in console output callback");
     }
 
-    RegisterCommands(bml, hud, fontContext);
+    RegisterCommands(bml);
     AnsiText::Renderer::DefaultPalette().SaveSampleIfMissing();
 
     const wchar_t *loaderDirectory = BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
@@ -284,7 +281,7 @@ void Console::OnCommandOutput(const char *message, void *userdata) {
     }
 }
 
-void Console::RegisterCommands(IBML &bml, HUDRuntime &hud, const FontCommandContext &fontContext) {
+void Console::RegisterCommands(IBML &bml) {
     ModContext *context = BML_GetModContext();
     BML::Shell::Environment &environment = context->GetShellEnvironment();
     bml.RegisterCommand(new BML::Shell::CommandSet(environment));
@@ -303,15 +300,9 @@ void Console::RegisterCommands(IBML &bml, HUDRuntime &hud, const FontCommandCont
     bml.RegisterCommand(new BML::Shell::CommandSort());
     bml.RegisterCommand(new BML::Shell::CommandUniq());
 
-    bml.RegisterCommand(new CommandBML());
-    bml.RegisterCommand(new CommandFont(fontContext));
     bml.RegisterCommand(new CommandHelp());
-    bml.RegisterCommand(new CommandCheat());
     bml.RegisterCommand(new CommandEcho());
     bml.RegisterCommand(new CommandClear(this));
     bml.RegisterCommand(new CommandHistory(this));
     bml.RegisterCommand(new CommandExit());
-    bml.RegisterCommand(new CommandHUD(&hud));
-    bml.RegisterCommand(new CommandPalette());
-    bml.RegisterCommand(new CommandScript());
 }

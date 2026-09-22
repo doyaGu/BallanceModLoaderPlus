@@ -1,4 +1,4 @@
-#include "Console/FontCommand.h"
+#include "UI/FontCommand.h"
 
 #include "Console/Shell/ShellIo.h"
 
@@ -175,19 +175,19 @@ void FontCommandContext::WriteFallbackFaces(const std::vector<std::string> &face
     FallbackFaces->SetString(value.c_str());
 }
 
-CommandFont::CommandFont(FontCommandContext context) : m_Context(context) {
+FontCommand::FontCommand(FontCommandContext context) : m_Context(context) {
     if (m_Context.Runtime)
         m_KnownFaces = m_Context.Runtime->ListLoaderFaces();
 }
 
-bool CommandFont::EnsureAvailable(IBML &bml) const {
+bool FontCommand::EnsureAvailable(IBML &bml) const {
     if (m_Context.IsComplete())
         return true;
     BML::Shell::Fail(&bml, "Font runtime is unavailable.\n");
     return false;
 }
 
-void CommandFont::ShowStatus(IBML &bml, bool includeHint) const {
+void FontCommand::ShowStatus(IBML &bml, bool includeHint) const {
     if (!EnsureAvailable(bml))
         return;
 
@@ -230,7 +230,7 @@ void CommandFont::ShowStatus(IBML &bml, bool includeHint) const {
         SendLine(bml, "Use 'font help' for configuration and diagnostics.");
 }
 
-void CommandFont::ShowSources(IBML &bml) const {
+void FontCommand::ShowSources(IBML &bml) const {
     if (!EnsureAvailable(bml))
         return;
 
@@ -251,7 +251,7 @@ void CommandFont::ShowSources(IBML &bml) const {
         SendLine(bml, "  Warning: " + diagnostic);
 }
 
-void CommandFont::ShowCatalog(IBML &bml) {
+void FontCommand::ShowCatalog(IBML &bml) {
     if (!EnsureAvailable(bml))
         return;
 
@@ -266,7 +266,7 @@ void CommandFont::ShowCatalog(IBML &bml) {
         SendLine(bml, "  " + face);
 }
 
-void CommandFont::CheckText(IBML &bml, const std::string &text) const {
+void FontCommand::CheckText(IBML &bml, const std::string &text) const {
     if (!EnsureAvailable(bml))
         return;
 
@@ -298,12 +298,12 @@ void CommandFont::CheckText(IBML &bml, const std::string &text) const {
                   utils::JoinString(missing, std::string(", ")));
 }
 
-void CommandFont::ShowSample(IBML &bml) const {
+void FontCommand::ShowSample(IBML &bml) const {
     SendLine(bml, std::string("Font sample: ") + SampleText);
     CheckText(bml, SampleText);
 }
 
-void CommandFont::ShowFallbacks(IBML &bml) const {
+void FontCommand::ShowFallbacks(IBML &bml) const {
     if (!EnsureAvailable(bml))
         return;
 
@@ -318,7 +318,7 @@ void CommandFont::ShowFallbacks(IBML &bml) const {
         SendLine(bml, "  " + std::to_string(index + 1) + ". " + faces[index]);
 }
 
-void CommandFont::ShowHelp(IBML &bml) const {
+void FontCommand::ShowHelp(IBML &bml) const {
     bml.SendIngameMessage(
         "Font commands:\n"
         "  font status                         Show the configured profile and runtime health.\n"
@@ -337,14 +337,14 @@ void CommandFont::ShowHelp(IBML &bml) const {
         "  font reset                          Restore the complete default profile.\n");
 }
 
-void CommandFont::ScheduleConfiguredProfile(IBML &bml, const std::string &message) {
+void FontCommand::ScheduleConfiguredProfile(IBML &bml, const std::string &message) {
     if (!EnsureAvailable(bml))
         return;
     m_Context.Runtime->Configure(m_Context.ReadProfile());
     SendLine(bml, message + " Font rebuild is pending.");
 }
 
-void CommandFont::ExecutePrimary(IBML &bml, const std::vector<std::string> &args) {
+void FontCommand::ExecutePrimary(IBML &bml, const std::vector<std::string> &args) {
     if (!EnsureAvailable(bml))
         return;
     if (args.size() == 2) {
@@ -364,7 +364,7 @@ void CommandFont::ExecutePrimary(IBML &bml, const std::vector<std::string> &args
     ScheduleConfiguredProfile(bml, "Primary font set to " + face + '.');
 }
 
-void CommandFont::ExecuteSize(IBML &bml, const std::vector<std::string> &args) {
+void FontCommand::ExecuteSize(IBML &bml, const std::vector<std::string> &args) {
     if (!EnsureAvailable(bml))
         return;
     if (args.size() == 2) {
@@ -387,7 +387,7 @@ void CommandFont::ExecuteSize(IBML &bml, const std::vector<std::string> &args) {
     ScheduleConfiguredProfile(bml, message.str());
 }
 
-void CommandFont::ExecuteFallback(IBML &bml, const std::vector<std::string> &args) {
+void FontCommand::ExecuteFallback(IBML &bml, const std::vector<std::string> &args) {
     if (!EnsureAvailable(bml))
         return;
     if (args.size() == 2) {
@@ -463,7 +463,7 @@ void CommandFont::ExecuteFallback(IBML &bml, const std::vector<std::string> &arg
     BML::Shell::Fail(&bml, "Usage: font fallback [add|remove|clear]\n");
 }
 
-void CommandFont::ExecuteSystemFallbacks(IBML &bml, const std::vector<std::string> &args) {
+void FontCommand::ExecuteSystemFallbacks(IBML &bml, const std::vector<std::string> &args) {
     if (!EnsureAvailable(bml))
         return;
     if (args.size() == 2) {
@@ -486,7 +486,7 @@ void CommandFont::ExecuteSystemFallbacks(IBML &bml, const std::vector<std::strin
                  (enabled ? "on." : "off."));
 }
 
-void CommandFont::Execute(IBML *bml, const std::vector<std::string> &args) {
+void FontCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (!bml)
         return;
 
@@ -558,7 +558,7 @@ void CommandFont::Execute(IBML *bml, const std::vector<std::string> &args) {
                           ". Use 'font help'.");
 }
 
-const std::vector<std::string> CommandFont::GetTabCompletion(IBML *, const std::vector<std::string> &args) {
+const std::vector<std::string> FontCommand::GetTabCompletion(IBML *, const std::vector<std::string> &args) {
     if (args.size() == 2) {
         return {"status", "sources", "list", "sample", "check", "primary",
                 "size", "fallback", "system", "reload", "reset", "help"};

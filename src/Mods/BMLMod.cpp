@@ -9,10 +9,15 @@
 
 #include "Loader/ModContext.h"
 #include "Hooks/RenderHook.h"
-#include "Console/FontCommand.h"
+#include "Gameplay/CheatCommand.h"
+#include "HUD/HUDCommand.h"
+#include "Mods/BMLCommand.h"
 #include "UI/AnsiPalette.h"
+#include "UI/FontCommand.h"
 #include "UI/FontRuntime.h"
 #include "UI/GameFontCatalog.h"
+#include "UI/PaletteCommand.h"
+#include "AngelScript/ScriptCommand.h"
 #if BML_ENABLE_UI_AUTOMATION
 #include "player/UiAutomation.h"
 #endif
@@ -173,9 +178,14 @@ void BMLMod::OnLoad() {
     InitGUI();
     m_GameEventHooks.OnLoad(*m_BML, *GetLogger());
     m_GameplayTweaks.OnLoad(*m_BML, *GetLogger());
-    m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), m_HUD, GetFontCommandContext());
-
+    m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger());
     m_HUD.OnLoad(*m_BML);
+    m_BML->RegisterCommand(new BMLCommand());
+    m_BML->RegisterCommand(new FontCommand(GetFontCommandContext()));
+    m_BML->RegisterCommand(new CheatCommand());
+    m_BML->RegisterCommand(new HUDCommand(&m_HUD));
+    m_BML->RegisterCommand(new PaletteCommand());
+    m_BML->RegisterCommand(new ScriptCommand());
 
     if (ModContext *context = GetRuntimeContext())
         RegisterBuiltinCapabilities(*this, context->ObjectRefs(), GetLogger());

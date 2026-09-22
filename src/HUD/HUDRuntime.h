@@ -12,7 +12,7 @@
 class IBML;
 class IConfig;
 class IProperty;
-class CommandHUD;
+class HUDCommand;
 
 enum HudTypes {
     HUD_TITLE = 1,
@@ -47,7 +47,7 @@ public:
     float GetSRTime() const;
 
 private:
-    friend class CommandHUD;
+    friend class HUDCommand;
 
     HUD &GetWindow() { return m_Window; }
     void SetFPSUpdateFrequency(uint32_t frames);
