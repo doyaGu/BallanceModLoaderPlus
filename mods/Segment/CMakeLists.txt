@@ -1,0 +1,10 @@
+ballance_add_mod(Segment
+        SOURCES
+        Segment.cpp
+        Segment.h
+        CommandSeg.cpp
+        CommandSeg.h
+        SegmentGui.cpp
+        SegmentGui.h
+        PerLevelSegmentState.cpp
+        PerLevelSegmentState.h)
