@@ -176,6 +176,13 @@ void BMLMod::OnLoad() {
     m_Console.ApplyConfig();
     m_CustomMaps.ApplyConfig();
     InitGUI();
+    if (ModContext *context = GetRuntimeContext()) {
+        m_CustomMaps.OnLoad(*m_BML, *GetLogger(),
+                            context->GetDirectory(BML_DIR_LOADER),
+                            context->GetDirectory(BML_DIR_TEMP));
+    } else {
+        GetLogger()->Error("Built-in Custom Maps requires the loader runtime context");
+    }
     m_GameEventHooks.OnLoad(*m_BML, *GetLogger());
     m_GameplayTweaks.OnLoad(*m_BML, *GetLogger());
     m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger());
@@ -535,14 +542,6 @@ void BMLMod::InitGUI() {
 
     Bui::InitTextures(m_CKContext);
     Bui::InitMaterials(m_CKContext);
-
-    if (ModContext *context = GetRuntimeContext()) {
-        m_CustomMaps.OnLoad(*m_BML, *GetLogger(),
-                            context->GetDirectory(BML_DIR_LOADER),
-                            context->GetDirectory(BML_DIR_TEMP));
-    } else {
-        GetLogger()->Error("Built-in Custom Maps requires the loader runtime context");
-    }
 }
 
 void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {
