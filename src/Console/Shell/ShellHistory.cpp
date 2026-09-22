@@ -197,31 +197,53 @@ namespace BML::Shell {
         out.clear();
         changed = false;
         error.clear();
+        if (line.size() > Limits::MaxLineBytes) {
+            error = "history expansion exceeds the command line limit";
+            return false;
+        }
+
+        const auto append = [&](std::string_view text) {
+            if (text.size() > Limits::MaxLineBytes - out.size()) {
+                error = "history expansion exceeds the command line limit";
+                out.clear();
+                changed = false;
+                return false;
+            }
+            out.append(text.data(), text.size());
+            return true;
+        };
+        const auto appendCharacter = [&](char character) {
+            return append(std::string_view(&character, 1));
+        };
+
         bool singleQuoted = false;
         std::size_t i = 0;
         while (i < line.size()) {
             const char c = line[i];
             if (singleQuoted) {
-                out.push_back(c);
+                if (!appendCharacter(c))
+                    return false;
                 if (c == '\'')
                     singleQuoted = false;
                 ++i;
                 continue;
             }
             if (c == '\\' && i + 1 < line.size()) {
-                out.push_back(c);
-                out.push_back(line[i + 1]);
+                if (!append(line.substr(i, 2)))
+                    return false;
                 i += 2;
                 continue;
             }
             if (c == '\'') {
                 singleQuoted = true;
-                out.push_back(c);
+                if (!appendCharacter(c))
+                    return false;
                 ++i;
                 continue;
             }
             if (c != '!') {
-                out.push_back(c);
+                if (!appendCharacter(c))
+                    return false;
                 ++i;
                 continue;
             }
@@ -230,7 +252,8 @@ namespace BML::Shell {
             const std::size_t designatorStart = i;
             ++i;
             if (i >= line.size() || IsWhitespace(line[i]) || line[i] == '\n' || line[i] == '=' || line[i] == '(') {
-                out.push_back('!');
+                if (!appendCharacter('!'))
+                    return false;
                 continue;
             }
 
@@ -249,7 +272,8 @@ namespace BML::Shell {
                     ++j;
                 if (j == digitsBegin) {
                     // "!-" without digits is a literal.
-                    out.push_back('!');
+                    if (!appendCharacter('!'))
+                        return false;
                     continue;
                 }
                 designator = std::string(line.substr(designatorStart, j - designatorStart));
@@ -282,7 +306,8 @@ namespace BML::Shell {
                 changed = false;
                 return false;
             }
-            out += *entry;
+            if (!append(*entry))
+                return false;
             changed = true;
         }
         return true;

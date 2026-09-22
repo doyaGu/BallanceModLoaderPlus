@@ -123,6 +123,32 @@ TEST(ShellHistory, MissingEventIsAnError) {
     EXPECT_FALSE(empty.Expand("!!", out, changed, error));
 }
 
+TEST(ShellHistory, RejectsExpansionBeyondCommandLineLimit) {
+    History history;
+    history.Add(std::string(Limits::MaxLineBytes / 2 + 1, 'x'));
+
+    std::string out;
+    std::string error;
+    bool changed = false;
+    EXPECT_FALSE(history.Expand("!!!!", out, changed, error));
+    EXPECT_TRUE(out.empty());
+    EXPECT_FALSE(changed);
+    EXPECT_NE(std::string::npos, error.find("command line limit"));
+}
+
+TEST(ShellHistory, AllowsExpansionAtCommandLineLimit) {
+    History history;
+    const std::size_t entrySize = (Limits::MaxLineBytes - 1) / 2;
+    history.Add(std::string(entrySize, 'x'));
+
+    std::string out;
+    std::string error;
+    bool changed = false;
+    ASSERT_TRUE(history.Expand("!! !!", out, changed, error)) << error;
+    EXPECT_EQ(Limits::MaxLineBytes, out.size());
+    EXPECT_TRUE(changed);
+}
+
 TEST(ShellHistory, SearchAndSuggest) {
     const History history = MakeHistory({"echo alpha", "help", "echo beta"});
     EXPECT_EQ(2, history.SearchBackward("echo", 3));
