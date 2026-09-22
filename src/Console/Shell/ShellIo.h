@@ -12,6 +12,23 @@
 class IBML;
 
 namespace BML::Shell {
+    // Covers an entire command dispatch, including pre/post callbacks. Nested
+    // dispatch is supported, but bounded so commands cannot recurse until the
+    // game-thread stack is exhausted.
+    class CommandDispatchScope {
+    public:
+        CommandDispatchScope();
+        ~CommandDispatchScope();
+
+        CommandDispatchScope(const CommandDispatchScope &) = delete;
+        CommandDispatchScope &operator=(const CommandDispatchScope &) = delete;
+
+        explicit operator bool() const { return m_Active; }
+
+    private:
+        bool m_Active = false;
+    };
+
     class InvocationScope {
     public:
         explicit InvocationScope(const std::string *input);
@@ -29,8 +46,9 @@ namespace BML::Shell {
     // True while some command's Execute is running on this thread.
     bool HasInvocation();
 
-    // Records the exit status of the innermost running command. Returns false,
-    // and changes nothing, outside an invocation.
+    // Records the non-negative exit status of the innermost running command.
+    // Negative API errors become the generic failure status. Returns false and
+    // changes nothing outside an invocation.
     bool SetStatus(int status);
 
     // The text piped into the innermost running command, or null when there is

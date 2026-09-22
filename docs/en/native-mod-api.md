@@ -262,7 +262,8 @@ user-facing syntax.
 `Execute` returns `void`, so two C exports in `BML.h` carry the rest of the
 shell behavior. `BML_SetCommandStatus(int)` marks the running command failed
 for `&&`, `||`, and `$?`; without it a command counts as succeeded unless it
-throws or cannot be found. `BML_GetCommandInput(size_t *)` returns the text
+throws or cannot be found. Negative API error values are recorded as the
+generic failure status `1`. `BML_GetCommandInput(size_t *)` returns the text
 piped into the running command by `other | this`, or null when nothing was
 piped; the pointer belongs to the loader and lives until `Execute` returns.
 Output written with `SendIngameMessage` during a pipeline stage goes to the

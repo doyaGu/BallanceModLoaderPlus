@@ -1379,6 +1379,12 @@ int ModContext::InvokeCommandArgs(const std::vector<std::string> &args, const st
         return BML::Shell::Status::Unknown;
     }
 
+    BML::Shell::CommandDispatchScope dispatchScope;
+    if (!dispatchScope) {
+        WriteShellError(BML::Shell::FormatError("Error: Command dispatch nested too deeply"));
+        return BML::Shell::Status::Failure;
+    }
+
     auto invocationLock = m_CommandInvocationGate.LockCall();
     BML::CommandContext::CommandCall call;
     {

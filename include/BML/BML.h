@@ -125,6 +125,8 @@ BML_EXPORT int BML_CDECL BML_UnregisterCommand(const char *name);
 // call this from inside Execute with any non-zero value and the shell treats the
 // command as failed. Without a call the command counts as succeeded unless it
 // throws, names no known command, or is a cheat command refused with cheats off.
+// Negative values are reserved for API errors and are recorded as the generic
+// failure status 1.
 // Returns 1 when a command is running on the game thread and the status was
 // recorded, 0 anywhere else.
 BML_EXPORT int BML_CDECL BML_SetCommandStatus(int status);

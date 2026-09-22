@@ -32,6 +32,7 @@ namespace BML::Shell {
         constexpr std::size_t MaxCommandsPerLine = 64;
         constexpr std::size_t MaxAliasDepth = 16;
         constexpr std::size_t MaxSubstitutionDepth = 8;
+        constexpr std::size_t MaxCommandDispatchDepth = 16;
         constexpr std::size_t MaxWordBytes = 65536;
         constexpr std::size_t MaxCaptureBytes = 1u << 20;
     }

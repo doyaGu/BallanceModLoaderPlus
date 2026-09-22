@@ -364,7 +364,7 @@ void CallbackCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
         Logger::GetDefault()->Error("Unknown exception in command '%s'", m_Name.c_str());
         status = Shell::Status::Failure;
     }
-    Shell::SetStatus(status < 0 ? Shell::Status::Failure : status);
+    Shell::SetStatus(status);
 }
 
 const std::vector<std::string> CallbackCommand::GetTabCompletion(

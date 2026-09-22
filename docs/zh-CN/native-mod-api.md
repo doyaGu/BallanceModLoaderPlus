@@ -233,7 +233,8 @@ Integer、Float、Boolean 基础解析。`ILogger` 提供三个日志级别。
 
 `Execute` 返回 `void`，所以 shell 约定的另一半由 `BML.h` 中的两个 C 导出承担。
 `BML_SetCommandStatus(int)` 把正在运行的命令标记为失败，供 `&&`、`||` 和 `$?`
-使用；不调用它，命令只有在抛出异常或找不到时才算失败。
+使用；不调用它，命令只有在抛出异常或找不到时才算失败。负数属于 API 错误值，
+写入时统一转换为普通失败状态 `1`。
 `BML_GetCommandInput(size_t *)` 返回 `other | this` 管道送进当前命令的文本，
 没有管道时返回空指针；指针属于 Loader，在 `Execute` 返回前有效。作为管道中间
 环节运行时，通过 `SendIngameMessage` 写出的内容会交给下一环节，而不是显示在

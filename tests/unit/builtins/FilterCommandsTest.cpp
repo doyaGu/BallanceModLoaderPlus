@@ -1,9 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <memory>
+
 #include <oniguruma.h>
 
 #include "Console/Shell/FilterCommands.h"
 #include "Console/Shell/ShellBuiltins.h"
+#include "Console/Shell/ShellEnvironment.h"
+#include "Console/Shell/ShellIo.h"
+#include "Console/Shell/ShellTypes.h"
 #include "Logging/Logger.h"
 
 // Stub Logger: CommandContext.cpp is linked for its name validation only.
@@ -139,4 +144,66 @@ TEST(ShellXargs, SplitsItems) {
     const std::string comma = ",";
     EXPECT_EQ((Lines{"a", "", "b c"}), CommandXargs::SplitItems("a,,b c\n", &comma));
     EXPECT_TRUE(CommandXargs::SplitItems("", nullptr).empty());
+}
+
+TEST(ShellXargs, RecursiveDispatchIsBounded) {
+    std::size_t calls = 0;
+    std::unique_ptr<CommandXargs> command;
+    command = std::make_unique<CommandXargs>(
+        [&](const std::vector<std::string> &args, const std::string *input) {
+            ++calls;
+            CommandDispatchScope dispatch;
+            if (!dispatch)
+                return Status::Failure;
+            if (args.empty() || args[0] != "xargs")
+                return Status::Ok;
+
+            InvocationScope invocation(input);
+            command->Execute(nullptr, args);
+            return invocation.Status();
+        });
+
+    std::vector<std::string> args(Limits::MaxCommandDispatchDepth + 2, "xargs");
+    args.push_back("true");
+    CommandDispatchScope dispatch;
+    InvocationScope invocation(nullptr);
+    command->Execute(nullptr, args);
+
+    EXPECT_EQ(Limits::MaxCommandDispatchDepth, calls);
+    EXPECT_NE(Status::Ok, invocation.Status());
+}
+
+TEST(ShellSet, RequiresAnExplicitValue) {
+    Environment environment;
+    CommandSet command(environment);
+
+    InvocationScope missingValue(nullptr);
+    command.Execute(nullptr, {"set", "NAME"});
+    EXPECT_EQ(Status::Failure, missingValue.Status());
+    EXPECT_FALSE(environment.HasVariable("NAME"));
+}
+
+TEST(ShellCommandDispatch, BoundsNestedScopes) {
+    std::vector<std::unique_ptr<CommandDispatchScope>> scopes;
+    scopes.reserve(Limits::MaxCommandDispatchDepth + 1);
+    for (std::size_t index = 0; index < Limits::MaxCommandDispatchDepth; ++index) {
+        scopes.push_back(std::make_unique<CommandDispatchScope>());
+        EXPECT_TRUE(static_cast<bool>(*scopes.back()));
+    }
+
+    CommandDispatchScope refused;
+    EXPECT_FALSE(static_cast<bool>(refused));
+
+    scopes.pop_back();
+    CommandDispatchScope availableAgain;
+    EXPECT_TRUE(static_cast<bool>(availableAgain));
+}
+
+TEST(ShellCommandStatus, NormalizesNegativeApiErrors) {
+    InvocationScope invocation(nullptr);
+    ASSERT_TRUE(SetStatus(-42));
+    EXPECT_EQ(Status::Failure, invocation.Status());
+
+    ASSERT_TRUE(SetStatus(42));
+    EXPECT_EQ(42, invocation.Status());
 }

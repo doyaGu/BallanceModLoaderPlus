@@ -114,11 +114,11 @@ namespace BML::Shell {
             Fail(bml, "set: '" + name + "' is not a valid variable name");
             return;
         }
-        if (args.size() - index > 2) {
+        if (args.size() - index != 2) {
             Fail(bml, "set: expected one value; quote a value that contains spaces");
             return;
         }
-        const std::string value = index + 1 < args.size() ? args[index + 1] : std::string();
+        const std::string &value = args[index + 1];
         m_Environment.SetVariable(name, value,
                                   universal ? Environment::Scope::Universal : Environment::Scope::Session);
     }
@@ -173,7 +173,7 @@ namespace BML::Shell {
             return;
         }
 
-        if (!CommandContext::IsValidCommandName(name.c_str())) {
+        if (!CommandContext::IsValidCommandName(name)) {
             Fail(bml, "alias: '" + name + "' is not a valid alias name");
             return;
         }

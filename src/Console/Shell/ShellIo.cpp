@@ -13,6 +13,19 @@ namespace BML::Shell {
         };
 
         thread_local std::vector<Invocation> t_Invocations;
+        thread_local std::size_t t_CommandDispatchDepth = 0;
+    }
+
+    CommandDispatchScope::CommandDispatchScope() {
+        if (t_CommandDispatchDepth >= Limits::MaxCommandDispatchDepth)
+            return;
+        ++t_CommandDispatchDepth;
+        m_Active = true;
+    }
+
+    CommandDispatchScope::~CommandDispatchScope() {
+        if (m_Active)
+            --t_CommandDispatchDepth;
     }
 
     InvocationScope::InvocationScope(const std::string *input) {
@@ -38,7 +51,7 @@ namespace BML::Shell {
     bool SetStatus(int status) {
         if (t_Invocations.empty())
             return false;
-        t_Invocations.back().status = status;
+        t_Invocations.back().status = status < 0 ? Status::Failure : status;
         return true;
     }
 
