@@ -315,14 +315,34 @@ TEST(ShellCompletion, CommonPrefixIsUnicodeCaseInsensitive) {
     EXPECT_EQ(6u, fixture.Build("").commonPrefixLength);
 }
 
-TEST(ShellCompletion, InvalidUtf8HasNoCompletablePrefix) {
+TEST(ShellCompletion, DiscardsInvalidCandidates) {
     Fixture fixture;
     fixture.providers.commandNames = [] {
-        return std::vector<std::string>{"valid", std::string("\xe5", 1)};
+        return std::vector<std::string>{
+            "valid",
+            std::string("\xe5", 1),
+            std::string("embedded\0null", 13),
+            std::string(Limits::MaxCompletionBytes + 1, 'x'),
+        };
     };
     fixture.providers.aliasNames = {};
 
-    EXPECT_EQ(0u, fixture.Build("").commonPrefixLength);
+    const CompletionPlan plan = fixture.Build("");
+    EXPECT_EQ((std::vector<std::string>{"valid"}), plan.candidates);
+    EXPECT_EQ(5u, plan.commonPrefixLength);
+}
+
+TEST(ShellCompletion, BoundsCandidateCount) {
+    Fixture fixture;
+    fixture.providers.commandNames = [] {
+        std::vector<std::string> candidates;
+        for (std::size_t index = 0; index < Limits::MaxCompletionCandidates + 10; ++index)
+            candidates.push_back("command" + std::to_string(index));
+        return candidates;
+    };
+    fixture.providers.aliasNames = {};
+
+    EXPECT_EQ(Limits::MaxCompletionCandidates, fixture.Build("").candidates.size());
 }
 
 TEST(ShellHighlighter, PartitionsTextIntoSpans) {

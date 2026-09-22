@@ -51,6 +51,19 @@ namespace {
         return utils::Utf16ToUtf8(utils::AnsiToUtf16(candidate));
     }
 
+    void AddCompletionCandidate(std::vector<std::string> &candidates,
+                                const std::string &candidate) {
+        if (candidates.size() >= BML::Shell::Limits::MaxCompletionCandidates ||
+            candidate.empty() || candidate.size() > BML::Shell::Limits::MaxCompletionBytes ||
+            candidate.find('\0') != std::string::npos)
+            return;
+
+        std::string normalized = NormalizeCandidateEncoding(candidate);
+        if (!normalized.empty() && normalized.size() <= BML::Shell::Limits::MaxCompletionBytes &&
+            utils::IsValidUtf8(normalized))
+            candidates.push_back(std::move(normalized));
+    }
+
     ImVec2 CenterText(const ImVec2 &minimum, const ImVec2 &maximum, const ImVec2 &size) {
         return {
             minimum.x + std::max(0.0f, maximum.x - minimum.x - size.x) * 0.5f,
@@ -120,12 +133,8 @@ namespace {
             for (const auto &command : BML_GetModContext()->GetCommandSnapshot()) {
                 if (command.Hidden || !command.Enabled)
                     continue;
-                const std::string name = NormalizeCandidateEncoding(command.Name);
-                if (!name.empty())
-                    names.push_back(name);
-                const std::string alias = NormalizeCandidateEncoding(command.Alias);
-                if (!alias.empty())
-                    names.push_back(alias);
+                AddCompletionCandidate(names, command.Name);
+                AddCompletionCandidate(names, command.Alias);
             }
             return names;
         };
@@ -135,11 +144,8 @@ namespace {
             std::vector<std::string> candidates;
             if (args.empty() || args[0].empty())
                 return candidates;
-            for (const std::string &raw : BML_GetModContext()->CompleteCommand(args[0].c_str(), args)) {
-                const std::string candidate = NormalizeCandidateEncoding(raw);
-                if (!candidate.empty())
-                    candidates.push_back(candidate);
-            }
+            for (const std::string &candidate : BML_GetModContext()->CompleteCommand(args[0].c_str(), args))
+                AddCompletionCandidate(candidates, candidate);
             return candidates;
         };
         return providers;

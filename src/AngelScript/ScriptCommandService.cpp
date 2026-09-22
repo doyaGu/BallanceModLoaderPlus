@@ -16,6 +16,7 @@
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "ScriptModRuntime.h"
+#include "StringUtils.h"
 
 namespace BML {
 
@@ -519,7 +520,10 @@ static std::shared_ptr<ICommand> CreateScriptCommand(
 }
 
 void ScriptCommandCompletion::Add(const std::string &value) const {
-    if (m_Items && !value.empty())
+    if (m_Items && !value.empty() &&
+        value.size() <= Shell::Limits::MaxCompletionBytes &&
+        utils::IsValidUtf8(value) &&
+        m_Items->size() < Shell::Limits::MaxCompletionCandidates)
         m_Items->push_back(value);
 }
 

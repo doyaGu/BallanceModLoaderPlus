@@ -62,7 +62,10 @@ namespace BML::Shell {
         void AddFiltered(std::vector<std::string> &out, const std::vector<std::string> &names,
                          const std::string &prefix, std::unordered_set<std::string> &seen) {
             for (const std::string &name : names) {
-                if (name.empty() || !HasPrefixIgnoreCase(name, prefix))
+                if (out.size() >= Limits::MaxCompletionCandidates)
+                    return;
+                if (name.empty() || name.size() > Limits::MaxCompletionBytes ||
+                    !utils::IsValidUtf8(name) || !HasPrefixIgnoreCase(name, prefix))
                     continue;
                 if (seen.insert(name).second)
                     out.push_back(name);
@@ -78,7 +81,7 @@ namespace BML::Shell {
                 ? providers.aliasNames()
                 : std::vector<std::string>{};
             std::unordered_set<std::string> seen;
-            seen.reserve(commands.size() + aliases.size());
+            seen.reserve(Limits::MaxCompletionCandidates);
             AddFiltered(plan.candidates, commands, plan.prefix, seen);
             AddFiltered(plan.candidates, aliases, plan.prefix, seen);
         }
@@ -103,7 +106,7 @@ namespace BML::Shell {
                 if (providers.argumentCandidates) {
                     const std::vector<std::string> candidates = providers.argumentCandidates(analysis.arguments);
                     std::unordered_set<std::string> seen;
-                    seen.reserve(candidates.size());
+                    seen.reserve(Limits::MaxCompletionCandidates);
                     AddFiltered(plan.candidates, candidates, plan.prefix, seen);
                 }
                 break;
@@ -113,7 +116,7 @@ namespace BML::Shell {
                     std::vector<std::string> names = providers.variableNames();
                     names.push_back("?");
                     std::unordered_set<std::string> seen;
-                    seen.reserve(names.size());
+                    seen.reserve(Limits::MaxCompletionCandidates);
                     AddFiltered(plan.candidates, names, plan.prefix, seen);
                 }
                 break;

@@ -8,6 +8,7 @@
 #include "AngelScript/ScriptDataShareService.h"
 #include "AngelScript/ScriptTimerService.h"
 #include "BML/DataShare.h"
+#include "Console/Shell/ShellTypes.h"
 #include "DataShare/DataShare.h"
 #include "BML/Timer.h"
 
@@ -153,6 +154,21 @@ TEST_F(ScriptServiceLifecycleTest, CommandReleaseSuppressesOldCallbackAndRunsNew
 
     ref->Release();
     newRef->Release();
+}
+
+TEST_F(ScriptServiceLifecycleTest, CommandCompletionRejectsInvalidAndExcessCandidates) {
+    std::vector<std::string> items;
+    ScriptCommandCompletion completion(&items);
+    completion.Add("");
+    completion.Add(std::string("bad\0value", 9));
+    completion.Add(std::string(Shell::Limits::MaxCompletionBytes + 1, 'x'));
+    completion.Add(std::string("\xe5", 1));
+    for (std::size_t index = 0; index < Shell::Limits::MaxCompletionCandidates + 10; ++index)
+        completion.Add("candidate" + std::to_string(index));
+
+    EXPECT_EQ(static_cast<int>(Shell::Limits::MaxCompletionCandidates), completion.GetCount());
+    EXPECT_EQ("candidate0", completion.At(0));
+    EXPECT_TRUE(completion.At(completion.GetCount()).empty());
 }
 
 TEST_F(ScriptServiceLifecycleTest, DataShareReleaseInvalidatesOldRefAndSuppressesPendingRequest) {

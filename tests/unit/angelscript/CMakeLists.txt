@@ -27,6 +27,8 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/ScriptTimerService.cpp
             ${BML_SOURCE_DIR}/Console/Shell/ShellIo.cpp
             ${BML_SOURCE_DIR}/DataShare/DataShare.cpp
+            DEPENDENCIES
+            BML_StringUtils
     )
     target_compile_options(ScriptServiceLifecycleTest PRIVATE
             $<$<CXX_COMPILER_ID:MSVC>:/Gy>

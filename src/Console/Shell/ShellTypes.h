@@ -35,6 +35,8 @@ namespace BML::Shell {
         constexpr std::size_t MaxCommandDispatchDepth = 16;
         constexpr std::size_t MaxWordBytes = 65536;
         constexpr std::size_t MaxCaptureBytes = 1u << 20;
+        constexpr std::size_t MaxCompletionCandidates = BML_COMMAND_MAX_COMPLETIONS;
+        constexpr std::size_t MaxCompletionBytes = BML_COMMAND_MAX_COMPLETION_BYTES;
     }
 }
 
