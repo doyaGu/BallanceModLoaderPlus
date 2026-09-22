@@ -43,6 +43,7 @@ public:
     void OnLoadObject(const char *filename);
     void OnLoadScript(CKBehavior *script);
     void OnProcess();
+    void OnPostStartMenu();
     void OnStartLevel();
     void OnExitGame();
 
@@ -63,6 +64,7 @@ private:
     bool CreateTempMapFile(const std::wstring &path, std::uint64_t attempt,
                            std::wstring &widePath, std::string &ansiPath) const;
     bool IsRuntimeReady() const;
+    void BindMenuEntry();
     bool PublishLoadMetadata(const std::wstring &path, std::uint64_t attempt);
     void PollLoadResult();
     void TryCompleteLoad();

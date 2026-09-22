@@ -191,6 +191,13 @@ void CustomMaps::OnLoadObject(const char *filename) {
     if (!filename || std::strcmp(filename, "3D Entities\\Menu.nmo") != 0 || !m_BML)
         return;
 
+    BindMenuEntry();
+}
+
+void CustomMaps::BindMenuEntry() {
+    if (!m_BML)
+        return;
+
     m_LevelButton = m_BML->Get2dEntityByName("M_Start_But_01");
     CKBehavior *menuStart = m_BML->GetScriptByName("Menu_Start");
     m_ExitStart = nullptr;
@@ -259,6 +266,10 @@ void CustomMaps::OnProcess() {
 
         ImGui::PopStyleVar(2);
     }
+}
+
+void CustomMaps::OnPostStartMenu() {
+    BindMenuEntry();
 }
 
 void CustomMaps::OnStartLevel() {

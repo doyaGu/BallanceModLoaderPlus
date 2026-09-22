@@ -285,6 +285,7 @@ void BMLMod::OnPreStartMenu() {
 
 void BMLMod::OnPostStartMenu() {
     ApplyFrameRateSettings();
+    m_CustomMaps.OnPostStartMenu();
 #if BML_ENABLE_UI_AUTOMATION
     // The Player acceptance suite must exercise the shipped start-up flow.
     // Starting here also guarantees that production ImGui frames are live
