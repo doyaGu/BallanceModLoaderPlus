@@ -20,9 +20,10 @@ player.
 | Install BML+, install mods, or solve a loading problem | [Use BML+](https://doyagu.github.io/BallanceModLoaderPlus/using-bml/) |
 | Create a native or script mod | [Create mods](https://doyagu.github.io/BallanceModLoaderPlus/modding/) |
 | Build or change the BML+ loader | [Contribute to BML+](https://doyagu.github.io/BallanceModLoaderPlus/contributing/) |
+| Build the native mods maintained in this repository | [In-tree mods](mods/README.md) |
 
-Mod authors should use a released BML+ SDK. Building this repository is only
-required when changing BML+ itself.
+Mod authors should use a released BML+ SDK. Building this repository is needed
+only when changing BML+ or its in-tree mods.
 
 ## Install and verify
 
@@ -38,6 +39,11 @@ required when changing BML+ itself.
 `BMLPlus-Update-<version>.zip` is an updater payload, not a manual installation
 package. Use the full `BMLPlus-<version>.zip` archive for manual installation
 and recovery.
+
+`BMLPlus-Mods-<version>.zip` is optional. Extract it into the Ballance root to
+install all in-tree Mods, or take individual packages from its
+`ModLoader/Mods/` directory. The main installer includes only the three
+default utility Mods.
 
 Press `/` in game to open the command bar. The `bml` command prints the loader
 version and loaded mods.

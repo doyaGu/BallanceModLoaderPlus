@@ -1,7 +1,7 @@
 # Releasing BML+
 
 This runbook publishes an official BML+ version. GitHub Actions builds and tests
-four ZIP files plus one updater manifest. A maintainer then signs that manifest
+five ZIP files plus one updater manifest. A maintainer then signs that manifest
 and `stable.json` on the release machine. The production private key never
 enters GitHub Actions.
 
@@ -13,14 +13,14 @@ enters GitHub Actions.
 - The signing command may create two signatures, `stable.json`, and
   `SHA256SUMS.txt`, but must not repackage a CI ZIP.
 - GitHub Actions must not create or publish the GitHub release. The maintainer
-  account creates the draft after all nine signed release files are ready.
+  account creates the draft after all ten signed release files are ready.
 - Publish the GitHub release before switching the updater channel to it.
 - Update only `gh-pages:/updates/`; never rebuild or force-push the whole Pages
   branch while publishing a BML+ version.
 - If channel validation fails, revert the channel commit. Do not move the tag or
   silently replace files in a published release.
 
-Tags such as `v0.3.14-alpha.1` produce the same five unsigned CI artifacts for
+Tags such as `v0.3.14-alpha.1` produce the same six unsigned CI artifacts for
 candidate testing. They are not accepted by the signing or `stable.json`
 publication scripts. The steps below apply to the final `vX.Y.Z` tag.
 
@@ -40,15 +40,16 @@ git push origin "refs/tags/$version"
 
 The tag starts `.github/workflows/build.yml`. CI validates the tag against the
 CMake version, builds MSVC x86 Debug and Release with CKAngelScript enabled,
-runs CTest, validates both packaged SDKs, and retains five unsigned files in
+runs CTest, validates both packaged SDKs, and retains six unsigned files in
 the tag's Build run. It does not create a GitHub release.
 
-## 2. Download the five files from the Build run
+## 2. Download the six files from the Build run
 
-The completed tag run contains exactly these five unsigned files:
+The completed tag run contains exactly these six unsigned files:
 
 ```text
 BMLPlus-vX.Y.Z.zip
+BMLPlus-Mods-vX.Y.Z.zip
 BMLPlus-Update-vX.Y.Z.zip
 BMLPlus-Update-vX.Y.Z.manifest.json
 BMLPlus-SDK-vX.Y.Z-Release.zip
@@ -107,17 +108,18 @@ $previousChannel = '<path-to-the-previous-verified-stable.json>'
   -PreviousChannelPath $previousChannel
 ```
 
-The script requires the exact five-file CI list, verifies every updater ZIP
+The script requires the exact six-file CI list, verifies every updater ZIP
 entry against the unsigned manifest, preserves every ZIP byte-for-byte, signs
 the manifest, carries the previous channel's revocation lists forward, creates
 and signs `stable.json`, and writes `SHA256SUMS.txt`. Use
 `-AllowEmptyRevocations` instead of `-PreviousChannelPath` only when creating
 the first updater channel.
 
-The signed directory must contain exactly nine files:
+The signed directory must contain exactly ten files:
 
 ```text
 BMLPlus-vX.Y.Z.zip
+BMLPlus-Mods-vX.Y.Z.zip
 BMLPlus-Update-vX.Y.Z.zip
 BMLPlus-Update-vX.Y.Z.manifest.json
 BMLPlus-Update-vX.Y.Z.manifest.json.sig
@@ -131,7 +133,7 @@ SHA256SUMS.txt
 ## 4. Create the draft release with the maintainer account
 
 Confirm that GitHub CLI is authenticated as a human maintainer, then create the
-draft with the nine signed files and the reviewed release notes. A bot-created
+draft with the ten signed files and the reviewed release notes. A bot-created
 draft remains bot-authored after a maintainer publishes it, so do not use one.
 
 ```powershell
@@ -156,15 +158,15 @@ $release = gh release view $version `
 if ($release.author.login -cne $publisher -or -not $release.isDraft) {
   throw 'Draft release author or state is incorrect.'
 }
-if ($release.assets.Count -ne 9) {
-  throw "Expected nine release files, found $($release.assets.Count)."
+if ($release.assets.Count -ne 10) {
+  throw "Expected ten release files, found $($release.assets.Count)."
 }
 gh release view $version `
   --repo doyaGu/BallanceModLoaderPlus `
   --web
 ```
 
-Publish the draft only after the tag, notes, and all nine files have been
+Publish the draft only after the tag, notes, and all ten files have been
 reviewed:
 
 ```powershell

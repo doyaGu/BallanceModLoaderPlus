@@ -19,8 +19,9 @@ BML+ 只支持 BallancePlayer，不支持原版 Ballance Player。
 | 安装 BML+、安装 Mod 或排查加载问题 | [使用 BML+](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/using-bml/) |
 | 编写原生 Mod 或脚本 Mod | [开发 Mod](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/modding/) |
 | 构建或修改 BML+ Loader | [参与 BML+ 开发](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/contributing/) |
+| 构建仓库内维护的原生 Mod | [仓库内 Mod](mods/README_zh-CN.md) |
 
-Mod 作者应使用已发布的 BML+ SDK。只有修改 BML+ 本身时才需要构建本仓库。
+Mod 作者应使用已发布的 BML+ SDK。只有修改 BML+ 或仓库内的 Mod 时才需要构建本仓库。
 
 ## 安装并确认运行正常
 
@@ -35,6 +36,10 @@ Mod 作者应使用已发布的 BML+ SDK。只有修改 BML+ 本身时才需要�
 
 `BMLPlus-Update-<version>.zip` 是 Updater 使用的更新载荷，不能作为手动安装包。
 手动安装、覆盖更新和修复安装都应使用完整的 `BMLPlus-<version>.zip`。
+
+`BMLPlus-Mods-<version>.zip` 是可选包：解压到游戏根目录即可安装全部仓库内
+Mod，也可以只取其中 `ModLoader/Mods/` 下需要的包。主安装包只包含原有的三个
+默认工具 Mod。
 
 在游戏中按 `/` 打开命令栏。输入 `bml` 可以查看 Loader 版本和已加载的 Mod。
 
