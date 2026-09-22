@@ -25,3 +25,12 @@ add_test(
                 "${CMAKE_CURRENT_SOURCE_DIR}/SignAndCopyReleaseFilesTest.ps1"
                 -SourceRoot "${PROJECT_SOURCE_DIR}"
 )
+
+if (NOT BML_ENABLE_BEHAVIOR_TEST_INTERFACE)
+    add_test(
+            NAME ProductionRuntimeContentsTest
+            COMMAND pwsh -NoLogo -NoProfile -File
+                    "${CMAKE_CURRENT_SOURCE_DIR}/ProductionRuntimeContentsTest.ps1"
+                    -RuntimeDll "$<TARGET_FILE:BML>"
+    )
+endif ()

@@ -172,13 +172,15 @@ bml_add_player_test(BehaviorTransportTest
         ${BML_PLAYER_PROBE_SOURCES}
 )
 
-bml_add_player_test(BehaviorPatchTest
-        BehaviorPatchTest.cpp
-        BehaviorLifecycleFixtureApi.h
-        ${BML_PLAYER_PROBE_SOURCES}
-)
-# This Mod links the normal import library and reaches Patches owned by BMLPlus.dll.
-target_include_directories(BehaviorPatchTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
+if (BML_ENABLE_BEHAVIOR_TEST_INTERFACE)
+    bml_add_player_test(BehaviorPatchTest
+            BehaviorPatchTest.cpp
+            BehaviorLifecycleFixtureApi.h
+            ${BML_PLAYER_PROBE_SOURCES}
+    )
+    # This Mod links the normal import library and reaches Patches owned by BMLPlus.dll.
+    target_include_directories(BehaviorPatchTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
+endif ()
 
 # The published Script, Plan, and Hook facade, authored the way a Mod would
 # author it. The Script is created, edited, activated, and retired entirely

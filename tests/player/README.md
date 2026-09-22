@@ -21,6 +21,10 @@ each runner's required build targets before invoking it. `GameplayRouteTest`
 is not part of the 0.3.14 release scope and reports SKIPPED while its authored
 route is under review; a skipped result is never release evidence.
 
+The full Behavior acceptance runner requires a dedicated instrumented build
+configured with `-DBML_ENABLE_BEHAVIOR_TEST_INTERFACE=ON`. This private bridge
+is disabled by default and must not be used for release packages.
+
 `PlayerFlowDriver` drives the retail menu and level flow. Each installed probe
 Mod reports one result through `BMLPlayerProbeRead`; probes that need gameplay
 input also expose `BMLPlayerProbeStart`. The driver does not decide which probes

@@ -47,6 +47,26 @@ function Get-BMLFileSha256 {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+function Assert-BMLProductionRuntime {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Production runtime is missing: $Path"
+    }
+
+    $contents = [System.Text.Encoding]::ASCII.GetString(
+        [System.IO.File]::ReadAllBytes([System.IO.Path]::GetFullPath($Path)))
+    $privateInterfaceIds = @('bml.test.behavior')
+    foreach ($interfaceId in $privateInterfaceIds) {
+        if ($contents.Contains($interfaceId, [System.StringComparison]::Ordinal)) {
+            throw "Production runtime contains private test interface: $interfaceId"
+        }
+    }
+}
+
 function Assert-BMLReleaseFiles {
     param(
         [Parameter(Mandatory = $true)]
@@ -491,6 +511,7 @@ function Write-BMLSha256Sums {
 Export-ModuleMember -Function `
     Get-BMLReleaseFileNames, `
     Get-BMLFileSha256, `
+    Assert-BMLProductionRuntime, `
     Assert-BMLReleaseFiles, `
     Assert-BMLUpdaterManifestMatchesPackage, `
     Write-BMLUtf8NoBomText, `

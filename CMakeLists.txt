@@ -59,6 +59,13 @@ include(CMakeDependentOption)
 
 option(BML_BUILD_TESTS "Build the BML test suite" OFF)
 cmake_dependent_option(
+        BML_ENABLE_BEHAVIOR_TEST_INTERFACE
+        "Expose the private Behavior interface used by real Player tests"
+        OFF
+        "BML_BUILD_TESTS"
+        OFF
+)
+cmake_dependent_option(
         BML_BUILD_UI_AUTOMATION
         "Build the ImGui UI automation suite"
         ON

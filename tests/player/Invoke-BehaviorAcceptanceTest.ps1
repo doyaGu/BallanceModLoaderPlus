@@ -70,6 +70,9 @@ if (-not $TransportMod) {
 if (-not $PatchMod) {
     $PatchMod = Join-Path $releaseBin 'BehaviorPatchTest.bmodp'
 }
+if (-not (Test-Path -LiteralPath $PatchMod -PathType Leaf)) {
+    throw 'BehaviorPatchTest is not available. Configure the test build with -DBML_ENABLE_BEHAVIOR_TEST_INTERFACE=ON.'
+}
 if (-not $FacadeMod) {
     $FacadeMod = Join-Path $releaseBin 'BehaviorFacadeTest.bmodp'
 }

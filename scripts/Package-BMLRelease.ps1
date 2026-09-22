@@ -501,6 +501,14 @@ foreach ($path in @(
     Assert-BMLPath -Path $path -Type Leaf
 }
 
+foreach ($path in @(
+    (Join-Path $releaseInstall 'bin\BMLPlus.dll'),
+    (Join-Path $releaseBin 'BMLPlus.dll'),
+    (Join-Path $debugInstall 'bin\BMLPlus.dll')
+)) {
+    Assert-BMLProductionRuntime -Path $path
+}
+
 Assert-BMLBinaryVersionMatchesHeader `
     -BinaryPath (Join-Path $releaseBin 'BMLPlus.dll') `
     -VersionHeaderPath (Join-Path $releaseInstall 'include\BML\Version.h') `
