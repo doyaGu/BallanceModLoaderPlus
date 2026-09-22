@@ -514,6 +514,16 @@ void SendKey(BYTE key) {
     std::this_thread::sleep_for(180ms);
 }
 
+bool ParkCursorForKeyboardInput(HWND window) {
+    POINT position{8, 8};
+    if (!window || !ClientToScreen(window, &position))
+        return false;
+    if (!SetCursorPos(position.x, position.y))
+        return false;
+    std::this_thread::sleep_for(50ms);
+    return true;
+}
+
 enum class InputSequenceKind {
     Fixed,
     Menu,
@@ -841,6 +851,8 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
                             failureReason = "window-not-found";
                         } else if (!EnsureForegroundClientVisible(ballanceWindow)) {
                             failureReason = "window-obstructed";
+                        } else if (!ParkCursorForKeyboardInput(ballanceWindow)) {
+                            failureReason = "cursor-position-failed";
                         } else {
                             succeeded = true;
                             for (BYTE key : keys) {
