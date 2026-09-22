@@ -3,9 +3,11 @@ test=console_command_and_message_board
 surface=console
 capture=Console
 input=level-one
+fixture=public-authoring
 source=player/journeys/console/ConsoleScenario.cpp
 required_log=Execute Command: echo -n ui-automation-console
 required_log=[BML/INFO]: ui-automation-console
 required_log=Execute Command: echo -n alpha && echo -n beta
 required_log=Execute Command: echo $'p1\np2' | grep p2
 required_log=Execute Command: echo -n tab-a; echo -n tab-b
+required_log=Public authoring command: argument=alpha

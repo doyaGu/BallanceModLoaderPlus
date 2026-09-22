@@ -35,6 +35,7 @@ if (WIN32)
             gdi32
             imm32
     )
+    add_dependencies(UiPlayerRunner PublicAuthoringTest)
     set_target_properties(UiPlayerRunner PROPERTIES FOLDER "Tests/UI")
 endif ()
 
@@ -59,6 +60,7 @@ if (WIN32 AND BML_BALLANCE_ROOT AND
                         --source-root "${BML_UI_TEST_ROOT}"
                         --ballance-root "${BML_BALLANCE_ROOT}"
                         --build-dll "$<TARGET_FILE:BML>"
+                        --public-authoring-mod "$<TARGET_FILE:PublicAuthoringTest>"
                         --scenario "${BML_UI_SCENARIO}"
                         --artifacts
                         "${BML_UI_TEST_BINARY_ROOT}/$<CONFIG>/UiAutomation/${BML_UI_SCENARIO}"

@@ -122,6 +122,25 @@ void RegisterConsoleScenario(ImGuiTestEngine *engine) {
         IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
         IM_CHECK(WaitForItem(ctx, "**/multi-completion"));
 
+        // A public Native Mod supplies three argument candidates. Walk the
+        // visible rail in both directions before accepting alpha; this covers
+        // Tab, Shift+Tab, Up, and Down through the real command registry.
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->ItemClick("**/##CmdBar");
+        ctx->KeyChars("public-authoring ");
+        ctx->KeyPress(ImGuiKey_Tab);
+        ctx->Yield(2);
+        ctx->KeyPress(ImGuiMod_Shift | ImGuiKey_Tab);
+        ctx->KeyPress(ImGuiKey_UpArrow);
+        ctx->KeyPress(ImGuiKey_DownArrow);
+        ctx->KeyPress(ImGuiKey_Tab);
+        ctx->KeyPress(ImGuiKey_Enter);
+        ctx->Yield(2);
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/public-authoring:alpha"));
+
         ctx->KeyPress(ImGuiKey_Slash);
         IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
         ctx->KeyPress(ImGuiKey_Escape);

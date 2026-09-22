@@ -3,4 +3,10 @@ test=mod_menu_all_pages
 surface=mod-menu
 capture=ModMenu
 input=mod-list
+fixture=public-authoring
 source=player/journeys/mod-menu/ModMenuScenario.cpp
+required_log=Public authoring load: status=pass command=true data_share=true page=true
+required_log=Public authoring page: enter
+required_log=Public authoring page: draw
+required_log=Public authoring page: leave=back
+required_log=Public authoring unload: status=pass command=0 page=0

@@ -153,7 +153,9 @@ Scenario LoadScenario(const fs::path &definitionPath, const fs::path &sourceRoot
         throw std::runtime_error(absoluteDefinition.string() + ": unsupported input profile '" +
                                  input + "'");
 
-    scenario.Fixtures = ReadKnownList(properties, "fixture", {"custom-map"}, absoluteDefinition);
+    scenario.Fixtures = ReadKnownList(properties, "fixture",
+                                      {"custom-map", "public-authoring"},
+                                      absoluteDefinition);
     scenario.RequiredLogs = ReadUniqueList(properties, "required_log", absoluteDefinition);
     scenario.Requirements =
         ReadKnownList(properties, "requires", {"angelscript"}, absoluteDefinition);

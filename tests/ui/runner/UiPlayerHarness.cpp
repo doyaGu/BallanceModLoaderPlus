@@ -190,6 +190,19 @@ class InstallTransaction {
             fs::create_directories(map.parent_path());
             fs::copy_file(source, map, fs::copy_options::overwrite_existing);
         }
+
+        if (std::find(request.SelectedScenario.Fixtures.begin(),
+                      request.SelectedScenario.Fixtures.end(),
+                      "public-authoring") != request.SelectedScenario.Fixtures.end()) {
+            if (!fs::is_regular_file(request.PublicAuthoringMod)) {
+                throw std::runtime_error(
+                    "Public authoring fixture does not exist: " +
+                    request.PublicAuthoringMod.string());
+            }
+            fs::copy_file(request.PublicAuthoringMod,
+                          m_Mods / "PublicAuthoringTest.bmodp",
+                          fs::copy_options::overwrite_existing);
+        }
     }
 
     bool Restore() {

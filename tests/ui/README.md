@@ -119,7 +119,8 @@ run. The result is deliberately small and framework-owned:
    - `source`: path relative to `tests/ui/`, for example
      `player/journeys/console/ConsoleScenario.cpp`.
    - optional repeated `fixture`, `requires` and `required_log` entries.
-   - supported fixture: `custom-map`; supported requirement: `angelscript`.
+   - supported fixtures: `custom-map` and `public-authoring`; supported
+     requirement: `angelscript`.
 5. Reconfigure CMake. The descriptor is the source inventory for the BML test
    build and the Player runner; `CONFIGURE_DEPENDS` discovers new descriptors
    and creates `UiPlayerAutomation.<name>` when a Player is configured.
@@ -128,14 +129,15 @@ run. The result is deliberately small and framework-owned:
 ## Current business coverage
 
 - `mod-menu`: every category and page, editable values, revert and the real
-  New Ball Type surface.
+  New Ball Type surface, plus a Native Mod page registered through the public
+  API.
 - `custom-maps`: Start-menu entry, search, a real `Level_01.NMO` fixture
   selected through the visible map list, and the resulting level transition.
 - `hud`: changes title, FPS and speedrun-timer settings through the real Mod
   configuration UI, verifies the three overlays in Level 1, then restores the
   original configuration.
-- `console`: submits a real command, verifies message-board output and captures
-  the resulting state.
+- `console`: submits real built-in and Native Mod commands, verifies
+  message-board output, and walks completion with Tab, Shift+Tab, Up, and Down.
 - `script-tools`: opens the developer-tool window with the real
   `script panel` console command, then exercises tabs, filters and controls.
 

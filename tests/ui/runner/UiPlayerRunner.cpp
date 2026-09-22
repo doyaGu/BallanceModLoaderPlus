@@ -78,6 +78,9 @@ int main(int argc, char **argv) {
         UiTest::PlayerRunRequest request;
         request.BallanceRoot = GetRequired(arguments, "ballance-root");
         request.BuildDll = GetRequired(arguments, "build-dll");
+        const auto publicAuthoringMod = arguments.find("public-authoring-mod");
+        if (publicAuthoringMod != arguments.end())
+            request.PublicAuthoringMod = publicAuthoringMod->second;
         request.ArtifactsDirectory = GetRequired(arguments, "artifacts");
         request.SelectedScenario = *selected;
         const auto run = UiTest::RunPlayerScenario(request);

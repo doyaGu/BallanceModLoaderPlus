@@ -21,6 +21,7 @@ struct CaptureResult {
 struct PlayerRunRequest {
     std::filesystem::path BallanceRoot;
     std::filesystem::path BuildDll;
+    std::filesystem::path PublicAuthoringMod;
     std::filesystem::path ArtifactsDirectory;
     Scenario SelectedScenario;
     int Width = 800;

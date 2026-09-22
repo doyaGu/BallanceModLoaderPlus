@@ -7,11 +7,40 @@ namespace {
 
 using namespace UiAutomation::Test;
 
+bool HasRadioControl(ImGuiTestContext *ctx, const char *path) {
+    while (ctx->ItemExists("**/PrevPage")) {
+        ctx->ItemClick("**/PrevPage");
+        ctx->Yield();
+    }
+
+    while (true) {
+        if (ctx->ItemExists(path)) {
+            const ImGuiTestItemInfo row = ctx->ItemInfo(path);
+            return row.ID != 0 &&
+                ctx->ItemInfo(ctx->GetID("##RadioNext", row.ID),
+                              ImGuiTestOpFlags_NoError).ID != 0;
+        }
+        if (!ctx->ItemExists("**/NextPage"))
+            return false;
+        ctx->ItemClick("**/NextPage");
+        ctx->Yield();
+    }
+}
+
 void RegisterModMenuScenario(ImGuiTestEngine *engine) {
     ImGuiTest *test = IM_REGISTER_TEST(engine, ScenarioCategory, "mod_menu_all_pages");
     test->TestFunc = [](ImGuiTestContext *ctx) {
         IM_CHECK(ObserveModList(ctx));
-        IM_CHECK(MenuPagesContain(ctx, {"Ballance Mod Loader", "New Ball Type"}));
+        IM_CHECK(MenuPagesContain(ctx, {"Ballance Mod Loader", "New Ball Type",
+                                       "Public Authoring Test"}));
+
+        ctx->ItemClick("**/Public Authoring Test");
+        IM_CHECK(WaitForItem(ctx, "**/Public API Page"));
+        ctx->ItemClick("**/Public API Page");
+        IM_CHECK(WaitForItem(ctx, "**/Public API Page"));
+        ctx->ItemClick("**/Back");
+        IM_CHECK(WaitForItem(ctx, "**/Public Authoring Test"));
+
         ctx->ItemClick("**/Ballance Mod Loader");
         IM_CHECK(WaitForItem(ctx, "**/Back"));
         IM_CHECK(MenuPagesContain(ctx, {"GUI", "Graphics", "HUD", "CommandBar",
@@ -20,8 +49,8 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
         IM_CHECK(OpenConfigCategory(ctx, "GUI", "**/FontFilename"));
         IM_CHECK(MenuPagesContain(ctx, {"FontFilename", "FontSize", "FontFallbacks",
                                        "UseSystemFontFallbacks", "EnableIniSettings"}));
-        IM_CHECK(WaitForItem(ctx, "**/FontFilename/##RadioNext"));
-        IM_CHECK(WaitForItem(ctx, "**/FontFallbacks/##RadioNext"));
+        IM_CHECK(HasRadioControl(ctx, "**/FontFilename"));
+        IM_CHECK(HasRadioControl(ctx, "**/FontFallbacks"));
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "Graphics", "**/UnlockFrameRate"));
@@ -80,7 +109,8 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
 
         ctx->ItemClick("**/Back");
         IM_CHECK(WaitForItem(ctx, "**/Ballance Mod Loader"));
-        IM_CHECK(MenuPagesContain(ctx, {"Ballance Mod Loader", "New Ball Type"}));
+        IM_CHECK(MenuPagesContain(ctx, {"Ballance Mod Loader", "New Ball Type",
+                                       "Public Authoring Test"}));
         ctx->ItemClick("**/New Ball Type");
         IM_CHECK(WaitForItem(ctx, "**/Back"));
         ctx->ItemClick("**/Back");
