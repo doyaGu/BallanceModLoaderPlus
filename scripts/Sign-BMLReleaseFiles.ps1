@@ -31,7 +31,7 @@ Import-Module (Join-Path $PSScriptRoot 'lib\BMLReleaseFiles.psm1') -Force
 $input = [System.IO.Path]::GetFullPath($InputDir)
 $output = [System.IO.Path]::GetFullPath($OutputDir)
 if ($input -eq $output) {
-    throw 'InputDir and OutputDir must differ so the four CI ZIP files and updater manifest remain unchanged.'
+    throw 'InputDir and OutputDir must differ so the CI ZIP files and updater manifest remain unchanged.'
 }
 $inputPrefix = $input.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
 if ($output.StartsWith($inputPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {

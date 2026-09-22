@@ -110,6 +110,7 @@ try {
 
     foreach ($name in @(
         "BMLPlus-$version.zip",
+        "BMLPlus-Mods-$version.zip",
         "BMLPlus-SDK-$version-Release.zip",
         "BMLPlus-SDK-$version-Debug.zip"
     )) {
@@ -272,7 +273,7 @@ try {
         -Message 'The new stable.json dropped a previously revoked manifest hash.'
 
     $checksums = @(Get-Content -LiteralPath (Join-Path $signed 'SHA256SUMS.txt'))
-    Assert-True -Condition ($checksums.Count -eq 8) -Message 'SHA256SUMS.txt must cover the other eight signed release files.'
+    Assert-True -Condition ($checksums.Count -eq 9) -Message 'SHA256SUMS.txt must cover the other nine signed release files.'
 
     & git -C $pages init --initial-branch=gh-pages | Out-Null
     if ($LASTEXITCODE -ne 0) {

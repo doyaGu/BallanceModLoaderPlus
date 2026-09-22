@@ -17,6 +17,7 @@ function Get-BMLReleaseFileNames {
 
     $unsigned = @(
         "BMLPlus-$Version.zip",
+        "BMLPlus-Mods-$Version.zip",
         "BMLPlus-Update-$Version.zip",
         "BMLPlus-Update-$Version.manifest.json",
         "BMLPlus-SDK-$Version-Release.zip",

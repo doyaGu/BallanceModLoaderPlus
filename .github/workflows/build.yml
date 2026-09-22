@@ -117,6 +117,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.configuration }} `
             -DVIRTOOLS_SDK_PATH="${{ github.workspace }}\Virtools-SDK-2.1" `
             -DBML_ENABLE_ANGELSCRIPT=ON `
+            -DBML_BUILD_MODS=ON `
             -DBML_BUILD_TESTS=ON `
             -DBML_ENABLE_BEHAVIOR_TEST_INTERFACE=OFF `
             -DCKANGELSCRIPT_ROOT="${{ github.workspace }}\third-party\ckangelscript-release" `
@@ -308,7 +309,7 @@ jobs:
             }
           }
 
-      - name: Upload four ZIP files and updater manifest
+      - name: Upload ZIP files and updater manifest
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Unsigned-Release-Files

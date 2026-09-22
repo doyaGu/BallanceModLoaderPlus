@@ -52,6 +52,114 @@ function Copy-RequiredFile {
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
 
+function Get-InstalledModPackages {
+    param([string]$InstallDir)
+
+    $manifest = Join-Path $InstallDir 'share\BML\mods.txt'
+    Assert-BMLPath -Path $manifest -Type Leaf
+    $packages = @(Get-Content -LiteralPath $manifest | Where-Object { $_ -ne '' })
+    if ($packages.Count -eq 0) {
+        throw "Installed Mod manifest is empty: $manifest"
+    }
+
+    $expected = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($package in $packages) {
+        if ($package -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]*\.(bmodp|zip)$' -or
+            -not $expected.Add($package)) {
+            throw "Invalid or duplicate installed Mod package: $package"
+        }
+        Assert-BMLPath -Path (Join-Path $InstallDir "Mods\$package") -Type Leaf
+    }
+
+    foreach ($file in Get-ChildItem -LiteralPath (Join-Path $InstallDir 'Mods') -File) {
+        if (-not $expected.Contains($file.Name)) {
+            throw "Installed Mod is absent from the manifest: $($file.FullName)"
+        }
+    }
+
+    return $packages
+}
+
+function Assert-ModArchiveMatchesInstall {
+    param(
+        [string]$ArchivePath,
+        [string]$InstallDir,
+        [string]$EntryPrefix,
+        [string[]]$Packages
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
+    try {
+        $expected = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::Ordinal)
+        foreach ($name in $Packages) {
+            [void]$expected.Add("$EntryPrefix$name")
+        }
+        $found = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::Ordinal)
+        foreach ($entry in $archive.Entries) {
+            if (-not $entry.FullName.StartsWith($EntryPrefix,
+                    [System.StringComparison]::Ordinal) -or -not $entry.Name) {
+                continue
+            }
+            if (-not $expected.Contains($entry.FullName) -or
+                -not $found.Add($entry.FullName)) {
+                throw "Unexpected or duplicate Mod in ${ArchivePath}: $($entry.FullName)"
+            }
+
+            $sourceHash = (Get-FileHash -LiteralPath (Join-Path $InstallDir "Mods\$($entry.Name)") -Algorithm SHA256).Hash
+            $stream = $entry.Open()
+            try {
+                $sha = [System.Security.Cryptography.SHA256]::Create()
+                try {
+                    $archiveHash = [System.BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '')
+                } finally {
+                    $sha.Dispose()
+                }
+            } finally {
+                $stream.Dispose()
+            }
+            if ($archiveHash -cne $sourceHash) {
+                throw "Mod bytes differ from the installed build: $($entry.FullName)"
+            }
+        }
+        if ($found.Count -ne $expected.Count) {
+            $missing = @($expected | Where-Object { -not $found.Contains($_) })
+            throw "Mod archive is missing packages: $($missing -join ', ')"
+        }
+    } finally {
+        $archive.Dispose()
+    }
+}
+
+function Remove-PackageStagingDirectory {
+    param([string]$Path, [string]$OutputDir)
+
+    $target = [System.IO.Path]::GetFullPath($Path)
+    $expected = [System.IO.Path]::GetFullPath((Join-Path $OutputDir '_zip-contents'))
+    if (-not [string]::Equals($target, $expected,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove a path outside the package staging directory: $target"
+    }
+
+    for ($attempt = 0; $attempt -lt 10; ++$attempt) {
+        try {
+            Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
+            return
+        } catch {
+            if (-not (Test-Path -LiteralPath $target)) {
+                return
+            }
+            if ($attempt -eq 9) {
+                throw
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
+
 function Write-RequiredAngelScriptReadme {
     param([string]$DestinationDir)
 
@@ -494,12 +602,26 @@ foreach ($path in @(
     (Join-Path $releaseBin 'Updater.exe'),
     (Join-Path $debugBin 'BMLPlus.pdb'),
     (Join-Path $runtimeSource 'ModLoader\Configs\BML.cfg'),
-    (Join-Path $runtimeSource 'ModLoader\Fonts\unifont.otf'),
-    (Join-Path $runtimeSource 'ModLoader\Mods\CameraUtilities.bmodp'),
-    (Join-Path $runtimeSource 'ModLoader\Mods\DebugUtilities.bmodp'),
-    (Join-Path $runtimeSource 'ModLoader\Mods\TravelMode.bmodp')
+    (Join-Path $runtimeSource 'ModLoader\Fonts\unifont.otf')
 )) {
     Assert-BMLPath -Path $path -Type Leaf
+}
+
+$modPackages = @(Get-InstalledModPackages -InstallDir $releaseInstall)
+$debugModPackages = @(Get-InstalledModPackages -InstallDir $debugInstall)
+if (($modPackages -join '|') -cne ($debugModPackages -join '|')) {
+    throw 'Release and Debug installations contain different Mod packages.'
+}
+$defaultMods = @('CameraUtilities.bmodp', 'DebugUtilities.bmodp', 'TravelMode.bmodp')
+foreach ($name in $defaultMods) {
+    if ($name -notin $modPackages) {
+        throw "Default Mod is absent from the installed Mod manifest: $name"
+    }
+}
+$sourceMods = Join-Path $runtimeSource 'ModLoader\Mods'
+if ((Test-Path -LiteralPath $sourceMods) -and
+    @(Get-ChildItem -LiteralPath $sourceMods -Recurse -File).Count -gt 0) {
+    throw "Runtime source must not contain prebuilt Mods: $sourceMods"
 }
 
 foreach ($path in @(
@@ -534,6 +656,10 @@ New-BMLCleanDirectory $zipContentsRoot
 $runtimeFiles = Join-Path $zipContentsRoot 'runtime'
 New-BMLCleanDirectory $runtimeFiles
 Copy-BMLDirectoryContents -SourceDir $runtimeSource -DestinationDir $runtimeFiles
+foreach ($name in $defaultMods) {
+    Copy-RequiredFile -Source (Join-Path $releaseInstall "Mods\$name") `
+        -Destination (Join-Path $runtimeFiles "ModLoader\Mods\$name")
+}
 Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLPlus.dll') -Destination (Join-Path $runtimeFiles 'BuildingBlocks\BMLPlus.dll')
 Copy-RequiredFile -Source (Join-Path $releaseBin 'Updater.exe') -Destination (Join-Path $runtimeFiles 'Bin\Updater.exe')
 Write-UpdaterBootstrapReadme -DestinationDir (Join-Path $runtimeFiles 'Bin') -Version $Version
@@ -547,6 +673,16 @@ if ($IncludeAngelScript) {
 }
 
 New-BMLZipFromDirectory -SourceDir $runtimeFiles -ZipPath (Join-Path $output "BMLPlus-$Version.zip")
+
+$modFiles = Join-Path $zipContentsRoot 'mods'
+New-BMLCleanDirectory $modFiles
+Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'mods\LICENSE') `
+    -Destination (Join-Path $modFiles 'Mods-LICENSE.txt')
+foreach ($name in $modPackages) {
+    Copy-RequiredFile -Source (Join-Path $releaseInstall "Mods\$name") `
+        -Destination (Join-Path $modFiles "ModLoader\Mods\$name")
+}
+New-BMLZipFromDirectory -SourceDir $modFiles -ZipPath (Join-Path $output "BMLPlus-Mods-$Version.zip")
 
 $updaterFiles = Join-Path $zipContentsRoot 'updater-runtime'
 Copy-BMLDirectoryFresh -SourceDir $runtimeFiles -DestinationDir $updaterFiles
@@ -596,7 +732,16 @@ if ($IncludeAngelScript) {
 Assert-BMLSdkDirectory -SdkDir $debugSdkFiles -RequireAngelScript:$IncludeAngelScript
 New-BMLZipFromDirectory -SourceDir $debugSdkFiles -ZipPath (Join-Path $output "BMLPlus-SDK-$Version-Debug.zip")
 
-Remove-Item -LiteralPath $zipContentsRoot -Recurse -Force
+Assert-ModArchiveMatchesInstall -ArchivePath (Join-Path $output "BMLPlus-$Version.zip") `
+    -InstallDir $releaseInstall -EntryPrefix 'ModLoader/Mods/' -Packages $defaultMods
+Assert-ModArchiveMatchesInstall -ArchivePath (Join-Path $output "BMLPlus-Mods-$Version.zip") `
+    -InstallDir $releaseInstall -EntryPrefix 'ModLoader/Mods/' -Packages $modPackages
+Assert-ModArchiveMatchesInstall -ArchivePath (Join-Path $output "BMLPlus-SDK-$Version-Release.zip") `
+    -InstallDir $releaseInstall -EntryPrefix 'Mods/' -Packages $modPackages
+Assert-ModArchiveMatchesInstall -ArchivePath (Join-Path $output "BMLPlus-SDK-$Version-Debug.zip") `
+    -InstallDir $debugInstall -EntryPrefix 'Mods/' -Packages $debugModPackages
+
+Remove-PackageStagingDirectory -Path $zipContentsRoot -OutputDir $output
 
 Get-ChildItem -LiteralPath $output -Filter '*.zip' | ForEach-Object {
     Write-Host "Created $($_.FullName)"
