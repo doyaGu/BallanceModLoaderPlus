@@ -1,242 +1,80 @@
 # Releasing BML+
 
-This runbook publishes an official BML+ version. GitHub Actions builds and tests
-five ZIP files plus one updater manifest. A maintainer then signs that manifest
-and `stable.json` on the release machine. The production private key never
-enters GitHub Actions.
+This checklist records the decisions and checks required for an official
+release. It deliberately does not record a release version, command transcript,
+or artifact inventory. Use `CMakeLists.txt` for the project version and the
+[CI workflow](.github/workflows/build.yml),
+[packaging script](scripts/Package-BMLRelease.ps1),
+[signing script](scripts/Sign-BMLReleaseFiles.ps1), and
+[updater channel script](scripts/Copy-BMLUpdaterFilesToPages.ps1) for the
+current build and publication details.
 
-## Release rules
+## Release checklist
 
-- `CMakeLists.txt` is the only source of the release version.
-- A release tag is immutable. Never move or force-push a published tag.
-- Build once: the ZIP files tested by CI are the ZIP files that get published.
-- The signing command may create two signatures, `stable.json`, and
-  `SHA256SUMS.txt`, but must not repackage a CI ZIP.
-- GitHub Actions must not create or publish the GitHub release. The maintainer
-  account creates the draft after all ten signed release files are ready.
-- Publish the GitHub release before switching the updater channel to it.
-- Update only `gh-pages:/updates/`; never rebuild or force-push the whole Pages
-  branch while publishing a BML+ version.
-- If channel validation fails, revert the channel commit. Do not move the tag or
-  silently replace files in a published release.
+### 1. Freeze the source
 
-Tags such as `v0.3.14-alpha.1` produce the same six unsigned CI artifacts for
-candidate testing. They are not accepted by the signing or `stable.json`
-publication scripts. The steps below apply to the final `vX.Y.Z` tag.
+- Confirm the intended commit is reviewed, tested locally, on the release
+  branch, and has a clean worktree. The project version and release tag must
+  agree.
+- Create and push the tag once. Do not move or reuse a published tag.
+- Prerelease tags can exercise CI, but the stable signing and channel scripts
+  accept only final release tags.
 
-## 1. Prepare the release commit
+Gate: the tag identifies the exact source commit to be released.
 
-1. Set `project(... VERSION X.Y.Z ...)` in `CMakeLists.txt`.
-2. Build and test the intended release commit locally.
-3. Ensure the worktree is clean and the commit is on `origin/main`.
-4. Create an annotated `vX.Y.Z` tag at that commit and push it once.
+### 2. Verify the CI output
 
-```powershell
-$version = 'vX.Y.Z'
-$commit = git rev-parse HEAD
-git tag -a $version $commit -m "BML+ $version"
-git push origin "refs/tags/$version"
-```
+- Confirm the successful build run belongs to that tag and commit. Check that
+  the build, tests, package validation, and SDK consumer checks passed.
+- Obtain the complete CI output without changing names or contents. Use the
+  workflow and packaging checks for the expected inventory, not this document.
 
-The tag starts `.github/workflows/build.yml`. CI validates the tag against the
-CMake version, builds MSVC x86 Debug and Release with CKAngelScript enabled,
-runs CTest, validates both packaged SDKs, and retains six unsigned files in
-the tag's Build run. It does not create a GitHub release.
+Gate: the files to publish are the files built and validated by CI. Do not
+rebuild or repackage them on the release machine.
 
-## 2. Download the six files from the Build run
+### 3. Sign in the release environment
 
-The completed tag run contains exactly these six unsigned files:
+- Keep the production signing key outside CI. Sign into a separate, empty
+  output directory so the unsigned CI output remains untouched.
+- Verify the previous signed channel metadata and carry forward its revocation
+  information. An empty revocation list is only appropriate when creating the
+  first channel.
+- Let the signing script validate the package, manifest, signatures, and
+  resulting file set. Confirm the CI archives remain byte-for-byte unchanged.
 
-```text
-BMLPlus-vX.Y.Z.zip
-BMLPlus-Mods-vX.Y.Z.zip
-BMLPlus-Update-vX.Y.Z.zip
-BMLPlus-Update-vX.Y.Z.manifest.json
-BMLPlus-SDK-vX.Y.Z-Release.zip
-BMLPlus-SDK-vX.Y.Z-Debug.zip
-```
+Gate: the complete signed output is ready for review; no unsigned or partially
+signed set may be published.
 
-Resolve the Build run by the tag commit, require a successful result, and
-download the named file collection without changing names or contents:
+### 4. Publish the GitHub Release
 
-```powershell
-$unsigned = Join-Path $env:TEMP "BMLPlus-$version-unsigned"
-New-Item -ItemType Directory -Path $unsigned | Out-Null
-$runs = @(
-  gh run list `
-    --repo doyaGu/BallanceModLoaderPlus `
-    --workflow Build `
-    --commit $commit `
-    --event push `
-    --limit 20 `
-    --json databaseId,headBranch,status,conclusion |
-    ConvertFrom-Json |
-    Where-Object { $_.headBranch -ceq $version }
-)
-if ($runs.Count -ne 1) {
-  throw "Expected one Build run for $version at $commit, found $($runs.Count)."
-}
-$run = $runs[0]
-gh run watch $run.databaseId `
-  --repo doyaGu/BallanceModLoaderPlus `
-  --exit-status
-gh run download $run.databaseId `
-  --repo doyaGu/BallanceModLoaderPlus `
-  --name "BMLPlus-$version-Unsigned-Release-Files" `
-  --dir $unsigned
-```
+- A human maintainer creates the draft from the signed output. Review its tag,
+  author, release notes, and full asset set before making it public.
+- Confirm the published assets and updater manifest are publicly accessible
+  before changing the updater channel. CI must not create or publish the
+  Release on the maintainer's behalf.
 
-## 3. Sign the updater manifest and stable.json
+Gate: the public Release is complete and usable independently of the updater
+channel.
 
-Run this on the release machine. `OutputDir` must be new or empty so the CI
-inputs cannot be modified in place.
+### 5. Switch and verify the updater channel
 
-Use the `stable.json` and `stable.json.sig` retained from the previous release.
-Pass the JSON path as `PreviousChannelPath`; the signing command reads the
-adjacent `.sig` file and verifies it with `SigningCngKeyName` before copying the
-revocation lists. Use `PreviousChannelSignaturePath` only when the signature is
-stored elsewhere.
+- Start from a clean checkout of the current Pages branch. Use the channel
+  script, inspect the diff, and publish only the updater channel files. Do not
+  force-push or replace unrelated Pages content.
+- If Pages advances before the channel commit is published, refresh the
+  checkout and repeat the copy rather than overwriting the newer branch.
+- From a disposable game installation, verify that the public channel and its
+  signature can be fetched, the updater accepts them, the update completes,
+  and the installed files match the expected hashes.
 
-```powershell
-$signed = Join-Path $env:TEMP "BMLPlus-$version-signed"
-$previousChannel = '<path-to-the-previous-verified-stable.json>'
-.\scripts\Sign-BMLReleaseFiles.ps1 `
-  -Version $version `
-  -InputDir $unsigned `
-  -OutputDir $signed `
-  -SigningCngKeyName '<production-signing-key-name>' `
-  -PreviousChannelPath $previousChannel
-```
+Gate: the channel points to a published, signed Release that has passed an
+end-to-end update check.
 
-The script requires the exact six-file CI list, verifies every updater ZIP
-entry against the unsigned manifest, preserves every ZIP byte-for-byte, signs
-the manifest, carries the previous channel's revocation lists forward, creates
-and signs `stable.json`, and writes `SHA256SUMS.txt`. Use
-`-AllowEmptyRevocations` instead of `-PreviousChannelPath` only when creating
-the first updater channel.
+## Failure and recovery
 
-The signed directory must contain exactly ten files:
-
-```text
-BMLPlus-vX.Y.Z.zip
-BMLPlus-Mods-vX.Y.Z.zip
-BMLPlus-Update-vX.Y.Z.zip
-BMLPlus-Update-vX.Y.Z.manifest.json
-BMLPlus-Update-vX.Y.Z.manifest.json.sig
-BMLPlus-SDK-vX.Y.Z-Release.zip
-BMLPlus-SDK-vX.Y.Z-Debug.zip
-stable.json
-stable.json.sig
-SHA256SUMS.txt
-```
-
-## 4. Create the draft release with the maintainer account
-
-Confirm that GitHub CLI is authenticated as a human maintainer, then create the
-draft with the ten signed files and the reviewed release notes. A bot-created
-draft remains bot-authored after a maintainer publishes it, so do not use one.
-
-```powershell
-$publisher = gh api user --jq '.login'
-if (-not $publisher -or $publisher.EndsWith('[bot]')) {
-  throw "Refusing to create a release with bot account '$publisher'."
-}
-$releaseNotes = '<path-to-reviewed-release-notes.md>'
-$releaseFiles = Get-ChildItem -LiteralPath $signed -File |
-  Sort-Object Name |
-  ForEach-Object { $_.FullName }
-gh release create $version @releaseFiles `
-  --repo doyaGu/BallanceModLoaderPlus `
-  --draft `
-  --verify-tag `
-  --title $version `
-  --notes-file $releaseNotes
-$release = gh release view $version `
-  --repo doyaGu/BallanceModLoaderPlus `
-  --json author,isDraft,assets |
-  ConvertFrom-Json
-if ($release.author.login -cne $publisher -or -not $release.isDraft) {
-  throw 'Draft release author or state is incorrect.'
-}
-if ($release.assets.Count -ne 10) {
-  throw "Expected ten release files, found $($release.assets.Count)."
-}
-gh release view $version `
-  --repo doyaGu/BallanceModLoaderPlus `
-  --web
-```
-
-Publish the draft only after the tag, notes, and all ten files have been
-reviewed:
-
-```powershell
-gh release edit $version `
-  --draft=false `
-  --latest `
-  --repo doyaGu/BallanceModLoaderPlus
-```
-
-Verify that the public versioned package and manifest URLs work before changing
-the updater channel.
-
-## 5. Copy stable.json and its signature to gh-pages
-
-Use a clean checkout of the current `gh-pages` branch. The copy script
-refuses a dirty checkout and modifies only `updates/index.html`,
-`updates/stable.json`, and `updates/stable.json.sig`.
-
-```powershell
-$pages = Join-Path $env:TEMP "BMLPlus-$version-gh-pages"
-git fetch origin gh-pages
-git worktree add --detach $pages origin/gh-pages
-
-.\scripts\Copy-BMLUpdaterFilesToPages.ps1 `
-  -Version $version `
-  -ReleaseDir $signed `
-  -GhPagesCheckout $pages `
-  -ExpectedBaseRef origin/gh-pages
-
-git -C $pages status --short
-git -C $pages add updates
-git -C $pages diff --cached --check
-git -C $pages diff --cached --stat
-git -C $pages commit -m "Publish updater channel $version"
-git -C $pages push origin HEAD:gh-pages
-git worktree remove $pages
-```
-
-Do not use `--force`. If another Pages deployment wins the race, remove the
-temporary worktree, fetch the new branch, and copy the three `/updates` files again.
-
-## 6. Validate the public path
-
-The following URLs must return HTTP 200:
-
-```text
-https://doyagu.github.io/BallanceModLoaderPlus/updates/
-https://doyagu.github.io/BallanceModLoaderPlus/updates/stable.json
-https://doyagu.github.io/BallanceModLoaderPlus/updates/stable.json.sig
-```
-
-From a disposable validation game install, run:
-
-```powershell
-Bin\Updater.exe source set `
-  'https://doyagu.github.io/BallanceModLoaderPlus/updates' `
-  --channel stable
-Bin\Updater.exe check
-Bin\Updater.exe update --force
-Bin\Updater.exe status
-```
-
-Require `channel signature verified`, `OK: remote channel checked`, a completed
-apply, and hashes matching `ModLoader/Updater/installed.manifest.json`.
-
-## Rollback
-
-- Before the channel switch: leave the maintainer-created release as a draft
-  or delete the draft without deleting the tag.
-- After the release is public but before the channel switch: fix forward with a
-  new version; do not reuse the published version.
-- After the channel switch: revert the `gh-pages` channel commit to the previous
-  signed `stable.json`, then investigate. Never publish an unsigned `stable.json`.
+- Before the Release is public, stop on any failed check. Keep or discard the
+  draft, correct the issue, and repeat the affected checks before proceeding.
+- Once the Release is public, do not replace its assets or move its tag. Fix
+  it with a new release instead.
+- If the channel update fails, revert the channel change to the previous
+  signed metadata and investigate. Never publish unsigned channel metadata.
