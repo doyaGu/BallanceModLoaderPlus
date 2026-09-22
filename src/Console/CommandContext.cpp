@@ -179,7 +179,7 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, Comma
         return false;
 
     const std::string name = info.Name;
-    if (!IsValidCommandName(name.c_str())) {
+    if (!IsValidCommandName(name)) {
         Logger::GetDefault()->Error("Command name %s is invalid.", name.c_str());
         return false;
     }
@@ -193,7 +193,7 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, Comma
     std::string aliasKey;
     const std::string alias = info.Alias;
     if (!alias.empty()) {
-        if (!IsValidCommandAlias(alias.c_str())) {
+        if (!IsValidCommandAlias(alias)) {
             Logger::GetDefault()->Error("Command alias %s is invalid.", alias.c_str());
             return false;
         }
@@ -448,16 +448,20 @@ bool CommandContext::IsValidCommandName(const char *name) {
     if (size > BML_COMMAND_MAX_NAME_BYTES)
         return false;
 
-    if (utf8valid(reinterpret_cast<const utf8_int8_t *>(name)) != nullptr)
+    return IsValidCommandName(std::string_view(name, size));
+}
+
+bool CommandContext::IsValidCommandName(std::string_view name) {
+    if (name.empty() || name.size() > BML_COMMAND_MAX_NAME_BYTES ||
+        !utils::IsValidUtf8(name))
         return false;
 
-    const auto *cursor = reinterpret_cast<const utf8_int8_t *>(name);
+    const auto *cursor = reinterpret_cast<const utf8_int8_t *>(name.data());
+    const auto *end = cursor + name.size();
     bool first = true;
-    while (*cursor != '\0') {
+    while (cursor < end) {
         utf8_int32_t codepoint = 0;
         const utf8_int8_t *next = utf8codepoint(cursor, &codepoint);
-        if (!next)
-            return false;
 
         if (codepoint <= 0x20 || codepoint == 0x7F)
             return false;
@@ -487,15 +491,19 @@ bool CommandContext::IsValidCommandAlias(const char *alias) {
     if (size > BML_COMMAND_MAX_NAME_BYTES)
         return false;
 
-    if (utf8valid(reinterpret_cast<const utf8_int8_t *>(alias)) != nullptr)
+    return IsValidCommandAlias(std::string_view(alias, size));
+}
+
+bool CommandContext::IsValidCommandAlias(std::string_view alias) {
+    if (alias.empty() || alias.size() > BML_COMMAND_MAX_NAME_BYTES ||
+        !utils::IsValidUtf8(alias))
         return false;
 
-    const auto *cursor = reinterpret_cast<const utf8_int8_t *>(alias);
-    while (*cursor != '\0') {
+    const auto *cursor = reinterpret_cast<const utf8_int8_t *>(alias.data());
+    const auto *end = cursor + alias.size();
+    while (cursor < end) {
         utf8_int32_t codepoint = 0;
         const utf8_int8_t *next = utf8codepoint(cursor, &codepoint);
-        if (!next)
-            return false;
 
         if (codepoint <= 0x20 || codepoint == 0x7F)
             return false;

@@ -275,6 +275,18 @@ TEST_F(CommandContextTest, InvalidCommandNames) {
     EXPECT_FALSE(Register(cmd3));
 }
 
+TEST_F(CommandContextTest, RegistrationRejectsEmbeddedNulls) {
+    auto *command = MakeCommand("visible");
+    BML::CommandContext::CommandInfo info;
+    info.Name = std::string("visible\0hidden", 14);
+    EXPECT_FALSE(ctx->RegisterCommand(this, command, info));
+
+    info.Name = "visible";
+    info.Alias = std::string("v\0hidden", 8);
+    EXPECT_FALSE(ctx->RegisterCommand(this, command, info));
+    EXPECT_EQ(0u, ctx->GetCommandCount());
+}
+
 TEST_F(CommandContextTest, ValidCommandNames) {
     auto *cmd = MakeCommand("MyCommand123");
     EXPECT_TRUE(Register(cmd));

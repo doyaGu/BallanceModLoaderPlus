@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 
@@ -92,7 +93,9 @@ namespace BML {
         static char *AllocPrintfV(const char *format, va_list args);
 
         static bool IsValidCommandAlias(const char *alias);
+        static bool IsValidCommandAlias(std::string_view alias);
         static bool IsValidCommandName(const char *name);
+        static bool IsValidCommandName(std::string_view name);
         static std::string NormalizeCommandName(const char *name);
 
     private:

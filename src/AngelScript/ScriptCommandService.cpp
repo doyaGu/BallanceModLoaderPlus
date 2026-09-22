@@ -93,14 +93,14 @@ static bool ValidateCommandNames(ScriptMod *owner, const ScriptCommandEntry &ent
         }
         return false;
     }
-    if (!CommandContext::IsValidCommandName(entry.Name.c_str())) {
+    if (!CommandContext::IsValidCommandName(entry.Name)) {
         if (owner) {
             owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
                 "Command name is invalid: " + entry.Name));
         }
         return false;
     }
-    if (!entry.Alias.empty() && !CommandContext::IsValidCommandAlias(entry.Alias.c_str())) {
+    if (!entry.Alias.empty() && !CommandContext::IsValidCommandAlias(entry.Alias)) {
         if (owner) {
             owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
                 "Command alias is invalid: " + entry.Alias));

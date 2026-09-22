@@ -56,8 +56,16 @@ bool CommandContext::IsValidCommandAlias(const char *alias) {
     return alias && alias[0] != '\0';
 }
 
+bool CommandContext::IsValidCommandAlias(std::string_view alias) {
+    return !alias.empty() && alias.find('\0') == std::string_view::npos;
+}
+
 bool CommandContext::IsValidCommandName(const char *name) {
     return name && name[0] != '\0';
+}
+
+bool CommandContext::IsValidCommandName(std::string_view name) {
+    return !name.empty() && name.find('\0') == std::string_view::npos;
 }
 
 std::string CommandContext::NormalizeCommandName(const char *name) {
