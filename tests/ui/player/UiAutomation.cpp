@@ -268,14 +268,9 @@ CheckpointProgress AdvanceMenuInput(const NativeMenuRoute &route) {
         const int rowCount = static_cast<int>(layout.Items.size());
         const int targetRow = layout.TargetRow;
         const std::optional<int> row = MenuRow(route.Script, route.Menu);
-        if (!row || *row < 0 || *row >= rowCount) {
-            g_SessionFailure = std::string(route.Checkpoint) + "-row-unavailable";
-            return CheckpointProgress::Failed;
-        }
-        if (targetRow < 0 || targetRow >= rowCount) {
-            g_SessionFailure = std::string(route.Checkpoint) + "-target-unavailable";
-            return CheckpointProgress::Failed;
-        }
+        if (!row || *row < 0 || *row >= rowCount ||
+            targetRow < 0 || targetRow >= rowCount)
+            return CheckpointProgress::Waiting;
         if (g_Logger) {
             g_Logger->Info("UI automation: native_transition=%s requested=true input=keyboard "
                            "row=%d target=%d rows=%d",
