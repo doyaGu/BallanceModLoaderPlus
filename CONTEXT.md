@@ -11,6 +11,10 @@ implementation history. Use the source and focused guides for detailed behavior:
 Developer Workflow may add build metadata, but does not replace the Mod's runtime
 identity.
 
+**In-tree Native Mods** — Optional Mod Projects under `mods/`. They build against
+the BML target in the same Win32 workspace but remain separate runtime DLLs;
+building the loader alone does not build or install them.
+
 **Developer Workflow** — The SDK Python interface for creating or adopting a
 Mod Project, building it, starting Player, collecting diagnostics, and packaging
 it. Native and Script adapters share the entry point but retain their different
