@@ -38,21 +38,6 @@ set_target_properties(BML_JsonUtils PROPERTIES
     FOLDER "Utils"
 )
 
-# -- BML_ReedSolomon - RS(30,14) error correction codec ---------------------
-add_library(BML_ReedSolomon STATIC
-    ReedSolomon.h
-    ReedSolomon.cpp
-)
-
-target_include_directories(BML_ReedSolomon PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-set_target_properties(BML_ReedSolomon PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    FOLDER "Utils"
-)
-
 # -- BML_StringUtils - String manipulation and encoding conversion -----------
 add_library(BML_StringUtils STATIC
     StringUtils.h
@@ -66,21 +51,6 @@ target_include_directories(BML_StringUtils PUBLIC
 target_link_libraries(BML_StringUtils PUBLIC utf8)
 
 set_target_properties(BML_StringUtils PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    FOLDER "Utils"
-)
-
-# -- BML_TimeUtils - Timestamp formatting ------------------------------------
-add_library(BML_TimeUtils STATIC
-    TimeUtils.h
-    TimeUtils.cpp
-)
-
-target_include_directories(BML_TimeUtils PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-set_target_properties(BML_TimeUtils PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     FOLDER "Utils"
 )
@@ -102,23 +72,6 @@ if (WIN32)
     target_link_libraries(BML_CryptoUtils PUBLIC bcrypt)
 
     set_target_properties(BML_CryptoUtils PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-        FOLDER "Utils"
-    )
-
-    # -- BML_HardwareFingerprint - Machine GUID SHA-256 fingerprint ----------
-    add_library(BML_HardwareFingerprint STATIC
-        HardwareFingerprint.h
-        HardwareFingerprint.cpp
-    )
-
-    target_include_directories(BML_HardwareFingerprint PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-
-    target_link_libraries(BML_HardwareFingerprint PUBLIC bcrypt)
-
-    set_target_properties(BML_HardwareFingerprint PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         FOLDER "Utils"
     )
@@ -194,14 +147,11 @@ add_library(BML_Utils INTERFACE)
 target_link_libraries(BML_Utils INTERFACE
     BML_HashUtils
     BML_JsonUtils
-    BML_ReedSolomon
     BML_StringUtils
-    BML_TimeUtils
 )
 if (WIN32)
     target_link_libraries(BML_Utils INTERFACE
         BML_CryptoUtils
-        BML_HardwareFingerprint
         BML_HookUtils
         BML_IniFile
         BML_PathUtils
