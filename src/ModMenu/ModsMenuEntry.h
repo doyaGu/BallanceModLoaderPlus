@@ -10,8 +10,8 @@ class CKContext;
 class IBML;
 class ILogger;
 
-// Owns the "Mods" entry added to Ballance's Options menu. The Behavior Patch
-// and the visible menu row are one feature: the row is published only after
+// Owns the "Mods" entry in Ballance's Options menu. The Behavior Patch and
+// the visible menu row are one feature: the row is published only after
 // the Patch is active, and is removed before the Patch is retired.
 class ModsMenuEntry {
 public:

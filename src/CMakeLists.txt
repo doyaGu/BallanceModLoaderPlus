@@ -138,14 +138,12 @@ set(BML_ROOT_SOURCES
 set(BML_MODS_PRIVATE_HEADERS
         Mods/BMLCommand.h
         Mods/BMLMod.h
-        Mods/ModsMenuEntry.h
         Mods/NewBallTypeMod.h
 )
 
 set(BML_MODS_SOURCES
         Mods/BMLCommand.cpp
         Mods/BMLMod.cpp
-        Mods/ModsMenuEntry.cpp
         Mods/NewBallTypeMod.cpp
 )
 
@@ -334,6 +332,7 @@ set(BML_IMC_SOURCES
 
 set(BML_MOD_MENU_PRIVATE_HEADERS
         ModMenu/ModMenu.h
+        ModMenu/ModsMenuEntry.h
         ModMenu/ModMenuPages.h
         ModMenu/ModMenuModel.h
         ModMenu/ModMenuPresentation.h
@@ -342,6 +341,7 @@ set(BML_MOD_MENU_PRIVATE_HEADERS
 
 set(BML_MOD_MENU_SOURCES
         ModMenu/ModMenu.cpp
+        ModMenu/ModsMenuEntry.cpp
         ModMenu/ModMenuPages.cpp
         ModMenu/ModMenuModel.cpp
         ModMenu/ModMenuPresentation.cpp

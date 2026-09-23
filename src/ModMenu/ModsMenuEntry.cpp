@@ -1,4 +1,4 @@
-#include "Mods/ModsMenuEntry.h"
+#include "ModMenu/ModsMenuEntry.h"
 
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/TT_Toolbox_RT.h"

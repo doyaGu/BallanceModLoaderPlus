@@ -13,7 +13,7 @@
 #include "Gameplay/GameplayTweaks.h"
 #include "HUD/HUDRuntime.h"
 #include "ModMenu/ModMenu.h"
-#include "Mods/ModsMenuEntry.h"
+#include "ModMenu/ModsMenuEntry.h"
 
 class ModContext;
 struct FontCommandContext;
