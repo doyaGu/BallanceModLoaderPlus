@@ -174,7 +174,7 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/PhysicsForce.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/Text2DView.cpp
 
-        ${PROJECT_SOURCE_DIR}/src/Virtools/CKGraphOrder.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/CKGraphOrder.cpp
 )
 target_include_directories(BehaviorRuntimeSemanticsTest PRIVATE
         ${PROJECT_SOURCE_DIR}/src

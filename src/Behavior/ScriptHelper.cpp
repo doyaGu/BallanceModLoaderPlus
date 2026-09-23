@@ -1,6 +1,6 @@
 #include "BML/ScriptHelper.h"
 
-#include "Virtools/CKGraphOrder.h"
+#include "Behavior/CKGraphOrder.h"
 
 namespace ScriptHelper {
     bool FindBB(CKBehavior *script, std::function<bool(CKBehavior *)> callback, const char *name, bool hierarchically,

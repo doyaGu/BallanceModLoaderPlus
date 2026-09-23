@@ -250,12 +250,13 @@ Behavior Runtime does not depend on ExecuteBB.
   ModContext.* owns the runtime services and IBML entry point; ModManager.*
   connects both to CK manager lifecycle.
 - src/Api/ adapts public BML interfaces to private implementations.
-- src/Behavior/ owns Sessions, Prototypes, graph authoring, and Runtime.
-  src/Behavior/Blocks/ holds private implementations tied to individual BBs.
+- src/Behavior/ owns Sessions, Prototypes, graph authoring, Runtime, and the
+  legacy ScriptHelper implementation. src/Behavior/Blocks/ holds private
+  implementations tied to individual BBs.
 - src/Console/, src/HUD/, src/CustomMaps/, src/Gameplay/, and src/ModMenu/
   own their named built-in features.
 - src/UI/ owns shared Overlay, input, text, fonts, and IME infrastructure.
-- src/Config/, src/DataShare/, src/Imc/, src/Logging/, src/Hooks/, src/Virtools/,
+- src/Config/, src/DataShare/, src/Imc/, src/Logging/, src/Hooks/,
   src/AngelScript/, and src/Utils/ keep their respective supporting code local.
 - tests/unit/ groups in-process tests by domain. tests/abi/, tests/codegen/,
   and tests/sdk/ check public headers, generators, and installed consumers.

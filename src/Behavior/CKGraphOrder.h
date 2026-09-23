@@ -1,5 +1,5 @@
-#ifndef BML_VIRTOOLS_CKGRAPHORDER_H
-#define BML_VIRTOOLS_CKGRAPHORDER_H
+#ifndef BML_BEHAVIOR_CKGRAPHORDER_H
+#define BML_BEHAVIOR_CKGRAPHORDER_H
 
 #include <CKBehavior.h>
 #include <CKBehaviorIO.h>
@@ -27,4 +27,4 @@ public:
 
 } // namespace BML
 
-#endif // BML_VIRTOOLS_CKGRAPHORDER_H
+#endif // BML_BEHAVIOR_CKGRAPHORDER_H

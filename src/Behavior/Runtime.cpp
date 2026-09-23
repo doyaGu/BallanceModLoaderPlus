@@ -1,7 +1,7 @@
 #include "Behavior/Runtime.h"
 
 #include "Behavior/CKBehaviorContext.h"
-#include "Virtools/CKGraphOrder.h"
+#include "Behavior/CKGraphOrder.h"
 
 #include <algorithm>
 #include <sstream>
