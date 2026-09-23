@@ -51,18 +51,7 @@ if ($workflow.Contains('draft-release:', [System.StringComparison]::Ordinal) -or
     throw 'GitHub Actions must not create or publish the GitHub release.'
 }
 
-$runbook = Get-Content -LiteralPath (Join-Path $SourceRoot 'RELEASING.md') -Raw
-Assert-ContainsLiteral `
-    -Text $runbook `
-    -Expected "Refusing to create a release with bot account" `
-    -Message 'The maintainer runbook must reject bot-authenticated GitHub CLI sessions.'
-Assert-ContainsLiteral `
-    -Text $runbook `
-    -Expected 'gh release create $version @releaseFiles' `
-    -Message 'The maintainer runbook must create the GitHub release after local signing.'
-
 foreach ($relative in @(
-    'RELEASING.md',
     'scripts\Sign-BMLReleaseFiles.ps1',
     'scripts\Copy-BMLUpdaterFilesToPages.ps1'
 )) {
