@@ -18,7 +18,6 @@
 #include "BML/Timer.h"
 #include "Logging/Logger.h"
 #include "Loader/LegacyModVersion.h"
-#include "Loader/ModOrder.h"
 #include "Mods/BMLMod.h"
 #include "Mods/NewBallTypeMod.h"
 #include "PathUtils.h"
@@ -1968,7 +1967,21 @@ bool ModLoader::ResolveDependencies() {
         return false;
     }
 
-    PublishModOrder(m_Mods, m_ModIndex, std::move(sorted), idsByMod, m_ModRegistryMutex);
+    // Build the replacement index before changing either published container.
+    // A failed allocation or inconsistent id leaves the current registry intact.
+    std::unordered_map<std::string, size_t> sortedIndex;
+    sortedIndex.reserve(sorted.size());
+    for (size_t i = 0; i < sorted.size(); ++i) {
+        const auto inserted = sortedIndex.emplace(idsByMod.at(sorted[i]), i);
+        if (!inserted.second)
+            throw std::logic_error("duplicate Mod id in dependency order");
+    }
+
+    {
+        std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+        m_Mods.swap(sorted);
+        m_ModIndex.swap(sortedIndex);
+    }
     return true;
 }
 

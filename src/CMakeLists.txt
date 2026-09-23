@@ -153,7 +153,6 @@ set(BML_LOADER_PRIVATE_HEADERS
         Loader/LegacyModVersion.h
         Loader/ModContext.h
         Loader/ModLoader.h
-        Loader/ModOrder.h
         Loader/ModInvocationGate.h
         Loader/ModManager.h
         Loader/NativeModRegistry.h

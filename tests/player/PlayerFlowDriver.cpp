@@ -192,10 +192,15 @@ private:
         const int count = m_BML ? m_BML->GetModCount() : 0;
         for (int index = 0; index < count; ++index) {
             IMod *mod = m_BML->GetMod(index);
-            if (!mod || mod == this || !mod->GetID())
+            const char *id = mod ? mod->GetID() : nullptr;
+            if (!id || m_BML->FindMod(id) != mod) {
+                Finish(false, "mod-registry-inconsistent");
+                return;
+            }
+            if (mod == this)
                 continue;
-            const std::string id = mod->GetID();
-            const std::string file = id + ".bmodp";
+            const std::string modId = id;
+            const std::string file = modId + ".bmodp";
             HMODULE module = ::GetModuleHandleA(file.c_str());
             if (!module)
                 continue;
@@ -204,7 +209,7 @@ private:
             if (!read)
                 continue;
             Probe probe;
-            probe.Id = id;
+            probe.Id = modId;
             probe.Read = read;
             probe.StartFn = reinterpret_cast<BMLPlayerProbeStartFn>(
                 ::GetProcAddress(module, BML_PLAYER_PROBE_START_SYMBOL));
@@ -237,6 +242,8 @@ private:
     void CollectProbes() {
         if (!m_ProbesDiscovered)
             DiscoverProbes();
+        if (m_Phase == Phase::Stopping)
+            return;
         if (!m_ProbesStarted) {
             if (!PhaseDone(kWorldSettleTime))
                 return;

@@ -45,9 +45,3 @@ add_bml_test(ModInvocationGateTest
         SOURCES
         ModInvocationGateTest.cpp
 )
-
-add_bml_test(ModOrderTest
-        SOURCES
-        ModOrderTest.cpp
-        ${BML_SOURCE_DIR}/Loader/ModOrder.h
-)
