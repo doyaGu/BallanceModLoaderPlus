@@ -61,12 +61,13 @@ through Bui. The choice editor copies an ordered set of STRING values through
 the additive C interface and presents it through Bui::RadioButton; a stored
 value outside that set remains available until the player chooses another.
 
-**Mod Menu Page** — An optional Native Mod page registered with a stable id,
-label, description, and draw callback. The loader keys it by owner and
-registration generation, so removing and re-registering an id cannot revive a
-stale route. The public C ABI lives in ModMenu.h and the C++ authoring layer in
-ModMenu.hpp. Nested Mod-owned routing and AngelScript exposure are not part of
-the 1.0 Interface.
+**Mod Menu Page** — A Native or Script Mod page registered with a stable
+owner-local id. Visible pages appear in the Mod details list; hidden pages are
+reachable only through another page of that Mod. Bui::Menu owns the Push,
+Replace, Back, and Close route history. Registration generations prevent an
+old route from invoking a replacement page. The Native C ABI lives in
+ModMenu.h, its C++ authoring layer in ModMenu.hpp, and Script Mod delegates
+use the same private page registry.
 
 ## Built-in gameplay features
 

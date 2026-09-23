@@ -102,30 +102,54 @@ protected:
     BML::ModMenu::PageAction OnFrame() override {
         Bui::Title("Diagnostics");
         // 在当前页面中直接绘制 ImGui 或 Bui 控件。
-        return Bui::NavBack() ? BML::ModMenu::PageAction::Back
-                              : BML::ModMenu::PageAction::None;
+        if (Bui::MainButton("More details"))
+            return BML::ModMenu::PageAction::Push("diagnostics-details");
+        return BML::ModMenu::PageAction::None();
+    }
+};
+
+class DiagnosticsDetailsPage final : public BML::ModMenu::Page {
+public:
+    DiagnosticsDetailsPage()
+        : Page("diagnostics-details", "Details", {},
+               BML::ModMenu::PageVisibility::Hidden) {}
+
+protected:
+    BML::ModMenu::PageAction OnFrame() override {
+        Bui::Title("Details");
+        return BML::ModMenu::PageAction::None();
     }
 };
 
 // 让该对象作为 Mod 状态的一部分持续存活。
 DiagnosticsPage diagnostics;
+DiagnosticsDetailsPage diagnosticsDetails;
 
-void RegisterMenuPages() { (void) diagnostics.Register(); }
-void UnregisterMenuPages() { (void) diagnostics.Unregister(); }
+void RegisterMenuPages() {
+    (void) diagnostics.Register();
+    (void) diagnosticsDetails.Register();
+}
+void UnregisterMenuPages() {
+    (void) diagnosticsDetails.Unregister();
+    (void) diagnostics.Unregister();
+}
 ```
 
-调用 `OnFrame` 时，Loader 已经打开覆盖整个 viewport 的 ImGui 页面；直接绘制
-内容即可，不要调用 `ImGui::NewFrame` 或 `ImGui::Render`。返回 `Back` 回到 Mod
-详情页，返回 `Close` 退出 Mods 菜单。Loader 会复制 id、标签和说明，但页面对象
+调用 `OnFrame` 时，Loader 已经打开 Mods 菜单中央可滚动的内容区域；普通 ImGui
+控件在该区域内顺序布局，不要调用 `ImGui::NewFrame` 或 `ImGui::Render`。
+宿主会在区域外绘制原生返回按钮；页面自身不应再调用 `Bui::NavBack`。`Hidden` 子页不显示在
+详情列表中，只能由同一 Mod 的页面以 `Push` 或 `Replace` 打开。`Back` 返回上一个
+路由，`Close` 退出 Mods 菜单；目标无效或导航历史已满时留在当前页并显示错误。
+`OnEnter` 和 `OnLeave` 会收到导航原因。Loader 会复制 id、标签和说明，但页面对象
 及回调必须存活到注销为止；owner DLL 卸载前，Loader 还会清除所有遗留注册。
-1.0 版仅向原生 Mod 开放这一能力。请在所属 Mod 的 `OnLoad` 和 `OnUnload`
+Native 与 Script Mod 共用页面注册表。请在所属 Mod 的 `OnLoad` 和 `OnUnload`
 中分别调用上面的注册与注销函数。
 `ModMenu.h` 可直接用于 C，不包含 C++ 标准库或类；`ModMenu.hpp` 只是单向建立在
 该 C 接口上的 C++ 编写 facade。在 C 边界上，`BML_ModMenuPageDraw` 返回
 `BML_OK` 或错误状态，并把延迟执行的导航请求写入
-`BML_ModMenuPageFrame` 的 `Action` 成员。可选的 Enter 和 Leave 回调同样返回
-状态码，页面生命周期失败不会再被静默当成成功。导航不会复用错误返回值；后续小版本也可借助
-`StructSize` 在 frame 末尾追加输入或输出，而不改变 1.0 的回调签名。
+`BML_ModMenuPageFrame` 的 `Action` 成员；Push 和 Replace 的目标 ID 写入
+`TargetPageId[256]`。ID 只在所属 Mod 内解析。旧 alpha 页面结构因 `StructSize`
+不符而被拒绝，不会按新版 1.0 回调调用。
 
 ## Mod 生命周期与事件
 

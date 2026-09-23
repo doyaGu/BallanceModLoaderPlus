@@ -108,33 +108,59 @@ protected:
     BML::ModMenu::PageAction OnFrame() override {
         Bui::Title("Diagnostics");
         // Draw ImGui or Bui widgets directly into the active page here.
-        return Bui::NavBack() ? BML::ModMenu::PageAction::Back
-                              : BML::ModMenu::PageAction::None;
+        if (Bui::MainButton("More details"))
+            return BML::ModMenu::PageAction::Push("diagnostics-details");
+        return BML::ModMenu::PageAction::None();
+    }
+};
+
+class DiagnosticsDetailsPage final : public BML::ModMenu::Page {
+public:
+    DiagnosticsDetailsPage()
+        : Page("diagnostics-details", "Details", {},
+               BML::ModMenu::PageVisibility::Hidden) {}
+
+protected:
+    BML::ModMenu::PageAction OnFrame() override {
+        Bui::Title("Details");
+        return BML::ModMenu::PageAction::None();
     }
 };
 
 // Keep this object alive as part of the Mod.
 DiagnosticsPage diagnostics;
+DiagnosticsDetailsPage diagnosticsDetails;
 
-void RegisterMenuPages() { (void) diagnostics.Register(); }
-void UnregisterMenuPages() { (void) diagnostics.Unregister(); }
+void RegisterMenuPages() {
+    (void) diagnostics.Register();
+    (void) diagnosticsDetails.Register();
+}
+void UnregisterMenuPages() {
+    (void) diagnosticsDetails.Unregister();
+    (void) diagnostics.Unregister();
+}
 ```
 
-The loader has already opened the full-viewport ImGui page when `OnFrame` runs;
-draw its contents directly and do not call `ImGui::NewFrame` or `ImGui::Render`.
-Return `Back` to restore the Mod details page or `Close` to leave the Mods menu.
+The loader has already opened a scrollable content region in the centre of the
+Mods menu when `OnFrame` runs. Regular ImGui widgets flow within that region;
+do not call `ImGui::NewFrame` or `ImGui::Render`. The loader draws the native
+Back button outside this region; pages should not call `Bui::NavBack` themselves.
+`Hidden` pages are absent from the details list but can be reached through
+`Push` or `Replace` from another page of the same Mod. `Back` restores the
+previous route; `Close` leaves the Mods menu. `OnEnter` and `OnLeave` receive
+the navigation reason. A failed target or full history leaves the current page
+open and shows an error.
 The loader copies the id, label, and description, but the page object and callbacks
 must remain alive until unregistration. Remaining registrations are removed before
-the owner DLL unloads. Version 1.0 exposes this capability to Native Mods only.
+the owner DLL unloads. Native and Script Mods use the same page registry.
 Call the two registration helpers from the owning Mod's `OnLoad` and `OnUnload`.
 `ModMenu.h` remains usable from C and contains no C++ standard-library or class
 surface; `ModMenu.hpp` is a one-way authoring facade over that C interface. At
 the C seam, `BML_ModMenuPageDraw` returns a `BML_OK`/error status and writes a
-deferred navigation request to the `Action` member of `BML_ModMenuPageFrame`.
-The optional Enter and Leave callbacks return status codes as well, so a failed
-page transition is not silently accepted. Navigation is therefore never overloaded
-as an error result, and future frame inputs or outputs can be appended behind
-`StructSize` without changing the 1.0 callback signature.
+deferred navigation request to `BML_ModMenuPageFrame::Action` and, for Push or
+Replace, copies the target id into its 256-byte `TargetPageId` buffer. Page ids
+are local to the registering Mod. Old alpha page descriptors are rejected by
+`StructSize`; they are not called through the revised 1.0 callbacks.
 
 ## Mod lifecycle and events
 

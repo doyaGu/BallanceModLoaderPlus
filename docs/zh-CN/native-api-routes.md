@@ -69,7 +69,7 @@ Mod 间普通服务走 IMC；只有必须无编码传递
 | 关卡状态、能量、检查点、重置点、关卡目录 | `GetArrayByName` 加 `CKDataArray` 按列读取 | `Gameplay::ReadLevel`、`ReadEnergy`、`ReadCheckpoints`、`ReadResetpoints`、`ReadCatalog` | 走 interface struct。它已经知道游戏那些数组的列顺序，而这正是最容易写错的部分。集合类读取会整份拷贝，属于初始化或换关时做的事，不适合每帧调用。 |
 | 游戏内消息板 | `SendIngameMessage` | `UI::AddMessage`、`UI::ClearMessages` | 两者皆可。清空消息板只有门面能做。 |
 | HUD 各部分、Mod 菜单、地图菜单 | 无 | `UI::SetHUDMode`、`ShowTitle`、`ShowFPS`、`OpenModsMenu`、`CloseModsMenu`、`OpenMapMenu`、`CloseMapMenu` | 只有 interface struct。 |
-| 在 Mods 菜单中扩展自己的 Mod 详情页 | 无 | `ModMenu.hpp` 的 `BML::ModMenu::Page` | `ModMenu.h` 是纯 C 接口，C++ 封装单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。 |
+| 在 Mods 菜单中扩展自己的 Mod 详情页 | 无 | `ModMenu.hpp` 的 `BML::ModMenu::Page` | `ModMenu.h` 是纯 C 接口，C++ 封装单向建立在其上。可见页面添加原生风格的详情按钮；隐藏页面可由同一 Mod 的页面通过 Push 或 Replace 进入。脚本 Mod 可通过 `ModContext.RegisterMenuPage` 注册页面。 |
 | Loader 事件 | `IMod` 上的 `IMessageReceiver` 虚函数 | 无 | 处理同步回调；需要延后执行时，把必要数据复制到 Mod 自己拥有的存储中。 |
 | 作弊模式 | 写用 `EnableCheat`，读用 `IsCheatEnabled` | `Gameplay::ReadCheatEnabled` | 读两者皆可，写走旧式 C++。 |
 | 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | `Command.hpp` 的 `BML::Command::Registration`，底层为 `bml.command` | 新 Native Mod 使用版本化 Command 接口。它复制元数据、返回受所有者约束的句柄、在 DLL 卸载前自动清理，并显式传入管道输入与输出、直接返回 shell 状态。`BML.h` 的三个导出仅作为旧接口适配层保留。 |
