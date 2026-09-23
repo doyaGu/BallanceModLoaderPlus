@@ -2254,7 +2254,7 @@ C 符号 <code>BMLEntry</code> 和 <code>BMLExit</code>。入口缺失或被 C++
 <td>Virtools Building Block 发现、编写、执行、行为图检查与编辑</td>
 </tr>
 <tr>
-<td><code>Command.h/.hpp</code>, <code>Runtime.h</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>Speedrun.h</code>, <code>UI.h</code></td>
+<td><code>Command.h/.hpp</code>, <code>Time.h/.hpp</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>Speedrun.h</code>, <code>UI.h</code></td>
 <td>通过接口结构体取用的 Loader 能力，附带 C++ 封装</td>
 </tr>
 <tr>
@@ -2451,10 +2451,10 @@ Integer、Float、Boolean 基础解析。<code>ILogger</code> 提供三个日志
 <code>BML_GetInterface</code> 按 id 与主版本号取用。每个都有自己在 <code>include/BML</code> 下的头文件，
 每个头文件里还声明了一层 inline C++ 命名空间，把取用与参数检查折进去：</p>
 <ul>
-<li><code>BML::Runtime</code>：运行状态、时钟和分数。</li>
+<li><code>BML::Time</code>：CK 时间与原始帧计数器。</li>
 <li><code>BML::Command</code>：受所有者约束的命令注册、发现和 shell 执行。</li>
 <li><code>BML::Scene</code>：对象信息、实体变换和按名查找。</li>
-<li><code>BML::Gameplay</code>：关卡、能量、目录、检查点和重置点。</li>
+<li><code>BML::Gameplay</code>：作弊状态、highscore、关卡、能量、目录、检查点和重置点。</li>
 <li><code>BML::UI</code>：消息板、Mod/地图菜单和 HUD。</li>
 <li><code>BML::Speedrun</code>：共享 Speedrun 计时器。</li>
 <li><code>BML::Behavior</code>：Virtools Building Block 发现、配置后的 Run、自持有

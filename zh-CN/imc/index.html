@@ -2224,7 +2224,7 @@ Subscription 独立的有界队列。</p>
 释放等编程错误，不是可恢复的路由失败。</p>
 <h2 id="_5">哪些内容不该定义成接口<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p>不要为 Loader 已经提供的能力定义 <code>.imc</code> 接口。它的运行状态、场景查找、Gameplay
-数据、UI 和 Speedrun 计时器都是 interface struct，分别写作 <code>BML::Runtime</code>、
+数据、UI 和 Speedrun 计时器都是 interface struct，分别写作 <code>BML::Time</code>、
 <code>BML::Scene</code>、<code>BML::Gameplay</code>、<code>BML::UI</code> 和 <code>BML::Speedrun</code>。Loader 事件通过
 Mod 回调到达。只有能力确实由你的 Mod 拥有时，才定义接口。</p>
 <h2 id="_6">性能特征<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>

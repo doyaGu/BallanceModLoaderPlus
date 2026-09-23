@@ -1956,8 +1956,8 @@ Mod 间普通服务走 IMC；只有必须无编码传递
 <code>BML_RegisterInterface</code>。</p>
 <p>冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
 是唯一能拿到引擎对象的途径。</p>
-<p>这些能力在脚本侧有四个够得着：<code>BML::Runtime</code>、<code>BML::Gameplay</code>、<code>BML::UI</code>、
-<code>BML::Speedrun</code>。只有 <code>BML::Scene</code> 只在原生侧。脚本侧的
+<p>脚本侧通过 <code>BML::Gameplay</code>、<code>BML::UI</code>、<code>BML::Speedrun</code> 使用相应能力，
+状态和时钟由 <code>ModContext</code> 提供；场景查找由 CKAngelScript 提供。脚本侧的
 <code>BML::Speedrun</code> 目前并不是原接口的投射：它的写法是 <code>SetTimerVisible</code>、
 <code>StartTimer</code>、<code>PauseTimer</code>、<code>ResetTimer</code>、<code>GetElapsedTime</code>，返回的是值或者什么都不
 返回，而不是状态码。脚本侧的投射是手写的，与 interface struct 之间没有任何校验，
@@ -1983,22 +1983,28 @@ Mod 间普通服务走 IMC；只有必须无编码传递
 <td>只有旧式 C++。interface struct 有意不交出引擎指针：指针无法带上一个对方能校验的生命期。</td>
 </tr>
 <tr>
-<td>是否在关卡内、是否暂停、是否运行、是否开作弊</td>
-<td><code>IsIngame</code>、<code>IsPaused</code>、<code>IsPlaying</code>、<code>IsCheatEnabled</code></td>
-<td><code>Runtime::ReadState</code></td>
-<td>两者皆可。门面一次读回五个标志，且不要求调用方是 <code>IMod</code>。</td>
+<td>游戏状态</td>
+<td><code>IsIngame</code>、<code>IsPaused</code>、<code>IsPlaying</code></td>
+<td>无</td>
+<td>使用现有原生状态查询；Loader 的阶段机不公开。</td>
 </tr>
 <tr>
-<td>帧时间与帧计数</td>
+<td>CK 时间与帧计数</td>
 <td><code>GetTimeManager()</code> 与 CK 时钟</td>
-<td><code>Runtime::ReadClock</code></td>
-<td>两者皆可。</td>
+<td><code>Time::ReadClock</code></td>
+<td>两者皆可。<code>MainTickCount</code> 是原始的 32 位 CK 计数器，会回绕。</td>
 </tr>
 <tr>
-<td>竞速用时与 highscore 数值</td>
-<td><code>GetSRScore</code>、<code>GetHSScore</code></td>
-<td><code>Runtime::ReadScore</code>、<code>Speedrun::ReadTimerState</code></td>
-<td>两者皆可。<code>Score::SR</code> 是以毫秒计的竞速用时，不是分数。</td>
+<td>竞速用时</td>
+<td><code>GetSRScore</code></td>
+<td><code>Speedrun::ReadTimerState</code></td>
+<td>两者皆可；单位为毫秒，不是分数。</td>
+</tr>
+<tr>
+<td>highscore 数值</td>
+<td><code>GetHSScore</code></td>
+<td><code>Gameplay::ReadHighScore</code></td>
+<td>后者校验 Energy，并在不处于活动或暂停关卡时返回不可用。</td>
 </tr>
 <tr>
 <td>启动、暂停、重置或显示竞速计时器</td>
@@ -2051,7 +2057,7 @@ Mod 间普通服务走 IMC；只有必须无编码传递
 <tr>
 <td>作弊模式</td>
 <td>写用 <code>EnableCheat</code>，读用 <code>IsCheatEnabled</code></td>
-<td><code>Runtime::ReadState</code> 可读</td>
+<td><code>Gameplay::ReadCheatEnabled</code></td>
 <td>读两者皆可，写走旧式 C++。</td>
 </tr>
 <tr>
@@ -2130,11 +2136,9 @@ Mod 间普通服务走 IMC；只有必须无编码传递
   在游戏线程上使用。门面给的是值：一个普通结构体，或者一个 Loader 在解析前能先
   校验的 <code>BML_ObjectRef</code>。</li>
 <li><strong>线程。</strong> 旧式 C++ 接口只能在游戏线程上用。interface struct 的调用是在调用线程上
-  直接进入 Loader，不入队、也没有什么要等，这就是 <code>Runtime::ReadState</code> 能在
-  <code>OnProcess</code> 里用的原因。<code>BML::Gameplay</code>、<code>BML::Scene</code>、<code>BML::UI</code> 触碰的是游戏的
-  数组、游戏对象和 Loader 自己绘制的界面，因此这三个从别的线程调用一律返回
-  <code>BML_ERROR_WRONG_THREAD</code>。<code>BML::Runtime</code> 和 <code>BML::Speedrun</code>
-  不拒绝其他线程，但同样是给游戏线程用的。Mod 菜单页面的注册也只能在游戏线程
+  直接进入 Loader，不入队、也没有什么要等。Gameplay、Time、Command、
+  Speedrun、Scene 和 UI 从别的线程调用均返回 <code>BML_ERROR_WRONG_THREAD</code>。
+  Mod 菜单页面的注册也只能在游戏线程
   进行，其绘制回调运行于 Loader 已打开的 ImGui 帧内。在 Loader 加载完 Mod 之前，它们全都返回
   <code>BML_ERROR_FAIL</code>。</li>
 </ul>

@@ -1360,7 +1360,7 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 <td>Virtools Building Block discovery, authoring, execution, graph inspection, and editing</td>
 </tr>
 <tr>
-<td><code>Command.h/.hpp</code>, <code>Runtime.h</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>Speedrun.h</code>, <code>UI.h</code></td>
+<td><code>Command.h/.hpp</code>, <code>Time.h/.hpp</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>Speedrun.h</code>, <code>UI.h</code></td>
 <td>Loader capabilities reached through an interface struct, with C++ facades</td>
 </tr>
 <tr>
@@ -1589,10 +1589,10 @@ versioned interface struct, fetched by id and major version through
 also declares an inline C++ namespace that folds the lookup and the argument
 checks in:</p>
 <ul>
-<li><code>BML::Runtime</code> for runtime state, clock, and scores;</li>
+<li><code>BML::Time</code> for CK time and the raw tick counter;</li>
 <li><code>BML::Command</code> for owner-scoped command registration, discovery, and shell execution;</li>
 <li><code>BML::Scene</code> for object information, transforms, and named lookup;</li>
-<li><code>BML::Gameplay</code> for level, energy, catalog, checkpoint, and reset data;</li>
+<li><code>BML::Gameplay</code> for cheat status, highscore, level, energy, catalog, checkpoint, and reset data;</li>
 <li><code>BML::UI</code> for the message board, mod/map menus, and HUD;</li>
 <li><code>BML::Speedrun</code> for the shared speedrun timer;</li>
 <li><code>BML::Behavior</code> for Virtools Building Block discovery, configured Runs,

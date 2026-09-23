@@ -1076,9 +1076,9 @@ dependency on every consumer.</p>
 <p>Frozen does not mean deprecated. The legacy interfaces are supported, are still
 the only way to reach most of what the loader does, and are the only way to get
 at an engine object.</p>
-<p>The script side reaches four of these capabilities: <code>BML::Runtime</code>,
-<code>BML::Gameplay</code>, <code>BML::UI</code>, and <code>BML::Speedrun</code>. <code>BML::Scene</code> is
-native-only. The script <code>BML::Speedrun</code> is not the interface projected as it
+<p>The script side exposes gameplay and UI reads, speedrun controls, and state
+and time through <code>ModContext</code>. Scene lookup is supplied by CKAngelScript.
+The script <code>BML::Speedrun</code> is not the interface projected as it
 stands: it is spelled <code>SetTimerVisible</code>, <code>StartTimer</code>, <code>PauseTimer</code>,
 <code>ResetTimer</code>, and <code>GetElapsedTime</code>, and it returns the value or nothing rather
 than a status. The script projection is written by hand and nothing checks it
@@ -1106,22 +1106,28 @@ declared in the header of the same name under <code>include/BML/</code>; the res
 <td>Frozen C++ only. The interface structs do not hand out engine pointers, by design: a pointer cannot be given a lifetime the other side can check.</td>
 </tr>
 <tr>
-<td>Is the game in a level, paused, playing, cheating</td>
-<td><code>IsIngame</code>, <code>IsPaused</code>, <code>IsPlaying</code>, <code>IsCheatEnabled</code></td>
-<td><code>Runtime::ReadState</code></td>
-<td>Either. The facade reads all five flags at once and works from a class that is not an <code>IMod</code>.</td>
+<td>Game state</td>
+<td><code>IsIngame</code>, <code>IsPaused</code>, <code>IsPlaying</code></td>
+<td>none</td>
+<td>Use the existing native getters; the loader's phase model is private.</td>
 </tr>
 <tr>
-<td>Frame time and frame count</td>
+<td>CK time and tick count</td>
 <td><code>GetTimeManager()</code> and the CK clocks</td>
-<td><code>Runtime::ReadClock</code></td>
-<td>Either.</td>
+<td><code>Time::ReadClock</code></td>
+<td>Either. <code>MainTickCount</code> is the raw wrapping 32-bit CK counter.</td>
 </tr>
 <tr>
-<td>Speedrun time and highscore value</td>
-<td><code>GetSRScore</code>, <code>GetHSScore</code></td>
-<td><code>Runtime::ReadScore</code>, <code>Speedrun::ReadTimerState</code></td>
-<td>Either. <code>Score::SR</code> is the elapsed speedrun time in milliseconds, not a score.</td>
+<td>Speedrun elapsed time</td>
+<td><code>GetSRScore</code></td>
+<td><code>Speedrun::ReadTimerState</code></td>
+<td>Either; the value is in milliseconds, not a score.</td>
+</tr>
+<tr>
+<td>Highscore value</td>
+<td><code>GetHSScore</code></td>
+<td><code>Gameplay::ReadHighScore</code></td>
+<td>The latter validates Energy and reports unavailable outside an active or paused level.</td>
 </tr>
 <tr>
 <td>Start, pause, reset, or show the speedrun timer</td>
@@ -1174,7 +1180,7 @@ declared in the header of the same name under <code>include/BML/</code>; the res
 <tr>
 <td>Cheat mode</td>
 <td><code>EnableCheat</code> to set, <code>IsCheatEnabled</code> to read</td>
-<td><code>Runtime::ReadState</code> reads it</td>
+<td><code>Gameplay::ReadCheatEnabled</code></td>
 <td>Read either, set through the frozen C++.</td>
 </tr>
 <tr>
@@ -1258,11 +1264,9 @@ that dependency remains loaded.</p>
   the loader can check before it resolves.</li>
 <li><strong>Threading.</strong> The frozen C++ interfaces are game-thread only. An interface
   struct call is a direct call into the loader on the calling thread, so nothing
-  is queued and there is nothing to wait for, which is why <code>Runtime::ReadState</code>
-  works from <code>OnProcess</code>. <code>BML::Gameplay</code>, <code>BML::Scene</code>, and <code>BML::UI</code> touch the
-  game's arrays, its objects, and the UI the loader draws, so all three answer
-  <code>BML_ERROR_WRONG_THREAD</code> when called from any other thread. <code>BML::Runtime</code> and <code>BML::Speedrun</code> do not
-  refuse another thread, but they are meant for the game thread too. Mod menu
+  is queued and there is nothing to wait for. Gameplay, Time, Command,
+  Speedrun, Scene, and UI calls answer <code>BML_ERROR_WRONG_THREAD</code> when called
+  from another thread. Mod menu
   page registration is also game-thread only, and its draw callback runs inside
   the loader's active ImGui frame. Before the
   loader has loaded its mods every one of them answers <code>BML_ERROR_FAIL</code>.</li>

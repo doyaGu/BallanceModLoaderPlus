@@ -16332,20 +16332,9 @@ Script@ CreateScript(CKBeObject@ owner, const string &in name,
                      Edit@ body, int priority = 0);
 } // namespace Behavior
 
-// Typed built-in capability facades. Runtime snapshots are small values returned
-// directly. Borrow* methods create a host-owned, non-retained CK handle and are
+// Typed built-in capability facades. Borrow* methods create a host-owned,
+// non-retained CK handle and are
 // valid only while the object still belongs to the current game scene.
-namespace Runtime {
-class State {
-  bool InGame; bool InLevel; bool Paused; bool Playing; bool CheatEnabled;
-}
-class Clock { float TimeMs; float AbsoluteMs; float DeltaMs; int Frame; }
-class Score { float SR; int HS; }
-State GetState();
-Clock GetClock();
-Score GetScore();
-} // namespace Runtime
-
 namespace Gameplay {
 class LevelState {
   int Id; BML::Mat4 ResetMatrix; int Points;
@@ -16363,6 +16352,7 @@ class Checkpoint { BML::Mat4 Matrix; CKObject@ BorrowObject() const; }
 class Resetpoint { CKObject@ BorrowObject() const; }
 int ReadLevel(LevelState &out state);
 int ReadEnergy(EnergyState &out state);
+int ReadHighScore(int &out score);
 int ReadCatalogCount(int &out count);
 int ReadCatalogEntry(int index, CatalogEntry &out entry);
 int ReadCheckpointCount(int &out count);
