@@ -78,6 +78,17 @@ std::wstring GetShortPath(const std::wstring &path) {
 }
 
 struct CustomMaps::LoadAttempt {
+    enum class PollState {
+        Waiting,
+        ObjectLoaded,
+        Failed,
+    };
+
+    struct PollResult {
+        PollState State = PollState::Waiting;
+        const char *Reason = nullptr;
+    };
+
     std::uint64_t Id = 0;
     int Level = 0;
     bool ObjectLoaded = false;
@@ -87,6 +98,61 @@ struct CustomMaps::LoadAttempt {
     std::wstring TempPath;
     LevelLoader::Transaction Runtime;
     std::chrono::steady_clock::time_point Started;
+
+    Behavior::Result<void> StartLevel() {
+        auto result = Runtime.ClearRoute();
+        if (result)
+            LevelStarted = true;
+        return result;
+    }
+
+    PollResult Poll(BML_DataShare *share, std::chrono::steady_clock::time_point now) {
+        const auto elapsed = now - Started;
+        if (ObjectLoaded) {
+            if (!LevelStarted && elapsed > LoadTimeout)
+                return {PollState::Failed, "timed out waiting for StartLevel"};
+            return {};
+        }
+
+        CustomMapLoad::Result result;
+        if (!CustomMapLoad::ReadResult(share, result)) {
+            if (BML_DataShare_Has(share, CustomMapLoad::ResultKey))
+                return {PollState::Failed, "the loader returned malformed completion data"};
+            if (elapsed > LoadTimeout)
+                return {PollState::Failed, "timed out waiting for Virtools Object Load"};
+            return {};
+        }
+
+        BML_DataShare_Remove(share, CustomMapLoad::ResultKey);
+        if (result.Attempt != Id)
+            return {PollState::Failed, "the loader returned a mismatched completion id"};
+        if (result.Value == CustomMapLoad::Outcome::Failed)
+            return {PollState::Failed, "Virtools Object Load failed"};
+        if (result.Value != CustomMapLoad::Outcome::Loaded)
+            return {PollState::Failed, "the loader returned an unknown completion state"};
+
+        ObjectLoaded = true;
+        return {PollState::ObjectLoaded};
+    }
+
+    bool IsComplete() const {
+        return ObjectLoaded && LevelStarted;
+    }
+
+    Behavior::Result<void> Rollback(CKDataArray *currentLevel) const {
+        Behavior::Result<void> restored;
+        try {
+            restored = Runtime.Rollback(currentLevel);
+        } catch (...) {
+            Behavior::Status status;
+            status.Error = Behavior::Error::NativeError;
+            status.Phase = Behavior::Phase::Binding;
+            status.Message = "An exception interrupted the custom map runtime rollback.";
+            restored = Behavior::Result<void>::Failure(BML_ERROR_FAIL, std::move(status));
+        }
+
+        return restored;
+    }
 };
 
 CustomMaps::CustomMaps()
@@ -274,14 +340,13 @@ void CustomMaps::OnPostStartMenu() {
 
 void CustomMaps::OnStartLevel() {
     if (m_LoadAttempt) {
-        auto finished = m_LoadAttempt->Runtime.ClearRoute();
+        auto finished = m_LoadAttempt->StartLevel();
         if (!finished) {
             const std::string reason = finished.GetStatus().Message.empty()
                 ? "the custom-level route could not be cleared"
                 : finished.GetStatus().Message;
             CompleteLoadFailure(reason.c_str());
         } else {
-            m_LoadAttempt->LevelStarted = true;
             PollLoadResult();
             TryCompleteLoad();
         }
@@ -460,25 +525,13 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
                         ? "the level-loader transaction was rejected"
                         : staged.GetStatus().Message.c_str());
             }
-            auto restored = transaction.Rollback(m_CurrentLevel);
-            stateChanged = !restored;
-            if (!restored && m_Logger) {
-                m_Logger->Error(
-                    "Failed to restore the custom map runtime state: %s",
-                    restored.GetStatus().Message.empty()
-                        ? "the rollback was rejected"
-                        : restored.GetStatus().Message.c_str());
-            }
-            ClearLoadMetadata();
-            if (!stateChanged)
-                utils::DeleteFileW(tempPath);
-            return false;
-        }
-
-        if (!PublishLoadMetadata(path, attemptId)) {
+        } else if (!PublishLoadMetadata(path, attemptId)) {
             error = "could not publish custom map load metadata";
             if (m_Logger)
                 m_Logger->Error("Failed to publish custom map load metadata");
+        }
+
+        if (!error.empty()) {
             auto restored = transaction.Rollback(m_CurrentLevel);
             stateChanged = !restored;
             if (!restored && m_Logger) {
@@ -629,35 +682,12 @@ void CustomMaps::PollLoadResult() {
     if (!m_LoadAttempt || !m_DataShare)
         return;
 
-    const auto elapsed = std::chrono::steady_clock::now() - m_LoadAttempt->Started;
-    if (m_LoadAttempt->ObjectLoaded) {
-        if (!m_LoadAttempt->LevelStarted && elapsed > LoadTimeout)
-            CompleteLoadFailure("timed out waiting for StartLevel");
+    const LoadAttempt::PollResult result = m_LoadAttempt->Poll(
+        m_DataShare, std::chrono::steady_clock::now());
+    if (result.State == LoadAttempt::PollState::Waiting)
         return;
-    }
-
-    CustomMapLoad::Result result;
-    if (!CustomMapLoad::ReadResult(m_DataShare, result)) {
-        if (BML_DataShare_Has(m_DataShare, CustomMapLoad::ResultKey)) {
-            CompleteLoadFailure("the loader returned malformed completion data");
-        } else if (elapsed > LoadTimeout) {
-            CompleteLoadFailure("timed out waiting for Virtools Object Load");
-        }
-        return;
-    }
-
-    BML_DataShare_Remove(m_DataShare, CustomMapLoad::ResultKey);
-    if (result.Attempt != m_LoadAttempt->Id) {
-        CompleteLoadFailure("the loader returned a mismatched completion id");
-        return;
-    }
-
-    if (result.Value == CustomMapLoad::Outcome::Failed) {
-        CompleteLoadFailure("Virtools Object Load failed");
-        return;
-    }
-    if (result.Value != CustomMapLoad::Outcome::Loaded) {
-        CompleteLoadFailure("the loader returned an unknown completion state");
+    if (result.State == LoadAttempt::PollState::Failed) {
+        CompleteLoadFailure(result.Reason);
         return;
     }
 
@@ -667,13 +697,12 @@ void CustomMaps::PollLoadResult() {
             static_cast<unsigned long long>(m_LoadAttempt->Id),
             utils::Utf16ToUtf8(m_LoadAttempt->SourcePath).c_str());
     }
-    m_LoadAttempt->ObjectLoaded = true;
     ClearLoadMetadata();
     TryCompleteLoad();
 }
 
 void CustomMaps::TryCompleteLoad() {
-    if (m_LoadAttempt && m_LoadAttempt->ObjectLoaded && m_LoadAttempt->LevelStarted)
+    if (m_LoadAttempt && m_LoadAttempt->IsComplete())
         CompleteLoadSuccess();
 }
 
@@ -736,18 +765,7 @@ Behavior::Result<void> CustomMaps::RollbackLoad() {
         return Behavior::Result<void>::Success();
 
     const std::wstring tempPath = m_LoadAttempt->TempPath;
-    Behavior::Result<void> restored;
-    try {
-        restored = m_LoadAttempt->Runtime.Rollback(m_CurrentLevel);
-    } catch (...) {
-        Behavior::Status status;
-        status.Error = Behavior::Error::NativeError;
-        status.Phase = Behavior::Phase::Binding;
-        status.Message = "An exception interrupted the custom map runtime rollback.";
-        restored = Behavior::Result<void>::Failure(
-            BML_ERROR_FAIL, std::move(status));
-    }
-
+    auto restored = m_LoadAttempt->Rollback(m_CurrentLevel);
     m_LoadAttempt.reset();
     if (restored && !tempPath.empty())
         utils::DeleteFileW(tempPath);
