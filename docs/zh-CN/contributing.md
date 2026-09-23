@@ -13,15 +13,18 @@ BallancePlayer / Virtools CK2
             |
        ModManager              接收 CK 生命周期和引擎回调
             |
-       ModContext              发现、依赖排序、所有权和服务
+       ModContext              IBML 运行时服务和 CK 状态
+            |
+       ModLoader               发现、所有权、回调与生命周期
         /         \
    原生 Mod       脚本宿主      IMod 回调 / CKAngelScript 回调
         \         /
        Loader 内建功能
 ```
 
-`ModManager` 将 Virtools manager 生命周期连接到 BML+。`ModContext` 负责 Mod
-发现、依赖顺序、回调分发、公共服务和关闭。原生 Mod 通过已安装的 C++ ABI 进入，
+`ModManager` 将 Virtools manager 生命周期连接到 BML+。`ModContext` 是稳定的
+`IBML` 对象，负责运行时服务；其私有 `ModLoader` 负责 Mod 发现、依赖顺序、回调
+分发和关闭。原生 Mod 通过已安装的 C++ ABI 进入，
 脚本 Mod 通过 CKAngelScript 宿主进入。Mod 可以通过 IMC 发布自己的接口；
 Loader 不发布生成式 IMC 接口。
 
@@ -111,7 +114,8 @@ API 文件。
 | 插件入口、Hook Block 注册或引擎拦截 | `src/BML.cpp`、`src/Behavior/Blocks/HookBlock.*`、`src/Hooks/` | Win32 构建，以及覆盖该回调或 Hook 的真实 Player 场景 |
 | Building Block 配置、执行或行为图插入 | `src/Behavior/Block.*`、`src/Behavior/Runtime.*`、`include/BML/Behavior/Blocks/`、`src/Api/ExecuteBB.cpp` | 定向 Behavior 和 ABI 测试、Win32 构建及受影响的 Player 测试 |
 | CK 生命周期和回调时序 | `src/Loader/ModManager.*` | 定向生命周期测试和 Player 冒烟测试 |
-| Mod 发现、依赖顺序、服务或关闭 | `src/Loader/ModContext.*` | 对应 Loader/依赖测试和原生/脚本冒烟覆盖 |
+| Mod 发现、依赖顺序、回调分发或关闭 | `src/Loader/ModLoader.*` | 对应 Loader/依赖测试和原生/脚本冒烟覆盖 |
+| IBML 服务或 CK 运行时状态 | `src/Loader/ModContext.*` | 对应服务测试和原生/脚本冒烟覆盖 |
 | HUD、菜单、命令栏或内建行为 | `src/Mods/BMLMod.*`、`src/HUD/`、`src/Console/`、`src/CustomMaps/`、`src/ModMenu/`、`src/Gameplay/`、`src/UI/` | 定向 UI/服务测试和 Player 画面/输入冒烟测试 |
 | 旧式原生 SDK 或 CMake 消费端行为 | `include/BML/`、`cmake/` | ABI/编译测试、模板配置构建和安装后 SDK 检查 |
 | IMC 运行时 | `src/Imc/ImcApi.cpp`、`src/Imc/ImcRuntime.*` | IMC 运行时/兼容性测试和原生 IMC 冒烟测试 |
@@ -122,8 +126,8 @@ API 文件。
 | 公开文档或发布目录 | `docs/`、`src/CMakeLists.txt`、`scripts/Package-BMLRelease.ps1` | 中英文严格文档构建、CMake install 和 SDK stage 校验 |
 
 阅读代码时先看 `ModManager.cpp`，再看 `IMod.h`、`IMessageReceiver.h`、
-`IBML.h` 和 `ModContext.h` 的声明。进入 `ModContext.cpp` 时按函数搜索，不建议
-从第一行顺读整个文件。
+`IBML.h`、`ModLoader.h` 和 `ModContext.h` 的声明。Mod 生命周期从
+`ModLoader.cpp` 进入，运行时服务从 `ModContext.cpp` 进入。
 
 ## 公共接口规则
 

@@ -11,6 +11,17 @@ implementation history. Use the source and focused guides for detailed behavior:
 Developer Workflow may add build metadata, but does not replace the Mod's runtime
 identity.
 
+**Mod Loader** — The private runtime owner of Mod discovery, identity,
+dependencies, callback registration, native DLLs, built-in and script Mod
+instances, and script reload. `Start()` activates Mods after Context and
+rendering initialization; `Stop()` deactivates them before rendering teardown.
+
+**Runtime Context** — The stable `ModContext : IBML` object passed to native
+and script Mods. It owns CK managers and services such as Config, Command,
+Behavior, IMC, DataShare, UI, directories, and logging. Its Mod queries and
+dependency methods delegate to the Mod Loader; it does not keep a second Mod
+registry.
+
 **In-tree Native Mods** — Optional Mod Projects under `mods/`. They build against
 the BML target in the same Win32 workspace but remain separate runtime DLLs;
 building the loader alone does not build or install them.
@@ -228,7 +239,9 @@ Behavior Runtime does not depend on ExecuteBB.
 ## Source ownership
 
 - src/BML.cpp composes the loader; src/Mods/ contains its bundled Mods.
-- src/Loader/ owns Mod discovery, invocation, and CK manager integration.
+- src/Loader/ModLoader.* owns Mod discovery, invocation, and lifecycle;
+  ModContext.* owns the runtime services and IBML entry point; ModManager.*
+  connects both to CK manager lifecycle.
 - src/Api/ adapts public BML interfaces to private implementations.
 - src/Behavior/ owns Sessions, Prototypes, graph authoring, and Runtime.
   src/Behavior/Blocks/ holds private implementations tied to individual BBs.

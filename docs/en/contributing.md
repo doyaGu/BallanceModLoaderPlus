@@ -14,7 +14,9 @@ BallancePlayer / Virtools CK2
             |
        ModManager              CK lifecycle and engine callbacks
             |
-       ModContext              discovery, dependency order, ownership, services
+       ModContext              IBML runtime services and CK state
+            |
+       ModLoader               discovery, ownership, callbacks, lifecycle
         /         \
  native mods     script host   IMod callbacks / CKAngelScript callbacks
         \         /
@@ -22,8 +24,9 @@ BallancePlayer / Virtools CK2
 ```
 
 `ModManager` connects the Virtools manager lifecycle to BML+. `ModContext`
-owns mod discovery, dependency order, callback dispatch, public services, and
-shutdown. Native mods enter through the installed C++ ABI; script mods enter
+is the stable `IBML` object and owns runtime services. Its private `ModLoader`
+owns Mod discovery, dependency order, callback dispatch, and Mod shutdown.
+Native mods enter through the installed C++ ABI; script mods enter
 through the CKAngelScript host. Mods may use IMC to publish their own interfaces;
 the loader does not publish a generated IMC interface.
 
@@ -118,7 +121,8 @@ for an unrelated change; the runner commands and probe ownership are in
 | Plugin entry, Hook Block registration, or engine interception | `src/BML.cpp`, `src/Behavior/Blocks/HookBlock.*`, `src/Hooks/` | Win32 build plus the affected real Player scenario |
 | Building Block configuration, execution, or graph insertion | `src/Behavior/Block.*`, `src/Behavior/Runtime.*`, `include/BML/Behavior/Blocks/`, `src/Api/ExecuteBB.cpp` | Focused Behavior and ABI tests, Win32 build, and affected Player test |
 | CK lifecycle and callback timing | `src/Loader/ModManager.*` | Focused lifecycle tests and Player smoke test |
-| Mod discovery, dependency order, services, or shutdown | `src/Loader/ModContext.*` | Relevant loader/dependency tests and native/script smoke coverage |
+| Mod discovery, dependency order, callback dispatch, or Mod shutdown | `src/Loader/ModLoader.*` | Relevant loader/dependency tests and native/script smoke coverage |
+| IBML services or CK runtime state | `src/Loader/ModContext.*` | Relevant service tests and native/script smoke coverage |
 | HUD, menus, command bar, or built-in behavior | `src/Mods/BMLMod.*`, `src/HUD/`, `src/Console/`, `src/CustomMaps/`, `src/ModMenu/`, `src/Gameplay/`, `src/UI/` | Focused UI/service tests and Player visual/input smoke test |
 | Legacy native SDK or CMake consumer behavior | `include/BML/`, `cmake/` | ABI/compile tests, template configure/build, and installed SDK check |
 | IMC runtime | `src/Imc/ImcApi.cpp`, `src/Imc/ImcRuntime.*` | IMC runtime/compatibility tests and native IMC smoke test |
@@ -129,9 +133,8 @@ for an unrelated change; the runner commands and probe ownership are in
 | Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/Package-BMLRelease.ps1` | Both strict MkDocs builds, CMake install, and SDK stage validation |
 
 Start with `ModManager.cpp`, then read the declarations in `IMod.h`,
-`IMessageReceiver.h`, `IBML.h`, and `ModContext.h`. Use function-level searches
-to enter `ModContext.cpp`; reading that file from top to bottom is not a useful
-introduction.
+`IMessageReceiver.h`, `IBML.h`, `ModLoader.h`, and `ModContext.h`. Follow
+`ModLoader.cpp` for Mod lifecycle and `ModContext.cpp` for runtime services.
 
 ## Public interface rules
 
