@@ -152,6 +152,8 @@ set(BML_MODS_SOURCES
 set(BML_LOADER_PRIVATE_HEADERS
         Loader/LegacyModVersion.h
         Loader/ModContext.h
+        Loader/ModLoader.h
+        Loader/ModOrder.h
         Loader/ModInvocationGate.h
         Loader/ModManager.h
         Loader/NativeModRegistry.h
@@ -159,6 +161,7 @@ set(BML_LOADER_PRIVATE_HEADERS
 
 set(BML_LOADER_SOURCES
         Loader/ModContext.cpp
+        Loader/ModLoader.cpp
         Loader/ModManager.cpp
         Loader/NativeModRegistry.cpp
 )

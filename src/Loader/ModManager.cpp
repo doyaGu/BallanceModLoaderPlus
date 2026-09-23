@@ -44,8 +44,7 @@ CKERROR ModManager::OnCKPlay() {
         Overlay::ImGuiInitRenderer(m_Context);
         Overlay::ImGuiContextScope scope;
 
-        m_ModContext->LoadMods();
-        m_ModContext->InitMods();
+        m_ModContext->GetModLoader().Start();
 
         SynchronizeUiFonts();
         Overlay::ImGuiNewFrame();
@@ -62,8 +61,7 @@ CKERROR ModManager::OnCKReset() {
         if (auto *input = m_ModContext->GetInputManager())
             SetOverlayCursorVisible(false);
 
-        m_ModContext->ShutdownMods();
-        m_ModContext->UnloadMods();
+        m_ModContext->GetModLoader().Stop();
 
         Overlay::ImGuiShutdownRenderer(m_Context);
 

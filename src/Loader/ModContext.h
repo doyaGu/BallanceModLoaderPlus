@@ -4,10 +4,11 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <shared_mutex>
+#include <mutex>
 #include <string>
 #include <thread>
-#include <unordered_map>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "BML/BML.h"
@@ -16,17 +17,14 @@
 
 #include "Config/Config.h"
 #include "Config/ConfigStore.h"
-#include "Loader/NativeModRegistry.h"
+#include "Loader/ModLoader.h"
 #include "DataShare/DataShare.h"
 #include "Console/CommandContext.h"
 #include "Console/Shell/ShellEnvironment.h"
 #include "Api/ObjectRefs.h"
-#include "HookUtils.h"
 #include "Imc/ImcRuntime.h"
-#include "Loader/ModInvocationGate.h"
 #include "Gameplay/GameSession.h"
 #include "UI/GameFontCatalog.h"
-#include "UI/ImGuiStateRecovery.h"
 #include "ModMenu/ModMenuPages.h"
 #include "Behavior/Runtime.h"
 #include "Behavior/Script.h"
@@ -47,9 +45,6 @@ namespace BML::Shell {
     class Executor;
     class OutputSink;
 }
-class BMLMod;
-class NewBallTypeMod;
-
 namespace BML {
 namespace Api {
 class CommandApi;
@@ -61,9 +56,7 @@ class FontRuntime;
 #if BML_ENABLE_ANGELSCRIPT
 class ScriptMod;
 struct ScriptModDefinition;
-struct ScriptModLoadCandidate;
 class ScriptDevToolsService;
-class ScriptModHotReloadService;
 struct ScriptModReloadDiagnosticField;
 #endif
 }
@@ -74,46 +67,9 @@ CKRenderContext *BML_GetRenderContext();
 
 class ModContext final : public IBML {
     friend class BML::Api::CommandApi;
-
-    // Native DLL identity normally identifies a Mod owner. Built-in Mods share
-    // BMLPlus.dll, so their active invocation supplies the missing identity.
-    // The linked stack keeps nested broadcasts exact without allocating.
-    class ModInvocation final {
-    public:
-        ModInvocation(const ModContext *context, IMod *mod) noexcept
-            : m_Previous(s_Current), m_Context(context), m_Mod(mod) {
-            s_Current = this;
-        }
-        ~ModInvocation() { s_Current = m_Previous; }
-
-        ModInvocation(const ModInvocation &) = delete;
-        ModInvocation &operator=(const ModInvocation &) = delete;
-
-        static IMod *Current(const ModContext *context) noexcept {
-            for (const ModInvocation *scope = s_Current; scope;
-                 scope = scope->m_Previous) {
-                if (scope->m_Context == context)
-                    return scope->m_Mod;
-            }
-            return nullptr;
-        }
-
-    private:
-        inline static thread_local const ModInvocation *s_Current = nullptr;
-        const ModInvocation *m_Previous = nullptr;
-        const ModContext *m_Context = nullptr;
-        IMod *m_Mod = nullptr;
-    };
+    friend class ModLoader;
 
 public:
-    enum Flag {
-        BML_INITED = 0x00000001,
-
-        BML_MODS_LOADED = 0x00000010,
-        BML_MODS_INITED = 0x00000020,
-        BML_MODS_SHUTTING_DOWN = 0x00000040,
-    };
-
     explicit ModContext(CKContext *context);
 
     ModContext(const ModContext &rhs) = delete;
@@ -124,21 +80,15 @@ public:
     ModContext &operator=(const ModContext &rhs) = delete;
     ModContext &operator=(ModContext &&rhs) noexcept = delete;
 
-    bool IsInited() const { return AreFlagsSet(BML_INITED); }
+    bool IsInited() const { return m_Inited; }
     bool Init();
     void Shutdown();
 
-    bool AreModsLoaded() const { return AreFlagsSet(BML_MODS_LOADED); }
-    bool LoadMods();
-    void UnloadMods();
+    ModLoader &GetModLoader() { return m_Loader; }
+    const ModLoader &GetModLoader() const { return m_Loader; }
+    bool AreModsLoaded() const { return m_Loader.AreModsLoaded(); }
+    bool AreModsInited() const { return m_Loader.AreModsInited(); }
 
-    bool AreModsInited() const { return AreFlagsSet(BML_MODS_INITED); }
-    bool InitMods();
-    void ShutdownMods();
-
-    bool AreFlagsSet(int flags) const { return (m_Flags & flags) == flags; }
-    void SetFlags(int flags, bool set = true) { m_Flags = set ? m_Flags | flags : m_Flags & ~flags; }
-    void ClearFlags(int flags) { m_Flags &= ~flags; }
 #if BML_ENABLE_ANGELSCRIPT
     bool IsAngelScriptExtensionRegistered() const { return m_AngelScriptExtensionRegistered; }
     void SetAngelScriptExtensionRegistered(bool registered) { m_AngelScriptExtensionRegistered = registered; }
@@ -155,7 +105,7 @@ public:
     void RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
                                            const std::string &currentId,
                                            const BML::ScriptModDefinition &oldDefinition);
-    BML::ScriptDevToolsService *GetScriptDevTools() const { return m_ScriptDevTools.get(); }
+    BML::ScriptDevToolsService *GetScriptDevTools() const { return m_Loader.GetScriptDevTools(); }
 #endif
 
     int GetModCount() override;
@@ -171,9 +121,9 @@ public:
         const char *requestedOwnerId = nullptr) const;
     bool NativeModOwnsAddress(
         const std::string &ownerId, const void *address) const;
-    BML::ModInvocationGate::CallLock LockModInvocation() const { return m_ModInvocationGate.LockCall(); }
+    BML::ModInvocationGate::CallLock LockModInvocation() const { return m_Loader.LockModInvocation(); }
     bool IsModInvocationActiveOnCurrentThread() const {
-        return m_ModInvocationGate.IsCallActiveOnCurrentThread();
+        return m_Loader.IsModInvocationActiveOnCurrentThread();
     }
     bool IsMainThread() const { return std::this_thread::get_id() == m_MainThreadId; }
     BML::ImcRuntime &GetImcRuntime() { return m_ImcRuntime; }
@@ -402,35 +352,12 @@ public:
 
     template<typename T, typename... Args>
     std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
-        auto invocationLock = LockModInvocation();
-        std::vector<IMod *> mods;
-        {
-            std::lock_guard<std::mutex> lock(m_Mutex);
-            auto it = m_CallbackMap.find(utils::TypeErase(callback));
-            if (it != m_CallbackMap.end())
-                mods = it->second;
-        }
-        for (IMod *mod : mods) {
-            const Overlay::ImGuiStateSnapshot imguiState = Overlay::CaptureImGuiState();
-            try {
-                ModInvocation invocation(this, mod);
-                (mod->*callback)(std::forward<Args>(args)...);
-            } catch (const std::exception &e) {
-                if (m_Logger)
-                    m_Logger->Error("Exception in mod %s callback: %s", mod->GetID(), e.what());
-            } catch (...) {
-                if (m_Logger)
-                    m_Logger->Error("Unknown exception in mod %s callback", mod->GetID());
-            }
-            if (Overlay::RecoverImGuiState(imguiState) && m_Logger)
-                m_Logger->Warn("Recovered unbalanced ImGui state after mod %s callback", mod->GetID());
-        }
+        m_Loader.BroadcastCallback(callback, std::forward<Args>(args)...);
     }
 
     template<typename T>
     std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastMessage(const char *msg, T func) {
-        m_Logger->Info("On Message %s", msg);
-        BroadcastCallback(func);
+        m_Loader.BroadcastMessage(msg, func);
     }
 
     void OnProcess();
@@ -499,44 +426,6 @@ private:
     bool ShutdownHooks();
     bool GetManagers();
 
-    size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods);
-#if BML_ENABLE_ANGELSCRIPT
-    struct ModDependencySnapshot {
-        std::string Id;
-        BMLVersion MinVersion;
-        bool Optional = false;
-    };
-
-    struct RegisteredModSnapshot {
-        const IMod *Identity = nullptr;
-        std::string Id;
-        std::string Version;
-        bool Failed = false;
-        std::vector<ModDependencySnapshot> Dependencies;
-    };
-
-    std::vector<RegisteredModSnapshot> SnapshotModRegistry() const;
-    size_t ExploreScriptMods(const std::wstring &path, std::vector<BML::ScriptModLoadCandidate> &candidates);
-#endif
-
-    std::shared_ptr<void> LoadLib(const wchar_t *path);
-    bool UnloadLib(void *dllHandle);
-    void DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabel) noexcept;
-
-    IMod *LoadMod(const std::wstring &path);
-#if BML_ENABLE_ANGELSCRIPT
-    IMod *LoadScriptMod(const BML::ScriptModLoadCandidate &candidate);
-    void RegisterScriptModDependencies(IMod *mod, const BML::ScriptModDefinition &definition);
-    void ProcessScriptModQueuedCallbacks();
-    void ProcessScriptModFailureCleanup();
-#endif
-    bool UnloadMod(const std::string &id);
-
-    void RegisterBuiltinMods();
-
-    bool RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
-    bool UnregisterMod(IMod *mod);
-    IMod *FindModLocked(const std::string &id) const;
     bool RegisterOwnedCommand(const void *registrar, ICommand *command);
     BML::CommandContext::UnregisterResult UnregisterOwnedCommand(
         const void *registrar, const char *name);
@@ -546,23 +435,18 @@ private:
     std::wstring GetShellEnvironmentPath() const;
     void LoadShellEnvironment();
 
-    int EvaluateDependencies(IMod *mod, std::string *diagnostic) const;
-    int EvaluateActivationDependencies(IMod *mod, std::string *diagnostic) const;
-    bool ResolveDependencies();
-
-    void FillCallbackMap(IMod *mod);
     void SnapshotConfigMetadata();
     void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
+    bool RegisterModOwner(const std::string &ownerId) noexcept;
+    void RetireFailedModOwner(const std::string &ownerId) noexcept;
     BML::Behavior::Internal::Status RetireBehaviorEdits(const std::string &ownerId);
     void RetireModBehaviorState(const std::string &ownerId) noexcept;
     bool CleanupModRegistrations(const std::string &ownerId) noexcept;
     void CleanupModState(const std::string &ownerId) noexcept;
-    void DeactivateActiveMods(bool dispatchPendingNotifications);
-    void RollbackModActivation();
-
+    void ClearLegacyCommands();
     void AddDataPath(const char *path);
     bool CanScheduleTimer() const;
-    int m_Flags = 0;
+    bool m_Inited = false;
     BML::GameSession m_GameSession;
     BML::ObjectRefs m_ObjectRefs;
     BML::Behavior::Internal::PrototypeCatalog m_BehaviorPrototypes;
@@ -620,46 +504,13 @@ private:
     InputHook *m_InputHook = nullptr;
 
     BML::ImcRuntime m_ImcRuntime;
-    BMLMod *m_BMLMod = nullptr;
-    NewBallTypeMod *m_BallTypeMod = nullptr;
-#if BML_ENABLE_ANGELSCRIPT
-    std::vector<std::unique_ptr<BML::ScriptMod>> m_ScriptMods;
-    std::unique_ptr<BML::ScriptDevToolsService> m_ScriptDevTools;
-    std::unique_ptr<BML::ScriptModHotReloadService> m_ScriptHotReload;
-#endif
-
-    NativeModRegistry m_NativeModRegistry;
-
-    std::vector<IMod *> m_Mods;
-    std::vector<IMod *> m_ActiveMods;
-    std::unordered_map<std::string, size_t> m_ModIndex;
-    std::unordered_map<const IMod *, std::uint64_t> m_ModGenerations;
-    std::uint64_t m_NextModGeneration = 1;
-    std::uint64_t m_ModRegistryRevision = 0;
-
-    std::unordered_map<IMod*, std::vector<ModDependency>> m_ModDependencies;
-
     ConfigStore m_ConfigStore;
-
-    std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 
     const std::thread::id m_MainThreadId = std::this_thread::get_id();
 
-    // Mod synchronization protocol:
-    // 1. Acquire the invocation gate before either registry lock when a task
-    //    needs both object lifetime protection and registry state.
-    // 2. When both mutex families are needed, acquire m_Mutex before
-    //    m_ModRegistryMutex and release them in reverse order.
-    // 3. Never call a Mod virtual method while m_Mutex or
-    //    m_ModRegistryMutex is held. Copy the required state, unlock, and then
-    //    invoke external code while the invocation gate keeps objects alive.
-    //
-    // m_ModRegistryMutex protects the Mod/DLL owner registries and their
-    // indices. m_Mutex protects dependencies, configs, commands, and callbacks.
-    mutable std::shared_mutex m_ModRegistryMutex;
-    mutable BML::ModInvocationGate m_ModInvocationGate;
     mutable BML::ModInvocationGate m_CommandInvocationGate;
     mutable std::mutex m_Mutex;
+    ModLoader m_Loader;
 };
 
 #endif // BML_MODCONTEXT_H
