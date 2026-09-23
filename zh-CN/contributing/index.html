@@ -2037,14 +2037,17 @@ SDK 编写 Mod，请阅读<a href="../native-mod-api/">原生 Mod 指南</a>或<
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>            |
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>       ModManager              接收 CK 生命周期和引擎回调
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>            |
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>       ModContext              发现、依赖排序、所有权和服务
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        /         \
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>   原生 Mod       脚本宿主      IMod 回调 / CKAngelScript 回调
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        \         /
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>       Loader 内建功能
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>       ModContext              IBML 运行时服务和 CK 状态
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>            |
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>       ModLoader               发现、所有权、回调与生命周期
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        /         \
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>   原生 Mod       脚本宿主      IMod 回调 / CKAngelScript 回调
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        \         /
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>       Loader 内建功能
 </code></pre></div>
-<p><code>ModManager</code> 将 Virtools manager 生命周期连接到 BML+。<code>ModContext</code> 负责 Mod
-发现、依赖顺序、回调分发、公共服务和关闭。原生 Mod 通过已安装的 C++ ABI 进入，
+<p><code>ModManager</code> 将 Virtools manager 生命周期连接到 BML+。<code>ModContext</code> 是稳定的
+<code>IBML</code> 对象，负责运行时服务；其私有 <code>ModLoader</code> 负责 Mod 发现、依赖顺序、回调
+分发和关闭。原生 Mod 通过已安装的 C++ ABI 进入，
 脚本 Mod 通过 CKAngelScript 宿主进入。Mod 可以通过 IMC 发布自己的接口；
 Loader 不发布生成式 IMC 接口。</p>
 <h2 id="_2">开发环境<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
@@ -2149,9 +2152,14 @@ API 文件。</p>
 <td>定向生命周期测试和 Player 冒烟测试</td>
 </tr>
 <tr>
-<td>Mod 发现、依赖顺序、服务或关闭</td>
-<td><code>src/Loader/ModContext.*</code></td>
+<td>Mod 发现、依赖顺序、回调分发或关闭</td>
+<td><code>src/Loader/ModLoader.*</code></td>
 <td>对应 Loader/依赖测试和原生/脚本冒烟覆盖</td>
+</tr>
+<tr>
+<td>IBML 服务或 CK 运行时状态</td>
+<td><code>src/Loader/ModContext.*</code></td>
+<td>对应服务测试和原生/脚本冒烟覆盖</td>
 </tr>
 <tr>
 <td>HUD、菜单、命令栏或内建行为</td>
@@ -2196,8 +2204,8 @@ API 文件。</p>
 </tbody>
 </table>
 <p>阅读代码时先看 <code>ModManager.cpp</code>，再看 <code>IMod.h</code>、<code>IMessageReceiver.h</code>、
-<code>IBML.h</code> 和 <code>ModContext.h</code> 的声明。进入 <code>ModContext.cpp</code> 时按函数搜索，不建议
-从第一行顺读整个文件。</p>
+<code>IBML.h</code>、<code>ModLoader.h</code> 和 <code>ModContext.h</code> 的声明。Mod 生命周期从
+<code>ModLoader.cpp</code> 进入，运行时服务从 <code>ModContext.cpp</code> 进入。</p>
 <h2 id="_6">公共接口规则<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <p><code>IBML</code>、<code>IMod</code>、<code>IMessageReceiver</code> 等旧式原生 C++ 接口跨 DLL 边界，当前
 发布线冻结其 ABI。不要修改虚函数签名或顺序、对象布局、所有权规则和跨边界

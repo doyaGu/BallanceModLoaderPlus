@@ -1552,7 +1552,8 @@ user-facing syntax.</p>
 <p><code>Execute</code> returns <code>void</code>, so two C exports in <code>BML.h</code> carry the rest of the
 shell behavior. <code>BML_SetCommandStatus(int)</code> marks the running command failed
 for <code>&amp;&amp;</code>, <code>||</code>, and <code>$?</code>; without it a command counts as succeeded unless it
-throws or cannot be found. <code>BML_GetCommandInput(size_t *)</code> returns the text
+throws or cannot be found. Negative API error values are recorded as the
+generic failure status <code>1</code>. <code>BML_GetCommandInput(size_t *)</code> returns the text
 piped into the running command by <code>other | this</code>, or null when nothing was
 piped; the pointer belongs to the loader and lives until <code>Execute</code> returns.
 Output written with <code>SendIngameMessage</code> during a pipeline stage goes to the

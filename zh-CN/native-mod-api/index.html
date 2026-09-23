@@ -2421,7 +2421,8 @@ Integer、Float、Boolean 基础解析。<code>ILogger</code> 提供三个日志
 面向玩家的完整语法见<a href="../using-bml/">《使用 BML+》中的命令行说明</a>。</p>
 <p><code>Execute</code> 返回 <code>void</code>，所以 shell 约定的另一半由 <code>BML.h</code> 中的两个 C 导出承担。
 <code>BML_SetCommandStatus(int)</code> 把正在运行的命令标记为失败，供 <code>&amp;&amp;</code>、<code>||</code> 和 <code>$?</code>
-使用；不调用它，命令只有在抛出异常或找不到时才算失败。
+使用；不调用它，命令只有在抛出异常或找不到时才算失败。负数属于 API 错误值，
+写入时统一转换为普通失败状态 <code>1</code>。
 <code>BML_GetCommandInput(size_t *)</code> 返回 <code>other | this</code> 管道送进当前命令的文本，
 没有管道时返回空指针；指针属于 Loader，在 <code>Execute</code> 返回前有效。作为管道中间
 环节运行时，通过 <code>SendIngameMessage</code> 写出的内容会交给下一环节，而不是显示在

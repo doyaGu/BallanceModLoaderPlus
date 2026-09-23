@@ -1140,15 +1140,18 @@ instead. Mod authors do not need to build this repository.</p>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>            |
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>       ModManager              CK lifecycle and engine callbacks
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>            |
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>       ModContext              discovery, dependency order, ownership, services
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        /         \
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a> native mods     script host   IMod callbacks / CKAngelScript callbacks
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        \         /
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>       built-in loader features
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>       ModContext              IBML runtime services and CK state
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>            |
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>       ModLoader               discovery, ownership, callbacks, lifecycle
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        /         \
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a> native mods     script host   IMod callbacks / CKAngelScript callbacks
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        \         /
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>       built-in loader features
 </code></pre></div>
 <p><code>ModManager</code> connects the Virtools manager lifecycle to BML+. <code>ModContext</code>
-owns mod discovery, dependency order, callback dispatch, public services, and
-shutdown. Native mods enter through the installed C++ ABI; script mods enter
+is the stable <code>IBML</code> object and owns runtime services. Its private <code>ModLoader</code>
+owns Mod discovery, dependency order, callback dispatch, and Mod shutdown.
+Native mods enter through the installed C++ ABI; script mods enter
 through the CKAngelScript host. Mods may use IMC to publish their own interfaces;
 the loader does not publish a generated IMC interface.</p>
 <h2 id="development-environment">Development environment<a class="headerlink" href="#development-environment" title="Permanent link">&para;</a></h2>
@@ -1258,9 +1261,14 @@ for an unrelated change; the runner commands and probe ownership are in
 <td>Focused lifecycle tests and Player smoke test</td>
 </tr>
 <tr>
-<td>Mod discovery, dependency order, services, or shutdown</td>
-<td><code>src/Loader/ModContext.*</code></td>
+<td>Mod discovery, dependency order, callback dispatch, or Mod shutdown</td>
+<td><code>src/Loader/ModLoader.*</code></td>
 <td>Relevant loader/dependency tests and native/script smoke coverage</td>
+</tr>
+<tr>
+<td>IBML services or CK runtime state</td>
+<td><code>src/Loader/ModContext.*</code></td>
+<td>Relevant service tests and native/script smoke coverage</td>
 </tr>
 <tr>
 <td>HUD, menus, command bar, or built-in behavior</td>
@@ -1305,9 +1313,8 @@ for an unrelated change; the runner commands and probe ownership are in
 </tbody>
 </table>
 <p>Start with <code>ModManager.cpp</code>, then read the declarations in <code>IMod.h</code>,
-<code>IMessageReceiver.h</code>, <code>IBML.h</code>, and <code>ModContext.h</code>. Use function-level searches
-to enter <code>ModContext.cpp</code>; reading that file from top to bottom is not a useful
-introduction.</p>
+<code>IMessageReceiver.h</code>, <code>IBML.h</code>, <code>ModLoader.h</code>, and <code>ModContext.h</code>. Follow
+<code>ModLoader.cpp</code> for Mod lifecycle and <code>ModContext.cpp</code> for runtime services.</p>
 <h2 id="public-interface-rules">Public interface rules<a class="headerlink" href="#public-interface-rules" title="Permanent link">&para;</a></h2>
 <p>The legacy native C++ interfaces, including <code>IBML</code>, <code>IMod</code>, and
 <code>IMessageReceiver</code>, cross the DLL boundary and are ABI-frozen for the current
