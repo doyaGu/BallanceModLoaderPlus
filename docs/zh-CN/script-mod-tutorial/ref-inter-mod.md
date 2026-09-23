@@ -9,9 +9,8 @@ Client 或 Provider，并共享相同的 Record、路由、状态码和版本规
 脚本中读取 BML 自带能力时，直接使用有类型的接口：
 
 ```angelscript
-BML::Runtime::State runtime = BML::Runtime::GetState();
-if (runtime.InLevel) {
-  // 使用 runtime 的复制快照。
+if (ctx.IsInLevel()) {
+  // 当前在关卡内，可继续读取 Gameplay 数据。
 }
 
 int checkpointCount = 0;
@@ -25,12 +24,10 @@ if (BML::Gameplay::ReadCheckpointCount(checkpointCount) == BML::ERROR_OK) {
 }
 ```
 
-可用的内置命名空间包括 `BML::Runtime`、`BML::Gameplay`、`BML::UI` 和
-`BML::Speedrun`。Virtools 场景查找和对象标识应使用
-CKAngelScript 的 `Scene` 命名空间及其可重新验证的引用类型。其中 Runtime
-状态、时钟和分数读取直接返回 Loader 进程内状态的值，不经过任何传输层，
-也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
-异常。Gameplay 读取也直接复用进程内的数据读取器，但对应的 Ballance
+可用的内置命名空间包括 `BML::Gameplay`、`BML::UI` 和
+`BML::Speedrun`。状态、时钟和作弊状态可从脚本回调的 `ModContext` 读取。
+Virtools 场景查找和对象标识应使用 CKAngelScript 的 `Scene` 命名空间及其
+可重新验证的引用类型。Gameplay 读取直接复用进程内的数据读取器，但对应的 Ballance
 数据数组可能尚不可用或布局不受支持，因此仍返回明确的状态码。脚本只处理
 类型化数据，不直接管理原始消息或原生 IMC 句柄。目录、检查点和重置点使用
 `Read*Count` 加 `Read*(index, value)` 读取；count 是当次读取的行数，随后每次

@@ -154,7 +154,7 @@ ASMod 的 Request、Subscription 和 Provider 句柄归脚本 Mod 所有。卸�
 ## 哪些内容不该定义成接口
 
 不要为 Loader 已经提供的能力定义 `.imc` 接口。它的运行状态、场景查找、Gameplay
-数据、UI 和 Speedrun 计时器都是 interface struct，分别写作 `BML::Runtime`、
+数据、UI 和 Speedrun 计时器都是 interface struct，分别写作 `BML::Time`、
 `BML::Scene`、`BML::Gameplay`、`BML::UI` 和 `BML::Speedrun`。Loader 事件通过
 Mod 回调到达。只有能力确实由你的 Mod 拥有时，才定义接口。
 

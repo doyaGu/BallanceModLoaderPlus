@@ -146,16 +146,16 @@ clearer script and diagnostic.
 
 ## Built-in typed snapshots
 
-`BML::Runtime` returns small in-process state, clock, score, and cheat values.
-`BML::Gameplay` reads gameplay data that may be unavailable or use an
-unsupported layout, so those calls return a status. Calling a built-in API
-outside a valid script callback raises a script exception.
+`ModContext` exposes the current game-state flags, CK time, speedrun time, and
+cheat status. `BML::Gameplay::ReadHighScore` is available only in a level.
+`BML::Gameplay` also reads gameplay data that may be unavailable or use an
+unsupported layout, so those calls return a status. Outside an active script
+callback, gameplay reads return `BML::ERROR_UNAVAILABLE`.
 
 ```angelscript
-BML::Runtime::State runtime = BML::Runtime::GetState();
 BML::Gameplay::LevelState level;
 
-if (runtime.InLevel && BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
+if (ctx.IsInLevel() && BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
   CKObject@ ball = level.BorrowActiveBall();
 }
 ```
