@@ -22,12 +22,6 @@ add_bml_test(NativeModRegistryTest
         ${BML_SOURCE_DIR}/Loader/NativeModRegistry.h
 )
 
-add_bml_test(GameSessionTest
-        SOURCES
-        GameSessionTest.cpp
-        ${BML_SOURCE_DIR}/Gameplay/GameSession.cpp
-)
-
 add_bml_test(ObjectRefsTest
         SOURCES
         ObjectRefsTest.cpp

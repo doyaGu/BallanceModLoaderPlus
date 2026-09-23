@@ -25,7 +25,6 @@
 #include "Console/Shell/ShellEnvironment.h"
 #include "Api/ObjectRefs.h"
 #include "Imc/ImcRuntime.h"
-#include "Gameplay/GameSession.h"
 #include "UI/GameFontCatalog.h"
 #include "ModMenu/ModMenuPages.h"
 #include "Behavior/Runtime.h"
@@ -87,7 +86,6 @@ private:
 };
 
 class ModContext final : public IBML {
-
 public:
     explicit ModContext(CKContext *context);
 
@@ -312,7 +310,6 @@ public:
 
     void ExitGame() override;
 
-    BML::GameSessionSnapshot ReadGameSession() const noexcept { return m_GameSession.Read(); }
     BML::ObjectRefs &ObjectRefs() noexcept { return m_ObjectRefs; }
     BML::Behavior::Internal::Runtime &Behaviors() noexcept { return m_Behaviors; }
     const BML::Behavior::Internal::Runtime &Behaviors() const noexcept { return m_Behaviors; }
@@ -352,10 +349,10 @@ public:
     const BML::UI::FontRuntime *GetUiFontRuntime() const noexcept {
         return m_UiFonts.get();
     }
-    bool IsIngame() override { return ReadGameSession().IsInGame(); }
-    bool IsInLevel() const { return ReadGameSession().IsInLevel(); }
-    bool IsPaused() override { return ReadGameSession().IsPaused(); }
-    bool IsPlaying() override { return ReadGameSession().IsPlaying(); }
+    bool IsIngame() override { return m_GamePhase != GamePhase::FrontEnd; }
+    bool IsInLevel() const { return m_GamePhase == GamePhase::ActiveLevel || m_GamePhase == GamePhase::PausedLevel; }
+    bool IsPaused() override { return m_GamePhase == GamePhase::PausedLevel; }
+    bool IsPlaying() override { return m_GamePhase == GamePhase::ActiveLevel; }
 
     void OpenModsMenu();
     void CloseModsMenu();
@@ -488,7 +485,8 @@ private:
     bool CleanupModRegistrations(const std::string &ownerId) noexcept;
     bool CanScheduleTimer() const;
     bool m_Inited = false;
-    BML::GameSession m_GameSession;
+    enum class GamePhase { FrontEnd, Transitioning, ActiveLevel, PausedLevel };
+    GamePhase m_GamePhase = GamePhase::FrontEnd;
     BML::ObjectRefs m_ObjectRefs;
     BML::Behavior::Internal::PrototypeCatalog m_BehaviorPrototypes;
     BML::Behavior::Internal::Runtime m_Behaviors;

@@ -111,15 +111,10 @@ public:
     // CKBeObject::Show plus the same optional walk over the children.
     virtual void Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy = false) = 0;
 
-    // IsIngame is true from the start of a level until the game is left, through
-    // resets and pauses. IsPaused is the pause state on its own. IsPlaying is
-    // exactly IsIngame and not IsPaused, so it does not narrow to the part of a
-    // level where the ball actually moves.
-    //
-    // The loader updates these after it has broadcast the matching callback, so
-    // inside OnStartLevel IsIngame is still false, and inside OnPostExitLevel it is
-    // still true. In a callback, act on the callback rather than reading the state
-    // back.
+    // IsIngame includes transitions between levels. IsPaused and IsPlaying
+    // identify paused and active levels respectively; both are false while
+    // transitioning. Post-event callbacks observe the new phase; pre-event
+    // callbacks observe the phase that is about to end.
     virtual bool IsIngame() = 0;
     virtual bool IsPaused() = 0;
     virtual bool IsPlaying() = 0;

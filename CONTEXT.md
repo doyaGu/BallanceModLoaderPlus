@@ -140,6 +140,16 @@ script bindings.
 **Built-in Game Event Hooks** — Adapters from retail script and menu transitions
 to Mod lifecycle and gameplay callbacks. They do not own tweak state.
 
+**Game Phase** — Private Front End, Transitioning, Active Level, or
+Paused Level state, owned by Runtime Context and queried through its existing
+state getters.
+Post-event callbacks see the new phase; pre-event callbacks see the phase being
+left. A Virtools world reset returns to Front End.
+
+**CK Time Interface** — The `bml.time` read-only interface to CKTimeManager
+millisecond clocks and its wrapping 32-bit main tick count. It does not own a
+second timer or the Speedrun elapsed time.
+
 ## UI and input
 
 **UI Automation Session** — A test-only cross-process exchange between Player

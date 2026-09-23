@@ -484,6 +484,7 @@ void ModContext::Abandon() noexcept {
 }
 
 void ModContext::ResetVirtoolsWorld() {
+    m_GamePhase = GamePhase::FrontEnd;
     // Runtime owners close native state first. Public object references belong
     // to the API seam and are reset only after internal teardown is complete.
     m_ExecuteBB.Reset();
@@ -1444,13 +1445,13 @@ void ModContext::OnPostLoadLevel() {
 }
 
 void ModContext::OnStartLevel() {
+    m_GamePhase = GamePhase::ActiveLevel;
     BroadcastMessage("StartLevel", &IMod::OnStartLevel);
-    m_GameSession.ActivateLevel();
 }
 
 void ModContext::OnPreResetLevel() {
     BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
-    m_GameSession.BeginTransition();
+    m_GamePhase = GamePhase::Transitioning;
 }
 
 void ModContext::OnPostResetLevel() {
@@ -1458,13 +1459,15 @@ void ModContext::OnPostResetLevel() {
 }
 
 void ModContext::OnPauseLevel() {
+    if (m_GamePhase == GamePhase::ActiveLevel)
+        m_GamePhase = GamePhase::PausedLevel;
     BroadcastMessage("PauseLevel", &IMod::OnPauseLevel);
-    m_GameSession.PauseLevel();
 }
 
 void ModContext::OnUnpauseLevel() {
+    if (m_GamePhase == GamePhase::PausedLevel)
+        m_GamePhase = GamePhase::ActiveLevel;
     BroadcastMessage("UnpauseLevel", &IMod::OnUnpauseLevel);
-    m_GameSession.ResumeLevel();
 }
 
 void ModContext::OnPreExitLevel() {
@@ -1472,8 +1475,8 @@ void ModContext::OnPreExitLevel() {
 }
 
 void ModContext::OnPostExitLevel() {
+    m_GamePhase = GamePhase::FrontEnd;
     BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
-    m_GameSession.ReturnToFrontEnd();
 }
 
 void ModContext::OnPreNextLevel() {
@@ -1481,13 +1484,13 @@ void ModContext::OnPreNextLevel() {
 }
 
 void ModContext::OnPostNextLevel() {
+    m_GamePhase = GamePhase::Transitioning;
     BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
-    m_GameSession.BeginTransition();
 }
 
 void ModContext::OnDead() {
+    m_GamePhase = GamePhase::FrontEnd;
     BroadcastMessage("Dead", &IMod::OnDead);
-    m_GameSession.ReturnToFrontEnd();
 }
 
 void ModContext::OnPreEndLevel() {
@@ -1495,8 +1498,8 @@ void ModContext::OnPreEndLevel() {
 }
 
 void ModContext::OnPostEndLevel() {
+    m_GamePhase = GamePhase::FrontEnd;
     BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
-    m_GameSession.ReturnToFrontEnd();
 }
 
 void ModContext::OnCounterActive() {
@@ -1537,7 +1540,7 @@ void ModContext::OnPostCheckpointReached() {
 
 void ModContext::OnLevelFinish() {
     BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
-    m_GameSession.BeginTransition();
+    m_GamePhase = GamePhase::Transitioning;
 }
 
 void ModContext::OnGameOver() {

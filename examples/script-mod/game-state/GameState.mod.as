@@ -13,8 +13,7 @@ class GameStateExample {
         if (event != BML::GAME_EVENT_START_LEVEL)
             return;
 
-        BML::Runtime::State runtime = BML::Runtime::GetState();
-        if (!runtime.InLevel) {
+        if (!ctx.IsInLevel()) {
             ctx.LogWarn("Start-level event arrived without an active level");
             return;
         }

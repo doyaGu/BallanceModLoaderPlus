@@ -311,14 +311,12 @@ set(BML_GAMEPLAY_PRIVATE_HEADERS
         Gameplay/CheatCommand.h
         Gameplay/GameEventHooks.h
         Gameplay/GameplayTweaks.h
-        Gameplay/GameSession.h
 )
 
 set(BML_GAMEPLAY_SOURCES
         Gameplay/CheatCommand.cpp
         Gameplay/GameEventHooks.cpp
         Gameplay/GameplayTweaks.cpp
-        Gameplay/GameSession.cpp
 )
 
 set(BML_IMC_PRIVATE_HEADERS
