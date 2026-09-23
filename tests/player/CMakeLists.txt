@@ -89,6 +89,14 @@ bml_add_player_test(InterfaceConsumerTest
         ${BML_PLAYER_PROBE_SOURCES}
 )
 
+# Exercises the supported native teardown path when a Mod omits BMLExit.
+bml_add_player_test(NoExitModTest
+        NoExitModTest.cpp
+)
+# bml_add_mod normally requires both exports; this fixture deliberately omits
+# BMLExit to verify the loader's safe fallback.
+set_target_properties(NoExitModTest PROPERTIES LINK_OPTIONS "/EXPORT:BMLEntry")
+
 # A real Native Mod consumer for the public C++ authoring facades. The ordinary
 # Player runner covers registration, dispatch, shared data, and cleanup; the UI
 # mod-menu scenario additionally enters and draws the contributed page.
