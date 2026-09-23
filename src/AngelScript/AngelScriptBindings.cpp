@@ -39,6 +39,7 @@
 #include "ScriptHookBlockService.h"
 #include "ScriptImcRecord.h"
 #include "ScriptImcService.h"
+#include "ScriptMenuPageService.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "ScriptBuiltinFacade.h"
@@ -833,6 +834,7 @@ using BMLAS_LoadObjectEvent = BML::ScriptLoadObjectEventView;
 using BMLAS_LoadScriptEvent = BML::ScriptLoadScriptEventView;
 using BMLAS_CommandEvent = BML::ScriptCommandEventView;
 using BMLAS_CommandDefinition = BML::ScriptCommandDefinition;
+using BMLAS_MenuPageDefinition = BML::ScriptMenuPageDefinition;
 using BMLAS_ConfigEvent = BML::ScriptConfigEventView;
 using BMLAS_DataShareEvent = BML::ScriptDataShareEventView;
 using BMLAS_PhysicalizeEvent = BML::ScriptPhysicalizeEventView;
@@ -870,6 +872,7 @@ BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_LoadObjectEvent, LoadObjectEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_LoadScriptEvent, LoadScriptEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_CommandEvent, CommandEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_CommandDefinition, CommandDefinition)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_MenuPageDefinition, MenuPageDefinition)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ConfigEvent, ConfigEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_DataShareEvent, DataShareEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_PhysicalizeEvent, PhysicalizeEvent)
@@ -2377,6 +2380,13 @@ BML::ScriptCommandCompletion *BMLAS_CreateInvalidCommandCompletion() {
 
 void BMLAS_ReleaseCommandCompletion(BML::ScriptCommandCompletion *) {}
 
+BML::ScriptMenuPageFrame *BMLAS_CreateInvalidMenuPageFrame() {
+    static BML::ScriptMenuPageFrame invalidFrame;
+    return &invalidFrame;
+}
+
+void BMLAS_ReleaseMenuPageFrame(BML::ScriptMenuPageFrame *) {}
+
 bool ShouldLogAngelScriptUnavailable(CKAngelScriptAdapter::State state, const std::string &diagnostic) {
     return g_UnavailableLogLimiter.ShouldLog(state, diagnostic);
 }
@@ -2611,9 +2621,12 @@ static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"LoadScriptEvent", "class LoadScriptEvent", sizeof(BML::ScriptLoadScriptEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptLoadScriptEventView>()},
     {"CommandEvent", "class CommandEvent", sizeof(BML::ScriptCommandEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptCommandEventView>()},
     {"CommandDefinition", "class CommandDefinition", sizeof(BMLAS_CommandDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_CommandDefinition>()},
+    {"MenuPageDefinition", "class MenuPageDefinition", sizeof(BMLAS_MenuPageDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_MenuPageDefinition>()},
     {"ConfigEvent", "class ConfigEvent", sizeof(BML::ScriptConfigEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptConfigEventView>()},
     {"CommandCompletion", "class CommandCompletion", 0, asOBJ_REF | asOBJ_SCOPED},
     {"CommandRef", "class CommandRef", 0, asOBJ_REF},
+    {"MenuPageFrame", "class MenuPageFrame", 0, asOBJ_REF | asOBJ_SCOPED},
+    {"MenuPageRef", "class MenuPageRef", 0, asOBJ_REF},
     {"DataShareEvent", "class DataShareEvent", sizeof(BML::ScriptDataShareEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptDataShareEventView>()},
     {"DataShareRequestRef", "class DataShareRequestRef", 0, asOBJ_REF},
     {"ImcRequestRef", "class ImcRequestRef", 0, asOBJ_REF},
@@ -2637,6 +2650,9 @@ static const ScriptFuncdefRegistration kFuncdefRegistrations[] = {
     {"bool TimerLoopCallback(const BML::ModContext &in, const BML::TimerEvent &in)", "funcdef TimerLoopCallback"},
     {"void CommandCallback(const BML::ModContext &in, const BML::CommandEvent &in)", "funcdef CommandCallback"},
     {"void CommandCompletionCallback(const BML::ModContext &in, const BML::CommandEvent &in, BML::CommandCompletion &inout)", "funcdef CommandCompletionCallback"},
+    {"void MenuPageDraw(BML::MenuPageFrame &inout)", "funcdef MenuPageDraw"},
+    {"void MenuPageEnter(BML::MenuPageEnterReason)", "funcdef MenuPageEnter"},
+    {"void MenuPageLeave(BML::MenuPageLeaveReason)", "funcdef MenuPageLeave"},
     {"void DataShareCallback(const BML::ModContext &in, const BML::DataShareEvent &in)", "funcdef DataShareCallback"},
     {"int HookBlockCallback(const BML::ModContext &in, const BML::HookBlockEvent &in)", "funcdef HookBlockCallback"},
 };
@@ -2732,6 +2748,7 @@ static const ScriptObjectPropertyRegistration kObjectPropertyRegistrations[] = {
     {"CommandDefinition", "bool Cheat", "bool CommandDefinition::Cheat", asOFFSET(BMLAS_CommandDefinition, Cheat)},
     {"CommandDefinition", "bool Hidden", "bool CommandDefinition::Hidden", asOFFSET(BMLAS_CommandDefinition, Hidden)},
     {"CommandDefinition", "bool Enabled", "bool CommandDefinition::Enabled", asOFFSET(BMLAS_CommandDefinition, Enabled)},
+    {"MenuPageDefinition", "bool ShowInDetails", "bool MenuPageDefinition::ShowInDetails", asOFFSET(BMLAS_MenuPageDefinition, ShowInDetails)},
 };
 
 static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] = {
@@ -2787,6 +2804,9 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"CommandDefinition", asBEHAVE_CONSTRUCT, "void f()", "void CommandDefinition default construct", asFUNCTION(BMLAS_ConstructCommandDefinition), asCALL_CDECL_OBJLAST},
     {"CommandDefinition", asBEHAVE_CONSTRUCT, "void f(const CommandDefinition &in)", "void CommandDefinition copy construct", asFUNCTION(BMLAS_CopyConstructCommandDefinition), asCALL_CDECL_OBJLAST},
     {"CommandDefinition", asBEHAVE_DESTRUCT, "void f()", "void CommandDefinition destruct", asFUNCTION(BMLAS_DestructCommandDefinition), asCALL_CDECL_OBJLAST},
+    {"MenuPageDefinition", asBEHAVE_CONSTRUCT, "void f()", "void MenuPageDefinition default construct", asFUNCTION(BMLAS_ConstructMenuPageDefinition), asCALL_CDECL_OBJLAST},
+    {"MenuPageDefinition", asBEHAVE_CONSTRUCT, "void f(const MenuPageDefinition &in)", "void MenuPageDefinition copy construct", asFUNCTION(BMLAS_CopyConstructMenuPageDefinition), asCALL_CDECL_OBJLAST},
+    {"MenuPageDefinition", asBEHAVE_DESTRUCT, "void f()", "void MenuPageDefinition destruct", asFUNCTION(BMLAS_DestructMenuPageDefinition), asCALL_CDECL_OBJLAST},
     {"TimerEvent", asBEHAVE_CONSTRUCT, "void f()", "void TimerEvent default construct", asFUNCTION(BMLAS_ConstructTimerEvent), asCALL_CDECL_OBJLAST},
     {"TimerEvent", asBEHAVE_CONSTRUCT, "void f(const TimerEvent &in)", "void TimerEvent copy construct", asFUNCTION(BMLAS_CopyConstructTimerEvent), asCALL_CDECL_OBJLAST},
     {"TimerEvent", asBEHAVE_DESTRUCT, "void f()", "void TimerEvent destruct", asFUNCTION(BMLAS_DestructTimerEvent), asCALL_CDECL_OBJLAST},
@@ -2824,6 +2844,10 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"CommandCompletion", asBEHAVE_RELEASE, "void f()", "void CommandCompletion release", asFUNCTION(BMLAS_ReleaseCommandCompletion), asCALL_CDECL_OBJLAST},
     {"CommandRef", asBEHAVE_ADDREF, "void f()", "void CommandRef addref", asMETHOD(BML::ScriptCommandRef, AddRef), asCALL_THISCALL},
     {"CommandRef", asBEHAVE_RELEASE, "void f()", "void CommandRef release", asMETHOD(BML::ScriptCommandRef, Release), asCALL_THISCALL},
+    {"MenuPageFrame", asBEHAVE_FACTORY, "MenuPageFrame@ f()", "MenuPageFrame@ factory", asFUNCTION(BMLAS_CreateInvalidMenuPageFrame), asCALL_CDECL},
+    {"MenuPageFrame", asBEHAVE_RELEASE, "void f()", "void MenuPageFrame release", asFUNCTION(BMLAS_ReleaseMenuPageFrame), asCALL_CDECL_OBJLAST},
+    {"MenuPageRef", asBEHAVE_ADDREF, "void f()", "void MenuPageRef addref", asMETHOD(BML::ScriptMenuPageRef, AddRef), asCALL_THISCALL},
+    {"MenuPageRef", asBEHAVE_RELEASE, "void f()", "void MenuPageRef release", asMETHOD(BML::ScriptMenuPageRef, Release), asCALL_THISCALL},
     {"DataShareRequestRef", asBEHAVE_ADDREF, "void f()", "void DataShareRequestRef addref", asMETHOD(BML::ScriptDataShareRequestRef, AddRef), asCALL_THISCALL},
     {"DataShareRequestRef", asBEHAVE_RELEASE, "void f()", "void DataShareRequestRef release", asMETHOD(BML::ScriptDataShareRequestRef, Release), asCALL_THISCALL},
     {"ImcRequestRef", asBEHAVE_ADDREF, "void f()", "void ImcRequestRef addref", asMETHOD(BML::ScriptImcRequestRef, AddRef), asCALL_THISCALL},
@@ -2865,6 +2889,9 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     BML_AS_STRING_FIELD_PROPERTY("CommandDefinition", BMLAS_CommandDefinition, Description),
     BML_AS_STRING_FIELD_PROPERTY("CommandDefinition", BMLAS_CommandDefinition, Usage),
     BML_AS_STRING_FIELD_PROPERTY("CommandDefinition", BMLAS_CommandDefinition, Category),
+    BML_AS_STRING_FIELD_PROPERTY("MenuPageDefinition", BMLAS_MenuPageDefinition, Id),
+    BML_AS_STRING_FIELD_PROPERTY("MenuPageDefinition", BMLAS_MenuPageDefinition, Label),
+    BML_AS_STRING_FIELD_PROPERTY("MenuPageDefinition", BMLAS_MenuPageDefinition, Description),
     {"VxRect", "VxRect &opAssign(const VxRect &in)", "VxRect &VxRect::opAssign(const VxRect &in)", asFUNCTION(BMLAS_AssignVxRect), asCALL_CDECL_OBJLAST},
     {"Vec2", "Vec2 &opAssign(const Vec2 &in)", "Vec2 &Vec2::opAssign(const Vec2 &in)", asFUNCTION(BMLAS_AssignVec2), asCALL_CDECL_OBJLAST},
     {"Vec3", "Vec3 &opAssign(const Vec3 &in)", "Vec3 &Vec3::opAssign(const Vec3 &in)", asFUNCTION(BMLAS_AssignVec3), asCALL_CDECL_OBJLAST},
@@ -2929,6 +2956,7 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"TrafoDefinition", "TrafoDefinition &opAssign(const TrafoDefinition &in)", "TrafoDefinition &TrafoDefinition::opAssign(const TrafoDefinition &in)", asFUNCTION(BMLAS_AssignTrafoDefinition), asCALL_CDECL_OBJLAST},
     {"ModuleDefinition", "ModuleDefinition &opAssign(const ModuleDefinition &in)", "ModuleDefinition &ModuleDefinition::opAssign(const ModuleDefinition &in)", asFUNCTION(BMLAS_AssignModuleDefinition), asCALL_CDECL_OBJLAST},
     {"CommandDefinition", "CommandDefinition &opAssign(const CommandDefinition &in)", "CommandDefinition &CommandDefinition::opAssign(const CommandDefinition &in)", asFUNCTION(BMLAS_AssignCommandDefinition), asCALL_CDECL_OBJLAST},
+    {"MenuPageDefinition", "MenuPageDefinition &opAssign(const MenuPageDefinition &in)", "MenuPageDefinition &MenuPageDefinition::opAssign(const MenuPageDefinition &in)", asFUNCTION(BMLAS_AssignMenuPageDefinition), asCALL_CDECL_OBJLAST},
     {"ModContext", "ModContext &opAssign(const ModContext &in)", "ModContext &ModContext::opAssign(const ModContext &in)", asFUNCTION(BMLAS_AssignModContext), asCALL_CDECL_OBJLAST},
     {"ModContext", "bool get_HasContext() const", "bool ModContext::get_HasContext() const", asMETHOD(BML::ScriptModContextView, HasContext), asCALL_THISCALL},
     {"ModContext", "bool HasContext() const", "bool ModContext::HasContext() const", asMETHOD(BML::ScriptModContextView, HasContext), asCALL_THISCALL},
@@ -3002,6 +3030,8 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "CommandRef@ RegisterCommand(Command@+ command) const", "CommandRef@ ModContext::RegisterCommand(Command@+ command) const", asMETHODPR(BML::ScriptModContextView, RegisterCommand, (asIScriptObject *) const, BML::ScriptCommandRef *), asCALL_THISCALL},
     {"ModContext", "CommandRef@ RegisterCommand(const CommandDefinition &in definition, CommandCallback@+ execute, CommandCompletionCallback@+ complete = null) const", "CommandRef@ ModContext::RegisterCommand(const CommandDefinition &in, CommandCallback@+, CommandCompletionCallback@+) const", asFUNCTION(BMLAS_ContextRegisterCommandDelegate), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool UnregisterCommand(const string &in name) const", "bool ModContext::UnregisterCommand(const string &in name) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::UnregisterCommand), asCALL_GENERIC},
+    {"ModContext", "MenuPageRef@ RegisterMenuPage(const MenuPageDefinition &in definition, MenuPageDraw@+ draw, MenuPageEnter@+ enter = null, MenuPageLeave@+ leave = null) const", "MenuPageRef@ ModContext::RegisterMenuPage(const MenuPageDefinition &in, MenuPageDraw@+, MenuPageEnter@+, MenuPageLeave@+) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::RegisterMenuPage), asCALL_GENERIC},
+    {"ModContext", "bool UnregisterMenuPage(const string &in id) const", "bool ModContext::UnregisterMenuPage(const string &in id) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::UnregisterMenuPage), asCALL_GENERIC},
     {"ModContext", "DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const", "DataShareRequestRef@ ModContext::RequestDataShare(DataShareRequest@+ request) const", asMETHODPR(BML::ScriptModContextView, RequestDataShare, (asIScriptObject *) const, BML::ScriptDataShareRequestRef *), asCALL_THISCALL},
     {"ModContext", "DataShareRequestRef@ RequestDataShare(const string &in key, int type, DataShareCallback@+ callback, const string &in name = \"\") const", "DataShareRequestRef@ ModContext::RequestDataShare(const string &in, int, DataShareCallback@+, const string &in) const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BMLAS_ContextRequestDataShareDelegate), asCALL_GENERIC},
     {"ModContext", "int _IsImcRpcAvailable(const string &in route, bool &out available) const", "int ModContext::_IsImcRpcAvailable(const string &in route, bool &out available) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::IsImcRpcAvailable), asCALL_GENERIC},
@@ -3233,6 +3263,13 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CommandRef", "bool get_IsEnabled() const", "bool CommandRef::get_IsEnabled() const", asMETHOD(BML::ScriptCommandRef, IsEnabled), asCALL_THISCALL},
     {"CommandRef", "bool SetEnabled(bool enabled)", "bool CommandRef::SetEnabled(bool enabled)", asMETHOD(BML::ScriptCommandRef, SetEnabled), asCALL_THISCALL},
     {"CommandRef", "bool Unregister()", "bool CommandRef::Unregister()", asMETHOD(BML::ScriptCommandRef, Unregister), asCALL_THISCALL},
+    {"MenuPageFrame", "bool Push(const string &in id)", "bool MenuPageFrame::Push(const string &in id)", BML_AS_GENERIC_METHOD(&BML::ScriptMenuPageFrame::Push), asCALL_GENERIC},
+    {"MenuPageFrame", "bool Replace(const string &in id)", "bool MenuPageFrame::Replace(const string &in id)", BML_AS_GENERIC_METHOD(&BML::ScriptMenuPageFrame::Replace), asCALL_GENERIC},
+    {"MenuPageFrame", "void Back()", "void MenuPageFrame::Back()", asMETHOD(BML::ScriptMenuPageFrame, Back), asCALL_THISCALL},
+    {"MenuPageFrame", "void Close()", "void MenuPageFrame::Close()", asMETHOD(BML::ScriptMenuPageFrame, Close), asCALL_THISCALL},
+    {"MenuPageRef", "bool get_IsValid() const", "bool MenuPageRef::get_IsValid() const", asMETHOD(BML::ScriptMenuPageRef, IsValid), asCALL_THISCALL},
+    {"MenuPageRef", "string get_Id() const", "string MenuPageRef::get_Id() const", BML_AS_GENERIC_METHOD(&BML::ScriptMenuPageRef::GetId), asCALL_GENERIC},
+    {"MenuPageRef", "bool Unregister()", "bool MenuPageRef::Unregister()", asMETHOD(BML::ScriptMenuPageRef, Unregister), asCALL_THISCALL},
     {"PhysicalizeEvent", "int get_TargetId() const", "int PhysicalizeEvent::get_TargetId() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetTargetId), asCALL_THISCALL},
     {"PhysicalizeEvent", "string get_TargetName() const", "string PhysicalizeEvent::get_TargetName() const", BML_AS_GENERIC_METHOD(&BML::ScriptPhysicalizeEventView::GetTargetName), asCALL_GENERIC},
     {"PhysicalizeEvent", "CK3dEntity@ BorrowTarget() const", "CK3dEntity@ PhysicalizeEvent::BorrowTarget() const", asMETHOD(BML::ScriptPhysicalizeEventView, BorrowTarget), asCALL_THISCALL},

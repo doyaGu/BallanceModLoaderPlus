@@ -19,6 +19,7 @@
 #include "ScriptDataShareService.h"
 #include "ScriptHookBlockService.h"
 #include "ScriptImcService.h"
+#include "ScriptMenuPageService.h"
 #include "ScriptModEntryScanner.h"
 #include "ScriptModContextView.h"
 #include "ScriptModDefinition.h"
@@ -217,6 +218,11 @@ public:
                                             asIScriptFunction *execute,
                                             asIScriptFunction *complete);
     bool UnregisterScriptCommand(const std::string &name);
+    ScriptMenuPageRef *RegisterScriptMenuPage(
+        const ScriptMenuPageDefinition &definition,
+        asIScriptFunction *draw, asIScriptFunction *enter,
+        asIScriptFunction *leave);
+    bool UnregisterScriptMenuPage(const std::string &id);
     ScriptDataShareRequestRef *RequestScriptDataShare(asIScriptObject *request);
     ScriptDataShareRequestRef *RequestScriptDataShare(const std::string &key,
                                                       int type,
@@ -424,6 +430,7 @@ private:
     ScriptCallbackDispatcher m_Callbacks;
     ScriptTimerService m_Timers;
     ScriptCommandService m_Commands;
+    ScriptMenuPageService m_MenuPages;
     ScriptDataShareService m_DataShareRequests;
     ScriptImcService m_Imc;
     ScriptHookBlockService m_HookBlocks;

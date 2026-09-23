@@ -2,6 +2,7 @@
 
 #include "BML/IConfig.h"
 #include "BML/InputHook.h"
+#include "BML/ModMenu.h"
 #include "BML/Timer.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptModContextView.h"
@@ -126,6 +127,19 @@ static const ScriptEnumValueDescriptor kReloadPhaseValues[] = {
     {"RELOAD_RESTORE_STATE", static_cast<int>(ScriptModReloadPhase::RestoreState), "ReloadPhase::RELOAD_RESTORE_STATE"},
 };
 
+static const ScriptEnumValueDescriptor kMenuPageEnterReasonValues[] = {
+    {"MENU_PAGE_ENTER_PUSH", BML_MOD_MENU_PAGE_ENTER_PUSH, "MenuPageEnterReason::MENU_PAGE_ENTER_PUSH"},
+    {"MENU_PAGE_ENTER_REPLACE", BML_MOD_MENU_PAGE_ENTER_REPLACE, "MenuPageEnterReason::MENU_PAGE_ENTER_REPLACE"},
+    {"MENU_PAGE_ENTER_BACK", BML_MOD_MENU_PAGE_ENTER_BACK, "MenuPageEnterReason::MENU_PAGE_ENTER_BACK"},
+};
+
+static const ScriptEnumValueDescriptor kMenuPageLeaveReasonValues[] = {
+    {"MENU_PAGE_LEAVE_BACK", BML_MOD_MENU_PAGE_LEAVE_BACK, "MenuPageLeaveReason::MENU_PAGE_LEAVE_BACK"},
+    {"MENU_PAGE_LEAVE_CLOSE", BML_MOD_MENU_PAGE_LEAVE_CLOSE, "MenuPageLeaveReason::MENU_PAGE_LEAVE_CLOSE"},
+    {"MENU_PAGE_LEAVE_PUSH", BML_MOD_MENU_PAGE_LEAVE_PUSH, "MenuPageLeaveReason::MENU_PAGE_LEAVE_PUSH"},
+    {"MENU_PAGE_LEAVE_REPLACE", BML_MOD_MENU_PAGE_LEAVE_REPLACE, "MenuPageLeaveReason::MENU_PAGE_LEAVE_REPLACE"},
+};
+
 static const ScriptEnumValueDescriptor kHudFlagValues[] = {
     {"HUD_TITLE", 1, "HudFlag::HUD_TITLE"},
     {"HUD_FPS", 2, "HudFlag::HUD_FPS"},
@@ -234,6 +248,8 @@ static const ScriptEnumDescriptor kEnums[] = {
     {"ModKind", "enum ModKind", kModKindValues, sizeof(kModKindValues) / sizeof(kModKindValues[0])},
     {"ModState", "enum ModState", kModStateValues, sizeof(kModStateValues) / sizeof(kModStateValues[0])},
     {"ReloadPhase", "enum ReloadPhase", kReloadPhaseValues, sizeof(kReloadPhaseValues) / sizeof(kReloadPhaseValues[0])},
+    {"MenuPageEnterReason", "enum MenuPageEnterReason", kMenuPageEnterReasonValues, sizeof(kMenuPageEnterReasonValues) / sizeof(kMenuPageEnterReasonValues[0])},
+    {"MenuPageLeaveReason", "enum MenuPageLeaveReason", kMenuPageLeaveReasonValues, sizeof(kMenuPageLeaveReasonValues) / sizeof(kMenuPageLeaveReasonValues[0])},
     {"HudFlag", "enum HudFlag", kHudFlagValues, sizeof(kHudFlagValues) / sizeof(kHudFlagValues[0])},
     {"InputDevice", "enum InputDevice", kInputDeviceValues, sizeof(kInputDeviceValues) / sizeof(kInputDeviceValues[0])},
     {"InputBlockMask", "enum InputBlockMask", kInputBlockMaskValues, sizeof(kInputBlockMaskValues) / sizeof(kInputBlockMaskValues[0])},

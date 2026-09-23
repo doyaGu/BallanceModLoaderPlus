@@ -962,6 +962,7 @@ bool ScriptMod::RebindServices() {
     if (m_Behavior.Bind(m_Context, this) &&
         m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
         m_Commands.Bind(m_Context, this, &m_ContextView) &&
+        m_MenuPages.Bind(m_Context, this) &&
         m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
         m_Imc.Bind(m_Context, this) &&
         m_HookBlocks.Bind(m_Context, this, &m_ContextView)) {
@@ -1196,6 +1197,16 @@ ScriptCommandRef *ScriptMod::RegisterScriptCommand(const ScriptCommandDefinition
 
 bool ScriptMod::UnregisterScriptCommand(const std::string &name) {
     return m_Commands.Unregister(name);
+}
+
+ScriptMenuPageRef *ScriptMod::RegisterScriptMenuPage(
+    const ScriptMenuPageDefinition &definition, asIScriptFunction *draw,
+    asIScriptFunction *enter, asIScriptFunction *leave) {
+    return m_MenuPages.Register(definition, draw, enter, leave);
+}
+
+bool ScriptMod::UnregisterScriptMenuPage(const std::string &id) {
+    return m_MenuPages.Unregister(id);
 }
 
 ScriptDataShareRequestRef *ScriptMod::RequestScriptDataShare(asIScriptObject *request) {
@@ -1549,6 +1560,8 @@ void ScriptMod::ReleaseScriptImGuiState() {
 }
 
 bool ScriptMod::ReleaseScriptServices() {
+    // Pages must release their script delegates before the module is unloaded.
+    m_MenuPages.Release();
     ScriptDiagnostic releaseDiagnostic;
     bool ok = true;
     m_Behavior.Release(&releaseDiagnostic);

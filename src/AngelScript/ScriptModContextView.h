@@ -17,6 +17,8 @@ namespace BML {
 class ScriptMod;
 class ScriptCommandRef;
 struct ScriptCommandDefinition;
+class ScriptMenuPageRef;
+struct ScriptMenuPageDefinition;
 class ScriptDataShareRequestRef;
 class ScriptHookBlockRef;
 class ScriptImcRecord;
@@ -107,6 +109,11 @@ public:
                                       asIScriptFunction *execute,
                                       asIScriptFunction *complete) const;
     bool UnregisterCommand(const std::string &name) const;
+    ScriptMenuPageRef *RegisterMenuPage(
+        const ScriptMenuPageDefinition &definition,
+        asIScriptFunction *draw, asIScriptFunction *enter,
+        asIScriptFunction *leave) const;
+    bool UnregisterMenuPage(const std::string &id) const;
     ScriptDataShareRequestRef *RequestDataShare(asIScriptObject *request) const;
     ScriptDataShareRequestRef *RequestDataShare(const std::string &key,
                                                 int type,

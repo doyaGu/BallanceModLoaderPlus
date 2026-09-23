@@ -336,6 +336,18 @@ bool ScriptModContextView::UnregisterCommand(const std::string &name) const {
     return m_Owner && m_Owner->UnregisterScriptCommand(name);
 }
 
+ScriptMenuPageRef *ScriptModContextView::RegisterMenuPage(
+    const ScriptMenuPageDefinition &definition,
+    asIScriptFunction *draw, asIScriptFunction *enter,
+    asIScriptFunction *leave) const {
+    return m_Owner ? m_Owner->RegisterScriptMenuPage(
+        definition, draw, enter, leave) : nullptr;
+}
+
+bool ScriptModContextView::UnregisterMenuPage(const std::string &id) const {
+    return m_Owner && m_Owner->UnregisterScriptMenuPage(id);
+}
+
 ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(asIScriptObject *request) const {
     if (m_Owner)
         return m_Owner->RequestScriptDataShare(request);

@@ -13,6 +13,7 @@ class BMLStateReloadSmokeMod {
   bool requestedExit = false;
   BML::TimerRef@ reloadTimer;
   BML::CommandRef@ reloadCommand;
+  BML::MenuPageRef@ reloadPage;
   BML::DataShareRequestRef@ reloadDataShare;
   BML::HookBlockRef@ reloadHook;
 
@@ -32,6 +33,7 @@ class BMLStateReloadSmokeMod {
       BML::DataShareRemove("bml.state.reload.pending", "BML");
     }
     InstallServices(ctx);
+    InstallMenuPage(ctx);
     InstallHook(ctx);
   }
 
@@ -110,6 +112,21 @@ class BMLStateReloadSmokeMod {
     ctx.LogInfo("BML state reload services: v1 timer=" + (timerValid ? "valid" : "invalid") +
                 " command=" + (commandValid ? "valid" : "invalid") +
                 " datashare=" + (dataShareValid ? "valid" : "invalid"));
+  }
+
+  private void InstallMenuPage(const BML::ModContext &in ctx) {
+    BML::MenuPageDefinition definition;
+    definition.Id = "reload-smoke";
+    definition.Label = "Reload Smoke";
+    definition.ShowInDetails = false;
+    BML::MenuPageDraw@ draw = BML::MenuPageDraw(this.DrawMenuPage);
+    @reloadPage = ctx.RegisterMenuPage(definition, draw);
+    ctx.LogInfo("BML state reload menu page: v1=" +
+                (reloadPage !is null && reloadPage.IsValid ? "valid" : "invalid"));
+  }
+
+  private void DrawMenuPage(BML::MenuPageFrame &inout frame) {
+    ImGui::TextUnformatted("reload smoke v1");
   }
 
   private bool OnReloadTimer(const BML::ModContext &in ctx,

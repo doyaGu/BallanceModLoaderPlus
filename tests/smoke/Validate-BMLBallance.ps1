@@ -554,7 +554,8 @@ if (-not $SkipPlayer) {
         Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
         Add-SmokeCheck $checks 'bindings-unregister-clean' (-not (Test-SmokeTextContains $modLogText 'Failed to unregister BML AngelScript bindings')) 'BML AngelScript bindings must unregister cleanly'
         Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: capabilities') 'BML script mod summary: capabilities'
-        Add-SmokeCheck $checks 'script-capabilities' (Test-SmokeTextContains $modLogText 'BML capability smoke: runtime=true') 'BML capability smoke: runtime=true'
+        Add-SmokeCheck $checks 'script-capabilities' (Test-SmokeTextContains $modLogText 'BML capability smoke: state=true clock=true highscore=true') 'BML capability smoke: state=true clock=true highscore=true'
+        Add-SmokeCheck $checks 'script-menu-pages' (Test-SmokeTextContains $modLogText 'BML script menu pages: entry=true child=true') 'BML script menu pages: entry=true child=true'
         Add-SmokeCheck $checks 'script-raw-handle-validity' (Test-SmokeTextContains $modLogText 'BML raw handle validity smoke: live=true deleted=true') 'BML raw handle validity smoke: live=true deleted=true'
         Add-SmokeCheck $checks 'script-event-callback' (Test-SmokeTextContains $modLogText 'BML script event callback: exit_game') 'BML script event callback: exit_game'
         if ($SingleFileSmoke) {
@@ -573,6 +574,7 @@ if (-not $SkipPlayer) {
                 -not (Test-SmokeTextContains $modLogText 'BML failed placeholder recovery shutdown=unexpected')) 'no unexpected failed placeholder recovery phase'
             Add-SmokeCheck $checks 'state-reload-source-patched' $hotReloadStateSourcePatched 'BML state reload smoke source patched'
             Add-SmokeCheck $checks 'state-reload-ready' (Test-SmokeTextContains $modLogText 'BML state reload smoke v1 ready') 'BML state reload smoke v1 ready'
+            Add-SmokeCheck $checks 'state-reload-v1-menu-page' (Test-SmokeTextContains $modLogText 'BML state reload menu page: v1=valid') 'BML state reload menu page: v1=valid'
             Add-SmokeCheck $checks 'state-reload-initial-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 load=initial') 'BML state reload phase: v1 load=initial'
             Add-SmokeCheck $checks 'state-reload-phase-valid' (-not (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 load=unexpected') -and
                 -not (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=unexpected') -and
@@ -586,6 +588,7 @@ if (-not $SkipPlayer) {
                 Add-SmokeCheck $checks 'state-reload-committed' (Test-SmokeTextContains $modLogText 'Script mod bml.state.reload.smoke hot reload succeeded.') 'Script mod bml.state.reload.smoke hot reload succeeded.'
                 Add-SmokeCheck $checks 'state-reload-old-unload-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=reload') 'BML state reload phase: v1 unload=reload'
                 Add-SmokeCheck $checks 'state-reload-new-load-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v2 load=reload') 'BML state reload phase: v2 load=reload'
+                Add-SmokeCheck $checks 'state-reload-v2-menu-page' (Test-SmokeTextContainsAfter $modLogText 'BML state reload menu page: v2=valid' 'BML state reload phase: v1 unload=reload') 'BML state reload menu page: v2=valid after v1 unload'
                 Add-SmokeCheck $checks 'state-reload-shutdown-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v2 unload=shutdown') 'BML state reload phase: v2 unload=shutdown'
                 Add-SmokeCheck $checks 'state-hook-save-phase' (Test-SmokeTextContains $modLogText 'BML state hook phase: v1 save=valid') 'BML state hook phase: v1 save=valid'
                 Add-SmokeCheck $checks 'state-hook-migrate-phase' (Test-SmokeTextContains $modLogText 'BML state hook phase: v2 migrate=valid') 'BML state hook phase: v2 migrate=valid'
