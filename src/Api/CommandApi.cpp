@@ -2,7 +2,6 @@
 
 #include <cstring>
 #include <exception>
-#include <mutex>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -440,17 +439,6 @@ int CommandApi::Register(const std::string &owner,
         return BML_ERROR_BUSY;
 
     try {
-        std::lock_guard<std::mutex> lock(m_Context.m_Mutex);
-        if (m_Context.m_CommandContext.GetCommandByName(definition.Name))
-            return BML_ERROR_ALREADY_EXISTS;
-        if (definition.Alias && definition.Alias[0] != '\0' &&
-            m_Context.m_CommandContext.GetCommandByName(definition.Alias))
-            return BML_ERROR_ALREADY_EXISTS;
-        if (definition.Alias && definition.Alias[0] != '\0' &&
-            CommandContext::NormalizeCommandName(definition.Name) ==
-                CommandContext::NormalizeCommandName(definition.Alias))
-            return BML_ERROR_ALREADY_EXISTS;
-
         const BML_CommandHandle candidate = NextHandle();
         if (candidate == BML_COMMAND_INVALID_HANDLE)
             return BML_ERROR_BUSY;
@@ -471,16 +459,17 @@ int CommandApi::Register(const std::string &owner,
         info.Hidden = (definition.Flags & BML_COMMAND_HIDDEN) != 0;
         info.Enabled = (definition.Flags & BML_COMMAND_DISABLED) == 0;
         info.Handle = candidate;
+        int result = BML_ERROR_FAIL;
         try {
-            if (!m_Context.m_CommandContext.RegisterCommand(
-                    registrar, &registrar->Command, std::move(info), entry)) {
-                m_Entries.erase(inserted.first);
-                return BML_ERROR_FAIL;
-            }
+            result = m_Context.RegisterCallbackCommand(
+                registrar, &registrar->Command, std::move(info), entry);
         } catch (...) {
-            m_Context.m_CommandContext.UnregisterCommands(registrar);
             m_Entries.erase(candidate);
             throw;
+        }
+        if (result != BML_OK) {
+            m_Entries.erase(candidate);
+            return result;
         }
 
         registrar->Command.AdoptUserData();
@@ -499,18 +488,9 @@ int CommandApi::Unregister(const std::string &owner,
         return BML_ERROR_INVALID_PARAMETER;
     if (!m_Context.IsMainThread())
         return BML_ERROR_WRONG_THREAD;
-    if (m_Context.m_CommandInvocationGate.IsCallActiveOnCurrentThread()) {
-        std::lock_guard<std::mutex> lock(m_Context.m_Mutex);
-        return UnregisterLocked(owner, handle, true);
-    }
-
-    auto invocationLock = m_Context.m_CommandInvocationGate.LockMutation();
-    int status = BML_ERROR_FAIL;
-    {
-        std::lock_guard<std::mutex> lock(m_Context.m_Mutex);
-        status = UnregisterLocked(owner, handle, false);
-    }
-    if (status == BML_OK)
+    const bool defer = m_Context.IsCommandInvocationActiveOnCurrentThread();
+    const int status = UnregisterLocked(owner, handle, defer);
+    if (status == BML_OK && !defer)
         FlushPending();
     return status;
 }
@@ -528,7 +508,7 @@ int CommandApi::UnregisterLocked(
         return BML_ERROR_BUSY;
 
     const CommandContext::UnregisterResult result =
-        m_Context.m_CommandContext.UnregisterCommand(entry, entry->Command.Name().c_str());
+        m_Context.UnregisterCallbackCommand(entry, entry->Command.Name().c_str());
     if (result != CommandContext::UnregisterResult::Success)
         return BML_ERROR_FAIL;
     entry->PendingRemoval = true;
@@ -542,14 +522,13 @@ int CommandApi::SetEnabled(const std::string &owner,
     if (!m_Context.IsMainThread())
         return BML_ERROR_WRONG_THREAD;
 
-    std::lock_guard<std::mutex> lock(m_Context.m_Mutex);
     const auto position = m_Entries.find(handle);
     if (position == m_Entries.end() || position->second->PendingRemoval)
         return BML_ERROR_INVALID_HANDLE;
     Entry *entry = position->second.get();
     if (entry->Owner != owner)
         return BML_ERROR_ACCESS_DENIED;
-    return m_Context.m_CommandContext.SetCommandEnabled(&entry->Command, enabled)
+    return m_Context.SetCommandEnabled(&entry->Command, enabled)
         ? BML_OK
         : BML_ERROR_INVALID_HANDLE;
 }
@@ -562,22 +541,21 @@ bool CommandApi::CleanupOwner(const std::string &owner) noexcept {
 
     m_CleaningOwner = true;
     try {
-        auto invocationLock = m_Context.m_CommandInvocationGate.LockMutation();
         for (;;) {
             std::shared_ptr<Entry> removed;
-            {
-                std::lock_guard<std::mutex> lock(m_Context.m_Mutex);
-                auto position = m_Entries.begin();
-                while (position != m_Entries.end() &&
-                       position->second->Owner != owner)
-                    ++position;
-                if (position == m_Entries.end())
-                    break;
-                Entry *entry = position->second.get();
-                m_Context.m_CommandContext.UnregisterCommands(entry);
-                removed = std::move(position->second);
-                m_Entries.erase(position);
+            auto position = m_Entries.begin();
+            while (position != m_Entries.end() &&
+                   position->second->Owner != owner)
+                ++position;
+            if (position == m_Entries.end())
+                break;
+            Entry *entry = position->second.get();
+            if (!m_Context.RetireCallbackCommands(entry)) {
+                m_CleaningOwner = false;
+                return false;
             }
+            removed = std::move(position->second);
+            m_Entries.erase(position);
             removed.reset();
         }
         m_CleaningOwner = false;
@@ -598,18 +576,15 @@ void CommandApi::FlushPending() noexcept {
     try {
         for (;;) {
             std::shared_ptr<Entry> removed;
-            {
-                std::lock_guard<std::mutex> lock(m_Context.m_Mutex);
-                auto position = m_Entries.begin();
-                while (position != m_Entries.end() &&
-                       (!position->second->PendingRemoval ||
-                        position->second->Command.IsActive()))
-                    ++position;
-                if (position == m_Entries.end())
-                    break;
-                removed = std::move(position->second);
-                m_Entries.erase(position);
-            }
+            auto position = m_Entries.begin();
+            while (position != m_Entries.end() &&
+                   (!position->second->PendingRemoval ||
+                    position->second->Command.IsActive()))
+                ++position;
+            if (position == m_Entries.end())
+                break;
+            removed = std::move(position->second);
+            m_Entries.erase(position);
             removed.reset();
         }
     } catch (...) {

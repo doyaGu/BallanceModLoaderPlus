@@ -548,8 +548,67 @@ bool ModContext::RegisterOwnedCommand(const void *registrar, ICommand *command) 
     info.Description = command->GetDescription();
     info.Cheat = command->IsCheat();
 
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     return m_CommandContext.RegisterCommand(registrar, command, std::move(info));
+}
+
+int ModContext::RegisterCallbackCommand(const void *registrar, ICommand *command,
+                                        BML::CommandContext::CommandInfo info,
+                                        std::shared_ptr<void> lifetime) {
+    if (!IsMainThread())
+        return BML_ERROR_WRONG_THREAD;
+    if (!registrar || !command)
+        return BML_ERROR_INVALID_PARAMETER;
+
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
+    if (m_CommandContext.GetCommandByName(info.Name.c_str()) ||
+        (!info.Alias.empty() &&
+         (m_CommandContext.GetCommandByName(info.Alias.c_str()) ||
+          BML::CommandContext::NormalizeCommandName(info.Name.c_str()) ==
+              BML::CommandContext::NormalizeCommandName(info.Alias.c_str()))))
+        return BML_ERROR_ALREADY_EXISTS;
+
+    const std::string name = info.Name;
+    try {
+        return m_CommandContext.RegisterCommand(registrar, command, std::move(info),
+                                                std::move(lifetime))
+            ? BML_OK : BML_ERROR_FAIL;
+    } catch (...) {
+        (void) m_CommandContext.UnregisterCommand(registrar, name.c_str());
+        throw;
+    }
+}
+
+BML::CommandContext::UnregisterResult ModContext::UnregisterCallbackCommand(
+    const void *registrar, const char *name) {
+    if (!IsMainThread())
+        return BML::CommandContext::UnregisterResult::NotFound;
+    if (m_CommandInvocationGate.IsCallActiveOnCurrentThread()) {
+        std::lock_guard<std::mutex> lock(m_CommandMutex);
+        return m_CommandContext.UnregisterCommand(registrar, name);
+    }
+
+    auto invocationLock = m_CommandInvocationGate.LockMutation();
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
+    return m_CommandContext.UnregisterCommand(registrar, name);
+}
+
+bool ModContext::RetireCallbackCommands(const void *registrar) noexcept {
+    if (!registrar || !IsMainThread())
+        return false;
+    try {
+        if (!m_CommandInvocationGate.IsCallActiveOnCurrentThread()) {
+            auto invocationLock = m_CommandInvocationGate.LockMutation();
+            std::lock_guard<std::mutex> lock(m_CommandMutex);
+            m_CommandContext.UnregisterCommands(registrar);
+        } else {
+            std::lock_guard<std::mutex> lock(m_CommandMutex);
+            m_CommandContext.UnregisterCommands(registrar);
+        }
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 BML::CommandContext::UnregisterResult ModContext::UnregisterOwnedCommand(
@@ -558,7 +617,7 @@ BML::CommandContext::UnregisterResult ModContext::UnregisterOwnedCommand(
         return BML::CommandContext::UnregisterResult::Busy;
 
     auto invocationLock = m_CommandInvocationGate.LockMutation();
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     return m_CommandContext.UnregisterCommand(registrar, name);
 }
 
@@ -592,35 +651,35 @@ int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
 int ModContext::GetCommandCount() const {
     if (!IsMainThread())
         return 0;
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     return static_cast<int>(m_CommandContext.GetCommandCount());
 }
 
 ICommand *ModContext::GetCommand(int index) const {
     if (!IsMainThread())
         return nullptr;
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     return m_CommandContext.GetCommandByIndex(index);
 }
 
 ICommand *ModContext::FindCommand(const char *name) const {
     if (!IsMainThread())
         return nullptr;
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     return m_CommandContext.GetCommandByName(name);
 }
 
 std::vector<BML::CommandContext::CommandInfo> ModContext::GetCommandSnapshot() const {
     if (!IsMainThread())
         return {};
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     return m_CommandContext.GetCommandSnapshot();
 }
 
 bool ModContext::GetCommandInfo(int index, BML::CommandContext::CommandInfo &info) const {
     if (!IsMainThread() || index < 0)
         return false;
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     return m_CommandContext.GetCommandInfoByIndex(
         static_cast<std::size_t>(index), info);
 }
@@ -629,14 +688,14 @@ bool ModContext::FindCommandInfo(
     const char *name, BML::CommandContext::CommandInfo &info) const {
     if (!IsMainThread())
         return false;
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     return m_CommandContext.GetCommandInfoByName(name, info);
 }
 
 bool ModContext::SetCommandEnabled(ICommand *command, bool enabled) {
     if (!IsMainThread())
         return false;
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     return m_CommandContext.SetCommandEnabled(command, enabled);
 }
 
@@ -648,7 +707,7 @@ std::vector<std::string> ModContext::CompleteCommand(
     auto invocationLock = m_CommandInvocationGate.LockCall();
     BML::CommandContext::CommandCall call;
     {
-        std::lock_guard<std::mutex> lock(m_Mutex);
+        std::lock_guard<std::mutex> lock(m_CommandMutex);
         m_CommandContext.AcquireCommand(name, call);
     }
     std::vector<std::string> completions;
@@ -692,7 +751,7 @@ int ModContext::InvokeCommandArgs(const std::vector<std::string> &args, const st
     auto invocationLock = m_CommandInvocationGate.LockCall();
     BML::CommandContext::CommandCall call;
     {
-        std::lock_guard<std::mutex> lock(m_Mutex);
+        std::lock_guard<std::mutex> lock(m_CommandMutex);
         m_CommandContext.AcquireCommand(args[0].c_str(), call);
     }
     if (!call.Command) {
@@ -769,7 +828,7 @@ Config *ModContext::AddConfig(std::unique_ptr<Config> config) {
     Config *rawConfig = config.get();
     LoadConfig(rawConfig);
 
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_ConfigMutex);
     if (m_ConfigStore.Contains(modId)) {
         if (m_Logger)
             m_Logger->Error("Can not add duplicate config for %s.", modId.c_str());
@@ -789,7 +848,7 @@ bool ModContext::RemoveConfig(Config *config) {
     const std::string modId = mod->GetID();
     std::unique_ptr<Config> removed;
     {
-        std::lock_guard<std::mutex> lock(m_Mutex);
+        std::lock_guard<std::mutex> lock(m_ConfigMutex);
         removed = m_ConfigStore.Remove(modId, mod, config);
         if (!removed)
             return false;
@@ -822,7 +881,7 @@ Config *ModContext::GetConfig(IMod *mod) {
     // into the Mod and may legally call back into the loader.
     const std::string modId = mod->GetID();
 
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_ConfigMutex);
     return m_ConfigStore.Find(modId, mod);
 }
 
@@ -858,7 +917,7 @@ bool ModContext::SaveConfig(Config *config, bool snapshotModMetadata) {
 void ModContext::SnapshotConfigMetadata() {
     std::vector<Config *> configs;
     {
-        std::lock_guard<std::mutex> lock(m_Mutex);
+        std::lock_guard<std::mutex> lock(m_ConfigMutex);
         configs = m_ConfigStore.Snapshot();
     }
 
@@ -886,7 +945,7 @@ void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
     auto invocationLock = LockModInvocation();
     std::vector<Config *> configs;
     {
-        std::lock_guard<std::mutex> lock(m_Mutex);
+        std::lock_guard<std::mutex> lock(m_ConfigMutex);
         configs = m_ConfigStore.Snapshot();
     }
 
@@ -1738,7 +1797,7 @@ void ModContext::CleanupModState(const std::string &ownerId) noexcept {
 }
 
 void ModContext::ClearLegacyCommands() {
-    std::lock_guard<std::mutex> lock(m_Mutex);
+    std::lock_guard<std::mutex> lock(m_CommandMutex);
     m_CommandContext.ClearCommands();
 }
 

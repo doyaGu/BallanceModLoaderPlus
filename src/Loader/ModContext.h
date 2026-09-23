@@ -148,6 +148,18 @@ public:
     // does but another module owns it.
     int UnregisterCommand(const void *callerAddress, const char *name);
 
+    // Retained callback commands may remove lookup during their own invocation;
+    // the registry's lifetime token keeps the active callback alive.
+    int RegisterCallbackCommand(const void *registrar, ICommand *command,
+                                BML::CommandContext::CommandInfo info,
+                                std::shared_ptr<void> lifetime);
+    BML::CommandContext::UnregisterResult UnregisterCallbackCommand(
+        const void *registrar, const char *name);
+    bool RetireCallbackCommands(const void *registrar) noexcept;
+    bool IsCommandInvocationActiveOnCurrentThread() const {
+        return m_CommandInvocationGate.IsCallActiveOnCurrentThread();
+    }
+
     int GetCommandCount() const override;
     ICommand *GetCommand(int index) const override;
     ICommand *FindCommand(const char *name) const override;
@@ -509,7 +521,8 @@ private:
     const std::thread::id m_MainThreadId = std::this_thread::get_id();
 
     mutable BML::ModInvocationGate m_CommandInvocationGate;
-    mutable std::mutex m_Mutex;
+    mutable std::mutex m_CommandMutex;
+    mutable std::mutex m_ConfigMutex;
     ModLoader m_Loader;
 };
 
