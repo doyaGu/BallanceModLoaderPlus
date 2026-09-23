@@ -2,8 +2,9 @@
 #define BML_MOD_MENU_PRESENTATION_H
 
 #include <memory>
+#include <string>
 
-#include "BML/ModMenu.h"
+#include "ModMenu/ModMenuSession.h"
 
 class ModMenuModel;
 
@@ -24,7 +25,7 @@ enum class ModMenuPageStatus {
 };
 
 struct ModMenuPagePresentationResult {
-    ModMenuRouteAction action = ModMenuRouteAction::None;
+    ModMenuPageNavigation navigation;
     ModMenuPageStatus status = ModMenuPageStatus::Ready;
 };
 
@@ -41,7 +42,9 @@ public:
     ModMenuRouteAction DrawDetailsPage(ModMenuModel &model);
     ModMenuRouteAction DrawSettingsPage(ModMenuModel &model);
     ModMenuPagePresentationResult DrawPage(
-        ModMenuModel &model, ModMenuPageStatus status);
+        ModMenuModel &model, const ModMenuOwner &owner,
+        const ModMenuPageInfo &page, ModMenuPageStatus status,
+        const std::string &notice);
 
 private:
     struct State;

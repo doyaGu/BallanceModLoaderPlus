@@ -1,4 +1,5 @@
 #include <BML/Command.hpp>
+#include <BML/Bui.h>
 #include <BML/DataShare.hpp>
 #include <BML/IBML.h>
 #include <BML/ILogger.h>
@@ -33,27 +34,63 @@ public:
 
 protected:
     BML::ModMenu::PageAction OnFrame() override {
-        if (m_Logger)
+        if (m_Logger && !m_Drew) {
             m_Logger->Info("Public authoring page: draw");
-        return BML::ModMenu::PageAction::Back;
+            m_Drew = true;
+        }
+        Bui::Title("Public API Page");
+        const float buttonWidth = Bui::GetButtonSize(Bui::BUTTON_MAIN).x;
+        const float availableWidth = ImGui::GetContentRegionAvail().x;
+        if (availableWidth > buttonWidth)
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availableWidth - buttonWidth) * 0.5f);
+        if (Bui::MainButton("Open child"))
+            return BML::ModMenu::PageAction::Push("public-authoring-child");
+        return BML::ModMenu::PageAction::None();
     }
 
-    void OnEnter() override {
-        if (m_Logger)
-            m_Logger->Info("Public authoring page: enter");
+    void OnEnter(BML::ModMenu::PageEnterReason reason) override {
+        m_Drew = false;
+        if (!m_Logger)
+            return;
+
+        const char *name = "push";
+        if (reason == BML::ModMenu::PageEnterReason::Replace)
+            name = "replace";
+        else if (reason == BML::ModMenu::PageEnterReason::Back)
+            name = "back";
+        m_Logger->Info("Public authoring page: enter=%s", name);
     }
 
     void OnLeave(BML::ModMenu::PageLeaveReason reason) override {
-        if (m_Logger) {
-            m_Logger->Info("Public authoring page: leave=%s",
-                          reason == BML::ModMenu::PageLeaveReason::Back
-                              ? "back"
-                              : "close");
-        }
+        if (!m_Logger)
+            return;
+
+        const char *name = "close";
+        if (reason == BML::ModMenu::PageLeaveReason::Back)
+            name = "back";
+        else if (reason == BML::ModMenu::PageLeaveReason::Push)
+            name = "push";
+        else if (reason == BML::ModMenu::PageLeaveReason::Replace)
+            name = "replace";
+        m_Logger->Info("Public authoring page: leave=%s", name);
     }
 
 private:
     ILogger *m_Logger = nullptr;
+    bool m_Drew = false;
+};
+
+class PublicAuthoringChildPage final : public BML::ModMenu::Page {
+public:
+    PublicAuthoringChildPage()
+        : Page("public-authoring-child", "Child", "",
+               BML::ModMenu::PageVisibility::Hidden) {}
+
+protected:
+    BML::ModMenu::PageAction OnFrame() override {
+        Bui::Title("Public API Child");
+        return BML::ModMenu::PageAction::None();
+    }
 };
 
 class PublicAuthoringTest final : public IMod {
@@ -79,7 +116,9 @@ public:
         const bool command = TestCommand();
         const bool dataShare = TestDataShare();
         const int pageStatus = m_Page.Register(GetID());
-        const bool page = pageStatus == BML_OK && m_Page.IsRegistered();
+        const int childStatus = m_ChildPage.Register(GetID());
+        const bool page = pageStatus == BML_OK && m_Page.IsRegistered() &&
+                          childStatus == BML_OK && m_ChildPage.IsRegistered();
         const bool passed = command && dataShare && page;
 
         GetLogger()->Info(
@@ -93,6 +132,7 @@ public:
     }
 
     void OnUnload() override {
+        const int childStatus = m_ChildPage.Unregister();
         const int pageStatus = m_Page.Unregister();
         const int commandStatus = m_Command.Unregister();
         m_DataRequest.Reset();
@@ -100,10 +140,11 @@ public:
             m_DataShare.Remove(DataShareKey);
             m_DataShare.Reset();
         }
-        const bool passed = pageStatus == BML_OK && commandStatus == BML_OK;
+        const bool passed = pageStatus == BML_OK && childStatus == BML_OK &&
+                            commandStatus == BML_OK;
         GetLogger()->Info(
-            "Public authoring unload: status=%s command=%d page=%d",
-            passed ? "pass" : "fail", commandStatus, pageStatus);
+            "Public authoring unload: status=%s command=%d page=%d child=%d",
+            passed ? "pass" : "fail", commandStatus, pageStatus, childStatus);
     }
 
 private:
@@ -196,6 +237,7 @@ private:
     BML::DataShareRequest m_DataRequest;
     DataShareState m_DataState;
     PublicAuthoringPage m_Page;
+    PublicAuthoringChildPage m_ChildPage;
 };
 
 } // namespace

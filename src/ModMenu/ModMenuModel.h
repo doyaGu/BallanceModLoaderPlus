@@ -33,9 +33,18 @@ public:
     ModMenuEditResult EditSetting(const ModMenuSettingKey &key, ModMenuSettingValue value);
     const ModMenuDetailsActionDocument *GetSelectedDetailsAction() const;
     void SynchronizeSelected(bool force = false);
-    int EnterPage() const noexcept;
-    int DrawPage(BML_ModMenuPageAction &action) const noexcept;
-    int LeavePage(BML_ModMenuPageLeaveReason reason) const noexcept;
+    bool IsCurrentOwner(const ModMenuOwner &owner) const;
+    std::uint64_t GetPageRevision(const ModMenuOwner &owner) const;
+    ModMenuPageCatalog GetPages(const ModMenuOwner &owner) const;
+    std::optional<ModMenuPageInfo> FindPage(const ModMenuOwner &owner,
+                                            std::string_view id) const;
+    bool HasPage(const ModMenuOwner &owner, const ModMenuPageKey &key) const;
+    int EnterPage(const ModMenuOwner &owner, const ModMenuPageKey &key,
+                  BML_ModMenuPageEnterReason reason) const noexcept;
+    int DrawPage(const ModMenuOwner &owner, const ModMenuPageKey &key,
+                 ModMenuPageNavigation &navigation) const noexcept;
+    int LeavePage(const ModMenuOwner &owner, const ModMenuPageKey &key,
+                  BML_ModMenuPageLeaveReason reason) const noexcept;
 
     void RequestApply();
     void RequestRevert();
@@ -70,7 +79,6 @@ private:
 
     ModMenuOwner MakeOwner(IMod *mod) const;
     ModMenuDocument BuildDocument(IMod *mod, const ModMenuOwner &owner) const;
-    const ModMenuPageKey *GetSelectedPageKey() const noexcept;
     void RefreshMods();
     void Apply();
     void Revert();

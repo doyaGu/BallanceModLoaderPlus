@@ -134,14 +134,39 @@ const ModMenuDetailsActionDocument *ModMenuModel::GetSelectedDetailsAction() con
     return m_Session.GetSelectedDetailsAction();
 }
 
-int ModMenuModel::EnterPage() const noexcept {
-    const ModMenuPageKey *key = GetSelectedPageKey();
-    if (!key)
-        return BML_ERROR_NOT_FOUND;
+bool ModMenuModel::IsCurrentOwner(const ModMenuOwner &owner) const {
+    IMod *mod = m_Context.FindMod(owner.id.c_str());
+    return mod && MakeOwner(mod) == owner;
+}
 
+std::uint64_t ModMenuModel::GetPageRevision(const ModMenuOwner &owner) const {
+    return IsCurrentOwner(owner) ? m_Context.GetModMenuPages().Revision(owner.id) : 0;
+}
+
+ModMenuPageCatalog ModMenuModel::GetPages(const ModMenuOwner &owner) const {
+    return IsCurrentOwner(owner) ? m_Context.GetModMenuPages().Snapshot(owner.id)
+                                 : ModMenuPageCatalog{};
+}
+
+std::optional<ModMenuPageInfo> ModMenuModel::FindPage(
+    const ModMenuOwner &owner, std::string_view id) const {
+    return IsCurrentOwner(owner) ? m_Context.GetModMenuPages().Lookup(owner.id, id)
+                                 : std::nullopt;
+}
+
+bool ModMenuModel::HasPage(const ModMenuOwner &owner,
+                           const ModMenuPageKey &key) const {
+    return key.owner == owner.id && IsCurrentOwner(owner) &&
+           m_Context.GetModMenuPages().Contains(key);
+}
+
+int ModMenuModel::EnterPage(const ModMenuOwner &owner, const ModMenuPageKey &key,
+                            BML_ModMenuPageEnterReason reason) const noexcept {
     try {
+        if (!HasPage(owner, key))
+            return BML_ERROR_NOT_FOUND;
         auto invocation = m_Context.LockModInvocation();
-        return m_Context.GetModMenuPages().Enter(*key);
+        return m_Context.GetModMenuPages().Enter(key, reason);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -149,14 +174,13 @@ int ModMenuModel::EnterPage() const noexcept {
     }
 }
 
-int ModMenuModel::DrawPage(BML_ModMenuPageAction &action) const noexcept {
-    const ModMenuPageKey *key = GetSelectedPageKey();
-    if (!key)
-        return BML_ERROR_NOT_FOUND;
-
+int ModMenuModel::DrawPage(const ModMenuOwner &owner, const ModMenuPageKey &key,
+                           ModMenuPageNavigation &navigation) const noexcept {
     try {
+        if (!HasPage(owner, key))
+            return BML_ERROR_NOT_FOUND;
         auto invocation = m_Context.LockModInvocation();
-        return m_Context.GetModMenuPages().Draw(*key, action);
+        return m_Context.GetModMenuPages().Draw(key, navigation);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -164,14 +188,13 @@ int ModMenuModel::DrawPage(BML_ModMenuPageAction &action) const noexcept {
     }
 }
 
-int ModMenuModel::LeavePage(BML_ModMenuPageLeaveReason reason) const noexcept {
-    const ModMenuPageKey *key = GetSelectedPageKey();
-    if (!key)
-        return BML_ERROR_NOT_FOUND;
-
+int ModMenuModel::LeavePage(const ModMenuOwner &owner, const ModMenuPageKey &key,
+                            BML_ModMenuPageLeaveReason reason) const noexcept {
     try {
+        if (!HasPage(owner, key))
+            return BML_ERROR_NOT_FOUND;
         auto invocation = m_Context.LockModInvocation();
-        return m_Context.GetModMenuPages().Leave(*key, reason);
+        return m_Context.GetModMenuPages().Leave(key, reason);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -265,12 +288,6 @@ ModMenuOwner ModMenuModel::MakeOwner(IMod *mod) const {
     return {id, registration, ScriptContentGeneration(mod)};
 }
 
-const ModMenuPageKey *ModMenuModel::GetSelectedPageKey() const noexcept {
-    const ModMenuDetailsActionDocument *action = GetSelectedDetailsAction();
-    const auto *page = action ? std::get_if<ModMenuPageInfo>(action) : nullptr;
-    return page ? &page->key : nullptr;
-}
-
 ModMenuDocument ModMenuModel::BuildDocument(IMod *mod, const ModMenuOwner &owner) const {
     ModMenuDocument document;
     document.owner = owner;
@@ -342,8 +359,10 @@ ModMenuDocument ModMenuModel::BuildDocument(IMod *mod, const ModMenuOwner &owner
         }
     }
 
-    for (ModMenuPageInfo &page : pages.pages)
-        document.detailsActions.emplace_back(std::move(page));
+    for (ModMenuPageInfo &page : pages.pages) {
+        if (page.showInDetails)
+            document.detailsActions.emplace_back(std::move(page));
+    }
     return document;
 }
 

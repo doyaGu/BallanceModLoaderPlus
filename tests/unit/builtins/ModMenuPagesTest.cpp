@@ -19,6 +19,8 @@ namespace {
         int drawStatus = BML_OK;
         int enterStatus = BML_OK;
         int leaveStatus = BML_OK;
+        std::string targetPageId;
+        BML_ModMenuPageEnterReason enterReason = BML_MOD_MENU_PAGE_ENTER_PUSH;
         BML_ModMenuPageLeaveReason leaveReason = BML_MOD_MENU_PAGE_LEAVE_BACK;
     };
 
@@ -28,12 +30,21 @@ namespace {
         auto &state = *static_cast<CallbackState *>(userData);
         ++state.draws;
         frame->Action = state.action;
+        if (state.targetPageId.size() < sizeof(frame->TargetPageId))
+            std::memcpy(frame->TargetPageId, state.targetPageId.c_str(), state.targetPageId.size() + 1);
         return state.drawStatus;
     }
 
-    int BML_CDECL EnterPage(void *userData) {
+    int BML_CDECL DrawUnterminatedTarget(void *, BML_ModMenuPageFrame *frame) {
+        std::memset(frame->TargetPageId, 'x', sizeof(frame->TargetPageId));
+        frame->Action = BML_MOD_MENU_PAGE_PUSH;
+        return BML_OK;
+    }
+
+    int BML_CDECL EnterPage(void *userData, BML_ModMenuPageEnterReason reason) {
         auto &state = *static_cast<CallbackState *>(userData);
         ++state.enters;
+        state.enterReason = reason;
         return state.enterStatus;
     }
 
@@ -56,6 +67,7 @@ namespace {
             &EnterPage,
             &LeavePage,
             nullptr,
+            BML_MOD_MENU_PAGE_VISIBLE,
         };
     }
 
@@ -122,25 +134,31 @@ namespace {
 
     class FacadePage final : public BML::ModMenu::Page {
     public:
-        FacadePage() : Page("facade", "Facade", "C++ wrapper") {}
+        explicit FacadePage(BML::ModMenu::PageVisibility visibility =
+                                BML::ModMenu::PageVisibility::Visible)
+            : Page("facade", "Facade", "C++ wrapper", visibility) {}
 
-        BML::ModMenu::PageAction action = BML::ModMenu::PageAction::None;
+        BML::ModMenu::PageAction action = BML::ModMenu::PageAction::None();
         int draws = 0;
         int enters = 0;
         int leaves = 0;
         bool throwOnDraw = false;
         bool throwOnEnter = false;
         bool throwOnLeave = false;
+        bool unregisterOnDraw = false;
+        int unregisterStatus = BML_ERROR_FAIL;
 
     protected:
         BML::ModMenu::PageAction OnFrame() override {
             ++draws;
             if (throwOnDraw)
                 throw std::runtime_error("draw failed");
+            if (unregisterOnDraw)
+                unregisterStatus = Unregister();
             return action;
         }
 
-        void OnEnter() override {
+        void OnEnter(BML::ModMenu::PageEnterReason) override {
             ++enters;
             if (throwOnEnter)
                 throw std::runtime_error("enter failed");
@@ -199,6 +217,47 @@ TEST(ModMenuPagesTest, CopiesMetadataAndKeepsRegistrationOrderPerOwner) {
     EXPECT_EQ(catalog.revision, pages.Revision("sample.mod"));
 }
 
+TEST(ModMenuPagesTest, HiddenPagesRemainAddressableButAreNotDetailEntries) {
+    ModMenuPages pages;
+    CallbackState state;
+    BML_ModMenuPage child = MakePage("child", "Child", "", state);
+    child.Flags = BML_MOD_MENU_PAGE_HIDDEN;
+    ASSERT_EQ(pages.Register("sample.mod", child), BML_OK);
+
+    const ModMenuPageCatalog catalog = pages.Snapshot("sample.mod");
+    ASSERT_EQ(catalog.pages.size(), 1U);
+    EXPECT_FALSE(catalog.pages.front().showInDetails);
+    EXPECT_TRUE(pages.Lookup("sample.mod", "child").has_value());
+    EXPECT_TRUE(pages.Contains("sample.mod", "child"));
+    EXPECT_TRUE(pages.Contains(catalog.pages.front().key));
+    EXPECT_FALSE(pages.Contains("other.mod", "child"));
+}
+
+TEST(ModMenuPagesTest, CopiesPushAndReplaceTargetsFromTheDrawFrame) {
+    ModMenuPages pages;
+    CallbackState state;
+    BML_ModMenuPage page = MakePage("entry", "Entry", "", state);
+    ASSERT_EQ(pages.Register("sample.mod", page), BML_OK);
+    const ModMenuPageKey key = KeyOf(pages, "sample.mod", "entry");
+
+    state.action = BML_MOD_MENU_PAGE_PUSH;
+    state.targetPageId = "child";
+    ModMenuPageNavigation navigation;
+    ASSERT_EQ(pages.Draw(key, navigation), BML_OK);
+    EXPECT_EQ(navigation.action, BML_MOD_MENU_PAGE_PUSH);
+    EXPECT_EQ(navigation.targetPageId, "child");
+
+    state.action = BML_MOD_MENU_PAGE_REPLACE;
+    state.targetPageId = "replacement";
+    ASSERT_EQ(pages.Draw(key, navigation), BML_OK);
+    EXPECT_EQ(navigation.action, BML_MOD_MENU_PAGE_REPLACE);
+    EXPECT_EQ(navigation.targetPageId, "replacement");
+
+    state.action = BML_MOD_MENU_PAGE_BACK;
+    ASSERT_EQ(pages.Draw(key, navigation), BML_OK);
+    EXPECT_TRUE(navigation.targetPageId.empty());
+}
+
 TEST(ModMenuPagesTest, RejectsMalformedAndDuplicatePages) {
     ModMenuPages pages;
     CallbackState state;
@@ -209,7 +268,7 @@ TEST(ModMenuPagesTest, RejectsMalformedAndDuplicatePages) {
     EXPECT_EQ(pages.Register("other.mod", page), BML_OK);
 
     page.StructSize = offsetof(BML_ModMenuPage, Draw);
-    EXPECT_EQ(pages.Register("third.mod", page), BML_ERROR_INVALID_PARAMETER);
+    EXPECT_EQ(pages.Register("third.mod", page), BML_ERROR_VERSION_MISMATCH);
     page.StructSize = sizeof(BML_ModMenuPage);
     page.Id = "";
     EXPECT_EQ(pages.Register("third.mod", page), BML_ERROR_INVALID_PARAMETER);
@@ -218,6 +277,13 @@ TEST(ModMenuPagesTest, RejectsMalformedAndDuplicatePages) {
     EXPECT_EQ(pages.Register("third.mod", page), BML_ERROR_INVALID_PARAMETER);
     page.Label = "Page";
     page.Draw = nullptr;
+    EXPECT_EQ(pages.Register("third.mod", page), BML_ERROR_INVALID_PARAMETER);
+    page.Draw = &DrawPage;
+    page.Flags = 2;
+    EXPECT_EQ(pages.Register("third.mod", page), BML_ERROR_INVALID_PARAMETER);
+    page.Flags = BML_MOD_MENU_PAGE_VISIBLE;
+    const std::string oversizedId(BML_MOD_MENU_PAGE_ID_CAPACITY, 'x');
+    page.Id = oversizedId.c_str();
     EXPECT_EQ(pages.Register("third.mod", page), BML_ERROR_INVALID_PARAMETER);
     EXPECT_EQ(pages.Register("", MakePage("page", "Page", "", state)),
               BML_ERROR_INVALID_PARAMETER);
@@ -232,14 +298,15 @@ TEST(ModMenuPagesTest, InvokesDrawAndLifecycleCallbacks) {
     const ModMenuPageKey key = KeyOf(pages, "sample.mod", "advanced");
     ASSERT_NE(key.generation, 0U);
 
-    BML_ModMenuPageAction action = BML_MOD_MENU_PAGE_NONE;
-    EXPECT_EQ(pages.Enter(key), BML_OK);
-    EXPECT_EQ(pages.Draw(key, action), BML_OK);
+    ModMenuPageNavigation navigation;
+    EXPECT_EQ(pages.Enter(key, BML_MOD_MENU_PAGE_ENTER_PUSH), BML_OK);
+    EXPECT_EQ(pages.Draw(key, navigation), BML_OK);
     EXPECT_EQ(pages.Leave(key, BML_MOD_MENU_PAGE_LEAVE_CLOSE), BML_OK);
-    EXPECT_EQ(action, BML_MOD_MENU_PAGE_CLOSE);
+    EXPECT_EQ(navigation.action, BML_MOD_MENU_PAGE_CLOSE);
     EXPECT_EQ(state.draws, 1);
     EXPECT_EQ(state.enters, 1);
     EXPECT_EQ(state.leaves, 1);
+    EXPECT_EQ(state.enterReason, BML_MOD_MENU_PAGE_ENTER_PUSH);
     EXPECT_EQ(state.leaveReason, BML_MOD_MENU_PAGE_LEAVE_CLOSE);
 }
 
@@ -252,11 +319,13 @@ TEST(ModMenuPagesTest, PropagatesLifecycleFailures) {
     ASSERT_EQ(pages.Register("sample.mod", page), BML_OK);
     const ModMenuPageKey key = KeyOf(pages, "sample.mod", "advanced");
 
-    EXPECT_EQ(pages.Enter(key), BML_ERROR_FAIL);
+    EXPECT_EQ(pages.Enter(key, BML_MOD_MENU_PAGE_ENTER_REPLACE), BML_ERROR_FAIL);
     EXPECT_EQ(pages.Leave(key, BML_MOD_MENU_PAGE_LEAVE_CLOSE),
               BML_ERROR_OUT_OF_MEMORY);
     EXPECT_EQ(state.enters, 1);
     EXPECT_EQ(state.leaves, 1);
+    EXPECT_EQ(state.enterReason, BML_MOD_MENU_PAGE_ENTER_REPLACE);
+    EXPECT_EQ(state.leaveReason, BML_MOD_MENU_PAGE_LEAVE_CLOSE);
 }
 
 TEST(ModMenuPagesTest, KeepsDrawStatusSeparateFromNavigation) {
@@ -268,22 +337,18 @@ TEST(ModMenuPagesTest, KeepsDrawStatusSeparateFromNavigation) {
     ASSERT_EQ(pages.Register("sample.mod", page), BML_OK);
     const ModMenuPageKey key = KeyOf(pages, "sample.mod", "advanced");
 
-    BML_ModMenuPageAction action = BML_MOD_MENU_PAGE_BACK;
-    EXPECT_EQ(pages.Draw(key, action), BML_ERROR_FAIL);
-    EXPECT_EQ(action, BML_MOD_MENU_PAGE_BACK);
+    ModMenuPageNavigation navigation{BML_MOD_MENU_PAGE_BACK, {}};
+    EXPECT_EQ(pages.Draw(key, navigation), BML_ERROR_FAIL);
+    EXPECT_EQ(navigation.action, BML_MOD_MENU_PAGE_BACK);
     EXPECT_EQ(state.draws, 1);
 }
 
-TEST(ModMenuPagesTest, TreatsLifecycleMembersBeyondStructSizeAsAbsent) {
+TEST(ModMenuPagesTest, RejectsOldAlphaPageLayoutBeforeCallingCallbacks) {
     ModMenuPages pages;
     CallbackState state;
     BML_ModMenuPage page = MakePage("advanced", "Advanced", "", state);
-    page.StructSize = offsetof(BML_ModMenuPage, Enter);
-    ASSERT_EQ(pages.Register("sample.mod", page), BML_OK);
-    const ModMenuPageKey key = KeyOf(pages, "sample.mod", "advanced");
-
-    EXPECT_EQ(pages.Enter(key), BML_OK);
-    EXPECT_EQ(pages.Leave(key, BML_MOD_MENU_PAGE_LEAVE_BACK), BML_OK);
+    page.StructSize = offsetof(BML_ModMenuPage, Flags);
+    EXPECT_EQ(pages.Register("sample.mod", page), BML_ERROR_VERSION_MISMATCH);
     EXPECT_EQ(state.enters, 0);
     EXPECT_EQ(state.leaves, 0);
 }
@@ -296,8 +361,8 @@ TEST(ModMenuPagesTest, RejectsInvalidActionsAndSurvivesSelfRemoval) {
     ASSERT_EQ(pages.Register("sample.mod", invalid), BML_OK);
     const ModMenuPageKey invalidKey = KeyOf(pages, "sample.mod", "invalid");
 
-    BML_ModMenuPageAction action = BML_MOD_MENU_PAGE_NONE;
-    EXPECT_EQ(pages.Draw(invalidKey, action), BML_ERROR_MALFORMED_MESSAGE);
+    ModMenuPageNavigation navigation;
+    EXPECT_EQ(pages.Draw(invalidKey, navigation), BML_ERROR_MALFORMED_MESSAGE);
 
     SelfRemovingState removingState{&pages, "sample.mod", "removing"};
     const BML_ModMenuPage removing = {
@@ -310,13 +375,31 @@ TEST(ModMenuPagesTest, RejectsInvalidActionsAndSurvivesSelfRemoval) {
         nullptr,
         nullptr,
         &ReleaseSelfRemovingPage,
+        BML_MOD_MENU_PAGE_VISIBLE,
     };
     ASSERT_EQ(pages.Register("sample.mod", removing), BML_OK);
     const ModMenuPageKey removingKey = KeyOf(pages, "sample.mod", "removing");
-    EXPECT_EQ(pages.Draw(removingKey, action), BML_OK);
-    EXPECT_EQ(action, BML_MOD_MENU_PAGE_BACK);
+    EXPECT_EQ(pages.Draw(removingKey, navigation), BML_OK);
+    EXPECT_EQ(navigation.action, BML_MOD_MENU_PAGE_BACK);
     EXPECT_EQ(removingState.releases, 1);
-    EXPECT_EQ(pages.Draw(removingKey, action), BML_ERROR_NOT_FOUND);
+    EXPECT_EQ(pages.Draw(removingKey, navigation), BML_ERROR_NOT_FOUND);
+}
+
+TEST(ModMenuPagesTest, RejectsNavigationWithoutATerminatedTarget) {
+    ModMenuPages pages;
+    CallbackState state;
+    state.action = BML_MOD_MENU_PAGE_PUSH;
+    BML_ModMenuPage page = MakePage("entry", "Entry", "", state);
+    ASSERT_EQ(pages.Register("sample.mod", page), BML_OK);
+    ModMenuPageNavigation navigation;
+    EXPECT_EQ(pages.Draw(KeyOf(pages, "sample.mod", "entry"), navigation),
+              BML_ERROR_MALFORMED_MESSAGE);
+
+    BML_ModMenuPage unterminated = MakePage("unterminated", "Unterminated", "", state);
+    unterminated.Draw = &DrawUnterminatedTarget;
+    ASSERT_EQ(pages.Register("sample.mod", unterminated), BML_OK);
+    EXPECT_EQ(pages.Draw(KeyOf(pages, "sample.mod", "unterminated"), navigation),
+              BML_ERROR_MALFORMED_MESSAGE);
 }
 
 TEST(ModMenuPagesTest, NeverDispatchesAnOldRouteToAReplacementPage) {
@@ -333,15 +416,15 @@ TEST(ModMenuPagesTest, NeverDispatchesAnOldRouteToAReplacementPage) {
     const ModMenuPageKey replacementKey = KeyOf(pages, "sample.mod", "advanced");
     ASSERT_NE(firstKey, replacementKey);
 
-    BML_ModMenuPageAction action = BML_MOD_MENU_PAGE_NONE;
-    EXPECT_EQ(pages.Enter(firstKey), BML_ERROR_NOT_FOUND);
-    EXPECT_EQ(pages.Draw(firstKey, action), BML_ERROR_NOT_FOUND);
+    ModMenuPageNavigation navigation;
+    EXPECT_EQ(pages.Enter(firstKey, BML_MOD_MENU_PAGE_ENTER_PUSH), BML_ERROR_NOT_FOUND);
+    EXPECT_EQ(pages.Draw(firstKey, navigation), BML_ERROR_NOT_FOUND);
     EXPECT_EQ(pages.Leave(firstKey, BML_MOD_MENU_PAGE_LEAVE_BACK), BML_ERROR_NOT_FOUND);
     EXPECT_EQ(replacementState.enters, 0);
     EXPECT_EQ(replacementState.draws, 0);
     EXPECT_EQ(replacementState.leaves, 0);
 
-    EXPECT_EQ(pages.Enter(replacementKey), BML_OK);
+    EXPECT_EQ(pages.Enter(replacementKey, BML_MOD_MENU_PAGE_ENTER_BACK), BML_OK);
     EXPECT_EQ(replacementState.enters, 1);
 }
 
@@ -398,23 +481,75 @@ TEST(ModMenuPagesTest, CppFacadeOwnsRegistrationAndContainsExceptions) {
     ASSERT_EQ(pages.Snapshot("sample.mod").pages.size(), 1U);
     const ModMenuPageKey key = KeyOf(pages, "sample.mod", "facade");
 
-    BML_ModMenuPageAction action = BML_MOD_MENU_PAGE_NONE;
-    EXPECT_EQ(pages.Enter(key), BML_OK);
-    EXPECT_EQ(pages.Draw(key, action), BML_OK);
+    ModMenuPageNavigation navigation;
+    EXPECT_EQ(pages.Enter(key, BML_MOD_MENU_PAGE_ENTER_PUSH), BML_OK);
+    EXPECT_EQ(pages.Draw(key, navigation), BML_OK);
     EXPECT_EQ(pages.Leave(key, BML_MOD_MENU_PAGE_LEAVE_BACK), BML_OK);
     EXPECT_EQ(page.draws, 1);
     EXPECT_EQ(page.enters, 1);
     EXPECT_EQ(page.leaves, 1);
 
     page.throwOnDraw = true;
-    EXPECT_EQ(pages.Draw(key, action), BML_ERROR_FAIL);
+    EXPECT_EQ(pages.Draw(key, navigation), BML_ERROR_FAIL);
 
     page.throwOnEnter = true;
-    EXPECT_EQ(pages.Enter(key), BML_ERROR_FAIL);
+    EXPECT_EQ(pages.Enter(key, BML_MOD_MENU_PAGE_ENTER_BACK), BML_ERROR_FAIL);
     page.throwOnLeave = true;
     EXPECT_EQ(pages.Leave(key, BML_MOD_MENU_PAGE_LEAVE_BACK), BML_ERROR_FAIL);
 
     EXPECT_EQ(page.Unregister(), BML_OK);
     EXPECT_FALSE(page.IsRegistered());
     EXPECT_TRUE(pages.Snapshot("sample.mod").pages.empty());
+}
+
+TEST(ModMenuPagesTest, CppFacadePublishesHiddenPagesAndOwnedNavigationTargets) {
+    ModMenuPages pages;
+    FacadeRegistryScope registryScope(pages);
+    FacadePage page(BML::ModMenu::PageVisibility::Hidden);
+    ASSERT_EQ(page.Register("sample.mod"), BML_OK);
+    const ModMenuPageCatalog catalog = pages.Snapshot("sample.mod");
+    ASSERT_EQ(catalog.pages.size(), 1U);
+    EXPECT_FALSE(catalog.pages.front().showInDetails);
+
+    const ModMenuPageKey key = catalog.pages.front().key;
+    ModMenuPageNavigation navigation;
+    page.action = BML::ModMenu::PageAction::Push("child");
+    ASSERT_EQ(pages.Draw(key, navigation), BML_OK);
+    EXPECT_EQ(navigation.action, BML_MOD_MENU_PAGE_PUSH);
+    EXPECT_EQ(navigation.targetPageId, "child");
+
+    page.action = BML::ModMenu::PageAction::Replace("replacement");
+    ASSERT_EQ(pages.Draw(key, navigation), BML_OK);
+    EXPECT_EQ(navigation.action, BML_MOD_MENU_PAGE_REPLACE);
+    EXPECT_EQ(navigation.targetPageId, "replacement");
+
+    constexpr char invalidTarget[] = "child\0other";
+    page.action = BML::ModMenu::PageAction::Push(
+        std::string(invalidTarget, sizeof(invalidTarget) - 1));
+    EXPECT_EQ(pages.Draw(key, navigation), BML_ERROR_INVALID_PARAMETER);
+
+    page.action = BML::ModMenu::PageAction::Replace(
+        std::string(BML_MOD_MENU_PAGE_ID_CAPACITY, 'x'));
+    EXPECT_EQ(pages.Draw(key, navigation), BML_ERROR_INVALID_PARAMETER);
+
+    ASSERT_EQ(page.Unregister(), BML_OK);
+    EXPECT_EQ(pages.Draw(key, navigation), BML_ERROR_NOT_FOUND);
+}
+
+TEST(ModMenuPagesTest, CppFacadeCanUnregisterDuringItsOwnDraw) {
+    ModMenuPages pages;
+    FacadeRegistryScope registryScope(pages);
+    FacadePage page;
+    ASSERT_EQ(page.Register("sample.mod"), BML_OK);
+
+    const ModMenuPageKey key = KeyOf(pages, "sample.mod", "facade");
+    page.unregisterOnDraw = true;
+    page.action = BML::ModMenu::PageAction::Back();
+
+    ModMenuPageNavigation navigation;
+    EXPECT_EQ(pages.Draw(key, navigation), BML_OK);
+    EXPECT_EQ(page.unregisterStatus, BML_OK);
+    EXPECT_FALSE(page.IsRegistered());
+    EXPECT_EQ(navigation.action, BML_MOD_MENU_PAGE_BACK);
+    EXPECT_EQ(pages.Draw(key, navigation), BML_ERROR_NOT_FOUND);
 }

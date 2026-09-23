@@ -195,7 +195,7 @@ public:
 
 protected:
     BML::ModMenu::PageAction OnFrame() override {
-        return BML::ModMenu::PageAction::None;
+        return BML::ModMenu::PageAction::None();
     }
 };
 

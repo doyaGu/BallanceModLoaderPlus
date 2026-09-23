@@ -9,21 +9,49 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstring>
 #include <new>
 #include <string>
 #include <utility>
 
 namespace BML::ModMenu {
 
-enum class PageAction {
-    None = BML_MOD_MENU_PAGE_NONE,
-    Back = BML_MOD_MENU_PAGE_BACK,
-    Close = BML_MOD_MENU_PAGE_CLOSE,
+class PageAction {
+public:
+    static PageAction None() { return {}; }
+    static PageAction Back() { return {BML_MOD_MENU_PAGE_BACK, {}}; }
+    static PageAction Close() { return {BML_MOD_MENU_PAGE_CLOSE, {}}; }
+    static PageAction Push(std::string id) { return {BML_MOD_MENU_PAGE_PUSH, std::move(id)}; }
+    static PageAction Replace(std::string id) { return {BML_MOD_MENU_PAGE_REPLACE, std::move(id)}; }
+
+    BML_ModMenuPageAction GetAction() const noexcept { return m_Action; }
+    const std::string &GetTargetPageId() const noexcept { return m_TargetPageId; }
+
+private:
+    PageAction() = default;
+    PageAction(BML_ModMenuPageAction action, std::string target)
+        : m_Action(action), m_TargetPageId(std::move(target)) {}
+
+    BML_ModMenuPageAction m_Action = BML_MOD_MENU_PAGE_NONE;
+    std::string m_TargetPageId;
+};
+
+enum class PageVisibility {
+    Visible,
+    Hidden,
+};
+
+enum class PageEnterReason {
+    Push = BML_MOD_MENU_PAGE_ENTER_PUSH,
+    Replace = BML_MOD_MENU_PAGE_ENTER_REPLACE,
+    Back = BML_MOD_MENU_PAGE_ENTER_BACK,
 };
 
 enum class PageLeaveReason {
     Back = BML_MOD_MENU_PAGE_LEAVE_BACK,
     Close = BML_MOD_MENU_PAGE_LEAVE_CLOSE,
+    Push = BML_MOD_MENU_PAGE_LEAVE_PUSH,
+    Replace = BML_MOD_MENU_PAGE_LEAVE_REPLACE,
 };
 
 // One immediate-mode page contribution. Derive from Page, keep it alive with
@@ -33,9 +61,11 @@ enum class PageLeaveReason {
 // is game-thread-only.
 class Page {
 public:
-    Page(std::string id, std::string label, std::string description = {})
+    Page(std::string id, std::string label, std::string description = {},
+         PageVisibility visibility = PageVisibility::Visible)
         : m_Id(std::move(id)), m_Label(std::move(label)),
           m_Description(std::move(description)),
+          m_Visibility(visibility),
           m_Callbacks(new CallbackState(this)) {}
 
     virtual ~Page() {
@@ -69,6 +99,8 @@ public:
                 &EnterPage,
                 &LeavePage,
                 &ReleaseCallbacks,
+                static_cast<unsigned int>(m_Visibility == PageVisibility::Hidden
+                    ? BML_MOD_MENU_PAGE_HIDDEN : BML_MOD_MENU_PAGE_VISIBLE),
             };
 
             // RegisterPage takes this reference only when it succeeds.
@@ -120,7 +152,7 @@ public:
 
 protected:
     virtual PageAction OnFrame() = 0;
-    virtual void OnEnter() {}
+    virtual void OnEnter(PageEnterReason) {}
     virtual void OnLeave(PageLeaveReason) {}
 
 private:
@@ -183,9 +215,15 @@ private:
             return BML_ERROR_NOT_FOUND;
         try {
             const PageAction action = page->OnFrame();
-            if (action < PageAction::None || action > PageAction::Close)
-                return BML_ERROR_MALFORMED_MESSAGE;
-            frame->Action = static_cast<BML_ModMenuPageAction>(action);
+            const std::string &target = action.GetTargetPageId();
+            if (target.size() >= sizeof(frame->TargetPageId))
+                return BML_ERROR_INVALID_PARAMETER;
+            if ((action.GetAction() == BML_MOD_MENU_PAGE_PUSH ||
+                 action.GetAction() == BML_MOD_MENU_PAGE_REPLACE) &&
+                (target.empty() || target.find('\0') != std::string::npos))
+                return BML_ERROR_INVALID_PARAMETER;
+            std::memcpy(frame->TargetPageId, target.c_str(), target.size() + 1);
+            frame->Action = action.GetAction();
             return BML_OK;
         } catch (const std::bad_alloc &) {
             return BML_ERROR_OUT_OF_MEMORY;
@@ -194,7 +232,8 @@ private:
         }
     }
 
-    static int BML_CDECL EnterPage(void *userData) noexcept {
+    static int BML_CDECL EnterPage(
+        void *userData, BML_ModMenuPageEnterReason reason) noexcept {
         if (!userData)
             return BML_ERROR_INVALID_PARAMETER;
         auto *callbacks = static_cast<CallbackState *>(userData);
@@ -203,7 +242,7 @@ private:
         if (!page)
             return BML_ERROR_NOT_FOUND;
         try {
-            page->OnEnter();
+            page->OnEnter(static_cast<PageEnterReason>(reason));
             return BML_OK;
         } catch (const std::bad_alloc &) {
             return BML_ERROR_OUT_OF_MEMORY;
@@ -244,6 +283,7 @@ private:
     std::string m_Label;
     std::string m_Description;
     std::string m_OwnerId;
+    PageVisibility m_Visibility;
     CallbackState *m_Callbacks;
     bool m_Registered = false;
 };

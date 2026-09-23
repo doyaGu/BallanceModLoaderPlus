@@ -36,8 +36,21 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
 
         ctx->ItemClick("**/Public Authoring Test");
         IM_CHECK(WaitForItem(ctx, "**/Public API Page"));
+        IM_CHECK(!ctx->ItemExists("**/Child"));
         ctx->ItemClick("**/Public API Page");
-        IM_CHECK(WaitForItem(ctx, "**/Public API Page"));
+        IM_CHECK(WaitForItem(ctx, "**/Open child"));
+        const ImGuiTestItemInfo openChild = ctx->ItemInfo("**/Open child");
+        IM_CHECK(openChild.Window != nullptr);
+        IM_CHECK((openChild.Window->Flags & ImGuiWindowFlags_ChildWindow) != 0);
+        IM_CHECK(openChild.RectFull.Min.x >= openChild.Window->InnerRect.Min.x);
+        IM_CHECK(openChild.RectFull.Max.x <= openChild.Window->InnerRect.Max.x);
+        IM_CHECK(openChild.RectFull.Min.y >= openChild.Window->InnerRect.Min.y);
+        IM_CHECK(openChild.RectFull.Max.y <= openChild.Window->InnerRect.Max.y);
+        ctx->ItemClick("**/Open child");
+        IM_CHECK(WaitForItem(ctx, "**/Back"));
+        IM_CHECK(!ctx->ItemExists("**/Open child"));
+        ctx->ItemClick("**/Back");
+        IM_CHECK(WaitForItem(ctx, "**/Open child"));
         ctx->ItemClick("**/Back");
         IM_CHECK(WaitForItem(ctx, "**/Public Authoring Test"));
 

@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,6 +23,12 @@ struct ModMenuPageInfo {
     ModMenuPageKey key;
     std::string label;
     std::string description;
+    bool showInDetails = true;
+};
+
+struct ModMenuPageNavigation {
+    BML_ModMenuPageAction action = BML_MOD_MENU_PAGE_NONE;
+    std::string targetPageId;
 };
 
 struct ModMenuPageCatalog {
@@ -37,9 +44,13 @@ public:
 
     std::uint64_t Revision(std::string_view owner) const noexcept;
     ModMenuPageCatalog Snapshot(std::string_view owner) const;
+    std::optional<ModMenuPageInfo> Lookup(std::string_view owner,
+                                          std::string_view pageId) const;
+    bool Contains(std::string_view owner, std::string_view pageId) const noexcept;
+    bool Contains(const ModMenuPageKey &key) const noexcept;
 
-    int Enter(const ModMenuPageKey &key) const noexcept;
-    int Draw(const ModMenuPageKey &key, BML_ModMenuPageAction &action) const noexcept;
+    int Enter(const ModMenuPageKey &key, BML_ModMenuPageEnterReason reason) const noexcept;
+    int Draw(const ModMenuPageKey &key, ModMenuPageNavigation &navigation) const noexcept;
     int Leave(const ModMenuPageKey &key, BML_ModMenuPageLeaveReason reason) const noexcept;
 
 private:

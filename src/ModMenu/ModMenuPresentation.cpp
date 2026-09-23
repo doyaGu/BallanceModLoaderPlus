@@ -67,6 +67,7 @@ namespace {
     constexpr TextPanelLayout ModInformationPanel = {0.31f, 0.10f, 0.38f, 0.35f};
     constexpr TextPanelLayout DetailsCommentPanel = {0.725f, 0.40f, 0.25f, 0.20f};
     constexpr TextPanelLayout SettingCommentPanel = {0.725f, 0.35f, 0.25f, 0.30f};
+    constexpr TextPanelLayout CustomPageContent = {0.31f, 0.24f, 0.38f, 0.55f};
 
     static_assert(ModInformationPanel.y + ModInformationPanel.height < DetailsY,
                   "Mod information must not overlap the details action list");
@@ -670,57 +671,67 @@ ModMenuRouteAction ModMenuPresentation::DrawDetailsPage(ModMenuModel &model) {
 }
 
 ModMenuPagePresentationResult ModMenuPresentation::DrawPage(
-    ModMenuModel &model, ModMenuPageStatus status) {
+    ModMenuModel &model, const ModMenuOwner &owner,
+    const ModMenuPageInfo &page, ModMenuPageStatus status,
+    const std::string &notice) {
     m_State->BeginFrame();
     if (status != ModMenuPageStatus::Ready) {
         Bui::Title("Page unavailable");
         m_State->viewport.SetCursor(ListX, ListY);
         Bui::WrappedText(PageStatusMessage(status),
                          Bui::GetButtonSize(Bui::BUTTON_MAIN).x);
-        return {
-            Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None,
-            status,
-        };
+        ModMenuPagePresentationResult result;
+        result.status = status;
+        if (Bui::NavBack())
+            result.navigation.action = BML_MOD_MENU_PAGE_BACK;
+        return result;
     }
 
-    model.SynchronizeSelected();
-    const ModMenuDocument *document = model.GetSession().GetDocument();
-    const ModMenuDetailsActionDocument *selected = model.GetSelectedDetailsAction();
-    const ModMenuPageInfo *page = selected ? std::get_if<ModMenuPageInfo>(selected) : nullptr;
-    if (!document || !page) {
-        Bui::Title("Page unavailable");
-        return {
-            Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None,
-            ModMenuPageStatus::Unavailable,
-        };
+    ModMenuPageNavigation navigation;
+    int result = BML_OK;
+    {
+        TextPanelStyleScope contentStyle;
+        m_State->viewport.SetCursor(CustomPageContent.x, CustomPageContent.y);
+        ImGui::PushID(owner.id.c_str());
+        ImGui::PushID(page.key.id.c_str());
+        ImGui::PushID(static_cast<int>(page.key.generation));
+        ImGui::PushID(static_cast<int>(page.key.generation >> 32));
+        const bool drawContents = ImGui::BeginChild(
+            "ModPageContent",
+            m_State->viewport.Size(CustomPageContent.width, CustomPageContent.height),
+            ImGuiChildFlags_AlwaysUseWindowPadding,
+            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground);
+        if (drawContents) {
+            if (!notice.empty()) {
+                ImGui::TextWrapped("%s", notice.c_str());
+                ImGui::Separator();
+            }
+            result = model.DrawPage(owner, page.key, navigation);
+        }
+        ImGui::EndChild();
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
     }
-
-    BML_ModMenuPageAction action = BML_MOD_MENU_PAGE_NONE;
-    ImGui::PushID(document->owner.id.c_str());
-    ImGui::PushID(page->key.id.c_str());
-    ImGui::PushID(static_cast<int>(page->key.generation));
-    ImGui::PushID(static_cast<int>(page->key.generation >> 32));
-    const int result = model.DrawPage(action);
-    ImGui::PopID();
-    ImGui::PopID();
-    ImGui::PopID();
-    ImGui::PopID();
 
     if (result != BML_OK) {
         Bui::Title("Page unavailable");
         m_State->viewport.SetCursor(ListX, ListY);
-        Bui::WrappedText("The Mod could not draw this page.",
+        Bui::WrappedText(result == BML_ERROR_NOT_FOUND
+                             ? "This page is no longer registered."
+                             : "The Mod could not draw this page.",
                          Bui::GetButtonSize(Bui::BUTTON_MAIN).x);
-        return {
-            Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None,
-            ModMenuPageStatus::DrawFailed,
-        };
+        ModMenuPagePresentationResult failed;
+        failed.status = result == BML_ERROR_NOT_FOUND
+            ? ModMenuPageStatus::Unavailable : ModMenuPageStatus::DrawFailed;
+        if (Bui::NavBack())
+            failed.navigation.action = BML_MOD_MENU_PAGE_BACK;
+        return failed;
     }
-    if (action == BML_MOD_MENU_PAGE_BACK)
-        return {ModMenuRouteAction::Back, ModMenuPageStatus::Ready};
-    if (action == BML_MOD_MENU_PAGE_CLOSE)
-        return {ModMenuRouteAction::Close, ModMenuPageStatus::Ready};
-    return {};
+    if (navigation.action == BML_MOD_MENU_PAGE_NONE && Bui::NavBack())
+        navigation.action = BML_MOD_MENU_PAGE_BACK;
+    return {std::move(navigation), ModMenuPageStatus::Ready};
 }
 
 ModMenuRouteAction ModMenuPresentation::DrawSettingsPage(ModMenuModel &model) {

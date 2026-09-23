@@ -306,7 +306,8 @@ TEST(InterfaceStructOffsets, UIInterface) {
 TEST(InterfaceStructOffsets, ModMenuPageAndInterface) {
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPageFrame, StructSize, 0);
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPageFrame, Action, 4);
-    EXPECT_EQ(sizeof(BML_ModMenuPageFrame), static_cast<std::size_t>(8));
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPageFrame, TargetPageId, 8);
+    EXPECT_EQ(sizeof(BML_ModMenuPageFrame), static_cast<std::size_t>(264));
 
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, StructSize, 0);
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Id, 4);
@@ -317,7 +318,8 @@ TEST(InterfaceStructOffsets, ModMenuPageAndInterface) {
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Enter, 24);
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Leave, 28);
     EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Release, 32);
-    EXPECT_EQ(sizeof(BML_ModMenuPage), static_cast<std::size_t>(36));
+    EXPECT_GOLDEN_OFFSET(BML_ModMenuPage, Flags, 36);
+    EXPECT_EQ(sizeof(BML_ModMenuPage), static_cast<std::size_t>(40));
 
     EXPECT_GOLDEN_OFFSET(BML_ModMenuInterface, RegisterPage, 12);
     EXPECT_GOLDEN_OFFSET(BML_ModMenuInterface, UnregisterPage, 16);

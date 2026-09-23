@@ -90,8 +90,8 @@ BML_C_ABI_ASSERT(BmlCommandInfoSize, sizeof(BML_CommandInfo) == 40u);
 BML_C_ABI_ASSERT(BmlCommandInterfaceSize,
                  sizeof(BML_CommandInterface) == 36u);
 BML_C_ABI_ASSERT(BmlModMenuPageFrameSize,
-                 sizeof(BML_ModMenuPageFrame) == 8u);
-BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 36u);
+                 sizeof(BML_ModMenuPageFrame) == 264u);
+BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 40u);
 BML_C_ABI_ASSERT(BmlModMenuInterfaceSize, sizeof(BML_ModMenuInterface) == 20u);
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 24u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 108u);
@@ -135,8 +135,8 @@ BML_C_ABI_ASSERT(BmlBehaviorScriptEditSize,
                  sizeof(BML_BehaviorScriptEdit) == 40u);
 #else
 BML_C_ABI_ASSERT(BmlModMenuPageFrameSize,
-                 sizeof(BML_ModMenuPageFrame) == 16u);
-BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 72u);
+                 sizeof(BML_ModMenuPageFrame) == 272u);
+BML_C_ABI_ASSERT(BmlModMenuPageSize, sizeof(BML_ModMenuPage) == 80u);
 BML_C_ABI_ASSERT(BmlModMenuInterfaceSize, sizeof(BML_ModMenuInterface) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
@@ -450,8 +450,10 @@ static int BML_CDECL BML_TestCAbiDrawModMenuPage(
     return BML_OK;
 }
 
-static int BML_CDECL BML_TestCAbiEnterModMenuPage(void *userData) {
-    return userData != NULL ? BML_OK : BML_ERROR_INVALID_PARAMETER;
+static int BML_CDECL BML_TestCAbiEnterModMenuPage(
+    void *userData, BML_ModMenuPageEnterReason reason) {
+    return userData != NULL && reason == BML_MOD_MENU_PAGE_ENTER_PUSH
+        ? BML_OK : BML_ERROR_INVALID_PARAMETER;
 }
 
 static int BML_CDECL BML_TestCAbiLeaveModMenuPage(
@@ -481,6 +483,7 @@ int BML_TestCAbiModMenuInterface(void *userData) {
         &BML_TestCAbiEnterModMenuPage,
         &BML_TestCAbiLeaveModMenuPage,
         &BML_TestCAbiReleaseModMenuPage,
+        BML_MOD_MENU_PAGE_VISIBLE,
     };
 
     if (BML_GetInterface(BML_MOD_MENU_INTERFACE_ID, BML_MOD_MENU_INTERFACE_MAJOR, &found) != BML_OK)
