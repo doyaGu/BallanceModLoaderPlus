@@ -391,12 +391,11 @@ void BMLMod::CloseMapMenu() {
 }
 
 int BMLMod::GetHSScore() {
-    CKDataArray *energy = m_BML->GetArrayByName("Energy");
-    if (!energy) return 0;
-    int points = 0, lifes = 0;
-    energy->GetElementValue(0, 0, &points);
-    energy->GetElementValue(0, 1, &lifes);
-    return points + lifes * 200;
+    ModContext *context = GetRuntimeContext();
+    if (!context)
+        return 0;
+    int score = 0;
+    return ReadBuiltinGameplayHighScore(*context, score) == BML_OK ? score : 0;
 }
 
 void BMLMod::ApplyFrameRateSettings() {

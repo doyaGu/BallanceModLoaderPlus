@@ -4,9 +4,8 @@
 // including this header still costs nothing at link time.
 //
 // Interface.h explains the header, the version rules, BML_IFACE_HAS, and how text
-// is written into a fixed-capacity buffer. Every function here reads one of the
-// game's own CKDataArrays, so every one of them answers BML_ERROR_WRONG_THREAD
-// when called from any other thread than the game thread.
+// is written into a fixed-capacity buffer. Reads use game-thread state and
+// answer BML_ERROR_WRONG_THREAD on any other thread.
 //
 // Those arrays are CurrentLevel, Energy, AllLevel, Checkpoints, and ResetPoints.
 // The loader checks the expected column names before reading, so all of these
@@ -38,7 +37,7 @@ BML_BEGIN_CDECLS
 
 #define BML_GAMEPLAY_INTERFACE_ID "bml.gameplay"
 #define BML_GAMEPLAY_INTERFACE_MAJOR 1
-#define BML_GAMEPLAY_INTERFACE_MINOR 0
+#define BML_GAMEPLAY_INTERFACE_MINOR 1
 
 // Capacity of each of the three name buffers below, terminator included.
 #define BML_GAMEPLAY_NAME_CAPACITY 128u
@@ -111,6 +110,12 @@ typedef struct BML_GameplayInterface {
 
     int (BML_CDECL *ReadResetpointCount)(size_t *out);
     int (BML_CDECL *ReadResetpoint)(size_t index, BML_GameplayResetpoint *out);
+
+    // ReadCheatEnabled is available whenever the loader is active.
+    // ReadHighScore validates Energy and answers
+    // BML_ERROR_UNAVAILABLE outside a level.
+    int (BML_CDECL *ReadHighScore)(int *out);
+    int (BML_CDECL *ReadCheatEnabled)(int *out);
 } BML_GameplayInterface;
 
 #pragma pack(pop)
@@ -208,6 +213,24 @@ int ReadList(int (BML_CDECL *readCount)(std::size_t *),
     if (!BML_IFACE_HAS(gameplay, BML_GameplayInterface, ReadEnergy))
         return BML_ERROR_NOT_FOUND;
     return gameplay->ReadEnergy(&out);
+}
+
+[[nodiscard]] inline int ReadHighScore(int &out) {
+    const BML_GameplayInterface *gameplay = Detail::Interface();
+    if (!BML_IFACE_HAS(gameplay, BML_GameplayInterface, ReadHighScore))
+        return BML_ERROR_NOT_FOUND;
+    return gameplay->ReadHighScore(&out);
+}
+
+[[nodiscard]] inline int ReadCheatEnabled(bool &out) {
+    const BML_GameplayInterface *gameplay = Detail::Interface();
+    if (!BML_IFACE_HAS(gameplay, BML_GameplayInterface, ReadCheatEnabled))
+        return BML_ERROR_NOT_FOUND;
+    int enabled = 0;
+    const int status = gameplay->ReadCheatEnabled(&enabled);
+    if (status == BML_OK)
+        out = enabled != 0;
+    return status;
 }
 
 // The three list readers replace the contents of out on success and leave it

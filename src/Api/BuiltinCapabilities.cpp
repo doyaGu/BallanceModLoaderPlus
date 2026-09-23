@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <new>
 #include <string>
@@ -342,6 +344,23 @@ int ReadBuiltinGameplayLevel(ModContext &context, BML_GameplayLevelState &out) {
 
 int ReadBuiltinGameplayEnergy(ModContext &context, BML_GameplayEnergyState &out) {
     return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadGameplayEnergy, out);
+}
+
+int ReadBuiltinGameplayHighScore(ModContext &context, int &out) {
+    if (!context.IsInLevel())
+        return BML_ERROR_UNAVAILABLE;
+    BML_GameplayEnergyState energy{};
+    const int status = ReadBuiltinGameplayEnergy(context, energy);
+    if (status != BML_OK)
+        return status;
+
+    const std::int64_t score = static_cast<std::int64_t>(energy.Points) +
+                               static_cast<std::int64_t>(energy.Lives) * 200;
+    if (score < (std::numeric_limits<int>::min)() ||
+        score > (std::numeric_limits<int>::max)())
+        return BML_ERROR_UNAVAILABLE;
+    out = static_cast<int>(score);
+    return BML_OK;
 }
 
 int ReadBuiltinGameplayCatalogCount(ModContext &context, std::size_t &out) {

@@ -27,8 +27,8 @@ BML_BEGIN_CDECLS
 #define BML_SPEEDRUN_INTERFACE_MAJOR 1
 #define BML_SPEEDRUN_INTERFACE_MINOR 0
 
-// ElapsedTime is in milliseconds, and is the same value Runtime::ReadScore
-// reports as Score::SR. This is a C struct and has no default member
+// ElapsedTime is in milliseconds, and matches IBML::GetSRScore.
+// This is a C struct and has no default member
 // initializer: zero it with BML_SpeedrunTimerState state = {0} in C, or with
 // TimerState state{} in C++.
 typedef struct BML_SpeedrunTimerState {

@@ -18,26 +18,6 @@
 
 namespace {
 
-struct RuntimeState {
-    bool InGame = false;
-    bool InLevel = false;
-    bool Paused = false;
-    bool Playing = false;
-    bool CheatEnabled = false;
-};
-
-struct ClockState {
-    float TimeMs = 0.0f;
-    float AbsoluteMs = 0.0f;
-    float DeltaMs = 0.0f;
-    int Frame = 0;
-};
-
-struct ScoreState {
-    float SR = 0.0f;
-    int HS = 0;
-};
-
 struct LevelState {
     int Id = 0;
     BML_ObjectRef ActiveBall{};
@@ -107,9 +87,6 @@ T &AssignValue(const T &other, T *self) {
         return AssignValue(other, self);                                            \
     }
 
-BML_AS_DEFINE_IMC_VALUE(RuntimeState, RuntimeState)
-BML_AS_DEFINE_IMC_VALUE(ClockState, ClockState)
-BML_AS_DEFINE_IMC_VALUE(ScoreState, ScoreState)
 BML_AS_DEFINE_IMC_VALUE(LevelState, LevelState)
 BML_AS_DEFINE_IMC_VALUE(EnergyState, EnergyState)
 BML_AS_DEFINE_IMC_VALUE(CatalogEntry, CatalogEntry)
@@ -201,45 +178,10 @@ int ReadCurrentModContext(ModContext *&outContext) {
     return outContext ? BML_OK : BML_ERROR_UNAVAILABLE;
 }
 
-ModContext *RequireRuntimeContext() {
-    ModContext *context = GetCurrentModContext();
-    if (context)
-        return context;
-    BML::ScriptStringInterop::RaiseActiveException(
-        "BML::Runtime requires an active script mod callback.");
-    return nullptr;
-}
-
-RuntimeState GetRuntimeState() {
-    ModContext *context = RequireRuntimeContext();
-    if (!context)
-        return {};
-    const BML::GameSessionSnapshot session = context->ReadGameSession();
-    return {session.IsInGame(), session.IsInLevel(), session.IsPaused(), session.IsPlaying(),
-            context->IsCheatEnabled()};
-}
-
-ClockState GetRuntimeClock() {
-    ModContext *context = RequireRuntimeContext();
-    CKTimeManager *time = context ? context->GetTimeManager() : nullptr;
-    if (!time) {
-        if (context) {
-            BML::ScriptStringInterop::RaiseActiveException(
-                "BML::Runtime clock is unavailable.");
-        }
-        return {};
-    }
-    const CKDWORD tick = time->GetMainTickCount();
-    const CKDWORD maxFrame = static_cast<CKDWORD>((std::numeric_limits<int>::max)());
-    return {time->GetTime(), time->GetAbsoluteTime(), time->GetLastDeltaTime(),
-            tick > maxFrame ? (std::numeric_limits<int>::max)()
-                            : static_cast<int>(tick)};
-}
-
-ScoreState GetRuntimeScore() {
-    ModContext *context = RequireRuntimeContext();
-    return context ? ScoreState{context->GetSRScore(), context->GetHSScore()}
-                   : ScoreState{};
+int ReadHighScore(int &out) {
+    ModContext *context = nullptr;
+    const int status = ReadCurrentModContext(context);
+    return status == BML_OK ? ReadBuiltinGameplayHighScore(*context, out) : status;
 }
 
 int ReadLevel(LevelState &out) {
@@ -363,38 +305,6 @@ int ReadResetpoint(int index, Resetpoint &out) {
     return status;
 }
 
-bool RegisterRuntime(asIScriptEngine *engine, const char **errorMessage) {
-    if (!Register(engine, engine->SetDefaultNamespace("BML::Runtime"), "namespace BML::Runtime", errorMessage))
-        return false;
-    const ValueTypeRegistration values[] = {
-        ValueType<RuntimeState>("State", asFUNCTION(ConstructRuntimeState), asFUNCTION(CopyConstructRuntimeState), asFUNCTION(DestructRuntimeState), asFUNCTION(AssignRuntimeState)),
-        ValueType<ClockState>("Clock", asFUNCTION(ConstructClockState), asFUNCTION(CopyConstructClockState), asFUNCTION(DestructClockState), asFUNCTION(AssignClockState)),
-        ValueType<ScoreState>("Score", asFUNCTION(ConstructScoreState), asFUNCTION(CopyConstructScoreState), asFUNCTION(DestructScoreState), asFUNCTION(AssignScoreState)),
-    };
-    for (const ValueTypeRegistration &value : values) {
-        if (!RegisterValue(engine, value, errorMessage))
-            return false;
-    }
-#define BML_AS_PROPERTY(Type, Declaration, Field) \
-    if (!Register(engine, engine->RegisterObjectProperty(Type, Declaration, Field), Declaration, errorMessage)) return false
-    BML_AS_PROPERTY("State", "bool InGame", asOFFSET(RuntimeState, InGame));
-    BML_AS_PROPERTY("State", "bool InLevel", asOFFSET(RuntimeState, InLevel));
-    BML_AS_PROPERTY("State", "bool Paused", asOFFSET(RuntimeState, Paused));
-    BML_AS_PROPERTY("State", "bool Playing", asOFFSET(RuntimeState, Playing));
-    BML_AS_PROPERTY("State", "bool CheatEnabled", asOFFSET(RuntimeState, CheatEnabled));
-    BML_AS_PROPERTY("Clock", "float TimeMs", asOFFSET(ClockState, TimeMs));
-    BML_AS_PROPERTY("Clock", "float AbsoluteMs", asOFFSET(ClockState, AbsoluteMs));
-    BML_AS_PROPERTY("Clock", "float DeltaMs", asOFFSET(ClockState, DeltaMs));
-    BML_AS_PROPERTY("Clock", "int Frame", asOFFSET(ClockState, Frame));
-    BML_AS_PROPERTY("Score", "float SR", asOFFSET(ScoreState, SR));
-    BML_AS_PROPERTY("Score", "int HS", asOFFSET(ScoreState, HS));
-#undef BML_AS_PROPERTY
-    return Register(engine, engine->RegisterGlobalFunction("State GetState()", BML_AS_GENERIC_FUNCTION(&GetRuntimeState), asCALL_GENERIC), "Runtime::GetState", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("Clock GetClock()", BML_AS_GENERIC_FUNCTION(&GetRuntimeClock), asCALL_GENERIC), "Runtime::GetClock", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("Score GetScore()", BML_AS_GENERIC_FUNCTION(&GetRuntimeScore), asCALL_GENERIC), "Runtime::GetScore", errorMessage) &&
-           Register(engine, engine->SetDefaultNamespace(""), "namespace reset", errorMessage);
-}
-
 bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
     if (!Register(engine, engine->SetDefaultNamespace("BML::Gameplay"), "namespace BML::Gameplay", errorMessage))
         return false;
@@ -435,6 +345,7 @@ bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
            Register(engine, engine->RegisterObjectMethod("Resetpoint", "CKObject@ BorrowObject() const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BorrowResetpointObject), asCALL_GENERIC), "Resetpoint::BorrowObject", errorMessage) &&
            Register(engine, engine->RegisterGlobalFunction("int ReadLevel(LevelState &out state)", BML_AS_GENERIC_FUNCTION(&ReadLevel), asCALL_GENERIC), "Gameplay::ReadLevel", errorMessage) &&
            Register(engine, engine->RegisterGlobalFunction("int ReadEnergy(EnergyState &out state)", BML_AS_GENERIC_FUNCTION(&ReadEnergy), asCALL_GENERIC), "Gameplay::ReadEnergy", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadHighScore(int &out score)", BML_AS_GENERIC_FUNCTION(&ReadHighScore), asCALL_GENERIC), "Gameplay::ReadHighScore", errorMessage) &&
            Register(engine, engine->RegisterGlobalFunction("int ReadCatalogCount(int &out count)", BML_AS_GENERIC_FUNCTION(&ReadCatalogCount), asCALL_GENERIC), "Gameplay::ReadCatalogCount", errorMessage) &&
            Register(engine, engine->RegisterGlobalFunction("int ReadCatalogEntry(int index, CatalogEntry &out entry)", BML_AS_GENERIC_FUNCTION(&ReadCatalogEntry), asCALL_GENERIC), "Gameplay::ReadCatalogEntry", errorMessage) &&
            Register(engine, engine->RegisterGlobalFunction("int ReadCheckpointCount(int &out count)", BML_AS_GENERIC_FUNCTION(&ReadCheckpointCount), asCALL_GENERIC), "Gameplay::ReadCheckpointCount", errorMessage) &&
@@ -453,8 +364,7 @@ int RegisterScriptBuiltinFacade(asIScriptEngine *engine, const char **errorMessa
             *errorMessage = g_FacadeRegistrationError.c_str();
         return asERROR;
     }
-    if (!RegisterRuntime(engine, errorMessage) ||
-        !RegisterGameplay(engine, errorMessage)) {
+    if (!RegisterGameplay(engine, errorMessage)) {
         engine->SetDefaultNamespace("");
         return asERROR;
     }

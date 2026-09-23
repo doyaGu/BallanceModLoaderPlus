@@ -6,12 +6,16 @@ class BMLBindingsSmokeMod {
   array<BML::Gameplay::CatalogEntry> catalogCache;
 
   void OnLoad(const BML::ModContext &in ctx) {
-    BML::Runtime::State runtime = BML::Runtime::GetState();
-    BML::Runtime::Clock clock = BML::Runtime::GetClock();
-    BML::Runtime::Score score = BML::Runtime::GetScore();
-    bool runtimeOk = runtime.Playing == (runtime.InGame && !runtime.Paused) &&
-                     clock.Frame >= 0 && score.HS >= 0;
-    ctx.LogInfo("BML capability smoke: runtime=" + (runtimeOk ? "true" : "false"));
+    bool stateOk = !ctx.IsPlaying() || (ctx.IsInLevel() && !ctx.IsPaused());
+    bool clockOk = ctx.GetFrameCount() >= 0 && ctx.GetTimeMs() >= 0.0f;
+    int highScore = 0;
+    int highScoreStatus = BML::Gameplay::ReadHighScore(highScore);
+    bool highScoreOk = ctx.IsInLevel()
+        ? highScoreStatus == BML::ERROR_OK && highScore == ctx.GetHSScore()
+        : highScoreStatus == BML::ERROR_UNAVAILABLE;
+    ctx.LogInfo("BML capability smoke: state=" + (stateOk ? "true" : "false") +
+                " clock=" + (clockOk ? "true" : "false") +
+                " highscore=" + (highScoreOk ? "true" : "false"));
 
     CKContext@ host = ctx.BorrowCKContext();
     CKObject@ raw = host is null

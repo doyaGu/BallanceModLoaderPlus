@@ -34,6 +34,7 @@ int FindBuiltinSceneObjectOfClass(ModContext &context, const char *name, int cla
  * interpretation in one place for both. */
 int ReadBuiltinGameplayLevel(ModContext &context, BML_GameplayLevelState &out);
 int ReadBuiltinGameplayEnergy(ModContext &context, BML_GameplayEnergyState &out);
+int ReadBuiltinGameplayHighScore(ModContext &context, int &out);
 int ReadBuiltinGameplayCatalogCount(ModContext &context, std::size_t &out);
 int ReadBuiltinGameplayCatalogEntry(ModContext &context, std::size_t index,
                                     BML_GameplayCatalogEntry &out);

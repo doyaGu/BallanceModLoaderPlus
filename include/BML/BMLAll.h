@@ -5,7 +5,7 @@
 // This is the slow way to compile. A Mod that knows what it needs includes those
 // headers instead: IMod.h for the class to derive from, which already brings IBML.h,
 // IConfig.h, ILogger.h, and IMessageReceiver.h with it, then Bui.h or Gui.h for a
-// user interface, InputHook.h for the keyboard and mouse, and Runtime.h, Scene.h,
+// user interface, InputHook.h for the keyboard and mouse, and Time.hpp, Scene.h,
 // Gameplay.h, Command.hpp, UI.h, or Speedrun.h for what the legacy interfaces do
 // not cover.
 #ifndef BMLALL_H
@@ -38,7 +38,8 @@
 #include "BML/ImcWire.hpp"
 #include "BML/Imc.hpp"
 #include "BML/TypeConvert.h"
-#include "BML/Runtime.h"
+#include "BML/Time.h"
+#include "BML/Time.hpp"
 #include "BML/Scene.h"
 #include "BML/Gameplay.h"
 #include "BML/UI.h"

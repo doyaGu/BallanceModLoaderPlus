@@ -2,7 +2,7 @@
 #include <BML/IBML.h>
 #include <BML/ILogger.h>
 #include <BML/IMod.h>
-#include <BML/Runtime.h>
+#include <BML/Time.hpp>
 #include <BML/Scene.h>
 #include <BML/Speedrun.h>
 #include <BML/UI.h>
@@ -27,10 +27,6 @@ bool IsOkOrUnavailable(int status) {
     return status == BML_OK || status == BML_ERROR_UNAVAILABLE;
 }
 
-bool NearlyEqual(float left, float right) {
-    return std::fabs(left - right) <= 0.001f;
-}
-
 class BMLNativeImcSmoke final : public IMod {
 public:
     explicit BMLNativeImcSmoke(IBML *bml) : IMod(bml) {
@@ -46,7 +42,7 @@ public:
     DECLARE_BML_VERSION;
 
     void OnLoad() override {
-        m_RuntimePassed = CheckRuntime();
+        m_StateClockPassed = CheckStateAndClock();
         m_UiPassed = CheckUi();
         m_SpeedrunPassed = CheckSpeedrun();
         m_ImcPassed = CheckImc();
@@ -63,10 +59,10 @@ public:
         const bool gameplay = CheckGameplay();
         const bool imc = m_ImcPassed && CheckImcNotice();
         GetLogger()->Info(
-            "BML native IMC smoke: runtime=%s scene=%s gameplay=%s ui=%s speedrun=%s imc=%s",
-            Text(m_RuntimePassed), Text(scene), Text(gameplay), Text(m_UiPassed),
+            "BML native IMC smoke: state_clock=%s scene=%s gameplay=%s ui=%s speedrun=%s imc=%s",
+            Text(m_StateClockPassed), Text(scene), Text(gameplay), Text(m_UiPassed),
             Text(m_SpeedrunPassed), Text(imc));
-        m_Passed = m_RuntimePassed && scene && gameplay && m_UiPassed &&
+        m_Passed = m_StateClockPassed && scene && gameplay && m_UiPassed &&
                    m_SpeedrunPassed && imc;
 
         GetLogger()->Info("BML native IMC smoke requesting exit");
@@ -89,38 +85,39 @@ public:
 private:
     static const char *Text(bool value) { return value ? "true" : "false"; }
 
-    bool CheckRuntime() {
-        BML::Runtime::State state{};
-        BML::Runtime::Clock clock{};
-        BML::Runtime::Score score{};
-        if (BML::Runtime::ReadState(state) != BML_OK ||
-            BML::Runtime::ReadClock(clock) != BML_OK ||
-            BML::Runtime::ReadScore(score) != BML_OK) {
+    bool CheckStateAndClock() {
+        BML::Time::Clock clock{};
+        bool cheatEnabled = false;
+        if (BML::Time::ReadClock(clock) != BML_OK ||
+            BML::Gameplay::ReadCheatEnabled(cheatEnabled) != BML_OK) {
             return false;
         }
 
-        // The interface flags are 0 or 1 rather than bool, so each comparison against an
-        // IBML getter has to say which side is being narrowed.
-        if ((state.InGame != 0) != m_BML->IsIngame() || (state.Paused != 0) != m_BML->IsPaused() ||
-            (state.Playing != 0) != m_BML->IsPlaying() ||
-            (state.CheatEnabled != 0) != m_BML->IsCheatEnabled() ||
-            (state.InLevel && (!state.InGame || state.Paused || !state.Playing)) ||
+        if (cheatEnabled != m_BML->IsCheatEnabled() ||
             !std::isfinite(clock.TimeMs) || !std::isfinite(clock.AbsoluteMs) ||
-            !std::isfinite(clock.DeltaMs) || clock.Frame < 0 ||
-            !NearlyEqual(score.SR, m_BML->GetSRScore()) || score.HS != m_BML->GetHSScore()) {
+            !std::isfinite(clock.DeltaMs)) {
+            return false;
+        }
+
+        int highScore = 0;
+        const int scoreStatus = BML::Gameplay::ReadHighScore(highScore);
+        if (m_BML->IsPlaying() || m_BML->IsPaused()) {
+            if (scoreStatus != BML_OK || highScore != m_BML->GetHSScore())
+                return false;
+        } else if (scoreStatus != BML_ERROR_UNAVAILABLE) {
             return false;
         }
 
         constexpr int sampleCount = 5000;
         const auto start = std::chrono::steady_clock::now();
         for (int sample = 0; sample < sampleCount; ++sample) {
-            if (BML::Runtime::ReadState(state) != BML_OK)
+            if (BML::Gameplay::ReadCheatEnabled(cheatEnabled) != BML_OK)
                 return false;
         }
         const auto elapsed = std::chrono::steady_clock::now() - start;
         const double seconds = std::chrono::duration<double>(elapsed).count();
         const double callsPerSecond = seconds > 0.0 ? sampleCount / seconds : 0.0;
-        GetLogger()->Info("BML native IMC smoke runtime throughput: %.0f calls/s", callsPerSecond);
+        GetLogger()->Info("BML native IMC smoke gameplay read throughput: %.0f calls/s", callsPerSecond);
         return true;
     }
 
@@ -295,7 +292,7 @@ private:
     int m_NoticesReceived = 0;
     bool m_NoticeMismatched = false;
     int m_ProcessCount = 0;
-    bool m_RuntimePassed = false;
+    bool m_StateClockPassed = false;
     bool m_UiPassed = false;
     bool m_SpeedrunPassed = false;
     bool m_ImcPassed = false;

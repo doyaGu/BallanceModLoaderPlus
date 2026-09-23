@@ -8,7 +8,7 @@
 #include "BML/Command.h"
 #include "BML/Interface.h"
 #include "BML/ModMenu.h"
-#include "BML/Runtime.h"
+#include "BML/Time.h"
 #include "BML/Scene.h"
 #include "BML/Speedrun.h"
 #include "BML/UI.h"
@@ -46,11 +46,15 @@ void ExpectGrowthRules(const char *id, std::size_t shippedSize,
         EXPECT_GT(currentMinor, shippedMinor) << id << " grew without a minor bump";
 }
 
-TEST(InterfaceStructOffsets, RuntimeInterface) {
-    EXPECT_GOLDEN_OFFSET(BML_RuntimeInterface, ReadState, 12);
-    EXPECT_GOLDEN_OFFSET(BML_RuntimeInterface, ReadClock, 16);
-    EXPECT_GOLDEN_OFFSET(BML_RuntimeInterface, ReadScore, 20);
-    ExpectGrowthRules<BML_RuntimeInterface>("bml.runtime", 24, 0, BML_RUNTIME_INTERFACE_MINOR);
+TEST(InterfaceStructOffsets, TimeInterface) {
+    EXPECT_GOLDEN_OFFSET(BML_TimeInterface, ReadClock, 12);
+    EXPECT_GOLDEN_OFFSET(BML_TimeClock, TimeMs, 0);
+    EXPECT_GOLDEN_OFFSET(BML_TimeClock, AbsoluteMs, 4);
+    EXPECT_GOLDEN_OFFSET(BML_TimeClock, DeltaMs, 8);
+    EXPECT_GOLDEN_OFFSET(BML_TimeClock, MainTickCount, 12);
+    EXPECT_EQ(sizeof(BML_TimeClock), static_cast<std::size_t>(16));
+    EXPECT_EQ(sizeof(BML_TimeInterface), static_cast<std::size_t>(16));
+    ExpectGrowthRules<BML_TimeInterface>("bml.time", 16, 0, BML_TIME_INTERFACE_MINOR);
 }
 
 TEST(InterfaceStructOffsets, CommandRecordsAndInterface) {
@@ -108,6 +112,7 @@ TEST(InterfaceStructOffsets, CommandRecordsAndInterface) {
     EXPECT_GOLDEN_OFFSET(BML_CommandInterface, Visit, 24);
     EXPECT_GOLDEN_OFFSET(BML_CommandInterface, Find, 28);
     EXPECT_GOLDEN_OFFSET(BML_CommandInterface, ExecuteLine, 32);
+    EXPECT_EQ(sizeof(BML_CommandInterface), static_cast<std::size_t>(36));
     ExpectGrowthRules<BML_CommandInterface>("bml.command", 36, 0,
                                             BML_COMMAND_INTERFACE_MINOR);
 }
@@ -278,6 +283,9 @@ TEST(InterfaceStructOffsets, GameplayInterface) {
     EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ReadCheckpoint, 32);
     EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ReadResetpointCount, 36);
     EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ReadResetpoint, 40);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ReadHighScore, 44);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ReadCheatEnabled, 48);
+    EXPECT_EQ(sizeof(BML_GameplayInterface), static_cast<std::size_t>(52));
     ExpectGrowthRules<BML_GameplayInterface>("bml.gameplay", 44, 0, BML_GAMEPLAY_INTERFACE_MINOR);
 }
 

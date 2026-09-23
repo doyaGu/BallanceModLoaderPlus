@@ -8,14 +8,14 @@
 #include "BML/Behavior.h"
 #include "BML/Interface.h"
 #include "BML/ModMenu.h"
-#include "BML/Runtime.h"
+#include "BML/Time.h"
 #include "BML/Scene.h"
 #include "BML/Speedrun.h"
 #include "BML/UI.h"
 
+#include <cstdint>
 #include <cstring>
 #include <iterator>
-#include <limits>
 
 #include "Api/BuiltinCapabilities.h"
 #include "Api/BehaviorApi.h"
@@ -48,7 +48,7 @@ int Serve(Body &&body) {
     }
 }
 
-// Runtime, speedrun, gameplay, scene, and UI all read or mutate state owned by
+// Time, speedrun, gameplay, scene, and UI all read or mutate state owned by
 // the game thread, so they refuse calls from anywhere else rather than racing a
 // frame. Keeping one rule per interface also makes reads and writes predictable.
 template <typename Body>
@@ -60,44 +60,41 @@ int ServeOnMainThread(Body &&body) {
     });
 }
 
-int BML_CDECL RuntimeReadState(BML_RuntimeState *out) {
-    if (!out)
-        return BML_ERROR_INVALID_PARAMETER;
-    return ServeOnMainThread([out](ModContext &context) {
-        const BML::GameSessionSnapshot session = context.ReadGameSession();
-        out->InGame = session.IsInGame() ? 1 : 0;
-        out->InLevel = session.IsInLevel() ? 1 : 0;
-        out->Paused = session.IsPaused() ? 1 : 0;
-        out->Playing = session.IsPlaying() ? 1 : 0;
-        out->CheatEnabled = context.IsCheatEnabled() ? 1 : 0;
-        return BML_OK;
-    });
-}
-
-int BML_CDECL RuntimeReadClock(BML_RuntimeClock *out) {
+int BML_CDECL TimeReadClock(BML_TimeClock *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([out](ModContext &context) {
         CKTimeManager *time = context.GetTimeManager();
         if (!time)
             return BML_ERROR_UNAVAILABLE;
-        out->TimeMs = time->GetTime();
-        out->AbsoluteMs = time->GetAbsoluteTime();
-        out->DeltaMs = time->GetLastDeltaTime();
-        const CKDWORD tick = time->GetMainTickCount();
-        out->Frame = tick > static_cast<CKDWORD>((std::numeric_limits<int>::max)())
-                         ? (std::numeric_limits<int>::max)()
-                         : static_cast<int>(tick);
+        BML_TimeClock value{};
+        value.TimeMs = time->GetTime();
+        value.AbsoluteMs = time->GetAbsoluteTime();
+        value.DeltaMs = time->GetLastDeltaTime();
+        value.MainTickCount = static_cast<std::uint32_t>(time->GetMainTickCount());
+        *out = value;
         return BML_OK;
     });
 }
 
-int BML_CDECL RuntimeReadScore(BML_RuntimeScore *out) {
+int BML_CDECL GameplayReadHighScore(int *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return ServeOnMainThread([out](ModContext &context) {
-        out->SR = context.GetSRScore();
-        out->HS = context.GetHSScore();
+        int value = 0;
+        const int status = ReadBuiltinGameplayHighScore(context, value);
+        if (status != BML_OK)
+            return status;
+        *out = value;
+        return BML_OK;
+    });
+}
+
+int BML_CDECL GameplayReadCheatEnabled(int *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([out](ModContext &context) {
+        *out = context.IsCheatEnabled() ? 1 : 0;
         return BML_OK;
     });
 }
@@ -380,12 +377,10 @@ int BML_CDECL ModMenuUnregisterPage(const char *ownerId, const char *pageId) {
     }
 }
 
-const BML_RuntimeInterface kRuntimeInterface = {
-    BML_IFACE_HEADER(BML_RuntimeInterface, BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR,
-                     BML_RUNTIME_INTERFACE_MINOR),
-    &RuntimeReadState,
-    &RuntimeReadClock,
-    &RuntimeReadScore,
+const BML_TimeInterface kTimeInterface = {
+    BML_IFACE_HEADER(BML_TimeInterface, BML_TIME_INTERFACE_ID, BML_TIME_INTERFACE_MAJOR,
+                     BML_TIME_INTERFACE_MINOR),
+    &TimeReadClock,
 };
 
 const BML_SpeedrunInterface kSpeedrunInterface = {
@@ -409,6 +404,8 @@ const BML_GameplayInterface kGameplayInterface = {
     &GameplayReadCheckpoint,
     &GameplayReadResetpointCount,
     &GameplayReadResetpoint,
+    &GameplayReadHighScore,
+    &GameplayReadCheatEnabled,
 };
 
 const BML_SceneInterface kSceneInterface = {
@@ -459,7 +456,7 @@ const InterfaceEntry kInterfaces[] = {
      &BML::Api::CommandInterface()},
     {BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &kGameplayInterface},
     {BML_MOD_MENU_INTERFACE_ID, BML_MOD_MENU_INTERFACE_MAJOR, &ModMenuInterface},
-    {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},
+    {BML_TIME_INTERFACE_ID, BML_TIME_INTERFACE_MAJOR, &kTimeInterface},
     {BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR, &kSceneInterface},
     {BML_SPEEDRUN_INTERFACE_ID, BML_SPEEDRUN_INTERFACE_MAJOR, &kSpeedrunInterface},
     {BML_UI_INTERFACE_ID, BML_UI_INTERFACE_MAJOR, &kUIInterface},

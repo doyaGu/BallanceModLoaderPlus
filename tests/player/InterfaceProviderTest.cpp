@@ -2,7 +2,7 @@
 #include <BML/ILogger.h>
 #include <BML/IMod.h>
 #include <BML/Interface.hpp>
-#include <BML/Runtime.h>
+#include <BML/Time.h>
 
 #include "InterfaceProviderTestApi.h"
 
@@ -33,7 +33,7 @@ BML_DECLARE_INTERFACE_TRAITS(StackTraits, BML_PlayerProviderInterface, "test.pla
                              BML_PLAYER_PROVIDER_INTERFACE_MAJOR, ReadValue);
 BML_DECLARE_INTERFACE_TRAITS(HeapTraits, BML_PlayerProviderInterface, "test.player.provider.heap",
                              BML_PLAYER_PROVIDER_INTERFACE_MAJOR, ReadValue);
-BML_DECLARE_INTERFACE_TRAITS(BuiltinCollisionTraits, BML_PlayerProviderInterface, BML_RUNTIME_INTERFACE_ID,
+BML_DECLARE_INTERFACE_TRAITS(BuiltinCollisionTraits, BML_PlayerProviderInterface, BML_TIME_INTERFACE_ID,
                              BML_PLAYER_PROVIDER_INTERFACE_MAJOR, ReadValue);
 
 constexpr auto kWrongOwnerInterface =

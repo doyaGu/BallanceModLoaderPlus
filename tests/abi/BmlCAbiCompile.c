@@ -4,7 +4,7 @@
 #include "BML/DataShare.h"
 #include "BML/Gameplay.h"
 #include "BML/ModMenu.h"
-#include "BML/Runtime.h"
+#include "BML/Time.h"
 #include "BML/Scene.h"
 #include "BML/Speedrun.h"
 #include "BML/UI.h"
@@ -331,24 +331,18 @@ int BML_TestCAbiCommandInterface(void *userData) {
     return command->Unregister(NULL, handle) == BML_OK && commandStatus == 0;
 }
 
-// The runtime interface fills three out structs rather than one, so this checks
-// that each of them is spelled and zeroed the C way.
-int BML_TestCAbiRuntimeInterface(void) {
+// The CK time interface uses a C POD and exposes the raw 32-bit tick counter.
+int BML_TestCAbiTimeInterface(void) {
     const void *found = NULL;
-    const BML_RuntimeInterface *runtime = NULL;
-    BML_RuntimeState state = {0};
-    BML_RuntimeClock clock = {0};
-    BML_RuntimeScore score = {0};
+    const BML_TimeInterface *time = NULL;
+    BML_TimeClock clock = {0};
 
-    if (BML_GetInterface(BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &found) != BML_OK)
+    if (BML_GetInterface(BML_TIME_INTERFACE_ID, BML_TIME_INTERFACE_MAJOR, &found) != BML_OK)
         return 0;
-    runtime = (const BML_RuntimeInterface *) found;
-    if (!BML_IFACE_HAS(runtime, BML_RuntimeInterface, ReadScore))
+    time = (const BML_TimeInterface *) found;
+    if (!BML_IFACE_HAS(time, BML_TimeInterface, ReadClock))
         return 0;
-    if (runtime->ReadState(&state) != BML_OK || runtime->ReadClock(&clock) != BML_OK ||
-        runtime->ReadScore(&score) != BML_OK)
-        return 0;
-    return state.Playing && clock.Frame >= 0 && score.HS >= 0;
+    return time->ReadClock(&clock) == BML_OK;
 }
 
 // The UI interface is mostly commands rather than reads, and its HUD bitmask is an
@@ -362,13 +356,23 @@ int BML_TestCAbiGameplayInterface(void) {
     BML_GameplayLevelState level;
     BML_GameplayEnergyState energy;
     BML_GameplayCatalogEntry entry;
+    int cheatEnabled = 0;
+    int highScore = 0;
+    int highScoreStatus = BML_ERROR_FAIL;
     size_t count = 0;
     size_t index = 0;
 
     if (BML_GetInterface(BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &found) != BML_OK)
         return 0;
     gameplay = (const BML_GameplayInterface *) found;
-    if (!BML_IFACE_HAS(gameplay, BML_GameplayInterface, ReadResetpoint))
+    if (!BML_IFACE_HAS(gameplay, BML_GameplayInterface, ReadCheatEnabled))
+        return 0;
+
+    if (gameplay->ReadCheatEnabled(&cheatEnabled) != BML_OK ||
+        (cheatEnabled != 0 && cheatEnabled != 1))
+        return 0;
+    highScoreStatus = gameplay->ReadHighScore(&highScore);
+    if (highScoreStatus != BML_OK && highScoreStatus != BML_ERROR_UNAVAILABLE)
         return 0;
 
     if (gameplay->ReadLevel(&level) != BML_OK || gameplay->ReadEnergy(&energy) != BML_OK)
