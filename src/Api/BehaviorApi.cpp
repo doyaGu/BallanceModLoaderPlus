@@ -848,7 +848,7 @@ int BML_BEHAVIOR_CALL OpenSession(BML_BehaviorString requestedOwner,
         std::string requested;
         if (!ReadString(requestedOwner, requested))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context || !context->AreModsLoaded())
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -871,7 +871,7 @@ int BML_BEHAVIOR_CALL CloseSession(BML_BehaviorSession session) {
     return Guard([&] {
         if (!session)
             return BML_ERROR_INVALID_HANDLE;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         const std::uintptr_t id = SessionId(session);
@@ -895,7 +895,7 @@ int OpenRunEntry(OpenKind kind, BML_BehaviorSession session,
         (kind != OpenKind::Spawn && !input))
         return BML_ERROR_INVALID_PARAMETER;
     *outRun = nullptr;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!context)
         return BML_ERROR_FROZEN;
     if (!context->IsMainThread())
@@ -983,7 +983,7 @@ int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession session,
             !outRun)
             return BML_ERROR_INVALID_PARAMETER;
         *outRun = nullptr;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -1018,7 +1018,7 @@ int BML_BEHAVIOR_CALL Continue(BML_BehaviorRun run,
     return Guard([&] {
         if (!ValidOutputs(info, status) || !run)
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -1041,7 +1041,7 @@ int BML_BEHAVIOR_CALL Pulse(BML_BehaviorRun run,
     return Guard([&] {
         if (!ValidOutputs(info, status) || !run || !input || !admission)
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -1072,7 +1072,7 @@ int BML_BEHAVIOR_CALL ReadRun(BML_BehaviorRun run,
     return Guard([&] {
         if (!ValidOutputs(info, status) || !run || !info)
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -1388,7 +1388,7 @@ int BML_BEHAVIOR_CALL TakeFrames(
             (headerCapacity && (!headers || headerStride < sizeof(*headers))) ||
             (payloadCapacity && !payload))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -1417,7 +1417,7 @@ int BML_BEHAVIOR_CALL CloseRun(BML_BehaviorRun run) {
     return Guard([&] {
         if (!run)
             return BML_ERROR_INVALID_HANDLE;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         context->BehaviorSessions().CloseRun(RunId(run));
@@ -1687,7 +1687,7 @@ int BML_BEHAVIOR_CALL FindPrototypes(
              (!prototypes || prototypeStride < sizeof(*prototypes))) ||
             (payloadCapacity && !payload))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -1758,7 +1758,7 @@ int BML_BEHAVIOR_CALL ReadDeclaredLayout(
             !HasStructSize(layout) || !outPayloadSize ||
             (payloadCapacity && !payload))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -1785,7 +1785,7 @@ int BML_BEHAVIOR_CALL ReadLiveLayout(
             !outPayloadSize ||
             (payloadCapacity && !payload))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2140,7 +2140,7 @@ int BML_BEHAVIOR_CALL Inspect(
             (view != BML_BEHAVIOR_GRAPH_LOGICAL &&
              view != BML_BEHAVIOR_GRAPH_LIVE))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2176,7 +2176,7 @@ int BML_BEHAVIOR_CALL InspectRun(
             (view != BML_BEHAVIOR_GRAPH_LOGICAL &&
              view != BML_BEHAVIOR_GRAPH_LIVE))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2204,7 +2204,7 @@ int BML_BEHAVIOR_CALL ReadNodeLayout(
             !outPayloadSize ||
             (payloadCapacity && !payload))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2239,7 +2239,7 @@ int BML_BEHAVIOR_CALL ReadGraphValue(
             (payloadCapacity && !payload) ||
             read != BML_BEHAVIOR_READ_NON_FORCING)
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2384,7 +2384,7 @@ int BML_BEHAVIOR_CALL OpenWatch(
             (!!callback->Retain != !!callback->Release))
             return BML_ERROR_INVALID_PARAMETER;
         *outWatch = nullptr;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2457,6 +2457,7 @@ int BML_BEHAVIOR_CALL OpenWatch(
         }
 
         const BML_BehaviorWatchFunction function = *callback;
+        ModContext *callbackContext = context.get();
         BML::Behavior::Internal::PlanCallbackState state = callback->Retain
             ? BML::Behavior::Internal::PlanCallbackState::Retained(
                   callback->State, callback->Retain, callback->Release)
@@ -2464,7 +2465,7 @@ int BML_BEHAVIOR_CALL OpenWatch(
         std::uintptr_t id = 0;
         result = context->BehaviorSessions().OpenWatch(
             SessionId(session), root, node, std::move(spec), std::move(state),
-            [context, function](const WatchEvent &event) {
+            [callbackContext, function](const WatchEvent &event) {
                 BML_BehaviorWatchEvent wire{};
                 wire.StructSize = sizeof(wire);
                 wire.Kind = PublicWatchKind(event.Kind);
@@ -2478,7 +2479,7 @@ int BML_BEHAVIOR_CALL OpenWatch(
                                      wire.CurrentValue))
                     throw std::runtime_error(
                         "A Behavior Watch value could not be represented.");
-                auto invocation = context->LockModInvocation();
+                auto invocation = callbackContext->LockModInvocation();
                 int callbackResult = BML_BEHAVIOR_WATCH_ERROR;
                 try {
                     callbackResult = function.Invoke(function.State, &wire);
@@ -2503,7 +2504,7 @@ int BML_BEHAVIOR_CALL CloseWatch(BML_BehaviorWatch watch) {
     return Guard([&] {
         if (!watch)
             return BML_ERROR_INVALID_HANDLE;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         context->BehaviorSessions().CloseWatch(WatchId(watch));
@@ -2517,7 +2518,7 @@ int BML_BEHAVIOR_CALL ReadWatch(BML_BehaviorWatch watch,
     return Guard([&] {
         if (!PrepareStatus(status) || !watch || !HasStructSize(info))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2636,7 +2637,7 @@ int BML_BEHAVIOR_CALL Set(
             !HasStructSize(value) || !outLayoutGeneration)
             return BML_ERROR_INVALID_PARAMETER;
         *outLayoutGeneration = 0;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2666,7 +2667,7 @@ int BML_BEHAVIOR_CALL Bind(
             !HasStructSize(source) || !outLayoutGeneration)
             return BML_ERROR_INVALID_PARAMETER;
         *outLayoutGeneration = 0;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2720,7 +2721,7 @@ int BML_BEHAVIOR_CALL Configure(
             !outLayoutGeneration)
             return BML_ERROR_INVALID_PARAMETER;
         *outLayoutGeneration = 0;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -2773,7 +2774,7 @@ int InvokeHook(const CKBehaviorContext *native, void *argument) {
     const auto *thunk = static_cast<const HookThunk *>(argument);
     if (!thunk || !thunk->Function.Invoke || !native || !native->Behavior)
         return CKBR_BEHAVIORERROR;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!context)
         return CKBR_BEHAVIORERROR;
 
@@ -3696,7 +3697,7 @@ int BML_BEHAVIOR_CALL SubmitPlan(
         if (!ReadString(spec->Name, name) || name.empty())
             return BML_ERROR_INVALID_PARAMETER;
 
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -3738,7 +3739,7 @@ int BML_BEHAVIOR_CALL ReadPlan(
     return Guard([&] {
         if (!PrepareStatus(status) || !session || !plan || !HasStructSize(info))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -3767,7 +3768,7 @@ int BML_BEHAVIOR_CALL ReadPlanFailures(
         if (!PrepareStatus(status) || !session || !plan ||
             !HasStructSize(failures))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -3800,7 +3801,7 @@ int BML_BEHAVIOR_CALL ReadPlanInstances(
             (instanceCapacity &&
              (!instances || instanceStride < sizeof(*instances))))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -3842,7 +3843,7 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
     return Guard([&] {
         if (!session || !plan)
             return BML_ERROR_INVALID_HANDLE;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         SessionOwner owner;
@@ -3919,7 +3920,7 @@ int BML_BEHAVIOR_CALL SetPlanActive(
         if (!PrepareStatus(status) || !session || !plan || active > 1 ||
             (info && !HasStructSize(info)))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -3950,7 +3951,7 @@ int BML_BEHAVIOR_CALL ReplacePlan(
         if (!PrepareStatus(status) || !session || !plan ||
             (info && !HasStructSize(info)))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4040,7 +4041,7 @@ int BML_BEHAVIOR_CALL ApplyPatch(
         if (!ReadString(spec->Name, name) || name.empty())
             return BML_ERROR_INVALID_PARAMETER;
 
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4081,7 +4082,7 @@ int BML_BEHAVIOR_CALL ReadPatch(
     return Guard([&] {
         if (!PrepareStatus(status) || !session || !patch || !HasStructSize(info))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4109,7 +4110,7 @@ int BML_BEHAVIOR_CALL ReadPatchFailures(
         if (!PrepareStatus(status) || !session || !patch ||
             !HasStructSize(failures))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4136,7 +4137,7 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
     return Guard([&] {
         if (!session || !patch)
             return BML_ERROR_INVALID_HANDLE;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         SessionOwner owner;
@@ -4156,7 +4157,7 @@ int BML_BEHAVIOR_CALL SetPatchActive(
         if (!PrepareStatus(status) || !session || !patch || active > 1 ||
             (info && !HasStructSize(info)))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4186,7 +4187,7 @@ int BML_BEHAVIOR_CALL ReplacePatch(
         if (!PrepareStatus(status) || !session || !patch ||
             (info && !HasStructSize(info)))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4219,7 +4220,7 @@ int BML_BEHAVIOR_CALL Reference(BML_BehaviorSession session,
         if (!PrepareStatus(status) || !session || !outReference)
             return BML_ERROR_INVALID_PARAMETER;
         *outReference = BML_ObjectRef{};
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4258,7 +4259,7 @@ int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession session,
             WriteStatus(status, result);
             return BML_ERROR_INVALID_PARAMETER;
         }
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4298,7 +4299,7 @@ int BML_BEHAVIOR_CALL ResolvePlanInstanceNode(
             WriteStatus(status, result);
             return BML_ERROR_INVALID_PARAMETER;
         }
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4336,7 +4337,7 @@ int BML_BEHAVIOR_CALL ReadPatchValue(
             WriteStatus(status, result);
             return BML_ERROR_INVALID_PARAMETER;
         }
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4364,7 +4365,7 @@ int BML_BEHAVIOR_CALL WritePatchValue(
     return Guard([&] {
         if (!PrepareStatus(status) || !session || !patch || !port || !value)
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4408,7 +4409,7 @@ int BML_BEHAVIOR_CALL ReadPlanInstanceValue(
             WriteStatus(status, result);
             return BML_ERROR_INVALID_PARAMETER;
         }
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4439,7 +4440,7 @@ int BML_BEHAVIOR_CALL WritePlanInstanceValue(
         if (!PrepareStatus(status) || !session || !plan || !instance ||
             !port || !value)
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4480,7 +4481,7 @@ int BML_BEHAVIOR_CALL CreateScript(
         std::string name;
         if (!ReadString(spec->Name, name))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4524,7 +4525,7 @@ int BML_BEHAVIOR_CALL ReadScript(
         if (!PrepareStatus(status) || !session || !script ||
             !HasStructSize(info))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4555,7 +4556,7 @@ int BML_BEHAVIOR_CALL SetScriptActive(
             (info && !HasStructSize(info)) || active > 1 || reset > 1 ||
             (!active && reset))
             return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -4582,7 +4583,7 @@ int BML_BEHAVIOR_CALL CloseScript(BML_BehaviorSession session,
     return Guard([&] {
         if (!session || !script)
             return BML_ERROR_INVALID_HANDLE;
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         SessionOwner owner;

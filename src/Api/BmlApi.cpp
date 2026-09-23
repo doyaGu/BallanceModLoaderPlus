@@ -129,7 +129,7 @@ const char *BML_CDECL BML_GetVersionString() {
 }
 
 const wchar_t *BML_CDECL BML_GetLoaderPathW(BML_LoaderDirectory directory) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!context)
         return nullptr;
 
@@ -138,7 +138,7 @@ const wchar_t *BML_CDECL BML_GetLoaderPathW(BML_LoaderDirectory directory) {
 }
 
 const char *BML_CDECL BML_GetLoaderPathUtf8(BML_LoaderDirectory directory) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!context)
         return nullptr;
 
@@ -148,7 +148,7 @@ const char *BML_CDECL BML_GetLoaderPathUtf8(BML_LoaderDirectory directory) {
 
 wchar_t *BML_CDECL BML_GetModRootW(const char *modId) {
     try {
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return nullptr;
 
@@ -161,7 +161,7 @@ wchar_t *BML_CDECL BML_GetModRootW(const char *modId) {
 
 char *BML_CDECL BML_GetModRootUtf8(const char *modId) {
     try {
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return nullptr;
 
@@ -173,7 +173,7 @@ char *BML_CDECL BML_GetModRootUtf8(const char *modId) {
 }
 
 int BML_CDECL BML_UnregisterCommand(const char *name) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!context)
         return BML_ERROR_FAIL;
 
@@ -181,7 +181,7 @@ int BML_CDECL BML_UnregisterCommand(const char *name) {
 }
 
 int BML_CDECL BML_SetCommandStatus(int status) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!context || !context->IsMainThread())
         return 0;
     return BML::Shell::SetStatus(status) ? 1 : 0;
@@ -190,7 +190,7 @@ int BML_CDECL BML_SetCommandStatus(int status) {
 const char *BML_CDECL BML_GetCommandInput(size_t *length) {
     if (length)
         *length = 0;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!context || !context->IsMainThread())
         return nullptr;
     const std::string *input = BML::Shell::GetInput();

@@ -22,7 +22,7 @@ namespace {
 
 template <typename Body>
 int ServeOnMainThread(Body &&body) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!context || !context->AreModsLoaded())
         return BML_ERROR_FAIL;
     if (!context->IsMainThread())

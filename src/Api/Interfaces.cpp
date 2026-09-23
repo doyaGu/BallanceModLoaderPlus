@@ -38,7 +38,7 @@ namespace {
 // out, because the table is static, and answers BML_ERROR_FAIL.
 template <typename Body>
 int Serve(Body &&body) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!context || !context->AreModsLoaded())
         return BML_ERROR_FAIL;
     try {
@@ -319,7 +319,7 @@ int BML_CDECL ModMenuRegisterPage(
             return BML_ERROR_INVALID_PARAMETER;
         }
 
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context || !context->AreModsLoaded())
             return BML_ERROR_FAIL;
         if (!context->IsMainThread())
@@ -363,7 +363,7 @@ int BML_CDECL ModMenuUnregisterPage(const char *ownerId, const char *pageId) {
         if (!pageId || pageId[0] == '\0')
             return BML_ERROR_INVALID_PARAMETER;
 
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context || !context->AreModsLoaded())
             return BML_ERROR_FAIL;
         if (!context->IsMainThread())
@@ -509,7 +509,7 @@ int BML_CDECL BML_RegisterInterface(
         if (!interfacePtr)
             return BML_ERROR_INVALID_PARAMETER;
 
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
@@ -554,7 +554,7 @@ int BML_CDECL BML_UnregisterInterface(
         if (IsBuiltinInterfaceId(interfaceId))
             return BML_ERROR_ACCESS_DENIED;
 
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())

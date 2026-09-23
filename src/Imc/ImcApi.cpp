@@ -10,13 +10,14 @@
 namespace {
 
 BML::ImcRuntime *CurrentRuntime() noexcept {
-    auto *context = BML_GetModContext();
+    ModContextLease context;
     return context ? &context->GetImcRuntime() : nullptr;
 }
 
 template <typename Function>
 int GuardImc(Function &&function) noexcept {
     try {
+        ModContextLease context;
         return function();
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
@@ -34,7 +35,7 @@ BML_EXPORT int BML_CDECL BML_Imc_OpenClient(const char *ownerId,
         if (!outClient)
             return BML_ERROR_INVALID_PARAMETER;
         *outClient = nullptr;
-        auto *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
         const std::string resolved = context->GetNativeImcOwnerId(

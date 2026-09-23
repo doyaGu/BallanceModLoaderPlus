@@ -69,7 +69,7 @@ int BML_BEHAVIOR_CALL InstallSplice(
     if (!out || !rawGraph || !rawLink || !name || !*name)
         return BML_ERROR_INVALID_PARAMETER;
     *out = 0;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -110,7 +110,7 @@ int BML_BEHAVIOR_CALL InstallTextSplice(
         !*name)
         return BML_ERROR_INVALID_PARAMETER;
     *out = 0;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -154,7 +154,7 @@ int BML_BEHAVIOR_CALL ReadPatch(BML_BehaviorSession session,
     if (!patch || !state)
         return BML_ERROR_INVALID_PARAMETER;
     *state = 0;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -200,7 +200,7 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
                                  std::uintptr_t patch) {
     if (!patch)
         return BML_ERROR_INVALID_PARAMETER;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -215,7 +215,7 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
 }
 
 int BML_BEHAVIOR_CALL ResetPatches(BML_BehaviorSession session) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -231,7 +231,7 @@ int BML_BEHAVIOR_CALL ResetPatches(BML_BehaviorSession session) {
 }
 
 int BML_BEHAVIOR_CALL RetirePatches(BML_BehaviorSession session) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -253,7 +253,7 @@ int BML_BEHAVIOR_CALL ObserveScript(BML_BehaviorSession session,
                                     void *rawScript) {
     if (!rawScript)
         return BML_ERROR_INVALID_PARAMETER;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -277,7 +277,7 @@ int BML_BEHAVIOR_CALL SubmitEdit(
         !sinkNode || !*sinkNode || !name || !*name || !out)
         return BML_ERROR_INVALID_PARAMETER;
     *out = 0;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -344,7 +344,7 @@ int BML_BEHAVIOR_CALL ReadPlan(
     *matches = 0;
     *installations = 0;
     *world = 0;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -393,7 +393,7 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
                                 std::uintptr_t plan) {
     if (!plan)
         return BML_ERROR_INVALID_PARAMETER;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -409,7 +409,7 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
 }
 
 int BML_BEHAVIOR_CALL ResetPlans(BML_BehaviorSession session) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -435,7 +435,7 @@ int BML_BEHAVIOR_CALL ReadHooks(
     std::uint32_t *afters) {
     if (!retains || !releases || !taps || !afters)
         return BML_ERROR_INVALID_PARAMETER;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
@@ -455,7 +455,7 @@ int BML_BEHAVIOR_CALL ReferenceObject(
     if (!rawObject || !reference)
         return BML_ERROR_INVALID_PARAMETER;
     *reference = {};
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
