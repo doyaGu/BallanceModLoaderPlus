@@ -62,9 +62,9 @@ Frozen does not mean deprecated. The legacy interfaces are supported, are still
 the only way to reach most of what the loader does, and are the only way to get
 at an engine object.
 
-The script side reaches four of these capabilities: `BML::Runtime`,
-`BML::Gameplay`, `BML::UI`, and `BML::Speedrun`. `BML::Scene` is
-native-only. The script `BML::Speedrun` is not the interface projected as it
+The script side exposes gameplay and UI reads, speedrun controls, and state
+and time through `ModContext`. Scene lookup is supplied by CKAngelScript.
+The script `BML::Speedrun` is not the interface projected as it
 stands: it is spelled `SetTimerVisible`, `StartTimer`, `PauseTimer`,
 `ResetTimer`, and `GetElapsedTime`, and it returns the value or nothing rather
 than a status. The script projection is written by hand and nothing checks it
@@ -81,9 +81,10 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Capability | Frozen C++ | Newer route | Which to use |
 | --- | --- | --- | --- |
 | CK context, render context, and the engine managers | `GetCKContext`, `GetRenderContext`, `GetInputManager`, `GetTimeManager`, and the rest | none | Frozen C++ only. The interface structs do not hand out engine pointers, by design: a pointer cannot be given a lifetime the other side can check. |
-| Is the game in a level, paused, playing, cheating | `IsIngame`, `IsPaused`, `IsPlaying`, `IsCheatEnabled` | `Runtime::ReadState` | Either. The facade reads all five flags at once and works from a class that is not an `IMod`. |
-| Frame time and frame count | `GetTimeManager()` and the CK clocks | `Runtime::ReadClock` | Either. |
-| Speedrun time and highscore value | `GetSRScore`, `GetHSScore` | `Runtime::ReadScore`, `Speedrun::ReadTimerState` | Either. `Score::SR` is the elapsed speedrun time in milliseconds, not a score. |
+| Game state | `IsIngame`, `IsPaused`, `IsPlaying` | none | Use the existing native getters; the loader's phase model is private. |
+| CK time and tick count | `GetTimeManager()` and the CK clocks | `Time::ReadClock` | Either. `MainTickCount` is the raw wrapping 32-bit CK counter. |
+| Speedrun elapsed time | `GetSRScore` | `Speedrun::ReadTimerState` | Either; the value is in milliseconds, not a score. |
+| Highscore value | `GetHSScore` | `Gameplay::ReadHighScore` | The latter validates Energy and reports unavailable outside an active or paused level. |
 | Start, pause, reset, or show the speedrun timer | none | `Speedrun::StartTimer`, `PauseTimer`, `ResetTimer`, `SetTimerVisible` | The interface struct only. |
 | Find an object by name | `Get3dObjectByName`, `GetGroupByName`, `GetMaterialByName`, and the rest of the family | `Scene::FindObject`, with or without a class id | Frozen C++ when you then have to touch the object with the CK SDK, since it hands back the pointer. `Scene::FindObject` hands back a `BML_ObjectRef`, which is what to use when the object is only being identified or passed on. |
 | Read an object's class, name, or transform | the CK SDK, through the pointer | `Scene::ReadObject`, `Scene::ReadEntityTransform` | Either. |
@@ -92,7 +93,7 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | HUD parts, mods menu, map menu | none | `UI::SetHUDMode`, `ShowTitle`, `ShowFPS`, `OpenModsMenu`, `CloseModsMenu`, `OpenMapMenu`, `CloseMapMenu` | The interface struct only. |
 | Add pages to your own entry in the Mods menu | none | `BML::ModMenu::Page` from `ModMenu.hpp` | `ModMenu.h` is the pure C interface; the C++ facade is one-way over it. Each registration appends one native-styled details action and routes it to a fully custom ImGui page. Version 1.0 is Native Mod only. |
 | Loader events | the `IMessageReceiver` virtuals on `IMod` | none | Handle the synchronous callback. Copy the required data into mod-owned storage if work must be deferred. |
-| Cheat mode | `EnableCheat` to set, `IsCheatEnabled` to read | `Runtime::ReadState` reads it | Read either, set through the frozen C++. |
+| Cheat mode | `EnableCheat` to set, `IsCheatEnabled` to read | `Gameplay::ReadCheatEnabled` | Read either, set through the frozen C++. |
 | Console commands | `RegisterCommand` plus an `ICommand` subclass | `BML::Command::Registration` from `Command.hpp`, backed by `bml.command` | New Native Mods should use the versioned Command interface. It copies metadata, returns an owner-scoped handle, auto-cleans before DLL unload, returns shell status directly, and passes pipeline input and output explicitly. The three `BML.h` exports remain legacy adapters only. |
 | Configuration | `IMod::GetConfig` plus `IConfig` and `IProperty` | `BML_GetConfigPropertyEditor`, `BML_SetConfigPropertyEditor`, and the choice metadata functions | Values stay on the frozen C++ interface; the additive C exports attach non-persisted Mod Menu editor metadata without changing its vtable. |
 | Timers | `AddTimer`, `AddTimerLoop` | none | Frozen C++ only. |
@@ -125,11 +126,9 @@ Three differences do show through:
   the loader can check before it resolves.
 - **Threading.** The frozen C++ interfaces are game-thread only. An interface
   struct call is a direct call into the loader on the calling thread, so nothing
-  is queued and there is nothing to wait for, which is why `Runtime::ReadState`
-  works from `OnProcess`. `BML::Gameplay`, `BML::Scene`, and `BML::UI` touch the
-  game's arrays, its objects, and the UI the loader draws, so all three answer
-  `BML_ERROR_WRONG_THREAD` when called from any other thread. `BML::Runtime` and `BML::Speedrun` do not
-  refuse another thread, but they are meant for the game thread too. Mod menu
+  is queued and there is nothing to wait for. Gameplay, Time, Command,
+  Speedrun, Scene, and UI calls answer `BML_ERROR_WRONG_THREAD` when called
+  from another thread. Mod menu
   page registration is also game-thread only, and its draw callback runs inside
   the loader's active ImGui frame. Before the
   loader has loaded its mods every one of them answers `BML_ERROR_FAIL`.

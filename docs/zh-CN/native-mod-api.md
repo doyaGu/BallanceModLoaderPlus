@@ -68,7 +68,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `Types.h`, `TypeConvert.h` | 对象引用、向量与矩阵，以及与 Virtools 类型之间的互转 |
 | `Interface.h` | Loader 交出的带版本接口结构体，以及取用它的方式 |
 | `Behavior.h`, `Behavior.hpp` | Virtools Building Block 发现、编写、执行、行为图检查与编辑 |
-| `Command.h/.hpp`, `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带 C++ 封装 |
+| `Command.h/.hpp`, `Time.h/.hpp`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带 C++ 封装 |
 | `ModMenu.h`, `ModMenu.hpp` | 纯 C 的 Mods 菜单页面接口，以及其强类型 C++ 编写层 |
 | `Imc.h`, `Imc.hpp`, `ImcWire.hpp` | IMC C/C++ 运行时与线格式 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |
@@ -272,10 +272,10 @@ void MyMod::OnUnload() {
 `BML_GetInterface` 按 id 与主版本号取用。每个都有自己在 `include/BML` 下的头文件，
 每个头文件里还声明了一层 inline C++ 命名空间，把取用与参数检查折进去：
 
-- `BML::Runtime`：运行状态、时钟和分数。
+- `BML::Time`：CK 时间与原始帧计数器。
 - `BML::Command`：受所有者约束的命令注册、发现和 shell 执行。
 - `BML::Scene`：对象信息、实体变换和按名查找。
-- `BML::Gameplay`：关卡、能量、目录、检查点和重置点。
+- `BML::Gameplay`：作弊状态、highscore、关卡、能量、目录、检查点和重置点。
 - `BML::UI`：消息板、Mod/地图菜单和 HUD。
 - `BML::Speedrun`：共享 Speedrun 计时器。
 - `BML::Behavior`：Virtools Building Block 发现、配置后的 Run、自持有

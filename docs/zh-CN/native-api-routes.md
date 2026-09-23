@@ -43,8 +43,8 @@ Mod 间普通服务走 IMC；只有必须无编码传递
 冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
 是唯一能拿到引擎对象的途径。
 
-这些能力在脚本侧有四个够得着：`BML::Runtime`、`BML::Gameplay`、`BML::UI`、
-`BML::Speedrun`。只有 `BML::Scene` 只在原生侧。脚本侧的
+脚本侧通过 `BML::Gameplay`、`BML::UI`、`BML::Speedrun` 使用相应能力，
+状态和时钟由 `ModContext` 提供；场景查找由 CKAngelScript 提供。脚本侧的
 `BML::Speedrun` 目前并不是原接口的投射：它的写法是 `SetTimerVisible`、
 `StartTimer`、`PauseTimer`、`ResetTimer`、`GetElapsedTime`，返回的是值或者什么都不
 返回，而不是状态码。脚本侧的投射是手写的，与 interface struct 之间没有任何校验，
@@ -59,9 +59,10 @@ Mod 间普通服务走 IMC；只有必须无编码传递
 | 能力 | 旧式 C++ | 新路线 | 选哪个 |
 | --- | --- | --- | --- |
 | CK 上下文、渲染上下文与各引擎管理器 | `GetCKContext`、`GetRenderContext`、`GetInputManager`、`GetTimeManager` 等 | 无 | 只有旧式 C++。interface struct 有意不交出引擎指针：指针无法带上一个对方能校验的生命期。 |
-| 是否在关卡内、是否暂停、是否运行、是否开作弊 | `IsIngame`、`IsPaused`、`IsPlaying`、`IsCheatEnabled` | `Runtime::ReadState` | 两者皆可。门面一次读回五个标志，且不要求调用方是 `IMod`。 |
-| 帧时间与帧计数 | `GetTimeManager()` 与 CK 时钟 | `Runtime::ReadClock` | 两者皆可。 |
-| 竞速用时与 highscore 数值 | `GetSRScore`、`GetHSScore` | `Runtime::ReadScore`、`Speedrun::ReadTimerState` | 两者皆可。`Score::SR` 是以毫秒计的竞速用时，不是分数。 |
+| 游戏状态 | `IsIngame`、`IsPaused`、`IsPlaying` | 无 | 使用现有原生状态查询；Loader 的阶段机不公开。 |
+| CK 时间与帧计数 | `GetTimeManager()` 与 CK 时钟 | `Time::ReadClock` | 两者皆可。`MainTickCount` 是原始的 32 位 CK 计数器，会回绕。 |
+| 竞速用时 | `GetSRScore` | `Speedrun::ReadTimerState` | 两者皆可；单位为毫秒，不是分数。 |
+| highscore 数值 | `GetHSScore` | `Gameplay::ReadHighScore` | 后者校验 Energy，并在不处于活动或暂停关卡时返回不可用。 |
 | 启动、暂停、重置或显示竞速计时器 | 无 | `Speedrun::StartTimer`、`PauseTimer`、`ResetTimer`、`SetTimerVisible` | 只有 interface struct。 |
 | 按名字查找对象 | `Get3dObjectByName`、`GetGroupByName`、`GetMaterialByName` 等一整族 | `Scene::FindObject`，可带 class id | 拿到之后还要用 CK SDK 操作它，就走旧式 C++，因为它直接给出指针。`Scene::FindObject` 给出的是 `BML_ObjectRef`，适合只需要标识或转手传递的场合。 |
 | 读取对象的类、名字或变换 | 经指针使用 CK SDK | `Scene::ReadObject`、`Scene::ReadEntityTransform` | 两者皆可。 |
@@ -70,7 +71,7 @@ Mod 间普通服务走 IMC；只有必须无编码传递
 | HUD 各部分、Mod 菜单、地图菜单 | 无 | `UI::SetHUDMode`、`ShowTitle`、`ShowFPS`、`OpenModsMenu`、`CloseModsMenu`、`OpenMapMenu`、`CloseMapMenu` | 只有 interface struct。 |
 | 在 Mods 菜单中扩展自己的 Mod 详情页 | 无 | `ModMenu.hpp` 的 `BML::ModMenu::Page` | `ModMenu.h` 是纯 C 接口，C++ 封装单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。 |
 | Loader 事件 | `IMod` 上的 `IMessageReceiver` 虚函数 | 无 | 处理同步回调；需要延后执行时，把必要数据复制到 Mod 自己拥有的存储中。 |
-| 作弊模式 | 写用 `EnableCheat`，读用 `IsCheatEnabled` | `Runtime::ReadState` 可读 | 读两者皆可，写走旧式 C++。 |
+| 作弊模式 | 写用 `EnableCheat`，读用 `IsCheatEnabled` | `Gameplay::ReadCheatEnabled` | 读两者皆可，写走旧式 C++。 |
 | 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | `Command.hpp` 的 `BML::Command::Registration`，底层为 `bml.command` | 新 Native Mod 使用版本化 Command 接口。它复制元数据、返回受所有者约束的句柄、在 DLL 卸载前自动清理，并显式传入管道输入与输出、直接返回 shell 状态。`BML.h` 的三个导出仅作为旧接口适配层保留。 |
 | 配置 | `IMod::GetConfig` 加 `IConfig`、`IProperty` | `BML_GetConfigPropertyEditor`、`BML_SetConfigPropertyEditor` 与候选值元数据函数 | 值仍走冻结的 C++ 接口；追加的 C 导出只附加不落盘的 Mod 菜单编辑器元数据，不改虚表。 |
 | 定时器 | `AddTimer`、`AddTimerLoop` | 无 | 只有旧式 C++。 |
@@ -98,11 +99,9 @@ Mod 间普通服务走 IMC；只有必须无编码传递
   在游戏线程上使用。门面给的是值：一个普通结构体，或者一个 Loader 在解析前能先
   校验的 `BML_ObjectRef`。
 - **线程。** 旧式 C++ 接口只能在游戏线程上用。interface struct 的调用是在调用线程上
-  直接进入 Loader，不入队、也没有什么要等，这就是 `Runtime::ReadState` 能在
-  `OnProcess` 里用的原因。`BML::Gameplay`、`BML::Scene`、`BML::UI` 触碰的是游戏的
-  数组、游戏对象和 Loader 自己绘制的界面，因此这三个从别的线程调用一律返回
-  `BML_ERROR_WRONG_THREAD`。`BML::Runtime` 和 `BML::Speedrun`
-  不拒绝其他线程，但同样是给游戏线程用的。Mod 菜单页面的注册也只能在游戏线程
+  直接进入 Loader，不入队、也没有什么要等。Gameplay、Time、Command、
+  Speedrun、Scene 和 UI 从别的线程调用均返回 `BML_ERROR_WRONG_THREAD`。
+  Mod 菜单页面的注册也只能在游戏线程
   进行，其绘制回调运行于 Loader 已打开的 ImGui 帧内。在 Loader 加载完 Mod 之前，它们全都返回
   `BML_ERROR_FAIL`。
 

@@ -72,7 +72,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | `Types.h`, `TypeConvert.h` | Object references, vectors, and matrices, plus conversions to and from the Virtools types |
 | `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
 | `Behavior.h`, `Behavior.hpp` | Virtools Building Block discovery, authoring, execution, graph inspection, and editing |
-| `Command.h/.hpp`, `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with C++ facades |
+| `Command.h/.hpp`, `Time.h/.hpp`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with C++ facades |
 | `ModMenu.h`, `ModMenu.hpp` | Pure C Mods-menu page interface and its type-safe C++ authoring layer |
 | `Imc.h`, `Imc.hpp`, `ImcWire.hpp` | IMC C/C++ runtime and wire format |
 | `Bui.h` | Ballance-style ImGui widgets |
@@ -308,10 +308,10 @@ versioned interface struct, fetched by id and major version through
 also declares an inline C++ namespace that folds the lookup and the argument
 checks in:
 
-- `BML::Runtime` for runtime state, clock, and scores;
+- `BML::Time` for CK time and the raw tick counter;
 - `BML::Command` for owner-scoped command registration, discovery, and shell execution;
 - `BML::Scene` for object information, transforms, and named lookup;
-- `BML::Gameplay` for level, energy, catalog, checkpoint, and reset data;
+- `BML::Gameplay` for cheat status, highscore, level, energy, catalog, checkpoint, and reset data;
 - `BML::UI` for the message board, mod/map menus, and HUD;
 - `BML::Speedrun` for the shared speedrun timer;
 - `BML::Behavior` for Virtools Building Block discovery, configured Runs,
