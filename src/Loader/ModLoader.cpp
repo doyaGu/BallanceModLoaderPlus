@@ -114,7 +114,7 @@ ModLoader::ModLoader(ModContext &context) : m_Context(context) {
 }
 
 ModLoader::~ModLoader() {
-    Stop();
+    (void) Stop();
 }
 
 bool ModLoader::Start() {
@@ -123,58 +123,81 @@ bool ModLoader::Start() {
     if (!m_Context.IsInited() || !m_Context.IsMainThread())
         return false;
     if (!m_Mods.empty()) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("ModLoader cannot start while registrations from an earlier run remain.");
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("ModLoader cannot start while registrations from an earlier run remain.");
         return false;
     }
 
     m_ShuttingDown = false;
 
     if ((!AreModsLoaded() && !LoadMods()) || !InitMods()) {
-        Stop();
+        (void) Stop();
         return false;
     }
     return true;
 }
 
-void ModLoader::Stop() {
+bool ModLoader::Stop() {
     if (!m_Context.IsMainThread()) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("ModLoader::Stop must run on the game thread.");
-        return;
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("ModLoader::Stop must run on the game thread.");
+        return false;
     }
     if (m_ModInvocationGate.IsCallActiveOnCurrentThread()) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("ModLoader::Stop cannot unload Mods from a Mod callback.");
-        return;
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("ModLoader::Stop cannot unload Mods from a Mod callback.");
+        return false;
     }
 
-    if (!m_ModsInited && !m_ShuttingDown &&
-        (m_ModsLoaded || !m_Mods.empty() || m_BMLMod || m_BallTypeMod)) {
-        RollbackModActivation();
+    try {
+        if (!m_ModsInited && !m_ShuttingDown &&
+            (m_ModsLoaded || !m_Mods.empty() || m_BMLMod || m_BallTypeMod)) {
+            RollbackModActivation();
+        }
+        ShutdownMods();
+        m_ShuttingDown = true;
+        UnloadMods();
+    } catch (const std::exception &e) {
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("ModLoader::Stop failed: %s", e.what());
+        return false;
+    } catch (...) {
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("ModLoader::Stop failed with an unknown exception.");
+        return false;
     }
-    ShutdownMods();
+    return !m_ModsLoaded && !m_ModsInited && m_Mods.empty() &&
+           m_RejectedNativeDlls.empty() && !m_BMLMod && !m_BallTypeMod;
+}
+
+void ModLoader::Abandon() noexcept {
     m_ShuttingDown = true;
-    UnloadMods();
+#if BML_ENABLE_ANGELSCRIPT
+    try {
+        if (m_ScriptHotReload)
+            m_ScriptHotReload->Stop();
+    } catch (...) {
+    }
+#endif
 }
 
 void ModLoader::LogCallbackFailure(IMod *mod, const char *reason) const {
-    if (!m_Context.m_Logger)
+    if (!m_Context.GetLogger())
         return;
     if (reason)
-        m_Context.m_Logger->Error("Exception in mod %s callback: %s", mod->GetID(), reason);
+        m_Context.GetLogger()->Error("Exception in mod %s callback: %s", mod->GetID(), reason);
     else
-        m_Context.m_Logger->Error("Unknown exception in mod %s callback", mod->GetID());
+        m_Context.GetLogger()->Error("Unknown exception in mod %s callback", mod->GetID());
 }
 
 void ModLoader::LogImGuiRecovery(IMod *mod) const {
-    if (m_Context.m_Logger)
-        m_Context.m_Logger->Warn("Recovered unbalanced ImGui state after mod %s callback", mod->GetID());
+    if (m_Context.GetLogger())
+        m_Context.GetLogger()->Warn("Recovered unbalanced ImGui state after mod %s callback", mod->GetID());
 }
 
 void ModLoader::LogMessage(const char *message) const {
-    if (m_Context.m_Logger)
-        m_Context.m_Logger->Info("On Message %s", message);
+    if (m_Context.GetLogger())
+        m_Context.GetLogger()->Info("On Message %s", message);
 }
 
 void ModLoader::DispatchConfigChange(IMod *mod, const char *category, const char *key, IProperty *property) {
@@ -182,11 +205,11 @@ void ModLoader::DispatchConfigChange(IMod *mod, const char *category, const char
         ModInvocation invocation(this, mod);
         mod->OnModifyConfig(category, key, property);
     } catch (const std::exception &e) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("Exception in mod %s config callback: %s", mod->GetID(), e.what());
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("Exception in mod %s config callback: %s", mod->GetID(), e.what());
     } catch (...) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("Unknown exception in mod %s config callback", mod->GetID());
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("Unknown exception in mod %s config callback", mod->GetID());
     }
 }
 
@@ -241,10 +264,10 @@ bool ModLoader::LoadMods() {
             modSet.emplace(id);
         }
 
-        std::wstring path = m_Context.m_LoaderDir + L"\\Mods";
+        std::wstring path = std::wstring(m_Context.GetDirectory(BML_DIR_LOADER)) + L"\\Mods";
         if (utils::DirectoryExistsW(path)) {
 #if BML_ENABLE_ANGELSCRIPT
-            CleanupStaleScriptReloadArtifacts(path, m_Context.m_Logger);
+            CleanupStaleScriptReloadArtifacts(path, m_Context.GetLogger());
 #endif
             std::vector<std::wstring> modPaths;
             ExploreMods(path, modPaths);
@@ -254,7 +277,7 @@ bool ModLoader::LoadMods() {
                 if (mod) {
                     const char *id = mod->GetID();
                     if (modSet.find(id) != modSet.end()) {
-                        m_Context.m_Logger->Warn("Duplicate Mod: %s", id);
+                        m_Context.GetLogger()->Warn("Duplicate Mod: %s", id);
                         UnregisterMod(mod);
                         continue;
                     }
@@ -276,7 +299,7 @@ bool ModLoader::LoadMods() {
                     if (mod) {
                         const char *id = mod->GetID();
                         if (modSet.find(id) != modSet.end()) {
-                            m_Context.m_Logger->Warn("Duplicate Mod: %s", id);
+                            m_Context.GetLogger()->Warn("Duplicate Mod: %s", id);
                             UnregisterMod(mod);
                             continue;
                         }
@@ -294,26 +317,27 @@ bool ModLoader::LoadMods() {
                 && scriptModCandidates.empty()
 #endif
             ) {
-                m_Context.m_Logger->Info("No mod is found.");
+                m_Context.GetLogger()->Info("No mod is found.");
             }
         }
 
         m_ModsLoaded = true;
         return true;
     } catch (const std::exception &e) {
-        m_Context.m_Logger->Error("Exception during mod loading: %s", e.what());
+        m_Context.GetLogger()->Error("Exception during mod loading: %s", e.what());
     } catch (...) {
-        m_Context.m_Logger->Error("Unknown exception during mod loading.");
+        m_Context.GetLogger()->Error("Unknown exception during mod loading.");
     }
     return false;
 }
 
 void ModLoader::UnloadMods() {
-    if (!m_Context.IsInited() && m_Mods.empty() && !m_BMLMod && !m_BallTypeMod)
+    if (!m_Context.IsInited() && m_Mods.empty() && m_RejectedNativeDlls.empty() &&
+        !m_BMLMod && !m_BallTypeMod)
         return;
     if (!m_Context.IsMainThread()) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("UnloadMods must run on the game thread.");
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("UnloadMods must run on the game thread.");
         return;
     }
 
@@ -339,9 +363,17 @@ void ModLoader::UnloadMods() {
             UnloadMod(*rit);
     }
 
-    if (!m_Mods.empty()) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("ModLoader stopped with %zu registered Mod(s); their instances and DLLs remain owned for a safe retry.", m_Mods.size());
+    for (auto it = m_RejectedNativeDlls.begin(); it != m_RejectedNativeDlls.end();) {
+        if (m_Context.UnregisterNativeCommands(it->get()))
+            it = m_RejectedNativeDlls.erase(it);
+        else
+            ++it;
+    }
+
+    if (!m_Mods.empty() || !m_RejectedNativeDlls.empty()) {
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("ModLoader stopped with %zu registered Mod(s) and %zu rejected DLL(s); their code remains loaded for a safe retry.",
+                                      m_Mods.size(), m_RejectedNativeDlls.size());
         return;
     }
 
@@ -372,8 +404,8 @@ bool ModLoader::InitMods() {
     try {
         m_ActiveMods.reserve(m_Mods.size());
     } catch (...) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("Cannot initialize Mods: failed to prepare activation state.");
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("Cannot initialize Mods: failed to prepare activation state.");
         return false;
     }
 
@@ -384,12 +416,12 @@ bool ModLoader::InitMods() {
 
         for (IMod *mod : m_Mods) {
             activatingModId = mod->GetID();
-            m_Context.m_Logger->Info("Loading Mod %s[%s] v%s by %s",
+            m_Context.GetLogger()->Info("Loading Mod %s[%s] v%s by %s",
                            activatingModId, mod->GetName(), mod->GetVersion(), mod->GetAuthor());
 
             std::string dependencyDiagnostic;
             if (EvaluateActivationDependencies(mod, &dependencyDiagnostic) == 0) {
-                m_Context.m_Logger->Error("Cannot initialize Mod %s: %s",
+                m_Context.GetLogger()->Error("Cannot initialize Mod %s: %s",
                                 activatingModId,
                                 dependencyDiagnostic.empty()
                                     ? "dependencies are not satisfied."
@@ -428,11 +460,11 @@ bool ModLoader::InitMods() {
             }
         }
         if (scriptLoadedCount > 0 || scriptFailedCount > 0) {
-            m_Context.m_Logger->Info("BML script mod summary: loaded=%d failed=%d",
+            m_Context.GetLogger()->Info("BML script mod summary: loaded=%d failed=%d",
                            scriptLoadedCount,
                            scriptFailedCount);
             if (firstFailedScript) {
-                m_Context.m_Logger->Warn("First failed script mod %s: %s",
+                m_Context.GetLogger()->Warn("First failed script mod %s: %s",
                                firstFailedScript->GetID(),
                                firstFailedScript->GetLastDiagnostic().c_str());
                 std::string message = "[script] load failed: ";
@@ -456,20 +488,20 @@ bool ModLoader::InitMods() {
         m_ModsInited = true;
         return true;
     } catch (const std::exception &e) {
-        if (m_Context.m_Logger) {
+        if (m_Context.GetLogger()) {
             if (activatingModId)
-                m_Context.m_Logger->Error("Cannot initialize Mod %s: activation raised an exception: %s",
+                m_Context.GetLogger()->Error("Cannot initialize Mod %s: activation raised an exception: %s",
                                 activatingModId, e.what());
             else
-                m_Context.m_Logger->Error("Cannot complete Mod initialization: %s", e.what());
+                m_Context.GetLogger()->Error("Cannot complete Mod initialization: %s", e.what());
         }
     } catch (...) {
-        if (m_Context.m_Logger) {
+        if (m_Context.GetLogger()) {
             if (activatingModId)
-                m_Context.m_Logger->Error("Cannot initialize Mod %s: activation raised an unknown exception.",
+                m_Context.GetLogger()->Error("Cannot initialize Mod %s: activation raised an unknown exception.",
                                 activatingModId);
             else
-                m_Context.m_Logger->Error("Cannot complete Mod initialization: unknown exception.");
+                m_Context.GetLogger()->Error("Cannot complete Mod initialization: unknown exception.");
         }
     }
 
@@ -481,8 +513,8 @@ void ModLoader::ShutdownMods() {
     if (!m_Context.IsInited() || !AreModsLoaded() || !AreModsInited())
         return;
     if (!m_Context.IsMainThread()) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("ShutdownMods must run on the game thread.");
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("ShutdownMods must run on the game thread.");
         return;
     }
 
@@ -521,19 +553,19 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
             ModInvocation invocation(this, mod);
             mod->OnUnload();
         } catch (const std::exception &e) {
-            if (m_Context.m_Logger)
-                m_Context.m_Logger->Error("Exception in a Mod unload callback: %s", e.what());
+            if (m_Context.GetLogger())
+                m_Context.GetLogger()->Error("Exception in a Mod unload callback: %s", e.what());
         } catch (...) {
-            if (m_Context.m_Logger)
-                m_Context.m_Logger->Error("Unknown exception in a Mod unload callback.");
+            if (m_Context.GetLogger())
+                m_Context.GetLogger()->Error("Unknown exception in a Mod unload callback.");
         }
         try {
             const char *ownerId = mod ? mod->GetID() : nullptr;
             if (ownerId && ownerId[0] != '\0')
                 m_Context.RetireModBehaviorState(ownerId);
         } catch (...) {
-            if (m_Context.m_Logger)
-                m_Context.m_Logger->Error("Failed to resolve a Mod id during Behavior cleanup.");
+            if (m_Context.GetLogger())
+                m_Context.GetLogger()->Error("Failed to resolve a Mod id during Behavior cleanup.");
         }
     }
 
@@ -549,21 +581,21 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
             if (ownerId && ownerId[0] != '\0')
                 m_Context.CleanupModState(ownerId);
         } catch (...) {
-            if (m_Context.m_Logger)
-                m_Context.m_Logger->Error("Failed to resolve a Mod id during owner-state cleanup.");
+            if (m_Context.GetLogger())
+                m_Context.GetLogger()->Error("Failed to resolve a Mod id during owner-state cleanup.");
         }
     }
 
     try {
         Timer::CancelAll();
-        if (m_Context.m_TimeManager) {
-            Timer::ProcessAll(m_Context.m_TimeManager->GetMainTickCount(), m_Context.m_TimeManager->GetAbsoluteTime() / 1000.0f);
+        if (CKTimeManager *timeManager = m_Context.GetTimeManager()) {
+            Timer::ProcessAll(timeManager->GetMainTickCount(), timeManager->GetAbsoluteTime() / 1000.0f);
         } else {
             Timer::ProcessAll(0, 0.0f);
         }
     } catch (...) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("Failed to clean Mod timers during shutdown.");
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("Failed to clean Mod timers during shutdown.");
     }
 
     {
@@ -592,8 +624,8 @@ void ModLoader::RollbackModActivation() {
             if (ownerId && ownerId[0] != '\0')
                 m_Context.CleanupModState(ownerId);
         } catch (...) {
-            if (m_Context.m_Logger)
-                m_Context.m_Logger->Error("Failed to resolve a Mod id during activation rollback.");
+            if (m_Context.GetLogger())
+                m_Context.GetLogger()->Error("Failed to resolve a Mod id during activation rollback.");
         }
     }
     m_ModsInited = false;
@@ -883,17 +915,17 @@ size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring
             const std::wstring ext = utils::GetExtensionW(fullPath);
 
             if (_wcsicmp(ext.c_str(), L".zip") == 0) {
-                const std::wstring dest = BuildZipExtractionDirectory(m_Context.m_TempDir, fullPath);
+                const std::wstring dest = BuildZipExtractionDirectory(m_Context.GetDirectory(BML_DIR_TEMP), fullPath);
 
                 if (dest.empty() || !PrepareFreshDirectory(dest)) {
-                    m_Context.m_Logger->Error("Failed to create temp extraction directory: %s", utils::Utf16ToAnsi(dest).c_str());
+                    m_Context.GetLogger()->Error("Failed to create temp extraction directory: %s", utils::Utf16ToAnsi(dest).c_str());
                     continue;
                 }
 
                 if (utils::ExtractZipW(fullPath, dest)) {
                     ExploreMods(dest, mods);
                 } else {
-                    m_Context.m_Logger->Error("Failed to extract zip file: %s", utils::Utf16ToAnsi(fullPath).c_str());
+                    m_Context.GetLogger()->Error("Failed to extract zip file: %s", utils::Utf16ToAnsi(fullPath).c_str());
                 }
             } else if (_wcsicmp(ext.c_str(), L".bmodp") == 0) {
                 mods.push_back(fullPath);
@@ -925,14 +957,14 @@ size_t ModLoader::ExploreScriptMods(const std::wstring &path, std::vector<BML::S
             continue;
 
         const std::wstring zipPath = path + L"\\" + fileinfo.name;
-        const std::wstring dest = BuildZipExtractionDirectory(m_Context.m_TempDir, zipPath);
+        const std::wstring dest = BuildZipExtractionDirectory(m_Context.GetDirectory(BML_DIR_TEMP), zipPath);
         if (dest.empty() || !PrepareFreshDirectory(dest)) {
-            m_Context.m_Logger->Error("Failed to create script package extraction directory: %s", utils::Utf16ToAnsi(dest).c_str());
+            m_Context.GetLogger()->Error("Failed to create script package extraction directory: %s", utils::Utf16ToAnsi(dest).c_str());
             continue;
         }
 
         if (!utils::ExtractZipW(zipPath, dest)) {
-            m_Context.m_Logger->Error("Failed to extract script package zip: %s", utils::Utf16ToAnsi(zipPath).c_str());
+            m_Context.GetLogger()->Error("Failed to extract script package zip: %s", utils::Utf16ToAnsi(zipPath).c_str());
             continue;
         }
 
@@ -986,7 +1018,7 @@ std::shared_ptr<void> ModLoader::LoadLib(const wchar_t *path) {
     if (!dllHandle) {
         const DWORD error = ::GetLastError();
         const std::string message = std::system_category().message(static_cast<int>(error));
-        m_Context.m_Logger->Error("Failed to load native Mod DLL %s: Windows error %lu (%s).",
+        m_Context.GetLogger()->Error("Failed to load native Mod DLL %s: Windows error %lu (%s).",
                         utils::Utf16ToAnsi(path).c_str(),
                         static_cast<unsigned long>(error),
                         message.c_str());
@@ -1024,8 +1056,8 @@ void ModLoader::DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabe
         auto func = reinterpret_cast<BMLExitFunc>(
             ::GetProcAddress(static_cast<HMODULE>(dllHandle), EXIT_SYMBOL));
         if (!func) {
-            if (m_Context.m_Logger) {
-                m_Context.m_Logger->Warn(
+            if (m_Context.GetLogger()) {
+                m_Context.GetLogger()->Warn(
                     "Native Mod %s does not export %s; its instance cannot be destroyed safely.",
                     modLabel ? modLabel : "<unknown>", EXIT_SYMBOL);
             }
@@ -1035,18 +1067,28 @@ void ModLoader::DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabe
         try {
             func(mod);
         } catch (const std::exception &e) {
-            if (m_Context.m_Logger) {
-                m_Context.m_Logger->Error("Exception in %s for native Mod %s: %s",
+            if (m_Context.GetLogger()) {
+                m_Context.GetLogger()->Error("Exception in %s for native Mod %s: %s",
                                 EXIT_SYMBOL, modLabel ? modLabel : "<unknown>", e.what());
             }
         } catch (...) {
-            if (m_Context.m_Logger) {
-                m_Context.m_Logger->Error("Unknown exception in %s for native Mod %s.",
+            if (m_Context.GetLogger()) {
+                m_Context.GetLogger()->Error("Unknown exception in %s for native Mod %s.",
                                 EXIT_SYMBOL, modLabel ? modLabel : "<unknown>");
             }
         }
     } catch (...) {
         // Cleanup must not prevent the loader from releasing the DLL handle.
+    }
+}
+
+void ModLoader::CleanupRejectedNativeEntry(const std::shared_ptr<void> &dllHandle) {
+    if (!m_Context.UnregisterNativeCommands(dllHandle.get())) {
+        // LoadMod reserves this slot before calling BMLEntry. Keep the DLL
+        // alive until command callbacks can be detached on a later Stop.
+        m_RejectedNativeDlls.push_back(dllHandle);
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("Cannot detach commands from a rejected native Mod DLL yet; retaining the DLL.");
     }
 }
 
@@ -1062,32 +1104,48 @@ IMod *ModLoader::LoadMod(const std::wstring &path) {
 
     auto func = reinterpret_cast<BMLEntryFunc>(::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), ENTRY_SYMBOL));
     if (!func) {
-        m_Context.m_Logger->Error("Native Mod DLL %s does not export the required symbol: %s.",
+        m_Context.GetLogger()->Error("Native Mod DLL %s does not export the required symbol: %s.",
                         modPath.c_str(), ENTRY_SYMBOL);
         return nullptr;
     }
+
+    m_RejectedNativeDlls.reserve(m_RejectedNativeDlls.size() + 1);
 
     auto *bml = static_cast<IBML *>(&m_Context);
     IMod *mod = nullptr;
     try {
         mod = func(bml);
     } catch (const std::exception &e) {
-        m_Context.m_Logger->Error("Exception in %s for native Mod DLL %s: %s",
+        m_Context.GetLogger()->Error("Exception in %s for native Mod DLL %s: %s",
                         ENTRY_SYMBOL, modPath.c_str(), e.what());
+        CleanupRejectedNativeEntry(dllHandle);
         return nullptr;
     } catch (...) {
-        m_Context.m_Logger->Error("Unknown exception in %s for native Mod DLL %s.",
+        m_Context.GetLogger()->Error("Unknown exception in %s for native Mod DLL %s.",
                         ENTRY_SYMBOL, modPath.c_str());
+        CleanupRejectedNativeEntry(dllHandle);
         return nullptr;
     }
 
     if (!mod) {
-        m_Context.m_Logger->Error("%s returned null for native Mod DLL %s; the DLL will be unloaded.",
+        m_Context.GetLogger()->Error("%s returned null for native Mod DLL %s; the DLL will be unloaded.",
                         ENTRY_SYMBOL, modPath.c_str());
+        CleanupRejectedNativeEntry(dllHandle);
         return nullptr;
     }
 
-    if (!RegisterMod(mod, dllHandle)) {
+    bool registered = false;
+    try {
+        registered = RegisterMod(mod, dllHandle);
+    } catch (const std::exception &e) {
+        m_Context.GetLogger()->Error("Exception while registering native Mod DLL %s: %s",
+                                   modPath.c_str(), e.what());
+    } catch (...) {
+        m_Context.GetLogger()->Error("Unknown exception while registering native Mod DLL %s.",
+                                   modPath.c_str());
+    }
+    if (!registered) {
+        CleanupRejectedNativeEntry(dllHandle);
         if (Config *config = m_Context.GetConfig(mod))
             m_Context.RemoveConfig(config);
         DestroyNativeMod(dllHandle.get(), mod, modPath.c_str());
@@ -1102,7 +1160,7 @@ IMod *ModLoader::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
     BML::ScriptModLoadResult loadResult = BML::LoadScriptMod(&m_Context, m_Context.GetCKContext(), candidate);
     auto &scriptMod = loadResult.Mod;
     if (!scriptMod) {
-        m_Context.m_Logger->Error("Script Mod could not be loaded due to allocation failure.");
+        m_Context.GetLogger()->Error("Script Mod could not be loaded due to allocation failure.");
         return nullptr;
     }
 
@@ -1428,8 +1486,8 @@ void ModLoader::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
                                                    const std::string &currentId,
                                                    const BML::ScriptModDefinition &oldDefinition) {
     if (m_ModInvocationGate.IsCallActiveOnCurrentThread()) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("Script mod failed-load recovery cannot restore owners during a Mod callback.");
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("Script mod failed-load recovery cannot restore owners during a Mod callback.");
         return;
     }
     auto invocationLock = m_ModInvocationGate.LockMutation();
@@ -1448,8 +1506,8 @@ void ModLoader::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
             return;
     }
     if (changedId && !m_Context.RegisterModOwner(oldDefinition.Id)) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("Script mod failed-load recovery could not restore owner %s.",
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("Script mod failed-load recovery could not restore owner %s.",
                                       oldDefinition.Id.c_str());
         return;
     }
@@ -1477,8 +1535,8 @@ void ModLoader::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
     if (!restored) {
         if (changedId)
             m_Context.RetireFailedModOwner(oldDefinition.Id);
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("Script mod failed-load recovery could not restore its registration.");
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("Script mod failed-load recovery could not restore its registration.");
         return;
     }
 
@@ -1492,8 +1550,8 @@ void ModLoader::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
 
 bool ModLoader::UnloadMod(const std::string &id) {
     if (!m_Context.IsMainThread()) {
-        if (m_Context.m_Logger)
-            m_Context.m_Logger->Error("UnloadMod must run on the game thread.");
+        if (m_Context.GetLogger())
+            m_Context.GetLogger()->Error("UnloadMod must run on the game thread.");
         return false;
     }
     IMod *mod = nullptr;
@@ -1505,7 +1563,7 @@ bool ModLoader::UnloadMod(const std::string &id) {
     }
 
     if (!UnregisterMod(mod)) {
-        m_Context.m_Logger->Error("Failed to unload mod %s.", id.c_str());
+        m_Context.GetLogger()->Error("Failed to unload mod %s.", id.c_str());
         return false;
     }
 
@@ -1524,7 +1582,7 @@ bool ModLoader::RegisterBuiltinMods() {
 bool ModLoader::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
     // Allow registering built-in mods that don't come from a DLL (dllHandle can be null).
     if (!mod) {
-        m_Context.m_Logger->Error("Mod registration failed: the Mod pointer is null.");
+        m_Context.GetLogger()->Error("Mod registration failed: the Mod pointer is null.");
         return false;
     }
 
@@ -1532,7 +1590,7 @@ bool ModLoader::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
     try {
         const char *reportedId = mod->GetID();
         if (!reportedId || !*reportedId) {
-            m_Context.m_Logger->Error("Mod registration failed: GetID() returned an empty id.");
+            m_Context.GetLogger()->Error("Mod registration failed: GetID() returned an empty id.");
             return false;
         }
         modId = reportedId;
@@ -1540,33 +1598,33 @@ bool ModLoader::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
         BMLVersion curVer;
         BMLVersion reqVer = mod->GetBMLVersion();
         if (curVer < reqVer) {
-            m_Context.m_Logger->Warn("Mod %s[%s] requires BML %d.%d.%d", modId.c_str(), mod->GetName(),
+            m_Context.GetLogger()->Warn("Mod %s[%s] requires BML %d.%d.%d", modId.c_str(), mod->GetName(),
                            reqVer.major, reqVer.minor, reqVer.patch);
             return false;
         }
     } catch (const std::exception &e) {
-        m_Context.m_Logger->Error("Mod registration failed for %s: %s",
+        m_Context.GetLogger()->Error("Mod registration failed for %s: %s",
                         modId.empty() ? "<unknown>" : modId.c_str(), e.what());
         return false;
     } catch (...) {
-        m_Context.m_Logger->Error("Mod registration failed for %s: unknown exception.",
+        m_Context.GetLogger()->Error("Mod registration failed for %s: unknown exception.",
                         modId.empty() ? "<unknown>" : modId.c_str());
         return false;
     }
 
     if (m_ModInvocationGate.IsCallActiveOnCurrentThread()) {
-        m_Context.m_Logger->Error("Mod %s cannot be registered from an active Mod callback.", modId.c_str());
+        m_Context.GetLogger()->Error("Mod %s cannot be registered from an active Mod callback.", modId.c_str());
         return false;
     }
     auto invocationLock = m_ModInvocationGate.LockMutation();
     {
         std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
         if (m_ModIndex.find(modId) != m_ModIndex.end()) {
-            m_Context.m_Logger->Error("Mod registration failed: duplicate id %s.", modId.c_str());
+            m_Context.GetLogger()->Error("Mod registration failed: duplicate id %s.", modId.c_str());
             return false;
         }
         if (std::find(m_Mods.begin(), m_Mods.end(), mod) != m_Mods.end()) {
-            m_Context.m_Logger->Error("Mod registration failed: the Mod pointer is already registered.");
+            m_Context.GetLogger()->Error("Mod registration failed: the Mod pointer is already registered.");
             return false;
         }
     }
@@ -1637,13 +1695,13 @@ bool ModLoader::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
         try {
             std::rethrow_exception(registryException);
         } catch (const std::exception &e) {
-            m_Context.m_Logger->Error("Mod registration failed for %s: %s", modId.c_str(), e.what());
+            m_Context.GetLogger()->Error("Mod registration failed for %s: %s", modId.c_str(), e.what());
         } catch (...) {
-            m_Context.m_Logger->Error("Mod registration failed for %s: unknown registry exception.",
+            m_Context.GetLogger()->Error("Mod registration failed for %s: unknown registry exception.",
                             modId.c_str());
         }
     } else {
-        m_Context.m_Logger->Error("Mod registration failed for %s: %s.", modId.c_str(),
+        m_Context.GetLogger()->Error("Mod registration failed for %s: %s.", modId.c_str(),
                         registryError ? registryError : "registry update failed");
     }
     return false;
@@ -1745,25 +1803,7 @@ bool ModLoader::UnregisterMod(IMod *mod) {
                 return false;
             modIdCopy = id->first;
         }
-        const BML::Behavior::Internal::Status edits =
-            m_Context.RetireBehaviorEdits(modIdCopy);
-        if (!edits) {
-            if (m_Context.m_Logger)
-                m_Context.m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
-                                modIdCopy.c_str(), edits.Message.c_str());
-            return false;
-        }
-        const BML::Behavior::Internal::Status scripts =
-            m_Context.m_BehaviorScripts.RetireOwner(modIdCopy);
-        if (!scripts) {
-            if (m_Context.m_Logger)
-                m_Context.m_Logger->Error(
-                    "Failed to retire Behavior Scripts for Mod %s: %s",
-                    modIdCopy.c_str(), scripts.Message.c_str());
-            return false;
-        }
-        m_Context.m_BehaviorSessions.RetireOwner(modIdCopy);
-        if (!m_Context.CleanupModRegistrations(modIdCopy))
+        if (!m_Context.PrepareModUnload(modIdCopy))
             return false;
 #if BML_ENABLE_ANGELSCRIPT
         if (m_ScriptHotReload) {
@@ -1780,12 +1820,14 @@ bool ModLoader::UnregisterMod(IMod *mod) {
         // Config persistence needs the live Mod id, so detach and destroy the
         // loader-owned config before the Mod instance or its DLL goes away.
         if (Config *config = m_Context.GetConfig(mod); config && !m_Context.RemoveConfig(config)) {
-            if (m_Context.m_Logger)
-                m_Context.m_Logger->Error("Failed to detach config before unloading mod %s.", modIdCopy.c_str());
+            if (m_Context.GetLogger())
+                m_Context.GetLogger()->Error("Failed to detach config before unloading mod %s.", modIdCopy.c_str());
             return false;
         }
 
         void *rawDllHandle = ownedDllHandle.get();
+        if (!m_Context.UnregisterNativeCommands(rawDllHandle))
+            return false;
         {
             std::lock_guard<std::mutex> lock(m_StateMutex);
             std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
@@ -1866,8 +1908,8 @@ bool ModLoader::ResolveDependencies() {
         IMod *m = mods[i];
         const char *reportedId = m ? m->GetID() : nullptr;
         if (!reportedId || !*reportedId) {
-            if (m_Context.m_Logger)
-                m_Context.m_Logger->Error("Cannot resolve Mod dependencies: registry entry %zu has no valid Mod id.", i);
+            if (m_Context.GetLogger())
+                m_Context.GetLogger()->Error("Cannot resolve Mod dependencies: registry entry %zu has no valid Mod id.", i);
             return false;
         }
         std::string id = reportedId;
@@ -1897,8 +1939,8 @@ bool ModLoader::ResolveDependencies() {
             auto depInSet = modMap.find(depId);
             if (depInSet == modMap.end()) {
                 if (!dep.Optional) {
-                    if (m_Context.m_Logger) {
-                        m_Context.m_Logger->Error(
+                    if (m_Context.GetLogger()) {
+                        m_Context.GetLogger()->Error(
                             "Cannot initialize Mod %s: required dependency '%s' version %s or newer is not installed.",
                             mid.c_str(), depId.c_str(), dep.MinVersion.ToString().c_str());
                     }
@@ -1959,8 +2001,8 @@ bool ModLoader::ResolveDependencies() {
             affected += id;
             affected += "'";
         }
-        if (m_Context.m_Logger) {
-            m_Context.m_Logger->Error(
+        if (m_Context.GetLogger()) {
+            m_Context.GetLogger()->Error(
                 "Cannot resolve Mod dependencies: a dependency cycle involves or blocks %s.",
                 affected.empty() ? "one or more Mods" : affected.c_str());
         }

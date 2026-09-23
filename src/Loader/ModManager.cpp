@@ -25,7 +25,7 @@ ModManager::ModManager(CKContext *context) : CKBaseManager(context, MOD_MANAGER_
 }
 
 ModManager::~ModManager() {
-    delete m_ModContext;
+    ModContext::Destroy(m_ModContext);
 }
 
 CKERROR ModManager::OnCKInit() {
@@ -33,8 +33,7 @@ CKERROR ModManager::OnCKInit() {
 }
 
 CKERROR ModManager::OnCKEnd() {
-    m_ModContext->Shutdown();
-    return CK_OK;
+    return m_ModContext->Shutdown() ? CK_OK : CKERR_NOTINITIALIZED;
 }
 
 CKERROR ModManager::OnCKPlay() {
@@ -44,7 +43,11 @@ CKERROR ModManager::OnCKPlay() {
         Overlay::ImGuiInitRenderer(m_Context);
         Overlay::ImGuiContextScope scope;
 
-        m_ModContext->GetModLoader().Start();
+        if (!m_ModContext->GetModLoader().Start()) {
+            Overlay::ImGuiShutdownRenderer(m_Context);
+            m_RenderContext = nullptr;
+            return CKERR_NOTINITIALIZED;
+        }
 
         SynchronizeUiFonts();
         Overlay::ImGuiNewFrame();
@@ -54,23 +57,26 @@ CKERROR ModManager::OnCKPlay() {
 }
 
 CKERROR ModManager::OnCKReset() {
-    if (m_Context->GetCurrentLevel() != nullptr && m_RenderContext) {
+    bool stopped = true;
+    if (m_RenderContext) {
         Overlay::ImGuiContextScope scope;
         Overlay::ImGuiEndFrame();
 
         if (auto *input = m_ModContext->GetInputManager())
             SetOverlayCursorVisible(false);
 
-        m_ModContext->GetModLoader().Stop();
+        stopped = m_ModContext->GetModLoader().Stop();
 
         Overlay::ImGuiShutdownRenderer(m_Context);
 
         m_RenderContext = nullptr;
+    } else {
+        stopped = m_ModContext->GetModLoader().Stop();
     }
     if (m_ModContext)
         m_ModContext->ResetVirtoolsWorld();
 
-    return CK_OK;
+    return stopped ? CK_OK : CKERR_NOTINITIALIZED;
 }
 
 CKERROR ModManager::PreClearAll() {

@@ -121,14 +121,18 @@ namespace {
 
 }
 
-ModContext *g_ModContext = nullptr;
+std::atomic<ModContext *> g_ModContext{nullptr};
 
 namespace {
+    std::shared_mutex g_ContextLifetimeMutex;
+    std::atomic<bool> g_ContextClosing{false};
+    thread_local std::size_t g_ContextLeaseDepth = 0;
+
     bool ResolveDataShareOwner(const void *callerAddress, const char *ownerId,
                                const void *callbackAddress,
                                const void *cleanupAddress,
                                std::string &owner) {
-        ModContext *context = BML_GetModContext();
+        ModContextLease context;
         if (!context)
             return false;
 
@@ -151,15 +155,29 @@ namespace {
 }
 
 ModContext *BML_GetModContext() {
-    return g_ModContext;
+    return g_ModContext.load(std::memory_order_acquire);
 }
 
 CKContext *BML_GetCKContext() {
-    return g_ModContext ? g_ModContext->GetCKContext() : nullptr;
+    ModContext *context = BML_GetModContext();
+    return context ? context->GetCKContext() : nullptr;
 }
 
 CKRenderContext *BML_GetRenderContext() {
-    return g_ModContext ? g_ModContext->GetRenderContext() : nullptr;
+    ModContext *context = BML_GetModContext();
+    return context ? context->GetRenderContext() : nullptr;
+}
+
+ModContextLease::ModContextLease() {
+    if (g_ContextLeaseDepth == 0)
+        m_Lock = std::shared_lock<std::shared_mutex>(g_ContextLifetimeMutex);
+    ++g_ContextLeaseDepth;
+    if (!g_ContextClosing.load(std::memory_order_acquire))
+        m_Context = BML_GetModContext();
+}
+
+ModContextLease::~ModContextLease() {
+    --g_ContextLeaseDepth;
 }
 
 ModContext::ModContext(CKContext *context)
@@ -231,7 +249,11 @@ ModContext::ModContext(CKContext *context)
     if (m_DataShare) m_DataShare->AddRef();
     m_ShellDispatcher = std::make_unique<ShellDispatcher>(*this);
     m_Shell = std::make_unique<BML::Shell::Executor>(*m_ShellDispatcher, &m_ShellEnvironment, &m_ShellEnvironment);
-    g_ModContext = this;
+    {
+        std::unique_lock<std::shared_mutex> lock(g_ContextLifetimeMutex);
+        g_ContextClosing.store(false, std::memory_order_release);
+        g_ModContext.store(this, std::memory_order_release);
+    }
     DataShareStore::SetOwnerResolver(&ResolveDataShareOwner);
     DataShareStore::SetInvocationGate(&m_Loader.InvocationGate());
 }
@@ -269,12 +291,30 @@ private:
 };
 
 ModContext::~ModContext() {
-    Shutdown();
+    if (!Shutdown())
+        std::terminate();
     m_ImcRuntime.SetInvocationGate(nullptr);
     if (m_DataShare) m_DataShare->Release();
     DataShareStore::SetInvocationGate(nullptr);
     DataShareStore::SetOwnerResolver(nullptr);
-    g_ModContext = nullptr;
+    ModContext *expected = this;
+    (void) g_ModContext.compare_exchange_strong(expected, nullptr, std::memory_order_release);
+}
+
+void ModContext::Destroy(ModContext *context) noexcept {
+    if (!context)
+        return;
+
+    bool stopped = false;
+    try {
+        stopped = context->Shutdown();
+    } catch (...) {
+    }
+
+    if (stopped)
+        delete context;
+    else
+        context->Abandon();
 }
 
 bool ModContext::Init() {
@@ -345,15 +385,20 @@ bool ModContext::Init() {
     return true;
 }
 
-void ModContext::Shutdown() {
+bool ModContext::Shutdown() {
     if (!IsInited())
-        return;
+        return CloseApiAccess();
 
-    m_Loader.Stop();
-    if (m_Loader.GetModCount() != 0) {
+    if (!m_Loader.Stop()) {
         if (m_Logger)
-            m_Logger->Error("Cannot shut down the runtime Context while Mod registrations remain.");
-        return;
+            m_Logger->Error("Cannot shut down the runtime Context while Mod teardown is incomplete.");
+        return false;
+    }
+
+    if (!CloseApiAccess()) {
+        if (m_Logger)
+            m_Logger->Error("Cannot shut down the runtime Context while an API call is in progress.");
+        return false;
     }
 
     m_ImcRuntime.Shutdown();
@@ -403,6 +448,39 @@ void ModContext::Shutdown() {
     ShutdownLogger();
 
     m_Inited = false;
+    ModContext *expected = this;
+    (void) g_ModContext.compare_exchange_strong(expected, nullptr, std::memory_order_release);
+    return true;
+}
+
+bool ModContext::CloseApiAccess() noexcept {
+    if (g_ContextClosing.load(std::memory_order_acquire))
+        return true;
+    if (g_ContextLeaseDepth != 0)
+        return false;
+    try {
+        std::unique_lock<std::shared_mutex> lock(g_ContextLifetimeMutex, std::try_to_lock);
+        if (!lock.owns_lock())
+            return false;
+        // Logger still needs the raw Context until the final shutdown message.
+        // New API leases see Closing and cannot enter the services being released.
+        g_ContextClosing.store(true, std::memory_order_release);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+void ModContext::Abandon() noexcept {
+    try {
+        if (m_Logger)
+            m_Logger->Error("Retaining the runtime Context and Mod DLLs because teardown did not complete.");
+    } catch (...) {
+    }
+    m_Loader.Abandon();
+    g_ContextClosing.store(true, std::memory_order_release);
+    ModContext *expected = this;
+    (void) g_ModContext.compare_exchange_strong(expected, nullptr, std::memory_order_release);
 }
 
 void ModContext::ResetVirtoolsWorld() {
@@ -1726,6 +1804,27 @@ void ModContext::RetireFailedModOwner(const std::string &ownerId) noexcept {
     }
 }
 
+bool ModContext::PrepareModUnload(const std::string &ownerId) {
+    const BML::Behavior::Internal::Status edits = RetireBehaviorEdits(ownerId);
+    if (!edits) {
+        if (m_Logger)
+            m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
+                            ownerId.c_str(), edits.Message.c_str());
+        return false;
+    }
+
+    const BML::Behavior::Internal::Status scripts = m_BehaviorScripts.RetireOwner(ownerId);
+    if (!scripts) {
+        if (m_Logger)
+            m_Logger->Error("Failed to retire Behavior Scripts for Mod %s: %s",
+                            ownerId.c_str(), scripts.Message.c_str());
+        return false;
+    }
+
+    m_BehaviorSessions.RetireOwner(ownerId);
+    return CleanupModRegistrations(ownerId);
+}
+
 bool ModContext::CleanupModRegistrations(const std::string &ownerId) noexcept {
     bool cleaned = true;
     if (m_CommandApi && !m_CommandApi->CleanupOwner(ownerId))
@@ -1794,6 +1893,21 @@ void ModContext::RetireModBehaviorState(const std::string &ownerId) noexcept {
 void ModContext::CleanupModState(const std::string &ownerId) noexcept {
     RetireModBehaviorState(ownerId);
     (void) CleanupModRegistrations(ownerId);
+}
+
+bool ModContext::UnregisterNativeCommands(const void *module) noexcept {
+    if (!module)
+        return true;
+    if (m_CommandInvocationGate.IsCallActiveOnCurrentThread())
+        return false;
+    try {
+        auto invocationLock = m_CommandInvocationGate.LockMutation();
+        std::lock_guard<std::mutex> lock(m_CommandMutex);
+        m_CommandContext.UnregisterCommands(module);
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 void ModContext::ClearLegacyCommands() {

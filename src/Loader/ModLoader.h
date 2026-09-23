@@ -1,6 +1,7 @@
 #ifndef BML_MODLOADER_H
 #define BML_MODLOADER_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -41,7 +42,8 @@ public:
     ModLoader &operator=(const ModLoader &) = delete;
 
     bool Start();
-    void Stop();
+    bool Stop();
+    void Abandon() noexcept;
     bool AreModsLoaded() const { return m_ModsLoaded; }
     bool AreModsInited() const { return m_ModsInited; }
     bool IsShuttingDown() const { return m_ShuttingDown; }
@@ -145,6 +147,7 @@ private:
 
     bool LoadMods();
     void UnloadMods();
+    void CleanupRejectedNativeEntry(const std::shared_ptr<void> &dllHandle);
     bool InitMods();
     void ShutdownMods();
     void DeactivateActiveMods(bool dispatchPendingNotifications);
@@ -189,9 +192,9 @@ private:
     void FillCallbackMap(IMod *mod);
 
     ModContext &m_Context;
-    bool m_ModsLoaded = false;
-    bool m_ModsInited = false;
-    bool m_ShuttingDown = false;
+    std::atomic<bool> m_ModsLoaded{false};
+    std::atomic<bool> m_ModsInited{false};
+    std::atomic<bool> m_ShuttingDown{false};
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
 #if BML_ENABLE_ANGELSCRIPT
@@ -200,6 +203,7 @@ private:
     std::unique_ptr<BML::ScriptModHotReloadService> m_ScriptHotReload;
 #endif
     NativeModRegistry m_NativeModRegistry;
+    std::vector<std::shared_ptr<void>> m_RejectedNativeDlls;
     std::vector<IMod *> m_Mods;
     std::vector<IMod *> m_ActiveMods;
     std::unordered_map<std::string, std::size_t> m_ModIndex;

@@ -97,6 +97,14 @@ bml_add_player_test(NoExitModTest
 # BMLExit to verify the loader's safe fallback.
 set_target_properties(NoExitModTest PROPERTIES LINK_OPTIONS "/EXPORT:BMLEntry")
 
+# A rejected native entry must not leave a command pointing into its unloaded DLL.
+bml_add_player_test(RejectedEntryTest
+        RejectedEntryTest.cpp
+)
+bml_add_player_test(RejectedEntryInspectorTest
+        RejectedEntryInspectorTest.cpp
+)
+
 # A real Native Mod consumer for the public C++ authoring facades. The ordinary
 # Player runner covers registration, dispatch, shared data, and cleanup; the UI
 # mod-menu scenario additionally enters and draws the contributed page.

@@ -1,10 +1,12 @@
 #ifndef BML_MODCONTEXT_H
 #define BML_MODCONTEXT_H
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <thread>
 #include <type_traits>
@@ -65,9 +67,26 @@ ModContext *BML_GetModContext();
 CKContext *BML_GetCKContext();
 CKRenderContext *BML_GetRenderContext();
 
+// Keeps the private runtime alive for one public API call, including nested calls.
+class ModContextLease final {
+public:
+    ModContextLease();
+    ~ModContextLease();
+
+    ModContextLease(const ModContextLease &) = delete;
+    ModContextLease &operator=(const ModContextLease &) = delete;
+
+    explicit operator bool() const { return m_Context != nullptr; }
+    ModContext *get() const { return m_Context; }
+    ModContext *operator->() const { return m_Context; }
+    ModContext &operator*() const { return *m_Context; }
+
+private:
+    std::shared_lock<std::shared_mutex> m_Lock;
+    ModContext *m_Context = nullptr;
+};
+
 class ModContext final : public IBML {
-    friend class BML::Api::CommandApi;
-    friend class ModLoader;
 
 public:
     explicit ModContext(CKContext *context);
@@ -77,12 +96,28 @@ public:
 
     ~ModContext() override;
 
+    // A failed shutdown must leave the Context and its Mod DLLs alive.
+    static void Destroy(ModContext *context) noexcept;
+
     ModContext &operator=(const ModContext &rhs) = delete;
     ModContext &operator=(ModContext &&rhs) noexcept = delete;
 
     bool IsInited() const { return m_Inited; }
     bool Init();
-    void Shutdown();
+    bool Shutdown();
+
+    // Loader lifecycle operations. These keep service cleanup inside Context;
+    // the Loader controls when each stage runs.
+    bool RegisterModOwner(const std::string &ownerId) noexcept;
+    void RetireFailedModOwner(const std::string &ownerId) noexcept;
+    bool PrepareModUnload(const std::string &ownerId);
+    void RetireModBehaviorState(const std::string &ownerId) noexcept;
+    void CleanupModState(const std::string &ownerId) noexcept;
+    void SnapshotConfigMetadata();
+    void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
+    bool UnregisterNativeCommands(const void *module) noexcept;
+    void ClearLegacyCommands();
+    void AddDataPath(const char *path);
 
     ModLoader &GetModLoader() { return m_Loader; }
     const ModLoader &GetModLoader() const { return m_Loader; }
@@ -431,6 +466,8 @@ public:
     void OnPostLifeUp() override;
 
 private:
+    void Abandon() noexcept;
+    bool CloseApiAccess() noexcept;
     void InitDirectories();
     void InitLogger();
     void ShutdownLogger();
@@ -447,16 +484,8 @@ private:
     std::wstring GetShellEnvironmentPath() const;
     void LoadShellEnvironment();
 
-    void SnapshotConfigMetadata();
-    void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
-    bool RegisterModOwner(const std::string &ownerId) noexcept;
-    void RetireFailedModOwner(const std::string &ownerId) noexcept;
     BML::Behavior::Internal::Status RetireBehaviorEdits(const std::string &ownerId);
-    void RetireModBehaviorState(const std::string &ownerId) noexcept;
     bool CleanupModRegistrations(const std::string &ownerId) noexcept;
-    void CleanupModState(const std::string &ownerId) noexcept;
-    void ClearLegacyCommands();
-    void AddDataPath(const char *path);
     bool CanScheduleTimer() const;
     bool m_Inited = false;
     BML::GameSession m_GameSession;
