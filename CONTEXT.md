@@ -15,12 +15,19 @@ identity.
 dependencies, callback registration, native DLLs, built-in and script Mod
 instances, and script reload. `Start()` activates Mods after Context and
 rendering initialization; `Stop()` deactivates them before rendering teardown.
+If owner cleanup cannot complete, the Loader retains the instance and DLL for a
+later stop attempt instead of releasing callable code.
 
 **Runtime Context** — The stable `ModContext : IBML` object passed to native
 and script Mods. It owns CK managers and services such as Config, Command,
 Behavior, IMC, DataShare, UI, directories, and logging. Its Mod queries and
 dependency methods delegate to the Mod Loader; it does not keep a second Mod
 registry.
+Public C API calls borrow the Context for their duration. Shutdown first stops
+Mods, then refuses new borrows before releasing services; an in-flight borrow
+prevents final destruction.
+The Loader requests owner and registration cleanup through Context operations;
+it does not access Context-owned registries or locks directly.
 
 **In-tree Native Mods** — Optional Mod Projects under `mods/`. They build against
 the BML target in the same Win32 workspace but remain separate runtime DLLs;
