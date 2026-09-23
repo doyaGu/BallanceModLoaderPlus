@@ -50,6 +50,7 @@ function(bml_add_mod TARGET_NAME)
             CXX_EXTENSIONS OFF
             PREFIX ""
             SUFFIX ".bmodp"
+            BML_MOD_PACKAGE_NAME "${TARGET_NAME}.bmodp"
             FOLDER "Mods"
     )
     if (NOT "${BML_MSVC_RUNTIME_LIBRARY}" STREQUAL "")

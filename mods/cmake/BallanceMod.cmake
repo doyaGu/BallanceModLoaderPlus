@@ -91,13 +91,14 @@ function(ballance_add_mod TARGET_NAME)
             COMMENT "Packaging ${TARGET_NAME}.zip"
             VERBATIM)
     set_property(TARGET ${TARGET_NAME}Package PROPERTY FOLDER "Mods/Packages")
+    set_property(TARGET ${TARGET_NAME} PROPERTY BML_MOD_PACKAGE_NAME "${TARGET_NAME}.zip")
 
     install(FILES "${PACKAGE_FILE}" DESTINATION Mods)
 endfunction()
 
 # Add a Mod directory and verify that it produces a target with the same name.
-# GROUP controls IDE organization only.
-function(ballance_add_mod_directory TARGET_NAME GROUP)
+# GROUP controls IDE organization; OUTPUT_PACKAGE receives its installed package name.
+function(ballance_add_mod_directory TARGET_NAME GROUP OUTPUT_PACKAGE)
     set(MOD_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${TARGET_NAME}")
     if(NOT EXISTS "${MOD_DIRECTORY}/CMakeLists.txt")
         message(FATAL_ERROR
@@ -110,4 +111,11 @@ function(ballance_add_mod_directory TARGET_NAME GROUP)
                 "${TARGET_NAME}/CMakeLists.txt must create target ${TARGET_NAME}")
     endif()
     set_property(TARGET ${TARGET_NAME} PROPERTY FOLDER "Mods/${GROUP}")
+
+    get_target_property(PACKAGE_NAME ${TARGET_NAME} BML_MOD_PACKAGE_NAME)
+    if(NOT PACKAGE_NAME)
+        message(FATAL_ERROR
+                "${TARGET_NAME}/CMakeLists.txt must declare its installed package name")
+    endif()
+    set(${OUTPUT_PACKAGE} "${PACKAGE_NAME}" PARENT_SCOPE)
 endfunction()

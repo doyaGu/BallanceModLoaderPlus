@@ -17,24 +17,19 @@ set(BML_TOOLING_MODS
         Segment
         TravelMode)
 
+set(BML_MOD_PACKAGES)
 foreach(mod IN LISTS BML_GAMEPLAY_MODS)
-    ballance_add_mod_directory(${mod} Gameplay)
+    ballance_add_mod_directory(${mod} Gameplay package_name)
+    list(APPEND BML_MOD_PACKAGES "${package_name}")
 endforeach()
 foreach(mod IN LISTS BML_TOOLING_MODS)
-    ballance_add_mod_directory(${mod} Tooling)
+    ballance_add_mod_directory(${mod} Tooling package_name)
+    list(APPEND BML_MOD_PACKAGES "${package_name}")
 endforeach()
 
-ballance_add_mod_directory(IVP Providers)
+ballance_add_mod_directory(IVP Providers package_name)
+list(APPEND BML_MOD_PACKAGES "${package_name}")
 
-set(BML_MOD_PACKAGES)
-foreach(mod IN LISTS BML_GAMEPLAY_MODS BML_TOOLING_MODS)
-    if(TARGET ${mod}Package)
-        list(APPEND BML_MOD_PACKAGES "${mod}.zip")
-    else()
-        list(APPEND BML_MOD_PACKAGES "${mod}.bmodp")
-    endif()
-endforeach()
-list(APPEND BML_MOD_PACKAGES "IVP.bmodp")
 list(SORT BML_MOD_PACKAGES)
 string(REPLACE ";" "\n" BML_MOD_PACKAGE_LIST "${BML_MOD_PACKAGES}")
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/mods.txt"
