@@ -25,7 +25,7 @@ Build `BallStickyPackage` or `BMLModulsPackage` to regenerate an archive after
 changing a resource without rebuilding the DLL. Each build configuration has
 its own archive under its Mod's build directory.
 
-The install tree contains all 14 packages under `Mods/` and their inventory at
+The install tree contains all 13 packages under `Mods/` and their inventory at
 `share/BML/mods.txt`. Copy an individual `.bmodp` or `.zip` into the game's
 `ModLoader/Mods/` to enable it. Release builds also produce the optional
 `BMLPlus-Mods-<version>.zip`, whose contents can be extracted at the game root.

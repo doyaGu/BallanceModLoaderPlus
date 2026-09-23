@@ -13,7 +13,6 @@ set(BML_GAMEPLAY_MODS
 set(BML_TOOLING_MODS
         CameraUtilities
         DebugUtilities
-        Physics
         Segment
         TravelMode)
 
