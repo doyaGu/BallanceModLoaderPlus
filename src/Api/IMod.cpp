@@ -15,7 +15,9 @@ ILogger *IMod::GetLogger() {
 IConfig *IMod::GetConfig() {
     if (m_Config == nullptr) {
         auto config = std::make_unique<Config>(this);
-        m_Config = BML_GetModContext()->AddConfig(std::move(config));
+        ModContextLease context;
+        if (context)
+            m_Config = context->AddConfig(std::move(config));
     }
     return m_Config;
 }

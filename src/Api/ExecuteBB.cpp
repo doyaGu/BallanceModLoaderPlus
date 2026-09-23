@@ -10,8 +10,7 @@
 
 namespace {
 
-BML::ExecuteBBAdapter *GetAdapter() {
-    ModContext *context = BML_GetModContext();
+BML::ExecuteBBAdapter *GetAdapter(const ModContextLease &context) {
     return context ? &context->ExecuteBB() : nullptr;
 }
 
@@ -19,7 +18,7 @@ void ReportFailure(const char *operation,
                          const BML::Behavior::Internal::RunResult &result) {
     if (result)
         return;
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     ILogger *logger = context ? context->GetLogger() : nullptr;
     if (!logger)
         return;
@@ -42,7 +41,7 @@ BML::GameFont ToGameFont(ExecuteBB::FontType font) {
 }
 
 int ResolveFont(ExecuteBB::FontType font) {
-    ModContext *context = BML_GetModContext();
+    ModContextLease context;
     return context ? context->GetGameFonts().Resolve(ToGameFont(font)) : static_cast<int>(font);
 }
 
@@ -104,7 +103,8 @@ void PhysicalizeConvex(CK3dEntity *target, CKBOOL fixed, float friction, float e
                        const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                        float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
                        CKMesh *mesh) {
-    if (auto *adapter = GetAdapter()) {
+    ModContextLease context;
+    if (auto *adapter = GetAdapter(context)) {
         auto options = MakePhysicalizeOptions(
             target, fixed, friction, elasticity, mass, collGroup, startFrozen,
             enableColl, calcMassCenter, linearDamp, rotDamp, collSurface,
@@ -121,7 +121,8 @@ void PhysicalizeBall(CK3dEntity *target, CKBOOL fixed, float friction, float ela
                      const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                      float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
                      VxVector ballCenter, float ballRadius) {
-    if (auto *adapter = GetAdapter()) {
+    ModContextLease context;
+    if (auto *adapter = GetAdapter(context)) {
         auto options = MakePhysicalizeOptions(
             target, fixed, friction, elasticity, mass, collGroup, startFrozen,
             enableColl, calcMassCenter, linearDamp, rotDamp, collSurface,
@@ -139,7 +140,8 @@ void PhysicalizeConcave(CK3dEntity *target, CKBOOL fixed, float friction, float 
                         const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                         float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
                         CKMesh *mesh) {
-    if (auto *adapter = GetAdapter()) {
+    ModContextLease context;
+    if (auto *adapter = GetAdapter(context)) {
         auto options = MakePhysicalizeOptions(
             target, fixed, friction, elasticity, mass, collGroup, startFrozen,
             enableColl, calcMassCenter, linearDamp, rotDamp, collSurface,
@@ -153,7 +155,8 @@ void PhysicalizeConcave(CK3dEntity *target, CKBOOL fixed, float friction, float 
 }
 
 void Unphysicalize(CK3dEntity *target) {
-    if (auto *adapter = GetAdapter()) {
+    ModContextLease context;
+    if (auto *adapter = GetAdapter(context)) {
         auto options = MakePhysicalizeOptions(
             target, FALSE, 0.7f, 0.4f, 1.0f, "", FALSE, TRUE, FALSE,
             0.1f, 0.1f, "", VxVector());
@@ -165,7 +168,8 @@ void Unphysicalize(CK3dEntity *target) {
 
 void SetPhysicsForce(CK3dEntity *target, VxVector position, CK3dEntity *posRef,
                      VxVector direction, CK3dEntity *directionRef, float force) {
-    if (auto *adapter = GetAdapter()) {
+    ModContextLease context;
+    if (auto *adapter = GetAdapter(context)) {
         const auto result = adapter->SetPhysicsForce(
             MakeForceOptions<BML::Behavior::Blocks::PhysicsForce::Options>(
                 target, position, posRef, direction, directionRef, force));
@@ -174,7 +178,8 @@ void SetPhysicsForce(CK3dEntity *target, VxVector position, CK3dEntity *posRef,
 }
 
 void UnsetPhysicsForce(CK3dEntity *target) {
-    if (auto *adapter = GetAdapter()) {
+    ModContextLease context;
+    if (auto *adapter = GetAdapter(context)) {
         const auto result = adapter->UnsetPhysicsForce(target);
         ReportFailure("UnsetPhysicsForce", result);
     }
@@ -182,7 +187,8 @@ void UnsetPhysicsForce(CK3dEntity *target) {
 
 void PhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef,
                     VxVector direction, CK3dEntity *dirRef, float impulse) {
-    if (auto *adapter = GetAdapter()) {
+    ModContextLease context;
+    if (auto *adapter = GetAdapter(context)) {
         const auto result = adapter->Run(target, BML::Behavior::Internal::BlockSpec::From(
             MakeForceOptions<BML::Behavior::Blocks::PhysicsImpulse::Options>(
                 target, position, posRef, direction, dirRef, impulse)));
@@ -191,7 +197,8 @@ void PhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef,
 }
 
 void PhysicsWakeUp(CK3dEntity *target) {
-    if (auto *adapter = GetAdapter()) {
+    ModContextLease context;
+    if (auto *adapter = GetAdapter(context)) {
         const auto result = adapter->Run(
             target, BML::Behavior::Internal::BlockSpec::From(
                 BML::Behavior::Blocks::PhysicsWakeUp::Options{target}));
@@ -202,7 +209,8 @@ void PhysicsWakeUp(CK3dEntity *target) {
 std::pair<XObjectArray *, CKObject *> ObjectLoad(const char *file, bool rename, const char *mastername,
                                                   CK_CLASSID filter, CKBOOL addToScene, CKBOOL reuseMesh,
                                                   CKBOOL reuseMtl, CKBOOL dynamic) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     return adapter
         ? adapter->LoadObjects(MakeObjectLoadOptions(file, mastername, filter,
                                                     addToScene, reuseMesh, reuseMtl, dynamic),
@@ -225,7 +233,8 @@ CKBehavior *Create2DText(CKBehavior *script, CK2dEntity *target, FontType font, 
     definition.CaretSize = caretsize;
     definition.CaretMaterial = caretmat;
     definition.Flags = flags;
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     return adapter ? adapter->AddToGraph(
         script, BML::Behavior::Internal::BlockSpec::From(definition)) : nullptr;
 }
@@ -235,7 +244,8 @@ CKBehavior *CreatePhysicalizeConvex(CKBehavior *script, CK3dEntity *target, CKBO
                                     CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                                     float linearDamp, float rotDamp, const char *collSurface,
                                     VxVector massCenter, CKMesh *mesh) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     auto options = MakePhysicalizeOptions(
         target, fixed, friction, elasticity, mass, collGroup, startFrozen,
         enableColl, calcMassCenter, linearDamp, rotDamp, collSurface,
@@ -251,7 +261,8 @@ CKBehavior *CreatePhysicalizeBall(CKBehavior *script, CK3dEntity *target, CKBOOL
                                   CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                                   float linearDamp, float rotDamp, const char *collSurface,
                                   VxVector massCenter, VxVector ballCenter, float ballRadius) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     auto options = MakePhysicalizeOptions(
         target, fixed, friction, elasticity, mass, collGroup, startFrozen,
         enableColl, calcMassCenter, linearDamp, rotDamp, collSurface,
@@ -268,7 +279,8 @@ CKBehavior *CreatePhysicalizeConcave(CKBehavior *script, CK3dEntity *target, CKB
                                      CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                                      float linearDamp, float rotDamp, const char *collSurface,
                                      VxVector massCenter, CKMesh *mesh) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     auto options = MakePhysicalizeOptions(
         target, fixed, friction, elasticity, mass, collGroup, startFrozen,
         enableColl, calcMassCenter, linearDamp, rotDamp, collSurface,
@@ -282,7 +294,8 @@ CKBehavior *CreatePhysicalizeConcave(CKBehavior *script, CK3dEntity *target, CKB
 CKBehavior *CreateSetPhysicsForce(CKBehavior *script, CK3dEntity *target, VxVector position,
                                   CK3dEntity *posRef, VxVector direction,
                                   CK3dEntity *directionRef, float force) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::BlockSpec::From(
         MakeForceOptions<BML::Behavior::Blocks::PhysicsForce::Options>(
             target, position, posRef, direction, directionRef, force))) : nullptr;
@@ -291,14 +304,16 @@ CKBehavior *CreateSetPhysicsForce(CKBehavior *script, CK3dEntity *target, VxVect
 CKBehavior *CreatePhysicsImpulse(CKBehavior *script, CK3dEntity *target, VxVector position,
                                  CK3dEntity *posRef, VxVector direction, CK3dEntity *dirRef,
                                  float impulse) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::BlockSpec::From(
         MakeForceOptions<BML::Behavior::Blocks::PhysicsImpulse::Options>(
             target, position, posRef, direction, dirRef, impulse))) : nullptr;
 }
 
 CKBehavior *CreatePhysicsWakeUp(CKBehavior *script, CK3dEntity *target) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     return adapter ? adapter->AddToGraph(
         script, BML::Behavior::Internal::BlockSpec::From(
             BML::Behavior::Blocks::PhysicsWakeUp::Options{target})) : nullptr;
@@ -307,14 +322,16 @@ CKBehavior *CreatePhysicsWakeUp(CKBehavior *script, CK3dEntity *target) {
 CKBehavior *CreateObjectLoad(CKBehavior *script, const char *file, const char *mastername,
                              CK_CLASSID filter, CKBOOL addToScene, CKBOOL reuseMesh,
                              CKBOOL reuseMtl, CKBOOL dynamic) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::BlockSpec::From(
         MakeObjectLoadOptions(file, mastername, filter,
                               addToScene, reuseMesh, reuseMtl, dynamic))) : nullptr;
 }
 
 CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *dest) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     return adapter ? adapter->AddToGraph(
         script, BML::Behavior::Internal::BlockSpec::From(
             BML::Behavior::Blocks::Send::Options{
@@ -323,7 +340,8 @@ CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *d
 
 CKBehavior *CreateHookBlock(CKBehavior *script, CKBehaviorCallback callback, void *arg,
                             int inCount, int outCount) {
-    auto *adapter = GetAdapter();
+    ModContextLease context;
+    auto *adapter = GetAdapter(context);
     return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::HookBlock::Make(
         callback, arg, inCount, outCount)) : nullptr;
 }
