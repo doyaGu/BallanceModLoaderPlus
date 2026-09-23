@@ -3,6 +3,11 @@
 #include <BML/ILogger.h>
 #include <BML/IMod.h>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
 class RejectedEntryInspectorTest final : public IMod {
 public:
     explicit RejectedEntryInspectorTest(IBML *bml) : IMod(bml) { AddDependency("BML"); }
@@ -15,6 +20,8 @@ public:
     DECLARE_BML_VERSION;
 
     void OnLoad() override {
+        GetLogger()->Info("Rejected entry DLL: %s",
+                          ::GetModuleHandleW(L"RejectedEntryTest.bmodp") ? "retained" : "unloaded");
         const int result = BML_UnregisterCommand("rejected-entry-test");
         GetLogger()->Info("Rejected entry command: %s (result=%d)",
                           result == BML_ERROR_NOT_FOUND ? "absent" : "present", result);

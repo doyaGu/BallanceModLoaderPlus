@@ -1078,13 +1078,13 @@ void ModLoader::DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabe
             }
         }
     } catch (...) {
-        // Cleanup must not prevent the loader from releasing the DLL handle.
+        // A failed exit callback must not interrupt loader cleanup.
     }
 }
 
 void ModLoader::CleanupRejectedNativeEntry(const std::shared_ptr<void> &dllHandle) {
     if (!m_Context.UnregisterNativeCommands(dllHandle.get())) {
-        // LoadMod reserves this slot before calling BMLEntry. Keep the DLL
+        // LoadMod reserves capacity before calling BMLEntry. Keep the DLL
         // alive until command callbacks can be detached on a later Stop.
         m_RejectedNativeDlls.push_back(dllHandle);
         if (m_Context.GetLogger())
@@ -1128,7 +1128,7 @@ IMod *ModLoader::LoadMod(const std::wstring &path) {
     }
 
     if (!mod) {
-        m_Context.GetLogger()->Error("%s returned null for native Mod DLL %s; the DLL will be unloaded.",
+        m_Context.GetLogger()->Error("%s returned null for native Mod DLL %s.",
                         ENTRY_SYMBOL, modPath.c_str());
         CleanupRejectedNativeEntry(dllHandle);
         return nullptr;

@@ -56,6 +56,7 @@ $checks = $flow.Checks
 $checks.Remove('ProbesDiscovered')
 $checks.Remove('Probe___rejected_entry_no_probe__')
 $checks['NoUnexpectedProbes'] = $null -ne $flow.Flow -and $flow.Flow.Probes -eq 0
+$checks['RejectedDllUnloaded'] = $run.ModLoaderLog.Contains('Rejected entry DLL: unloaded')
 $checks['RejectedCommandRemoved'] = $run.ModLoaderLog.Contains('Rejected entry command: absent')
 $checks['CallbackSelfUnregister'] = $run.ModLoaderLog.Contains('Callback self-unregister: succeeded')
 $checks['CallbackReleasedAfterExecution'] = $run.ModLoaderLog.Contains('Callback command release after execution: yes')
