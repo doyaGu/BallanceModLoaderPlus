@@ -52,6 +52,8 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
         ctx->ItemClick("**/Back");
         IM_CHECK(WaitForItem(ctx, "**/Open child"));
         ctx->ItemClick("**/Back");
+        IM_CHECK(WaitForItem(ctx, "**/Public API Page"));
+        ctx->ItemClick("**/Back");
         IM_CHECK(WaitForItem(ctx, "**/Public Authoring Test"));
 
         ctx->ItemClick("**/Ballance Mod Loader");
