@@ -280,6 +280,7 @@ jobs:
         run: |
           $cmake = (Get-Command cmake.exe).Source
           $dumpbin = (Get-Command dumpbin.exe).Source
+          $python = (Get-Command python.exe).Source
           $variants = @(
             [pscustomobject]@{ Name = 'Release'; Pattern = 'BMLPlus-SDK-*-Release.zip' }
             [pscustomobject]@{ Name = 'Debug'; Pattern = 'BMLPlus-SDK-*-Debug.zip' }
@@ -293,6 +294,7 @@ jobs:
 
             $arguments = @(
               "-DCMAKE_EXECUTABLE=$cmake"
+              "-DPYTHON_EXECUTABLE=$python"
               "-DSOURCE_ROOT=${{ github.workspace }}"
               "-DSDK_ARCHIVE=$($archives[0].FullName)"
               "-DWORK_ROOT=${{ github.workspace }}\build\$($variant.Name.ToLowerInvariant())-sdk-consumer"
@@ -301,7 +303,7 @@ jobs:
               "-DVIRTOOLS_SDK_PATH=${{ github.workspace }}\Virtools-SDK-2.1"
               "-DDUMPBIN=$dumpbin"
               '-P'
-              "${{ github.workspace }}\tests\LegacyNativeSdkConsumerTest.cmake"
+              "${{ github.workspace }}\tests\sdk\LegacyNativeSdkConsumerTest.cmake"
             )
             & $cmake @arguments
             if ($LASTEXITCODE -ne 0) {
