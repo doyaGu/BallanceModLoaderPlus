@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include <array>
 #include <chrono>
 #include <fstream>
 #include <limits>
@@ -12,6 +13,9 @@
 #include "Config/Config.h"
 #include "Config/ConfigStore.h"
 #include "Logging/Logger.h"
+#include "Mods/BMLConfigMigration.h"
+
+#include "PathUtils.h"
 
 Logger *Logger::m_DefaultLogger = nullptr;
 
@@ -244,6 +248,155 @@ TEST_F(ConfigTest, PropertyManagement) {
     EXPECT_EQ(nullptr, config->GetProperty(nullptr, "TestKey"));
     EXPECT_EQ(nullptr, config->GetProperty("TestCategory", nullptr));
     EXPECT_EQ(nullptr, config->GetProperty(nullptr, nullptr));
+}
+
+TEST_F(ConfigTest, RemovingPropertyClearsPendingNotificationAndInvalidatesSchema) {
+    IProperty *retained = config->GetProperty("TestCategory", "Retained");
+    IProperty *obsolete = config->GetProperty("TestCategory", "Obsolete");
+    retained->SetDefaultString("retained");
+    obsolete->SetString("old value");
+
+    const std::uint64_t schemaRevision = config->GetSchemaRevision();
+    ASSERT_TRUE(config->RemoveProperty("TestCategory", "Obsolete"));
+
+    EXPECT_FALSE(config->HasKey("TestCategory", "Obsolete"));
+    EXPECT_EQ(config->GetCategory("TestCategory")->GetPropertyCount(), 1u);
+    EXPECT_EQ(config->GetCategory("TestCategory")->GetProperty(std::size_t{0}), retained);
+    EXPECT_TRUE(config->TakePendingNotifications().empty());
+    EXPECT_GT(config->GetSchemaRevision(), schemaRevision);
+    EXPECT_TRUE(config->IsDirty());
+    EXPECT_FALSE(config->RemoveProperty("TestCategory", "Obsolete"));
+}
+
+TEST_F(ConfigTest, Migrates013FontSettingsAndPersistsOnlyCurrentKeys) {
+    config->GetProperty("GUI", "FontFilename")->SetString("primary.ttf");
+    config->GetProperty("GUI", "FontSize")->SetFloat(42.0f);
+    config->GetProperty("GUI", "FontRanges")->SetString("ChineseFull");
+    config->GetProperty("GUI", "EnableSecondaryFont")->SetBoolean(true);
+    config->GetProperty("GUI", "SecondaryFontFilename")->SetString("secondary.ttf");
+    config->GetProperty("GUI", "SecondaryFontSize")->SetFloat(26.0f);
+    config->GetProperty("GUI", "SecondaryFontRanges")->SetString("Japanese");
+    config->GetProperty("CommandBar", "WindowBackgroundAlpha")->SetFloat(0.8f);
+    config->GetProperty("HUD", "ShowFPS")->SetBoolean(false);
+
+    MigrateBMLConfig(*config);
+
+    EXPECT_STREQ(config->GetProperty("GUI", "FontFilename")->GetString(), "primary.ttf");
+    EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontSize")->GetFloat(), 42.0f);
+    EXPECT_STREQ(config->GetProperty("GUI", "FontFallbacks")->GetString(), "secondary.ttf");
+    EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontFallbackSize")->GetFloat(), 26.0f);
+    EXPECT_FALSE(config->HasKey("GUI", "FontRanges"));
+    EXPECT_FALSE(config->HasKey("GUI", "EnableSecondaryFont"));
+    EXPECT_FALSE(config->HasKey("GUI", "SecondaryFontFilename"));
+    EXPECT_FALSE(config->HasKey("GUI", "SecondaryFontSize"));
+    EXPECT_FALSE(config->HasKey("GUI", "SecondaryFontRanges"));
+    EXPECT_FALSE(config->HasKey("CommandBar", "WindowBackgroundAlpha"));
+    EXPECT_FALSE(config->GetProperty("HUD", "ShowFPS")->GetBoolean());
+
+    std::array<wchar_t, MAX_PATH> tempDirectory{};
+    ASSERT_GT(GetTempPathW(static_cast<DWORD>(tempDirectory.size()), tempDirectory.data()), 0u);
+    std::array<wchar_t, MAX_PATH> path{};
+    ASSERT_NE(GetTempFileNameW(tempDirectory.data(), L"BML", 0, path.data()), 0u);
+    ASSERT_TRUE(config->Save(path.data()));
+    Config reloaded(mockMod);
+    ASSERT_TRUE(reloaded.Load(path.data()));
+    EXPECT_TRUE(DeleteFileW(path.data()));
+
+    EXPECT_FALSE(reloaded.HasKey("GUI", "SecondaryFontFilename"));
+    EXPECT_STREQ(reloaded.GetProperty("GUI", "FontFallbacks")->GetString(), "secondary.ttf");
+    EXPECT_FLOAT_EQ(reloaded.GetProperty("GUI", "FontFallbackSize")->GetFloat(), 26.0f);
+    const std::uint64_t revision = reloaded.GetSchemaRevision();
+    MigrateBMLConfig(reloaded);
+    EXPECT_EQ(reloaded.GetSchemaRevision(), revision);
+    EXPECT_FALSE(reloaded.IsDirty());
+}
+
+TEST_F(ConfigTest, CurrentFontSettingsTakePrecedenceOver013Settings) {
+    config->GetProperty("GUI", "FontFallbacks")->SetString("");
+    config->GetProperty("GUI", "FontFallbackSize")->SetFloat(20.0f);
+    config->GetProperty("GUI", "EnableSecondaryFont")->SetBoolean(true);
+    config->GetProperty("GUI", "SecondaryFontFilename")->SetString("obsolete.ttf");
+    config->GetProperty("GUI", "SecondaryFontSize")->SetFloat(45.0f);
+
+    MigrateBMLConfig(*config);
+
+    EXPECT_STREQ(config->GetProperty("GUI", "FontFallbacks")->GetString(), "");
+    EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontFallbackSize")->GetFloat(), 20.0f);
+    EXPECT_FALSE(config->HasKey("GUI", "SecondaryFontFilename"));
+}
+
+TEST_F(ConfigTest, Disabled013SecondaryFontLeavesFallbackListEmpty) {
+    config->GetProperty("GUI", "FontSize")->SetFloat(40.0f);
+    config->GetProperty("GUI", "EnableSecondaryFont")->SetBoolean(false);
+    config->GetProperty("GUI", "SecondaryFontFilename")->SetString("secondary.ttf");
+
+    MigrateBMLConfig(*config);
+
+    EXPECT_FALSE(config->HasKey("GUI", "FontFallbacks"));
+    EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontFallbackSize")->GetFloat(), 40.0f);
+}
+
+TEST_F(ConfigTest, CurrentConfigDoesNotInheritPrimarySizeForFallbacks) {
+    config->GetProperty("GUI", "FontSize")->SetFloat(40.0f);
+
+    MigrateBMLConfig(*config);
+
+    EXPECT_FALSE(config->HasKey("GUI", "FontFallbackSize"));
+}
+
+TEST_F(ConfigTest, OldNonPositiveFontSizesRetainThe013Default) {
+    config->GetProperty("GUI", "FontRanges")->SetString("ChineseFull");
+    config->GetProperty("GUI", "FontSize")->SetFloat(0.0f);
+    config->GetProperty("GUI", "SecondaryFontSize")->SetFloat(-1.0f);
+
+    MigrateBMLConfig(*config);
+
+    EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontSize")->GetFloat(), 32.0f);
+    EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontFallbackSize")->GetFloat(), 32.0f);
+}
+
+TEST_F(ConfigTest, Migrates013RelativeFontPathToAbsolutePath) {
+    const std::string file = utils::CombinePathUtf8(BML_TEST_FONT_DIRECTORY, "unifont.otf");
+    ASSERT_TRUE(utils::FileExistsUtf8(file));
+    const std::string relative = utils::MakeRelativePathUtf8(
+        file, utils::GetCurrentDirectoryUtf8());
+    ASSERT_FALSE(utils::IsAbsolutePathUtf8(relative));
+    ASSERT_TRUE(utils::FileExistsUtf8(relative));
+
+    config->GetProperty("GUI", "FontFilename")->SetString(relative.c_str());
+    config->GetProperty("GUI", "FontRanges")->SetString("ChineseFull");
+    MigrateBMLConfig(*config);
+
+    const std::string resolved = config->GetProperty("GUI", "FontFilename")->GetString();
+    EXPECT_TRUE(utils::IsAbsolutePathUtf8(resolved));
+    EXPECT_TRUE(utils::FileExistsUtf8(resolved));
+    EXPECT_FALSE(config->HasKey("GUI", "FontRanges"));
+}
+
+TEST_F(ConfigTest, Unsupported013FontsSubpathIsKeptForManualSelection) {
+    const std::string oldPath = "subdirectory/secondary.ttf";
+    ASSERT_FALSE(utils::FileExistsUtf8(oldPath));
+    config->GetProperty("GUI", "EnableSecondaryFont")->SetBoolean(true);
+    config->GetProperty("GUI", "SecondaryFontFilename")->SetString(oldPath.c_str());
+    config->GetProperty("GUI", "SecondaryFontSize")->SetFloat(24.0f);
+
+    EXPECT_FALSE(MigrateBMLConfig(*config));
+
+    EXPECT_FALSE(config->HasKey("GUI", "FontFallbacks"));
+    EXPECT_STREQ(config->GetProperty("GUI", "SecondaryFontFilename")->GetString(), oldPath.c_str());
+    EXPECT_FLOAT_EQ(config->GetProperty("GUI", "SecondaryFontSize")->GetFloat(), 24.0f);
+    EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontFallbackSize")->GetFloat(), 24.0f);
+    EXPECT_FALSE(MigrateBMLConfig(*config));
+}
+
+TEST_F(ConfigTest, Unrepresentable013FallbackNameIsNotDeleted) {
+    config->GetProperty("GUI", "EnableSecondaryFont")->SetBoolean(true);
+    config->GetProperty("GUI", "SecondaryFontFilename")->SetString("old;face.ttf");
+
+    EXPECT_FALSE(MigrateBMLConfig(*config));
+
+    EXPECT_FALSE(config->HasKey("GUI", "FontFallbacks"));
+    EXPECT_STREQ(config->GetProperty("GUI", "SecondaryFontFilename")->GetString(), "old;face.ttf");
 }
 
 // Property types and values

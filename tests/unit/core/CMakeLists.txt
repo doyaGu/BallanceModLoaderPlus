@@ -9,10 +9,15 @@ add_bml_test(ConfigTest
         ${BML_SOURCE_DIR}/Config/Config.h
         ${BML_SOURCE_DIR}/Config/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Config/ConfigStore.h
+        ${BML_SOURCE_DIR}/Mods/BMLConfigMigration.cpp
+        ${BML_SOURCE_DIR}/Mods/BMLConfigMigration.h
         DEPENDENCIES
         BMLUtils
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
+)
+target_compile_definitions(ConfigTest PRIVATE
+        BML_TEST_FONT_DIRECTORY="${PROJECT_SOURCE_DIR}/packaging/runtime/ModLoader/Fonts"
 )
 
 add_bml_test(NativeModRegistryTest

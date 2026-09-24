@@ -1,5 +1,6 @@
 #include "Config/Config.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <iterator>
@@ -393,6 +394,39 @@ bool Config::HasKey(const char *category, const char *key) {
         return false;
 
     return catIt->second->HasKey(key);
+}
+
+bool Config::RemoveProperty(const char *category, const char *key) {
+    if (!category || !key)
+        return false;
+
+    const auto categoryIt = m_CategoryMap.find(category);
+    if (categoryIt == m_CategoryMap.end() || !categoryIt->second)
+        return false;
+
+    Category *owner = categoryIt->second;
+    const auto propertyIt = owner->m_PropertyMap.find(key);
+    if (propertyIt == owner->m_PropertyMap.end() || !propertyIt->second)
+        return false;
+
+    Property *property = propertyIt->second;
+    const auto orderedIt = std::find(owner->m_Properties.begin(), owner->m_Properties.end(), property);
+    if (orderedIt == owner->m_Properties.end())
+        return false;
+
+    auto notification = m_PendingNotifications.begin();
+    while (notification != m_PendingNotifications.end()) {
+        if (notification->ChangedProperty == property)
+            notification = m_PendingNotifications.erase(notification);
+        else
+            ++notification;
+    }
+    owner->m_PropertyMap.erase(propertyIt);
+    owner->m_Properties.erase(orderedIt);
+    delete property;
+    TouchSchema();
+    MarkDirty();
+    return true;
 }
 
 IProperty *Config::GetProperty(const char *category, const char *key) {

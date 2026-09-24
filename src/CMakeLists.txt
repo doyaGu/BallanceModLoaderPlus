@@ -138,12 +138,14 @@ set(BML_ROOT_SOURCES
 
 set(BML_MODS_PRIVATE_HEADERS
         Mods/BMLCommand.h
+        Mods/BMLConfigMigration.h
         Mods/BMLMod.h
         Mods/NewBallTypeMod.h
 )
 
 set(BML_MODS_SOURCES
         Mods/BMLCommand.cpp
+        Mods/BMLConfigMigration.cpp
         Mods/BMLMod.cpp
         Mods/NewBallTypeMod.cpp
 )

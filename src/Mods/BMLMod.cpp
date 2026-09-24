@@ -7,11 +7,13 @@
 #include "BML/Bui.h"
 #include "BML/Gui.h"
 
+#include "Config/Config.h"
 #include "Loader/ModContext.h"
 #include "Hooks/RenderHook.h"
 #include "Gameplay/CheatCommand.h"
 #include "HUD/HUDCommand.h"
 #include "Mods/BMLCommand.h"
+#include "Mods/BMLConfigMigration.h"
 #include "UI/AnsiPalette.h"
 #include "UI/FontCommand.h"
 #include "UI/FontRuntime.h"
@@ -432,6 +434,10 @@ void BMLMod::SetHUD(int mode) {
 }
 
 void BMLMod::InitConfigs() {
+    auto *config = dynamic_cast<Config *>(GetConfig());
+    if (config && !MigrateBMLConfig(*config))
+        GetLogger()->Warn("Some 0.3.13 font paths need manual selection; use the font command to choose fonts.");
+
     BindSettings();
     m_HUD.InitConfig(*GetConfig());
     m_Console.InitConfig(*GetConfig());
