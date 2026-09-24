@@ -201,6 +201,9 @@ FontProfile FontRuntime::Normalize(FontProfile profile) {
     if (!std::isfinite(profile.ReferenceSize))
         profile.ReferenceSize = DefaultReferenceSize;
     profile.ReferenceSize = std::clamp(profile.ReferenceSize, MinimumFontReferenceSize, MaximumFontReferenceSize);
+    if (!std::isfinite(profile.FallbackReferenceSize))
+        profile.FallbackReferenceSize = DefaultReferenceSize;
+    profile.FallbackReferenceSize = std::clamp(profile.FallbackReferenceSize, MinimumFontReferenceSize, MaximumFontReferenceSize);
 
     std::vector<std::string> fallbacks;
     fallbacks.reserve(profile.FallbackFaces.size());
@@ -294,6 +297,7 @@ void FontRuntime::Apply() {
     next.State = FontRuntimeState::Ready;
     next.Generation = m_Snapshot.Generation + 1;
     next.ReferenceSize = m_RequestedProfile.ReferenceSize;
+    next.FallbackReferenceSize = m_RequestedProfile.FallbackReferenceSize;
     next.SupportsUnicodeScalars = sizeof(ImWchar) == sizeof(ImWchar32);
     next.SupportsColorEmoji = false;
 
@@ -334,7 +338,7 @@ void FontRuntime::Apply() {
         const std::string path = ResolveConfiguredFace(
             m_LoaderFontDirectory, requested, origin);
         const bool loaded = LoadFallback(
-            atlas, font, path, m_RequestedProfile.ReferenceSize,
+            atlas, font, path, m_RequestedProfile.FallbackReferenceSize,
             primaryAscent, loadedPaths);
         next.Sources.push_back({requested, path, origin, loaded});
         if (!loaded)
@@ -345,7 +349,7 @@ void FontRuntime::Apply() {
         for (const WindowsFallbackFace &windowsFace : WindowsFallbackFaces) {
             const std::string path = ResolveWindowsFace(windowsFace.Filename);
             const bool loaded = LoadFallback(
-                atlas, font, path, m_RequestedProfile.ReferenceSize,
+                atlas, font, path, m_RequestedProfile.FallbackReferenceSize,
                 primaryAscent, loadedPaths);
             next.Sources.push_back({
                 windowsFace.Label, path, FontSourceOrigin::WindowsCatalog, loaded});

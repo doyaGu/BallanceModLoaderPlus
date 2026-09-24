@@ -231,9 +231,62 @@ TEST_F(ImGuiContextFixture, TextInspectionReportsRealMergedFontCoverage) {
     EXPECT_TRUE(invalidCoverage.MissingCodepoints.empty());
 }
 
+TEST_F(ImGuiContextFixture, FallbackSizeChangesMergedGlyphsWithoutResizingPrimary) {
+    BML::UI::FontRuntime runtime(BML_TEST_FONT_DIRECTORY);
+    BML::UI::FontProfile profile;
+    profile.ReferenceSize = 32.0f;
+    profile.FallbackReferenceSize = 24.0f;
+    runtime.Configure(profile);
+    runtime.Synchronize(*m_Context, 1200.0f);
+    EXPECT_FLOAT_EQ(runtime.Inspect().ReferenceSize, profile.ReferenceSize);
+    EXPECT_FLOAT_EQ(runtime.Inspect().FallbackReferenceSize, profile.FallbackReferenceSize);
+
+    ImFont *font = ImGui::GetIO().FontDefault;
+    ASSERT_NE(font, nullptr);
+    ASSERT_GE(font->Sources.Size, 2);
+    EXPECT_FLOAT_EQ(font->Sources[0]->SizePixels, profile.ReferenceSize);
+    EXPECT_FLOAT_EQ(font->Sources[1]->SizePixels, profile.FallbackReferenceSize);
+
+    ASSERT_TRUE(ImGui::GetIO().Fonts->Build());
+    ImFontBaked *baked = font->GetFontBaked(profile.ReferenceSize);
+    ASSERT_NE(baked, nullptr);
+    const ImFontGlyph *primary = baked->FindGlyphNoFallback('A');
+    const ImFontGlyph *fallback = baked->FindGlyphNoFallback(static_cast<ImWchar>(0x1F600));
+    ASSERT_NE(primary, nullptr);
+    ASSERT_NE(fallback, nullptr);
+    ASSERT_NE(fallback->SourceIdx, 0u);
+    const float primaryHeight = primary->Y1 - primary->Y0;
+    const float fallbackHeight = fallback->Y1 - fallback->Y0;
+    const std::uint64_t generation = runtime.Inspect().Generation;
+
+    profile.FallbackReferenceSize = 40.0f;
+    runtime.Configure(profile);
+    runtime.Synchronize(*m_Context, 1200.0f);
+
+    EXPECT_EQ(runtime.Inspect().Generation, generation + 1);
+    EXPECT_FLOAT_EQ(runtime.Inspect().ReferenceSize, profile.ReferenceSize);
+    EXPECT_FLOAT_EQ(runtime.Inspect().FallbackReferenceSize, profile.FallbackReferenceSize);
+    font = ImGui::GetIO().FontDefault;
+    ASSERT_NE(font, nullptr);
+    ASSERT_GE(font->Sources.Size, 2);
+    EXPECT_FLOAT_EQ(font->Sources[0]->SizePixels, profile.ReferenceSize);
+    EXPECT_FLOAT_EQ(font->Sources[1]->SizePixels, profile.FallbackReferenceSize);
+
+    ASSERT_TRUE(ImGui::GetIO().Fonts->Build());
+    baked = font->GetFontBaked(profile.ReferenceSize);
+    ASSERT_NE(baked, nullptr);
+    primary = baked->FindGlyphNoFallback('A');
+    fallback = baked->FindGlyphNoFallback(static_cast<ImWchar>(0x1F600));
+    ASSERT_NE(primary, nullptr);
+    ASSERT_NE(fallback, nullptr);
+    EXPECT_FLOAT_EQ(primary->Y1 - primary->Y0, primaryHeight);
+    EXPECT_GT(fallback->Y1 - fallback->Y0, fallbackHeight);
+}
+
 TEST_F(ImGuiContextFixture, MergedFallbackKeepsItsStandaloneBaseline) {
     BML::UI::FontRuntime runtime(BML_TEST_FONT_DIRECTORY);
     BML::UI::FontProfile profile;
+    profile.FallbackReferenceSize = 24.0f;
     profile.UseWindowsFallbacks = true;
     runtime.Configure(profile);
     runtime.Synchronize(*m_Context, 1200.0f);
@@ -252,9 +305,9 @@ TEST_F(ImGuiContextFixture, MergedFallbackKeepsItsStandaloneBaseline) {
 
     ImGuiIO &io = ImGui::GetIO();
     ImFontConfig standaloneConfig;
-    standaloneConfig.SizePixels = profile.ReferenceSize;
+    standaloneConfig.SizePixels = profile.FallbackReferenceSize;
     ImFont *standaloneFallback = io.Fonts->AddFontFromFileTTF(
-        fallbackPath.c_str(), profile.ReferenceSize, &standaloneConfig,
+        fallbackPath.c_str(), profile.FallbackReferenceSize, &standaloneConfig,
         nullptr);
     ASSERT_NE(standaloneFallback, nullptr);
     ASSERT_TRUE(io.Fonts->Build());
@@ -262,7 +315,7 @@ TEST_F(ImGuiContextFixture, MergedFallbackKeepsItsStandaloneBaseline) {
     ImFontBaked *merged = io.FontDefault->GetFontBaked(
         profile.ReferenceSize);
     ImFontBaked *standalone = standaloneFallback->GetFontBaked(
-        profile.ReferenceSize);
+        profile.FallbackReferenceSize);
     ASSERT_NE(merged, nullptr);
     ASSERT_NE(standalone, nullptr);
 

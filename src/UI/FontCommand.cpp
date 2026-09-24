@@ -140,7 +140,7 @@ void AddUniqueFace(std::vector<std::string> &faces, std::string face) {
 
 bool FontCommandContext::IsComplete() const noexcept {
     return Runtime && PrimaryFace && ReferenceSize && FallbackFaces &&
-           UseWindowsFallbacks;
+           FallbackReferenceSize && UseWindowsFallbacks;
 }
 
 Ui::FontProfile FontCommandContext::ReadProfile() const {
@@ -151,6 +151,7 @@ Ui::FontProfile FontCommandContext::ReadProfile() const {
     profile.PrimaryFace = PrimaryFace->GetString();
     profile.ReferenceSize = ReferenceSize->GetFloat();
     profile.FallbackFaces = ReadFallbackFaces();
+    profile.FallbackReferenceSize = FallbackReferenceSize->GetFloat();
     profile.UseWindowsFallbacks = UseWindowsFallbacks->GetBoolean();
     return profile;
 }
@@ -204,6 +205,11 @@ void FontCommand::ShowStatus(IBML &bml, bool includeHint) const {
     size << "  Reference size: " << profile.ReferenceSize
          << " px at 1200 px viewport height";
     SendLine(bml, size.str());
+
+    std::ostringstream fallbackSize;
+    fallbackSize << "  Fallback size: " << profile.FallbackReferenceSize
+                 << " px at 1200 px viewport height";
+    SendLine(bml, fallbackSize.str());
 
     const std::vector<std::string> fallbacks = profile.FallbackFaces;
     SendLine(bml, "  Configured fallbacks: " +
@@ -332,6 +338,7 @@ void FontCommand::ShowHelp(IBML &bml) const {
         "  font fallback add <file>            Append a fallback font.\n"
         "  font fallback remove <index|file>   Remove a fallback font.\n"
         "  font fallback clear                 Remove all configured fallbacks.\n"
+        "  font fallback size [<8..96>|default]  Show or set fallback size.\n"
         "  font system [on|off]                Show or set Windows symbol/emoji fallbacks.\n"
         "  font reload                         Rebuild the configured font on the next frame.\n"
         "  font reset                          Restore the complete default profile.\n");
@@ -392,6 +399,30 @@ void FontCommand::ExecuteFallback(IBML &bml, const std::vector<std::string> &arg
         return;
     if (args.size() == 2) {
         ShowFallbacks(bml);
+        return;
+    }
+    if (EqualArgument(args[2], "size")) {
+        if (args.size() == 3) {
+            std::ostringstream line;
+            line << "Fallback size: " << m_Context.FallbackReferenceSize->GetFloat();
+            SendLine(bml, line.str());
+            return;
+        }
+        if (args.size() != 4) {
+            BML::Shell::Fail(&bml, "Usage: font fallback size [<8..96>|default]\n");
+            return;
+        }
+
+        float size = Ui::FontProfile().FallbackReferenceSize;
+        if (!EqualArgument(args[3], "default") && !ParseReferenceSize(args[3], size)) {
+            BML::Shell::Fail(&bml, "Fallback size must be a number from 8 through 96.\n");
+            return;
+        }
+
+        m_Context.FallbackReferenceSize->SetFloat(size);
+        std::ostringstream message;
+        message << "Fallback size set to " << size << '.';
+        ScheduleConfiguredProfile(bml, message.str());
         return;
     }
     if (EqualArgument(args[2], "clear")) {
@@ -460,7 +491,7 @@ void FontCommand::ExecuteFallback(IBML &bml, const std::vector<std::string> &arg
         return;
     }
 
-    BML::Shell::Fail(&bml, "Usage: font fallback [add|remove|clear]\n");
+    BML::Shell::Fail(&bml, "Usage: font fallback [add|remove|clear|size]\n");
 }
 
 void FontCommand::ExecuteSystemFallbacks(IBML &bml, const std::vector<std::string> &args) {
@@ -549,6 +580,7 @@ void FontCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
         m_Context.PrimaryFace->SetString(defaults.PrimaryFace.c_str());
         m_Context.ReferenceSize->SetFloat(defaults.ReferenceSize);
         m_Context.WriteFallbackFaces(defaults.FallbackFaces);
+        m_Context.FallbackReferenceSize->SetFloat(defaults.FallbackReferenceSize);
         m_Context.UseWindowsFallbacks->SetBoolean(defaults.UseWindowsFallbacks);
         ScheduleConfiguredProfile(*bml, "Default font profile restored.");
         return;
@@ -571,7 +603,10 @@ const std::vector<std::string> FontCommand::GetTabCompletion(IBML *, const std::
     if (args.size() == 3 && EqualArgument(args[1], "size"))
         return {"default"};
     if (args.size() == 3 && EqualArgument(args[1], "fallback"))
-        return {"add", "remove", "clear"};
+        return {"add", "remove", "clear", "size"};
+    if (args.size() == 4 && EqualArgument(args[1], "fallback") &&
+        EqualArgument(args[2], "size"))
+        return {"default"};
     if (args.size() == 4 && EqualArgument(args[1], "fallback") &&
         EqualArgument(args[2], "add")) {
         std::vector<std::string> faces;

@@ -19,6 +19,7 @@ struct FontProfile {
     std::string PrimaryFace = "unifont.otf";
     std::vector<std::string> FallbackFaces;
     float ReferenceSize = 32.0f;
+    float FallbackReferenceSize = 32.0f;
     bool UseWindowsFallbacks = true;
 
     bool operator==(const FontProfile &) const = default;
@@ -49,6 +50,7 @@ struct FontRuntimeSnapshot {
     FontRuntimeState State = FontRuntimeState::Unconfigured;
     std::uint64_t Generation = 0;
     float ReferenceSize = 32.0f;
+    float FallbackReferenceSize = 32.0f;
     std::vector<FontSourceStatus> Sources;
     std::vector<std::string> Diagnostics;
     bool SupportsUnicodeScalars = false;

@@ -110,6 +110,7 @@ const BMLMod::Setting *BMLMod::GetSettings(std::size_t &count) {
         {"GUI", "FontFilename", &BMLMod::m_FontFilename, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
         {"GUI", "FontSize", &BMLMod::m_FontSize, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
         {"GUI", "FontFallbacks", &BMLMod::m_FontFallbacks, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
+        {"GUI", "FontFallbackSize", &BMLMod::m_FontFallbackSize, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
         {"GUI", "UseSystemFontFallbacks", &BMLMod::m_UseSystemFontFallbacks, &BMLMod::ApplyUiFontSetting, Startup | OnChange, false},
         {"GUI", "EnableIniSettings", &BMLMod::m_EnableIniSettings, nullptr, OnDemand, false},
 
@@ -118,7 +119,7 @@ const BMLMod::Setting *BMLMod::GetSettings(std::size_t &count) {
         {"Graphics", "WidescreenFix", &BMLMod::m_WidescreenFix, &BMLMod::ApplyWidescreenSetting, Startup | OnChange, false},
 
     };
-    static_assert(sizeof(settings) / sizeof(settings[0]) == 8,
+    static_assert(sizeof(settings) / sizeof(settings[0]) == 9,
                   "Every BMLMod-owned config property must have one settings-table entry");
 
     count = sizeof(settings) / sizeof(settings[0]);
@@ -451,6 +452,9 @@ void BMLMod::InitConfigs() {
     m_FontFallbacks->SetDefaultString("");
     RefreshFontChoices();
 
+    m_FontFallbackSize->SetComment("Logical size of fallback UI fonts at a 1200-pixel viewport height (8-96).");
+    m_FontFallbackSize->SetDefaultFloat(32.0f);
+
     m_UseSystemFontFallbacks->SetComment("Use Windows symbol and emoji fonts after configured fonts.");
     m_UseSystemFontFallbacks->SetDefaultBoolean(true);
 
@@ -495,6 +499,7 @@ FontCommandContext BMLMod::GetFontCommandContext() const {
     commandContext.PrimaryFace = m_FontFilename;
     commandContext.ReferenceSize = m_FontSize;
     commandContext.FallbackFaces = m_FontFallbacks;
+    commandContext.FallbackReferenceSize = m_FontFallbackSize;
     commandContext.UseWindowsFallbacks = m_UseSystemFontFallbacks;
     return commandContext;
 }

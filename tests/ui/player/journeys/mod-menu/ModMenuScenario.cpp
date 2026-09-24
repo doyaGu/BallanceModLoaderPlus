@@ -62,7 +62,7 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
                                        "CommandBarTheme", "CustomMap", "Tweak"}));
 
         IM_CHECK(OpenConfigCategory(ctx, "GUI", "**/FontFilename"));
-        IM_CHECK(MenuPagesContain(ctx, {"FontFilename", "FontSize", "FontFallbacks",
+        IM_CHECK(MenuPagesContain(ctx, {"FontFilename", "FontSize", "FontFallbacks", "FontFallbackSize",
                                        "UseSystemFontFallbacks", "EnableIniSettings"}));
         IM_CHECK(HasRadioControl(ctx, "**/FontFilename"));
         IM_CHECK(HasRadioControl(ctx, "**/FontFallbacks"));

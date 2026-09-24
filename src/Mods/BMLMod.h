@@ -147,6 +147,7 @@ private:
     IProperty *m_FontFilename = nullptr;
     IProperty *m_FontSize = nullptr;
     IProperty *m_FontFallbacks = nullptr;
+    IProperty *m_FontFallbackSize = nullptr;
     IProperty *m_UseSystemFontFallbacks = nullptr;
     IProperty *m_EnableIniSettings = nullptr;
 

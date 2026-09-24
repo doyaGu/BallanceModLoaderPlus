@@ -16,6 +16,7 @@ struct FontCommandContext {
     IProperty *PrimaryFace = nullptr;
     IProperty *ReferenceSize = nullptr;
     IProperty *FallbackFaces = nullptr;
+    IProperty *FallbackReferenceSize = nullptr;
     IProperty *UseWindowsFallbacks = nullptr;
 
     bool IsComplete() const noexcept;
