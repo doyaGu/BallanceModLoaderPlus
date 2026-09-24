@@ -37,6 +37,19 @@ enum ReloadPhase {
   RELOAD_RESTORE_STATE = 8
 }
 
+enum MenuPageEnterReason {
+  MENU_PAGE_ENTER_PUSH = 0,
+  MENU_PAGE_ENTER_REPLACE = 1,
+  MENU_PAGE_ENTER_BACK = 2
+}
+
+enum MenuPageLeaveReason {
+  MENU_PAGE_LEAVE_BACK = 0,
+  MENU_PAGE_LEAVE_CLOSE = 1,
+  MENU_PAGE_LEAVE_PUSH = 2,
+  MENU_PAGE_LEAVE_REPLACE = 3
+}
+
 enum StateValueType {
   STATE_VALUE_EMPTY = 0,
   STATE_VALUE_BOOL = 1,
@@ -564,6 +577,30 @@ class CommandRef {
   bool Unregister();
 }
 
+class MenuPageDefinition {
+  string Id;
+  string Label;
+  string Description;
+  bool ShowInDetails;
+}
+
+class MenuPageFrame {
+  bool Push(const string &in id);
+  bool Replace(const string &in id);
+  void Back();
+  void Close();
+}
+
+funcdef void MenuPageDraw(BML::MenuPageFrame &inout frame);
+funcdef void MenuPageEnter(BML::MenuPageEnterReason reason);
+funcdef void MenuPageLeave(BML::MenuPageLeaveReason reason);
+
+class MenuPageRef {
+  bool get_IsValid() const;
+  string get_Id() const;
+  bool Unregister();
+}
+
 interface Timer {
   bool Tick(const BML::ModContext &in ctx, const BML::TimerEvent &in event);
 }
@@ -954,6 +991,8 @@ class ModContext {
   CommandRef@ RegisterCommand(Command@+ command) const;
   CommandRef@ RegisterCommand(const CommandDefinition &in definition, CommandCallback@+ execute, CommandCompletionCallback@+ complete = null) const;
   bool UnregisterCommand(const string &in name) const;
+  MenuPageRef@ RegisterMenuPage(const MenuPageDefinition &in definition, MenuPageDraw@+ draw, MenuPageEnter@+ enter = null, MenuPageLeave@+ leave = null) const;
+  bool UnregisterMenuPage(const string &in id) const;
   DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const;
   DataShareRequestRef@ RequestDataShare(const string &in key, int type, DataShareCallback@+ callback, const string &in name = "") const;
   int _IsImcRpcAvailable(const string &in route, bool &out available) const;

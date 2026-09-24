@@ -2311,29 +2311,53 @@ C 符号 <code>BMLEntry</code> 和 <code>BMLExit</code>。入口缺失或被 C++
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="w"> </span><span class="n">OnFrame</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">        </span><span class="n">Bui</span><span class="o">::</span><span class="n">Title</span><span class="p">(</span><span class="s">"Diagnostics"</span><span class="p">);</span>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">        </span><span class="c1">// 在当前页面中直接绘制 ImGui 或 Bui 控件。</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">Bui</span><span class="o">::</span><span class="n">NavBack</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="o">::</span><span class="n">Back</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">                              </span><span class="o">:</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="o">::</span><span class="n">None</span><span class="p">;</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="p">};</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="c1">// 让该对象作为 Mod 状态的一部分持续存活。</span>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="n">DiagnosticsPage</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">;</span>
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="kt">void</span><span class="w"> </span><span class="nf">RegisterMenuPages</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">.</span><span class="n">Register</span><span class="p">();</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="kt">void</span><span class="w"> </span><span class="nf">UnregisterMenuPages</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">.</span><span class="n">Unregister</span><span class="p">();</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">Bui</span><span class="o">::</span><span class="n">MainButton</span><span class="p">(</span><span class="s">"More details"</span><span class="p">))</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="o">::</span><span class="n">Push</span><span class="p">(</span><span class="s">"diagnostics-details"</span><span class="p">);</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="o">::</span><span class="n">None</span><span class="p">();</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="p">};</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="k">class</span><span class="w"> </span><span class="nc">DiagnosticsDetailsPage</span><span class="w"> </span><span class="k">final</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="k">public</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">Page</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="k">public</span><span class="o">:</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="w">    </span><span class="n">DiagnosticsDetailsPage</span><span class="p">()</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="w">        </span><span class="o">:</span><span class="w"> </span><span class="n">Page</span><span class="p">(</span><span class="s">"diagnostics-details"</span><span class="p">,</span><span class="w"> </span><span class="s">"Details"</span><span class="p">,</span><span class="w"> </span><span class="p">{},</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="w">               </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageVisibility</span><span class="o">::</span><span class="n">Hidden</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="k">protected</span><span class="o">:</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="w"> </span><span class="n">OnFrame</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="w">        </span><span class="n">Bui</span><span class="o">::</span><span class="n">Title</span><span class="p">(</span><span class="s">"Details"</span><span class="p">);</span>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModMenu</span><span class="o">::</span><span class="n">PageAction</span><span class="o">::</span><span class="n">None</span><span class="p">();</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="p">};</span>
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="c1">// 让该对象作为 Mod 状态的一部分持续存活。</span>
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a><span class="n">DiagnosticsPage</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">;</span>
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a><span class="n">DiagnosticsDetailsPage</span><span class="w"> </span><span class="n">diagnosticsDetails</span><span class="p">;</span>
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a><span class="kt">void</span><span class="w"> </span><span class="nf">RegisterMenuPages</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">.</span><span class="n">Register</span><span class="p">();</span>
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnosticsDetails</span><span class="p">.</span><span class="n">Register</span><span class="p">();</span>
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a><span class="p">}</span>
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a><span class="kt">void</span><span class="w"> </span><span class="nf">UnregisterMenuPages</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnosticsDetails</span><span class="p">.</span><span class="n">Unregister</span><span class="p">();</span>
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="n">diagnostics</span><span class="p">.</span><span class="n">Unregister</span><span class="p">();</span>
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a><span class="p">}</span>
 </code></pre></div>
-<p>调用 <code>OnFrame</code> 时，Loader 已经打开覆盖整个 viewport 的 ImGui 页面；直接绘制
-内容即可，不要调用 <code>ImGui::NewFrame</code> 或 <code>ImGui::Render</code>。返回 <code>Back</code> 回到 Mod
-详情页，返回 <code>Close</code> 退出 Mods 菜单。Loader 会复制 id、标签和说明，但页面对象
+<p>调用 <code>OnFrame</code> 时，Loader 已经打开 Mods 菜单中央可滚动的内容区域；普通 ImGui
+控件在该区域内顺序布局，不要调用 <code>ImGui::NewFrame</code> 或 <code>ImGui::Render</code>。
+宿主会在区域外绘制原生返回按钮；页面自身不应再调用 <code>Bui::NavBack</code>。<code>Hidden</code> 子页不显示在
+详情列表中，只能由同一 Mod 的页面以 <code>Push</code> 或 <code>Replace</code> 打开。<code>Back</code> 返回上一个
+路由，<code>Close</code> 退出 Mods 菜单；目标无效或导航历史已满时留在当前页并显示错误。
+<code>OnEnter</code> 和 <code>OnLeave</code> 会收到导航原因。Loader 会复制 id、标签和说明，但页面对象
 及回调必须存活到注销为止；owner DLL 卸载前，Loader 还会清除所有遗留注册。
-1.0 版仅向原生 Mod 开放这一能力。请在所属 Mod 的 <code>OnLoad</code> 和 <code>OnUnload</code>
+Native 与 Script Mod 共用页面注册表。请在所属 Mod 的 <code>OnLoad</code> 和 <code>OnUnload</code>
 中分别调用上面的注册与注销函数。
 <code>ModMenu.h</code> 可直接用于 C，不包含 C++ 标准库或类；<code>ModMenu.hpp</code> 只是单向建立在
 该 C 接口上的 C++ 编写 facade。在 C 边界上，<code>BML_ModMenuPageDraw</code> 返回
 <code>BML_OK</code> 或错误状态，并把延迟执行的导航请求写入
-<code>BML_ModMenuPageFrame</code> 的 <code>Action</code> 成员。可选的 Enter 和 Leave 回调同样返回
-状态码，页面生命周期失败不会再被静默当成成功。导航不会复用错误返回值；后续小版本也可借助
-<code>StructSize</code> 在 frame 末尾追加输入或输出，而不改变 1.0 的回调签名。</p>
+<code>BML_ModMenuPageFrame</code> 的 <code>Action</code> 成员；Push 和 Replace 的目标 ID 写入
+<code>TargetPageId[256]</code>。ID 只在所属 Mod 内解析。旧 alpha 页面结构因 <code>StructSize</code>
+不符而被拒绝，不会按新版 1.0 回调调用。</p>
 <h2 id="mod">Mod 生命周期与事件<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h2>
 <p><code>IMod</code> 继承 <code>IMessageReceiver</code>。实现类必须提供 ID、版本、名称、作者、说明和
 BML 版本要求，并可按需重写以下回调：</p>

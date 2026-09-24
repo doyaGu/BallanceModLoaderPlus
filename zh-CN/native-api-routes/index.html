@@ -2046,7 +2046,7 @@ Mod 间普通服务走 IMC；只有必须无编码传递
 <td>在 Mods 菜单中扩展自己的 Mod 详情页</td>
 <td>无</td>
 <td><code>ModMenu.hpp</code> 的 <code>BML::ModMenu::Page</code></td>
-<td><code>ModMenu.h</code> 是纯 C 接口，C++ 封装单向建立在其上。每次注册会追加一个原生风格的详情按钮，并路由到完全自定义的 ImGui 页面；1.0 版仅支持原生 Mod。</td>
+<td><code>ModMenu.h</code> 是纯 C 接口，C++ 封装单向建立在其上。可见页面添加原生风格的详情按钮；隐藏页面可由同一 Mod 的页面通过 Push 或 Replace 进入。脚本 Mod 可通过 <code>ModContext.RegisterMenuPage</code> 注册页面。</td>
 </tr>
 <tr>
 <td>Loader 事件</td>

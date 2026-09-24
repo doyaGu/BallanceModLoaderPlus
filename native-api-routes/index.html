@@ -1169,7 +1169,7 @@ declared in the header of the same name under <code>include/BML/</code>; the res
 <td>Add pages to your own entry in the Mods menu</td>
 <td>none</td>
 <td><code>BML::ModMenu::Page</code> from <code>ModMenu.hpp</code></td>
-<td><code>ModMenu.h</code> is the pure C interface; the C++ facade is one-way over it. Each registration appends one native-styled details action and routes it to a fully custom ImGui page. Version 1.0 is Native Mod only.</td>
+<td><code>ModMenu.h</code> is the pure C interface; the C++ facade is one-way over it. Visible pages add a native-styled details action; hidden pages are reached through same-Mod Push or Replace navigation. Script Mods can register pages through <code>ModContext.RegisterMenuPage</code>.</td>
 </tr>
 <tr>
 <td>Loader events</td>
