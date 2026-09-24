@@ -203,6 +203,20 @@ class InstallTransaction {
                           m_Mods / "PublicAuthoringTest.bmodp",
                           fs::copy_options::overwrite_existing);
         }
+
+        if (std::find(request.SelectedScenario.Fixtures.begin(),
+                      request.SelectedScenario.Fixtures.end(),
+                      "mod-menu-reload") != request.SelectedScenario.Fixtures.end()) {
+            const fs::path source = request.SourceRoot / "fixtures" / "mod-menu-reload";
+            if (!fs::is_regular_file(source / "runtime.mod.as") ||
+                !fs::is_regular_file(source / "runtime.v2.txt")) {
+                throw std::runtime_error("Mod Menu reload fixture is incomplete: " +
+                                         source.string());
+            }
+            Snapshot(m_ModLoader / "Configs" / "bml.ui.mod-menu-reload.cfg");
+            fs::copy(source, m_Mods / "ModMenuReload",
+                     fs::copy_options::recursive);
+        }
     }
 
     bool Restore() {

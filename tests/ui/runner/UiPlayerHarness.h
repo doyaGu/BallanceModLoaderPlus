@@ -19,6 +19,7 @@ struct CaptureResult {
 };
 
 struct PlayerRunRequest {
+    std::filesystem::path SourceRoot;
     std::filesystem::path BallanceRoot;
     std::filesystem::path BuildDll;
     std::filesystem::path PublicAuthoringMod;

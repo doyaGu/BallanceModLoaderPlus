@@ -1,0 +1,9 @@
+name=mod-menu-reload
+test=mod_menu_replaced_draft
+surface=mod-menu
+capture=ModMenuReload
+input=mod-list
+fixture=mod-menu-reload
+requires=angelscript
+source=player/journeys/mod-menu/ModMenuReloadScenario.cpp
+required_log=Script mod bml.ui.mod-menu-reload hot reload succeeded.

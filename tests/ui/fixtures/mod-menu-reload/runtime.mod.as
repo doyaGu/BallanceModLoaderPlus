@@ -1,0 +1,11 @@
+[bml.mod id="bml.ui.mod-menu-reload" name="Mod Menu Reload Fixture" version="1.0.0" author="BML" bml="0.3.14" reload="auto"]
+class ModMenuReloadFixture {
+  void OnLoad(const BML::ModContext &in ctx) {
+    BML::Config@ config = ctx.BorrowConfig();
+    if (config is null)
+      return;
+    BML::ConfigProperty@ enabled = config.GetProperty("General", "Enabled");
+    if (enabled !is null)
+      enabled.SetDefaultBoolean(false);
+  }
+}

@@ -218,10 +218,29 @@ struct ModMenu::State {
 
     void SynchronizeRoutes() {
         model.SynchronizeSelected();
+
+        // A replaced Mod invalidates the selected settings action. Once its
+        // pending edits are resolved, return to the nearest usable page.
+        if (routes.IsCurrentPage(ModSettingsRoute) &&
+            !model.GetSession().IsDirty() &&
+            !model.GetSelectedDetailsAction()) {
+            routes.Back();
+        }
+
         const ModMenuOwner *sessionOwner = model.GetSession().GetSelectedMod();
         if (!sessionOwner || !model.IsCurrentOwner(*sessionOwner)) {
-            if (routes.IsOpen() && !routes.IsCurrentPage(ModListRoute))
-                routes.Open(ModListRoute);
+            if (routes.IsOpen()) {
+                if (model.GetSession().IsDirty()) {
+                    // Keep the Revert action available until the user decides
+                    // what to do with edits that can no longer be applied.
+                    if (!routes.IsCurrentPage(ModSettingsRoute)) {
+                        routes.Open(ModListRoute);
+                        routes.Push(ModSettingsRoute);
+                    }
+                } else if (!routes.IsCurrentPage(ModListRoute)) {
+                    routes.Open(ModListRoute);
+                }
+            }
             sessionOwner = nullptr;
         }
 

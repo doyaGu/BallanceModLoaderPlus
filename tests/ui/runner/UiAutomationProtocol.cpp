@@ -154,7 +154,7 @@ Scenario LoadScenario(const fs::path &definitionPath, const fs::path &sourceRoot
                                  input + "'");
 
     scenario.Fixtures = ReadKnownList(properties, "fixture",
-                                      {"custom-map", "public-authoring"},
+                                      {"custom-map", "public-authoring", "mod-menu-reload"},
                                       absoluteDefinition);
     scenario.RequiredLogs = ReadUniqueList(properties, "required_log", absoluteDefinition);
     scenario.Requirements =

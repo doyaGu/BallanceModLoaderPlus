@@ -76,6 +76,7 @@ int main(int argc, char **argv) {
             throw std::runtime_error("Unknown UI scenario: " + scenarioName);
 
         UiTest::PlayerRunRequest request;
+        request.SourceRoot = sourceRoot;
         request.BallanceRoot = GetRequired(arguments, "ballance-root");
         request.BuildDll = GetRequired(arguments, "build-dll");
         const auto publicAuthoringMod = arguments.find("public-authoring-mod");
