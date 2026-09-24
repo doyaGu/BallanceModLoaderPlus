@@ -28,12 +28,12 @@ details entry and, optionally, hidden child pages from `OnLoad`:
 
 ```angelscript
 void DrawEntry(BML::MenuPageFrame &inout frame) {
-  if (ImGui::Button("Details")) frame.Push("child");
+  if (BML::UI::MainButton("Details")) frame.Push("child");
 }
 
 void DrawChild(BML::MenuPageFrame &inout frame) {
   ImGui::TextUnformatted("More information");
-  if (ImGui::Button("Return to overview")) frame.Back();
+  if (BML::UI::MainButton("Return to overview")) frame.Back();
 }
 
 // Add your [bml.mod] annotation to this class as shown in the lifecycle guide.

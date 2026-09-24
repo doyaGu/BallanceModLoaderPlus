@@ -3,12 +3,12 @@ int menuPageLeaveCount = 0;
 
 void DrawSmokeMenuPage(BML::MenuPageFrame &inout frame) {
   ImGui::TextUnformatted("Script Mod menu page");
-  if (ImGui::Button("Open child")) frame.Push("child");
+  if (BML::UI::MainButton("Open child")) frame.Push("child");
 }
 
 void DrawSmokeMenuChild(BML::MenuPageFrame &inout frame) {
   ImGui::TextUnformatted("Hidden child page");
-  if (ImGui::Button("Return to overview")) frame.Back();
+  if (BML::UI::MainButton("Return to overview")) frame.Back();
 }
 
 void EnterSmokeMenuPage(BML::MenuPageEnterReason reason) {
