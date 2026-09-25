@@ -135,8 +135,10 @@ Behavior edits.
 **Custom Map Staging** — The private Custom Maps Module that owns prepared map
 files and their directories. It first stages under the game `Bin` directory and
 passes CK an ASCII relative path, falling back to an exactly representable ACP
-or 8.3 path only when necessary. A successful map remains staged until that
-level ends; failed attempts and shutdown clean only their owned files.
+or 8.3 path only when necessary. It tracks pending, loaded, and retained files;
+the load orchestrator reports the outcome without receiving cleanup ownership.
+A successful map remains staged until that level ends, while failed deletion is
+kept for a later cleanup attempt.
 
 **Custom Map Level Loader** — The private Custom Maps Module that reads the
 values to be changed, installs a Behavior Plan, and restores the previous values
@@ -149,15 +151,21 @@ script bindings.
 to Mod lifecycle and gameplay callbacks. They do not own tweak state.
 
 **Engine Hook Lifecycle** — Private transactional ownership of Input, Physics,
-Object Load, and render interception. Virtual-table changes validate the whole
-batch before installation and restore only slots still owned by BML+. Optional
-render and physics scheduling features degrade independently; failed teardown
-retains the Runtime Context rather than releasing code behind a live callback.
+Object Load, and render interception for one Runtime Context. Process-wide
+patches record that Context as their owner, reject a second owner, and route
+callbacks through the recorded Context. Virtual-table changes validate the
+whole batch before installation and restore only slots still owned by BML+.
+Optional render and physics scheduling features degrade independently; failed
+teardown retains the Runtime Context rather than releasing code behind a live
+callback. Process bootstrap installs the CK behavior-prototype interception
+outside `DllMain`'s loader-lock initialization path.
 
 **Runtime Diagnostics** — `Updater.exe doctor` reports installation and process
 requirements before BML+ loads. The private `bml system` command reports live
 CK, renderer, font, IME, Hook, Mod, and AngelScript state without publishing a
-new Mod API or exposing full user paths.
+new Mod API or exposing full user paths. Immutable runtime hashes and path
+compatibility form a cached install fingerprint; live state is captured into a
+typed snapshot before a separate formatter creates command output.
 
 **Game Phase** — Private Front End, Transitioning, Active Level, or
 Paused Level state, owned by Runtime Context and queried through its existing
