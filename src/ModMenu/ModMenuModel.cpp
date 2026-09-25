@@ -89,7 +89,7 @@ void ModMenuModel::OnOpen() {
     m_Session.ClearSelection();
     m_SelectedStamp.reset();
     m_PendingCommand = Command::None;
-    m_Notice.clear();
+    m_Error.clear();
 }
 
 void ModMenuModel::OnClose() {
@@ -106,7 +106,7 @@ bool ModMenuModel::SelectMod(const ModMenuOwner &owner) {
         return false;
 
     m_SelectedStamp.reset();
-    m_Notice.clear();
+    m_Error.clear();
     SynchronizeSelected(true);
     return true;
 }
@@ -126,7 +126,7 @@ ModMenuEditResult ModMenuModel::EditSetting(const ModMenuSettingKey &key,
                                             ModMenuSettingValue value) {
     const ModMenuEditResult result = m_Session.Edit(key, std::move(value));
     if (result == ModMenuEditResult::Changed)
-        m_Notice.clear();
+        m_Error.clear();
     return result;
 }
 
@@ -272,8 +272,8 @@ const ModMenuSession &ModMenuModel::GetSession() const {
     return m_Session;
 }
 
-const std::string &ModMenuModel::GetNotice() const {
-    return m_Notice;
+const std::string &ModMenuModel::GetError() const {
+    return m_Error;
 }
 
 ModMenuOwner ModMenuModel::MakeOwner(IMod *mod) const {
@@ -411,21 +411,21 @@ void ModMenuModel::RefreshMods() {
 void ModMenuModel::Apply() {
     std::optional<ModMenuSession::PreparedEdits> prepared = m_Session.PrepareEdits();
     if (!prepared) {
-        m_Notice = "There are no conflict-free changes to apply.";
+        m_Error.clear();
         return;
     }
     const ModMenuEditBatch &batch = prepared->GetBatch();
 
     IMod *mod = m_Context.FindMod(batch.owner.id.c_str());
     if (!mod || MakeOwner(mod) != batch.owner) {
-        m_Notice = "The Mod changed before its settings could be applied.";
+        m_Error = "The Mod changed before its settings could be applied.";
         SynchronizeSelected(true);
         return;
     }
 
     Config *config = m_Context.GetConfig(mod);
     if (!config) {
-        m_Notice = "The Mod no longer owns a configuration.";
+        m_Error = "The Mod no longer owns a configuration.";
         SynchronizeSelected(true);
         return;
     }
@@ -441,13 +441,9 @@ void ModMenuModel::Apply() {
         edit.NewValue = source.value;
         edits.push_back(std::move(edit));
     }
-    std::string successNotice = edits.size() == 1
-        ? "1 setting applied."
-        : std::to_string(edits.size()) + " settings applied.";
-
     const Config::ApplyResult result = config->ApplyEdits(mod, batch.expectedSchemaRevision, edits);
     if (!result) {
-        m_Notice = ApplyErrorText(result.Error);
+        m_Error = ApplyErrorText(result.Error);
         SynchronizeSelected(true);
         return;
     }
@@ -457,11 +453,11 @@ void ModMenuModel::Apply() {
 
     if (m_SelectedStamp)
         m_SelectedStamp->valueRevision = valueRevision;
-    m_Notice = std::move(successNotice);
+    m_Error.clear();
 }
 
 void ModMenuModel::Revert() {
     m_Session.Revert();
-    m_Notice = "Pending changes reverted.";
+    m_Error.clear();
     SynchronizeSelected(true);
 }

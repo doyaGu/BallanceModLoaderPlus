@@ -94,9 +94,9 @@ namespace {
         TextPanelStyleScope &operator=(const TextPanelStyleScope &) = delete;
     };
 
-    const char *FailureText(const ModMenuModel &model) {
-        if (!model.GetNotice().empty())
-            return model.GetNotice().c_str();
+    const char *ErrorText(const ModMenuModel &model) {
+        if (!model.GetError().empty())
+            return model.GetError().c_str();
 
         switch (model.GetSession().GetStatus()) {
         case ModMenuSessionStatus::Conflict:
@@ -592,7 +592,7 @@ struct ModMenuPresentation::State {
 
         if (!commentOnPage)
             comment.Clear();
-        if (FailureText(model)[0] == '\0' && !ImGui::GetIO().WantTextInput)
+        if (ErrorText(model)[0] == '\0' && !ImGui::GetIO().WantTextInput)
             comment.Draw(viewport, "ModOptionComment", SettingCommentPanel);
     }
 
@@ -608,7 +608,7 @@ struct ModMenuPresentation::State {
         if (Bui::SmallButton("Revert"))
             model.RequestRevert();
 
-        const char *failure = FailureText(model);
+        const char *failure = ErrorText(model);
         if (failure[0] != '\0') {
             DrawTextPanel(viewport, "ModOptionError", SettingCommentPanel,
                           "Unable to save", failure);
@@ -654,7 +654,7 @@ ModMenuRouteAction ModMenuPresentation::DrawDetailsPage(ModMenuModel &model) {
     const ModMenuDocument *document = model.GetSession().GetDocument();
     if (!document) {
         Bui::Title("Mod unavailable");
-        const char *failure = FailureText(model);
+        const char *failure = ErrorText(model);
         if (failure[0] != '\0') {
             DrawTextPanel(m_State->viewport, "ModError", DetailsCommentPanel,
                           "Mod unavailable", failure);
@@ -752,11 +752,6 @@ ModMenuRouteAction ModMenuPresentation::DrawSettingsPage(ModMenuModel &model) {
     if (model.GetSession().IsDirty()) {
         m_State->DrawPendingActions(model);
         return ModMenuRouteAction::None;
-    }
-
-    if (!model.GetNotice().empty()) {
-        DrawTextPanel(m_State->viewport, "ModOptionNotice", SettingCommentPanel,
-                      "Settings", model.GetNotice().c_str());
     }
 
     return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;

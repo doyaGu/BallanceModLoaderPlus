@@ -51,7 +51,7 @@ public:
     void ProcessPendingCommand();
 
     const ModMenuSession &GetSession() const;
-    const std::string &GetNotice() const;
+    const std::string &GetError() const;
 
 private:
     struct SourceStamp {
@@ -90,7 +90,7 @@ private:
     std::optional<SourceStamp> m_SelectedStamp;
     std::optional<std::uint64_t> m_ObservedModRegistryRevision;
     Command m_PendingCommand = Command::None;
-    std::string m_Notice;
+    std::string m_Error;
 };
 
 #endif // BML_MOD_MENU_MODEL_H
