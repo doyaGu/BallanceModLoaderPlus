@@ -19,6 +19,7 @@
 #include "Console/Shell/ShellExecutor.h"
 #include "Console/Shell/ShellIo.h"
 #include "Hooks/RenderHook.h"
+#include "Hooks/HookLifecycle.h"
 #include "UI/FontRuntime.h"
 #include "UI/Overlay.h"
 #include "Logging/Logger.h"
@@ -386,12 +387,30 @@ bool ModContext::Init() {
 }
 
 bool ModContext::Shutdown() {
-    if (!IsInited())
+    if (!IsInited()) {
+        if ((IsInputHookInstalled() || IsObjectLoadHookInstalled() ||
+             IsPhysicsPostProcessHookInstalled() || IsPhysicalizeHookInstalled()) &&
+            !ShutdownHooks()) {
+            return false;
+        }
         return CloseApiAccess();
+    }
 
     if (!m_Loader.Stop()) {
         if (m_Logger)
             m_Logger->Error("Cannot shut down the runtime Context while Mod teardown is incomplete.");
+        return false;
+    }
+
+    if (RenderHook::IsSkipRenderAvailable()) {
+        if (m_Logger)
+            m_Logger->Error("Cannot shut down the runtime Context while the render hook is still installed.");
+        return false;
+    }
+
+    if (!ShutdownHooks()) {
+        if (m_Logger)
+            m_Logger->Error("Cannot release the runtime Context while a hook is still installed.");
         return false;
     }
 
@@ -423,8 +442,6 @@ bool ModContext::Shutdown() {
         Overlay::ImGuiShutdownPlatform(m_CKContext);
         Overlay::ImGuiDestroyContext();
     }
-
-    ShutdownHooks();
 
     m_CKContext = nullptr;
 
@@ -1350,8 +1367,7 @@ float ModContext::GetSRTime() {
 }
 
 void ModContext::SkipRenderForNextTick() {
-    RenderHook::DisableRender(true);
-    AddTimer(1ul, []() { RenderHook::DisableRender(false); });
+    RenderHook::SkipNextRender();
 }
 
 void ModContext::RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
@@ -1626,18 +1642,14 @@ void ModContext::ShutdownLogger() {
     }
 }
 
-extern bool HookObjectLoad();
-extern bool HookPhysicalize();
-
-extern bool UnhookObjectLoad();
-extern bool UnhookPhysicalize();
-
 bool ModContext::InitHooks() {
     bool result = true;
 
     m_InputHook = new InputHook(m_InputManager);
-    if (!m_InputHook) {
-        m_Logger->Error("Failed to create InputHook");
+    if (!IsInputHookInstalled()) {
+        m_Logger->Error("Failed to install InputHook");
+        delete m_InputHook;
+        m_InputHook = nullptr;
         return false;
     }
 
@@ -1658,10 +1670,8 @@ bool ModContext::InitHooks() {
     }
 
     if (!result) {
-        if (objectLoadHookSuccess) UnhookObjectLoad();
-        if (physicalizeHookSuccess) UnhookPhysicalize();
-        delete m_InputHook;
-        m_InputHook = nullptr;
+        if (!ShutdownHooks())
+            m_Logger->Error("Failed to roll back partially installed engine hooks");
     }
 
     return result;
@@ -1672,18 +1682,27 @@ bool ModContext::ShutdownHooks() {
 
     delete m_InputHook;
     m_InputHook = nullptr;
+    if (IsInputHookInstalled()) {
+        if (m_Logger)
+            m_Logger->Error("Unhook Input Failed");
+        result = false;
+    }
 
     if (UnhookObjectLoad()) {
-        m_Logger->Info("Unhook ObjectLoad Success");
+        if (m_Logger)
+            m_Logger->Info("Unhook ObjectLoad Success");
     } else {
-        m_Logger->Info("Unhook ObjectLoad Failed");
+        if (m_Logger)
+            m_Logger->Error("Unhook ObjectLoad Failed");
         result = false;
     }
 
     if (UnhookPhysicalize()) {
-        m_Logger->Info("Unhook Physicalize Success");
+        if (m_Logger)
+            m_Logger->Info("Unhook Physicalize Success");
     } else {
-        m_Logger->Info("Unhook Physicalize Failed");
+        if (m_Logger)
+            m_Logger->Error("Unhook Physicalize Failed");
         result = false;
     }
 

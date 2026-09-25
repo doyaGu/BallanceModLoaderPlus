@@ -3,7 +3,9 @@
 #include "Loader/ModContext.h"
 
 #include "BML/InputHook.h"
+#include "Hooks/HookLifecycle.h"
 #include "Hooks/InputCursor.h"
+#include "Hooks/RenderHook.h"
 #include "UI/Overlay.h"
 #include "UI/FontRuntime.h"
 #if BML_ENABLE_UI_AUTOMATION
@@ -25,6 +27,7 @@ ModManager::ModManager(CKContext *context) : CKBaseManager(context, MOD_MANAGER_
 }
 
 ModManager::~ModManager() {
+    StopRuntime();
     ModContext::Destroy(m_ModContext);
 }
 
@@ -33,46 +36,21 @@ CKERROR ModManager::OnCKInit() {
 }
 
 CKERROR ModManager::OnCKEnd() {
-    return m_ModContext->Shutdown() ? CK_OK : CKERR_NOTINITIALIZED;
+    const bool stopped = StopRuntime();
+    const bool shutdown = m_ModContext->Shutdown();
+    return stopped && shutdown ? CK_OK : CKERR_NOTINITIALIZED;
 }
 
 CKERROR ModManager::OnCKPlay() {
-    if (m_Context->IsReseted() && m_Context->GetCurrentLevel() != nullptr && !m_RenderContext) {
-        m_RenderContext = m_Context->GetPlayerRenderContext();
-
-        Overlay::ImGuiInitRenderer(m_Context);
-        Overlay::ImGuiContextScope scope;
-
-        if (!m_ModContext->GetModLoader().Start()) {
-            Overlay::ImGuiShutdownRenderer(m_Context);
-            m_RenderContext = nullptr;
-            return CKERR_NOTINITIALIZED;
-        }
-
-        SynchronizeUiFonts();
-        Overlay::ImGuiNewFrame();
-    }
+    if (m_Context->IsReseted() && m_Context->GetCurrentLevel() != nullptr &&
+        !m_RenderContext && !StartRuntime())
+        return CKERR_NOTINITIALIZED;
 
     return CK_OK;
 }
 
 CKERROR ModManager::OnCKReset() {
-    bool stopped = true;
-    if (m_RenderContext) {
-        Overlay::ImGuiContextScope scope;
-        Overlay::ImGuiEndFrame();
-
-        if (auto *input = m_ModContext->GetInputManager())
-            SetOverlayCursorVisible(false);
-
-        stopped = m_ModContext->GetModLoader().Stop();
-
-        Overlay::ImGuiShutdownRenderer(m_Context);
-
-        m_RenderContext = nullptr;
-    } else {
-        stopped = m_ModContext->GetModLoader().Stop();
-    }
+    const bool stopped = StopRuntime();
     if (m_ModContext)
         m_ModContext->ResetVirtoolsWorld();
 
@@ -129,7 +107,63 @@ void ModManager::SynchronizeUiFonts() {
         m_ModContext->GetLogger()->Warn("UI font: %s", diagnostic.c_str());
 }
 
-extern void PhysicsPostProcess();
+bool ModManager::StartRuntime() {
+    if (!m_ModContext || m_RenderContext)
+        return m_RenderContext != nullptr;
+
+    CKRenderContext *renderContext = m_Context->GetPlayerRenderContext();
+    if (!renderContext)
+        return false;
+
+    if (!RenderHook::Attach(renderContext)) {
+        if (RenderHook::IsSkipRenderAvailable()) {
+            m_ModContext->GetLogger()->Error("A render hook from an earlier context is still installed");
+            return false;
+        }
+        m_ModContext->GetLogger()->Warn("Render skip is unavailable for this render context");
+    }
+
+    if (!Overlay::ImGuiInitRenderer(m_Context)) {
+        RenderHook::Detach();
+        m_ModContext->GetLogger()->Error("Failed to initialize the ImGui renderer backend");
+        return false;
+    }
+
+    m_RenderContext = renderContext;
+    Overlay::ImGuiContextScope scope;
+    if (!m_ModContext->GetModLoader().Start()) {
+        Overlay::ImGuiShutdownRenderer(m_Context);
+        RenderHook::Detach();
+        m_RenderContext = nullptr;
+        return false;
+    }
+
+    SynchronizeUiFonts();
+    Overlay::ImGuiNewFrame();
+    return true;
+}
+
+bool ModManager::StopRuntime() {
+    if (!m_ModContext)
+        return RenderHook::Detach();
+
+    bool stopped = true;
+    if (m_RenderContext) {
+        Overlay::ImGuiContextScope scope;
+        Overlay::ImGuiEndFrame();
+        SetOverlayCursorVisible(false);
+        stopped = m_ModContext->GetModLoader().Stop();
+        Overlay::ImGuiShutdownRenderer(m_Context);
+        m_RenderContext = nullptr;
+    } else {
+        stopped = m_ModContext->GetModLoader().Stop();
+    }
+
+    const bool detached = RenderHook::Detach();
+    if (!detached && m_ModContext->GetLogger())
+        m_ModContext->GetLogger()->Warn("Render skip hook could not be detached cleanly");
+    return stopped && detached;
+}
 
 CKERROR ModManager::PostProcess() {
     if (!m_ModContext || !m_ModContext->IsInited() || !m_RenderContext)
@@ -141,20 +175,15 @@ CKERROR ModManager::PostProcess() {
     Overlay::ImGuiContextScope scope;
     ImGuiFrameCompletion frameCompletion;
 
-    PhysicsPostProcess();
+    RunPhysicsPostProcess();
 
     m_ModContext->ProcessVirtoolsFrame();
 
     m_ModContext->OnProcess();
 
     auto *inputHook = m_ModContext->GetInputManager();
-    if (!inputHook) {
-        // PreProcess may already have opened an ImGui frame. Input can vanish
-        // during reset/unload; never leave that frame open for the next
-        // NewFrame(), which is a hard ImGui lifecycle assertion.
-        Overlay::ImGuiEndFrame();
+    if (!inputHook)
         return CK_OK;
-    }
 
     if (scope.IsActive()) {
         SetOverlayCursorVisible(ImGui::GetIO().WantCaptureMouse);
@@ -169,6 +198,11 @@ CKERROR ModManager::PostProcess() {
     // after the final per-frame pointer use, never from inside ImGuiRender().
     UiAutomation::AdvanceFrame();
 #endif
+    return CK_OK;
+}
+
+CKERROR ModManager::OnPreRender(CKRenderContext *dev) {
+    RenderHook::ApplyWidescreenProjection(dev);
     return CK_OK;
 }
 

@@ -403,20 +403,25 @@ set(BML_UI_SOURCES
 )
 
 set(BML_HOOK_PRIVATE_HEADERS
+        Hooks/BehaviorFunctionPatch.h
         Hooks/CKRasterizer.h
         Hooks/CKRasterizerEnums.h
         Hooks/CKRasterizerTypes.h
+        Hooks/HookLifecycle.h
         Hooks/InputCursor.h
         Hooks/Macros.h
         Hooks/RenderHook.h
+        Hooks/VTablePatch.h
         Hooks/VTables.h
 )
 
 set(BML_HOOK_SOURCES
+        Hooks/BehaviorFunctionPatch.cpp
         Hooks/InputHook.cpp
         Hooks/ObjectLoadHook.cpp
         Hooks/PhysicsHook.cpp
         Hooks/RenderHook.cpp
+        Hooks/VTablePatch.cpp
 )
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS

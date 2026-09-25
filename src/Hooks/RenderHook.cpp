@@ -1,143 +1,154 @@
 #include "Hooks/RenderHook.h"
 
-#include "CK2dEntity.h"
+#include "CKCamera.h"
+#include "CKRenderContext.h"
 
-#include <MinHook.h>
+#include <cmath>
+#include <cstddef>
 
+#include "Hooks/VTablePatch.h"
 #include "Hooks/VTables.h"
 #include "HookUtils.h"
 
-#define CP_ADD_METHOD_HOOK(Name, Base, Offset) \
-        { CP_FUNC_TARGET_PTR_NAME(Name) = utils::ForceReinterpretCast<CP_FUNC_TYPE_NAME(Name)>(Base, Offset); } \
-        if ((MH_CreateHook(*reinterpret_cast<LPVOID *>(&CP_FUNC_TARGET_PTR_NAME(Name)), \
-                           *reinterpret_cast<LPVOID *>(&CP_FUNC_PTR_NAME(Name)), \
-                            reinterpret_cast<LPVOID *>(&CP_FUNC_ORIG_PTR_NAME(Name))) != MH_OK || \
-            MH_EnableHook(*reinterpret_cast<LPVOID *>(&CP_FUNC_TARGET_PTR_NAME(Name))) != MH_OK)) \
-                return false;
+namespace {
+    using RenderContextVTable = CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>;
 
-#define CP_REMOVE_METHOD_HOOK(Name) \
-    MH_DisableHook(*reinterpret_cast<void **>(&CP_FUNC_TARGET_PTR_NAME(Name))); \
-    MH_RemoveHook(*reinterpret_cast<void **>(&CP_FUNC_TARGET_PTR_NAME(Name)));
+    VTablePatch g_RenderPatch;
+    CKRenderContext *g_RenderContext = nullptr;
+    void **g_RenderVTable = nullptr;
+    RenderContextVTable::RenderFunc g_OriginalRender = nullptr;
+    bool g_SkipNextRender = false;
+    bool g_WidescreenFixEnabled = false;
 
-// CKRenderContext
-
-bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = false;
-bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = false;
-CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> CP_HOOK_CLASS_NAME(CKRenderContext)::s_VTable = {};
-CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), UpdateProjection);
-
-#define CP_RENDER_CONTEXT_METHOD_NAME(Name) CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC_HOOK_NAME(Name)
-
-CKERROR CP_RENDER_CONTEXT_METHOD_NAME(Render)(CK_RENDER_FLAGS Flags) {
-    if (s_DisableRender)
-        return CK_OK;
-
-    return CP_CALL_METHOD_PTR(this, s_VTable.Render, Flags);
-}
-
-CKBOOL CP_HOOK_CLASS_NAME(CKRenderContext)::UpdateProjection(CKBOOL force) {
-    if (!force && m_ProjectionUpdated)
-        return TRUE;
-    if (!m_RasterizerContext)
-        return FALSE;
-
-    const auto aspect = (float) ((double) m_ViewportData.ViewWidth / (double) m_ViewportData.ViewHeight);
-    if (m_Perspective) {
-        const float fov = s_EnableWidescreenFix ? atan2f(tanf(m_Fov * 0.5f) * 0.75f * aspect, 1.0f) * 2.0f : m_Fov;
-        m_ProjectionMatrix.Perspective(fov, aspect, m_NearPlane, m_FarPlane);
-    } else {
-        m_ProjectionMatrix.Orthographic(m_Zoom, aspect, m_NearPlane, m_FarPlane);
-    }
-
-    m_RasterizerContext->SetTransformMatrix(VXMATRIX_PROJECTION, m_ProjectionMatrix);
-    m_RasterizerContext->SetViewport(&m_ViewportData);
-    m_ProjectionUpdated = TRUE;
-
-    VxRect rect(0.0f, 0.0f, (float) m_Settings.m_Rect.right, (float) m_Settings.m_Rect.bottom);
-    auto *background = Get2dRoot(TRUE);
-    background->SetRect(rect);
-    auto *foreground = Get2dRoot(FALSE);
-    foreground->SetRect(rect);
-
-    return TRUE;
-}
-
-static void *s_RenderOriginalSlots[4] = {};
-static size_t s_RenderHookedSlotIndices[4] = {};
-static size_t s_RenderHookedSlotCount = 0;
-
-bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(void *base) {
-    if (!base)
-        return false;
-
-    s_RenderHookedSlotCount = 0;
-    auto *table = utils::ForceReinterpretCast<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> *>(base, 0x86AF8);
-    utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> >(&table, s_VTable);
-
-    {
-        size_t slotIndex = offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Render) / sizeof(void*);
-        void *original = utils::HookVirtualMethod(&table,
-            &CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC_HOOK_NAME(Render), slotIndex);
-        s_RenderOriginalSlots[s_RenderHookedSlotCount] = original;
-        s_RenderHookedSlotIndices[s_RenderHookedSlotCount] = slotIndex;
-        ++s_RenderHookedSlotCount;
-    }
-
-    CP_ADD_METHOD_HOOK(UpdateProjection, base, 0x6C68D);
-
-    return true;
-}
-
-bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
-    if (!base || s_RenderHookedSlotCount == 0)
-        return false;
-
-    auto *table = utils::ForceReinterpretCast<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> *>(base, 0x86AF8);
-    void **vtable = reinterpret_cast<void **>(table);
-
-    size_t regionSize = 0;
-    if (utils::TryGetVTableRegionSize(s_RenderHookedSlotIndices, s_RenderHookedSlotCount, &regionSize)) {
-        uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
-        if (oldProtect) {
-            for (size_t i = 0; i < s_RenderHookedSlotCount; ++i) {
-                vtable[s_RenderHookedSlotIndices[i]] = s_RenderOriginalSlots[i];
+    class RenderInterceptor {
+    public:
+        CP_DECLARE_METHOD_HOOK(CKERROR, Render, (CK_RENDER_FLAGS flags)) {
+            auto *renderContext = reinterpret_cast<CKRenderContext *>(this);
+            if (renderContext == g_RenderContext && g_SkipNextRender) {
+                g_SkipNextRender = false;
+                return CK_OK;
             }
-            utils::ProtectRegion(vtable, regionSize, oldProtect);
+
+            return g_OriginalRender ? CP_CALL_METHOD_PTR(renderContext, g_OriginalRender, flags) :
+                                      CKERR_INVALIDRENDERCONTEXT;
         }
+    };
+}
+
+bool RenderHook::Attach(CKRenderContext *renderContext) {
+    if (!renderContext)
+        return false;
+
+    void **vtable = utils::GetVTable(renderContext);
+    if (g_RenderPatch.IsInstalled()) {
+        if (g_RenderVTable != vtable)
+            return false;
+        g_RenderContext = renderContext;
+        g_SkipNextRender = false;
+        return true;
     }
-    s_RenderHookedSlotCount = 0;
 
-    CP_REMOVE_METHOD_HOOK(UpdateProjection);
+    const std::size_t renderSlot = offsetof(RenderContextVTable, Render) / sizeof(void *);
+    const VTablePatch::Request request = {
+        renderSlot,
+        utils::TypeErase(&RenderInterceptor::CP_FUNC_HOOK_NAME(Render)),
+    };
+    const VTablePatchResult result = g_RenderPatch.Install(renderContext, &request, 1);
+    if (!result) {
+        utils::OutputDebugA("BML RenderHook install failed: %s (entry %zu)\n",
+                            VTablePatch::GetErrorName(result.Code), result.EntryIndex);
+        return false;
+    }
 
+    g_OriginalRender = utils::ForceReinterpretCast<RenderContextVTable::RenderFunc>(
+        g_RenderPatch.GetOriginal(renderSlot));
+    g_RenderContext = renderContext;
+    g_RenderVTable = vtable;
+    g_SkipNextRender = false;
     return true;
 }
 
-namespace RenderHook {
-    bool HookRenderEngine() {
-        void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
-        if (!base)
-            return false;
+bool RenderHook::Detach() {
+    const VTablePatchResult result = g_RenderPatch.Remove();
+    if (!result) {
+        utils::OutputDebugA("BML RenderHook removal warning: %s (entry %zu)\n",
+                            VTablePatch::GetErrorName(result.Code), result.EntryIndex);
+    }
 
-        CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(base);
+    if (g_RenderPatch.IsInstalled())
+        return false;
 
+    g_RenderContext = nullptr;
+    g_RenderVTable = nullptr;
+    g_OriginalRender = nullptr;
+    g_SkipNextRender = false;
+    return true;
+}
+
+bool RenderHook::IsSkipRenderAvailable() {
+    return g_RenderPatch.IsInstalled();
+}
+
+void RenderHook::SkipNextRender() {
+    if (IsSkipRenderAvailable())
+        g_SkipNextRender = true;
+}
+
+void RenderHook::EnableWidescreenFix(bool enable) {
+    g_WidescreenFixEnabled = enable;
+}
+
+bool RenderHook::CalculateWidescreenFov(float cameraFov, float aspectRatio, float *correctedFov) {
+    if (!correctedFov || !std::isfinite(cameraFov) || !std::isfinite(aspectRatio) ||
+        cameraFov <= 0.0f || cameraFov >= 3.14159265358979323846f || aspectRatio <= 0.0f) {
+        return false;
+    }
+
+    constexpr float referenceAspect = 4.0f / 3.0f;
+    if (aspectRatio <= referenceAspect) {
+        *correctedFov = cameraFov;
         return true;
     }
 
-    bool UnhookRenderEngine() {
-        void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
-        if (!base)
-            return false;
+    const float tangent = std::tan(cameraFov * 0.5f);
+    const float result = 2.0f * std::atan(tangent * aspectRatio / referenceAspect);
+    if (!std::isfinite(result) || result <= 0.0f || result >= 3.14159265358979323846f)
+        return false;
 
-        CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(base);
+    *correctedFov = result;
+    return true;
+}
 
-        return true;
-    }
+void RenderHook::ApplyWidescreenProjection(CKRenderContext *renderContext) {
+    if (!g_WidescreenFixEnabled || !renderContext)
+        return;
 
-    void DisableRender(bool disable) {
-        CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = disable;
-    }
+    CKCamera *camera = renderContext->GetAttachedCamera();
+    if (!camera || camera->GetProjectionType() != CK_PERSPECTIVEPROJECTION)
+        return;
 
-    void EnableWidescreenFix(bool enable) {
-        CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = enable;
-    }
+    VxRect viewRect;
+    renderContext->GetViewRect(viewRect);
+    const float width = viewRect.GetWidth();
+    const float height = viewRect.GetHeight();
+    if (!std::isfinite(width) || !std::isfinite(height) || width <= 0.0f || height <= 0.0f)
+        return;
+
+    const float aspectRatio = width / height;
+    constexpr float referenceAspect = 4.0f / 3.0f;
+    if (!std::isfinite(aspectRatio) || aspectRatio <= referenceAspect)
+        return;
+
+    const float frontPlane = camera->GetFrontPlane();
+    const float backPlane = camera->GetBackPlane();
+    if (!std::isfinite(frontPlane) || !std::isfinite(backPlane) || frontPlane <= 0.0f || backPlane <= frontPlane)
+        return;
+
+    float correctedFov = 0.0f;
+    if (!CalculateWidescreenFov(camera->GetFov(), aspectRatio, &correctedFov))
+        return;
+
+    VxMatrix projection;
+    projection.Perspective(correctedFov, aspectRatio, frontPlane, backPlane);
+    renderContext->SetProjectionTransformationMatrix(projection);
 }

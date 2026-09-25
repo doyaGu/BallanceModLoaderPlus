@@ -4,8 +4,14 @@
 
 #include "Hooks/CursorVisibilityPolicy.h"
 #include "Hooks/InputCursor.h"
+#include "Hooks/HookLifecycle.h"
+#include "Hooks/VTablePatch.h"
 #include "Hooks/VTables.h"
 #include "HookUtils.h"
+
+namespace {
+    VTablePatch g_InputPatch;
+}
 
 struct InputHook::Impl {
     static unsigned char s_KeyboardState[256];
@@ -299,80 +305,99 @@ struct InputHook::Impl {
         return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsJoystickButtonDown, iJoystick, iButton);
     }
 
-    // Per-slot original function pointers saved by HookVirtualMethod
-    static void *s_OriginalSlots[32];
-    static size_t s_HookedSlotIndices[32];
-    static size_t s_HookedSlotCount;
+    static bool Hook(CKInputManager *im) {
+        if (!im)
+            return false;
+        if (g_InputPatch.IsInstalled())
+            return s_InputManager == im;
 
-    template<typename T>
-    static void HookSlot(CKInputManager *im, T hook, size_t slotIndex) {
-        if (s_HookedSlotCount >= 32) return;
-        void *original = utils::HookVirtualMethod(im, hook, slotIndex);
-        s_OriginalSlots[s_HookedSlotCount] = original;
-        s_HookedSlotIndices[s_HookedSlotCount] = slotIndex;
-        ++s_HookedSlotCount;
-    }
+#define INPUT_MANAGER_SLOT(Name) \
+    (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void *))
+#define INPUT_MANAGER_PATCH(Name) \
+    {INPUT_MANAGER_SLOT(Name), utils::TypeErase(&InputHook::Impl::CP_FUNC_HOOK_NAME(Name))}
 
-    static void Hook(CKInputManager *im) {
-        if (!im) return;
-        s_InputManager = im;
-        s_HookedSlotCount = 0;
-        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
-        s_CursorVisibility.Reset(s_InputManager->GetCursorVisibility() != FALSE);
+        const VTablePatch::Request requests[] = {
+            INPUT_MANAGER_PATCH(PostProcess),
+            INPUT_MANAGER_PATCH(ShowCursor),
+            INPUT_MANAGER_PATCH(IsKeyDown),
+            INPUT_MANAGER_PATCH(IsKeyUp),
+            INPUT_MANAGER_PATCH(IsKeyToggled),
+            INPUT_MANAGER_PATCH(GetKeyboardState),
+            INPUT_MANAGER_PATCH(GetNumberOfKeyInBuffer),
+            INPUT_MANAGER_PATCH(GetKeyFromBuffer),
+            INPUT_MANAGER_PATCH(IsMouseButtonDown),
+            INPUT_MANAGER_PATCH(IsMouseClicked),
+            INPUT_MANAGER_PATCH(IsMouseToggled),
+            INPUT_MANAGER_PATCH(GetMouseButtonsState),
+            INPUT_MANAGER_PATCH(GetMousePosition),
+            INPUT_MANAGER_PATCH(GetMouseRelativePosition),
+            INPUT_MANAGER_PATCH(GetJoystickPosition),
+            INPUT_MANAGER_PATCH(GetJoystickRotation),
+            INPUT_MANAGER_PATCH(GetJoystickSliders),
+            INPUT_MANAGER_PATCH(GetJoystickPointOfViewAngle),
+            INPUT_MANAGER_PATCH(GetJoystickButtonsState),
+            INPUT_MANAGER_PATCH(IsJoystickButtonDown),
+        };
 
-#define HOOK_INPUT_MANAGER_VIRTUAL_METHOD(Instance, Name) \
-    HookSlot(Instance, &InputHook::Impl::CP_FUNC_HOOK_NAME(Name), \
-             (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void*)))
-
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, PostProcess);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, ShowCursor);
-
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyDown);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyUp);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyToggled);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetKeyboardState);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetNumberOfKeyInBuffer);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetKeyFromBuffer);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsMouseButtonDown);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsMouseClicked);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsMouseToggled);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetMouseButtonsState);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetMousePosition);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetMouseRelativePosition);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickPosition);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickRotation);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickSliders);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickPointOfViewAngle);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickButtonsState);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsJoystickButtonDown);
-
-#undef HOOK_INPUT_MANAGER_VIRTUAL_METHOD
-    }
-
-    static void Unhook() {
-        if (!s_InputManager || s_HookedSlotCount == 0) return;
-
-        SetOverlayCursorVisible(false);
-
-        // Restore only the specific vtable slots we hooked.
-        void **vtable = *reinterpret_cast<void***>(s_InputManager);
-        if (!vtable) return;
-
-        // Calculate the region to unprotect: from vtable start to the last hooked slot.
-        size_t regionSize = 0;
-        if (utils::TryGetVTableRegionSize(s_HookedSlotIndices, s_HookedSlotCount, &regionSize)) {
-            uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
-            if (oldProtect) {
-                for (size_t i = 0; i < s_HookedSlotCount; ++i) {
-                    vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];
-                }
-                utils::ProtectRegion(vtable, regionSize, oldProtect);
-            }
+        const VTablePatchResult result = g_InputPatch.Install(im, requests, sizeof(requests) / sizeof(requests[0]));
+        if (!result) {
+            utils::OutputDebugA("BML InputHook install failed: %s (entry %zu)\n",
+                                VTablePatch::GetErrorName(result.Code), result.EntryIndex);
+            return false;
         }
 
-        // Always invalidate to prevent use-after-free in public methods
-        s_InputManager = nullptr;
-        s_HookedSlotCount = 0;
+#define LOAD_INPUT_MANAGER_ORIGINAL(Name) \
+    s_VTable.Name = utils::ForceReinterpretCast<decltype(s_VTable.Name)>(g_InputPatch.GetOriginal(INPUT_MANAGER_SLOT(Name)))
+
+        LOAD_INPUT_MANAGER_ORIGINAL(PostProcess);
+        LOAD_INPUT_MANAGER_ORIGINAL(ShowCursor);
+        LOAD_INPUT_MANAGER_ORIGINAL(IsKeyDown);
+        LOAD_INPUT_MANAGER_ORIGINAL(IsKeyUp);
+        LOAD_INPUT_MANAGER_ORIGINAL(IsKeyToggled);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetKeyboardState);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetNumberOfKeyInBuffer);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetKeyFromBuffer);
+        LOAD_INPUT_MANAGER_ORIGINAL(IsMouseButtonDown);
+        LOAD_INPUT_MANAGER_ORIGINAL(IsMouseClicked);
+        LOAD_INPUT_MANAGER_ORIGINAL(IsMouseToggled);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetMouseButtonsState);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetMousePosition);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetMouseRelativePosition);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetJoystickPosition);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetJoystickRotation);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetJoystickSliders);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetJoystickPointOfViewAngle);
+        LOAD_INPUT_MANAGER_ORIGINAL(GetJoystickButtonsState);
+        LOAD_INPUT_MANAGER_ORIGINAL(IsJoystickButtonDown);
+
+#undef LOAD_INPUT_MANAGER_ORIGINAL
+#undef INPUT_MANAGER_PATCH
+#undef INPUT_MANAGER_SLOT
+
+        s_InputManager = im;
+        s_CursorVisibility.Reset(s_InputManager->GetCursorVisibility() != FALSE);
+        return true;
+    }
+
+    static bool Unhook() {
+        if (!g_InputPatch.IsInstalled()) {
+            s_InputManager = nullptr;
+            return true;
+        }
+
+        SetOverlayCursorVisible(false);
+        const VTablePatchResult result = g_InputPatch.Remove();
+        if (!result) {
+            utils::OutputDebugA("BML InputHook removal warning: %s (entry %zu)\n",
+                                VTablePatch::GetErrorName(result.Code), result.EntryIndex);
+        }
+
+        if (!g_InputPatch.IsInstalled()) {
+            s_InputManager = nullptr;
+            s_VTable = {};
+            return true;
+        }
+        return false;
     }
 };
 
@@ -385,9 +410,6 @@ std::unordered_map<uint64_t, uint32_t> InputHook::Impl::s_BlockTokens;
 CKInputManager *InputHook::Impl::s_InputManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> InputHook::Impl::s_VTable = {};
 CursorVisibilityPolicy InputHook::Impl::s_CursorVisibility;
-void *InputHook::Impl::s_OriginalSlots[32] = {};
-size_t InputHook::Impl::s_HookedSlotIndices[32] = {};
-size_t InputHook::Impl::s_HookedSlotCount = 0;
 
 InputHook::InputHook(CKInputManager *input) : m_Impl(nullptr) {
     assert(input != nullptr);
@@ -399,7 +421,9 @@ InputHook::~InputHook() {
     Impl::Unhook();
 }
 
-bool InputHook::IsValid() { return Impl::s_InputManager != nullptr; }
+bool InputHook::IsValid() { return Impl::s_InputManager != nullptr && g_InputPatch.IsInstalled(); }
+
+bool IsInputHookInstalled() { return g_InputPatch.IsInstalled(); }
 
 void InputHook::EnableKeyboardRepetition(CKBOOL iEnable) {
     if (!IsValid()) return;

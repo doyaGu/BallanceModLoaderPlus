@@ -1,8 +1,13 @@
 #include "BML/Guids/physics_RT.h"
 
-#include "Loader/ModContext.h"
+#include "Hooks/BehaviorFunctionPatch.h"
+#include "Hooks/HookLifecycle.h"
+#include "Hooks/VTablePatch.h"
 #include "Hooks/VTables.h"
 #include "HookUtils.h"
+#include "Loader/ModContext.h"
+
+namespace {
 
 class CKIpionManager : public CKBaseManager {
 public:
@@ -16,69 +21,62 @@ struct CP_CLASS_VTABLE_NAME(CKIpionManager) : public CP_CLASS_VTABLE_NAME(CKBase
 struct PhysicsHook {
     static CKIpionManager *s_IpionManager;
     static CP_CLASS_VTABLE_NAME(CKIpionManager) s_VTable;
-    static void *s_OriginalSlots[4];
-    static size_t s_HookedSlotIndices[4];
-    static size_t s_HookedSlotCount;
+    static VTablePatch s_Patch;
 
-    template<typename T>
-    static void HookSlot(CKIpionManager *im, T hook, size_t slotIndex) {
-        if (s_HookedSlotCount >= 4) return;
-        void *original = utils::HookVirtualMethod(im, hook, slotIndex);
-        s_OriginalSlots[s_HookedSlotCount] = original;
-        s_HookedSlotIndices[s_HookedSlotCount] = slotIndex;
-        ++s_HookedSlotCount;
-    }
-
-    static void Hook(CKIpionManager *im) {
+    static bool Hook(CKIpionManager *im) {
         if (!im)
-            return;
+            return false;
+        if (s_Patch.IsInstalled())
+            return s_IpionManager == im;
 
+        const std::size_t postProcessSlot =
+            offsetof(CP_CLASS_VTABLE_NAME(CKIpionManager), PostProcess) / sizeof(void *);
+        const VTablePatch::Request request = {
+            postProcessSlot,
+            utils::TypeErase(&PhysicsHook::CP_FUNC_HOOK_NAME(PostProcess)),
+        };
+        const VTablePatchResult result = s_Patch.Install(im, &request, 1);
+        if (!result) {
+            utils::OutputDebugA("BML PhysicsHook install failed: %s (entry %zu)\n",
+                                VTablePatch::GetErrorName(result.Code), result.EntryIndex);
+            return false;
+        }
+
+        s_VTable.PostProcess = utils::ForceReinterpretCast<decltype(s_VTable.PostProcess)>(
+            s_Patch.GetOriginal(postProcessSlot));
         s_IpionManager = im;
-        s_HookedSlotCount = 0;
-        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKIpionManager)>(s_IpionManager, s_VTable);
-
-#define HOOK_PHYSICS_VIRTUAL_METHOD(Instance, Name) \
-    HookSlot(Instance, &PhysicsHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKIpionManager), Name) / sizeof(void*)))
-
-        HOOK_PHYSICS_VIRTUAL_METHOD(s_IpionManager, PostProcess);
-
-#undef HOOK_PHYSICS_VIRTUAL_METHOD
+        return true;
     }
 
-    static void Unhook() {
-        if (!s_IpionManager || s_HookedSlotCount == 0) return;
-
-        void **vtable = utils::GetVTable(s_IpionManager);
-        if (!vtable) return;
-
-        size_t regionSize = 0;
-        if (!utils::TryGetVTableRegionSize(s_HookedSlotIndices, s_HookedSlotCount, &regionSize))
-            return;
-
-        uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
-        if (!oldProtect) return;
-
-        for (size_t i = 0; i < s_HookedSlotCount; ++i) {
-            vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];
+    static bool Unhook() {
+        const VTablePatchResult result = s_Patch.Remove();
+        if (!result) {
+            utils::OutputDebugA("BML PhysicsHook removal warning: %s (entry %zu)\n",
+                                VTablePatch::GetErrorName(result.Code), result.EntryIndex);
         }
-        utils::ProtectRegion(vtable, regionSize, oldProtect);
 
-        s_IpionManager = nullptr;
-        s_HookedSlotCount = 0;
+        if (!s_Patch.IsInstalled()) {
+            s_IpionManager = nullptr;
+            s_VTable = {};
+            return true;
+        }
+        return false;
     }
 
     CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
 
     static CKERROR PostProcessOriginal() {
+        if (!s_Patch.IsInstalled() || !s_IpionManager || !s_VTable.PostProcess)
+            return CK_OK;
         return CP_CALL_METHOD_PTR(s_IpionManager, s_VTable.PostProcess);
     }
+
+    static bool IsInstalled() { return s_Patch.IsInstalled(); }
 };
 
 CKIpionManager *PhysicsHook::s_IpionManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKIpionManager) PhysicsHook::s_VTable = {};
-void *PhysicsHook::s_OriginalSlots[4] = {};
-size_t PhysicsHook::s_HookedSlotIndices[4] = {};
-size_t PhysicsHook::s_HookedSlotCount = 0;
+VTablePatch PhysicsHook::s_Patch;
 
 #define FIXED 0
 #define FRICTION 1
@@ -93,15 +91,19 @@ size_t PhysicsHook::s_HookedSlotCount = 0;
 #define COLLISION_SURFACE 10
 #define CONVEX 11
 
-static CKBEHAVIORFCT g_Physicalize = nullptr;
+BehaviorFunctionPatch g_PhysicalizePatch;
 
 int Physicalize(const CKBehaviorContext &behcontext) {
+    const CKBEHAVIORFCT original = g_PhysicalizePatch.Original();
+    if (!original)
+        return CKBR_BEHAVIORERROR;
+
     CKBehavior *beh = behcontext.Behavior;
     bool physicalize = beh->IsInputActive(0);
     auto *target = (CK3dEntity *) beh->GetTarget();
     ModContext *modContext = BML_GetModContext();
     if (!modContext)
-        return g_Physicalize(behcontext);
+        return original(behcontext);
 
     if (physicalize) {
         CKBOOL fixed = FALSE;
@@ -187,30 +189,48 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         modContext->BroadcastCallback(&IMod::OnUnphysicalize, target);
     }
 
-    return g_Physicalize(behcontext);
+    return original(behcontext);
 }
 
-void PhysicsPostProcess() {
+} // namespace
+
+void RunPhysicsPostProcess() {
+    if (!PhysicsHook::IsInstalled())
+        return;
     PhysicsHook::PostProcessOriginal();
 }
 
 bool HookPhysicalize() {
     auto *im = (CKIpionManager *) BML_GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
-    PhysicsHook::Hook(im);
+    if (!PhysicsHook::Hook(im))
+        utils::OutputDebugA("BML physics scheduling redirection is unavailable; CK2 will keep its normal order\n");
 
-    CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
-    if (!physicalizeProto) return false;
-    if (!g_Physicalize) g_Physicalize = physicalizeProto->GetFunction();
-    physicalizeProto->SetFunction(&Physicalize);
+    const BehaviorFunctionPatchResult result = g_PhysicalizePatch.Install(
+        PHYSICS_RT_PHYSICALIZE, &Physicalize);
+    if (!result) {
+        utils::OutputDebugA("BML Physicalize hook installation failed: %s\n",
+                            BehaviorFunctionPatch::GetErrorName(result.Code));
+        PhysicsHook::Unhook();
+        return false;
+    }
     return true;
 }
 
 bool UnhookPhysicalize() {
-    PhysicsHook::Unhook();
+    const BehaviorFunctionPatchResult behaviorResult = g_PhysicalizePatch.Remove();
+    bool behaviorRemoved = static_cast<bool>(behaviorResult);
+    if (behaviorResult.Code == BehaviorFunctionPatchError::OwnershipLost) {
+        utils::OutputDebugA("BML Physicalize hook ownership changed; preserving the current function\n");
+        behaviorRemoved = true;
+    }
 
-    CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
-    if (!physicalizeProto) return false;
-    if (!g_Physicalize) return false;
-    physicalizeProto->SetFunction(g_Physicalize);
-    return true;
+    return PhysicsHook::Unhook() && behaviorRemoved;
+}
+
+bool IsPhysicsPostProcessHookInstalled() {
+    return PhysicsHook::IsInstalled();
+}
+
+bool IsPhysicalizeHookInstalled() {
+    return g_PhysicalizePatch.IsInstalled();
 }

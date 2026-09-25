@@ -86,8 +86,6 @@ if (WIN32)
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
 
-    target_link_libraries(BML_HookUtils PUBLIC BML_StringUtils)
-
     set_target_properties(BML_HookUtils PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         FOLDER "Utils"

@@ -6,11 +6,13 @@
 
 #include "BML/ILogger.h"
 #include "CustomMaps/CustomMapLoad.h"
+#include "Hooks/BehaviorFunctionPatch.h"
+#include "Hooks/HookLifecycle.h"
 #include "Loader/ModContext.h"
 
-static CKBEHAVIORFCT g_ObjectLoad = nullptr;
-
 namespace {
+
+BehaviorFunctionPatch g_ObjectLoadPatch;
 
 bool ReadSharedString(const BML_DataShare *share, const char *key,
                       std::string &value) {
@@ -41,11 +43,10 @@ void PublishCustomMapResult(ModContext &context, BML_DataShare *share,
     BML_DataShare_Remove(share, CustomMapLoad::NameKey);
 }
 
-} // namespace
-
 int ObjectLoad(const CKBehaviorContext &behcontext) {
     CKBehavior *beh = behcontext.Behavior;
-    if (!g_ObjectLoad)
+    const CKBEHAVIORFCT original = g_ObjectLoadPatch.Original();
+    if (!original)
         return CKBR_OK;
 
     const bool wasLoading = beh->IsInputActive(0) != FALSE;
@@ -83,7 +84,7 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
     if (wasLoading && isMap && dataShare)
         (void) ReadSharedString(dataShare, CustomMapLoad::NameKey, callbackName);
 
-    const int result = g_ObjectLoad(behcontext);
+    const int result = original(behcontext);
 
     if (!wasLoading || !modContext)
         return result;
@@ -130,18 +131,33 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
     return result;
 }
 
+} // namespace
+
 bool HookObjectLoad() {
-    CKBehaviorPrototype *objectLoadProto = CKGetPrototypeFromGuid(VT_NARRATIVES_OBJECTLOAD);
-    if (!objectLoadProto) return false;
-    if (!g_ObjectLoad) g_ObjectLoad = objectLoadProto->GetFunction();
-    objectLoadProto->SetFunction(&ObjectLoad);
-    return true;
+    const BehaviorFunctionPatchResult result = g_ObjectLoadPatch.Install(
+        VT_NARRATIVES_OBJECTLOAD, &ObjectLoad);
+    if (!result) {
+        if (ModContext *context = BML_GetModContext()) {
+            if (ILogger *logger = context->GetLogger())
+                logger->Error("Object Load hook installation failed: %s",
+                              BehaviorFunctionPatch::GetErrorName(result.Code));
+        }
+    }
+    return static_cast<bool>(result);
 }
 
 bool UnhookObjectLoad() {
-    CKBehaviorPrototype *objectLoadProto = CKGetPrototypeFromGuid(VT_NARRATIVES_OBJECTLOAD);
-    if (!objectLoadProto) return false;
-    if (!g_ObjectLoad) return false;
-    objectLoadProto->SetFunction(g_ObjectLoad);
-    return true;
+    const BehaviorFunctionPatchResult result = g_ObjectLoadPatch.Remove();
+    if (result.Code == BehaviorFunctionPatchError::OwnershipLost) {
+        if (ModContext *context = BML_GetModContext()) {
+            if (ILogger *logger = context->GetLogger())
+                logger->Warn("Object Load hook ownership changed; preserving the current function");
+        }
+        return true;
+    }
+    return static_cast<bool>(result);
+}
+
+bool IsObjectLoadHookInstalled() {
+    return g_ObjectLoadPatch.IsInstalled();
 }

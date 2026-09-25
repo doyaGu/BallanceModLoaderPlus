@@ -9,7 +9,6 @@
 
 #include "Behavior/Blocks/HookBlock.h"
 #include "Loader/ModManager.h"
-#include "Hooks/RenderHook.h"
 #include "HookUtils.h"
 
 CKERROR CreateModManager(CKContext *context) {
@@ -57,17 +56,24 @@ void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
 }
 
 static LPVOID g_CreateCKBehaviorPrototypeRunTimeTarget = nullptr;
-static bool g_MinHookInitialized = false;
-static bool g_RenderEngineHooked = false;
+static bool g_MinHookOwned = false;
 
 static bool HookCreateCKBehaviorPrototypeRuntime() {
     HMODULE handle = ::GetModuleHandleA("CK2.dll");
+    if (!handle)
+        return false;
+
     LPVOID lpCreateCKBehaviorPrototypeRunTimeProc =
         (LPVOID) ::GetProcAddress(handle, "?CreateCKBehaviorPrototypeRunTime@@YAPAVCKBehaviorPrototype@@PAD@Z");
     LPVOID lpCreateCKBehaviorPrototypeProc =
         (LPVOID) ::GetProcAddress(handle, "?CreateCKBehaviorPrototype@@YAPAVCKBehaviorPrototype@@PAD@Z");
-    if (MH_CreateHook(lpCreateCKBehaviorPrototypeRunTimeProc, lpCreateCKBehaviorPrototypeProc, nullptr) != MH_OK ||
-        MH_EnableHook(lpCreateCKBehaviorPrototypeRunTimeProc) != MH_OK) {
+    if (!lpCreateCKBehaviorPrototypeRunTimeProc || !lpCreateCKBehaviorPrototypeProc)
+        return false;
+
+    if (MH_CreateHook(lpCreateCKBehaviorPrototypeRunTimeProc, lpCreateCKBehaviorPrototypeProc, nullptr) != MH_OK)
+        return false;
+    if (MH_EnableHook(lpCreateCKBehaviorPrototypeRunTimeProc) != MH_OK) {
+        MH_RemoveHook(lpCreateCKBehaviorPrototypeRunTimeProc);
         return false;
     }
     g_CreateCKBehaviorPrototypeRunTimeTarget = lpCreateCKBehaviorPrototypeRunTimeProc;
@@ -84,32 +90,25 @@ static void UnhookCreateCKBehaviorPrototypeRuntime() {
 void BML_ShutdownProcessHooks() {
     UnhookCreateCKBehaviorPrototypeRuntime();
 
-    if (g_RenderEngineHooked) {
-        RenderHook::UnhookRenderEngine();
-        g_RenderEngineHooked = false;
-    }
-
-    if (g_MinHookInitialized) {
+    if (g_MinHookOwned) {
         if (MH_Uninitialize() != MH_OK)
             utils::OutputDebugA("Fatal: Unable to uninitialize MinHook.\n");
-        g_MinHookInitialized = false;
+        g_MinHookOwned = false;
     }
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
     switch (fdwReason) {
     case DLL_PROCESS_ATTACH:
-        if (MH_Initialize() != MH_OK) {
-            utils::OutputDebugA("Fatal: Unable to initialize MinHook.\n");
-            return FALSE;
+        ::DisableThreadLibraryCalls(hModule);
+        {
+            const MH_STATUS status = MH_Initialize();
+            if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
+                utils::OutputDebugA("Fatal: Unable to initialize MinHook.\n");
+                return FALSE;
+            }
+            g_MinHookOwned = status == MH_OK;
         }
-        g_MinHookInitialized = true;
-        if (!RenderHook::HookRenderEngine()) {
-            utils::OutputDebugA("Fatal: Unable to hook Render Engine.\n");
-            BML_ShutdownProcessHooks();
-            return FALSE;
-        }
-        g_RenderEngineHooked = true;
         if (!HookCreateCKBehaviorPrototypeRuntime()) {
             utils::OutputDebugA("Fatal: Unable to hook CKBehaviorPrototypeRuntime.\n");
             BML_ShutdownProcessHooks();
@@ -117,7 +116,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
         }
         break;
     case DLL_PROCESS_DETACH:
-        BML_ShutdownProcessHooks();
+        if (!lpReserved)
+            BML_ShutdownProcessHooks();
         break;
     default:
         break;
