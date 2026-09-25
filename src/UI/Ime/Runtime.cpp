@@ -613,6 +613,25 @@ namespace Overlay::Ime::Runtime {
         return StateIsActive() || Tsf::HasCandidates();
     }
 
+    Diagnostics GetDiagnostics() {
+        Diagnostics diagnostics;
+        const HWND root = CopyRootWindow();
+        const HWND presentation = g_PresentationTarget.Window();
+        const HWND focus = ::GetFocus();
+        const Snapshot snapshot = CopyImmSnapshot();
+
+        diagnostics.RootWindow = reinterpret_cast<std::uintptr_t>(root);
+        diagnostics.PresentationWindow = reinterpret_cast<std::uintptr_t>(presentation);
+        diagnostics.FocusWindow = reinterpret_cast<std::uintptr_t>(focus);
+        diagnostics.PresentationVisible = g_PresentationTarget.IsVisible();
+        diagnostics.CompositionActive = snapshot.composing;
+        diagnostics.HasCandidates = snapshot.HasCandidates();
+        diagnostics.ImmContextAvailable = static_cast<bool>(AcquireImmContext(presentation));
+        diagnostics.TsfAttached = Tsf::IsAttached();
+        diagnostics.TsfCandidates = Tsf::HasCandidates();
+        return diagnostics;
+    }
+
     bool MoveCandidate(CandidateDirection direction) {
         if (!g_PresentationTarget.IsVisible())
             return false;

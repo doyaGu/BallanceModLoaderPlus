@@ -137,6 +137,10 @@ Bin\Updater.exe update
 Bin\Updater.exe doctor
 ```
 
+When Player starts but the problem depends on the current renderer, fonts,
+input method, or installed mods, run `bml system` in the command bar and attach
+its output with `ModLoader/ModLoader.log`.
+
 If updater verification fails or the updater itself is old, install the latest
 full manual package once, then try the updater again.
 

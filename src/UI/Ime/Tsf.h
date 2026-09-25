@@ -17,6 +17,7 @@ namespace Overlay::Ime::Tsf {
     // Only the focused ImGui backend window owns in-game candidate
     // presentation. Other controls on the Player UI thread keep native TSF UI.
     void SetPresentationOwned(bool owned) noexcept;
+    bool IsAttached() noexcept;
     void ClearCandidates();
     std::uint64_t Revision() noexcept;
     bool HasCandidates() noexcept;

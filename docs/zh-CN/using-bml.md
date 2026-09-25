@@ -117,6 +117,9 @@ Bin\Updater.exe update
 Bin\Updater.exe doctor
 ```
 
+如果 Player 可以启动，但问题与当前渲染器、字体、输入法或已安装 Mod 有关，请在
+命令栏运行 `bml system`，并将输出与 `ModLoader/ModLoader.log` 一起提交。
+
 如果 Updater 校验失败或 Updater 本身太旧，先手动安装一次最新完整包，再重新使用
 Updater。
 

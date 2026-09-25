@@ -415,6 +415,10 @@ namespace Overlay::Ime::Tsf {
         g_PresentationOwned.store(owned, std::memory_order_release);
     }
 
+    bool IsAttached() noexcept {
+        return static_cast<bool>(CopyController());
+    }
+
     void ClearCandidates() {
         const ComPtr<CandidateController> controller = CopyController();
         if (controller) {
