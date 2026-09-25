@@ -1,5 +1,6 @@
 #include "Hooks/VTablePatch.h"
 
+#include <cassert>
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -127,7 +128,7 @@ namespace {
 }
 
 VTablePatch::~VTablePatch() {
-    Remove();
+    assert(!IsInstalled());
 }
 
 VTablePatchResult VTablePatch::Install(void *instance, const Request *requests, std::size_t count) {

@@ -1,9 +1,11 @@
 #include "Hooks/BehaviorFunctionPatch.h"
 
+#include <cassert>
+
 #include "CKBehaviorPrototype.h"
 
 BehaviorFunctionPatch::~BehaviorFunctionPatch() {
-    Remove();
+    assert(!IsInstalled());
 }
 
 BehaviorFunctionPatchResult BehaviorFunctionPatch::Install(
