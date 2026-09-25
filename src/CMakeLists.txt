@@ -298,6 +298,7 @@ set(BML_CUSTOM_MAPS_PRIVATE_HEADERS
         CustomMaps/MapCommand.h
         CustomMaps/MapMenu.h
         CustomMaps/MapMenuState.h
+        CustomMaps/MapStaging.h
 )
 
 set(BML_CUSTOM_MAPS_SOURCES
@@ -307,6 +308,7 @@ set(BML_CUSTOM_MAPS_SOURCES
         CustomMaps/MapCommand.cpp
         CustomMaps/MapMenu.cpp
         CustomMaps/MapMenuState.cpp
+        CustomMaps/MapStaging.cpp
 )
 
 set(BML_GAMEPLAY_PRIVATE_HEADERS

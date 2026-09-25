@@ -9,6 +9,7 @@
 
 #include "BML/Behavior.hpp"
 #include "CustomMaps/MapMenu.h"
+#include "CustomMaps/MapStaging.h"
 
 class CK2dEntity;
 class CKBehavior;
@@ -38,7 +39,8 @@ public:
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
     void OnLoad(IBML &bml, ILogger &logger,
-                const std::wstring &loaderDirectory, const std::wstring &tempDirectory);
+                const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
+                const std::wstring &tempDirectory);
     void OnUnload();
     void OnLoadObject(const char *filename);
     void OnLoadScript(CKBehavior *script);
@@ -61,8 +63,6 @@ private:
     struct LoadAttempt;
     bool LoadMap(const std::wstring &path);
     bool BeginLoad(const std::wstring &path, LoadOrigin origin, std::string &error);
-    bool CreateTempMapFile(const std::wstring &path, std::uint64_t attempt,
-                           std::wstring &widePath, std::string &ansiPath) const;
     bool IsRuntimeReady() const;
     void BindMenuEntry();
     bool PublishLoadMetadata(const std::wstring &path, std::uint64_t attempt);
@@ -83,12 +83,12 @@ private:
     CKContext *m_CKContext = nullptr;
     ILogger *m_Logger = nullptr;
     BML_DataShare *m_DataShare = nullptr;
-    std::wstring m_TempDirectory;
     std::wstring m_MapsDirectory;
     std::unique_ptr<LoadAttempt> m_LoadAttempt;
     std::uint64_t m_NextLoadAttempt = 1;
 
     MapMenu m_Menu;
+    CustomMap::MapStaging m_Staging;
     BML::Behavior::Session m_Behavior;
     std::unique_ptr<CustomMap::MapCommand> m_Command;
     std::unique_ptr<CustomMap::LevelLoader> m_LevelLoader;

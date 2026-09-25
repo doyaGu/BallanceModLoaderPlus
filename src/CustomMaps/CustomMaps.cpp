@@ -9,7 +9,6 @@
 #include <random>
 #include <utility>
 #include <vector>
-#include <windows.h>
 
 #include "BML/Bui.h"
 #include "BML/DataShare.h"
@@ -38,43 +37,6 @@ T *Resolve(ModContext *context, Behavior::ObjectRef reference) {
     return object ? T::Cast(object) : nullptr;
 }
 
-bool ConvertToAnsiPath(const std::wstring &widePath, std::string &ansiPath) {
-    ansiPath.clear();
-    if (widePath.empty())
-        return false;
-
-    BOOL usedDefaultCharacter = FALSE;
-    const int length = WideCharToMultiByte(
-        CP_ACP, WC_NO_BEST_FIT_CHARS, widePath.data(),
-        static_cast<int>(widePath.size()), nullptr, 0, nullptr,
-        &usedDefaultCharacter);
-    if (length <= 0 || usedDefaultCharacter)
-        return false;
-
-    std::string converted(static_cast<std::size_t>(length), '\0');
-    usedDefaultCharacter = FALSE;
-    if (WideCharToMultiByte(
-            CP_ACP, WC_NO_BEST_FIT_CHARS, widePath.data(),
-            static_cast<int>(widePath.size()), converted.data(), length,
-            nullptr, &usedDefaultCharacter) != length || usedDefaultCharacter) {
-        return false;
-    }
-
-    ansiPath = std::move(converted);
-    return true;
-}
-
-std::wstring GetShortPath(const std::wstring &path) {
-    const DWORD length = GetShortPathNameW(path.c_str(), nullptr, 0);
-    if (length == 0)
-        return {};
-
-    std::vector<wchar_t> buffer(static_cast<std::size_t>(length), L'\0');
-    const DWORD written = GetShortPathNameW(path.c_str(), buffer.data(), length);
-    if (written == 0 || written >= length)
-        return {};
-    return std::wstring(buffer.data(), written);
-}
 }
 
 struct CustomMaps::LoadAttempt {
@@ -205,11 +167,12 @@ bool CustomMaps::OnModifyConfig(const char *category, const char *key, IProperty
 }
 
 void CustomMaps::OnLoad(IBML &bml, ILogger &logger,
-                        const std::wstring &loaderDirectory, const std::wstring &tempDirectory) {
+                        const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
+                        const std::wstring &tempDirectory) {
     m_BML = &bml;
     m_CKContext = bml.GetCKContext();
     m_Logger = &logger;
-    m_TempDirectory = tempDirectory;
+    m_Staging.Initialize(gameDirectory, tempDirectory);
     m_MapsDirectory = utils::CombinePathW(loaderDirectory, L"Maps");
     auto behavior = Behavior::Session::Open("BML");
     if (behavior) {
@@ -246,7 +209,7 @@ void CustomMaps::OnUnload() {
 
     ResetScriptBindings();
     m_Behavior.Reset();
-    m_TempDirectory.clear();
+    m_Staging.Shutdown();
     m_MapsDirectory.clear();
     m_Logger = nullptr;
     m_CKContext = nullptr;
@@ -364,6 +327,7 @@ void CustomMaps::OnExitGame() {
                 ? "the Behavior transaction rollback failed"
                 : restored.GetStatus().Message.c_str());
     }
+    m_Staging.ReleaseLoaded();
     m_Menu.ResetLoad();
     ResetScriptBindings();
 }
@@ -476,16 +440,20 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
         if (attemptId == 0)
             attemptId = m_NextLoadAttempt++;
 
-        std::string filename;
-        if (!CreateTempMapFile(path, attemptId, tempPath, filename)) {
-            error = "could not prepare a private copy of the map";
+        CustomMap::StagedMap stagedMap;
+        if (!m_Staging.Prepare(path, attemptId, m_CKContext->GetPathManager(),
+                               stagedMap, error)) {
+            if (error.empty())
+                error = "could not prepare a private copy of the map";
             if (m_Logger) {
-                m_Logger->Error("Failed to prepare custom map: %s",
-                                utils::Utf16ToUtf8(path).c_str());
+                m_Logger->Error("Failed to prepare custom map %s: %s",
+                                utils::Utf16ToUtf8(path).c_str(), error.c_str());
             }
             ClearLoadMetadata();
             return false;
         }
+        tempPath = std::move(stagedMap.FilePath);
+        std::string filename = std::move(stagedMap.LoadPath);
 
         int level = m_LevelNumber->GetInteger();
         if (level < 1 || level > 13) {
@@ -610,50 +578,6 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
     return false;
 }
 
-bool CustomMaps::CreateTempMapFile(const std::wstring &path,
-                                   std::uint64_t attempt,
-                                   std::wstring &widePath,
-                                   std::string &ansiPath) const {
-    widePath.clear();
-    ansiPath.clear();
-    if (path.empty() || !utils::FileExistsW(path) || m_TempDirectory.empty())
-        return false;
-
-    const std::wstring extension = utils::GetExtensionW(path);
-    if (_wcsicmp(extension.c_str(), L".nmo") != 0 &&
-        _wcsicmp(extension.c_str(), L".cmo") != 0) {
-        return false;
-    }
-
-    std::wstring sourcePath = utils::ResolvePathW(path);
-    if (sourcePath.empty())
-        sourcePath = path;
-    const std::wstring mapsDirectory = utils::CombinePathW(m_TempDirectory, L"Maps");
-
-    if (!utils::DirectoryExistsW(mapsDirectory) && !utils::CreateDirectoryW(mapsDirectory))
-        return false;
-
-    const std::wstring destination = utils::CombinePathW(
-        mapsDirectory,
-        CustomMapLoad::MakeTempFileName(sourcePath, extension, attempt));
-
-    if (!utils::CopyFileW(path, destination)) {
-        utils::DeleteFileW(destination);
-        return false;
-    }
-
-    if (!ConvertToAnsiPath(destination, ansiPath)) {
-        const std::wstring shortPath = GetShortPath(destination);
-        if (shortPath.empty() || !ConvertToAnsiPath(shortPath, ansiPath)) {
-            utils::DeleteFileW(destination);
-            return false;
-        }
-    }
-
-    widePath = destination;
-    return true;
-}
-
 bool CustomMaps::IsRuntimeReady() const {
     return m_BML && m_CKContext && m_DataShare && m_LevelNumber &&
            m_LevelLoader && m_LevelLoader->IsReady() && m_CurrentLevel &&
@@ -719,7 +643,9 @@ void CustomMaps::CompleteLoadSuccess() {
     }
     const bool fromCommand = m_LoadAttempt->Origin == LoadOrigin::Command;
     const std::wstring sourcePath = m_LoadAttempt->SourcePath;
+    const std::wstring stagedPath = m_LoadAttempt->TempPath;
     m_LoadAttempt.reset();
+    m_Staging.AdoptLoaded(stagedPath);
     m_Menu.CompleteLoad(true);
     ClearLoadMetadata();
     if (fromCommand && m_BML) {

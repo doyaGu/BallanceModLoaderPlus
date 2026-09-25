@@ -129,7 +129,14 @@ one or both presentations are disabled.
 commands, and configuration.
 
 **Built-in Custom Maps** — Map discovery, selection, preparation, and load
-orchestration. Menu selection stays separate from loading and Behavior edits.
+orchestration. Menu selection stays separate from loading, file staging, and
+Behavior edits.
+
+**Custom Map Staging** — The private Custom Maps Module that owns prepared map
+files and their directories. It first stages under the game `Bin` directory and
+passes CK an ASCII relative path, falling back to an exactly representable ACP
+or 8.3 path only when necessary. A successful map remains staged until that
+level ends; failed attempts and shutdown clean only their owned files.
 
 **Custom Map Level Loader** — The private Custom Maps Module that reads the
 values to be changed, installs a Behavior Plan, and restores the previous values

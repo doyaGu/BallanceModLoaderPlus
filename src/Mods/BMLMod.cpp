@@ -181,6 +181,7 @@ void BMLMod::OnLoad() {
     InitGUI();
     if (ModContext *context = GetRuntimeContext()) {
         m_CustomMaps.OnLoad(*m_BML, *GetLogger(),
+                            context->GetDirectory(BML_DIR_GAME),
                             context->GetDirectory(BML_DIR_LOADER),
                             context->GetDirectory(BML_DIR_TEMP));
     } else {
