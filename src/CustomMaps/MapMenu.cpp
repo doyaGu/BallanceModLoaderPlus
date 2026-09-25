@@ -74,7 +74,7 @@ bool MapMenu::Render() {
         return m_Routes.Close();
     if (m_State.IsLoading())
         return true;
-    return m_Routes.Render();
+    return Bui::RenderMenuAfterInputHandoff(m_Routes, this);
 }
 
 void MapListPage::OnEnter(Bui::PageEnterReason) {

@@ -409,8 +409,8 @@ namespace Bui {
     // BlockKeyboardInput takes the keyboard away from the game through the same block
     // InputHook::AcquireBlock gives, so the game's own scripts stop seeing keys while
     // ImGui still does. UnblockKeyboardAfterRelease gives it back, but not at once: it
-    // waits, one game frame at a time, until Escape and Enter are both up, so the press
-    // that left the menu is over before the game can act on it.
+    // waits, one game frame at a time, until the menu activation and cancellation keys
+    // are up, so the press that left the menu is over before the game can act on it.
     //
     // The underlying block is shared by the whole loader and reference-counted. Every
     // successful public BlockKeyboardInput call has one anonymous share and must have
@@ -694,9 +694,10 @@ namespace Bui {
     // mutation while OnEnter, OnFrame, OnLeave, or a session callback is running
     // returns false. OnFrame's returned action is applied after drawing. History is
     // capped at 32 routes, and an operation that would exceed it returns false without
-    // leaving the current Page. Entering a route transfers keyboard navigation to its
-    // first focusable item, so a stale item id from the previous Page cannot retain
-    // focus.
+    // leaving the current Page. A newly entered route becomes interactive on the next
+    // ImGui frame, after any activation queued by the previous surface has expired. It
+    // also waits for a held activation key to be released, then visibly selects the
+    // first focusable item.
     //
     // Menu is final so ownership is composed rather than inherited: declare the state
     // Pages refer to before the Menu member, and C++ then destroys Menu and its Pages
@@ -803,11 +804,12 @@ namespace Bui {
             const bool drawContents = ImGui::Begin(m_WindowId.c_str(), nullptr, flags);
             PageAction action;
             try {
-                if (drawContents) {
+                if (drawContents && RouteInputReady()) {
                     ImGuiIdGuard idGuard(page);
                     DispatchGuard guard(m_Dispatching);
                     if (m_FocusFirstItem) {
                         ImGui::SetKeyboardFocusHere();
+                        ImGui::SetNavCursorVisible(true);
                         m_FocusFirstItem = false;
                     }
                     action = page->OnFrame();
@@ -845,6 +847,43 @@ namespace Bui {
 
             bool &m_Dispatching;
         };
+
+        static bool RouteInputPending() {
+            return ImGui::IsKeyDown(ImGuiKey_Escape) ||
+                   ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+                   ImGui::IsKeyDown(ImGuiKey_Enter) ||
+                   ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+                   ImGui::IsKeyDown(ImGuiKey_KeypadEnter) ||
+                   ImGui::IsKeyPressed(ImGuiKey_KeypadEnter) ||
+                   ImGui::IsKeyDown(ImGuiKey_Space) ||
+                   ImGui::IsKeyPressed(ImGuiKey_Space) ||
+                   ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown) ||
+                   ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown) ||
+                   ImGui::IsKeyDown(ImGuiKey_GamepadFaceRight) ||
+                   ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight);
+        }
+
+        bool RouteInputReady() {
+            if (ImGui::GetFrameCount() < m_FirstInteractiveFrame)
+                return false;
+            if (m_WaitingForNavigationRelease && RouteInputPending())
+                return false;
+            m_WaitingForNavigationRelease = false;
+            return true;
+        }
+
+        void ArmRouteInput() {
+            m_FocusFirstItem = true;
+            m_WaitingForNavigationRelease = true;
+            m_FirstInteractiveFrame = ImGui::GetCurrentContext()
+                ? ImGui::GetFrameCount() + 1 : 0;
+        }
+
+        void ResetRouteInput() {
+            m_FocusFirstItem = false;
+            m_WaitingForNavigationRelease = false;
+            m_FirstInteractiveFrame = 0;
+        }
 
         template <typename Operation>
         bool Mutate(Operation &&operation) {
@@ -904,12 +943,13 @@ namespace Bui {
             LeaveCurrent(leaveReason);
 
             m_CurrentPage = std::move(next);
-            m_FocusFirstItem = true;
+            ArmRouteInput();
             try {
                 EnterCurrent(enterReason);
             } catch (...) {
                 m_CurrentPage.clear();
                 m_PageStack.clear();
+                ResetRouteInput();
                 throw;
             }
 
@@ -932,12 +972,13 @@ namespace Bui {
                 if (!HasPage(target))
                     continue;
                 m_CurrentPage = std::move(target);
-                m_FocusFirstItem = true;
+                ArmRouteInput();
                 try {
                     EnterCurrent(PageEnterReason::Back);
                 } catch (...) {
                     m_CurrentPage.clear();
                     m_PageStack.clear();
+                    ResetRouteInput();
                     throw;
                 }
                 return true;
@@ -950,6 +991,7 @@ namespace Bui {
                 return false;
             LeaveCurrent(PageLeaveReason::Close);
             m_PageStack.clear();
+            ResetRouteInput();
             return true;
         }
 
@@ -969,6 +1011,7 @@ namespace Bui {
             it->second->OnLeave(PageLeaveReason::Remove);
             m_CurrentPage.clear();
             m_PageStack.clear();
+            ResetRouteInput();
             m_Pages.erase(it);
             return true;
         }
@@ -1019,6 +1062,7 @@ namespace Bui {
 
             m_CurrentPage.clear();
             m_PageStack.clear();
+            ResetRouteInput();
 
             if (m_SessionOpen) {
                 m_SessionOpen = false;
@@ -1040,6 +1084,8 @@ namespace Bui {
         bool m_SessionOpen = false;
         bool m_Dispatching = false;
         bool m_FocusFirstItem = false;
+        bool m_WaitingForNavigationRelease = false;
+        int m_FirstInteractiveFrame = 0;
         std::vector<std::string> m_PageStack;
         std::unordered_map<std::string, std::unique_ptr<Page>> m_Pages;
     };

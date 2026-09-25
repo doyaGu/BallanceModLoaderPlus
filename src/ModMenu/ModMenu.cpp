@@ -382,7 +382,7 @@ void ModMenu::OnProcess() {
         return;
 
     m_State->SynchronizeRoutes();
-    if (!m_State->routes.Render())
+    if (!Bui::RenderMenuAfterInputHandoff(m_State->routes, m_State.get()))
         m_State->routes.Close();
     m_State->SynchronizeRoutes();
     m_State->ApplyPageNavigation();

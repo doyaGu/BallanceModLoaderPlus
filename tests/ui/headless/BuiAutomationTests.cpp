@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "BML/Bui.h"
 #include "UI/BuiInternal.h"
 #include "imgui.h"
@@ -46,8 +48,20 @@ struct KeyboardButtonState {
 struct InputRowFocusState {
     char Text[32] = "draft";
     ImGuiID Input = 0;
-    bool RequestFocus = true;
+    ImTextureID ButtonTexture = ImTextureID_Invalid;
 };
+
+static ImTextureID FindButtonTexture(const ImDrawList *drawList, int firstCommand) {
+    for (int i = firstCommand; i < drawList->CmdBuffer.Size; ++i) {
+        const ImTextureRef &textureRef = drawList->CmdBuffer[i].TexRef;
+        if (textureRef._TexData)
+            continue;
+        const ImTextureID texture = textureRef._TexID;
+        if (texture != ImTextureID_Invalid)
+            return texture;
+    }
+    return ImTextureID_Invalid;
+}
 
 struct ShortcutButtonState {
     char Text[32] = "draft";
@@ -142,8 +156,20 @@ struct MenuState {
     ImGuiWindow *CurrentWindow = nullptr;
     ImGuiID FirstItem = 0;
     ImGuiID CurrentItem = 0;
+    bool OpenWithQueuedActivation = false;
     Bui::Menu Menu;
 };
+
+void RenderMenu(MenuState &state) {
+    if (state.OpenWithQueuedActivation) {
+        GImGui->NavActivateId = state.CurrentItem;
+        GImGui->NavActivateDownId = state.CurrentItem;
+        GImGui->NavActivatePressedId = state.CurrentItem;
+        state.Menu.Open("landing");
+        state.OpenWithQueuedActivation = false;
+    }
+    state.Menu.Render();
+}
 
 } // namespace
 
@@ -383,19 +409,31 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         ImGui::PushID("Text");
         state.Input = ImGui::GetID("##InputText");
         ImGui::PopID();
-        if (state.RequestFocus) {
-            ImGui::SetKeyboardFocusHere();
-            state.RequestFocus = false;
-        }
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+        const int firstCommand = std::max(0, drawList->CmdBuffer.Size - 1);
         Bui::InputTextButton("Text", state.Text, IM_ARRAYSIZE(state.Text));
+        state.ButtonTexture = FindButtonTexture(drawList, firstCommand);
+        ImGui::Button("After");
         ImGui::End();
     };
     test->TestFunc = [](ImGuiTestContext *ctx) {
         InputRowFocusState &state = ctx->GetVars<InputRowFocusState>();
         ctx->SetInputMode(ImGuiInputSource_Keyboard);
+        ctx->SetRef("Bui Input Row");
+        ctx->MouseMoveToPos(ImVec2(1000.0f, 700.0f));
+        ctx->NavMoveTo("After");
         ctx->Yield();
+        const ImTextureID deselectedTexture = state.ButtonTexture;
+        IM_CHECK_NE(deselectedTexture, ImTextureID_Invalid);
+
+        ctx->NavMoveTo("**/##InputText");
         IM_CHECK_EQ(GImGui->NavId, state.Input);
-        IM_CHECK_EQ(GImGui->ActiveId, state.Input);
+        ctx->Yield();
+        IM_CHECK_NE(state.ButtonTexture, deselectedTexture);
+
+        ctx->NavMoveTo("After");
+        ctx->Yield();
+        IM_CHECK_EQ(state.ButtonTexture, deselectedTexture);
     };
 
     test = IM_REGISTER_TEST(engine, "bui", "item_shortcut_activates_non_navigation_button");
@@ -485,7 +523,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
     test = IM_REGISTER_TEST(engine, "bui", "menu_buttons_drive_navigation");
     test->SetVarsDataType<MenuState>();
     test->GuiFunc = [](ImGuiTestContext *ctx) {
-        ctx->GetVars<MenuState>().Menu.Render();
+        RenderMenu(ctx->GetVars<MenuState>());
     };
     test->TestFunc = [](ImGuiTestContext *ctx) {
         MenuState &state = ctx->GetVars<MenuState>();
@@ -506,7 +544,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
     test = IM_REGISTER_TEST(engine, "bui", "menu_keyboard_drives_navigation");
     test->SetVarsDataType<MenuState>();
     test->GuiFunc = [](ImGuiTestContext *ctx) {
-        ctx->GetVars<MenuState>().Menu.Render();
+        RenderMenu(ctx->GetVars<MenuState>());
     };
     test->TestFunc = [](ImGuiTestContext *ctx) {
         MenuState &state = ctx->GetVars<MenuState>();
@@ -532,5 +570,70 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         ctx->Yield();
         IM_CHECK_EQ(GImGui->NavWindow, state.CurrentWindow);
         IM_CHECK_EQ(GImGui->NavId, state.FirstItem);
+    };
+
+    test = IM_REGISTER_TEST(engine, "bui", "menu_entry_does_not_reuse_keyboard_activation");
+    test->SetVarsDataType<MenuState>();
+    test->GuiFunc = [](ImGuiTestContext *ctx) {
+        RenderMenu(ctx->GetVars<MenuState>());
+    };
+    test->TestFunc = [](ImGuiTestContext *ctx) {
+        MenuState &state = ctx->GetVars<MenuState>();
+        Bui::Menu &menu = state.Menu;
+        ctx->SetInputMode(ImGuiInputSource_Keyboard);
+        ctx->Yield();
+
+        ctx->NavMoveTo(state.CurrentItem);
+        IM_CHECK_EQ(GImGui->NavId, state.CurrentItem);
+        IM_CHECK(menu.Close());
+        ctx->Yield();
+        IM_CHECK_EQ(GImGui->NavId, state.CurrentItem);
+
+        ctx->KeySetEx(ImGuiKey_Enter, true, 0.0f);
+        IM_CHECK(menu.Open("landing"));
+        ctx->Yield();
+        IM_CHECK(menu.IsCurrentPage("landing"));
+
+        ctx->KeyUp(ImGuiKey_Enter);
+    };
+
+    test = IM_REGISTER_TEST(engine, "bui", "menu_entry_does_not_reuse_queued_activation");
+    test->SetVarsDataType<MenuState>();
+    test->GuiFunc = [](ImGuiTestContext *ctx) {
+        RenderMenu(ctx->GetVars<MenuState>());
+    };
+    test->TestFunc = [](ImGuiTestContext *ctx) {
+        MenuState &state = ctx->GetVars<MenuState>();
+        Bui::Menu &menu = state.Menu;
+        ctx->SetInputMode(ImGuiInputSource_Keyboard);
+        ctx->Yield();
+
+        IM_CHECK(menu.Close());
+        ctx->Yield();
+        state.OpenWithQueuedActivation = true;
+        ctx->Yield();
+        IM_CHECK(menu.IsCurrentPage("landing"));
+    };
+
+    test = IM_REGISTER_TEST(engine, "bui", "menu_entry_shows_first_keyboard_item");
+    test->SetVarsDataType<MenuState>();
+    test->GuiFunc = [](ImGuiTestContext *ctx) {
+        RenderMenu(ctx->GetVars<MenuState>());
+    };
+    test->TestFunc = [](ImGuiTestContext *ctx) {
+        MenuState &state = ctx->GetVars<MenuState>();
+        Bui::Menu &menu = state.Menu;
+        ctx->SetInputMode(ImGuiInputSource_Keyboard);
+        ctx->Yield();
+
+        IM_CHECK(menu.Close());
+        ctx->Yield();
+        ImGui::SetNavCursorVisible(false);
+        IM_CHECK(menu.Open("landing"));
+        ctx->Yield();
+        ctx->Yield();
+        IM_CHECK_EQ(GImGui->NavId, state.FirstItem);
+        IM_CHECK(GImGui->NavCursorVisible);
+        IM_CHECK(GImGui->NavHighlightItemUnderNav);
     };
 }

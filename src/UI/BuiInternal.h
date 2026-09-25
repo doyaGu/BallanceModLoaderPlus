@@ -13,6 +13,7 @@ namespace Bui {
     };
 
     void BlockKeyboardInput(const void *owner);
+    bool RenderMenuAfterInputHandoff(Menu &menu, const void *owner);
     void UnblockKeyboardAfterRelease(const void *owner);
     void TransitionToScriptAndUnblock(const char *scriptName, const void *owner);
 
