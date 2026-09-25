@@ -8,11 +8,13 @@
 #include <gtest/gtest.h>
 
 namespace {
-    void OriginalFirst() {}
-    void OriginalSecond() {}
-    void ReplacementFirst() {}
-    void ReplacementSecond() {}
-    void ThirdPartyReplacement() {}
+    volatile LONG FunctionMarker = 0;
+
+    __declspec(noinline) void OriginalFirst() { FunctionMarker = 1; }
+    __declspec(noinline) void OriginalSecond() { FunctionMarker = 2; }
+    __declspec(noinline) void ReplacementFirst() { FunctionMarker = 3; }
+    __declspec(noinline) void ReplacementSecond() { FunctionMarker = 4; }
+    __declspec(noinline) void ThirdPartyReplacement() { FunctionMarker = 5; }
 
     void *FunctionAddress(void (*function)()) {
         return reinterpret_cast<void *>(function);
