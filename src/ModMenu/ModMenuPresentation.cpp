@@ -60,6 +60,13 @@ namespace {
             ImGui::SetCursorScreenPos(Position(x, y));
         }
 
+        Bui::ColorPickerArea Area(const TextPanelLayout &layout) const {
+            return {
+                Position(layout.x, layout.y),
+                Position(layout.x + layout.width, layout.y + layout.height),
+            };
+        }
+
         ImVec2 position;
         ImVec2 size;
     };
@@ -68,6 +75,7 @@ namespace {
     constexpr TextPanelLayout DetailsCommentPanel = {0.725f, 0.40f, 0.25f, 0.20f};
     constexpr TextPanelLayout SettingCommentPanel = {0.725f, 0.35f, 0.25f, 0.30f};
     constexpr TextPanelLayout CustomPageContent = {0.31f, 0.24f, 0.38f, 0.55f};
+    constexpr TextPanelLayout SettingsColorPickerArea = {0.30f, 0.15f, 0.40f, 0.67f};
 
     static_assert(ModInformationPanel.y + ModInformationPanel.height < DetailsY,
                   "Mod information must not overlap the details action list");
@@ -500,7 +508,9 @@ struct ModMenuPresentation::State {
                         changed = true;
                     }
                 } else if (setting.editor == BML_CONFIG_EDITOR_COLOR) {
-                    changed = Bui::ColorStringButton(setting.label.c_str(), &next);
+                    const Bui::ColorPickerArea pickerArea = viewport.Area(SettingsColorPickerArea);
+                    changed = Bui::ColorStringButton(
+                        setting.label.c_str(), &next, pickerArea);
                 } else {
                     changed = Bui::InputTextButton(setting.label.c_str(), &next);
                 }

@@ -1441,7 +1441,99 @@ namespace Bui {
         return changed;
     }
 
-    bool ColorButton(const char *label, ImVec4 *color, ImGuiColorEditFlags flags) {
+    struct ColorPickerLayout {
+        ImVec2 position;
+        ImVec2 size;
+        float contentWidth = 0.0f;
+    };
+
+    constexpr ImGuiColorEditFlags DefaultColorEditFlags =
+        ImGuiColorEditFlags_DisplayHex |
+        ImGuiColorEditFlags_Uint8 |
+        ImGuiColorEditFlags_PickerHueBar |
+        ImGuiColorEditFlags_AlphaBar |
+        ImGuiColorEditFlags_AlphaPreviewHalf;
+
+    static ColorPickerLayout FitColorPicker(const ImRect &anchor,
+                                            ImGuiColorEditFlags flags,
+                                            const ColorPickerArea *pickerArea) {
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        ImVec2 areaMin = viewport->WorkPos;
+        ImVec2 areaMax(viewport->WorkPos.x + viewport->WorkSize.x,
+                       viewport->WorkPos.y + viewport->WorkSize.y);
+        if (pickerArea && pickerArea->maximum.x > pickerArea->minimum.x &&
+            pickerArea->maximum.y > pickerArea->minimum.y) {
+            const ImVec2 clippedMin(std::max(areaMin.x, pickerArea->minimum.x),
+                                    std::max(areaMin.y, pickerArea->minimum.y));
+            const ImVec2 clippedMax(std::min(areaMax.x, pickerArea->maximum.x),
+                                    std::min(areaMax.y, pickerArea->maximum.y));
+            if (clippedMax.x > clippedMin.x && clippedMax.y > clippedMin.y) {
+                areaMin = clippedMin;
+                areaMax = clippedMax;
+            }
+        }
+
+        constexpr float margin = 8.0f;
+        if (areaMax.x - areaMin.x > margin * 2.0f) {
+            areaMin.x += margin;
+            areaMax.x -= margin;
+        }
+        if (areaMax.y - areaMin.y > margin * 2.0f) {
+            areaMin.y += margin;
+            areaMax.y -= margin;
+        }
+
+        const ImGuiStyle &style = ImGui::GetStyle();
+        const float frameHeight = ImGui::GetFrameHeight();
+        const float availableWidth = std::max(1.0f, areaMax.x - areaMin.x);
+        const float availableHeight = std::max(1.0f, areaMax.y - areaMin.y);
+        const float horizontalPadding = style.WindowPadding.x * 2.0f;
+        const float verticalPadding = style.WindowPadding.y * 2.0f;
+        const bool alphaBar = ((flags & ImGuiColorEditFlags_AlphaBar) != 0 ||
+                               ((flags & ImGuiColorEditFlags_NoOptions) == 0 &&
+                                (ImGui::GetIO().ConfigColorEditFlags &
+                                 ImGuiColorEditFlags_AlphaBar) != 0)) &&
+                              (flags & ImGuiColorEditFlags_NoAlpha) == 0;
+        const float barSpace = (alphaBar ? 2.0f : 1.0f) *
+                               (frameHeight + style.ItemInnerSpacing.x);
+        const ImGuiColorEditFlags display = flags & ImGuiColorEditFlags_DisplayMask_;
+        const int inputRows = display == 0 ? 3 : 1;
+        const float inputHeight = inputRows * frameHeight +
+                                  inputRows * style.ItemSpacing.y;
+
+        float contentWidth = std::min(frameHeight * 11.0f,
+                                      std::max(1.0f, availableWidth - horizontalPadding));
+        const float maximumSquareHeight = std::max(
+            frameHeight, availableHeight - verticalPadding - inputHeight);
+        contentWidth = std::min(contentWidth, maximumSquareHeight + barSpace);
+        const float squareHeight = std::max(frameHeight, contentWidth - barSpace);
+        const float contentHeight = squareHeight + inputHeight;
+
+        ColorPickerLayout layout;
+        layout.size.x = std::min(availableWidth, contentWidth + horizontalPadding);
+        layout.size.y = std::min(availableHeight, contentHeight + verticalPadding);
+        layout.contentWidth = std::max(1.0f, layout.size.x - horizontalPadding);
+
+        const float maximumX = std::max(areaMin.x, areaMax.x - layout.size.x);
+        layout.position.x = std::clamp(anchor.GetCenter().x - layout.size.x * 0.5f,
+                                       areaMin.x, maximumX);
+        const float gap = style.ItemSpacing.y;
+        const float below = anchor.Max.y + gap;
+        const float above = anchor.Min.y - gap - layout.size.y;
+        if (below + layout.size.y <= areaMax.y)
+            layout.position.y = below;
+        else if (above >= areaMin.y)
+            layout.position.y = above;
+        else
+            layout.position.y = std::clamp(anchor.GetCenter().y - layout.size.y * 0.5f,
+                                           areaMin.y,
+                                           std::max(areaMin.y, areaMax.y - layout.size.y));
+        return layout;
+    }
+
+    static bool DrawColorButton(const char *label, ImVec4 *color,
+                                ImGuiColorEditFlags flags,
+                                const ColorPickerArea *pickerArea) {
         if (!color)
             return false;
 
@@ -1451,20 +1543,66 @@ namespace Bui {
         ReportOptionRow(row, InputableStatus());
 
         BeginOptionInput(row);
-#ifdef IMGUI_ENABLE_TEST_ENGINE
-        ImGui::PushID("ColorPicker");
-        const ImGuiID swatchId = ImGui::GetID("##ColorButton");
-        ImGui::PopID();
-#endif
+        const bool showEditor = (flags & ImGuiColorEditFlags_NoInputs) == 0;
+        const bool showSwatch = (flags & ImGuiColorEditFlags_NoSmallPreview) == 0;
+        const float swatchSize = ImGui::GetFrameHeight();
+        const float editorWidth = row.size.x * 0.6f;
+        if (showEditor && showSwatch) {
+            ImGui::SetNextItemWidth(std::max(
+                1.0f, editorWidth - swatchSize - ImGui::GetStyle().ItemInnerSpacing.x));
+        } else if (showEditor) {
+            ImGui::SetNextItemWidth(editorWidth);
+        }
+
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
-        const bool changed = ImGui::ColorEdit4("ColorPicker", &color->x,
-                                                flags | ImGuiColorEditFlags_NoLabel);
+        bool changed = showEditor && ImGui::ColorEdit4(
+            "##ColorValue", &color->x,
+            flags | ImGuiColorEditFlags_NoLabel |
+                ImGuiColorEditFlags_NoPicker |
+                ImGuiColorEditFlags_NoSmallPreview);
         ImGui::PopStyleColor();
 
+        ImRect swatch;
+        bool swatchPressed = false;
+        if (showSwatch) {
+            if (showEditor)
+                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+            swatchPressed = ImGui::ColorButton(
+                "##ColorSwatch", *color, flags, ImVec2(swatchSize, swatchSize));
+            swatch = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        }
+
+        constexpr const char *popupId = "##ColorPicker";
+        if (swatchPressed && (flags & ImGuiColorEditFlags_NoPicker) == 0)
+            ImGui::OpenPopup(popupId);
+        if (ImGui::IsPopupOpen(popupId)) {
+            const ColorPickerLayout layout = FitColorPicker(swatch, flags, pickerArea);
+            ImGui::SetNextWindowPos(layout.position, ImGuiCond_Always);
+            ImGui::SetNextWindowSize(layout.size, ImGuiCond_Always);
+            if (ImGui::BeginPopup(popupId, ImGuiWindowFlags_NoSavedSettings)) {
+                constexpr ImGuiColorEditFlags forwarded =
+                    ImGuiColorEditFlags_DataTypeMask_ |
+                    ImGuiColorEditFlags_PickerMask_ |
+                    ImGuiColorEditFlags_InputMask_ |
+                    ImGuiColorEditFlags_DisplayMask_ |
+                    ImGuiColorEditFlags_HDR |
+                    ImGuiColorEditFlags_NoAlpha |
+                    ImGuiColorEditFlags_AlphaBar |
+                    ImGuiColorEditFlags_NoOptions |
+                    ImGuiColorEditFlags_NoTooltip;
+                ImGui::SetNextItemWidth(layout.contentWidth);
+                changed |= ImGui::ColorPicker4(
+                    "##Picker", &color->x,
+                    (flags & forwarded) |
+                        ImGuiColorEditFlags_NoLabel |
+                        ImGuiColorEditFlags_NoSidePreview);
+                ImGui::EndPopup();
+            }
+        }
+
 #ifdef IMGUI_ENABLE_TEST_ENGINE
-        ImGui::PushID("ColorPicker");
-        const bool pickerOpen = ImGui::IsPopupOpen("picker");
-        ImGui::PopID();
+        const ImGuiID swatchId = ImGui::GetID("##ColorSwatch");
+        const bool pickerOpen = ImGui::IsPopupOpen(popupId);
         ImGuiContext &g = *GImGui;
         IMGUI_TEST_ENGINE_ITEM_INFO(
             swatchId, "ColorSwatch",
@@ -1474,7 +1612,17 @@ namespace Bui {
         return changed;
     }
 
-    bool ColorStringButton(const char *label, std::string *value) {
+    bool ColorButton(const char *label, ImVec4 *color, ImGuiColorEditFlags flags) {
+        return DrawColorButton(label, color, flags, nullptr);
+    }
+
+    static std::uint8_t ColorChannel(float component) {
+        return static_cast<std::uint8_t>(
+            std::lround(std::clamp(component, 0.0f, 1.0f) * 255.0f));
+    }
+
+    static bool DrawColorStringButton(const char *label, std::string *value,
+                                      const ColorPickerArea *pickerArea) {
         if (!value)
             return false;
         const std::optional<UiColor::Rgba8> parsed = UiColor::ParseHex(*value);
@@ -1487,18 +1635,26 @@ namespace Bui {
             parsed->green * ByteScale,
             parsed->blue * ByteScale,
             parsed->alpha * ByteScale);
-        if (!ColorButton(label, &color))
+        const bool changed = DrawColorButton(
+            label, &color, DefaultColorEditFlags, pickerArea);
+        if (!changed)
             return false;
 
-        auto channel = [](float component) {
-            return static_cast<std::uint8_t>(
-                std::lround(std::clamp(component, 0.0f, 1.0f) * 255.0f));
-        };
         const UiColor::Rgba8 edited{
-            channel(color.x), channel(color.y), channel(color.z), channel(color.w),
+            ColorChannel(color.x), ColorChannel(color.y),
+            ColorChannel(color.z), ColorChannel(color.w),
         };
         *value = UiColor::FormatHex(edited, edited.alpha != 0xFF);
         return true;
+    }
+
+    bool ColorStringButton(const char *label, std::string *value) {
+        return DrawColorStringButton(label, value, nullptr);
+    }
+
+    bool ColorStringButton(const char *label, std::string *value,
+                           const ColorPickerArea &pickerArea) {
+        return DrawColorStringButton(label, value, &pickerArea);
     }
 
     void WrappedText(const char *text, float width, float baseX, float scale) {

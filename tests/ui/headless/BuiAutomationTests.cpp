@@ -19,6 +19,11 @@ struct ColorStringState {
     std::string Value = "invalid";
 };
 
+struct ColorPopupState {
+    std::string Value = "#61B0F0FF";
+    Bui::ColorPickerArea Area;
+};
+
 struct NavigationShortcutState {
     char Text[32] = "draft";
     int PreviousCount = 0;
@@ -227,6 +232,48 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         IM_CHECK_EQ(state.Value, "#AABBCC80");
         ctx->Yield();
         IM_CHECK(ctx->ItemExists("**/ColorSwatch"));
+    };
+
+    test = IM_REGISTER_TEST(engine, "bui", "color_picker_stays_inside_page");
+    test->SetVarsDataType<ColorPopupState>();
+    test->GuiFunc = [](ImGuiTestContext *ctx) {
+        ColorPopupState &state = ctx->GetVars<ColorPopupState>();
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->WorkPos, ImGuiCond_Always);
+        ImGui::SetNextWindowSize(viewport->WorkSize, ImGuiCond_Always);
+        ImGui::Begin("Bui Color Popup", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        ImGui::SetCursorScreenPos(ImVec2(
+            viewport->WorkPos.x + viewport->WorkSize.x * 0.35f,
+            viewport->WorkPos.y + viewport->WorkSize.y * 0.66f));
+        state.Area = {
+            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.40f,
+                   viewport->WorkPos.y + viewport->WorkSize.y * 0.15f),
+            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.60f,
+                   viewport->WorkPos.y + viewport->WorkSize.y * 0.82f),
+        };
+        Bui::ColorStringButton("Accent", &state.Value, state.Area);
+        ImGui::End();
+    };
+    test->TestFunc = [](ImGuiTestContext *ctx) {
+        ctx->SetRef("Bui Color Popup");
+        ctx->ItemClick("**/ColorSwatch");
+        ctx->Yield();
+
+        ImGuiContext &imgui = *GImGui;
+        IM_CHECK_GT(imgui.OpenPopupStack.Size, 0);
+        ImGuiWindow *popup = imgui.OpenPopupStack.back().Window;
+        IM_CHECK(popup != nullptr);
+        const Bui::ColorPickerArea &page = ctx->GetVars<ColorPopupState>().Area;
+        IM_CHECK_GE(popup->Pos.x, page.minimum.x);
+        IM_CHECK_GE(popup->Pos.y, page.minimum.y);
+        IM_CHECK_LE(popup->Pos.x + popup->Size.x, page.maximum.x);
+        IM_CHECK_LE(popup->Pos.y + popup->Size.y, page.maximum.y);
+
+        const std::string initial = ctx->GetVars<ColorPopupState>().Value;
+        ctx->MouseMoveToPos(ImVec2(popup->Pos.x + 20.0f, popup->Pos.y + 20.0f));
+        ctx->MouseClick();
+        ctx->Yield();
+        IM_CHECK_NE(ctx->GetVars<ColorPopupState>().Value, initial);
     };
 
     test = IM_REGISTER_TEST(engine, "bui", "navigation_shortcuts_do_not_interrupt_text_input");

@@ -7,6 +7,11 @@
 #include "BML/Bui.h"
 
 namespace Bui {
+    struct ColorPickerArea {
+        ImVec2 minimum{};
+        ImVec2 maximum{};
+    };
+
     void BlockKeyboardInput(const void *owner);
     void UnblockKeyboardAfterRelease(const void *owner);
     void TransitionToScriptAndUnblock(const char *scriptName, const void *owner);
@@ -16,6 +21,8 @@ namespace Bui {
                          ImGuiInputTextCallback callback = nullptr,
                          void *userData = nullptr);
     bool ColorStringButton(const char *label, std::string *value);
+    bool ColorStringButton(const char *label, std::string *value,
+                           const ColorPickerArea &pickerArea);
     bool RadioButton(const char *label, int *currentItem,
                      const std::vector<std::string> &items,
                      const char *emptyItemLabel = nullptr);
