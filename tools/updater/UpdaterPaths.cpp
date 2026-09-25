@@ -220,6 +220,31 @@ namespace bmlupdater {
         return CreateDirectoryW(path.c_str(), nullptr) == TRUE || GetLastError() == ERROR_ALREADY_EXISTS;
     }
 
+    bool CanCreateFileInDirectory(const std::wstring &path) {
+        if (!CreateDirectories(path))
+            return false;
+
+        const DWORD process = GetCurrentProcessId();
+        const ULONGLONG tick = GetTickCount64();
+        for (unsigned int attempt = 0; attempt < 8; ++attempt) {
+            const std::wstring name = L".bml-write-test-" + std::to_wstring(process) + L"-" +
+                                      std::to_wstring(tick) + L"-" + std::to_wstring(attempt) + L".tmp";
+            const std::wstring probe = JoinPath(path, name);
+            HANDLE file = CreateFileW(probe.c_str(), GENERIC_WRITE | DELETE, 0, nullptr,
+                                      CREATE_NEW,
+                                      FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE,
+                                      nullptr);
+            if (file != INVALID_HANDLE_VALUE) {
+                CloseHandle(file);
+                return true;
+            }
+            const DWORD error = GetLastError();
+            if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS)
+                return false;
+        }
+        return false;
+    }
+
     bool RemoveFileIfPresent(const std::wstring &path, std::string &error) {
         if (!PathExists(path)) {
             return true;

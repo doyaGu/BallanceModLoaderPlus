@@ -1,3 +1,10 @@
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
+#include <cwchar>
+
 #include <gtest/gtest.h>
 
 #include "UpdaterPaths.h"
@@ -38,4 +45,30 @@ TEST(UpdaterPathTest, RejectsUpdaterPackageForbiddenAreas) {
     EXPECT_TRUE(bmlupdater::IsDisallowedUpdaterPackagePath("ModLoader/Mods/CameraUtilities.bmodp"));
     EXPECT_TRUE(bmlupdater::IsDisallowedUpdaterPackagePath("ModLoader/Configs/BML.cfg"));
     EXPECT_FALSE(bmlupdater::IsDisallowedUpdaterPackagePath("BuildingBlocks/BMLPlus.dll"));
+}
+
+TEST(UpdaterPathTest, WritableDirectoryProbeCreatesNoPersistentFile) {
+    wchar_t tempPath[MAX_PATH]{};
+    ASSERT_NE(::GetTempPathW(MAX_PATH, tempPath), 0u);
+    const std::wstring directory = bmlupdater::JoinPath(
+        tempPath, L"BMLUpdaterPathTest-" + std::to_wstring(::GetCurrentProcessId()) + L"-" +
+                      std::to_wstring(::GetTickCount64()));
+
+    ASSERT_TRUE(bmlupdater::CanCreateFileInDirectory(directory));
+    EXPECT_TRUE(bmlupdater::DirectoryExists(directory));
+
+    WIN32_FIND_DATAW entry{};
+    const std::wstring pattern = bmlupdater::JoinPath(directory, L"*");
+    HANDLE search = ::FindFirstFileW(pattern.c_str(), &entry);
+    ASSERT_NE(search, INVALID_HANDLE_VALUE);
+    unsigned int files = 0;
+    do {
+        if (wcscmp(entry.cFileName, L".") != 0 && wcscmp(entry.cFileName, L"..") != 0)
+            ++files;
+    } while (::FindNextFileW(search, &entry) == TRUE);
+    ::FindClose(search);
+    EXPECT_EQ(files, 0u);
+
+    std::string error;
+    EXPECT_TRUE(bmlupdater::RemoveDirectoryTree(directory, error)) << error;
 }

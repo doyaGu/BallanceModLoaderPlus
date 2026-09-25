@@ -100,31 +100,6 @@ namespace bmlupdater {
                 ". Close Ballance if it is running. If the game directory is protected, restart Updater.exe as administrator and retry only the apply/rollback step.");
         }
 
-        bool CanCreateFileInDirectory(const std::wstring &directory) {
-            if (!CreateDirectories(directory)) {
-                return false;
-            }
-
-            DWORD pid = GetCurrentProcessId();
-            DWORD tick = GetTickCount();
-            std::wstring probe = JoinPath(directory, L".bml-updater-write-test-" + std::to_wstring(pid) + L"-" + std::to_wstring(tick) + L".tmp");
-            HANDLE handle = CreateFileW(
-                probe.c_str(),
-                GENERIC_WRITE | DELETE,
-                0,
-                nullptr,
-                CREATE_NEW,
-                FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE,
-                nullptr);
-            if (handle == INVALID_HANDLE_VALUE) {
-                return false;
-            }
-            CloseHandle(handle);
-            std::string ignored;
-            (void)RemoveFileIfPresent(probe, ignored);
-            return true;
-        }
-
         bool CanOpenExistingFileForWrite(const std::wstring &path, DWORD access) {
             if (!PathExists(path)) {
                 return true;

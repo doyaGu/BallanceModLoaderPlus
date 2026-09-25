@@ -25,6 +25,7 @@ namespace bmlupdater {
     [[nodiscard]] bool DirectoryExists(const std::wstring &path);
     [[nodiscard]] bool RegularFileExists(const std::wstring &path);
     [[nodiscard]] bool CreateDirectories(const std::wstring &path);
+    [[nodiscard]] bool CanCreateFileInDirectory(const std::wstring &path);
     [[nodiscard]] bool RemoveFileIfPresent(const std::wstring &path, std::string &error);
     [[nodiscard]] bool RemoveDirectoryTree(const std::wstring &path, std::string &error);
     [[nodiscard]] uint64_t FileSize(const std::wstring &path);

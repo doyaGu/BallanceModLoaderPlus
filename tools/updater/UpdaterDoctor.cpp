@@ -98,28 +98,6 @@ namespace {
         return version.empty() ? "unknown" : version;
     }
 
-    bool CanCreateFileInDirectory(const std::wstring &directory) {
-        if (!CreateDirectories(directory))
-            return false;
-
-        const DWORD process = GetCurrentProcessId();
-        const ULONGLONG tick = GetTickCount64();
-        for (unsigned int attempt = 0; attempt < 8; ++attempt) {
-            const std::wstring name = L".bml-doctor-" + std::to_wstring(process) + L"-" +
-                                      std::to_wstring(tick) + L"-" + std::to_wstring(attempt) + L".tmp";
-            const std::wstring path = JoinPath(directory, name);
-            HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE | DELETE, 0, nullptr, CREATE_NEW,
-                                      FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
-            if (file != INVALID_HANDLE_VALUE) {
-                CloseHandle(file);
-                return true;
-            }
-            if (GetLastError() != ERROR_FILE_EXISTS && GetLastError() != ERROR_ALREADY_EXISTS)
-                return false;
-        }
-        return false;
-    }
-
     bool CanLoadSystemLibrary(const wchar_t *name) {
         HMODULE module = LoadLibraryExW(name, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
         if (!module)
