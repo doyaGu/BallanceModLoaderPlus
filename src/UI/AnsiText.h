@@ -104,6 +104,8 @@ namespace AnsiText {
 
         const std::string &GetOriginalText() const { return m_OriginalText; }
         const std::vector<TextSegment> &GetSegments() const { return m_Segments; }
+        std::string GetPlainText(std::size_t begin = 0,
+                                 std::size_t end = std::string::npos) const;
         void Clear();
         bool IsEmpty() const { return m_Segments.empty(); }
 
@@ -145,6 +147,9 @@ namespace AnsiText {
 
         bool IsValid() const { return m_Source != nullptr; }
         ImVec2 GetSize() const { return m_Size; }
+        std::size_t HitTest(const ImVec2 &position) const;
+        void DrawSelection(ImDrawList *drawList, const ImVec2 &position,
+                           std::size_t begin, std::size_t end, ImU32 color) const;
         void Draw(ImDrawList *drawList, const ImVec2 &position, float alpha = 1.0f,
                   const AnsiPalette *palette = nullptr) const;
 
@@ -159,19 +164,29 @@ namespace AnsiText {
 
         struct Line {
             std::vector<Span> spans;
+            const char *begin = nullptr;
+            const char *end = nullptr;
             float width = 0.0f;
             bool hasDecorations = false;
+        };
+
+        struct VisibleLineRange {
+            int begin = 0;
+            int end = 0;
         };
 
         static const char *NextGrapheme(const char *current, const char *end);
         static float Measure(ImFont *font, float fontSize, const char *begin, const char *end);
         static float MeasureFast(ImFont *font, ImFontBaked *baked, float fontSize, float scale,
                                  const char *begin, const char *end);
-        static void FinishLine(Line &line, std::vector<Line> &lines, float &lineWidth);
+        static void FinishLine(Line &line, std::vector<Line> &lines,
+                               float &lineWidth, const char *end);
         static void AppendSpan(Line &line, float &lineWidth, const TextSegment &segment,
                                const char *begin, const char *end, float width, bool tab);
         static void BuildLines(ImFont *font, const std::vector<TextSegment> &segments, float wrapWidth,
                                int tabColumns, float fontSize, std::vector<Line> &lines);
+        VisibleLineRange GetVisibleLineRange(const ImDrawList *drawList,
+                                             const ImVec2 &position) const;
         static void DrawBackgroundRuns(ImDrawList *drawList, const Line &line, float startX,
                                        float lineTop, float lineBottom, float italicShear,
                                        const AnsiPalette *palette, float alpha);

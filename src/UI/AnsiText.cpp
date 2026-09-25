@@ -258,6 +258,30 @@ namespace AnsiText {
         }
     }
 
+    std::string AnsiString::GetPlainText(std::size_t begin, std::size_t end) const {
+        begin = std::min(begin, m_OriginalText.size());
+        end = std::min(end, m_OriginalText.size());
+        if (end <= begin)
+            return {};
+
+        std::string plain;
+        plain.reserve(end - begin);
+        const char *base = m_OriginalText.data();
+        for (const TextSegment &segment : m_Segments) {
+            const std::size_t segmentBegin = static_cast<std::size_t>(segment.begin - base);
+            const std::size_t segmentEnd = static_cast<std::size_t>(segment.end - base);
+            if (segmentEnd <= begin)
+                continue;
+            if (segmentBegin >= end)
+                break;
+            const std::size_t copyBegin = std::max(begin, segmentBegin);
+            const std::size_t copyEnd = std::min(end, segmentEnd);
+            if (copyEnd > copyBegin)
+                plain.append(base + copyBegin, copyEnd - copyBegin);
+        }
+        return plain;
+    }
+
     void AnsiString::AssignAndParse(std::string &&text, const ConsoleColor &initialColor) {
         m_OriginalText = std::move(text);
         m_Segments.clear();
@@ -444,12 +468,26 @@ namespace AnsiText {
     // Layout Implementation
     // =============================================================================
 
-    static const char *Utf8Next(const char *s, const char *end) {
-        if (!s || s >= end) return s;
-        utf8_int32_t cp = 0;
-        const char *next = (const char *) utf8codepoint((const utf8_int8_t *) s, &cp);
-        if (!next) return s + 1;
-        return next > end ? end : next;
+    static const char *NextCodepoint(const char *current, const char *end,
+                                     std::uint32_t &codepoint) {
+        codepoint = 0;
+        if (!current || current >= end)
+            return current;
+
+        utf8_int32_t decoded = 0;
+        const char *next = reinterpret_cast<const char *>(
+            utf8codepoint(reinterpret_cast<const utf8_int8_t *>(current), &decoded));
+        codepoint = static_cast<std::uint32_t>(decoded);
+        if (!next || next <= current)
+            return current + 1;
+        return std::min(next, end);
+    }
+
+    static std::size_t ClampTextOffset(const char *base, std::size_t size,
+                                       const char *pointer) {
+        if (!pointer || pointer <= base)
+            return 0;
+        return std::min(static_cast<std::size_t>(pointer - base), size);
     }
 
     static bool IsCombiningMark(std::uint32_t codepoint) {
@@ -463,35 +501,75 @@ namespace AnsiText {
         return (codepoint >= 0xFE00 && codepoint <= 0xFE0F) ||
                (codepoint >= 0xE0100 && codepoint <= 0xE01EF);
     }
+    static bool IsEmojiModifier(std::uint32_t codepoint) {
+        return codepoint >= 0x1F3FB && codepoint <= 0x1F3FF;
+    }
+    static bool IsRegionalIndicator(std::uint32_t codepoint) {
+        return codepoint >= 0x1F1E6 && codepoint <= 0x1F1FF;
+    }
+    static bool IsEmojiTag(std::uint32_t codepoint) {
+        return codepoint >= 0xE0020 && codepoint <= 0xE007F;
+    }
+    static bool IsClusterExtension(std::uint32_t codepoint) {
+        return IsVariationSelector(codepoint) || IsCombiningMark(codepoint) ||
+               IsEmojiModifier(codepoint) || IsEmojiTag(codepoint);
+    }
     static bool IsZeroWidthJoiner(std::uint32_t codepoint) { return codepoint == 0x200D; }
 
     const char *PreparedText::NextGrapheme(const char *s, const char *end) {
-        if (!s || s >= end) return s;
-        const char *next = Utf8Next(s, end);
-        if (!next || next <= s) return (s + 1 < end) ? s + 1 : end;
+        if (!s || s >= end)
+            return s;
 
-        for (;;) {
-            if (next >= end) break;
-            utf8_int32_t cp2 = 0; const char *p2 = (const char*) utf8codepoint((const utf8_int8_t*) next, &cp2);
-            if (!p2 || p2 <= next) { next = next + 1; break; }
-            if (IsVariationSelector(static_cast<std::uint32_t>(cp2)) ||
-                IsCombiningMark(static_cast<std::uint32_t>(cp2))) {
-                next = p2;
+        std::uint32_t firstCodepoint = 0;
+        const char *next = NextCodepoint(s, end, firstCodepoint);
+        if (!next || next <= s)
+            return std::min(s + 1, end);
+
+        if (firstCodepoint == '\r' && next < end) {
+            std::uint32_t following = 0;
+            const char *afterFollowing = NextCodepoint(next, end, following);
+            if (following == '\n' && afterFollowing > next)
+                return afterFollowing;
+        }
+
+        if (IsRegionalIndicator(firstCodepoint) && next < end) {
+            std::uint32_t following = 0;
+            const char *afterFollowing = NextCodepoint(next, end, following);
+            if (IsRegionalIndicator(following) && afterFollowing > next)
+                next = afterFollowing;
+        }
+
+        while (next < end) {
+            std::uint32_t codepoint = 0;
+            const char *afterCodepoint = NextCodepoint(next, end, codepoint);
+            if (!afterCodepoint || afterCodepoint <= next) {
+                next = std::min(next + 1, end);
+                break;
+            }
+            if (IsClusterExtension(codepoint)) {
+                next = afterCodepoint;
                 continue;
             }
-            if (IsZeroWidthJoiner(static_cast<std::uint32_t>(cp2))) {
-                // Include ZWJ + following character and its combining marks
-                utf8_int32_t cp3 = 0; const char *p3 = (const char*) utf8codepoint((const utf8_int8_t*) p2, &cp3);
-                if (!p3 || p3 <= p2) { next = p2; break; }
-                next = p3;
-                // absorb trailing marks after the joined char
-                for (;;) {
-                    if (next >= end) break;
-                    utf8_int32_t cp4 = 0; const char *p4 = (const char*) utf8codepoint((const utf8_int8_t*) next, &cp4);
-                    if (!p4 || p4 <= next) { next = next + 1; break; }
-                    if (IsVariationSelector(static_cast<std::uint32_t>(cp4)) ||
-                        IsCombiningMark(static_cast<std::uint32_t>(cp4))) {
-                        next = p4;
+            if (IsZeroWidthJoiner(codepoint)) {
+                next = afterCodepoint;
+                if (next >= end)
+                    break;
+
+                std::uint32_t joinedCodepoint = 0;
+                const char *afterJoined = NextCodepoint(next, end, joinedCodepoint);
+                if (!afterJoined || afterJoined <= next)
+                    break;
+                next = afterJoined;
+
+                while (next < end) {
+                    std::uint32_t extension = 0;
+                    const char *afterExtension = NextCodepoint(next, end, extension);
+                    if (!afterExtension || afterExtension <= next) {
+                        next = std::min(next + 1, end);
+                        break;
+                    }
+                    if (IsClusterExtension(extension)) {
+                        next = afterExtension;
                         continue;
                     }
                     break;
@@ -536,7 +614,11 @@ namespace AnsiText {
         return width;
     }
 
-    void PreparedText::FinishLine(Line &line, std::vector<Line> &lines, float &lineWidth) {
+    void PreparedText::FinishLine(Line &line, std::vector<Line> &lines,
+                                  float &lineWidth, const char *end) {
+        if (!line.begin)
+            line.begin = end;
+        line.end = end;
         lines.push_back(std::move(line));
         line = Line{};
         line.spans.reserve(8);
@@ -546,6 +628,9 @@ namespace AnsiText {
     void PreparedText::AppendSpan(Line &line, float &lineWidth, const TextSegment &segment,
                                   const char *begin, const char *end, float width, bool tab) {
         const ConsoleColor color = segment.color.GetRendered();
+        if (!line.begin)
+            line.begin = begin;
+        line.end = end;
         line.spans.push_back(Span{begin, end, color, width, tab});
         line.hasDecorations |= color.underline || color.doubleUnderline || color.strikethrough;
         lineWidth += width;
@@ -580,6 +665,9 @@ namespace AnsiText {
                 for (const TextSegment &seg : segments) {
                     float w = Measure(font, fontSize, seg.begin, seg.end);
                     const ConsoleColor color = seg.color.GetRendered();
+                    if (!lineFast.begin)
+                        lineFast.begin = seg.begin;
+                    lineFast.end = seg.end;
                     lineFast.spans.push_back(Span{seg.begin, seg.end, color, w, false});
                     lineFast.hasDecorations |= color.underline || color.doubleUnderline || color.strikethrough;
                     xsum += w;
@@ -599,7 +687,7 @@ namespace AnsiText {
             const char *p = seg.begin;
             const char *end = seg.end;
             while (p < end) {
-                if (*p == '\n') { FinishLine(line, outLines, x); trimLeadingSpace = false; ++p; continue; }
+                if (*p == '\n') { FinishLine(line, outLines, x, p); trimLeadingSpace = false; ++p; continue; }
                 if (*p == '\r') { x = 0.0f; ++p; continue; }
                 if (*p == '\t') {
                     const float cols = static_cast<float>(tabColumns > 0 ? tabColumns : DefaultTabColumns);
@@ -607,10 +695,10 @@ namespace AnsiText {
                     const float nextTab = (static_cast<int>(x / tabW) + 1) * tabW;
                     const float w = nextTab - x;
                     if (x > 0.0f && (x + w) > wrapWidth + 0.0001f) {
-                        FinishLine(line, outLines, x);
+                        FinishLine(line, outLines, x, p);
                         trimLeadingSpace = true;
                     }
-                    AppendSpan(line, x, seg, p, p, w, true);
+                    AppendSpan(line, x, seg, p, p + 1, w, true);
                     ++p; continue;
                 }
 
@@ -647,7 +735,7 @@ namespace AnsiText {
                     if (w <= avail + 0.0001f) { AppendSpan(line, x, seg, p, q, w, false); p = q; continue; }
                     if (x > 0.0f) {
                         if (!line.spans.empty())
-                            FinishLine(line, outLines, x);
+                            FinishLine(line, outLines, x, p);
                         trimLeadingSpace = true;
                         p = q;
                         continue;
@@ -661,7 +749,7 @@ namespace AnsiText {
 
                 if (x > 0.0f) {
                     if (!line.spans.empty())
-                        FinishLine(line, outLines, x);
+                        FinishLine(line, outLines, x, p);
                     trimLeadingSpace = true;
                     avail = wrapWidth;
                 }
@@ -685,7 +773,7 @@ namespace AnsiText {
                         } else {
                             AppendSpan(line, x, seg, slice_b, cur, acc, false);
                         }
-                        FinishLine(line, outLines, x); trimLeadingSpace = true; avail = wrapWidth;
+                        FinishLine(line, outLines, x, cur); trimLeadingSpace = true; avail = wrapWidth;
                         slice_b = cur; acc = 0.0f;
                     }
                 }
@@ -696,7 +784,15 @@ namespace AnsiText {
             }
         }
 
-        if (!line.spans.empty() || outLines.empty()) outLines.push_back(std::move(line));
+        if (!line.spans.empty() || outLines.empty()) {
+            const char *end = line.end;
+            if (!end && !segments.empty())
+                end = segments.back().end;
+            if (!line.begin)
+                line.begin = end;
+            line.end = end;
+            outLines.push_back(std::move(line));
+        }
     }
 
     void PreparedText::Clear() {
@@ -788,6 +884,133 @@ namespace AnsiText {
         const float lineCount = m_Lines.empty() ? 1.0f : static_cast<float>(m_Lines.size());
         m_Size = ImVec2(width, m_LineHeight * lineCount + m_LineSpacing * std::max(0.0f, lineCount - 1.0f));
         return true;
+    }
+
+    std::size_t PreparedText::HitTest(const ImVec2 &position) const {
+        if (!m_Source || m_Source->m_Revision != m_SourceRevision || m_Lines.empty())
+            return 0;
+
+        const char *base = m_Source->m_OriginalText.data();
+        const std::size_t sourceSize = m_Source->m_OriginalText.size();
+        const int lastLine = static_cast<int>(m_Lines.size()) - 1;
+        const int lineIndex = m_LineStep > 0.0f
+            ? std::clamp(static_cast<int>(std::floor(position.y / m_LineStep)), 0, lastLine)
+            : 0;
+        const Line &line = m_Lines[static_cast<std::size_t>(lineIndex)];
+
+        if (position.x <= 0.0f || line.spans.empty())
+            return ClampTextOffset(base, sourceSize, line.begin);
+
+        float x = 0.0f;
+        for (const Span &span : line.spans) {
+            const float spanEndX = x + span.width;
+            if (position.x <= spanEndX) {
+                if (span.tab)
+                    return ClampTextOffset(
+                        base, sourceSize,
+                        position.x < x + span.width * 0.5f ? span.begin : span.end);
+
+                float cursorX = x;
+                const char *current = span.begin;
+                while (current < span.end) {
+                    const char *next = NextGrapheme(current, span.end);
+                    if (next <= current)
+                        next = current + 1;
+                    const float width = MeasureFast(
+                        m_Font, m_Baked, m_FontSize, m_FontScale, current, next);
+                    if (position.x < cursorX + width * 0.5f)
+                        return ClampTextOffset(base, sourceSize, current);
+                    cursorX += width;
+                    current = next;
+                }
+                return ClampTextOffset(base, sourceSize, span.end);
+            }
+            x = spanEndX;
+        }
+        return ClampTextOffset(base, sourceSize, line.end);
+    }
+
+    PreparedText::VisibleLineRange PreparedText::GetVisibleLineRange(
+        const ImDrawList *drawList, const ImVec2 &position) const {
+        VisibleLineRange range{0, static_cast<int>(m_Lines.size())};
+        if (!drawList || m_LineStep <= 0.0f || range.end == 0)
+            return range;
+
+        const ImVec2 clipMin = drawList->GetClipRectMin();
+        const ImVec2 clipMax = drawList->GetClipRectMax();
+        range.begin = static_cast<int>(
+            std::floor((clipMin.y - position.y - m_LineHeight) / m_LineStep)) + 1;
+        const float exclusiveClipMaxY = std::nextafter(clipMax.y, -FLT_MAX);
+        range.end = static_cast<int>(
+            std::floor((exclusiveClipMaxY - position.y) / m_LineStep)) + 1;
+        range.begin = std::clamp(range.begin, 0, static_cast<int>(m_Lines.size()));
+        range.end = std::clamp(range.end, range.begin, static_cast<int>(m_Lines.size()));
+        return range;
+    }
+
+    void PreparedText::DrawSelection(ImDrawList *drawList, const ImVec2 &position,
+                                     std::size_t begin, std::size_t end, ImU32 color) const {
+        if (!drawList || !m_Source || m_Source->m_Revision != m_SourceRevision || begin == end)
+            return;
+
+        const char *base = m_Source->m_OriginalText.data();
+        const std::size_t sourceSize = m_Source->m_OriginalText.size();
+        begin = std::min(begin, sourceSize);
+        end = std::min(end, sourceSize);
+        if (end < begin)
+            std::swap(begin, end);
+
+        const VisibleLineRange visible = GetVisibleLineRange(drawList, position);
+        for (int lineIndex = visible.begin; lineIndex < visible.end; ++lineIndex) {
+            const Line &line = m_Lines[static_cast<std::size_t>(lineIndex)];
+            const std::size_t lineBegin = ClampTextOffset(base, sourceSize, line.begin);
+            const std::size_t lineEnd = ClampTextOffset(base, sourceSize, line.end);
+            if (end <= lineBegin || begin >= lineEnd)
+                continue;
+
+            float x = position.x;
+            float selectionStart = FLT_MAX;
+            float selectionEnd = -FLT_MAX;
+            for (const Span &span : line.spans) {
+                const std::size_t spanBegin = static_cast<std::size_t>(span.begin - base);
+                const std::size_t spanEnd = static_cast<std::size_t>(span.end - base);
+                if (spanEnd <= begin) {
+                    x += span.width;
+                    continue;
+                }
+                if (spanBegin >= end)
+                    break;
+
+                const std::size_t selectedBegin = std::max(begin, spanBegin);
+                const std::size_t selectedEnd = std::min(end, spanEnd);
+                if (selectedEnd > selectedBegin) {
+                    float selectedStartX = x;
+                    float selectedEndX = x + span.width;
+                    if (!span.tab) {
+                        if (selectedBegin > spanBegin) {
+                            selectedStartX += MeasureFast(
+                                m_Font, m_Baked, m_FontSize, m_FontScale,
+                                span.begin, base + selectedBegin);
+                        }
+                        if (selectedEnd < spanEnd) {
+                            selectedEndX = x + MeasureFast(
+                                m_Font, m_Baked, m_FontSize, m_FontScale,
+                                span.begin, base + selectedEnd);
+                        }
+                    }
+                    selectionStart = std::min(selectionStart, selectedStartX);
+                    selectionEnd = std::max(selectionEnd, selectedEndX);
+                }
+                x += span.width;
+            }
+
+            if (selectionEnd > selectionStart) {
+                const float top = position.y + static_cast<float>(lineIndex) * m_LineStep;
+                drawList->AddRectFilled(
+                    ImVec2(selectionStart, top),
+                    ImVec2(selectionEnd, top + m_LineHeight), color);
+            }
+        }
     }
 
     namespace {
@@ -1005,21 +1228,12 @@ namespace AnsiText {
             pushedFontTex = true;
         }
 
-        int displayStart = 0;
-        int displayEnd = static_cast<int>(m_Lines.size());
-        if (m_LineStep > 0.0f && displayEnd > 0) {
-            const ImVec2 clipMin = drawList->GetClipRectMin();
-            const ImVec2 clipMax = drawList->GetClipRectMax();
-            displayStart = static_cast<int>(std::floor((clipMin.y - startPos.y - m_LineHeight) / m_LineStep)) + 1;
-            displayEnd = static_cast<int>(std::ceil((clipMax.y - startPos.y) / m_LineStep));
-            displayStart = std::clamp(displayStart, 0, static_cast<int>(m_Lines.size()));
-            displayEnd = std::clamp(displayEnd, displayStart, static_cast<int>(m_Lines.size()));
-        }
+        const VisibleLineRange visible = GetVisibleLineRange(drawList, startPos);
 
         if (m_UsesAnsiPalette)
             const_cast<AnsiPalette *>(palette)->EnsureInitialized();
 
-        for (int lineIndex = displayStart; lineIndex < displayEnd; ++lineIndex) {
+        for (int lineIndex = visible.begin; lineIndex < visible.end; ++lineIndex) {
             const Line &line = m_Lines[static_cast<std::size_t>(lineIndex)];
             const float lineTop = startPos.y + lineIndex * m_LineStep;
             const float lineBottom = lineTop + m_LineHeight;

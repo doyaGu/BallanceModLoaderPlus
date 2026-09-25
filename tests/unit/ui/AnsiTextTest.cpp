@@ -94,6 +94,15 @@ namespace {
         }
         return false;
     }
+
+    int CountDrawListVerticesWithColor(const ImDrawList *drawList, ImU32 color) {
+        int count = 0;
+        for (int i = 0; i < drawList->VtxBuffer.Size; ++i) {
+            if (drawList->VtxBuffer[i].col == color)
+                ++count;
+        }
+        return count;
+    }
 }
 
 TEST(AnsiTextTest, Utf8ContinuationByte9BIsNotTreatedAsCsi) {
@@ -118,6 +127,15 @@ TEST(AnsiTextTest, EscSgrSequencesStillSplitSegments) {
     EXPECT_EQ(SegmentText(segments[1]), "plain");
     EXPECT_NE(segments[0].color, AnsiText::ConsoleColor());
     EXPECT_EQ(segments[1].color, AnsiText::ConsoleColor());
+}
+
+TEST(AnsiTextTest, PlainTextRangeOmitsAnsiFormatting) {
+    const std::string input = "\x1B[31mred\x1B[0mplain";
+    AnsiText::AnsiString text(input);
+
+    EXPECT_EQ(text.GetPlainText(), "redplain");
+    EXPECT_EQ(text.GetPlainText(5, 8), "red");
+    EXPECT_EQ(text.GetPlainText(0, 5), "");
 }
 
 TEST(AnsiTextTest, InitialForegroundPreservesPackedAlphaWithoutEscapeText) {
@@ -247,5 +265,129 @@ TEST(AnsiTextTest, PreparedTextInvalidatesOnlyWhenItsLayoutInputsChange) {
     prepared.Clear();
     EXPECT_FALSE(prepared.IsValid());
     EXPECT_FALSE(prepared.Matches(text, options));
+    context.EndFrame();
+}
+
+TEST(AnsiTextTest, PreparedTextHitTestUsesUtf8CharacterBoundaries) {
+    ScopedImGuiContext context;
+    context.BeginFrame();
+
+    AnsiText::AnsiString text("ab\xE4\xB8\xAD");
+    AnsiText::TextOptions options;
+    options.font = ImGui::GetFont();
+    options.fontSize = ImGui::GetFontSize();
+    options.wrapWidth = FLT_MAX;
+    options.lineSpacing = 0.0f;
+
+    AnsiText::PreparedText prepared;
+    ASSERT_TRUE(prepared.Prepare(text, options));
+    const float a = ImGui::CalcTextSize("a").x;
+    const float ab = ImGui::CalcTextSize("ab").x;
+    const float ideograph = ImGui::CalcTextSize("\xE4\xB8\xAD").x;
+
+    EXPECT_EQ(prepared.HitTest(ImVec2(a * 0.25f, 0.0f)), 0u);
+    EXPECT_EQ(prepared.HitTest(ImVec2(a * 0.75f, 0.0f)), 1u);
+    EXPECT_EQ(prepared.HitTest(ImVec2(ab + ideograph * 0.25f, 0.0f)), 2u);
+    EXPECT_EQ(prepared.HitTest(ImVec2(ab + ideograph * 0.75f, 0.0f)), 5u);
+    context.EndFrame();
+}
+
+TEST(AnsiTextTest, PreparedTextHitTestKeepsEmojiClustersTogether) {
+    ScopedImGuiContext context;
+    context.BeginFrame();
+
+    const std::string emoji =
+        "\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBD"
+        "\xF0\x9F\x87\xBA\xF0\x9F\x87\xB8";
+    AnsiText::AnsiString text(emoji);
+    AnsiText::TextOptions options;
+    options.font = ImGui::GetFont();
+    options.fontSize = ImGui::GetFontSize();
+    options.wrapWidth = FLT_MAX;
+    options.lineSpacing = 0.0f;
+
+    AnsiText::PreparedText prepared;
+    ASSERT_TRUE(prepared.Prepare(text, options));
+    const float firstClusterWidth = ImGui::CalcTextSize(
+        emoji.data(), emoji.data() + 8).x;
+    const float secondClusterWidth = ImGui::CalcTextSize(
+        emoji.data() + 8, emoji.data() + 16).x;
+
+    EXPECT_EQ(prepared.HitTest(ImVec2(firstClusterWidth * 0.1f, 0.0f)), 0u);
+    EXPECT_EQ(prepared.HitTest(ImVec2(firstClusterWidth * 0.6f, 0.0f)), 8u);
+    EXPECT_EQ(prepared.HitTest(ImVec2(
+        firstClusterWidth + secondClusterWidth * 0.1f, 0.0f)), 8u);
+    EXPECT_EQ(prepared.HitTest(ImVec2(
+        firstClusterWidth + secondClusterWidth * 0.6f, 0.0f)), 16u);
+    context.EndFrame();
+}
+
+TEST(AnsiTextTest, PreparedTextHitTestTracksWrappedSourceOffsets) {
+    ScopedImGuiContext context;
+    context.BeginFrame();
+
+    AnsiText::AnsiString text("ab cd");
+    AnsiText::TextOptions options;
+    options.font = ImGui::GetFont();
+    options.fontSize = ImGui::GetFontSize();
+    options.wrapWidth = ImGui::CalcTextSize("ab").x + 0.1f;
+    options.lineSpacing = 0.0f;
+
+    AnsiText::PreparedText prepared;
+    ASSERT_TRUE(prepared.Prepare(text, options));
+    ASSERT_GT(prepared.GetSize().y, ImGui::GetTextLineHeight());
+
+    const float secondLineY = prepared.GetSize().y - 1.0f;
+    EXPECT_EQ(prepared.HitTest(ImVec2(0.0f, secondLineY)), 3u);
+    EXPECT_EQ(prepared.HitTest(ImVec2(FLT_MAX, secondLineY)), 5u);
+    context.EndFrame();
+}
+
+TEST(AnsiTextTest, PreparedTextDrawsSelectedRangeBehindText) {
+    ScopedImGuiContext context;
+    context.BeginFrame();
+
+    AnsiText::AnsiString text("select me");
+    AnsiText::TextOptions options;
+    options.font = ImGui::GetFont();
+    options.fontSize = ImGui::GetFontSize();
+    options.wrapWidth = FLT_MAX;
+    options.lineSpacing = 0.0f;
+
+    AnsiText::PreparedText prepared;
+    ASSERT_TRUE(prepared.Prepare(text, options));
+    const ImU32 selectionColor = IM_COL32(17, 34, 51, 255);
+    prepared.DrawSelection(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(),
+                           0, 6, selectionColor);
+
+    EXPECT_TRUE(DrawListContainsColor(ImGui::GetWindowDrawList(), selectionColor));
+    context.EndFrame();
+}
+
+TEST(AnsiTextTest, PreparedTextDrawSelectionHonorsVerticalClipping) {
+    ScopedImGuiContext context;
+    context.BeginFrame();
+
+    AnsiText::AnsiString text("one\ntwo\nthree\nfour");
+    AnsiText::TextOptions options;
+    options.font = ImGui::GetFont();
+    options.fontSize = ImGui::GetFontSize();
+    options.wrapWidth = FLT_MAX;
+    options.lineSpacing = 0.0f;
+
+    AnsiText::PreparedText prepared;
+    ASSERT_TRUE(prepared.Prepare(text, options));
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    const ImVec2 position = ImGui::GetCursorScreenPos();
+    const float lineHeight = prepared.GetSize().y / 4.0f;
+    const ImU32 selectionColor = IM_COL32(29, 47, 83, 255);
+
+    drawList->PushClipRect(
+        ImVec2(position.x, position.y + lineHeight),
+        ImVec2(position.x + 200.0f, position.y + lineHeight * 2.0f), true);
+    prepared.DrawSelection(drawList, position, 0, text.GetOriginalText().size(), selectionColor);
+    drawList->PopClipRect();
+
+    EXPECT_EQ(CountDrawListVerticesWithColor(drawList, selectionColor), 4);
     context.EndFrame();
 }
