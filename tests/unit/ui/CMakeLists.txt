@@ -2,6 +2,11 @@ add_bml_test(CursorVisibilityPolicyTest
         SOURCES CursorVisibilityPolicyTest.cpp
 )
 
+add_bml_test(ImGuiBackendTest
+        SOURCES ImGuiBackendTest.cpp
+)
+target_include_directories(ImGuiBackendTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
+
 add_bml_test(ColorCodecTest
         SOURCES
         ColorCodecTest.cpp

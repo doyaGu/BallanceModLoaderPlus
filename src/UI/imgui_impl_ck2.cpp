@@ -25,11 +25,46 @@
 #include "CKTexture.h"
 #include "CKMaterial.h"
 
+#include "HookUtils.h"
+
+enum ImGui_ImplCK2_TextureFailure
+{
+    ImGui_ImplCK2_TextureFailure_None,
+    ImGui_ImplCK2_TextureFailure_InvalidRequest,
+    ImGui_ImplCK2_TextureFailure_CreateObject,
+    ImGui_ImplCK2_TextureFailure_CreateSurface,
+    ImGui_ImplCK2_TextureFailure_UnsupportedSurface,
+    ImGui_ImplCK2_TextureFailure_LockSurface,
+    ImGui_ImplCK2_TextureFailure_ReleaseSurface,
+    ImGui_ImplCK2_TextureFailure_Upload,
+};
+
+struct ImGui_ImplCK2_TextureState
+{
+    unsigned int FailureCount;
+    unsigned int NextRetryFrame;
+    ImGui_ImplCK2_TextureFailure Failure;
+    ImTextureStatus RequestStatus;
+    int Width;
+    int Height;
+    void *Pixels;
+    ImTextureRect UpdateRect;
+    int UpdateCount;
+    ImU64 UpdateSignature;
+
+    ImGui_ImplCK2_TextureState() { memset(this, 0, sizeof(*this)); }
+};
+
 // CK2 data
 struct ImGui_ImplCK2_Data
 {
     CKContext *Context;
     CKRenderContext *RenderContext;
+    unsigned int FrameIndex;
+    int TextureMaxWidth;
+    int TextureMaxHeight;
+    ImGui_ImplCK2_TextureFailure LastTextureFailure;
+    unsigned int LastTextureFailureCount;
 
     ImGui_ImplCK2_Data() { memset(this, 0, sizeof(*this)); }
 };
@@ -139,6 +174,175 @@ static ImGui_ImplCK2_Data *ImGui_ImplCK2_GetBackendData()
     return ImGui::GetCurrentContext() ? (ImGui_ImplCK2_Data *)ImGui::GetIO().BackendRendererUserData : NULL;
 }
 
+static const char *ImGui_ImplCK2_GetTextureFailureName(ImGui_ImplCK2_TextureFailure failure)
+{
+    switch (failure)
+    {
+    case ImGui_ImplCK2_TextureFailure_InvalidRequest:
+        return "invalid request";
+    case ImGui_ImplCK2_TextureFailure_CreateObject:
+        return "object creation";
+    case ImGui_ImplCK2_TextureFailure_CreateSurface:
+        return "surface creation";
+    case ImGui_ImplCK2_TextureFailure_UnsupportedSurface:
+        return "unsupported system surface";
+    case ImGui_ImplCK2_TextureFailure_LockSurface:
+        return "surface lock";
+    case ImGui_ImplCK2_TextureFailure_ReleaseSurface:
+        return "surface release";
+    case ImGui_ImplCK2_TextureFailure_Upload:
+        return "video upload";
+    default:
+        return "none";
+    }
+}
+
+static ImU64 ImGui_ImplCK2_GetUpdateSignature(const ImTextureData *tex)
+{
+    ImU64 signature = 14695981039346656037ULL;
+    for (const ImTextureRect &rect : tex->Updates)
+    {
+        signature ^= rect.x;
+        signature *= 1099511628211ULL;
+        signature ^= rect.y;
+        signature *= 1099511628211ULL;
+        signature ^= rect.w;
+        signature *= 1099511628211ULL;
+        signature ^= rect.h;
+        signature *= 1099511628211ULL;
+    }
+    return signature;
+}
+
+bool ImGui_ImplCK2_GetDiagnostics(ImGui_ImplCK2_Diagnostics *diagnostics)
+{
+    ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
+    if (!diagnostics || !bd)
+        return false;
+
+    diagnostics->TextureMaxWidth = bd->TextureMaxWidth;
+    diagnostics->TextureMaxHeight = bd->TextureMaxHeight;
+    diagnostics->LastTextureFailure = ImGui_ImplCK2_GetTextureFailureName(bd->LastTextureFailure);
+    diagnostics->LastTextureFailureCount = bd->LastTextureFailureCount;
+    return true;
+}
+
+static bool ImGui_ImplCK2_TextureRequestMatches(const ImGui_ImplCK2_TextureState *state,
+                                                 const ImTextureData *tex)
+{
+    if (state->RequestStatus != tex->Status || state->Width != tex->Width || state->Height != tex->Height ||
+        state->Pixels != tex->Pixels)
+        return false;
+
+    if (tex->Status != ImTextureStatus_WantUpdates)
+        return true;
+
+    return state->UpdateCount == tex->Updates.Size &&
+           state->UpdateSignature == ImGui_ImplCK2_GetUpdateSignature(tex) &&
+           state->UpdateRect.x == tex->UpdateRect.x && state->UpdateRect.y == tex->UpdateRect.y &&
+           state->UpdateRect.w == tex->UpdateRect.w && state->UpdateRect.h == tex->UpdateRect.h;
+}
+
+static void ImGui_ImplCK2_SaveTextureRequest(ImGui_ImplCK2_TextureState *state, const ImTextureData *tex)
+{
+    state->RequestStatus = tex->Status;
+    state->Width = tex->Width;
+    state->Height = tex->Height;
+    state->Pixels = tex->Pixels;
+    state->UpdateRect = tex->UpdateRect;
+    state->UpdateCount = tex->Updates.Size;
+    state->UpdateSignature = ImGui_ImplCK2_GetUpdateSignature(tex);
+}
+
+static void ImGui_ImplCK2_ClearTextureFailure(ImTextureData *tex)
+{
+    if (!tex->BackendUserData)
+        return;
+
+    IM_DELETE((ImGui_ImplCK2_TextureState *)tex->BackendUserData);
+    tex->BackendUserData = nullptr;
+}
+
+static bool ImGui_ImplCK2_CanAttemptTextureUpdate(ImGui_ImplCK2_Data *bd, ImTextureData *tex)
+{
+    if (tex->Status == ImTextureStatus_WantDestroy)
+        return true;
+
+    ImGui_ImplCK2_TextureState *state = (ImGui_ImplCK2_TextureState *)tex->BackendUserData;
+    if (!state)
+        return true;
+
+    if (!ImGui_ImplCK2_TextureRequestMatches(state, tex))
+    {
+        ImGui_ImplCK2_ClearTextureFailure(tex);
+        return true;
+    }
+
+    return (int)(bd->FrameIndex - state->NextRetryFrame) >= 0;
+}
+
+static void ImGui_ImplCK2_RecordTextureFailure(ImGui_ImplCK2_Data *bd, ImTextureData *tex,
+                                                ImGui_ImplCK2_TextureFailure failure)
+{
+    ImGui_ImplCK2_TextureState *state = (ImGui_ImplCK2_TextureState *)tex->BackendUserData;
+    if (!state)
+    {
+        state = IM_NEW(ImGui_ImplCK2_TextureState)();
+        tex->BackendUserData = state;
+    }
+    else if (!ImGui_ImplCK2_TextureRequestMatches(state, tex))
+    {
+        state->FailureCount = 0;
+        state->Failure = ImGui_ImplCK2_TextureFailure_None;
+    }
+
+    const bool failure_changed = state->Failure != failure;
+    state->Failure = failure;
+    ++state->FailureCount;
+    ImGui_ImplCK2_SaveTextureRequest(state, tex);
+
+    const unsigned int shift = state->FailureCount > 7 ? 6 : state->FailureCount - 1;
+    state->NextRetryFrame = bd->FrameIndex + (1U << shift);
+    bd->LastTextureFailure = failure;
+    bd->LastTextureFailureCount = state->FailureCount;
+
+    if (failure_changed || (state->FailureCount & (state->FailureCount - 1)) == 0)
+        utils::OutputDebugA("BML CK2 renderer texture %d failed during %s (attempt %u)\n",
+                            tex->UniqueID, ImGui_ImplCK2_GetTextureFailureName(failure), state->FailureCount);
+}
+
+static bool ImGui_ImplCK2_ValidateTextureRequest(const ImGui_ImplCK2_Data *bd, const ImTextureData *tex)
+{
+    return tex->Format == ImTextureFormat_RGBA32 && tex->BytesPerPixel == 4 && tex->Pixels &&
+           tex->Width > 0 && tex->Height > 0 && tex->Width <= bd->TextureMaxWidth &&
+           tex->Height <= bd->TextureMaxHeight;
+}
+
+static bool ImGui_ImplCK2_ValidateSystemSurface(CKTexture *texture, int width, int height,
+                                                VxImageDescEx *description)
+{
+    if (!texture->GetSystemTextureDesc(*description) || description->Width != width ||
+        description->Height != height || description->BitsPerPixel != 32 ||
+        description->BytesPerLine < width * 4)
+        return false;
+
+    VxImageDescEx expected;
+    VxPixelFormat2ImageDesc(_32_ARGB8888, expected);
+    return description->RedMask == expected.RedMask && description->GreenMask == expected.GreenMask &&
+           description->BlueMask == expected.BlueMask && description->AlphaMask == expected.AlphaMask;
+}
+
+static bool ImGui_ImplCK2_ValidateUpdateRects(const ImTextureData *tex)
+{
+    for (const ImTextureRect &rect : tex->Updates)
+    {
+        if (rect.w == 0 || rect.h == 0 || rect.x >= tex->Width || rect.y >= tex->Height ||
+            rect.w > tex->Width - rect.x || rect.h > tex->Height - rect.y)
+            return false;
+    }
+    return true;
+}
+
 static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data)
 {
     ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
@@ -197,94 +401,139 @@ static void ImGui_ImplCK2_CopyTextureRegion(bool tex_use_colors, const ImU32 *sr
 void ImGui_ImplCK2_UpdateTexture(ImTextureData *tex)
 {
     ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
+    if (!bd || !bd->Context || !bd->RenderContext || !tex ||
+        !ImGui_ImplCK2_CanAttemptTextureUpdate(bd, tex))
+        return;
 
     if (tex->Status == ImTextureStatus_WantCreate)
     {
-        // Create and upload new texture to graphics system
-        IM_ASSERT(tex->TexID == ImTextureID_Invalid && tex->BackendUserData == nullptr);
-        IM_ASSERT(tex->Format == ImTextureFormat_RGBA32);
+        if (tex->TexID != ImTextureID_Invalid || !ImGui_ImplCK2_ValidateTextureRequest(bd, tex))
+        {
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_InvalidRequest);
+            return;
+        }
 
         CKTexture *ck_tex = (CKTexture *)bd->Context->CreateObject(CKCID_TEXTURE, (CKSTRING) "ImGuiDynamicTexture");
         if (!ck_tex)
         {
-            IM_ASSERT(ck_tex && "Backend failed to create texture!");
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_CreateObject);
             return;
         }
 
-        // Set texture to not be saved or deleted automatically
         ck_tex->ModifyObjectFlags(CK_OBJECT_NOTTOBESAVED | CK_OBJECT_NOTTOBEDELETED, 0);
+        ck_tex->SetDynamicHint(TRUE);
+        ck_tex->SetDesiredVideoFormat(_32_ARGB8888);
 
-        // Create texture and check for success
         if (!ck_tex->Create(tex->Width, tex->Height))
         {
             bd->Context->DestroyObject(ck_tex);
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_CreateSurface);
             return;
         }
 
-        // Lock texture surface and copy pixel data
+        VxImageDescEx description;
+        if (!ImGui_ImplCK2_ValidateSystemSurface(ck_tex, tex->Width, tex->Height, &description))
+        {
+            bd->Context->DestroyObject(ck_tex);
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_UnsupportedSurface);
+            return;
+        }
+
         CKBYTE *ptr = ck_tex->LockSurfacePtr();
         if (!ptr)
         {
             bd->Context->DestroyObject(ck_tex);
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_LockSurface);
             return;
         }
 
-        // Copy pixel data
-        ImGui_ImplCK2_CopyTextureRegion(tex->UseColors, (ImU32 *)tex->GetPixels(), tex->Width * 4, (ImU32 *)ptr, tex->Width * 4, tex->Width, tex->Height);
-        ck_tex->ReleaseSurfacePtr();
+        ImGui_ImplCK2_CopyTextureRegion(tex->UseColors, (const ImU32 *)tex->GetPixels(), tex->GetPitch(),
+                                        (ImU32 *)ptr, description.BytesPerLine, tex->Width, tex->Height);
+        if (!ck_tex->ReleaseSurfacePtr())
+        {
+            bd->Context->DestroyObject(ck_tex);
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_ReleaseSurface);
+            return;
+        }
 
-        // Set optimal format for UI texture
-        ck_tex->SetDesiredVideoFormat(_32_ARGB8888);
-
-        // Force restore to video memory
         if (!ck_tex->SystemToVideoMemory(bd->RenderContext, TRUE))
         {
             bd->Context->DestroyObject(ck_tex);
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_Upload);
             return;
         }
 
-        // Only set identifiers after ALL operations succeeded
         tex->SetTexID((ImTextureID)ck_tex);
-        // BackendUserData not used in this implementation
+        ImGui_ImplCK2_ClearTextureFailure(tex);
         tex->SetStatus(ImTextureStatus_OK);
     }
     else if (tex->Status == ImTextureStatus_WantUpdates)
     {
-        // Update selected blocks. We only ever write to textures regions which have never been used before!
-        CKTexture *ck_tex = (CKTexture *)tex->TexID;
+        if (tex->TexID == ImTextureID_Invalid || !ImGui_ImplCK2_ValidateTextureRequest(bd, tex) ||
+            !ImGui_ImplCK2_ValidateUpdateRects(tex))
+        {
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_InvalidRequest);
+            return;
+        }
 
-        // Lock texture surface for partial update
+        CKTexture *ck_tex = (CKTexture *)tex->TexID;
+        VxImageDescEx description;
+        if (!ImGui_ImplCK2_ValidateSystemSurface(ck_tex, tex->Width, tex->Height, &description))
+        {
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_UnsupportedSurface);
+            return;
+        }
+
+        if (tex->Updates.Size == 0)
+        {
+            ImGui_ImplCK2_ClearTextureFailure(tex);
+            tex->SetStatus(ImTextureStatus_OK);
+            return;
+        }
+
         CKBYTE *ptr = ck_tex->LockSurfacePtr();
         if (!ptr)
-            return; // Failed to lock, don't mark as OK
-
-        for (ImTextureRect &r : tex->Updates)
         {
-            // Copy each update rectangle
-            const ImU32 *src_data = (ImU32 *)tex->GetPixelsAt(r.x, r.y);
-            ImU32 *dst_data = (ImU32 *)ptr + r.x + r.y * tex->Width;
-            ImGui_ImplCK2_CopyTextureRegion(tex->UseColors, src_data, tex->Width * 4, dst_data, tex->Width * 4, r.w, r.h);
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_LockSurface);
+            return;
         }
-        ck_tex->ReleaseSurfacePtr();
 
-        // Force restore to video memory
-        if (!ck_tex->SystemToVideoMemory(bd->RenderContext, TRUE))
-            return; // Failed to upload, don't mark as OK
+        for (const ImTextureRect &rect : tex->Updates)
+        {
+            const ImU32 *src_data = (const ImU32 *)tex->GetPixelsAt(rect.x, rect.y);
+            ImU32 *dst_data = (ImU32 *)(ptr + rect.y * description.BytesPerLine + rect.x * 4);
+            ImGui_ImplCK2_CopyTextureRegion(tex->UseColors, src_data, tex->GetPitch(), dst_data,
+                                            description.BytesPerLine, rect.w, rect.h);
+        }
 
+        if (!ck_tex->ReleaseSurfacePtr())
+        {
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_ReleaseSurface);
+            return;
+        }
+
+        const CKBOOL uploaded = ck_tex->IsInVideoMemory() ? ck_tex->Restore(TRUE) :
+                                                            ck_tex->SystemToVideoMemory(bd->RenderContext, TRUE);
+        if (!uploaded)
+        {
+            ImGui_ImplCK2_RecordTextureFailure(bd, tex, ImGui_ImplCK2_TextureFailure_Upload);
+            return;
+        }
+
+        ImGui_ImplCK2_ClearTextureFailure(tex);
         tex->SetStatus(ImTextureStatus_OK);
     }
     else if (tex->Status == ImTextureStatus_WantDestroy)
     {
         CKTexture *ck_tex = (CKTexture *)tex->TexID;
-        if (ck_tex == nullptr)
-            return;
-        IM_ASSERT(tex->TexID == (ImTextureID)ck_tex);
+        if (ck_tex)
+        {
+            IM_ASSERT(tex->TexID == (ImTextureID)ck_tex);
+            bd->Context->DestroyObject(ck_tex);
+        }
 
-        bd->Context->DestroyObject(ck_tex);
-
-        // Clear identifiers and mark as destroyed (in order to allow e.g. calling InvalidateDeviceObjects while running)
         tex->SetTexID(ImTextureID_Invalid);
-        tex->BackendUserData = nullptr;
+        ImGui_ImplCK2_ClearTextureFailure(tex);
         tex->SetStatus(ImTextureStatus_Destroyed);
     }
 }
@@ -478,6 +727,23 @@ bool ImGui_ImplCK2_Init(CKContext *context)
     if (!render_context)
         return false;
 
+    unsigned int reported_width = 0;
+    unsigned int reported_height = 0;
+    CKRenderManager *render_manager = context->GetRenderManager();
+    const int driver_index = render_context->GetDriverIndex();
+    if (render_manager && driver_index >= 0 && driver_index < render_manager->GetRenderDriverCount())
+    {
+        const VxDriverDesc *driver = render_manager->GetRenderDriverDescription(driver_index);
+        if (driver)
+        {
+            reported_width = (unsigned int)driver->Caps3D.MaxTextureWidth;
+            reported_height = (unsigned int)driver->Caps3D.MaxTextureHeight;
+        }
+    }
+
+    const ImGui_ImplCK2_TextureLimits texture_limits =
+        ImGui_ImplCK2_SelectTextureLimits(reported_width, reported_height);
+
     // Setup backend capabilities flags
     ImGui_ImplCK2_Data *bd = IM_NEW(ImGui_ImplCK2_Data)();
     io.BackendRendererUserData = (void *)bd;
@@ -486,10 +752,17 @@ bool ImGui_ImplCK2_Init(CKContext *context)
     io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;  // We can honor ImGuiPlatformIO::Textures[] requests during render.
 
     ImGuiPlatformIO &platform_io = ImGui::GetPlatformIO();
-    platform_io.Renderer_TextureMaxWidth = platform_io.Renderer_TextureMaxHeight = 4096;
+    platform_io.Renderer_TextureMaxWidth = texture_limits.Width;
+    platform_io.Renderer_TextureMaxHeight = texture_limits.Height;
 
     bd->Context = context;
     bd->RenderContext = render_context;
+    bd->TextureMaxWidth = texture_limits.Width;
+    bd->TextureMaxHeight = texture_limits.Height;
+
+    if (texture_limits.UsedFallback)
+        utils::OutputDebugA("BML CK2 renderer received invalid texture limits; using %dx%d\n",
+                            texture_limits.Width, texture_limits.Height);
 
     return true;
 }
@@ -505,6 +778,7 @@ void ImGui_ImplCK2_Shutdown()
     io.BackendRendererName = NULL;
     io.BackendRendererUserData = NULL;
     io.BackendFlags &= ~(ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures);
+    ImGui::GetPlatformIO().ClearRendererHandlers();
     IM_DELETE(bd);
 }
 
@@ -513,6 +787,10 @@ bool ImGui_ImplCK2_CreateDeviceObjects()
     ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
     if (!bd || !bd->Context)
         return false;
+
+    for (ImTextureData *tex : ImGui::GetPlatformIO().Textures)
+        if (tex->Status != ImTextureStatus_OK)
+            ImGui_ImplCK2_ClearTextureFailure(tex);
     return true;
 }
 
@@ -531,4 +809,5 @@ void ImGui_ImplCK2_NewFrame()
 {
     ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
     IM_ASSERT(bd != NULL && "Did you call ImGui_ImplCK2_Init()?");
+    ++bd->FrameIndex;
 }

@@ -200,6 +200,11 @@ fallback order, coverage, and live atlas replacement for loader-owned text.
 Independent Native Mod fonts remain untouched. The font command is its user
 interface.
 
+**CK2 ImGui Renderer Backend** — Owns renderer capability discovery and ImGui
+texture transfer. It observes the active CK driver limits, copies through the
+actual system-surface pitch and channel masks, and backs off repeated failures;
+Overlay does not recreate these backend decisions.
+
 **Game Font Catalog** — Resolves retail menu font names to indices created by
 the current world. It is separate from the ImGui font atlas.
 
