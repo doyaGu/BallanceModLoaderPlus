@@ -1224,9 +1224,11 @@ namespace Bui {
             ImVec2(row.position.x + row.size.x * 0.24f, row.position.y + row.size.y * 0.45f));
         ImGui::SetNextItemWidth(row.size.x * 0.6f);
         ImGui::PushID(row.label);
+        ImGui::PushStyleColor(ImGuiCol_NavCursor, IM_COL32(0, 0, 0, 0));
     }
 
     static void EndOptionInput(const OptionRow &row) {
+        ImGui::PopStyleColor();
         ImGui::PopID();
         EndOptionRow(row);
     }
