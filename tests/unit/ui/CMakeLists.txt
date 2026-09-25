@@ -3,9 +3,21 @@ add_bml_test(CursorVisibilityPolicyTest
 )
 
 add_bml_test(ImGuiBackendTest
-        SOURCES ImGuiBackendTest.cpp
+        SOURCES
+        ImGuiBackendTest.cpp
+        ${BML_SOURCE_DIR}/UI/imgui_impl_ck2.cpp
+        ${IMGUI_SOURCE_DIR}/imgui.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
 )
-target_include_directories(ImGuiBackendTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
+target_include_directories(ImGuiBackendTest BEFORE PRIVATE
+        ${IMGUI_SOURCE_DIR}
+)
+target_compile_definitions(ImGuiBackendTest PRIVATE
+        BML_IMGUI_TEST_ENGINE_SOURCE
+        BML_TEST_CK2_BACKEND_LOGIC
+)
 
 add_bml_test(ColorCodecTest
         SOURCES

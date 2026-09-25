@@ -18,6 +18,7 @@
 #include "imgui.h"
 #include "UI/imgui_impl_ck2.h"
 
+#if !defined(BML_TEST_CK2_BACKEND_LOGIC)
 // Virtools
 #include "CKContext.h"
 #include "CKRenderManager.h"
@@ -68,7 +69,31 @@ struct ImGui_ImplCK2_Data
 
     ImGui_ImplCK2_Data() { memset(this, 0, sizeof(*this)); }
 };
+#endif
 
+struct ImGui_ImplCK2_TextureLimits
+{
+    int Width;
+    int Height;
+    bool UsedFallback;
+};
+
+static ImGui_ImplCK2_TextureLimits ImGui_ImplCK2_SelectTextureLimits(unsigned int reported_width,
+                                                                     unsigned int reported_height)
+{
+    const unsigned int project_maximum = 4096;
+    const int conservative_fallback = 2048;
+    if (reported_width == 0 || reported_height == 0)
+        return {conservative_fallback, conservative_fallback, true};
+
+    return {
+        (int)(reported_width < project_maximum ? reported_width : project_maximum),
+        (int)(reported_height < project_maximum ? reported_height : project_maximum),
+        false,
+    };
+}
+
+#if !defined(BML_TEST_CK2_BACKEND_LOGIC)
 static const VXRENDERSTATETYPE ImGui_ImplCK2_RenderStates[] = {
     VXRENDERSTATE_FILLMODE,
     VXRENDERSTATE_SHADEMODE,
@@ -113,12 +138,13 @@ private:
     VxRect ViewRect;
     CKDWORD Values[IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates)] = {};
 };
+#endif
 
 struct ImGui_ImplCK2_DrawSlice
 {
     unsigned int VertexOffset;
     unsigned int VertexCount;
-    ImVector<CKWORD> Indices;
+    ImVector<ImDrawIdx> Indices;
 };
 
 static bool ImGui_ImplCK2_BuildDrawSlice(const ImDrawIdx *indices, unsigned int index_count,
@@ -154,11 +180,19 @@ static bool ImGui_ImplCK2_BuildDrawSlice(const ImDrawIdx *indices, unsigned int 
 
     slice->Indices.resize((int)index_count);
     for (unsigned int i = 0; i < index_count; ++i)
-        slice->Indices[(int)i] = (CKWORD)(indices[i] - minimum);
+        slice->Indices[(int)i] = (ImDrawIdx)(indices[i] - minimum);
 
     slice->VertexOffset = (unsigned int)first_vertex;
     slice->VertexCount = (unsigned int)slice_vertex_count;
     return true;
+}
+
+static unsigned int ImGui_ImplCK2_GetTextureRetryDelay(unsigned int failure_count)
+{
+    if (failure_count == 0)
+        return 0;
+    const unsigned int shift = failure_count > 7 ? 6 : failure_count - 1;
+    return 1U << shift;
 }
 
 #ifdef IMGUI_USE_BGRA_PACKED_COLOR
@@ -167,6 +201,78 @@ static bool ImGui_ImplCK2_BuildDrawSlice(const ImDrawIdx *indices, unsigned int 
 #define IMGUI_COL_TO_ARGB(_COL) (((_COL) & 0xFF00FF00) | (((_COL) & 0xFF0000) >> 16) | (((_COL) & 0xFF) << 16))
 #endif
 
+// Copy texture region with optional format conversion
+static void ImGui_ImplCK2_CopyTextureRegion(bool tex_use_colors, const ImU32 *src, int src_pitch,
+                                             ImU32 *dst, int dst_pitch, int w, int h)
+{
+    for (int y = 0; y < h; y++)
+    {
+        const ImU32 *src_p = (const ImU32 *)(const void *)((const unsigned char *)src + src_pitch * y);
+        ImU32 *dst_p = (ImU32 *)(void *)((unsigned char *)dst + dst_pitch * y);
+#ifndef IMGUI_USE_BGRA_PACKED_COLOR
+        if (tex_use_colors)
+        {
+            for (int x = w; x > 0; x--, src_p++, dst_p++) // Convert copy
+                *dst_p = IMGUI_COL_TO_ARGB(*src_p);
+        }
+        else
+#endif
+        {
+            memcpy(dst_p, src_p, w * 4); // Raw copy
+        }
+    }
+}
+
+#if defined(BML_TEST)
+bool ImGui_ImplCK2_TestSelectTextureLimits(unsigned int reported_width,
+                                           unsigned int reported_height,
+                                           int *width, int *height, bool *used_fallback)
+{
+    if (!width || !height || !used_fallback)
+        return false;
+    const ImGui_ImplCK2_TextureLimits limits =
+        ImGui_ImplCK2_SelectTextureLimits(reported_width, reported_height);
+    *width = limits.Width;
+    *height = limits.Height;
+    *used_fallback = limits.UsedFallback;
+    return true;
+}
+
+bool ImGui_ImplCK2_TestBuildDrawSlice(const ImDrawIdx *indices, unsigned int index_count,
+                                      unsigned int vertex_offset, int vertex_count,
+                                      unsigned int *slice_vertex_offset,
+                                      unsigned int *slice_vertex_count,
+                                      ImDrawIdx *rebased_indices,
+                                      unsigned int rebased_capacity)
+{
+    if (!slice_vertex_offset || !slice_vertex_count ||
+        (index_count != 0 && (!rebased_indices || rebased_capacity < index_count)))
+        return false;
+
+    ImGui_ImplCK2_DrawSlice slice;
+    if (!ImGui_ImplCK2_BuildDrawSlice(indices, index_count, vertex_offset, vertex_count, &slice))
+        return false;
+
+    *slice_vertex_offset = slice.VertexOffset;
+    *slice_vertex_count = slice.VertexCount;
+    for (unsigned int i = 0; i < index_count; ++i)
+        rebased_indices[i] = slice.Indices[(int)i];
+    return true;
+}
+
+unsigned int ImGui_ImplCK2_TestGetTextureRetryDelay(unsigned int failure_count)
+{
+    return ImGui_ImplCK2_GetTextureRetryDelay(failure_count);
+}
+
+void ImGui_ImplCK2_TestCopyTextureRegion(bool use_colors, const ImU32 *src, int src_pitch,
+                                         ImU32 *dst, int dst_pitch, int width, int height)
+{
+    ImGui_ImplCK2_CopyTextureRegion(use_colors, src, src_pitch, dst, dst_pitch, width, height);
+}
+#endif
+
+#if !defined(BML_TEST_CK2_BACKEND_LOGIC)
 // Backend data stored in io.BackendPlatformUserData to allow support for multiple Dear ImGui contexts
 // It is STRONGLY preferred that you use docking branch with multi-viewports (== single Dear ImGui context + multiple windows) instead of multiple Dear ImGui contexts.
 static ImGui_ImplCK2_Data *ImGui_ImplCK2_GetBackendData()
@@ -301,8 +407,7 @@ static void ImGui_ImplCK2_RecordTextureFailure(ImGui_ImplCK2_Data *bd, ImTexture
     ++state->FailureCount;
     ImGui_ImplCK2_SaveTextureRequest(state, tex);
 
-    const unsigned int shift = state->FailureCount > 7 ? 6 : state->FailureCount - 1;
-    state->NextRetryFrame = bd->FrameIndex + (1U << shift);
+    state->NextRetryFrame = bd->FrameIndex + ImGui_ImplCK2_GetTextureRetryDelay(state->FailureCount);
     bd->LastTextureFailure = failure;
     bd->LastTextureFailureCount = state->FailureCount;
 
@@ -376,26 +481,6 @@ static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data)
     dev->SetTextureStageState(CKRST_TSS_STAGEBLEND, 0, 1);
     dev->SetTextureStageState(CKRST_TSS_MINFILTER, VXTEXTUREFILTER_LINEAR);
     dev->SetTextureStageState(CKRST_TSS_MAGFILTER, VXTEXTUREFILTER_LINEAR);
-}
-
-// Copy texture region with optional format conversion
-static void ImGui_ImplCK2_CopyTextureRegion(bool tex_use_colors, const ImU32 *src, int src_pitch, ImU32 *dst, int dst_pitch, int w, int h)
-{
-
-    for (int y = 0; y < h; y++)
-    {
-        const ImU32 *src_p = (const ImU32 *)(const void *)((const unsigned char *)src + src_pitch * y);
-        ImU32 *dst_p = (ImU32 *)(void *)((unsigned char *)dst + dst_pitch * y);
-#ifndef IMGUI_USE_BGRA_PACKED_COLOR
-        if (tex_use_colors)
-        {
-            for (int x = w; x > 0; x--, src_p++, dst_p++) // Convert copy
-                *dst_p = IMGUI_COL_TO_ARGB(*src_p);
-        }
-#else
-        memcpy(dst_p, src_p, w * 4); // Raw copy
-#endif
-    }
 }
 
 void ImGui_ImplCK2_UpdateTexture(ImTextureData *tex)
@@ -811,3 +896,4 @@ void ImGui_ImplCK2_NewFrame()
     IM_ASSERT(bd != NULL && "Did you call ImGui_ImplCK2_Init()?");
     ++bd->FrameIndex;
 }
+#endif
