@@ -12,6 +12,7 @@
 #include "CryptoUtils.h"
 #include "JsonUtils.h"
 #include "StringUtils.h"
+#include "UpdaterDoctor.h"
 #include "UpdaterManifest.h"
 #include "UpdaterNetwork.h"
 #include "UpdaterPaths.h"
@@ -362,19 +363,11 @@ namespace bmlupdater {
 
     Result UpdaterService::RunDoctor(std::vector<std::string> &diagnostics) const {
         diagnostics.clear();
-        diagnostics.push_back("gameRoot=" + PathUtf8(m_Context.gameRoot));
-        diagnostics.push_back("stateRoot=" + PathUtf8(m_Context.updaterStateRoot));
         diagnostics.push_back(std::string("elevated=") + (IsProcessElevated() ? "true" : "false"));
-        if (!PathExists(m_Context.gameRoot)) {
-            return Result::Failure("Game root does not exist");
-        }
-        if (!CreateDirectories(m_Context.updaterStateRoot)) {
-            return Result::Failure("Unable to create updater state root");
-        }
-        diagnostics.push_back(PathExists(InstalledManifestFile()) ? "installed manifest found" : "installed manifest missing");
-        diagnostics.push_back(PathExists(PendingFile()) ? "pending transaction hint found" : "no pending transaction hint");
-        diagnostics.push_back(PathExists(SourcesFile()) ? "remote source configured" : "remote source not configured");
-        return Result::Success("doctor passed");
+        std::vector<std::string> checks;
+        Result result = RunDoctorChecks(m_Context, checks);
+        diagnostics.insert(diagnostics.end(), checks.begin(), checks.end());
+        return result;
     }
 
     Result UpdaterService::GetSourceConfig(UpdaterSourceConfig &config) const {

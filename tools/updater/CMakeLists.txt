@@ -1,4 +1,6 @@
 add_library(BMLUpdaterCore STATIC
+    UpdaterDoctor.cpp
+    UpdaterDoctor.h
     UpdaterManifest.cpp
     UpdaterManifest.h
     UpdaterPaths.cpp
@@ -31,6 +33,7 @@ target_compile_definitions(BMLUpdaterCore PUBLIC UNICODE _UNICODE)
 target_link_libraries(BMLUpdaterCore PUBLIC
     BML_CryptoUtils
     BML_JsonUtils
+    BML_PathUtils
     BML_StringUtils
     zip
     version
