@@ -148,6 +148,17 @@ script bindings.
 **Built-in Game Event Hooks** — Adapters from retail script and menu transitions
 to Mod lifecycle and gameplay callbacks. They do not own tweak state.
 
+**Engine Hook Lifecycle** — Private transactional ownership of Input, Physics,
+Object Load, and render interception. Virtual-table changes validate the whole
+batch before installation and restore only slots still owned by BML+. Optional
+render and physics scheduling features degrade independently; failed teardown
+retains the Runtime Context rather than releasing code behind a live callback.
+
+**Runtime Diagnostics** — `Updater.exe doctor` reports installation and process
+requirements before BML+ loads. The private `bml system` command reports live
+CK, renderer, font, IME, Hook, Mod, and AngelScript state without publishing a
+new Mod API or exposing full user paths.
+
 **Game Phase** — Private Front End, Transitioning, Active Level, or
 Paused Level state, owned by Runtime Context and queried through its existing
 state getters.
