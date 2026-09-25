@@ -108,6 +108,13 @@ notifications and the scrollback shown while the command bar is open can be
 controlled separately with `ShowNotifications` and `ShowScrollback`. These
 settings can be changed from the Mod Menu and take effect immediately.
 
+While the command bar is open, its input supports the usual mouse selection,
+copy, cut, and paste operations. The message board is read-only: drag across
+its scrollback to select text, then press Ctrl+C to copy it without ANSI color
+codes. Ctrl+A selects all scrollback after the message board has been clicked.
+Dragging past the top or bottom edge continues the selection while scrolling.
+Clicking or selecting scrollback keeps the command session open.
+
 Syntax highlighting uses the Atom One Dark palette by default. Every role can
 be customised independently in the `CommandBarTheme` category with a
 `#RRGGBB` or `#RRGGBBAA` value; malformed values fall back to that role's One

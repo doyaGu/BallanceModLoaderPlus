@@ -77,7 +77,9 @@ bar and a single transient completion, reverse-search, or IME row below it.
 Continuation rows grow upward and move the message-board boundary with them;
 they remain one logical command for completion and history. Clicking outside
 an open command session or entering a new scene closes it and releases keyboard
-capture.
+capture. While the command session is open, the message board is a read-only
+selectable scrollback surface; Console owns mouse interaction across both
+surfaces.
 
 **Command Authoring** — The public versioned `bml.command` C Interface and its
 header-only C++ facade. A registration copies descriptive metadata, retains

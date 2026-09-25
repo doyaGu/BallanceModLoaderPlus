@@ -22,6 +22,7 @@
  * - ANSI color and text formatting support
  * - Automatic message expiration with timers
  * - Scrollable view when command bar is visible
+ * - Read-only mouse selection and clipboard copy in scrollback
  * - Unicode support
  * - Style system integration for DPI scaling and theme support
  *
@@ -47,6 +48,7 @@ public:
 
     struct MessageUnit {
         AnsiText::AnsiString ansiText;
+        std::uint64_t sequence = 0;
         float timer = 0.0f;
 
         MessageUnit() = default;
@@ -111,10 +113,11 @@ public:
     // Getters
     float GetMaxTimer() const { return m_MaxTimer; }
     bool IsCommandBarVisible() const { return m_IsCommandBarVisible; }
-    float GetScrollY() const { return m_IsCommandBarVisible ? m_ScrollY : 0.0f; }
-    float GetMaxScrollY() const { return m_IsCommandBarVisible ? m_MaxScrollY : 0.0f; }
-    bool IsScrolledToBottom() const { return m_ScrollToBottom; }
-    bool HasScrollableContent() const { return m_IsCommandBarVisible && m_MaxScrollY > 0.0f; }
+    float GetScrollY() const { return m_IsCommandBarVisible ? m_Scroll.position : 0.0f; }
+    float GetMaxScrollY() const { return m_IsCommandBarVisible ? m_Scroll.maximum : 0.0f; }
+    bool IsScrolledToBottom() const { return m_Scroll.followEnd; }
+    bool HasScrollableContent() const { return m_IsCommandBarVisible && m_Scroll.HasOverflow(); }
+    bool IsMouseInteractionActive() const { return m_MouseInteractionActive; }
 
 protected:
     ImGuiWindowFlags GetFlags() override;
@@ -132,8 +135,28 @@ private:
         float visibleRatio = 1.0f;
     };
 
+    struct ScrollState {
+        float position = 0.0f;
+        float maximum = 0.0f;
+        float selectionRemainder = 0.0f;
+        bool followEnd = true;
+
+        bool HasOverflow() const { return maximum > 0.0f; }
+        void Reset();
+        void UpdateBounds(float contentHeight, float visibleHeight);
+        void SetPosition(float value);
+        void ScrollBy(float delta);
+        void ScrollToStart();
+        void ScrollToEnd();
+        void StopSelectionScroll();
+        void AutoScrollSelection(float mouseY, float regionTop, float regionBottom,
+                                 float lineHeight, float deltaTime);
+        ScrollMetrics GetMetrics(float contentHeight, float visibleHeight) const;
+    };
+
     struct MessageRow {
         int messageIndex;
+        std::uint64_t messageSequence;
         float top;
         float height;
         AnsiText::PreparedText textLayout;
@@ -186,6 +209,18 @@ private:
         const MessageRows *messageRows;
     };
 
+    struct SelectionPoint {
+        std::uint64_t messageSequence = 0;
+        std::size_t offset = 0;
+
+        bool operator==(const SelectionPoint &) const = default;
+    };
+
+    struct TextRange {
+        std::size_t begin = 0;
+        std::size_t end = 0;
+    };
+
     // Visibility and state
     bool ShouldShowMessage(const MessageUnit &msg) const;
     float GetMessageAlpha(const MessageUnit &msg, float maximumAlpha) const;
@@ -200,28 +235,41 @@ private:
     void RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth, const FrameLayout &layout);
     static void DrawMessageText(ImDrawList *drawList, const AnsiText::PreparedText &textLayout,
                                 const ImVec2 &position, float alpha);
+    void HandleTextSelection(const ImVec2 &regionMin, const ImVec2 &regionMax,
+                             const MessageRows &rows, float lineHeight);
+    void DrawTextSelection(ImDrawList *drawList, const MessageRow &row,
+                           const ImVec2 &position, const SelectionPoint &begin,
+                           const SelectionPoint &end) const;
+    SelectionPoint HitTestText(const ImVec2 &position, const ImVec2 &textPosition,
+                               const MessageRows &rows) const;
+    std::string GetSelectedText(const MessageRows &rows, const SelectionPoint &begin,
+                                const SelectionPoint &end) const;
+    std::optional<TextRange> ProjectSelection(const MessageRow &row,
+                                              const SelectionPoint &begin,
+                                              const SelectionPoint &end) const;
+    static bool SelectionPointBefore(const SelectionPoint &left,
+                                     const SelectionPoint &right);
+    void GetSelectionRange(SelectionPoint &begin, SelectionPoint &end) const;
+    bool HasTextSelection() const;
+    void ClearTextSelection();
     void DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize, float contentHeight, float visibleHeight, const FrameLayout &layout);
 
     // Core operations
     void UpdateTimers(float deltaTime);
     void AddMessageInternal(const char *msg);
     void AddMessageInternal(MessageUnit message);
-    void HandleScrolling(float visibleHeight, const FrameLayout &layout);
-    void UpdateScrollBounds(float contentHeight, float windowHeight);
-    ScrollMetrics GetScrollMetrics(float contentHeight, float visibleHeight) const;
+    void HandleMouseWheel(const FrameLayout &layout);
     void InvalidateLayoutCache();
     void InvalidateMessageRows();
     MessageUnit &MessageAt(int logicalIndex);
     const MessageUnit &MessageAt(int logicalIndex) const;
-
-    // Utilities
-    void SetScrollYClamped(float y);
 
     // Message storage
     std::vector<MessageUnit> m_Messages;
     std::array<MessageRows, 2> m_MessageRowLayouts;
     std::size_t m_NextMessageRowLayout = 0;
     std::uint64_t m_MessageRevision = 0;
+    std::uint64_t m_NextMessageSequence = 1;
     int m_MessageCount = 0;
     int m_MessageHead = 0;
     int m_DisplayMessageCount = 0;
@@ -232,18 +280,18 @@ private:
     DisplayPolicy m_DisplayPolicy;
 
     // Scrolling state
-    float m_ScrollY = 0.0f;
-    float m_MaxScrollY = 0.0f;
-    bool m_ScrollToBottom = true;
+    ScrollState m_Scroll;
     ScrollLabel m_ScrollLabel;
+    SelectionPoint m_SelectionAnchor;
+    SelectionPoint m_SelectionCaret;
+    bool m_SelectionFocused = false;
+    bool m_MouseInteractionActive = false;
 
     // Style-derived values captured before this window overrides the ImGui style.
     std::optional<FrameLayout> m_FrameLayout;
     ConsoleLayout::Stack m_ConsoleLayout;
     bool m_LineSpacingOverride = false;
     float m_CustomLineSpacing = 0.0f;
-    float m_ScrollEpsilon = 0.5f; // Scrollbar tolerance for bottom checks
-
     // Configurable behavior
     int m_TabColumns = AnsiText::DefaultTabColumns; // Tab size in columns
     bool m_HasCustomMessageBg = false;

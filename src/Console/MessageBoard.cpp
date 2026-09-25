@@ -11,6 +11,10 @@
 #include "StringUtils.h"
 
 static constexpr float MaximumDisplayHeightRatio = 0.8f;
+static constexpr float ScrollEndTolerance = 0.5f;
+static constexpr float SelectionScrollAccelerationDistance = 4.0f;
+static constexpr float SelectionScrollMinimumLinesPerSecond = 6.0f;
+static constexpr float SelectionScrollMaximumLinesPerSecond = 40.0f;
 static constexpr ImVec4 DefaultBackgroundColor = {0.0f, 0.0f, 0.0f, 155.0f / 255.0f};
 
 // =============================================================================
@@ -34,7 +38,96 @@ void MessageBoard::MessageUnit::SetMessage(const char *msg) {
 
 void MessageBoard::MessageUnit::Reset() {
     ansiText.Clear();
+    sequence = 0;
     timer = 0.0f;
+}
+
+void MessageBoard::ScrollState::Reset() {
+    position = 0.0f;
+    maximum = 0.0f;
+    selectionRemainder = 0.0f;
+    followEnd = true;
+}
+
+void MessageBoard::ScrollState::UpdateBounds(float contentHeight, float visibleHeight) {
+    maximum = std::max(0.0f, contentHeight - visibleHeight);
+    if (followEnd)
+        position = maximum;
+    else
+        SetPosition(position);
+
+    if (!HasOverflow())
+        selectionRemainder = 0.0f;
+}
+
+void MessageBoard::ScrollState::SetPosition(float value) {
+    position = std::clamp(value, 0.0f, maximum);
+    followEnd = position >= maximum - ScrollEndTolerance;
+}
+
+void MessageBoard::ScrollState::ScrollBy(float delta) {
+    SetPosition(position + delta);
+}
+
+void MessageBoard::ScrollState::ScrollToStart() {
+    SetPosition(0.0f);
+}
+
+void MessageBoard::ScrollState::ScrollToEnd() {
+    SetPosition(maximum);
+}
+
+void MessageBoard::ScrollState::StopSelectionScroll() {
+    selectionRemainder = 0.0f;
+}
+
+void MessageBoard::ScrollState::AutoScrollSelection(
+    float mouseY, float regionTop, float regionBottom,
+    float lineHeight, float deltaTime) {
+    float distance = 0.0f;
+    if (mouseY < regionTop)
+        distance = mouseY - regionTop;
+    else if (mouseY > regionBottom)
+        distance = mouseY - regionBottom;
+
+    if (distance == 0.0f ||
+        (distance < 0.0f && position <= 0.0f) ||
+        (distance > 0.0f && position >= maximum)) {
+        StopSelectionScroll();
+        return;
+    }
+
+    const float stepHeight = std::max(1.0f, lineHeight);
+    const float acceleration = std::clamp(
+        std::abs(distance) / (stepHeight * SelectionScrollAccelerationDistance), 0.0f, 1.0f);
+    const float linesPerSecond = SelectionScrollMinimumLinesPerSecond +
+        acceleration * (SelectionScrollMaximumLinesPerSecond - SelectionScrollMinimumLinesPerSecond);
+    selectionRemainder += std::copysign(
+        stepHeight * linesPerSecond * deltaTime, distance);
+
+    const float step = std::trunc(selectionRemainder);
+    if (step == 0.0f)
+        return;
+
+    const float previousPosition = position;
+    SetPosition(position + step);
+    selectionRemainder -= step;
+    if (position == previousPosition)
+        StopSelectionScroll();
+}
+
+MessageBoard::ScrollMetrics MessageBoard::ScrollState::GetMetrics(
+    float contentHeight, float visibleHeight) const {
+    ScrollMetrics metrics{};
+    metrics.contentHeight = std::max(0.0f, contentHeight);
+    metrics.visibleHeight = std::clamp(
+        visibleHeight, 1.0f, std::max(1.0f, metrics.contentHeight));
+    metrics.maxScroll = std::max(0.0f, metrics.contentHeight - metrics.visibleHeight);
+    metrics.scrollY = std::clamp(position, 0.0f, metrics.maxScroll);
+    metrics.scrollRatio = metrics.maxScroll > 0.0f ? metrics.scrollY / metrics.maxScroll : 0.0f;
+    metrics.visibleRatio = metrics.contentHeight > 0.0f ?
+        metrics.visibleHeight / metrics.contentHeight : 1.0f;
+    return metrics;
 }
 
 // =============================================================================
@@ -73,20 +166,20 @@ ImGuiWindowFlags MessageBoard::GetFlags() {
 }
 
 void MessageBoard::SetCommandBarVisible(bool visible) {
+    m_MouseInteractionActive = false;
     if (m_IsCommandBarVisible != visible) {
         m_IsCommandBarVisible = visible;
 
         if (visible) {
-            m_ScrollToBottom = true;
+            m_Scroll.ScrollToEnd();
             if (HasVisibleContent())
                 Show();
             else
                 Hide();
         } else {
             // Reset scroll state when hiding command bar
-            m_ScrollY = 0.0f;
-            m_MaxScrollY = 0.0f;
-            m_ScrollToBottom = true;
+            m_Scroll.Reset();
+            ClearTextSelection();
             if (!HasVisibleContent())
                 Hide();
         }
@@ -104,9 +197,8 @@ void MessageBoard::SetDisplayPolicy(DisplayPolicy policy) {
         m_DisplayMessageCount = 0;
     }
 
-    m_ScrollY = 0.0f;
-    m_MaxScrollY = 0.0f;
-    m_ScrollToBottom = true;
+    m_Scroll.Reset();
+    ClearTextSelection();
     InvalidateMessageRows();
     if (HasVisibleContent())
         Show();
@@ -115,21 +207,18 @@ void MessageBoard::SetDisplayPolicy(DisplayPolicy policy) {
 }
 
 void MessageBoard::SetScrollPosition(float scrollY) {
-    if (m_IsCommandBarVisible && m_MaxScrollY > 0.0f) {
-        SetScrollYClamped(scrollY);
-    }
+    if (m_IsCommandBarVisible && m_Scroll.HasOverflow())
+        m_Scroll.SetPosition(scrollY);
 }
 
 void MessageBoard::ScrollToTop() {
-    if (m_IsCommandBarVisible) {
-        SetScrollYClamped(0.0f);
-    }
+    if (m_IsCommandBarVisible)
+        m_Scroll.ScrollToStart();
 }
 
 void MessageBoard::ScrollToBottom() {
-    if (m_IsCommandBarVisible) {
-        SetScrollYClamped(m_MaxScrollY);
-    }
+    if (m_IsCommandBarVisible)
+        m_Scroll.ScrollToEnd();
 }
 
 // =============================================================================
@@ -241,6 +330,7 @@ const MessageBoard::MessageRows &MessageBoard::PrepareMessageRows(float wrapWidt
         prepared->rows.emplace_back();
         MessageRow &row = prepared->rows.back();
         row.messageIndex = i;
+        row.messageSequence = msg.sequence;
         row.top = contentHeight;
         row.textLayout.Prepare(msg.ansiText, textOptions);
         row.height = row.textLayout.GetSize().y;
@@ -302,6 +392,7 @@ void MessageBoard::OnPreBegin() {
 }
 
 void MessageBoard::OnDraw() {
+    m_MouseInteractionActive = false;
     if (!HasVisibleContent() || !m_FrameLayout) {
         return;
     }
@@ -318,31 +409,40 @@ void MessageBoard::OnDraw() {
     // Handle scrolling when command bar is visible
     if (m_IsCommandBarVisible) {
         if (layout.needsScrollbar) {
-            UpdateScrollBounds(layout.contentHeight, layout.availableContentHeight);
-            HandleScrolling(layout.availableContentHeight, layout);
+            m_Scroll.UpdateBounds(layout.contentHeight, layout.availableContentHeight);
+            HandleMouseWheel(layout);
         } else {
-            m_ScrollY = 0.0f;
-            m_MaxScrollY = 0.0f;
-            m_ScrollToBottom = true;
+            m_Scroll.Reset();
         }
     }
 
     ImDrawList *drawList = ImGui::GetWindowDrawList();
-    const ImVec2 contentStart(contentPos.x + layout.padX, contentPos.y + layout.padY);
-
-    const ImVec2 startPos(contentStart.x, contentStart.y - m_ScrollY);
-    // Set up clipping for content area
-    const ImVec2 clipMin(contentPos.x + layout.padX, contentPos.y + layout.padY);
-    const ImVec2 clipMax(
+    const ImVec2 textRegionMin(contentPos.x + layout.padX, contentPos.y + layout.padY);
+    const ImVec2 textRegionMax(
         contentPos.x + contentSize.x - layout.padX - (layout.needsScrollbar ? layout.scrollbarReserve : 0.0f),
         contentPos.y + contentSize.y - layout.padY
     );
-    drawList->PushClipRect(clipMin, clipMax, true);
+
+    if (m_IsCommandBarVisible && layout.messageRows) {
+        ImGui::SetCursorScreenPos(textRegionMin);
+        ImGui::InvisibleButton(
+            "##MessageText",
+            ImVec2(std::max(1.0f, textRegionMax.x - textRegionMin.x),
+                   std::max(1.0f, textRegionMax.y - textRegionMin.y)),
+            ImGuiButtonFlags_MouseButtonLeft);
+        m_MouseInteractionActive = ImGui::IsWindowHovered() || ImGui::IsItemActive();
+        HandleTextSelection(
+            textRegionMin, textRegionMax, *layout.messageRows,
+            layout.fontSize + layout.messageGap);
+    }
+
+    const ImVec2 startPos(textRegionMin.x, textRegionMin.y - m_Scroll.position);
+    drawList->PushClipRect(textRegionMin, textRegionMax, true);
 
     RenderMessages(drawList, startPos, layout.wrapWidth, layout);
 
     drawList->PopClipRect();
-    if (layout.needsScrollbar && m_MaxScrollY > 0.0f) {
+    if (layout.needsScrollbar && m_Scroll.HasOverflow()) {
         DrawScrollIndicators(drawList, contentPos, contentSize, layout.contentHeight,
                              layout.availableContentHeight, layout);
     }
@@ -375,6 +475,12 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
         else
             searchEnd = middle;
     }
+
+    SelectionPoint selectionBegin;
+    SelectionPoint selectionEnd;
+    const bool hasSelection = HasTextSelection();
+    if (hasSelection)
+        GetSelectionRange(selectionBegin, selectionEnd);
 
     for (std::size_t index = firstVisible; index < layout.messageRows->rows.size(); ++index) {
         const MessageRow &row = layout.messageRows->rows[index];
@@ -417,6 +523,8 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
                     background);
             }
 
+            if (hasSelection)
+                DrawTextSelection(drawList, row, pos, selectionBegin, selectionEnd);
             DrawMessageText(drawList, row.textLayout, pos, alpha);
         }
     }
@@ -427,12 +535,168 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const AnsiText::Prepare
     textLayout.Draw(drawList, position, alpha);
 }
 
+bool MessageBoard::SelectionPointBefore(const SelectionPoint &left,
+                                        const SelectionPoint &right) {
+    if (left.messageSequence != right.messageSequence)
+        return left.messageSequence < right.messageSequence;
+    return left.offset < right.offset;
+}
+
+void MessageBoard::GetSelectionRange(SelectionPoint &begin, SelectionPoint &end) const {
+    begin = m_SelectionAnchor;
+    end = m_SelectionCaret;
+    if (SelectionPointBefore(end, begin))
+        std::swap(begin, end);
+}
+
+bool MessageBoard::HasTextSelection() const {
+    return m_SelectionAnchor.messageSequence != 0 &&
+           m_SelectionCaret.messageSequence != 0 &&
+           m_SelectionAnchor != m_SelectionCaret;
+}
+
+void MessageBoard::ClearTextSelection() {
+    m_SelectionAnchor = {};
+    m_SelectionCaret = {};
+    m_Scroll.StopSelectionScroll();
+    m_SelectionFocused = false;
+}
+
+MessageBoard::SelectionPoint MessageBoard::HitTestText(
+    const ImVec2 &position, const ImVec2 &textPosition,
+    const MessageRows &rows) const {
+    if (rows.rows.empty())
+        return {};
+
+    const float y = position.y - textPosition.y;
+    const auto found = std::lower_bound(
+        rows.rows.begin(), rows.rows.end(), y,
+        [](const MessageRow &row, float value) {
+            return row.top + row.height < value;
+        });
+    const MessageRow &row = found != rows.rows.end() ? *found : rows.rows.back();
+    return {
+        row.messageSequence,
+        row.textLayout.HitTest(ImVec2(
+            position.x - textPosition.x,
+            y - row.top)),
+    };
+}
+
+std::optional<MessageBoard::TextRange> MessageBoard::ProjectSelection(
+    const MessageRow &row, const SelectionPoint &begin,
+    const SelectionPoint &end) const {
+    if (row.messageSequence < begin.messageSequence ||
+        row.messageSequence > end.messageSequence) {
+        return std::nullopt;
+    }
+
+    const std::size_t messageSize =
+        MessageAt(row.messageIndex).ansiText.GetOriginalText().size();
+    return TextRange{
+        row.messageSequence == begin.messageSequence ? begin.offset : 0,
+        row.messageSequence == end.messageSequence ? end.offset : messageSize,
+    };
+}
+
+std::string MessageBoard::GetSelectedText(
+    const MessageRows &rows, const SelectionPoint &begin,
+    const SelectionPoint &end) const {
+    std::string selected;
+    bool first = true;
+    for (const MessageRow &row : rows.rows) {
+        const std::optional<TextRange> range = ProjectSelection(row, begin, end);
+        if (!range)
+            continue;
+
+        const MessageUnit &message = MessageAt(row.messageIndex);
+        const std::string fragment = message.ansiText.GetPlainText(range->begin, range->end);
+        if (!first && (selected.empty() || selected.back() != '\n') &&
+            (fragment.empty() || fragment.front() != '\n')) {
+            selected.push_back('\n');
+        }
+        selected += fragment;
+        first = false;
+    }
+    return selected;
+}
+
+void MessageBoard::DrawTextSelection(
+    ImDrawList *drawList, const MessageRow &row, const ImVec2 &position,
+    const SelectionPoint &begin, const SelectionPoint &end) const {
+    const std::optional<TextRange> range = ProjectSelection(row, begin, end);
+    if (!range)
+        return;
+
+    row.textLayout.DrawSelection(
+        drawList, position, range->begin, range->end,
+        ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
+}
+
+void MessageBoard::HandleTextSelection(
+    const ImVec2 &regionMin, const ImVec2 &regionMax,
+    const MessageRows &rows, float lineHeight) {
+    const ImGuiIO &io = ImGui::GetIO();
+    const bool active = ImGui::IsItemActive();
+    const bool hovered = ImGui::IsItemHovered();
+    if (m_SelectionFocused && ImGui::IsAnyItemActive() && !active)
+        m_SelectionFocused = false;
+
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        if (hovered) {
+            const ImVec2 mouse(
+                std::clamp(io.MousePos.x, regionMin.x, regionMax.x),
+                std::clamp(io.MousePos.y, regionMin.y, regionMax.y));
+            const ImVec2 textPosition(regionMin.x, regionMin.y - m_Scroll.position);
+            m_SelectionAnchor = HitTestText(mouse, textPosition, rows);
+            m_SelectionCaret = m_SelectionAnchor;
+            m_Scroll.StopSelectionScroll();
+            m_SelectionFocused = true;
+        } else if (!active) {
+            m_SelectionFocused = false;
+        }
+    }
+
+    if (active && io.MouseDown[ImGuiMouseButton_Left]) {
+        m_Scroll.AutoScrollSelection(
+            io.MousePos.y, regionMin.y, regionMax.y,
+            lineHeight, io.DeltaTime);
+        const ImVec2 mouse(
+            std::clamp(io.MousePos.x, regionMin.x, regionMax.x),
+            std::clamp(io.MousePos.y, regionMin.y, regionMax.y));
+        const ImVec2 textPosition(regionMin.x, regionMin.y - m_Scroll.position);
+        m_SelectionCaret = HitTestText(mouse, textPosition, rows);
+    } else {
+        m_Scroll.StopSelectionScroll();
+    }
+
+    if (!m_SelectionFocused)
+        return;
+
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+        const MessageRow &first = rows.rows.front();
+        const MessageRow &last = rows.rows.back();
+        m_SelectionAnchor = {first.messageSequence, 0};
+        m_SelectionCaret = {
+            last.messageSequence,
+            MessageAt(last.messageIndex).ansiText.GetOriginalText().size(),
+        };
+    }
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false) && HasTextSelection()) {
+        SelectionPoint begin;
+        SelectionPoint end;
+        GetSelectionRange(begin, end);
+        const std::string selected = GetSelectedText(rows, begin, end);
+        ImGui::SetClipboardText(selected.c_str());
+    }
+}
+
 // =============================================================================
 // Scrolling System
 // =============================================================================
 
-void MessageBoard::HandleScrolling(float visibleHeight, const FrameLayout &layout) {
-    if (!m_IsCommandBarVisible || m_MaxScrollY <= 0.0f) return;
+void MessageBoard::HandleMouseWheel(const FrameLayout &layout) {
+    if (!m_IsCommandBarVisible || !m_Scroll.HasOverflow()) return;
 
     const ImGuiIO &io = ImGui::GetIO();
 
@@ -440,27 +704,7 @@ void MessageBoard::HandleScrolling(float visibleHeight, const FrameLayout &layou
     if (ImGui::IsWindowHovered() && io.MouseWheel != 0.0f) {
         const float fontPixelSize = ImGui::GetFontSize();
         const float scrollSpeed = (fontPixelSize + layout.messageGap) * 3.0f;
-        SetScrollYClamped(m_ScrollY - io.MouseWheel * scrollSpeed);
-    }
-
-    // Final clamp and bottom sync (in case no inputs were pressed this frame but bounds changed)
-    SetScrollYClamped(m_ScrollY);
-}
-
-void MessageBoard::UpdateScrollBounds(float contentHeight, float availableHeight) {
-    if (contentHeight > availableHeight) {
-        m_MaxScrollY = contentHeight - availableHeight;
-
-        if (m_ScrollToBottom) {
-            m_ScrollY = m_MaxScrollY;
-        }
-
-        // Ensure scroll and bottom flag are consistent with new bounds
-        SetScrollYClamped(m_ScrollY);
-    } else {
-        m_MaxScrollY = 0.0f;
-        m_ScrollY = 0.0f;
-        m_ScrollToBottom = true;
+        m_Scroll.ScrollBy(-io.MouseWheel * scrollSpeed);
     }
 }
 
@@ -476,7 +720,7 @@ void MessageBoard::InvalidateMessageRows() {
 }
 
 void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize, float contentHeight, float visibleHeight, const FrameLayout &layout) {
-    if (m_MaxScrollY <= 0.0f) return;
+    if (!m_Scroll.HasOverflow()) return;
 
     // Scrollbar background
     const ImVec2 scrollbarStart = ImVec2(
@@ -492,7 +736,7 @@ void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &cont
 
     // Scrollbar handle
     const float scrollbarHeight = scrollbarEnd.y - scrollbarStart.y;
-    const ScrollMetrics m = GetScrollMetrics(contentHeight, visibleHeight);
+    const ScrollMetrics m = m_Scroll.GetMetrics(contentHeight, visibleHeight);
     const float handleHeight = std::max(ImGui::GetStyle().GrabMinSize, scrollbarHeight * m.visibleRatio);
     const float handlePos = (m.maxScroll > 0.0f ? (m.scrollY / m.maxScroll) : 0.0f) * (scrollbarHeight - handleHeight);
 
@@ -502,7 +746,7 @@ void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &cont
     drawList->AddRectFilled(handleStart, handleEnd, IM_COL32(150, 150, 150, 200));
 
     // Scroll position indicator
-    if (m_ScrollY > 0.0f || !m_ScrollToBottom) {
+    if (m_Scroll.position > 0.0f || !m_Scroll.followEnd) {
         const int percent = static_cast<int>(std::round(m.scrollRatio * 100.0f));
         if (m_ScrollLabel.context != layout.context || m_ScrollLabel.bakedId != layout.bakedId ||
             m_ScrollLabel.fontSize != layout.fontSize || m_ScrollLabel.percent != percent) {
@@ -529,22 +773,6 @@ void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &cont
         // Text
         drawList->AddText(textPos, IM_COL32(255, 255, 255, 200), m_ScrollLabel.text.data());
     }
-}
-
-MessageBoard::ScrollMetrics MessageBoard::GetScrollMetrics(float contentHeight, float visibleHeight) const {
-    ScrollMetrics m{};
-    m.contentHeight = std::max(0.0f, contentHeight);
-    m.visibleHeight = std::clamp(visibleHeight, 1.0f, std::max(1.0f, m.contentHeight));
-    m.maxScroll = std::max(0.0f, m.contentHeight - m.visibleHeight);
-    m.scrollY = std::clamp(m_ScrollY, 0.0f, m.maxScroll);
-    m.scrollRatio = (m.maxScroll > 0.0f) ? (m.scrollY / m.maxScroll) : 0.0f;
-    m.visibleRatio = (m.contentHeight > 0.0f) ? (m.visibleHeight / m.contentHeight) : 1.0f;
-    return m;
-}
-
-void MessageBoard::SetScrollYClamped(float y) {
-    m_ScrollY = std::clamp(y, 0.0f, m_MaxScrollY);
-    m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - m_ScrollEpsilon);
 }
 
 // =============================================================================
@@ -605,14 +833,21 @@ void MessageBoard::AddMessageInternal(MessageUnit message) {
         message.timer = 0.0f;
 
     // Update display count
-    if (m_MessageCount == capacity && MessageAt(m_MessageCount - 1).GetTimer() > 0) {
-        --m_DisplayMessageCount;
+    if (m_MessageCount == capacity) {
+        const MessageUnit &discarded = MessageAt(m_MessageCount - 1);
+        if (discarded.GetTimer() > 0)
+            --m_DisplayMessageCount;
+        if (m_SelectionAnchor.messageSequence == discarded.sequence ||
+            m_SelectionCaret.messageSequence == discarded.sequence) {
+            ClearTextSelection();
+        }
     }
 
     if (m_MessageCount > 0)
         m_MessageHead = (m_MessageHead + capacity - 1) % capacity;
 
     // Add new message
+    message.sequence = m_NextMessageSequence++;
     m_Messages[m_MessageHead] = std::move(message);
 
     if (m_MessageCount < capacity) {
@@ -621,10 +856,6 @@ void MessageBoard::AddMessageInternal(MessageUnit message) {
     if (m_Messages[m_MessageHead].GetTimer() > 0)
         ++m_DisplayMessageCount;
 
-    // Auto-scroll to bottom for new messages
-    if (m_IsCommandBarVisible && (m_ScrollToBottom || m_MaxScrollY <= 0.0f)) {
-        m_ScrollToBottom = true;
-    }
     if (HasVisibleContent())
         Show();
     else
@@ -670,6 +901,7 @@ void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
 }
 
 void MessageBoard::ClearMessages() {
+    ClearTextSelection();
     m_MessageCount = 0;
     m_MessageHead = 0;
     m_DisplayMessageCount = 0;
@@ -682,6 +914,7 @@ void MessageBoard::ClearMessages() {
 
 void MessageBoard::ResizeMessages(int size) {
     if (size < 1) return;
+    ClearTextSelection();
 
     const int retainedCount = std::min(m_MessageCount, size);
     std::vector<MessageUnit> resized(static_cast<std::size_t>(size));

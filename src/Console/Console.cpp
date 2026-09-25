@@ -232,6 +232,15 @@ void Console::OnProcess() {
     m_MessageBoard.Render();
     m_CommandBar.Render();
 
+    // Native game UI receives clicks outside ImGui windows as well. Console
+    // owns both of its interactive surfaces, so it also owns the decision to
+    // close the command session after neither surface accepted the click.
+    if (visible && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+        !m_CommandBar.IsMouseInteractionActive() &&
+        !m_MessageBoard.IsMouseInteractionActive()) {
+        m_CommandBar.ToggleCommandBar(false);
+    }
+
     if (m_CommandBar.HasActiveTextInput()) {
         Overlay::Ime::Presentation::ReservePlacement(
             ImVec2(layout.transientSurface.x, layout.transientSurface.y), layout.transientSurface.width);

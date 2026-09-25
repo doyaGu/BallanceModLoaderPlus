@@ -398,6 +398,7 @@ ImGuiWindowFlags CommandBar::GetFlags() {
 }
 
 void CommandBar::OnPreBegin() {
+    m_MouseInteractionActive = false;
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 1.0f));
@@ -424,14 +425,7 @@ void CommandBar::OnPreBegin() {
 }
 
 void CommandBar::OnDraw() {
-    // The game also receives clicks outside ImGui windows. Do not leave the
-    // command session holding its keyboard block after the player returns to
-    // a native menu, while preserving clicks on the transient child window.
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-        !ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
-        ToggleCommandBar(false);
-        return;
-    }
+    m_MouseInteractionActive = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
     if (m_TextCompositionActive && !m_Candidates.Empty())
         InvalidateCandidates();
@@ -841,6 +835,7 @@ void CommandBar::OnShow() {
 
 void CommandBar::OnHide() {
     ResetEditorState();
+    m_MouseInteractionActive = false;
     m_InputActive = false;
     m_VisiblePrev = true;
 }

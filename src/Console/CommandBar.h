@@ -52,6 +52,7 @@ public:
     void SetFrameLayout(const ConsoleLayout::Stack &layout) { m_FrameLayout = layout; }
     void SetCompositionActive(bool active) { m_TextCompositionActive = active; }
     bool HasActiveTextInput() const { return IsVisible() && m_InputActive; }
+    bool IsMouseInteractionActive() const { return m_MouseInteractionActive; }
 
     // The history the bar records into and navigates; may be null.
     void SetHistory(BML::Shell::History *history);
@@ -170,6 +171,7 @@ private:
     ImVec2 m_PreviousPageLabelSize;
     ImVec2 m_NextPageLabelSize;
     bool m_TextCompositionActive = false;
+    bool m_MouseInteractionActive = false;
     bool m_InputActive = false;
     bool m_VisiblePrev = false;
     bool m_FocusInputNextFrame = false;

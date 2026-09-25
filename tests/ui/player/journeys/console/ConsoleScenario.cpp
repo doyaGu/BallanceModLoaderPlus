@@ -1,6 +1,9 @@
 #include "player/UiTestFramework.h"
 
+#include <string>
+
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"
 
@@ -8,14 +11,104 @@ namespace {
 
 using namespace UiAutomation::Test;
 
+class ClipboardSnapshot {
+public:
+    ClipboardSnapshot() {
+        const char *text = ImGui::GetClipboardText();
+        if (text)
+            m_Text = text;
+    }
+
+    ~ClipboardSnapshot() {
+        ImGui::SetClipboardText(m_Text.c_str());
+    }
+
+private:
+    std::string m_Text;
+};
+
 void RegisterConsoleScenario(ImGuiTestEngine *engine) {
     ImGuiTest *test =
         IM_REGISTER_TEST(engine, ScenarioCategory, "console_command_and_message_board");
     test->TestFunc = [](ImGuiTestContext *ctx) {
+        ClipboardSnapshot clipboard;
         IM_CHECK(EnterLevelOneFromModList(ctx));
         IM_CHECK(SubmitConsoleCommand(ctx, "echo -n ui-automation-console"));
         IM_CHECK(WaitForItem(ctx, "**/ui-automation-console"));
         IM_CHECK(CaptureSurface(ctx, SurfaceCapture::Console));
+
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/##MessageText"));
+        const ImGuiTestItemInfo messages = ctx->ItemInfo("**/##MessageText");
+        ctx->MouseMoveToPos(ImVec2(messages.RectFull.Max.x - 2.0f,
+                                   messages.RectFull.GetCenter().y));
+        ctx->MouseDown();
+        ctx->MouseMoveToPos(ImVec2(messages.RectFull.Min.x + 2.0f,
+                                   messages.RectFull.GetCenter().y));
+        ctx->MouseUp();
+        ctx->Yield();
+        IM_CHECK(ctx->ItemExists("**/##CmdBar"));
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_C);
+        IM_CHECK_STR_EQ(ImGui::GetClipboardText(), "ui-automation-console");
+
+        ctx->ItemClick("**/##CmdBar");
+        constexpr char ClipboardCommand[] =
+            "echo -n clipboard-\xE4\xB8\xAD\xE6\x96\x87";
+        ImGui::SetClipboardText(ClipboardCommand);
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_V);
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/clipboard-\xE4\xB8\xAD\xE6\x96\x87"));
+
+        IM_CHECK(SubmitConsoleCommand(ctx, "help"));
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/##MessageText"));
+        const ImGuiTestItemInfo scrollback = ctx->ItemInfo("**/##MessageText");
+        ctx->MouseMoveToPos(ImVec2(scrollback.RectFull.Min.x + 1.0f,
+                                   scrollback.RectFull.Max.y - 4.0f));
+        ctx->MouseDown();
+        ctx->MouseMoveToPos(ImVec2(scrollback.RectFull.Min.x + 1.0f,
+                                   scrollback.RectFull.Min.y - 24.0f));
+        IM_CHECK(WaitForItem(ctx, "**/ui-automation-console"));
+        ctx->MouseUp();
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_C);
+        const char *selectedScrollback = ImGui::GetClipboardText();
+        IM_CHECK(selectedScrollback != nullptr);
+        IM_CHECK(std::string(selectedScrollback).find("ui-automation-console") != std::string::npos);
+        ctx->KeyPress(ImGuiKey_Escape);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+
+        ctx->KeyPress(ImGuiKey_Slash);
+        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
+        ctx->ItemClick("**/##CmdBar");
+        ctx->KeyChars("echo -n mouse-selection");
+        const ImGuiTestItemInfo input = ctx->ItemInfo("**/##CmdBar");
+        ctx->MouseMoveToPos(ImVec2(input.RectFull.Max.x - 2.0f,
+                                   input.RectFull.GetCenter().y));
+        ctx->MouseDown();
+        ctx->MouseMoveToPos(ImVec2(input.RectFull.Min.x + 2.0f,
+                                   input.RectFull.GetCenter().y));
+        ctx->MouseUp();
+        ctx->Yield();
+        ImGuiInputTextState *inputState = ImGui::GetInputTextState(input.ID);
+        IM_CHECK(inputState != nullptr && inputState->HasSelection());
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_C);
+        IM_CHECK_STR_EQ(ImGui::GetClipboardText(), "echo -n mouse-selection");
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_X);
+        ctx->Yield();
+        inputState = ImGui::GetInputTextState(input.ID);
+        IM_CHECK(inputState != nullptr);
+        IM_CHECK_STR_EQ(inputState->GetText(), "");
+        ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_V);
+        ctx->Yield();
+        inputState = ImGui::GetInputTextState(input.ID);
+        IM_CHECK(inputState != nullptr);
+        IM_CHECK_STR_EQ(inputState->GetText(), "echo -n mouse-selection");
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(WaitForItem(ctx, "**/mouse-selection"));
 
         // A command list runs both halves in order.
         IM_CHECK(SubmitConsoleCommand(ctx, "echo -n alpha && echo -n beta"));
