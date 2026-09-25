@@ -544,6 +544,29 @@ TEST_F(PathUtilsTest, RecursiveFileListing) {
     EXPECT_TRUE(files.empty());
 }
 
+TEST(PathEncodingTest, RejectsBestFitAndSupportsCjkCodePages) {
+    std::string encoded;
+    EXPECT_FALSE(utils::TryEncodePathForCodePage(L"C:\\Maps\\\u5730\u56FE.nmo", 1252, encoded));
+    EXPECT_TRUE(encoded.empty());
+    EXPECT_TRUE(utils::TryEncodePathForCodePage(L"C:\\Maps\\\u5730\u56FE.nmo", 936, encoded));
+    EXPECT_FALSE(encoded.empty());
+
+    EXPECT_FALSE(utils::TryEncodePathForCodePage(L"C:\\Maps\\\u5730\u56F3.nmo", 1252, encoded));
+    EXPECT_TRUE(utils::TryEncodePathForCodePage(L"C:\\Maps\\\u5730\u56F3.nmo", 932, encoded));
+}
+
+TEST(PathEncodingTest, HandlesUtf8ActiveCodePageRules) {
+    std::string encoded;
+    EXPECT_TRUE(utils::TryEncodePathForCodePage(
+        L"C:\\Maps\\\u5730\u56FE-\U0001F600.nmo", 65001, encoded));
+    EXPECT_EQ(encoded, "C:\\Maps\\\xE5\x9C\xB0\xE5\x9B\xBE-\xF0\x9F\x98\x80.nmo");
+
+    const wchar_t malformed[] = {L'C', L':', L'\\', 0xD800, L'.', L'n', L'm', L'o'};
+    EXPECT_FALSE(utils::TryEncodePathForCodePage(
+        std::wstring_view(malformed, sizeof(malformed) / sizeof(malformed[0])), 65001, encoded));
+    EXPECT_TRUE(encoded.empty());
+}
+
 // Main function that runs all the tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

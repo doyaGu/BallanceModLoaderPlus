@@ -9,6 +9,7 @@
 #include <cwchar>
 #include <cwctype>
 #include <memory>
+#include <limits>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -727,6 +728,68 @@ std::wstring GetParentDirectoryW(const std::wstring &path) {
             return false;
         }
         return true;
+    }
+
+    bool TryEncodePathForCodePage(std::wstring_view path, std::uint32_t codePage,
+                                  std::string &encodedPath) {
+        encodedPath.clear();
+        if (path.empty() || path.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)()) ||
+            path.find(L'\0') != std::wstring_view::npos || !::IsValidCodePage(codePage)) {
+            return false;
+        }
+
+        const bool utf8 = codePage == CP_UTF8;
+        const DWORD flags = utf8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
+        BOOL usedDefaultCharacter = FALSE;
+        BOOL *usedDefault = utf8 ? nullptr : &usedDefaultCharacter;
+        const int sourceLength = static_cast<int>(path.size());
+        const int encodedLength = ::WideCharToMultiByte(
+            codePage, flags, path.data(), sourceLength, nullptr, 0, nullptr, usedDefault);
+        if (encodedLength <= 0 || usedDefaultCharacter)
+            return false;
+
+        std::string candidate(static_cast<std::size_t>(encodedLength), '\0');
+        usedDefaultCharacter = FALSE;
+        if (::WideCharToMultiByte(codePage, flags, path.data(), sourceLength,
+                                  candidate.data(), encodedLength, nullptr, usedDefault) != encodedLength ||
+            usedDefaultCharacter) {
+            return false;
+        }
+
+        const DWORD decodeFlags = utf8 ? MB_ERR_INVALID_CHARS : 0;
+        const int decodedLength = ::MultiByteToWideChar(
+            codePage, decodeFlags, candidate.data(), encodedLength, nullptr, 0);
+        if (decodedLength != sourceLength)
+            return false;
+
+        std::wstring decoded(static_cast<std::size_t>(decodedLength), L'\0');
+        if (::MultiByteToWideChar(codePage, decodeFlags, candidate.data(), encodedLength,
+                                  decoded.data(), decodedLength) != decodedLength ||
+            decoded != path) {
+            return false;
+        }
+
+        encodedPath = std::move(candidate);
+        return true;
+    }
+
+    bool TryEncodePathForActiveCodePage(std::wstring_view path, std::string &encodedPath) {
+        return TryEncodePathForCodePage(path, ::GetACP(), encodedPath);
+    }
+
+    std::wstring GetShortPathW(const std::wstring &path) {
+        if (path.empty())
+            return {};
+
+        const DWORD required = ::GetShortPathNameW(path.c_str(), nullptr, 0);
+        if (required == 0)
+            return {};
+
+        std::vector<wchar_t> buffer(static_cast<std::size_t>(required), L'\0');
+        const DWORD written = ::GetShortPathNameW(path.c_str(), buffer.data(), required);
+        if (written == 0 || written >= required)
+            return {};
+        return std::wstring(buffer.data(), written);
     }
 
     // ========================================================================

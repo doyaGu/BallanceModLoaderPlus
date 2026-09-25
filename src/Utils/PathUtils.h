@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Undefine Windows API macros that conflict with our function names
@@ -142,6 +143,14 @@ namespace utils {
     bool TryGetFinalPathW(const std::wstring &path, std::wstring &finalPath);
     bool TryGetFinalPathInsideRootW(const std::wstring &path, const std::wstring &root,
                                     std::wstring &finalPath);
+
+    // Converts a Windows path without best-fit substitutions and verifies an
+    // exact round trip. This also handles UTF-8 as the active ANSI code page,
+    // whose WideCharToMultiByte parameter rules differ from legacy code pages.
+    bool TryEncodePathForCodePage(std::wstring_view path, std::uint32_t codePage,
+                                  std::string &encodedPath);
+    bool TryEncodePathForActiveCodePage(std::wstring_view path, std::string &encodedPath);
+    std::wstring GetShortPathW(const std::wstring &path);
 
     // Path validation
     bool IsPathValidA(const std::string &path);
