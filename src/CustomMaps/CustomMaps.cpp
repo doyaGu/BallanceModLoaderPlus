@@ -57,7 +57,6 @@ struct CustomMaps::LoadAttempt {
     bool LevelStarted = false;
     LoadOrigin Origin = LoadOrigin::Menu;
     std::wstring SourcePath;
-    std::wstring TempPath;
     LevelLoader::Transaction Runtime;
     std::chrono::steady_clock::time_point Started;
 
@@ -409,7 +408,7 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
 
     LevelLoader::Transaction transaction;
     bool stateChanged = false;
-    std::wstring tempPath;
+    std::uint64_t stagedAttempt = 0;
     try {
         if (m_LoadAttempt) {
             error = "another custom map load is already in progress";
@@ -452,7 +451,7 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
             ClearLoadMetadata();
             return false;
         }
-        tempPath = std::move(stagedMap.FilePath);
+        stagedAttempt = stagedMap.Attempt;
         std::string filename = std::move(stagedMap.LoadPath);
 
         int level = m_LevelNumber->GetInteger();
@@ -475,7 +474,7 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
             }
             m_LevelLoader->Invalidate();
             ClearLoadMetadata();
-            utils::DeleteFileW(tempPath);
+            m_Staging.Complete(stagedAttempt, CustomMap::StagedMapCompletion::Discarded);
             return false;
         }
         transaction = begun.Take();
@@ -510,8 +509,9 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
                         : restored.GetStatus().Message.c_str());
             }
             ClearLoadMetadata();
-            if (!stateChanged)
-                utils::DeleteFileW(tempPath);
+            m_Staging.Complete(
+                stagedAttempt, stateChanged ? CustomMap::StagedMapCompletion::Retained :
+                                              CustomMap::StagedMapCompletion::Discarded);
             return false;
         }
 
@@ -520,19 +520,16 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
         attempt->Level = level;
         attempt->Origin = origin;
         attempt->SourcePath = path;
-        attempt->TempPath = tempPath;
         attempt->Runtime = std::move(transaction);
         attempt->Started = std::chrono::steady_clock::now();
         m_LoadAttempt = std::move(attempt);
         stateChanged = false;
-        tempPath.clear();
 
         if (m_Logger) {
             m_Logger->Info(
-                "Dispatch custom map load #%llu: %s -> %s (level %d)",
+                "Dispatch custom map load #%llu: %s (level %d)",
                 static_cast<unsigned long long>(attemptId),
-                utils::Utf16ToUtf8(path).c_str(),
-                utils::Utf16ToUtf8(m_LoadAttempt->TempPath).c_str(), level);
+                utils::Utf16ToUtf8(path).c_str(), level);
         }
 
         const CKMessageType loadLevel = messageManager->AddMessageType((CKSTRING) "Load Level");
@@ -571,8 +568,11 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
         }
     }
     ClearLoadMetadata();
-    if (!tempPath.empty() && !stateChanged)
-        utils::DeleteFileW(tempPath);
+    if (stagedAttempt != 0) {
+        m_Staging.Complete(
+            stagedAttempt, stateChanged ? CustomMap::StagedMapCompletion::Retained :
+                                          CustomMap::StagedMapCompletion::Discarded);
+    }
     if (error.empty())
         error = "the map load could not be started";
     return false;
@@ -643,9 +643,11 @@ void CustomMaps::CompleteLoadSuccess() {
     }
     const bool fromCommand = m_LoadAttempt->Origin == LoadOrigin::Command;
     const std::wstring sourcePath = m_LoadAttempt->SourcePath;
-    const std::wstring stagedPath = m_LoadAttempt->TempPath;
+    const std::uint64_t attempt = m_LoadAttempt->Id;
     m_LoadAttempt.reset();
-    m_Staging.AdoptLoaded(stagedPath);
+    if (!m_Staging.Complete(attempt, CustomMap::StagedMapCompletion::Loaded) && m_Logger)
+        m_Logger->Error("Custom map staging state was lost for completed load #%llu",
+                        static_cast<unsigned long long>(attempt));
     m_Menu.CompleteLoad(true);
     ClearLoadMetadata();
     if (fromCommand && m_BML) {
@@ -690,11 +692,15 @@ Behavior::Result<void> CustomMaps::RollbackLoad() {
     if (!m_LoadAttempt)
         return Behavior::Result<void>::Success();
 
-    const std::wstring tempPath = m_LoadAttempt->TempPath;
+    const std::uint64_t attempt = m_LoadAttempt->Id;
     auto restored = m_LoadAttempt->Rollback(m_CurrentLevel);
     m_LoadAttempt.reset();
-    if (restored && !tempPath.empty())
-        utils::DeleteFileW(tempPath);
+    if (!m_Staging.Complete(
+            attempt, restored ? CustomMap::StagedMapCompletion::Discarded :
+                                CustomMap::StagedMapCompletion::Retained) && m_Logger) {
+        m_Logger->Error("Custom map staging state was lost for failed load #%llu",
+                        static_cast<unsigned long long>(attempt));
+    }
     m_Menu.CompleteLoad(false);
     ClearLoadMetadata();
     return restored;

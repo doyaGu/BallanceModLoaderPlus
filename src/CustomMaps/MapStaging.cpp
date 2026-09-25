@@ -26,6 +26,15 @@ std::wstring MakeSessionName() {
     return name;
 }
 
+bool DeleteOwnedFile(const std::wstring &path) {
+    if (path.empty())
+        return true;
+    if (::DeleteFileW(path.c_str()) == TRUE)
+        return true;
+    const DWORD error = ::GetLastError();
+    return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+}
+
 }
 
 MapStaging::~MapStaging() {
@@ -44,7 +53,15 @@ void MapStaging::Initialize(const std::wstring &gameDirectory,
 }
 
 void MapStaging::Shutdown() {
+    if (!m_PendingFile.empty())
+        DeleteOwnedFile(m_PendingFile);
+    m_PendingAttempt = 0;
+    m_PendingFile.clear();
+
     ReleaseLoaded();
+    for (const std::wstring &file : m_RetainedFiles)
+        DeleteOwnedFile(file);
+    m_RetainedFiles.clear();
     if (!m_SessionDirectory.empty())
         ::RemoveDirectoryW(m_SessionDirectory.c_str());
     if (!m_RootDirectory.empty())
@@ -58,9 +75,17 @@ void MapStaging::Shutdown() {
 
 bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
                          CKPathManager *pathManager, StagedMap &staged,
-                         std::string &error) const {
+                         std::string &error) {
     staged = {};
     error.clear();
+    if (attempt == 0) {
+        error = "the staging attempt id is invalid";
+        return false;
+    }
+    if (m_PendingAttempt != 0 || !m_PendingFile.empty()) {
+        error = "another prepared map is still pending";
+        return false;
+    }
     if (sourcePath.empty() || !utils::FileExistsW(sourcePath)) {
         error = "the source map no longer exists";
         return false;
@@ -85,10 +110,12 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
         if (utils::CopyFileW(sourcePath, destination) &&
             utils::TryEncodePathForCodePage(relativePath, 20127, staged.LoadPath) &&
             CanResolve(pathManager, staged.LoadPath)) {
-            staged.FilePath = destination;
+            staged.Attempt = attempt;
+            m_PendingAttempt = attempt;
+            m_PendingFile = destination;
             return true;
         }
-        utils::DeleteFileW(destination);
+        DiscardFile(destination);
         staged.LoadPath.clear();
     }
 
@@ -100,7 +127,7 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
     const std::wstring fallback = utils::CombinePathW(
         utils::CombinePathW(m_TempDirectory, L"Maps"), fileName);
     if (!utils::CopyFileW(sourcePath, fallback)) {
-        utils::DeleteFileW(fallback);
+        DiscardFile(fallback);
         error = "neither the game staging directory nor the fallback temp directory is writable";
         return false;
     }
@@ -109,32 +136,55 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
         const std::wstring shortPath = utils::GetShortPathW(fallback);
         if (shortPath.empty() ||
             !utils::TryEncodePathForActiveCodePage(shortPath, staged.LoadPath)) {
-            utils::DeleteFileW(fallback);
+            DiscardFile(fallback);
             error = "the fallback staging path is not representable in the active code page and has no usable 8.3 path";
             return false;
         }
     }
 
     if (!CanResolve(pathManager, staged.LoadPath)) {
-        utils::DeleteFileW(fallback);
+        DiscardFile(fallback);
         staged.LoadPath.clear();
         error = "Virtools could not resolve the prepared map path";
         return false;
     }
 
-    staged.FilePath = fallback;
+    staged.Attempt = attempt;
+    m_PendingAttempt = attempt;
+    m_PendingFile = fallback;
     return true;
 }
 
-void MapStaging::AdoptLoaded(std::wstring filePath) {
-    ReleaseLoaded();
-    m_LoadedFile = std::move(filePath);
+bool MapStaging::Complete(std::uint64_t attempt, StagedMapCompletion completion) {
+    if (attempt == 0 || attempt != m_PendingAttempt || m_PendingFile.empty())
+        return false;
+
+    switch (completion) {
+    case StagedMapCompletion::Loaded:
+        ReleaseLoaded();
+        m_LoadedFile = std::move(m_PendingFile);
+        break;
+    case StagedMapCompletion::Discarded:
+        DiscardFile(m_PendingFile);
+        break;
+    case StagedMapCompletion::Retained:
+        m_RetainedFiles.push_back(std::move(m_PendingFile));
+        break;
+    }
+
+    m_PendingAttempt = 0;
+    m_PendingFile.clear();
+    return true;
 }
 
 void MapStaging::ReleaseLoaded() {
-    if (!m_LoadedFile.empty())
-        utils::DeleteFileW(m_LoadedFile);
+    DiscardFile(m_LoadedFile);
     m_LoadedFile.clear();
+}
+
+void MapStaging::DiscardFile(const std::wstring &path) {
+    if (!path.empty() && !DeleteOwnedFile(path))
+        m_RetainedFiles.push_back(path);
 }
 
 bool MapStaging::CanResolve(CKPathManager *pathManager,

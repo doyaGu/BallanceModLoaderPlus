@@ -3,14 +3,21 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class CKPathManager;
 
 namespace CustomMap {
 
 struct StagedMap {
-    std::wstring FilePath;
+    std::uint64_t Attempt = 0;
     std::string LoadPath;
+};
+
+enum class StagedMapCompletion {
+    Loaded,
+    Discarded,
+    Retained,
 };
 
 class MapStaging {
@@ -25,18 +32,22 @@ public:
     void Shutdown();
 
     bool Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
-                 CKPathManager *pathManager, StagedMap &staged, std::string &error) const;
-    void AdoptLoaded(std::wstring filePath);
+                 CKPathManager *pathManager, StagedMap &staged, std::string &error);
+    bool Complete(std::uint64_t attempt, StagedMapCompletion completion);
     void ReleaseLoaded();
 
 private:
     static bool CanResolve(CKPathManager *pathManager, const std::string &loadPath);
+    void DiscardFile(const std::wstring &path);
 
     std::wstring m_TempDirectory;
     std::wstring m_RootDirectory;
     std::wstring m_SessionDirectory;
     std::wstring m_RelativeDirectory;
+    std::uint64_t m_PendingAttempt = 0;
+    std::wstring m_PendingFile;
     std::wstring m_LoadedFile;
+    std::vector<std::wstring> m_RetainedFiles;
 };
 
 }
