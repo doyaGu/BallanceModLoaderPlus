@@ -54,7 +54,23 @@ jobs:
 
     strategy:
       matrix:
-        configuration: [ Release, Debug ]
+        include:
+          - name: Release
+            configuration: Release
+            angelscript: 'ON'
+            distribute: true
+          - name: Debug
+            configuration: Debug
+            angelscript: 'ON'
+            distribute: true
+          - name: RelWithDebInfo
+            configuration: RelWithDebInfo
+            angelscript: 'ON'
+            distribute: false
+          - name: RelWithDebInfo-no-AngelScript
+            configuration: RelWithDebInfo
+            angelscript: 'OFF'
+            distribute: false
 
     steps:
       - name: Checkout source code
@@ -70,6 +86,7 @@ jobs:
           path: Virtools-SDK-2.1
 
       - name: Download CKAngelScript release
+        if: matrix.angelscript == 'ON'
         shell: pwsh
         run: |
           $downloadDir = "${{ github.workspace }}\third-party\ckangelscript-download"
@@ -113,10 +130,10 @@ jobs:
         run: |
           $env:CC = "cl"
           $env:CXX = "cl"
-          cmake -G Ninja -B "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}" `
+          cmake -G Ninja -B "${{ env.BASE_BUILD_DIR }}\${{ matrix.name }}" `
             -DCMAKE_BUILD_TYPE=${{ matrix.configuration }} `
             -DVIRTOOLS_SDK_PATH="${{ github.workspace }}\Virtools-SDK-2.1" `
-            -DBML_ENABLE_ANGELSCRIPT=ON `
+            -DBML_ENABLE_ANGELSCRIPT=${{ matrix.angelscript }} `
             -DBML_BUILD_MODS=ON `
             -DBML_BUILD_TESTS=ON `
             -DBML_ENABLE_BEHAVIOR_TEST_INTERFACE=OFF `
@@ -125,20 +142,21 @@ jobs:
 
       - name: Build the project
         shell: pwsh
-        run: cmake --build "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}"
+        run: cmake --build "${{ env.BASE_BUILD_DIR }}\${{ matrix.name }}"
 
       - name: Run the test suite
         shell: pwsh
-        run: ctest --test-dir "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}" --output-on-failure
+        run: ctest --test-dir "${{ env.BASE_BUILD_DIR }}\${{ matrix.name }}" --output-on-failure
 
       - name: Install binaries to distribution folder
+        if: matrix.distribute
         shell: pwsh
         run: >
-          cmake --install "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}"
+          cmake --install "${{ env.BASE_BUILD_DIR }}\${{ matrix.name }}"
           --prefix "${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}"
 
       - name: Upload main-branch SDK directory
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: matrix.distribute && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: BMLPlus-${{ env.SHORT_SHA }}-${{ matrix.configuration }}
@@ -146,7 +164,7 @@ jobs:
           retention-days: 14
 
       - name: Upload tagged SDK directory
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: matrix.distribute && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-SDK-${{ matrix.configuration }}
@@ -154,21 +172,21 @@ jobs:
           retention-days: 14
 
       - name: Upload release runtime binary
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.configuration == 'Release'
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.name == 'Release'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Runtime-Binary
           path: |
-            ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\BMLPlus.dll
-            ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\Updater.exe
+            ${{ env.BASE_BUILD_DIR }}\${{ matrix.name }}\bin\BMLPlus.dll
+            ${{ env.BASE_BUILD_DIR }}\${{ matrix.name }}\bin\Updater.exe
           retention-days: 14
 
       - name: Upload debug symbols
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.configuration == 'Debug'
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.name == 'Debug'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Debug-Symbols
-          path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\BMLPlus.pdb
+          path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.name }}\bin\BMLPlus.pdb
           if-no-files-found: error
           retention-days: 14
 
