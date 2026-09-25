@@ -29,8 +29,6 @@ namespace Overlay::Ime::Presentation {
         constexpr ImVec4 SelectionColor = {1.0f, 1.0f, 1.0f, 1.0f};
         constexpr float MinimumRailWidth = 280.0f;
         constexpr float MaximumRailWidthRatio = 0.72f;
-        constexpr float CandidateWidthReserveRatio = 0.62f;
-        constexpr float MinimumCompositionWidth = 72.0f;
         constexpr const char *WindowName = "##BML IME";
         constexpr const char *Ellipsis = "\xe2\x80\xa6";
         constexpr const char *CandidateNavigationHint = "Tab";
@@ -427,7 +425,7 @@ namespace Overlay::Ime::Presentation {
 
             const ImVec4 clipRect(clipMinX, clipMinY,
                                   clipMaxX, clipMaxY);
-            if (textWidth <= availableWidth) {
+            if (Layout::FitsTextHorizontally(textWidth, availableWidth)) {
                 drawList->AddText(font, fontSize, position, color,
                                   begin, end, 0.0f, &clipRect);
                 return;
@@ -507,7 +505,8 @@ namespace Overlay::Ime::Presentation {
                                     float availableWidth) {
             if (!candidates.hasSelection)
                 return 0;
-            return candidates.widthThroughSelection <= availableWidth
+            return Layout::FitsTextHorizontally(
+                       candidates.widthThroughSelection, availableWidth)
                 ? 0
                 : candidates.selection - candidates.begin;
         }
@@ -537,6 +536,8 @@ namespace Overlay::Ime::Presentation {
                 if (remaining <= RailItemGap)
                     break;
 
+                const bool complete = Layout::FitsTextHorizontally(
+                    chipWidth, remaining);
                 const float visibleWidth = std::min(chipWidth, remaining);
                 const ImVec2 chipMin(contentX, contentMinY - 1.0f);
                 const ImVec2 chipMax(contentX + visibleWidth,
@@ -563,7 +564,7 @@ namespace Overlay::Ime::Presentation {
                     chip.value, chip.valueWidth, prepared.ellipsisWidth);
                 drawList->PopClipRect();
                 contentX += visibleWidth + RailItemGap;
-                if (visibleWidth < chipWidth) {
+                if (!complete) {
                     ++nextChip;
                     break;
                 }
@@ -604,7 +605,8 @@ namespace Overlay::Ime::Presentation {
         const float fallbackLimit = std::max(
             minimumWidth,
             std::min(workWidth,
-                     viewport->WorkSize.x * MaximumRailWidthRatio));
+                     std::max(viewport->WorkSize.x * MaximumRailWidthRatio,
+                              candidates.priorityWidth + RailPaddingX * 2.0f)));
         Layout::HorizontalRail rail;
         if (preferredPlacement) {
             rail.width = std::clamp(preferredPlacement->width, 1.0f, workWidth);
@@ -658,32 +660,24 @@ namespace Overlay::Ime::Presentation {
             const float contentMaxX = windowPos.x + windowSize.x -
                                       RailPaddingX;
 
+            const Layout::CandidateRowFit rowFit = Layout::FitCandidateRow(
+                std::max(0.0f, contentMaxX - contentX),
+                prepared.compositionWidth, candidates.priorityWidth,
+                candidates.statusWidth, RailItemGap);
+
             float candidatesMaxX = contentMaxX;
-            if (!candidates.status.empty()) {
+            if (!candidates.status.empty() && rowFit.showStatus) {
                 const float statusWidth = candidates.statusWidth;
-                if (statusWidth + RailItemGap <
-                    contentMaxX - contentX) {
-                    candidatesMaxX = contentMaxX - statusWidth;
-                    drawList->AddText(
-                        ImVec2(candidatesMaxX, contentY),
-                        mutedColor,
-                        candidates.status.c_str());
-                    candidatesMaxX -= RailItemGap;
-                }
+                candidatesMaxX = contentMaxX - statusWidth;
+                drawList->AddText(
+                    ImVec2(candidatesMaxX, contentY),
+                    mutedColor,
+                    candidates.status.c_str());
+                candidatesMaxX -= RailItemGap;
             }
 
-            if (!snapshot.composition.empty()) {
-                const float availableWidth = std::max(
-                    1.0f, candidatesMaxX - contentX);
-                float maxCompositionWidth = availableWidth;
-                if (!candidates.chips.empty()) {
-                    const float candidateReserve = std::min(
-                        candidates.priorityWidth + RailItemGap * 2.0f,
-                        availableWidth * CandidateWidthReserveRatio);
-                    maxCompositionWidth = std::max(
-                        std::min(MinimumCompositionWidth, availableWidth),
-                        availableWidth - candidateReserve);
-                }
+            if (!snapshot.composition.empty() && rowFit.compositionWidth > 0.0f) {
+                const float maxCompositionWidth = rowFit.compositionWidth;
                 if (std::abs(prepared.compositionFitWidth - maxCompositionWidth) >= 0.5f) {
                     prepared.compositionFit = Layout::FitComposition(
                         snapshot, maxCompositionWidth, prepared.ellipsisWidth,
@@ -725,8 +719,7 @@ namespace Overlay::Ime::Presentation {
                 drawList->PopClipRect();
                 contentX = compositionMax.x;
 
-                if (!candidates.chips.empty() &&
-                    contentX + RailItemGap < candidatesMaxX) {
+                if (rowFit.showSeparator) {
                     contentX += RailItemGap;
                     drawList->AddLine(
                         ImVec2(contentX, contentY + 2.0f),

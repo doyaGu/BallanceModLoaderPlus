@@ -48,11 +48,22 @@ namespace Overlay::Ime::Presentation::Layout {
         bool hasSelection = false;
     };
 
+    struct CandidateRowFit {
+        float compositionWidth = 0.0f;
+        float candidateWidth = 0.0f;
+        bool showStatus = false;
+        bool showSeparator = false;
+    };
+
     CompositionFit FitComposition(const Snapshot &snapshot, float maxWidth, float ellipsisWidth,
                                   MeasureText measure, const void *measureContext = nullptr);
     VerticalTextFit FitTextVertically(float lineHeight, float padding, GlyphVerticalBounds glyphBounds) noexcept;
     HorizontalRail FitHorizontalRail(float anchorX, float desiredWidth, float minimumWidth,
                                     float maximumWidth, float workMinX, float workMaxX) noexcept;
+    CandidateRowFit FitCandidateRow(float availableWidth, float compositionWidth,
+                                    float priorityCandidateWidth, float statusWidth,
+                                    float itemGap) noexcept;
+    bool FitsTextHorizontally(float textWidth, float availableWidth) noexcept;
     std::vector<CandidatePage> BuildCandidatePages(const Snapshot &snapshot);
 }
 

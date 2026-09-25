@@ -133,6 +133,36 @@ TEST(ImePresentationTest, CandidateRailHandlesWorkAreaSmallerThanMargins) {
     EXPECT_FLOAT_EQ(rail.width, minimumWidth);
 }
 
+TEST(ImePresentationTest, CandidateRowKeepsPriorityCandidateBeforeStatusAndComposition) {
+    const auto fit = Overlay::Ime::Presentation::Layout::FitCandidateRow(
+        110.0f, 80.0f, 72.0f, 48.0f, 6.0f);
+
+    EXPECT_FALSE(fit.showStatus);
+    EXPECT_TRUE(fit.showSeparator);
+    EXPECT_FLOAT_EQ(fit.compositionWidth, 26.0f);
+    EXPECT_FLOAT_EQ(fit.candidateWidth, 72.0f);
+}
+
+TEST(ImePresentationTest, CandidateRowUsesStatusOnlyWhenPriorityCandidateStillFits) {
+    const auto fit = Overlay::Ime::Presentation::Layout::FitCandidateRow(
+        180.0f, 100.0f, 72.0f, 48.0f, 6.0f);
+
+    EXPECT_TRUE(fit.showStatus);
+    EXPECT_TRUE(fit.showSeparator);
+    EXPECT_FLOAT_EQ(fit.compositionWidth, 42.0f);
+    EXPECT_FLOAT_EQ(fit.candidateWidth, 72.0f);
+}
+
+TEST(ImePresentationTest, CandidateTextFitIgnoresCoordinateRoundoff) {
+    const float textWidth = 17.3f;
+    const float origin = 640.3f;
+    const float availableWidth = (origin + textWidth) - origin;
+    ASSERT_LT(availableWidth, textWidth);
+
+    EXPECT_TRUE(Overlay::Ime::Presentation::Layout::FitsTextHorizontally(
+        textWidth, availableWidth));
+}
+
 TEST(ImePresentationTest, CandidatePagesUseImePageBoundsAndSelectedList) {
     Overlay::Ime::Snapshot snapshot;
     Overlay::Ime::CandidateListSnapshot first;

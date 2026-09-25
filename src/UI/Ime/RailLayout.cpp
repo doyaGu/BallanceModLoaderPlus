@@ -6,6 +6,8 @@
 
 namespace Overlay::Ime::Presentation::Layout {
     namespace {
+        constexpr float PixelRoundingTolerance = 0.5f;
+
         std::size_t PreviousCodepoint(std::u16string_view text, std::size_t offset) {
             if (offset == 0)
                 return 0;
@@ -51,6 +53,10 @@ namespace Overlay::Ime::Presentation::Layout {
             if (clippedAfter)
                 width += ellipsisWidth;
             return width;
+        }
+
+        float NonnegativeFinite(float value) noexcept {
+            return std::isfinite(value) && value > 0.0f ? value : 0.0f;
         }
     }
 
@@ -173,6 +179,46 @@ namespace Overlay::Ime::Presentation::Layout {
         if (roomRight >= minimumWidth)
             return {caretX, std::min(width, roomRight)};
         return {std::max(workMinX, workMaxX - minimumWidth), minimumWidth};
+    }
+
+    CandidateRowFit FitCandidateRow(float availableWidth, float compositionWidth,
+                                    float priorityCandidateWidth, float statusWidth,
+                                    float itemGap) noexcept {
+        availableWidth = NonnegativeFinite(availableWidth);
+        compositionWidth = NonnegativeFinite(compositionWidth);
+        priorityCandidateWidth = NonnegativeFinite(priorityCandidateWidth);
+        statusWidth = NonnegativeFinite(statusWidth);
+        itemGap = NonnegativeFinite(itemGap);
+
+        CandidateRowFit fit;
+        const float statusSpace = statusWidth + itemGap;
+        fit.showStatus = statusWidth > 0.0f &&
+            FitsTextHorizontally(priorityCandidateWidth + statusSpace, availableWidth);
+
+        float contentWidth = availableWidth;
+        if (fit.showStatus)
+            contentWidth = std::max(0.0f, contentWidth - statusSpace);
+
+        const float priorityWidth = std::min(priorityCandidateWidth, contentWidth);
+        const float separatorWidth = priorityWidth > 0.0f && compositionWidth > 0.0f
+            ? itemGap * 2.0f
+            : 0.0f;
+        const float maximumCompositionWidth = std::max(
+            0.0f, contentWidth - priorityWidth - separatorWidth);
+        fit.compositionWidth = std::min(compositionWidth, maximumCompositionWidth);
+        fit.showSeparator = fit.compositionWidth > 0.0f && priorityWidth > 0.0f;
+        fit.candidateWidth = std::max(
+            0.0f, contentWidth - fit.compositionWidth -
+                      (fit.showSeparator ? itemGap * 2.0f : 0.0f));
+        return fit;
+    }
+
+    bool FitsTextHorizontally(float textWidth, float availableWidth) noexcept {
+        if (!std::isfinite(textWidth) || !std::isfinite(availableWidth) ||
+            textWidth < 0.0f || availableWidth < 0.0f) {
+            return false;
+        }
+        return textWidth <= availableWidth + PixelRoundingTolerance;
     }
 
     std::vector<CandidatePage> BuildCandidatePages(const Snapshot &snapshot) {
