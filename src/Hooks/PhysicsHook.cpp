@@ -63,12 +63,19 @@ struct PhysicsHook {
         return false;
     }
 
-    CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
+    CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) {
+        auto *manager = reinterpret_cast<CKIpionManager *>(this);
+        return manager == s_IpionManager ? CK_OK : PostProcessOriginal(manager);
+    }
+
+    static CKERROR PostProcessOriginal(CKIpionManager *manager) {
+        if (!s_Patch.IsInstalled() || !manager || !s_VTable.PostProcess)
+            return CK_OK;
+        return CP_CALL_METHOD_PTR(manager, s_VTable.PostProcess);
+    }
 
     static CKERROR PostProcessOriginal() {
-        if (!s_Patch.IsInstalled() || !s_IpionManager || !s_VTable.PostProcess)
-            return CK_OK;
-        return CP_CALL_METHOD_PTR(s_IpionManager, s_VTable.PostProcess);
+        return PostProcessOriginal(s_IpionManager);
     }
 
     static bool IsInstalled() { return s_Patch.IsInstalled(); }
@@ -93,17 +100,22 @@ VTablePatch PhysicsHook::s_Patch;
 
 BehaviorFunctionPatch g_PhysicalizePatch;
 
-int Physicalize(const CKBehaviorContext &behcontext) {
+} // namespace
+
+HookLifecycle *HookLifecycle::s_PhysicsOwner = nullptr;
+
+int HookLifecycle::Physicalize(const CKBehaviorContext &behcontext) {
     const CKBEHAVIORFCT original = g_PhysicalizePatch.Original();
     if (!original)
         return CKBR_BEHAVIORERROR;
 
+    ModContext *modContext = s_PhysicsOwner ? &s_PhysicsOwner->m_Context : nullptr;
+    if (!modContext || behcontext.Context != modContext->GetCKContext())
+        return original(behcontext);
+
     CKBehavior *beh = behcontext.Behavior;
     bool physicalize = beh->IsInputActive(0);
     auto *target = (CK3dEntity *) beh->GetTarget();
-    ModContext *modContext = BML_GetModContext();
-    if (!modContext)
-        return original(behcontext);
 
     if (physicalize) {
         CKBOOL fixed = FALSE;
@@ -192,31 +204,39 @@ int Physicalize(const CKBehaviorContext &behcontext) {
     return original(behcontext);
 }
 
-} // namespace
-
-void RunPhysicsPostProcess() {
-    if (!PhysicsHook::IsInstalled())
+void HookLifecycle::RunPhysicsPostProcess() {
+    if (s_PhysicsOwner != this || !PhysicsHook::IsInstalled())
         return;
     PhysicsHook::PostProcessOriginal();
 }
 
-bool HookPhysicalize() {
-    auto *im = (CKIpionManager *) BML_GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
+bool HookLifecycle::AttachPhysicalize() {
+    if (s_PhysicsOwner)
+        return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
+    if (g_PhysicalizePatch.IsInstalled() || PhysicsHook::IsInstalled())
+        return false;
+
+    s_PhysicsOwner = this;
+    auto *im = (CKIpionManager *) m_Context.GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
     if (!PhysicsHook::Hook(im))
         utils::OutputDebugA("BML physics scheduling redirection is unavailable; CK2 will keep its normal order\n");
 
     const BehaviorFunctionPatchResult result = g_PhysicalizePatch.Install(
-        PHYSICS_RT_PHYSICALIZE, &Physicalize);
+        PHYSICS_RT_PHYSICALIZE, &HookLifecycle::Physicalize);
     if (!result) {
         utils::OutputDebugA("BML Physicalize hook installation failed: %s\n",
                             BehaviorFunctionPatch::GetErrorName(result.Code));
-        PhysicsHook::Unhook();
+        if (PhysicsHook::Unhook())
+            s_PhysicsOwner = nullptr;
         return false;
     }
     return true;
 }
 
-bool UnhookPhysicalize() {
+bool HookLifecycle::DetachPhysicalize() {
+    if (s_PhysicsOwner != this)
+        return true;
+
     const BehaviorFunctionPatchResult behaviorResult = g_PhysicalizePatch.Remove();
     bool behaviorRemoved = static_cast<bool>(behaviorResult);
     if (behaviorResult.Code == BehaviorFunctionPatchError::OwnershipLost) {
@@ -224,13 +244,16 @@ bool UnhookPhysicalize() {
         behaviorRemoved = true;
     }
 
-    return PhysicsHook::Unhook() && behaviorRemoved;
+    const bool physicsRemoved = PhysicsHook::Unhook();
+    if (physicsRemoved && behaviorRemoved)
+        s_PhysicsOwner = nullptr;
+    return physicsRemoved && behaviorRemoved;
 }
 
-bool IsPhysicsPostProcessHookInstalled() {
-    return PhysicsHook::IsInstalled();
+bool HookLifecycle::OwnsPhysicsPostProcess() const {
+    return s_PhysicsOwner == this && PhysicsHook::IsInstalled();
 }
 
-bool IsPhysicalizeHookInstalled() {
-    return g_PhysicalizePatch.IsInstalled();
+bool HookLifecycle::OwnsPhysicalize() const {
+    return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
 }

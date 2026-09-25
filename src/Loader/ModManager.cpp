@@ -115,7 +115,7 @@ bool ModManager::StartRuntime() {
     if (!renderContext)
         return false;
 
-    if (!RenderHook::Attach(renderContext)) {
+    if (!m_ModContext->AttachRenderHook(renderContext)) {
         if (RenderHook::IsSkipRenderAvailable()) {
             m_ModContext->GetLogger()->Error("A render hook from an earlier context is still installed");
             return false;
@@ -124,7 +124,7 @@ bool ModManager::StartRuntime() {
     }
 
     if (!Overlay::ImGuiInitRenderer(m_Context)) {
-        RenderHook::Detach();
+        m_ModContext->DetachRenderHook();
         m_ModContext->GetLogger()->Error("Failed to initialize the ImGui renderer backend");
         return false;
     }
@@ -133,7 +133,7 @@ bool ModManager::StartRuntime() {
     Overlay::ImGuiContextScope scope;
     if (!m_ModContext->GetModLoader().Start()) {
         Overlay::ImGuiShutdownRenderer(m_Context);
-        RenderHook::Detach();
+        m_ModContext->DetachRenderHook();
         m_RenderContext = nullptr;
         return false;
     }
@@ -145,7 +145,7 @@ bool ModManager::StartRuntime() {
 
 bool ModManager::StopRuntime() {
     if (!m_ModContext)
-        return RenderHook::Detach();
+        return true;
 
     bool stopped = true;
     if (m_RenderContext) {
@@ -159,7 +159,7 @@ bool ModManager::StopRuntime() {
         stopped = m_ModContext->GetModLoader().Stop();
     }
 
-    const bool detached = RenderHook::Detach();
+    const bool detached = m_ModContext->DetachRenderHook();
     if (!detached && m_ModContext->GetLogger())
         m_ModContext->GetLogger()->Warn("Render skip hook could not be detached cleanly");
     return stopped && detached;
@@ -175,7 +175,7 @@ CKERROR ModManager::PostProcess() {
     Overlay::ImGuiContextScope scope;
     ImGuiFrameCompletion frameCompletion;
 
-    RunPhysicsPostProcess();
+    m_ModContext->RunPhysicsPostProcess();
 
     m_ModContext->ProcessVirtoolsFrame();
 

@@ -205,10 +205,11 @@ public:
     void Process();
 
 private:
-    friend class ModManager;
     // Keep the loader's cursor request off this exported class: even private
     // members become DLL exports under MSVC.
     friend void SetOverlayCursorVisible(bool visible);
+    friend bool InputHookOwnsActive(const InputHook &hook);
+    friend bool DetachInputHook(InputHook &hook);
     static bool IsValid();
     struct Impl;
     Impl *m_Impl;

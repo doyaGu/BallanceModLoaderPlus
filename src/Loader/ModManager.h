@@ -2,7 +2,6 @@
 #define BML_MODMANAGER_H
 
 #include <cstdint>
-
 #include "CKBaseManager.h"
 #include "CKContext.h"
 

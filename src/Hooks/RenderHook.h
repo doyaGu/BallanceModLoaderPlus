@@ -1,18 +1,32 @@
 #ifndef BML_RENDERHOOK_H
 #define BML_RENDERHOOK_H
 
+#include <memory>
+
 class CKRenderContext;
 
-namespace RenderHook {
+class RenderHook {
+public:
+    RenderHook();
+    ~RenderHook();
+
+    RenderHook(const RenderHook &) = delete;
+    RenderHook &operator=(const RenderHook &) = delete;
+
     bool Attach(CKRenderContext *renderContext);
     bool Detach();
+    bool IsAttached() const;
 
-    bool IsSkipRenderAvailable();
-    void SkipNextRender();
+    static bool IsSkipRenderAvailable();
+    static void SkipNextRender();
 
-    void EnableWidescreenFix(bool enable);
-    void ApplyWidescreenProjection(CKRenderContext *renderContext);
-    bool CalculateWidescreenFov(float cameraFov, float aspectRatio, float *correctedFov);
-}
+    static void EnableWidescreenFix(bool enable);
+    static void ApplyWidescreenProjection(CKRenderContext *renderContext);
+    static bool CalculateWidescreenFov(float cameraFov, float aspectRatio, float *correctedFov);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_Impl;
+};
 
 #endif // BML_RENDERHOOK_H

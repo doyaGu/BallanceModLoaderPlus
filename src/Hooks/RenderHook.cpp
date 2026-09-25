@@ -5,100 +5,126 @@
 
 #include <cmath>
 #include <cstddef>
+#include <exception>
 
 #include "Hooks/VTablePatch.h"
 #include "Hooks/VTables.h"
 #include "HookUtils.h"
 
-namespace {
-    using RenderContextVTable = CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>;
+using RenderContextVTable = CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>;
 
-    VTablePatch g_RenderPatch;
-    CKRenderContext *g_RenderContext = nullptr;
-    void **g_RenderVTable = nullptr;
-    RenderContextVTable::RenderFunc g_OriginalRender = nullptr;
-    bool g_SkipNextRender = false;
-    bool g_WidescreenFixEnabled = false;
+struct RenderHook::Impl {
+    VTablePatch Patch;
+    CKRenderContext *Context = nullptr;
+    void **VTable = nullptr;
+    RenderContextVTable::RenderFunc OriginalRender = nullptr;
+    bool SkipNextRender = false;
 
-    class RenderInterceptor {
-    public:
-        CP_DECLARE_METHOD_HOOK(CKERROR, Render, (CK_RENDER_FLAGS flags)) {
-            auto *renderContext = reinterpret_cast<CKRenderContext *>(this);
-            if (renderContext == g_RenderContext && g_SkipNextRender) {
-                g_SkipNextRender = false;
-                return CK_OK;
-            }
+    static Impl *Active;
+    static bool WidescreenFixEnabled;
 
-            return g_OriginalRender ? CP_CALL_METHOD_PTR(renderContext, g_OriginalRender, flags) :
-                                      CKERR_INVALIDRENDERCONTEXT;
+    CP_DECLARE_METHOD_HOOK(CKERROR, Render, (CK_RENDER_FLAGS flags)) {
+        auto *renderContext = reinterpret_cast<CKRenderContext *>(this);
+        Impl *active = Active;
+        if (!active || !active->OriginalRender)
+            return CKERR_INVALIDRENDERCONTEXT;
+        if (renderContext == active->Context && active->SkipNextRender) {
+            active->SkipNextRender = false;
+            return CK_OK;
         }
-    };
+        return CP_CALL_METHOD_PTR(renderContext, active->OriginalRender, flags);
+    }
+};
+
+RenderHook::Impl *RenderHook::Impl::Active = nullptr;
+bool RenderHook::Impl::WidescreenFixEnabled = false;
+
+RenderHook::RenderHook() : m_Impl(std::make_unique<Impl>()) {}
+
+RenderHook::~RenderHook() {
+    if (!Detach())
+        std::terminate();
 }
 
 bool RenderHook::Attach(CKRenderContext *renderContext) {
-    if (!renderContext)
+    if (!renderContext || !m_Impl)
+        return false;
+    if (Impl::Active && Impl::Active != m_Impl.get())
         return false;
 
     void **vtable = utils::GetVTable(renderContext);
-    if (g_RenderPatch.IsInstalled()) {
-        if (g_RenderVTable != vtable)
+    if (m_Impl->Patch.IsInstalled()) {
+        if (m_Impl->VTable != vtable)
             return false;
-        g_RenderContext = renderContext;
-        g_SkipNextRender = false;
+        m_Impl->Context = renderContext;
+        m_Impl->SkipNextRender = false;
+        Impl::Active = m_Impl.get();
         return true;
     }
 
     const std::size_t renderSlot = offsetof(RenderContextVTable, Render) / sizeof(void *);
     const VTablePatch::Request request = {
         renderSlot,
-        utils::TypeErase(&RenderInterceptor::CP_FUNC_HOOK_NAME(Render)),
+        utils::TypeErase(&Impl::CP_FUNC_HOOK_NAME(Render)),
     };
-    const VTablePatchResult result = g_RenderPatch.Install(renderContext, &request, 1);
+    const VTablePatchResult result = m_Impl->Patch.Install(renderContext, &request, 1);
     if (!result) {
         utils::OutputDebugA("BML RenderHook install failed: %s (entry %zu)\n",
                             VTablePatch::GetErrorName(result.Code), result.EntryIndex);
         return false;
     }
 
-    g_OriginalRender = utils::ForceReinterpretCast<RenderContextVTable::RenderFunc>(
-        g_RenderPatch.GetOriginal(renderSlot));
-    g_RenderContext = renderContext;
-    g_RenderVTable = vtable;
-    g_SkipNextRender = false;
+    m_Impl->OriginalRender = utils::ForceReinterpretCast<RenderContextVTable::RenderFunc>(
+        m_Impl->Patch.GetOriginal(renderSlot));
+    m_Impl->Context = renderContext;
+    m_Impl->VTable = vtable;
+    m_Impl->SkipNextRender = false;
+    Impl::Active = m_Impl.get();
     return true;
 }
 
 bool RenderHook::Detach() {
-    const VTablePatchResult result = g_RenderPatch.Remove();
+    if (!m_Impl)
+        return true;
+    if (Impl::Active && Impl::Active != m_Impl.get())
+        return !m_Impl->Patch.IsInstalled();
+
+    const VTablePatchResult result = m_Impl->Patch.Remove();
     if (!result) {
         utils::OutputDebugA("BML RenderHook removal warning: %s (entry %zu)\n",
                             VTablePatch::GetErrorName(result.Code), result.EntryIndex);
     }
-
-    if (g_RenderPatch.IsInstalled())
+    if (m_Impl->Patch.IsInstalled())
         return false;
 
-    g_RenderContext = nullptr;
-    g_RenderVTable = nullptr;
-    g_OriginalRender = nullptr;
-    g_SkipNextRender = false;
+    if (Impl::Active == m_Impl.get())
+        Impl::Active = nullptr;
+    m_Impl->Context = nullptr;
+    m_Impl->VTable = nullptr;
+    m_Impl->OriginalRender = nullptr;
+    m_Impl->SkipNextRender = false;
     return true;
 }
 
+bool RenderHook::IsAttached() const {
+    return m_Impl && Impl::Active == m_Impl.get() && m_Impl->Patch.IsInstalled();
+}
+
 bool RenderHook::IsSkipRenderAvailable() {
-    return g_RenderPatch.IsInstalled();
+    return Impl::Active && Impl::Active->Patch.IsInstalled();
 }
 
 void RenderHook::SkipNextRender() {
     if (IsSkipRenderAvailable())
-        g_SkipNextRender = true;
+        Impl::Active->SkipNextRender = true;
 }
 
 void RenderHook::EnableWidescreenFix(bool enable) {
-    g_WidescreenFixEnabled = enable;
+    Impl::WidescreenFixEnabled = enable;
 }
 
-bool RenderHook::CalculateWidescreenFov(float cameraFov, float aspectRatio, float *correctedFov) {
+bool RenderHook::CalculateWidescreenFov(float cameraFov, float aspectRatio,
+                                        float *correctedFov) {
     if (!correctedFov || !std::isfinite(cameraFov) || !std::isfinite(aspectRatio) ||
         cameraFov <= 0.0f || cameraFov >= 3.14159265358979323846f || aspectRatio <= 0.0f) {
         return false;
@@ -120,7 +146,7 @@ bool RenderHook::CalculateWidescreenFov(float cameraFov, float aspectRatio, floa
 }
 
 void RenderHook::ApplyWidescreenProjection(CKRenderContext *renderContext) {
-    if (!g_WidescreenFixEnabled || !renderContext)
+    if (!Impl::WidescreenFixEnabled || !renderContext)
         return;
 
     CKCamera *camera = renderContext->GetAttachedCamera();
@@ -141,7 +167,8 @@ void RenderHook::ApplyWidescreenProjection(CKRenderContext *renderContext) {
 
     const float frontPlane = camera->GetFrontPlane();
     const float backPlane = camera->GetBackPlane();
-    if (!std::isfinite(frontPlane) || !std::isfinite(backPlane) || frontPlane <= 0.0f || backPlane <= frontPlane)
+    if (!std::isfinite(frontPlane) || !std::isfinite(backPlane) || frontPlane <= 0.0f ||
+        backPlane <= frontPlane)
         return;
 
     float correctedFov = 0.0f;

@@ -43,12 +43,20 @@ void PublishCustomMapResult(ModContext &context, BML_DataShare *share,
     BML_DataShare_Remove(share, CustomMapLoad::NameKey);
 }
 
-int ObjectLoad(const CKBehaviorContext &behcontext) {
-    CKBehavior *beh = behcontext.Behavior;
+} // namespace
+
+HookLifecycle *HookLifecycle::s_ObjectLoadOwner = nullptr;
+
+int HookLifecycle::ObjectLoad(const CKBehaviorContext &behcontext) {
     const CKBEHAVIORFCT original = g_ObjectLoadPatch.Original();
     if (!original)
         return CKBR_OK;
 
+    ModContext *modContext = s_ObjectLoadOwner ? &s_ObjectLoadOwner->m_Context : nullptr;
+    if (!modContext || behcontext.Context != modContext->GetCKContext())
+        return original(behcontext);
+
+    CKBehavior *beh = behcontext.Behavior;
     const bool wasLoading = beh->IsInputActive(0) != FALSE;
 
     CKBOOL dynamic = TRUE;
@@ -72,7 +80,6 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
             mastername = value;
     }
 
-    auto *modContext = BML_GetModContext();
     CKBehavior *ownerScript = beh->GetOwnerScript();
     const bool isMap = ownerScript && ownerScript->GetName() &&
         std::strcmp(ownerScript->GetName(), "Levelinit_build") == 0;
@@ -86,7 +93,7 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
 
     const int result = original(behcontext);
 
-    if (!wasLoading || !modContext)
+    if (!wasLoading)
         return result;
 
     XObjectArray *oarray = nullptr;
@@ -131,33 +138,40 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
     return result;
 }
 
-} // namespace
+bool HookLifecycle::AttachObjectLoad() {
+    if (g_ObjectLoadPatch.IsInstalled())
+        return s_ObjectLoadOwner == this;
 
-bool HookObjectLoad() {
     const BehaviorFunctionPatchResult result = g_ObjectLoadPatch.Install(
-        VT_NARRATIVES_OBJECTLOAD, &ObjectLoad);
+        VT_NARRATIVES_OBJECTLOAD, &HookLifecycle::ObjectLoad);
     if (!result) {
-        if (ModContext *context = BML_GetModContext()) {
-            if (ILogger *logger = context->GetLogger())
-                logger->Error("Object Load hook installation failed: %s",
-                              BehaviorFunctionPatch::GetErrorName(result.Code));
-        }
+        if (ILogger *logger = m_Context.GetLogger())
+            logger->Error("Object Load hook installation failed: %s",
+                          BehaviorFunctionPatch::GetErrorName(result.Code));
+        return false;
     }
-    return static_cast<bool>(result);
+    s_ObjectLoadOwner = this;
+    return true;
 }
 
-bool UnhookObjectLoad() {
+bool HookLifecycle::DetachObjectLoad() {
+    if (s_ObjectLoadOwner != this)
+        return true;
+
     const BehaviorFunctionPatchResult result = g_ObjectLoadPatch.Remove();
     if (result.Code == BehaviorFunctionPatchError::OwnershipLost) {
-        if (ModContext *context = BML_GetModContext()) {
-            if (ILogger *logger = context->GetLogger())
-                logger->Warn("Object Load hook ownership changed; preserving the current function");
-        }
+        if (ILogger *logger = m_Context.GetLogger())
+            logger->Warn("Object Load hook ownership changed; preserving the current function");
+        s_ObjectLoadOwner = nullptr;
         return true;
     }
-    return static_cast<bool>(result);
+    if (!result)
+        return false;
+
+    s_ObjectLoadOwner = nullptr;
+    return true;
 }
 
-bool IsObjectLoadHookInstalled() {
-    return g_ObjectLoadPatch.IsInstalled();
+bool HookLifecycle::OwnsObjectLoad() const {
+    return s_ObjectLoadOwner == this && g_ObjectLoadPatch.IsInstalled();
 }

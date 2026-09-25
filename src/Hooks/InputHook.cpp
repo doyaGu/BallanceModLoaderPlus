@@ -9,11 +9,9 @@
 #include "Hooks/VTables.h"
 #include "HookUtils.h"
 
-namespace {
-    VTablePatch g_InputPatch;
-}
-
 struct InputHook::Impl {
+    bool OwnsHook = false;
+
     static unsigned char s_KeyboardState[256];
     static unsigned char s_LastKeyboardState[256];
     static Vx2DVector s_LastMousePosition;
@@ -23,122 +21,158 @@ struct InputHook::Impl {
     static CKInputManager *s_InputManager;
     static CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> s_VTable;
     static CursorVisibilityPolicy s_CursorVisibility;
+    static Impl *s_Owner;
+    static VTablePatch s_Patch;
 
-    CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
+    static CKInputManager *Target(Impl *self) {
+        return reinterpret_cast<CKInputManager *>(self);
+    }
+
+    static bool IsOwnedTarget(CKInputManager *manager) {
+        return manager && manager == s_InputManager && s_Owner;
+    }
+
+    CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) {
+        CKInputManager *manager = Target(this);
+        return IsOwnedTarget(manager) ? CK_OK : PostProcessOriginal(manager);
+    }
 
     CP_DECLARE_METHOD_HOOK(void, ShowCursor, (CKBOOL show)) {
-        ShowCursorOriginal(s_CursorVisibility.SetGameVisible(show != FALSE));
+        CKInputManager *manager = Target(this);
+        if (!IsOwnedTarget(manager)) {
+            ShowCursorOriginal(manager, show);
+            return;
+        }
+        ShowCursorOriginal(manager, s_CursorVisibility.SetGameVisible(show != FALSE));
     }
 
     CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyDown, (CKDWORD iKey, CKDWORD *oStamp)) {
-        if (IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
             return FALSE;
-        return IsKeyDownOriginal(iKey, oStamp);
+        return IsKeyDownOriginal(manager, iKey, oStamp);
     }
 
     CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyUp, (CKDWORD iKey)) {
-        if (IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
             return FALSE;
-        return IsKeyUpOriginal(iKey);
+        return IsKeyUpOriginal(manager, iKey);
     }
 
     CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyToggled, (CKDWORD iKey, CKDWORD *oStamp)) {
-        if (IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
             return FALSE;
-        return IsKeyToggledOriginal(iKey, oStamp);
+        return IsKeyToggledOriginal(manager, iKey, oStamp);
     }
 
     CP_DECLARE_METHOD_HOOK(unsigned char *, GetKeyboardState, ()) {
         static unsigned char keyboardState[256] = {};
-        if (IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
             return keyboardState;
-        return GetKeyboardStateOriginal();
+        return GetKeyboardStateOriginal(manager);
     }
 
     CP_DECLARE_METHOD_HOOK(int, GetNumberOfKeyInBuffer, ()) {
-        if (IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
             return 0;
-        return GetNumberOfKeyInBufferOriginal();
+        return GetNumberOfKeyInBufferOriginal(manager);
     }
 
     CP_DECLARE_METHOD_HOOK(int, GetKeyFromBuffer, (int i, CKDWORD &oKey, CKDWORD *oTimeStamp)) {
-        if (IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
             return NO_KEY;
-        return GetKeyFromBufferOriginal(i, oKey, oTimeStamp);
+        return GetKeyFromBufferOriginal(manager, i, oKey, oTimeStamp);
     }
 
     CP_DECLARE_METHOD_HOOK(CKBOOL, IsMouseButtonDown, (CK_MOUSEBUTTON iButton)) {
-        if (IsBlocked(CK_INPUT_DEVICE_MOUSE))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE))
             return FALSE;
-        return IsMouseButtonDownOriginal(iButton);
+        return IsMouseButtonDownOriginal(manager, iButton);
     }
 
     CP_DECLARE_METHOD_HOOK(CKBOOL, IsMouseClicked, (CK_MOUSEBUTTON iButton)) {
-        if (IsBlocked(CK_INPUT_DEVICE_MOUSE))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE))
             return FALSE;
-        return IsMouseClickedOriginal(iButton);
+        return IsMouseClickedOriginal(manager, iButton);
     }
 
     CP_DECLARE_METHOD_HOOK(CKBOOL, IsMouseToggled, (CK_MOUSEBUTTON iButton)) {
-        if (IsBlocked(CK_INPUT_DEVICE_MOUSE))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE))
             return FALSE;
-        return IsMouseToggledOriginal(iButton);
+        return IsMouseToggledOriginal(manager, iButton);
     }
 
     CP_DECLARE_METHOD_HOOK(void, GetMouseButtonsState, (CKBYTE oStates[4])) {
-        if (IsBlocked(CK_INPUT_DEVICE_MOUSE)) {
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE)) {
             memset(oStates, KS_IDLE, sizeof(CKBYTE) * 4);
             return;
         }
-        GetMouseButtonsStateOriginal(oStates);
+        GetMouseButtonsStateOriginal(manager, oStates);
     }
 
     CP_DECLARE_METHOD_HOOK(void, GetMousePosition, (Vx2DVector &oPosition, CKBOOL iAbsolute)) {
-        if (IsBlocked(CK_INPUT_DEVICE_MOUSE))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE))
             return;
-        GetMousePositionOriginal(oPosition, iAbsolute);
+        GetMousePositionOriginal(manager, oPosition, iAbsolute);
     }
 
     CP_DECLARE_METHOD_HOOK(void, GetMouseRelativePosition, (VxVector &oPosition)) {
-        if (IsBlocked(CK_INPUT_DEVICE_MOUSE))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE))
             return;
-        GetMouseRelativePositionOriginal(oPosition);
+        GetMouseRelativePositionOriginal(manager, oPosition);
     }
 
     CP_DECLARE_METHOD_HOOK(void, GetJoystickPosition, (int iJoystick, VxVector *oPosition)) {
-        if (IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
             return;
-        GetJoystickPositionOriginal(iJoystick, oPosition);
+        GetJoystickPositionOriginal(manager, iJoystick, oPosition);
     }
 
     CP_DECLARE_METHOD_HOOK(void, GetJoystickRotation, (int iJoystick, VxVector *oRotation)) {
-        if (IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
             return;
-        GetJoystickRotationOriginal(iJoystick, oRotation);
+        GetJoystickRotationOriginal(manager, iJoystick, oRotation);
     }
 
     CP_DECLARE_METHOD_HOOK(void, GetJoystickSliders, (int iJoystick, Vx2DVector *oPosition)) {
-        if (IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
             return;
-        GetJoystickSlidersOriginal(iJoystick, oPosition);
+        GetJoystickSlidersOriginal(manager, iJoystick, oPosition);
     }
 
     CP_DECLARE_METHOD_HOOK(void, GetJoystickPointOfViewAngle, (int iJoystick, float *oAngle)) {
-        if (IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
             return;
-        GetJoystickPointOfViewAngleOriginal(iJoystick, oAngle);
+        GetJoystickPointOfViewAngleOriginal(manager, iJoystick, oAngle);
     }
 
     CP_DECLARE_METHOD_HOOK(CKDWORD, GetJoystickButtonsState, (int iJoystick)) {
-        if (IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
             return 0;
-        return GetJoystickButtonsStateOriginal(iJoystick);
+        return GetJoystickButtonsStateOriginal(manager, iJoystick);
     }
 
     CP_DECLARE_METHOD_HOOK(CKBOOL, IsJoystickButtonDown, (int iJoystick, int iButton)) {
-        if (IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
+        CKInputManager *manager = Target(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK))
             return FALSE;
-        return IsJoystickButtonDownOriginal(iJoystick, iButton);
+        return IsJoystickButtonDownOriginal(manager, iJoystick, iButton);
     }
 
     static int IsBlocked(CK_INPUT_DEVICE device) {
@@ -219,12 +253,30 @@ struct InputHook::Impl {
         s_NextBlockToken = 1;
     }
 
+    static void ResetSessionState() {
+        ReleaseAllBlocks();
+        memset(s_BlockedDevice, 0, sizeof(s_BlockedDevice));
+        memset(s_KeyboardState, 0, sizeof(s_KeyboardState));
+        memset(s_LastKeyboardState, 0, sizeof(s_LastKeyboardState));
+        s_LastMousePosition = {};
+    }
+
+    static CKERROR PostProcessOriginal(CKInputManager *manager) {
+        return manager && s_VTable.PostProcess ?
+            CP_CALL_METHOD_PTR(manager, s_VTable.PostProcess) : CK_OK;
+    }
+
     static CKERROR PostProcessOriginal() {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.PostProcess);
+        return PostProcessOriginal(s_InputManager);
+    }
+
+    static void ShowCursorOriginal(CKInputManager *manager, CKBOOL show) {
+        if (manager && s_VTable.ShowCursor)
+            CP_CALL_METHOD_PTR(manager, s_VTable.ShowCursor, show);
     }
 
     static void ShowCursorOriginal(CKBOOL show) {
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.ShowCursor, show);
+        ShowCursorOriginal(s_InputManager, show);
     }
 
     static void SetOverlayCursorVisible(bool visible) {
@@ -233,83 +285,162 @@ struct InputHook::Impl {
             ShowCursorOriginal(effective);
     }
 
+    static CKBOOL IsKeyDownOriginal(CKInputManager *manager, CKDWORD iKey, CKDWORD *oStamp) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.IsKeyDown, iKey, oStamp);
+    }
+
     static CKBOOL IsKeyDownOriginal(CKDWORD iKey, CKDWORD *oStamp) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsKeyDown, iKey, oStamp);
+        return IsKeyDownOriginal(s_InputManager, iKey, oStamp);
+    }
+
+    static CKBOOL IsKeyUpOriginal(CKInputManager *manager, CKDWORD iKey) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.IsKeyUp, iKey);
     }
 
     static CKBOOL IsKeyUpOriginal(CKDWORD iKey) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsKeyUp, iKey);
+        return IsKeyUpOriginal(s_InputManager, iKey);
+    }
+
+    static CKBOOL IsKeyToggledOriginal(CKInputManager *manager, CKDWORD iKey, CKDWORD *oStamp) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.IsKeyToggled, iKey, oStamp);
     }
 
     static CKBOOL IsKeyToggledOriginal(CKDWORD iKey, CKDWORD *oStamp) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsKeyToggled, iKey, oStamp);
+        return IsKeyToggledOriginal(s_InputManager, iKey, oStamp);
+    }
+
+    static unsigned char *GetKeyboardStateOriginal(CKInputManager *manager) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.GetKeyboardState);
     }
 
     static unsigned char *GetKeyboardStateOriginal() {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetKeyboardState);
+        return GetKeyboardStateOriginal(s_InputManager);
+    }
+
+    static int GetNumberOfKeyInBufferOriginal(CKInputManager *manager) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.GetNumberOfKeyInBuffer);
     }
 
     static int GetNumberOfKeyInBufferOriginal() {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetNumberOfKeyInBuffer);
+        return GetNumberOfKeyInBufferOriginal(s_InputManager);
+    }
+
+    static int GetKeyFromBufferOriginal(CKInputManager *manager, int i, CKDWORD &oKey,
+                                        CKDWORD *oTimeStamp) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.GetKeyFromBuffer, i, oKey, oTimeStamp);
     }
 
     static int GetKeyFromBufferOriginal(int i, CKDWORD &oKey, CKDWORD *oTimeStamp) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetKeyFromBuffer, i, oKey, oTimeStamp);
+        return GetKeyFromBufferOriginal(s_InputManager, i, oKey, oTimeStamp);
+    }
+
+    static CKBOOL IsMouseButtonDownOriginal(CKInputManager *manager, CK_MOUSEBUTTON iButton) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.IsMouseButtonDown, iButton);
     }
 
     static CKBOOL IsMouseButtonDownOriginal(CK_MOUSEBUTTON iButton) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsMouseButtonDown, iButton);
+        return IsMouseButtonDownOriginal(s_InputManager, iButton);
+    }
+
+    static CKBOOL IsMouseClickedOriginal(CKInputManager *manager, CK_MOUSEBUTTON iButton) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.IsMouseClicked, iButton);
     }
 
     static CKBOOL IsMouseClickedOriginal(CK_MOUSEBUTTON iButton) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsMouseClicked, iButton);
+        return IsMouseClickedOriginal(s_InputManager, iButton);
+    }
+
+    static CKBOOL IsMouseToggledOriginal(CKInputManager *manager, CK_MOUSEBUTTON iButton) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.IsMouseToggled, iButton);
     }
 
     static CKBOOL IsMouseToggledOriginal(CK_MOUSEBUTTON iButton) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsMouseToggled, iButton);
+        return IsMouseToggledOriginal(s_InputManager, iButton);
+    }
+
+    static void GetMouseButtonsStateOriginal(CKInputManager *manager, CKBYTE oStates[4]) {
+        CP_CALL_METHOD_PTR(manager, s_VTable.GetMouseButtonsState, oStates);
     }
 
     static void GetMouseButtonsStateOriginal(CKBYTE oStates[4]) {
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetMouseButtonsState, oStates);
+        GetMouseButtonsStateOriginal(s_InputManager, oStates);
+    }
+
+    static void GetMousePositionOriginal(CKInputManager *manager, Vx2DVector &oPosition,
+                                         CKBOOL iAbsolute) {
+        CP_CALL_METHOD_PTR(manager, s_VTable.GetMousePosition, oPosition, iAbsolute);
     }
 
     static void GetMousePositionOriginal(Vx2DVector &oPosition, CKBOOL iAbsolute) {
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetMousePosition, oPosition, iAbsolute);
+        GetMousePositionOriginal(s_InputManager, oPosition, iAbsolute);
+    }
+
+    static void GetMouseRelativePositionOriginal(CKInputManager *manager, VxVector &oPosition) {
+        CP_CALL_METHOD_PTR(manager, s_VTable.GetMouseRelativePosition, oPosition);
     }
 
     static void GetMouseRelativePositionOriginal(VxVector &oPosition) {
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetMouseRelativePosition, oPosition);
+        GetMouseRelativePositionOriginal(s_InputManager, oPosition);
+    }
+
+    static void GetJoystickPositionOriginal(CKInputManager *manager, int iJoystick,
+                                            VxVector *oPosition) {
+        CP_CALL_METHOD_PTR(manager, s_VTable.GetJoystickPosition, iJoystick, oPosition);
     }
 
     static void GetJoystickPositionOriginal(int iJoystick, VxVector *oPosition) {
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickPosition, iJoystick, oPosition);
+        GetJoystickPositionOriginal(s_InputManager, iJoystick, oPosition);
+    }
+
+    static void GetJoystickRotationOriginal(CKInputManager *manager, int iJoystick,
+                                            VxVector *oRotation) {
+        CP_CALL_METHOD_PTR(manager, s_VTable.GetJoystickRotation, iJoystick, oRotation);
     }
 
     static void GetJoystickRotationOriginal(int iJoystick, VxVector *oRotation) {
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickRotation, iJoystick, oRotation);
+        GetJoystickRotationOriginal(s_InputManager, iJoystick, oRotation);
+    }
+
+    static void GetJoystickSlidersOriginal(CKInputManager *manager, int iJoystick,
+                                           Vx2DVector *oPosition) {
+        CP_CALL_METHOD_PTR(manager, s_VTable.GetJoystickSliders, iJoystick, oPosition);
     }
 
     static void GetJoystickSlidersOriginal(int iJoystick, Vx2DVector *oPosition) {
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickSliders, iJoystick, oPosition);
+        GetJoystickSlidersOriginal(s_InputManager, iJoystick, oPosition);
+    }
+
+    static void GetJoystickPointOfViewAngleOriginal(CKInputManager *manager, int iJoystick,
+                                                    float *oAngle) {
+        CP_CALL_METHOD_PTR(manager, s_VTable.GetJoystickPointOfViewAngle, iJoystick, oAngle);
     }
 
     static void GetJoystickPointOfViewAngleOriginal(int iJoystick, float *oAngle) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickPointOfViewAngle, iJoystick, oAngle);
+        GetJoystickPointOfViewAngleOriginal(s_InputManager, iJoystick, oAngle);
+    }
+
+    static CKDWORD GetJoystickButtonsStateOriginal(CKInputManager *manager, int iJoystick) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.GetJoystickButtonsState, iJoystick);
     }
 
     static CKDWORD GetJoystickButtonsStateOriginal(int iJoystick) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickButtonsState, iJoystick);
+        return GetJoystickButtonsStateOriginal(s_InputManager, iJoystick);
+    }
+
+    static CKBOOL IsJoystickButtonDownOriginal(CKInputManager *manager, int iJoystick,
+                                               int iButton) {
+        return CP_CALL_METHOD_PTR(manager, s_VTable.IsJoystickButtonDown, iJoystick, iButton);
     }
 
     static CKBOOL IsJoystickButtonDownOriginal(int iJoystick, int iButton) {
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsJoystickButtonDown, iJoystick, iButton);
+        return IsJoystickButtonDownOriginal(s_InputManager, iJoystick, iButton);
     }
 
-    static bool Hook(CKInputManager *im) {
+    static bool Hook(CKInputManager *im, Impl *owner) {
         if (!im)
             return false;
-        if (g_InputPatch.IsInstalled())
-            return s_InputManager == im;
+        if (s_Patch.IsInstalled())
+            return s_Owner == owner && s_InputManager == im;
 
 #define INPUT_MANAGER_SLOT(Name) \
     (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void *))
@@ -339,7 +470,7 @@ struct InputHook::Impl {
             INPUT_MANAGER_PATCH(IsJoystickButtonDown),
         };
 
-        const VTablePatchResult result = g_InputPatch.Install(im, requests, sizeof(requests) / sizeof(requests[0]));
+        const VTablePatchResult result = s_Patch.Install(im, requests, sizeof(requests) / sizeof(requests[0]));
         if (!result) {
             utils::OutputDebugA("BML InputHook install failed: %s (entry %zu)\n",
                                 VTablePatch::GetErrorName(result.Code), result.EntryIndex);
@@ -347,7 +478,7 @@ struct InputHook::Impl {
         }
 
 #define LOAD_INPUT_MANAGER_ORIGINAL(Name) \
-    s_VTable.Name = utils::ForceReinterpretCast<decltype(s_VTable.Name)>(g_InputPatch.GetOriginal(INPUT_MANAGER_SLOT(Name)))
+    s_VTable.Name = utils::ForceReinterpretCast<decltype(s_VTable.Name)>(s_Patch.GetOriginal(INPUT_MANAGER_SLOT(Name)))
 
         LOAD_INPUT_MANAGER_ORIGINAL(PostProcess);
         LOAD_INPUT_MANAGER_ORIGINAL(ShowCursor);
@@ -375,25 +506,30 @@ struct InputHook::Impl {
 #undef INPUT_MANAGER_SLOT
 
         s_InputManager = im;
+        s_Owner = owner;
         s_CursorVisibility.Reset(s_InputManager->GetCursorVisibility() != FALSE);
         return true;
     }
 
-    static bool Unhook() {
-        if (!g_InputPatch.IsInstalled()) {
+    static bool Unhook(Impl *owner) {
+        if (s_Owner && s_Owner != owner)
+            return false;
+        if (!s_Patch.IsInstalled()) {
             s_InputManager = nullptr;
+            s_Owner = nullptr;
             return true;
         }
 
         SetOverlayCursorVisible(false);
-        const VTablePatchResult result = g_InputPatch.Remove();
+        const VTablePatchResult result = s_Patch.Remove();
         if (!result) {
             utils::OutputDebugA("BML InputHook removal warning: %s (entry %zu)\n",
                                 VTablePatch::GetErrorName(result.Code), result.EntryIndex);
         }
 
-        if (!g_InputPatch.IsInstalled()) {
+        if (!s_Patch.IsInstalled()) {
             s_InputManager = nullptr;
+            s_Owner = nullptr;
             s_VTable = {};
             return true;
         }
@@ -410,20 +546,44 @@ std::unordered_map<uint64_t, uint32_t> InputHook::Impl::s_BlockTokens;
 CKInputManager *InputHook::Impl::s_InputManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> InputHook::Impl::s_VTable = {};
 CursorVisibilityPolicy InputHook::Impl::s_CursorVisibility;
+InputHook::Impl *InputHook::Impl::s_Owner = nullptr;
+VTablePatch InputHook::Impl::s_Patch;
 
-InputHook::InputHook(CKInputManager *input) : m_Impl(nullptr) {
+InputHook::InputHook(CKInputManager *input) : m_Impl(new Impl) {
     assert(input != nullptr);
-    Impl::Hook(input);
+    m_Impl->OwnsHook = Impl::Hook(input, m_Impl);
 }
 
 InputHook::~InputHook() {
-    Impl::ReleaseAllBlocks();
-    Impl::Unhook();
+    if (!DetachInputHook(*this)) {
+        utils::OutputDebugA("BML InputHook state retained because its vtable patch is still installed\n");
+        m_Impl = nullptr;
+        return;
+    }
+    delete m_Impl;
+    m_Impl = nullptr;
 }
 
-bool InputHook::IsValid() { return Impl::s_InputManager != nullptr && g_InputPatch.IsInstalled(); }
+bool InputHook::IsValid() {
+    return Impl::s_Owner && Impl::s_Owner->OwnsHook &&
+           Impl::s_InputManager && Impl::s_Patch.IsInstalled();
+}
 
-bool IsInputHookInstalled() { return g_InputPatch.IsInstalled(); }
+bool InputHookOwnsActive(const InputHook &hook) {
+    return hook.m_Impl && hook.m_Impl == InputHook::Impl::s_Owner && InputHook::IsValid();
+}
+
+bool DetachInputHook(InputHook &hook) {
+    if (!hook.m_Impl || !hook.m_Impl->OwnsHook)
+        return true;
+
+    InputHook::Impl::ResetSessionState();
+    if (!InputHook::Impl::Unhook(hook.m_Impl))
+        return false;
+
+    hook.m_Impl->OwnsHook = false;
+    return true;
+}
 
 void InputHook::EnableKeyboardRepetition(CKBOOL iEnable) {
     if (!IsValid()) return;
@@ -565,7 +725,8 @@ void InputHook::ShowCursor(CKBOOL iShow) {
 }
 
 void SetOverlayCursorVisible(bool visible) {
-    if (!InputHook::IsValid()) return;
+    if (!InputHook::Impl::s_Owner || !InputHook::Impl::s_Owner->OwnsHook ||
+        !InputHook::Impl::s_Patch.IsInstalled()) return;
     InputHook::Impl::SetOverlayCursorVisible(visible);
 }
 

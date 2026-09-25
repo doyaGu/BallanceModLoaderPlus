@@ -35,6 +35,7 @@
 #include "Behavior/PrototypeCatalog.h"
 #include "Api/ExecuteBBAdapter.h"
 #include "Behavior/Blocks/PhysicsForce.h"
+#include "Hooks/HookLifecycle.h"
 
 // The ids themselves are public, since BML_GetLoaderPath takes them. This name
 // stays for the loader's own call sites and for the script binding.
@@ -101,6 +102,10 @@ public:
     ModContext &operator=(ModContext &&rhs) noexcept = delete;
 
     bool IsInited() const { return m_Inited; }
+    HookSnapshot InspectHooks() const;
+    void RunPhysicsPostProcess();
+    bool AttachRenderHook(CKRenderContext *renderContext);
+    bool DetachRenderHook();
     bool Init();
     bool Shutdown();
 
@@ -248,7 +253,7 @@ public:
     CKAttributeManager *GetAttributeManager() override { return m_AttributeManager; }
     CKBehaviorManager *GetBehaviorManager() override { return m_BehaviorManager; }
     CKCollisionManager *GetCollisionManager() override { return m_CollisionManager; }
-    InputHook *GetInputManager() override { return m_InputHook; }
+    InputHook *GetInputManager() override { return m_Hooks ? m_Hooks->GetInput() : nullptr; }
     CKMessageManager *GetMessageManager() override { return m_MessageManager; }
     CKPathManager *GetPathManager() override { return m_PathManager; }
     CKParameterManager *GetParameterManager() override { return m_ParameterManager; }
@@ -540,7 +545,7 @@ private:
     CKSoundManager *m_SoundManager = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
 
-    InputHook *m_InputHook = nullptr;
+    std::unique_ptr<HookLifecycle> m_Hooks;
 
     BML::ImcRuntime m_ImcRuntime;
     ConfigStore m_ConfigStore;

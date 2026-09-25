@@ -246,6 +246,7 @@ ModContext::ModContext(CKContext *context)
     m_CommandApi = std::make_unique<BML::Api::CommandApi>(*this);
     m_ImcRuntime.SetInvocationGate(&m_Loader.InvocationGate());
     m_CKContext = context;
+    m_Hooks = std::make_unique<HookLifecycle>(*this);
     m_DataShare = DataShareStore::GetInstance("BML");
     if (m_DataShare) m_DataShare->AddRef();
     m_ShellDispatcher = std::make_unique<ShellDispatcher>(*this);
@@ -388,9 +389,7 @@ bool ModContext::Init() {
 
 bool ModContext::Shutdown() {
     if (!IsInited()) {
-        if ((IsInputHookInstalled() || IsObjectLoadHookInstalled() ||
-             IsPhysicsPostProcessHookInstalled() || IsPhysicalizeHookInstalled()) &&
-            !ShutdownHooks()) {
+        if (m_Hooks && !ShutdownHooks()) {
             return false;
         }
         return CloseApiAccess();
@@ -399,12 +398,6 @@ bool ModContext::Shutdown() {
     if (!m_Loader.Stop()) {
         if (m_Logger)
             m_Logger->Error("Cannot shut down the runtime Context while Mod teardown is incomplete.");
-        return false;
-    }
-
-    if (RenderHook::IsSkipRenderAvailable()) {
-        if (m_Logger)
-            m_Logger->Error("Cannot shut down the runtime Context while the render hook is still installed.");
         return false;
     }
 
@@ -1643,70 +1636,42 @@ void ModContext::ShutdownLogger() {
 }
 
 bool ModContext::InitHooks() {
-    bool result = true;
-
-    m_InputHook = new InputHook(m_InputManager);
-    if (!IsInputHookInstalled()) {
-        m_Logger->Error("Failed to install InputHook");
-        delete m_InputHook;
-        m_InputHook = nullptr;
-        return false;
+    if (!m_Hooks)
+        m_Hooks = std::make_unique<HookLifecycle>(*this);
+    if (m_Hooks->Attach(m_InputManager)) {
+        m_Logger->Info("Engine hooks attached");
+        return true;
     }
 
-    bool objectLoadHookSuccess = HookObjectLoad();
-    if (objectLoadHookSuccess) {
-        m_Logger->Info("Hook ObjectLoad Success");
-    } else {
-        m_Logger->Error("Hook ObjectLoad Failed");
-        result = false;
-    }
-
-    bool physicalizeHookSuccess = HookPhysicalize();
-    if (physicalizeHookSuccess) {
-        m_Logger->Info("Hook Physicalize Success");
-    } else {
-        m_Logger->Error("Hook Physicalize Failed");
-        result = false;
-    }
-
-    if (!result) {
-        if (!ShutdownHooks())
-            m_Logger->Error("Failed to roll back partially installed engine hooks");
-    }
-
-    return result;
+    m_Logger->Error("Failed to attach engine hooks");
+    if (!m_Hooks->Detach())
+        m_Logger->Error("Failed to roll back partially attached engine hooks");
+    return false;
 }
 
 bool ModContext::ShutdownHooks() {
-    bool result = true;
+    if (!m_Hooks || m_Hooks->Detach())
+        return true;
+    if (m_Logger)
+        m_Logger->Error("Failed to detach one or more owned engine hooks");
+    return false;
+}
 
-    delete m_InputHook;
-    m_InputHook = nullptr;
-    if (IsInputHookInstalled()) {
-        if (m_Logger)
-            m_Logger->Error("Unhook Input Failed");
-        result = false;
-    }
+HookSnapshot ModContext::InspectHooks() const {
+    return m_Hooks ? m_Hooks->Inspect() : HookSnapshot{};
+}
 
-    if (UnhookObjectLoad()) {
-        if (m_Logger)
-            m_Logger->Info("Unhook ObjectLoad Success");
-    } else {
-        if (m_Logger)
-            m_Logger->Error("Unhook ObjectLoad Failed");
-        result = false;
-    }
+void ModContext::RunPhysicsPostProcess() {
+    if (m_Hooks)
+        m_Hooks->RunPhysicsPostProcess();
+}
 
-    if (UnhookPhysicalize()) {
-        if (m_Logger)
-            m_Logger->Info("Unhook Physicalize Success");
-    } else {
-        if (m_Logger)
-            m_Logger->Error("Unhook Physicalize Failed");
-        result = false;
-    }
+bool ModContext::AttachRenderHook(CKRenderContext *renderContext) {
+    return m_Hooks && m_Hooks->AttachRender(renderContext);
+}
 
-    return result;
+bool ModContext::DetachRenderHook() {
+    return !m_Hooks || m_Hooks->DetachRender();
 }
 
 bool ModContext::GetManagers() {

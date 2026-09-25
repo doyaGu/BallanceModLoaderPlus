@@ -427,6 +427,7 @@ set(BML_HOOK_PRIVATE_HEADERS
 
 set(BML_HOOK_SOURCES
         Hooks/BehaviorFunctionPatch.cpp
+        Hooks/HookLifecycle.cpp
         Hooks/InputHook.cpp
         Hooks/ObjectLoadHook.cpp
         Hooks/PhysicsHook.cpp
