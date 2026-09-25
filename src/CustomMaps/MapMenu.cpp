@@ -16,18 +16,7 @@
 
 MapMenu::MapMenu(MapMenuState::MapLoader loader)
     : m_State(std::move(loader)),
-      m_Routes(
-          [owner = this]() { Bui::BlockKeyboardInput(owner); },
-          [state = &m_State, owner = this]() {
-              if (owner->m_ShuttingDown) {
-                  Bui::UnblockKeyboardAfterRelease(owner);
-                  return;
-              }
-              if (state->TakeMapLoaded())
-                  Bui::UnblockKeyboardAfterRelease(owner);
-              else
-                  Bui::TransitionToScriptAndUnblock("Menu_Start", owner);
-          }) {}
+      m_Routes({}, [this]() { ReleaseInput(); }) {}
 
 MapMenu::~MapMenu() {
     Shutdown();
@@ -49,16 +38,35 @@ void MapMenu::Init(const std::wstring &mapsDirectory, ILogger &logger) {
 bool MapMenu::Open(const std::string &id) {
     if (!m_Active || m_ShuttingDown)
         return false;
-    if (!m_Routes.IsOpen())
-        m_State.RefreshMaps();
-    return m_Routes.Open(id);
+    if (m_Routes.IsOpen() || !m_PendingRoute.empty())
+        return true;
+    if (!m_Routes.HasPage(id))
+        return false;
+
+    Bui::BlockKeyboardInput(this);
+    m_PendingRoute = id;
+    // Virtools menu callbacks run after ImGui::NewFrame(). Open on the next
+    // frame, after the opening key's ImGui ownership has taken effect.
+    m_OpenRequestFrame = ImGui::GetCurrentContext()
+        ? ImGui::GetFrameCount() : -1;
+    return true;
+}
+
+bool MapMenu::Close() {
+    if (!m_PendingRoute.empty()) {
+        m_PendingRoute.clear();
+        m_OpenRequestFrame = -1;
+        ReleaseInput();
+        return true;
+    }
+    return m_Routes.Close();
 }
 
 void MapMenu::Shutdown() {
     if (!m_Active || m_ShuttingDown)
         return;
     m_ShuttingDown = true;
-    m_Routes.Close();
+    Close();
     m_State.ResetLoad();
     m_ShuttingDown = false;
     m_Active = false;
@@ -70,11 +78,31 @@ void MapMenu::SetMaxDepth(int depth) {
 }
 
 bool MapMenu::Render() {
+    if (!m_PendingRoute.empty() &&
+        (!ImGui::GetCurrentContext() ||
+         ImGui::GetFrameCount() != m_OpenRequestFrame)) {
+        std::string route = std::move(m_PendingRoute);
+        m_PendingRoute.clear();
+        m_OpenRequestFrame = -1;
+        m_State.RefreshMaps();
+        if (!m_Routes.Open(route)) {
+            ReleaseInput();
+            return false;
+        }
+    }
+
     if (m_State.TakeCloseRequest())
-        return m_Routes.Close();
+        return Close();
     if (m_State.IsLoading())
         return true;
-    return Bui::RenderMenuAfterInputHandoff(m_Routes, this);
+    return m_Routes.Render();
+}
+
+void MapMenu::ReleaseInput() {
+    if (m_ShuttingDown || m_State.TakeMapLoaded())
+        Bui::UnblockKeyboardAfterRelease(this);
+    else
+        Bui::TransitionToScriptAndUnblock("Menu_Start", this);
 }
 
 void MapListPage::OnEnter(Bui::PageEnterReason) {

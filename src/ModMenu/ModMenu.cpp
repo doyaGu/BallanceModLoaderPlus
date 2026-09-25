@@ -177,21 +177,47 @@ struct ModMenu::State {
               [this]() {
                   navigation = {};
                   model.OnOpen();
-                  Bui::BlockKeyboardInput(this);
               },
               [this]() {
                   navigation = {};
                   presentation.Reset();
                   model.OnClose();
-                  if (closeDestination == CloseDestination::Options)
-                      Bui::TransitionToScriptAndUnblock("Menu_Options", this);
-                  else
-                      Bui::UnblockKeyboardAfterRelease(this);
+                  ReleaseInput(closeDestination);
                   closeDestination = CloseDestination::Options;
               }) {
         routes.CreatePage<ModListPage>(ModListRoute, model, presentation);
         routes.CreatePage<ModDetailsPage>(ModDetailsRoute, model, presentation);
         routes.CreatePage<ModSettingsPage>(ModSettingsRoute, model, presentation);
+    }
+
+    bool Open() {
+        if (routes.IsOpen() || openPending)
+            return true;
+
+        Bui::BlockKeyboardInput(this);
+        openPending = true;
+        // Virtools menu callbacks run after ImGui::NewFrame(). Open on the
+        // next frame, after the opening key's ImGui ownership has taken effect.
+        openRequestFrame = ImGui::GetCurrentContext()
+            ? ImGui::GetFrameCount() : -1;
+        return true;
+    }
+
+    bool IsOpen() const {
+        return openPending || routes.IsOpen();
+    }
+
+    void CommitOpen() {
+        if (!openPending)
+            return;
+        if (ImGui::GetCurrentContext() &&
+            ImGui::GetFrameCount() == openRequestFrame)
+            return;
+
+        openPending = false;
+        openRequestFrame = -1;
+        if (!routes.Open(ModListRoute))
+            ReleaseInput(CloseDestination::Options);
     }
 
     bool IsCurrent(const PageRouteEntry &entry,
@@ -338,6 +364,13 @@ struct ModMenu::State {
     }
 
     bool Close(CloseDestination destination) {
+        if (openPending) {
+            openPending = false;
+            openRequestFrame = -1;
+            ReleaseInput(destination);
+            return true;
+        }
+
         closeDestination = destination;
         if (routes.Close())
             return true;
@@ -345,10 +378,19 @@ struct ModMenu::State {
         return false;
     }
 
+    void ReleaseInput(CloseDestination destination) {
+        if (destination == CloseDestination::Options)
+            Bui::TransitionToScriptAndUnblock("Menu_Options", this);
+        else
+            Bui::UnblockKeyboardAfterRelease(this);
+    }
+
     ModMenuModel model;
     ModMenuPresentation presentation;
     PageNavigationState navigation;
     CloseDestination closeDestination = CloseDestination::Options;
+    bool openPending = false;
+    int openRequestFrame = -1;
     Bui::Menu routes;
     std::vector<PageRouteEntry> pageRoutes;
     std::optional<ModMenuOwner> observedRouteOwner;
@@ -362,7 +404,7 @@ ModMenu::~ModMenu() = default;
 bool ModMenu::Open() {
     if (!m_State)
         return false;
-    return m_State->routes.IsOpen() || m_State->routes.Open(ModListRoute);
+    return m_State->Open();
 }
 
 bool ModMenu::Close() {
@@ -374,15 +416,16 @@ bool ModMenu::CloseForShutdown() {
 }
 
 bool ModMenu::IsOpen() const {
-    return m_State && m_State->routes.IsOpen();
+    return m_State && m_State->IsOpen();
 }
 
 void ModMenu::OnProcess() {
     if (!m_State)
         return;
 
+    m_State->CommitOpen();
     m_State->SynchronizeRoutes();
-    if (!Bui::RenderMenuAfterInputHandoff(m_State->routes, m_State.get()))
+    if (!m_State->routes.Render())
         m_State->routes.Close();
     m_State->SynchronizeRoutes();
     m_State->ApplyPageNavigation();

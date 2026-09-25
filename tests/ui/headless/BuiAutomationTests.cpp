@@ -109,13 +109,17 @@ struct WindowState {
 
 class LandingPage final : public Bui::Page {
 public:
-    LandingPage(ImGuiWindow **window, ImGuiID *firstItem, ImGuiID *item)
-        : m_Window(window), m_FirstItem(firstItem), m_Item(item) {}
+    LandingPage(ImGuiWindow **window, ImGuiID *firstItem, ImGuiID *item,
+                int *firstActivationCount, int *frameCount)
+        : m_Window(window), m_FirstItem(firstItem), m_Item(item),
+          m_FirstActivationCount(firstActivationCount), m_FrameCount(frameCount) {}
 
     Bui::PageAction OnFrame() override {
+        ++*m_FrameCount;
         *m_Window = ImGui::GetCurrentWindow();
         *m_FirstItem = ImGui::GetID("Previous item");
-        Bui::MainButton("Previous item");
+        if (Bui::MainButton("Previous item"))
+            ++*m_FirstActivationCount;
         *m_Item = ImGui::GetID("Open options");
         if (Bui::MainButton("Open options"))
             return Bui::PageAction::Push("options");
@@ -126,6 +130,8 @@ private:
     ImGuiWindow **m_Window;
     ImGuiID *m_FirstItem;
     ImGuiID *m_Item;
+    int *m_FirstActivationCount;
+    int *m_FrameCount;
 };
 
 class OptionsPage final : public Bui::Page {
@@ -148,7 +154,9 @@ private:
 
 struct MenuState {
     MenuState() : Menu([] {}, [] {}) {
-        Menu.CreatePage<LandingPage>("landing", &CurrentWindow, &FirstItem, &CurrentItem);
+        Menu.CreatePage<LandingPage>("landing", &CurrentWindow, &FirstItem,
+                                     &CurrentItem, &FirstActivationCount,
+                                     &LandingFrameCount);
         Menu.CreatePage<OptionsPage>("options", &CurrentWindow, &CurrentItem);
         Menu.Open("landing");
     }
@@ -156,17 +164,32 @@ struct MenuState {
     ImGuiWindow *CurrentWindow = nullptr;
     ImGuiID FirstItem = 0;
     ImGuiID CurrentItem = 0;
-    bool OpenWithQueuedActivation = false;
+    int FirstActivationCount = 0;
+    int LandingFrameCount = 0;
+    bool HoldOpeningEnter = false;
+    bool OpenRequested = false;
+    bool OpenPending = false;
+    bool ImmediateOpenRequested = false;
+    int OpenRequestFrame = -1;
     Bui::Menu Menu;
 };
 
 void RenderMenu(MenuState &state) {
-    if (state.OpenWithQueuedActivation) {
-        GImGui->NavActivateId = state.CurrentItem;
-        GImGui->NavActivateDownId = state.CurrentItem;
-        GImGui->NavActivatePressedId = state.CurrentItem;
+    if (state.HoldOpeningEnter)
+        Bui::LockNavigationKeyUntilRelease(ImGuiKey_Enter);
+    if (state.OpenRequested) {
+        state.OpenPending = true;
+        state.OpenRequestFrame = ImGui::GetFrameCount();
+        state.OpenRequested = false;
+    }
+    if (state.OpenPending && ImGui::GetFrameCount() != state.OpenRequestFrame) {
         state.Menu.Open("landing");
-        state.OpenWithQueuedActivation = false;
+        state.OpenPending = false;
+        state.OpenRequestFrame = -1;
+    }
+    if (state.ImmediateOpenRequested) {
+        state.Menu.Open("landing");
+        state.ImmediateOpenRequested = false;
     }
     state.Menu.Render();
 }
@@ -572,7 +595,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         IM_CHECK_EQ(GImGui->NavId, state.FirstItem);
     };
 
-    test = IM_REGISTER_TEST(engine, "bui", "menu_entry_does_not_reuse_keyboard_activation");
+    test = IM_REGISTER_TEST(engine, "bui", "menu_submits_new_route_immediately");
     test->SetVarsDataType<MenuState>();
     test->GuiFunc = [](ImGuiTestContext *ctx) {
         RenderMenu(ctx->GetVars<MenuState>());
@@ -583,36 +606,44 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         ctx->SetInputMode(ImGuiInputSource_Keyboard);
         ctx->Yield();
 
-        ctx->NavMoveTo(state.CurrentItem);
-        IM_CHECK_EQ(GImGui->NavId, state.CurrentItem);
         IM_CHECK(menu.Close());
         ctx->Yield();
-        IM_CHECK_EQ(GImGui->NavId, state.CurrentItem);
+        const int previousFrames = state.LandingFrameCount;
+        state.ImmediateOpenRequested = true;
+        ctx->Yield();
+        IM_CHECK(menu.IsCurrentPage("landing"));
+        IM_CHECK_EQ(state.LandingFrameCount, previousFrames + 1);
+    };
+
+    test = IM_REGISTER_TEST(engine, "bui", "menu_entry_owns_delayed_keyboard_activation");
+    test->SetVarsDataType<MenuState>();
+    test->GuiFunc = [](ImGuiTestContext *ctx) {
+        RenderMenu(ctx->GetVars<MenuState>());
+    };
+    test->TestFunc = [](ImGuiTestContext *ctx) {
+        MenuState &state = ctx->GetVars<MenuState>();
+        ctx->SetInputMode(ImGuiInputSource_Keyboard);
+        ctx->Yield();
+
+        IM_CHECK(state.Menu.Close());
+        ctx->Yield();
+        state.HoldOpeningEnter = true;
+        state.OpenRequested = true;
+        ctx->Yield();
+        IM_CHECK(!state.Menu.IsOpen());
+        ctx->Yield();
+        ctx->Yield();
+        IM_CHECK_EQ(GImGui->NavId, state.FirstItem);
 
         ctx->KeySetEx(ImGuiKey_Enter, true, 0.0f);
-        IM_CHECK(menu.Open("landing"));
         ctx->Yield();
-        IM_CHECK(menu.IsCurrentPage("landing"));
+        IM_CHECK_EQ(state.FirstActivationCount, 0);
 
-        ctx->KeyUp(ImGuiKey_Enter);
-    };
-
-    test = IM_REGISTER_TEST(engine, "bui", "menu_entry_does_not_reuse_queued_activation");
-    test->SetVarsDataType<MenuState>();
-    test->GuiFunc = [](ImGuiTestContext *ctx) {
-        RenderMenu(ctx->GetVars<MenuState>());
-    };
-    test->TestFunc = [](ImGuiTestContext *ctx) {
-        MenuState &state = ctx->GetVars<MenuState>();
-        Bui::Menu &menu = state.Menu;
-        ctx->SetInputMode(ImGuiInputSource_Keyboard);
+        ctx->KeySetEx(ImGuiKey_Enter, false, 0.0f);
+        state.HoldOpeningEnter = false;
         ctx->Yield();
-
-        IM_CHECK(menu.Close());
-        ctx->Yield();
-        state.OpenWithQueuedActivation = true;
-        ctx->Yield();
-        IM_CHECK(menu.IsCurrentPage("landing"));
+        ctx->KeyPress(ImGuiKey_Enter);
+        IM_CHECK_EQ(state.FirstActivationCount, 1);
     };
 
     test = IM_REGISTER_TEST(engine, "bui", "menu_entry_shows_first_keyboard_item");

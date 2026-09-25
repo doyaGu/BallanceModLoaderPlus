@@ -694,10 +694,10 @@ namespace Bui {
     // mutation while OnEnter, OnFrame, OnLeave, or a session callback is running
     // returns false. OnFrame's returned action is applied after drawing. History is
     // capped at 32 routes, and an operation that would exceed it returns false without
-    // leaving the current Page. A newly entered route becomes interactive on the next
-    // ImGui frame, after any activation queued by the previous surface has expired. It
-    // also waits for a held activation key to be released, then visibly selects the
-    // first focusable item.
+    // leaving the current Page. Pages follow ImGui's immediate-mode model and are
+    // submitted on every frame. Entering a route requests keyboard focus for its first
+    // focusable item; input handoff from a non-ImGui surface belongs to that surface's
+    // adapter rather than the route controller.
     //
     // Menu is final so ownership is composed rather than inherited: declare the state
     // Pages refer to before the Menu member, and C++ then destroys Menu and its Pages
@@ -804,13 +804,13 @@ namespace Bui {
             const bool drawContents = ImGui::Begin(m_WindowId.c_str(), nullptr, flags);
             PageAction action;
             try {
-                if (drawContents && RouteInputReady()) {
+                if (drawContents) {
                     ImGuiIdGuard idGuard(page);
                     DispatchGuard guard(m_Dispatching);
-                    if (m_FocusFirstItem) {
+                    if (m_RequestInitialFocus) {
                         ImGui::SetKeyboardFocusHere();
                         ImGui::SetNavCursorVisible(true);
-                        m_FocusFirstItem = false;
+                        m_RequestInitialFocus = false;
                     }
                     action = page->OnFrame();
                 }
@@ -847,43 +847,6 @@ namespace Bui {
 
             bool &m_Dispatching;
         };
-
-        static bool RouteInputPending() {
-            return ImGui::IsKeyDown(ImGuiKey_Escape) ||
-                   ImGui::IsKeyPressed(ImGuiKey_Escape) ||
-                   ImGui::IsKeyDown(ImGuiKey_Enter) ||
-                   ImGui::IsKeyPressed(ImGuiKey_Enter) ||
-                   ImGui::IsKeyDown(ImGuiKey_KeypadEnter) ||
-                   ImGui::IsKeyPressed(ImGuiKey_KeypadEnter) ||
-                   ImGui::IsKeyDown(ImGuiKey_Space) ||
-                   ImGui::IsKeyPressed(ImGuiKey_Space) ||
-                   ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown) ||
-                   ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown) ||
-                   ImGui::IsKeyDown(ImGuiKey_GamepadFaceRight) ||
-                   ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight);
-        }
-
-        bool RouteInputReady() {
-            if (ImGui::GetFrameCount() < m_FirstInteractiveFrame)
-                return false;
-            if (m_WaitingForNavigationRelease && RouteInputPending())
-                return false;
-            m_WaitingForNavigationRelease = false;
-            return true;
-        }
-
-        void ArmRouteInput() {
-            m_FocusFirstItem = true;
-            m_WaitingForNavigationRelease = true;
-            m_FirstInteractiveFrame = ImGui::GetCurrentContext()
-                ? ImGui::GetFrameCount() + 1 : 0;
-        }
-
-        void ResetRouteInput() {
-            m_FocusFirstItem = false;
-            m_WaitingForNavigationRelease = false;
-            m_FirstInteractiveFrame = 0;
-        }
 
         template <typename Operation>
         bool Mutate(Operation &&operation) {
@@ -943,13 +906,13 @@ namespace Bui {
             LeaveCurrent(leaveReason);
 
             m_CurrentPage = std::move(next);
-            ArmRouteInput();
+            m_RequestInitialFocus = true;
             try {
                 EnterCurrent(enterReason);
             } catch (...) {
                 m_CurrentPage.clear();
                 m_PageStack.clear();
-                ResetRouteInput();
+                m_RequestInitialFocus = false;
                 throw;
             }
 
@@ -972,17 +935,18 @@ namespace Bui {
                 if (!HasPage(target))
                     continue;
                 m_CurrentPage = std::move(target);
-                ArmRouteInput();
+                m_RequestInitialFocus = true;
                 try {
                     EnterCurrent(PageEnterReason::Back);
                 } catch (...) {
                     m_CurrentPage.clear();
                     m_PageStack.clear();
-                    ResetRouteInput();
+                    m_RequestInitialFocus = false;
                     throw;
                 }
                 return true;
             }
+            m_RequestInitialFocus = false;
             return true;
         }
 
@@ -991,7 +955,7 @@ namespace Bui {
                 return false;
             LeaveCurrent(PageLeaveReason::Close);
             m_PageStack.clear();
-            ResetRouteInput();
+            m_RequestInitialFocus = false;
             return true;
         }
 
@@ -1011,7 +975,7 @@ namespace Bui {
             it->second->OnLeave(PageLeaveReason::Remove);
             m_CurrentPage.clear();
             m_PageStack.clear();
-            ResetRouteInput();
+            m_RequestInitialFocus = false;
             m_Pages.erase(it);
             return true;
         }
@@ -1062,7 +1026,7 @@ namespace Bui {
 
             m_CurrentPage.clear();
             m_PageStack.clear();
-            ResetRouteInput();
+            m_RequestInitialFocus = false;
 
             if (m_SessionOpen) {
                 m_SessionOpen = false;
@@ -1083,9 +1047,7 @@ namespace Bui {
         SessionCallback m_OnClose;
         bool m_SessionOpen = false;
         bool m_Dispatching = false;
-        bool m_FocusFirstItem = false;
-        bool m_WaitingForNavigationRelease = false;
-        int m_FirstInteractiveFrame = 0;
+        bool m_RequestInitialFocus = false;
         std::vector<std::string> m_PageStack;
         std::unordered_map<std::string, std::unique_ptr<Page>> m_Pages;
     };

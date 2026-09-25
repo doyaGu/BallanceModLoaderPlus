@@ -44,9 +44,9 @@ public:
     void Shutdown();
 
     bool Open(const std::string &id);
-    bool Close() { return m_Routes.Close(); }
+    bool Close();
     bool Render();
-    bool IsOpen() const { return m_Routes.IsOpen(); }
+    bool IsOpen() const { return !m_PendingRoute.empty() || m_Routes.IsOpen(); }
     bool CompleteLoad(bool loaded) { return m_State.CompleteLoad(loaded); }
     void ResetLoad() { m_State.ResetLoad(); }
 
@@ -54,11 +54,15 @@ public:
     void SetMaxDepth(int depth);
 
 private:
+    void ReleaseInput();
+
     // Routes is declared last so its Pages are destroyed before their state.
     MapMenuState m_State;
     bool m_Initialized = false;
     bool m_Active = false;
     bool m_ShuttingDown = false;
+    std::string m_PendingRoute;
+    int m_OpenRequestFrame = -1;
     Bui::Menu m_Routes;
 };
 

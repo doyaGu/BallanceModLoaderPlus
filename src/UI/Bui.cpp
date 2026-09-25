@@ -29,6 +29,13 @@
 #endif
 
 namespace Bui {
+    void LockNavigationKeyUntilRelease(ImGuiKey key) {
+        if (!ImGui::GetCurrentContext() || !ImGui::IsNamedKey(key))
+            return;
+        ImGui::SetKeyOwner(key, ImGuiKeyOwner_Any,
+                           ImGuiInputFlags_LockUntilRelease);
+    }
+
     enum TextureType {
         TEXTURE_BUTTON_DESELECT,
         TEXTURE_BUTTON_SELECT,
@@ -126,9 +133,10 @@ namespace Bui {
     struct KeyboardInputBlockState {
         ModContext *context = nullptr;
         std::uint64_t token = 0;
+        std::uint64_t navigationLockGeneration = 0;
         unsigned int anonymousUsers = 0;
+        unsigned int navigationKeys = 0;
         std::unordered_set<const void *> owners;
-        std::unordered_set<const void *> handoffOwners;
         std::unordered_set<std::uint64_t> pendingReleases;
 
         bool HasUsers() const {
@@ -138,23 +146,86 @@ namespace Bui {
 
     static std::unordered_map<CKContext *, KeyboardInputBlockState> KeyboardInputBlocks;
 
-    static bool GameNavigationKeyDown(const KeyboardInputBlockState &state) {
-        InputHook *input = state.context ? state.context->GetInputManager() : nullptr;
-        return input &&
-            (input->oIsKeyDown(CKKEY_ESCAPE) ||
-             input->oIsKeyDown(CKKEY_SPACE) ||
-             input->oIsKeyDown(CKKEY_RETURN) ||
-             input->oIsKeyDown(CKKEY_NUMPADENTER));
+    enum NavigationKeyBit : unsigned int {
+        NAVIGATION_KEY_ESCAPE = 1u << 0,
+        NAVIGATION_KEY_SPACE = 1u << 1,
+        NAVIGATION_KEY_ENTER = 1u << 2,
+        NAVIGATION_KEY_KEYPAD_ENTER = 1u << 3,
+    };
+
+    struct NavigationKeyBinding {
+        CKDWORD gameKey;
+        ImGuiKey imguiKey;
+        unsigned int bit;
+    };
+
+    static constexpr std::array<NavigationKeyBinding, 4> NavigationKeys = {{
+        {CKKEY_ESCAPE, ImGuiKey_Escape, NAVIGATION_KEY_ESCAPE},
+        {CKKEY_SPACE, ImGuiKey_Space, NAVIGATION_KEY_SPACE},
+        {CKKEY_RETURN, ImGuiKey_Enter, NAVIGATION_KEY_ENTER},
+        {CKKEY_NUMPADENTER, ImGuiKey_KeypadEnter, NAVIGATION_KEY_KEYPAD_ENTER},
+    }};
+
+    static std::uint64_t NextNavigationLockGeneration = 1;
+
+    static std::uint64_t NewNavigationLockGeneration() {
+        const std::uint64_t generation = NextNavigationLockGeneration++;
+        if (NextNavigationLockGeneration == 0)
+            NextNavigationLockGeneration = 1;
+        return generation;
     }
 
-    static bool OverlayNavigationKeyDown() {
-        return ImGui::GetCurrentContext() &&
-            (ImGui::IsKeyDown(ImGuiKey_Escape) ||
-             ImGui::IsKeyDown(ImGuiKey_Space) ||
-             ImGui::IsKeyDown(ImGuiKey_Enter) ||
-             ImGui::IsKeyDown(ImGuiKey_KeypadEnter) ||
-             ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown) ||
-             ImGui::IsKeyDown(ImGuiKey_GamepadFaceRight));
+    static unsigned int ReadGameNavigationKeys(const KeyboardInputBlockState &state) {
+        InputHook *input = state.context ? state.context->GetInputManager() : nullptr;
+        if (!input)
+            return 0;
+
+        unsigned int keys = 0;
+        for (const NavigationKeyBinding &binding : NavigationKeys) {
+            if (input->oIsKeyDown(binding.gameKey))
+                keys |= binding.bit;
+        }
+        return keys;
+    }
+
+    static bool GameNavigationKeyDown(const KeyboardInputBlockState &state) {
+        return ReadGameNavigationKeys(state) != 0;
+    }
+
+    static bool RefreshNavigationKeyLocks(KeyboardInputBlockState &state) {
+        state.navigationKeys &= ReadGameNavigationKeys(state);
+        for (const NavigationKeyBinding &binding : NavigationKeys) {
+            if ((state.navigationKeys & binding.bit) != 0)
+                LockNavigationKeyUntilRelease(binding.imguiKey);
+        }
+        return state.navigationKeys != 0;
+    }
+
+    static void CaptureNavigationKeys(KeyboardInputBlockState &state) {
+        const unsigned int pressed = ReadGameNavigationKeys(state);
+        if (pressed == 0)
+            return;
+
+        // Virtools can observe the key that opens a native menu before the
+        // Win32 backend delivers that key to ImGui. Keep the ImGui ownership
+        // lock alive while the original device still reports it as held.
+        state.navigationKeys |= pressed;
+        RefreshNavigationKeyLocks(state);
+
+        ModContext *context = state.context;
+        CKContext *ckContext = context ? context->GetCKContext() : nullptr;
+        if (!context || !ckContext)
+            return;
+
+        const std::uint64_t generation = NewNavigationLockGeneration();
+        state.navigationLockGeneration = generation;
+        context->AddTimerLoop(1ul, [ckContext, generation] {
+            const auto entry = KeyboardInputBlocks.find(ckContext);
+            if (entry == KeyboardInputBlocks.end() ||
+                entry->second.navigationLockGeneration != generation)
+                return false;
+            return RefreshNavigationKeyLocks(entry->second);
+        });
     }
 
     static KeyboardInputBlockState *AcquireKeyboardInputBlock() {
@@ -1177,8 +1248,7 @@ namespace Bui {
         float activeTimer = 0.0f;
     };
 
-    static bool BeginOptionRow(const char *label, OptionRow &row, bool navigation = true,
-                               ImGuiID controlId = 0) {
+    static bool BeginOptionRow(const char *label, OptionRow &row, bool navigation = true) {
         if (!label)
             return false;
 
@@ -1193,10 +1263,12 @@ namespace Bui {
         row.bounds = ImRect(row.position, ImVec2(row.position.x + row.size.x, row.position.y + row.size.y));
 
         ImGui::BeginGroup();
+        ImGui::PushFocusScope(row.id);
         ImGui::ItemSize(row.bounds);
         const ImGuiItemFlags itemFlags = navigation
             ? ImGuiItemFlags_None : ImGuiItemFlags_NoNav;
         if (!ImGui::ItemAdd(row.bounds, row.id, nullptr, itemFlags)) {
+            ImGui::PopFocusScope();
             ImGui::EndGroup();
             return false;
         }
@@ -1207,9 +1279,10 @@ namespace Bui {
         row.focused = ImGui::IsItemFocused();
         ImGuiContext &context = *GImGui;
         const bool navigationVisible = context.NavCursorVisible && context.NavHighlightItemUnderNav;
-        const bool controlSelected = controlId != 0 &&
-                                     ((navigationVisible && context.NavId == controlId) ||
-                                      context.ActiveId == controlId);
+        const bool controlFocused = !navigation && context.NavId != 0 &&
+                                    context.NavFocusScopeId == row.id;
+        const bool controlSelected = controlFocused &&
+                                     (navigationVisible || context.ActiveId == context.NavId);
         const bool selected = row.pressed || row.hovered || row.held ||
                               (navigationVisible && row.focused) || controlSelected;
         row.activeTimer = row.held ? context.ActiveIdTimer : (row.hovered ? context.HoveredIdTimer : 0.0f);
@@ -1224,17 +1297,6 @@ namespace Bui {
 
         row.restoreCursor = ImGui::GetCursorScreenPos();
         return true;
-    }
-
-    static ImGuiID GetOptionControlId(const char *rowLabel, const char *controlLabel) {
-        ImGui::PushID(rowLabel);
-        const ImGuiID controlId = ImGui::GetID(controlLabel);
-        ImGui::PopID();
-        return controlId;
-    }
-
-    static bool BeginInputOptionRow(const char *label, const char *controlLabel, OptionRow &row) {
-        return BeginOptionRow(label, row, false, GetOptionControlId(label, controlLabel));
     }
 
     static void ReportOptionRow(const OptionRow &row, ImGuiItemStatusFlags extraStatus = 0) {
@@ -1263,6 +1325,7 @@ namespace Bui {
     static void EndOptionRow(const OptionRow &row) {
         ImGui::SetCursorScreenPos(row.restoreCursor);
         ImGui::Dummy(ImVec2(0.0f, 0.0f));
+        ImGui::PopFocusScope();
         ImGui::EndGroup();
     }
 
@@ -1420,7 +1483,7 @@ namespace Bui {
             return false;
 
         OptionRow row;
-        if (!BeginInputOptionRow(label, "##InputText", row))
+        if (!BeginOptionRow(label, row, false))
             return false;
         ReportOptionRow(row, InputableStatus());
 
@@ -1438,7 +1501,7 @@ namespace Bui {
             return false;
 
         OptionRow row;
-        if (!BeginInputOptionRow(label, "##InputText", row))
+        if (!BeginOptionRow(label, row, false))
             return false;
         ReportOptionRow(row, InputableStatus());
 
@@ -1456,7 +1519,7 @@ namespace Bui {
             return false;
 
         OptionRow row;
-        if (!BeginInputOptionRow(label, "##InputFloat", row))
+        if (!BeginOptionRow(label, row, false))
             return false;
         ReportOptionRow(row, InputableStatus());
 
@@ -1473,7 +1536,7 @@ namespace Bui {
             return false;
 
         OptionRow row;
-        if (!BeginInputOptionRow(label, "##InputInt", row))
+        if (!BeginOptionRow(label, row, false))
             return false;
         ReportOptionRow(row, InputableStatus());
 
@@ -1759,8 +1822,10 @@ namespace Bui {
 
 #ifndef BML_UI_AUTOMATION_TEST
     void BlockKeyboardInput() {
-        if (KeyboardInputBlockState *state = AcquireKeyboardInputBlock())
+        if (KeyboardInputBlockState *state = AcquireKeyboardInputBlock()) {
             ++state->anonymousUsers;
+            CaptureNavigationKeys(*state);
+        }
     }
 
     void BlockKeyboardInput(const void *owner) {
@@ -1776,34 +1841,10 @@ namespace Bui {
         state.context = context;
         if (state.owners.contains(owner))
             return;
-        if (AcquireKeyboardInputBlock()) {
-            state.owners.insert(owner);
-            // Virtools observes the key that opens a native menu before the
-            // corresponding Win32 event reaches ImGui. Remember that handoff
-            // until neither input view sees the opening key anymore.
-            if (GameNavigationKeyDown(state))
-                state.handoffOwners.insert(owner);
+        if (KeyboardInputBlockState *acquired = AcquireKeyboardInputBlock()) {
+            acquired->owners.insert(owner);
+            CaptureNavigationKeys(*acquired);
         }
-    }
-
-    static bool KeyboardInputHandoffComplete(const void *owner) {
-        if (!owner)
-            return true;
-        ModContext *context = BML_GetModContext();
-        CKContext *ckContext = context ? context->GetCKContext() : nullptr;
-        const auto state = KeyboardInputBlocks.find(ckContext);
-        if (state == KeyboardInputBlocks.end() ||
-            !state->second.handoffOwners.contains(owner)) {
-            return true;
-        }
-        if (GameNavigationKeyDown(state->second) || OverlayNavigationKeyDown())
-            return false;
-        state->second.handoffOwners.erase(owner);
-        return true;
-    }
-
-    bool RenderMenuAfterInputHandoff(Menu &menu, const void *owner) {
-        return !KeyboardInputHandoffComplete(owner) || menu.Render();
     }
 
     void ActivateScript(const char *scriptName) {
@@ -1838,7 +1879,6 @@ namespace Bui {
         const auto state = KeyboardInputBlocks.find(ckContext);
         if (state == KeyboardInputBlocks.end() || state->second.owners.erase(owner) == 0)
             return;
-        state->second.handoffOwners.erase(owner);
         ReleaseKeyboardInputBlockAfterKeysUp();
     }
 
