@@ -965,7 +965,7 @@ bool ScriptMod::RebindServices() {
         m_MenuPages.Bind(m_Context, this) &&
         m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
         m_Imc.Bind(m_Context, this) &&
-        m_HookBlocks.Bind(m_Context, this, &m_ContextView)) {
+        m_HookBlocks.Bind(m_Context, this, &m_ContextView, &m_Behavior)) {
         return true;
     }
 
@@ -1564,6 +1564,14 @@ bool ScriptMod::ReleaseScriptServices() {
     m_MenuPages.Release();
     ScriptDiagnostic releaseDiagnostic;
     bool ok = true;
+    // Hook Blocks close their Patches and Instances through the Behavior
+    // session, so they release while it is still open.
+    m_HookBlocks.Release(&releaseDiagnostic);
+    if (!releaseDiagnostic.Message.empty()) {
+        Record(releaseDiagnostic);
+        ok = false;
+    }
+    releaseDiagnostic = ScriptDiagnostic();
     m_Behavior.Release(&releaseDiagnostic);
     if (!releaseDiagnostic.Message.empty()) {
         Record(releaseDiagnostic);
@@ -1589,12 +1597,6 @@ bool ScriptMod::ReleaseScriptServices() {
     }
     releaseDiagnostic = ScriptDiagnostic();
     m_Commands.Release(&releaseDiagnostic);
-    if (!releaseDiagnostic.Message.empty()) {
-        Record(releaseDiagnostic);
-        ok = false;
-    }
-    releaseDiagnostic = ScriptDiagnostic();
-    m_HookBlocks.Release(&releaseDiagnostic);
     if (!releaseDiagnostic.Message.empty()) {
         Record(releaseDiagnostic);
         ok = false;

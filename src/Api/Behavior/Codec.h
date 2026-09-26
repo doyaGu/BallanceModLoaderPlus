@@ -163,6 +163,10 @@ bool ReadPlanInstance(const BML_BehaviorPlanInstance &from,
 int ReadWatchSpec(const BML_BehaviorWatchSpec &from, ModContext &context,
                   WatchSpec &spec, CKBehavior *&root, CKBehavior *&node,
                   Status &status);
+// Takes the caller's reference through Retain. Edit programs and AttachHook
+// share it.
+Status ReadHook(const BML_BehaviorHookFunction *from,
+                BML::Behavior::Internal::HookBlock::Hook &out);
 
 // Info records.
 void WriteRunInfo(BML_BehaviorRunInfo *out, const RunInfo &info) noexcept;

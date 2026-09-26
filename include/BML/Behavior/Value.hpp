@@ -200,6 +200,7 @@ private:
     friend class Frame;
     friend class Node;
     friend class Graph;
+    friend struct Layout;
 };
 
 inline Selector At(std::int32_t index) { return Selector::At(index); }

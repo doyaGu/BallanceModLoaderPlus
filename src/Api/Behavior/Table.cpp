@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Api/Behavior/Codec.h"
+#include "Behavior/Blocks/HookBlock.h"
 #include "Loader/ModContext.h"
 
 namespace BML::Api::Behavior {
@@ -16,6 +17,7 @@ namespace {
 
 using BML::Behavior::Internal::Phase;
 using BML::Behavior::Internal::PlanCallbackState;
+namespace HookBlock = BML::Behavior::Internal::HookBlock;
 
 enum class Thread { Game, Any };
 
@@ -193,6 +195,57 @@ int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession session,
         return OpenRunResult(
             context.BehaviorSessions().Attach(
                 SessionId(session), parent, spec, retention),
+            outRun, info, result);
+    });
+}
+
+int BML_BEHAVIOR_CALL AttachHook(BML_BehaviorSession session,
+                                 BML_ObjectRef graph,
+                                 const BML_BehaviorHookFunction *hook,
+                                 const BML_BehaviorHookBlock *block,
+                                 BML_BehaviorRun *outRun,
+                                 BML_BehaviorRunInfo *info,
+                                 BML_BehaviorStatus *status) {
+    if (!ValidOutputs(info, status) || !session || !hook || !block ||
+        !outRun)
+        return BML_ERROR_INVALID_PARAMETER;
+    *outRun = nullptr;
+    return Enter(status, [&](ModContext &context, Status &result) {
+        if (!HasStructSize(block) || block->Inputs == 0 ||
+            block->Inputs > BML_BEHAVIOR_HOOK_BLOCK_MAX_PORTS ||
+            block->Outputs > BML_BEHAVIOR_HOOK_BLOCK_MAX_PORTS ||
+            (block->Flags & ~std::uint32_t{
+                 BML_BEHAVIOR_HOOK_BLOCK_MANUAL_OUTPUTS}) != 0) {
+            result = InvalidValue(
+                "A Hook Block needs 1 to 256 Ins, at most 256 Outs and "
+                "known flags.");
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        SessionOwner owner;
+        if (!ReadSessionOwner(session, context, owner, result))
+            return ResultCode(result);
+        CKBehavior *parent = ReadBehavior(graph, context, result);
+        if (!parent)
+            return ResultCode(result);
+        HookBlock::Hook callback;
+        result = ReadHook(hook, callback);
+        if (!result)
+            return ResultCode(result);
+        std::shared_ptr<HookBlock::Binding> binding = callback.Bind();
+        if (!binding) {
+            result = {Error::CallbackFailed, CK_OK, CKBR_BEHAVIORERROR,
+                      "The Hook callback could not be admitted."};
+            return ResultCode(result);
+        }
+        // Closing the Session closes the callback before the Run close
+        // reaches the Block.
+        binding->AdmitThrough(owner.Admission);
+        const BlockSpec spec = HookBlock::Make(
+            std::move(binding), static_cast<int>(block->Inputs),
+            static_cast<int>(block->Outputs),
+            (block->Flags & BML_BEHAVIOR_HOOK_BLOCK_MANUAL_OUTPUTS) == 0);
+        return OpenRunResult(
+            context.BehaviorSessions().Attach(SessionId(session), parent, spec),
             outRun, info, result);
     });
 }
@@ -1271,6 +1324,7 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &ReadPlanInstanceValue,
     &WritePlanInstanceValue,
     &ValidateBlock,
+    &AttachHook,
 };
 
 } // namespace
@@ -1280,6 +1334,23 @@ namespace BML::Api {
 
 const BML_BehaviorInterface &BehaviorInterface() noexcept {
     return Behavior::kBehaviorInterface;
+}
+
+int OpenBehaviorSessionFor(std::string_view ownerId,
+                           BML_BehaviorSession *outSession,
+                           BML_BehaviorStatus *status) noexcept {
+    if (!Behavior::PrepareStatus(status) || !outSession || ownerId.empty())
+        return BML_ERROR_INVALID_PARAMETER;
+    *outSession = nullptr;
+    return Behavior::Enter(status, [&](ModContext &context,
+                                       Behavior::Status &result) {
+        std::uintptr_t id = 0;
+        result = context.BehaviorSessions().OpenSession(std::string(ownerId), id);
+        if (!result)
+            return Behavior::ResultCode(result);
+        *outSession = Behavior::SessionHandle(id);
+        return BML_OK;
+    });
 }
 
 } // namespace BML::Api

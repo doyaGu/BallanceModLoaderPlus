@@ -927,6 +927,25 @@ typedef struct BML_BehaviorHookFunction {
     BML_BehaviorHookCallback Invoke;
 } BML_BehaviorHookFunction;
 
+// A Hook Block activates every Out after a callback that did not report an
+// error. MANUAL_OUTPUTS leaves the Outs to the callback, which activates the
+// ones it chooses on the Block its Hook context names. Either way a Block
+// whose callback did not complete, because it faulted or its Run is closing,
+// passes the activation through to every Out.
+typedef enum BML_BehaviorHookBlockFlags {
+    BML_BEHAVIOR_HOOK_BLOCK_MANUAL_OUTPUTS = 1u << 0
+} BML_BehaviorHookBlockFlags;
+
+// The shape of one Hook Block a Session places in a live graph. Inputs and
+// Outputs are port counts of at most BML_BEHAVIOR_HOOK_BLOCK_MAX_PORTS each.
+#define BML_BEHAVIOR_HOOK_BLOCK_MAX_PORTS 256u
+typedef struct BML_BehaviorHookBlock {
+    uint32_t StructSize;
+    uint32_t Inputs;
+    uint32_t Outputs;
+    uint32_t Flags;
+} BML_BehaviorHookBlock;
+
 // Cross-Mod overlay ordering on one spliced link, by Patch identity. A Patch
 // no one submitted does not constrain anything.
 typedef enum BML_BehaviorOrderKind {
@@ -1630,19 +1649,33 @@ typedef struct BML_BehaviorInterface {
         const BML_BehaviorBlock *block,
         BML_BehaviorPrototypeRef *outPrototype,
         BML_BehaviorStatus *status);
+    // Places a Hook Block inside the live graph Graph names and returns an
+    // Instance Run that owns it. The Block starts unlinked; a Patch splices
+    // it into the graph, and each activation the graph delivers invokes Hook.
+    // Retain runs once before this call returns. Closing the Run or its
+    // Session closes callback admission at once and removes the Block at a
+    // later safe point, after which Release runs.
+    int (BML_BEHAVIOR_CALL *AttachHook)(
+        BML_BehaviorSession session,
+        BML_ObjectRef graph,
+        const BML_BehaviorHookFunction *hook,
+        const BML_BehaviorHookBlock *block,
+        BML_BehaviorRun *outRun,
+        BML_BehaviorRunInfo *info,
+        BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 // The complete function table for bml.behavior 1.0. Use
 // BML_IFACE_HAS on a function a later minor appends.
 #define BML_BEHAVIOR_INTERFACE_1_0_SIZE                                      \
-    (offsetof(BML_BehaviorInterface, ValidateBlock) +                         \
-     sizeof(((BML_BehaviorInterface *) 0)->ValidateBlock))
+    (offsetof(BML_BehaviorInterface, AttachHook) +                           \
+     sizeof(((BML_BehaviorInterface *) 0)->AttachHook))
 
 // The single capability checkpoint for the complete 1.0 surface. A Mod may
 // accept a later minor when this is true, then probe later additions with
 // BML_IFACE_HAS before calling them.
 #define BML_BEHAVIOR_HAS_1_0(iface)                                          \
-    BML_IFACE_HAS((iface), BML_BehaviorInterface, ValidateBlock)
+    BML_IFACE_HAS((iface), BML_BehaviorInterface, AttachHook)
 
 #pragma pack(pop)
 

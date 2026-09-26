@@ -170,7 +170,8 @@ TEST(InterfaceStructOffsets, BehaviorInterface) {
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface,
                          WritePlanInstanceValue, 200);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ValidateBlock, 204);
-    ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 208, 0,
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, AttachHook, 208);
+    ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 212, 0,
                                              BML_BEHAVIOR_INTERFACE_MINOR);
     EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MAJOR, 1u);
     EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MINOR, 0u);
@@ -263,6 +264,11 @@ TEST(InterfaceStructOffsets, BehaviorWireRecords) {
     EXPECT_GOLDEN_OFFSET(BML_BehaviorWatchInfo, State, 4);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorWatchInfo, Diagnostic, 8);
     EXPECT_EQ(sizeof(BML_BehaviorWatchInfo), static_cast<std::size_t>(304));
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorHookBlock, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorHookBlock, Inputs, 4);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorHookBlock, Outputs, 8);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorHookBlock, Flags, 12);
+    EXPECT_EQ(sizeof(BML_BehaviorHookBlock), static_cast<std::size_t>(16));
     EXPECT_EQ(BML_BEHAVIOR_VALUE_ALIGNMENT, 4u);
 }
 

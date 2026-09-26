@@ -270,6 +270,9 @@ struct FakeState {
     bool MalformedCallStatus = false;
     int Attaches = 0;
     BML_ObjectRef AttachGraph{};
+    int HookAttaches = 0;
+    BML_BehaviorHookBlock HookBlock{};
+    std::vector<BML_BehaviorHookFunction> AttachedHooks;
     int ScriptCreates = 0;
     int ScriptCreateCode = BML_OK;
     int ScriptReads = 0;
@@ -585,7 +588,14 @@ int BML_BEHAVIOR_CALL TakeFrames(BML_BehaviorRun,
 
 int BML_BEHAVIOR_CALL CloseRun(BML_BehaviorRun) {
     ++g_State.RunCloses;
-    return g_State.RunCloseCode;
+    if (g_State.RunCloseCode != BML_OK)
+        return g_State.RunCloseCode;
+    for (const BML_BehaviorHookFunction &hook : g_State.AttachedHooks) {
+        if (hook.Release)
+            hook.Release(hook.State);
+    }
+    g_State.AttachedHooks.clear();
+    return BML_OK;
 }
 
 int BML_BEHAVIOR_CALL FindPrototypes(
@@ -1538,6 +1548,33 @@ int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession, BML_ObjectRef graph,
                    BML_BEHAVIOR_RUN_INSTANCE);
 }
 
+int BML_BEHAVIOR_CALL AttachHook(BML_BehaviorSession, BML_ObjectRef graph,
+                                 const BML_BehaviorHookFunction *hook,
+                                 const BML_BehaviorHookBlock *block,
+                                 BML_BehaviorRun *run,
+                                 BML_BehaviorRunInfo *info,
+                                 BML_BehaviorStatus *status) {
+    ++g_State.HookAttaches;
+    g_State.AttachGraph = graph;
+    g_State.HookBlock = *block;
+    Success(status);
+    *run = reinterpret_cast<BML_BehaviorRun>(2);
+    if (g_State.RunCode != BML_OK)
+        return g_State.RunCode;
+    // The Loader takes its own reference to the callback it accepted.
+    if (hook->Retain)
+        hook->Retain(hook->State);
+    g_State.AttachedHooks.push_back(*hook);
+    Init(info);
+    info->Kind = BML_BEHAVIOR_RUN_INSTANCE;
+    info->State = BML_BEHAVIOR_RUN_READY;
+    Init(&info->Prototype);
+    info->Prototype.Prototype = {0x6b6f6f68u, 0x6b636f6cu};
+    info->Prototype.Generation = 1;
+    Init(&info->Status);
+    return BML_OK;
+}
+
 void DescribeScript(BML_BehaviorScriptInfo *info) {
     if (!info)
         return;
@@ -2022,6 +2059,7 @@ BML_BehaviorInterface g_Interface = {
     &ReadPlanInstanceValue,
     &WritePlanInstanceValue,
     &ValidateBlock,
+    &AttachHook,
 };
 
 } // namespace
@@ -5033,6 +5071,66 @@ TEST(BehaviorAuthoring, ReportsAFailureWhenAGraphRefusesTheBlock) {
     EXPECT_EQ(attached.Code(), BML_ERROR_NOT_FOUND);
     EXPECT_EQ(g_State.Attaches, 1);
     EXPECT_EQ(g_State.RunCloses, 1);
+}
+
+TEST(BehaviorAuthoring, PlacesAHookBlockInAGraph) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    auto alive = std::make_shared<int>(0);
+    float delta = 0.0f;
+    {
+        HookBlock shape;
+        shape.Inputs = 2;
+        shape.Outputs = 3;
+        shape.ActivatesOutputs = false;
+        auto spawned = session.SpawnIn(
+            BML_ObjectRef{1, 2, 3},
+            Hook([alive, &delta](const HookEvent &event) {
+                delta = event.DeltaTime;
+                return HookResult::AgainNextFrame;
+            }),
+            shape);
+        ASSERT_TRUE(spawned) << spawned.GetStatus().Message;
+        Instance instance = spawned.Take();
+        EXPECT_EQ(g_State.HookAttaches, 1);
+        EXPECT_EQ(g_State.AttachGraph.Slot, 2u);
+        EXPECT_EQ(g_State.HookBlock.StructSize, sizeof(BML_BehaviorHookBlock));
+        EXPECT_EQ(g_State.HookBlock.Inputs, 2);
+        EXPECT_EQ(g_State.HookBlock.Outputs, 3);
+        EXPECT_EQ(g_State.HookBlock.Flags,
+                  static_cast<std::uint32_t>(
+                      BML_BEHAVIOR_HOOK_BLOCK_MANUAL_OUTPUTS));
+        // The Loader holds the one record that owns the callback.
+        EXPECT_EQ(alive.use_count(), 2);
+
+        ASSERT_EQ(g_State.AttachedHooks.size(), 1u);
+        BML_BehaviorHookContext context{};
+        Init(&context);
+        context.DeltaTime = 8.0f;
+        context.Block = {1, 5, 6};
+        EXPECT_EQ(g_State.AttachedHooks[0].Invoke(
+                      g_State.AttachedHooks[0].State, &context),
+                  BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME);
+        EXPECT_FLOAT_EQ(delta, 8.0f);
+
+        EXPECT_EQ(instance.Close().Value(), CloseState::Closed);
+        EXPECT_EQ(g_State.RunCloses, 1);
+    }
+    EXPECT_EQ(alive.use_count(), 1);
+
+    g_State.RunCode = BML_ERROR_NOT_FOUND;
+    auto refused = session.SpawnIn(
+        BML_ObjectRef{1, 2, 3},
+        Hook([](const HookEvent &) { return HookResult::Ok; }));
+    EXPECT_FALSE(refused);
+    EXPECT_EQ(refused.Code(), BML_ERROR_NOT_FOUND);
+    EXPECT_EQ(g_State.HookBlock.Flags, 0u);
+    EXPECT_EQ(g_State.RunCloses, 2);
+
+    EXPECT_FALSE(session.SpawnIn(BML_ObjectRef{1, 2, 3}, Hook()));
 }
 
 TEST(BehaviorAuthoring, BuildsARetailBlockThroughTheBlocksHeader) {

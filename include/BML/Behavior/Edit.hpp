@@ -44,6 +44,7 @@ private:
     std::shared_ptr<Detail::HookHolder> m_Record;
 
     friend class Edit;
+    friend class Session;
 };
 
 // A cross-world authoring Plan the Loader owns. It retains the symbolic Edit

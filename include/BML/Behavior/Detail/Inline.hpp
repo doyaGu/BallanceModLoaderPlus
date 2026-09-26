@@ -367,6 +367,53 @@ inline Result<Behavior::Layout> Session::Layout(Prototype prototype) const {
     return Detail::ReadDeclared(m_State, prototype);
 }
 
+inline Result<Instance> Session::SpawnIn(
+    ObjectRef graph, const Hook &hook, HookBlock shape) const {
+    if (!*this)
+        return Result<Instance>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!hook || shape.Inputs < 0 || shape.Outputs < 0)
+        return Result<Instance>::Failure(BML_ERROR_INVALID_PARAMETER);
+    try {
+        BML_BehaviorHookBlock block{};
+        block.StructSize = sizeof(block);
+        block.Inputs = static_cast<std::uint32_t>(shape.Inputs);
+        block.Outputs = static_cast<std::uint32_t>(shape.Outputs);
+        block.Flags = shape.ActivatesOutputs
+            ? 0u : std::uint32_t{BML_BEHAVIOR_HOOK_BLOCK_MANUAL_OUTPUTS};
+        BML_BehaviorRun run = nullptr;
+        BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = Detail::WireCode(
+            m_State->Api->AttachHook(m_State->Handle, graph,
+                                     &hook.m_Record->Function, &block, &run,
+                                     &info, &status),
+            status);
+        if (code != BML_OK) {
+            if (run)
+                (void) m_State->Api->CloseRun(run);
+            return Result<Instance>::Failure(code, Detail::ReadStatus(status));
+        }
+        if (!run)
+            return Result<Instance>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
+        const Prototype prototype(
+            Detail::NativeGuid(info.Prototype.Prototype),
+            info.Prototype.Generation);
+        Detail::Run owned(m_State, run, RunKind::Instance, prototype);
+        if (!Detail::ValidRunInfo(info) ||
+            info.Kind != static_cast<std::uint32_t>(RunKind::Instance) ||
+            !Detail::HasGuid(prototype.Id))
+            return Result<Instance>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
+        return Result<Instance>::Success(
+            Instance(std::move(owned)), Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<Instance>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Instance>::Failure(BML_ERROR_FAIL);
+    }
+}
+
 namespace Detail {
 
 inline bool ReadObserved(const BML_BehaviorGraphValue &source,

@@ -1097,6 +1097,7 @@ private:
 
     friend class ::BML::Behavior::Block;
     friend class ::BML::Behavior::Call;
+    friend class ::BML::Behavior::Session;
 };
 
 struct CompiledBlock {

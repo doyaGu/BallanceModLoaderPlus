@@ -94,9 +94,9 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 208u);
+                        sizeof(BML_BehaviorInterface) == 212u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 208u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 212u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,
                         sizeof(BML_BehaviorScriptSpec) == 104u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
@@ -113,6 +113,8 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchSpecSize,
                         sizeof(BML_BehaviorWatchSpec) == 80u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorHookFunctionSize,
                         sizeof(BML_BehaviorHookFunction) == 20u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorHookBlockSize,
+                        sizeof(BML_BehaviorHookBlock) == 16u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditOrderSize,
                         sizeof(BML_BehaviorEditOrder) == 24u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorOperationSpecSize,
@@ -146,9 +148,9 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 416u);
+                        sizeof(BML_BehaviorInterface) == 424u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 416u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 424u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,
                         sizeof(BML_BehaviorScriptSpec) == 192u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
@@ -165,6 +167,8 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchSpecSize,
                         sizeof(BML_BehaviorWatchSpec) == 88u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorHookFunctionSize,
                         sizeof(BML_BehaviorHookFunction) == 40u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorHookBlockSize,
+                        sizeof(BML_BehaviorHookBlock) == 16u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditOrderSize,
                         sizeof(BML_BehaviorEditOrder) == 40u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorOperationSpecSize,

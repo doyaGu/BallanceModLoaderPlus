@@ -350,6 +350,7 @@ int ProbeReentrantRelease(const CKBehaviorContext *, void *argument) {
 
 struct SelfDeleteProbe {
     CK_ID BehaviorId = 0;
+    CKBehavior *Behavior = nullptr;
     int Calls = 0;
     bool Deferred = false;
     bool Requested = false;
@@ -361,6 +362,7 @@ int ProbeSelfDelete(const CKBehaviorContext *context, void *argument) {
         return CKBR_BEHAVIORERROR;
     ++probe->Calls;
     probe->BehaviorId = context->Behavior->GetID();
+    probe->Behavior = context->Behavior;
     probe->Deferred = context->Context->m_DeferDestroyObjects != FALSE;
     if (probe->Deferred) {
         probe->Requested = context->Context->DestroyObject(context->Behavior) == CK_OK;
@@ -1388,6 +1390,7 @@ private:
         m_ReentrantRelease.Handle = &m_ReentrantReleaseInstance;
         CKBehavior *behavior = m_ReentrantReleaseInstance.Get();
         m_ReentrantReleaseId = behavior ? behavior->GetID() : 0;
+        m_ReentrantReleaseBehavior = behavior;
         RunResult run = WithContextCheck("reentrant-release-context-restore", [&] {
             return m_Runtime.Pulse(
                 m_ReentrantReleaseInstance, Slot::At(SlotKind::Input, 0));
@@ -1407,9 +1410,17 @@ private:
             m_State = State::ReentrantReleaseCleanup2;
             return;
         }
-        if (m_Context->GetObject(m_ReentrantReleaseId) != nullptr)
+        if (StillExists(m_ReentrantReleaseId, m_ReentrantReleaseBehavior))
             Fail("reentrant-release-retained");
         m_State = State::SelfDeleteStart;
+    }
+
+    // CK2 hands a destroyed object's ID to the next object created, which may
+    // be another probe's, so an object survives only if the ID still names
+    // the same address and it is not queued for deletion.
+    bool StillExists(CK_ID id, CKObject *address) const {
+        CKObject *object = id ? m_Context->GetObject(id) : nullptr;
+        return object && object == address && !object->IsToBeDeleted();
     }
 
     void StartSelfDelete() {
@@ -1447,14 +1458,16 @@ private:
 
     void WaitForSelfDelete() {
         ProcessRuntimeFrame("self-delete-frame-context-restore");
-        const bool retained =
-            m_Context->GetObject(m_SelfDelete.BehaviorId) != nullptr ||
-            m_SelfDeleteInstance.Get() != nullptr;
-        if (retained &&
+        const bool objectRetained =
+            StillExists(m_SelfDelete.BehaviorId, m_SelfDelete.Behavior);
+        const bool handleRetained = m_SelfDeleteInstance.Get() != nullptr;
+        if ((objectRetained || handleRetained) &&
             m_LastPlayerFrame - m_SelfDeleteStartFrame <= 8)
             return;
-        if (retained)
+        if (objectRetained)
             Fail("self-delete-retained");
+        else if (handleRetained)
+            Fail("self-delete-handle-retained");
         m_SelfDeleteInstance.Reset();
         m_State = State::GraphSchedulerStart;
     }
@@ -4190,6 +4203,7 @@ private:
     Instance m_ReentrantReleaseInstance;
     Instance m_SelfDeleteInstance;
     CK_ID m_ReentrantReleaseId = 0;
+    CKBehavior *m_ReentrantReleaseBehavior = nullptr;
     CKBehavior *m_Graph = nullptr;
     CKBehaviorLink *m_GraphEntryLink = nullptr;
     CKBehaviorLink *m_GraphImmediateLink = nullptr;

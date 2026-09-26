@@ -6,8 +6,10 @@
 
 namespace BML::Behavior::Internal::HookBlock {
 
+// A Block with autoActivateOutputs false leaves its Outs to the callback.
 BlockSpec Make(std::shared_ptr<Binding> binding,
-          int inputCount = 1, int outputCount = 1);
+          int inputCount = 1, int outputCount = 1,
+          bool autoActivateOutputs = true);
 
 BlockSpec Make(Callback callback, void *argument = nullptr,
           int inputCount = 1, int outputCount = 1);

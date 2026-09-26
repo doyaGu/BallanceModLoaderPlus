@@ -14,6 +14,7 @@ class asIScriptFunction;
 
 namespace BML {
 
+class ScriptBehaviorService;
 class ScriptHookBlockServiceState;
 class ScriptMod;
 class ScriptModContextView;
@@ -21,7 +22,7 @@ class ScriptModContextView;
 class ScriptHookBlockEventView {
 public:
     ScriptHookBlockEventView() = default;
-    ScriptHookBlockEventView(const CKBehaviorContext *context, CKBehavior *ownerScript);
+    ScriptHookBlockEventView(CKBehavior *block, CKBehavior *ownerScript, float deltaTime);
 
     bool IsValid() const { return m_Block != nullptr; }
     int GetBlockId() const;
@@ -73,7 +74,10 @@ public:
     ScriptHookBlockService();
     ~ScriptHookBlockService();
 
-    bool Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView);
+    // Hook Blocks are placed through the Behavior session that behavior owns,
+    // so behavior must outlive every call except Release and ProcessFrame.
+    bool Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView,
+              const ScriptBehaviorService *behavior);
     ScriptHookBlockRef *Create(CKBehavior *ownerScript,
                                asIScriptFunction *callback,
                                const std::string &name,

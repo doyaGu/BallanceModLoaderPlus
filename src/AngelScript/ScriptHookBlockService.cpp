@@ -3,33 +3,33 @@
 #include <algorithm>
 #include <memory>
 #include <new>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include <angelscript.h>
 
+#include "Api/ObjectRefs.h"
 #include "BML/Behavior.hpp"
+#include "ScriptBehavior.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "Loader/ModContext.h"
-#include "Behavior/Blocks/HookBlock.h"
 
 namespace BML {
 
 namespace {
 
 struct ScriptHookBlockEntry {
-    std::weak_ptr<ScriptHookBlockServiceState> State;
     unsigned int Id = 0;
     unsigned int Generation = 0;
     std::string Name;
-    CKBehavior *OwnerScript = nullptr;
-    CKBehavior *Block = nullptr;
+    Behavior::ObjectRef OwnerScript{};
+    Behavior::ObjectRef Block{};
+    std::optional<Behavior::Instance> Instance;
     Behavior::Patch Placement;
-    asIScriptFunction *Callback = nullptr; // Borrowed from Binding's plan state.
-    std::shared_ptr<Behavior::Internal::HookBlock::Binding> Binding;
     bool Enabled = true;
     bool AutoActivateOutputs = true;
     bool Retiring = false;
@@ -41,14 +41,6 @@ static bool IsIndexInRange(int index, int count) {
 
 static std::string DefaultHookBlockName(unsigned int id) {
     return std::string("BML Script Hook ") + std::to_string(id);
-}
-
-static void SetHookBlockAutoActivateOutputs(CKBehavior *block, bool enabled) {
-    if (!block || block->GetLocalParameterCount() <= 2)
-        return;
-
-    CKBOOL nativeValue = enabled ? TRUE : FALSE;
-    block->SetLocalParameterValue(2, &nativeValue);
 }
 
 static bool IsHookBlockCallbackSignature(asIScriptFunction *callback) {
@@ -88,7 +80,8 @@ public:
     ModContext *Context = nullptr;
     ScriptMod *Owner = nullptr;
     ScriptModContextView *ContextView = nullptr;
-    Behavior::Session Authoring;
+    // Owns the Session every Hook Block of this Script Mod is placed through.
+    const ScriptBehaviorService *BehaviorService = nullptr;
     bool Active = false;
     unsigned int NextId = 1;
     unsigned int NextGeneration = 1;
@@ -109,22 +102,29 @@ static bool SameObject(Behavior::ObjectRef left, Behavior::ObjectRef right) noex
            left.Generation == right.Generation;
 }
 
-static Behavior::Session *GetBehaviorSession(const std::shared_ptr<ScriptHookBlockServiceState> &state) {
-    if (!state || !state->Active || !state->Owner)
+static const Behavior::Session *GetBehaviorSession(const std::shared_ptr<ScriptHookBlockServiceState> &state) {
+    if (!state || !state->Active || !state->Owner || !state->BehaviorService)
         return nullptr;
-    if (!state->Authoring) {
-        const char *owner = state->Owner->GetID();
-        auto opened = Behavior::Session::Open(owner ? owner : "");
-        if (!opened) {
-            RecordHookBlockDiagnostic(
-                state, opened.GetStatus().Message.empty()
-                    ? "Unable to open the Script Mod's Behavior session."
-                    : opened.GetStatus().Message);
-            return nullptr;
-        }
-        state->Authoring = opened.Take();
-    }
-    return &state->Authoring;
+    const Behavior::Session *session = state->BehaviorService->GetSession();
+    if (!session)
+        RecordHookBlockDiagnostic(state, "The Script Mod's Behavior session is not open.");
+    return session;
+}
+
+static CKBehavior *ResolveBehavior(const std::shared_ptr<ScriptHookBlockServiceState> &state,
+                                   Behavior::ObjectRef reference) {
+    if (!state || !state->Context || !reference.Domain)
+        return nullptr;
+    CKObject *object = state->Context->ObjectRefs().Resolve(reference);
+    return object && CKIsChildClassOf(object, CKCID_BEHAVIOR)
+        ? static_cast<CKBehavior *>(object) : nullptr;
+}
+
+static void ActivateAllOutputs(CKBehavior *block) {
+    if (!block)
+        return;
+    for (int i = 0; i < block->GetOutputCount(); ++i)
+        block->ActivateOutput(i);
 }
 
 static Behavior::Node FindNode(const Behavior::Graph &graph, Behavior::ObjectRef object) {
@@ -139,22 +139,20 @@ static bool PlaceHookBlock(
     const std::shared_ptr<ScriptHookBlockServiceState> &state,
     ScriptHookBlockEntry &entry, CKBehavior *source, CKBehavior *target,
     int sourceOutput, int targetInput, const char *operation) {
-    Behavior::Session *session = GetBehaviorSession(state);
-    if (!session || !entry.OwnerScript || !entry.Block)
+    const Behavior::Session *session = GetBehaviorSession(state);
+    if (!session || !entry.OwnerScript.Domain || !entry.Block.Domain)
         return false;
 
     auto graph = session->Inspect(entry.OwnerScript, Behavior::View::Logical);
-    auto blockRef = session->Reference(entry.Block);
     auto sourceRef = source
         ? session->Reference(source)
         : Behavior::Result<Behavior::ObjectRef>::Failure(BML_ERROR_NOT_FOUND);
     auto targetRef = target
         ? session->Reference(target)
         : Behavior::Result<Behavior::ObjectRef>::Failure(BML_ERROR_NOT_FOUND);
-    if (!graph || !blockRef || (source && !sourceRef) || (target && !targetRef)) {
+    if (!graph || (source && !sourceRef) || (target && !targetRef)) {
         const Behavior::Status &failure = !graph
             ? graph.GetStatus()
-            : !blockRef ? blockRef.GetStatus()
             : source && !sourceRef ? sourceRef.GetStatus()
                                    : targetRef.GetStatus();
         std::string message = std::string(operation) +
@@ -168,7 +166,7 @@ static bool PlaceHookBlock(
         return false;
     }
 
-    const Behavior::Node blockNode = FindNode(graph.Value(), blockRef.Value());
+    const Behavior::Node blockNode = FindNode(graph.Value(), entry.Block);
     const Behavior::Node sourceNode = source
         ? FindNode(graph.Value(), sourceRef.Value()) : Behavior::Node{};
     const Behavior::Node targetNode = target
@@ -219,18 +217,11 @@ static bool PlaceHookBlock(
     return true;
 }
 
-static void FailHookBlockCallback(const std::shared_ptr<ScriptHookBlockServiceState> &state,
-                                  ScriptHookBlockEntry &entry,
-                                  const ScriptDiagnostic &diagnostic) {
-    entry.Enabled = false;
-    if (entry.Binding)
-        entry.Binding->CloseAdmission();
-    if (state && state->Owner)
-        state->Owner->SetLoadFailure(diagnostic);
-}
-
-static bool RestoreHookBlockGraph(const std::shared_ptr<ScriptHookBlockServiceState> &state,
-                                  ScriptHookBlockEntry &entry) {
+// Restores the graph before the Block goes away: the Placement Patch first,
+// then the Instance, which removes the Block at a later safe point. Returns
+// false while either one is still closing.
+static bool CloseHookBlock(const std::shared_ptr<ScriptHookBlockServiceState> &state,
+                           ScriptHookBlockEntry &entry) {
     if (entry.Placement) {
         auto closed = entry.Placement.Close();
         if (!closed) {
@@ -243,27 +234,20 @@ static bool RestoreHookBlockGraph(const std::shared_ptr<ScriptHookBlockServiceSt
         if (closed.Value() == Behavior::CloseState::Closing)
             return false;
     }
-
-    bool closed = true;
-    if (entry.Block) {
-        if (state && state->Context) {
-            Behavior::Internal::Status status =
-                state->Context->BehaviorSessions().CloseUnmanaged(entry.Block);
-            closed = static_cast<bool>(status);
-            if (!closed)
-                RecordHookBlockDiagnostic(state, status.Message);
-        } else {
-            closed = false;
+    if (entry.Instance) {
+        auto closed = entry.Instance->Close();
+        if (!closed) {
+            RecordHookBlockDiagnostic(
+                state, closed.GetStatus().Message.empty()
+                    ? "The HookBlock Behavior Instance could not be closed."
+                    : closed.GetStatus().Message);
+            return false;
         }
+        if (closed.Value() == Behavior::CloseState::Closing)
+            return false;
+        entry.Instance.reset();
     }
-    if (!closed && entry.Binding)
-        closed = entry.Binding->RetireAtSafePoint();
-
-    entry.Block = nullptr;
-    entry.OwnerScript = nullptr;
-    entry.Callback = nullptr;
-    entry.Binding.reset();
-    return closed;
+    return true;
 }
 
 static const Behavior::Status &PatchFailure(const Behavior::PatchInfo &info) {
@@ -274,23 +258,27 @@ static const Behavior::Status &PatchFailure(const Behavior::PatchInfo &info) {
     return info.LastStatus;
 }
 
+static ScriptHookBlockEntry *FindHookBlockEntry(const std::shared_ptr<ScriptHookBlockServiceState> &state,
+                                               unsigned int id,
+                                               unsigned int generation) {
+    if (!state)
+        return nullptr;
+    auto it = state->Entries.find(id);
+    if (it == state->Entries.end() || !it->second || it->second->Generation != generation)
+        return nullptr;
+    return it->second.get();
+}
+
 static bool RetireHookBlockEntry(const std::shared_ptr<ScriptHookBlockServiceState> &state,
                                  unsigned int id,
                                  unsigned int generation) {
-    if (!state)
+    ScriptHookBlockEntry *entry = FindHookBlockEntry(state, id, generation);
+    if (!entry)
         return false;
-
-    auto it = state->Entries.find(id);
-    if (it == state->Entries.end() || !it->second || it->second->Generation != generation)
-        return false;
-
-    ScriptHookBlockEntry &entry = *it->second;
-    if (entry.Retiring)
+    if (entry->Retiring)
         return true;
-    entry.Retiring = true;
-    entry.Enabled = false;
-    if (entry.Binding)
-        entry.Binding->CloseAdmission();
+    entry->Retiring = true;
+    entry->Enabled = false;
     state->Retirements.emplace_back(id, generation);
     return true;
 }
@@ -307,7 +295,7 @@ static void ProcessHookBlockRetirements(
             it->second->Generation != generation) {
             continue;
         }
-        if (RestoreHookBlockGraph(state, *it->second))
+        if (CloseHookBlock(state, *it->second))
             state->Entries.erase(it);
         else
             state->Retirements.emplace_back(id, generation);
@@ -348,8 +336,6 @@ static void RetireUnregisteredHookBlock(
     const unsigned int generation = entry->Generation;
     entry->Enabled = false;
     entry->Retiring = true;
-    if (entry->Binding)
-        entry->Binding->CloseAdmission();
     state->Entries.emplace(id, std::move(entry));
     state->Retirements.emplace_back(id, generation);
     ProcessHookBlockRetirements(state);
@@ -360,64 +346,95 @@ static ScriptHookBlockEntry *ResolveHookBlockEntry(const std::shared_ptr<ScriptH
                                                   unsigned int generation) {
     if (!state || !state->Active)
         return nullptr;
-    auto it = state->Entries.find(id);
-    if (it == state->Entries.end() || !it->second ||
-        it->second->Generation != generation || it->second->Retiring)
-        return nullptr;
-    return it->second.get();
+    ScriptHookBlockEntry *entry = FindHookBlockEntry(state, id, generation);
+    return entry && !entry->Retiring ? entry : nullptr;
 }
 
-static int RunScriptHookBlockCallback(const CKBehaviorContext *context, void *arg) {
-    auto *entry = static_cast<ScriptHookBlockEntry *>(arg);
-    if (!entry || !entry->Enabled || !entry->Callback)
-        return CKBR_OK;
-
-    std::shared_ptr<ScriptHookBlockServiceState> state = entry->State.lock();
-    if (!state || !state->Active || !state->ContextView)
-        return CKBR_OK;
-    if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
-        return CKBR_OK;
-
-    ScriptHookBlockEventView event(context, entry->OwnerScript);
-    HookBlockFunctionCallArgs args = {state->ContextView, &event, CKBR_OK};
-    ScriptFunctionCall call;
-    call.Function = entry->Callback;
-    call.Owner = state->Owner;
-    call.Phase = ScriptDiagnosticPhase::Callback;
-    call.FailurePrefix = "HookBlock callback failed";
-    call.InvalidStateMessage = "HookBlock callback has invalid runtime state.";
-    call.ContextFailureMessage = "Unable to create AngelScript context for HookBlock callback.";
-    call.SuspendedMessage = "script HookBlock callback suspended";
-    call.WriteArgs = WriteHookBlockArgs;
-    call.ReadResult = ReadHookBlockResult;
-    call.UserData = &args;
-
-    ScriptDiagnostic diagnostic;
-    const bool ok = ExecuteScriptFunction(call, diagnostic);
-    if (!ok)
-        FailHookBlockCallback(state, *entry, diagnostic);
-
-    return ok ? args.Result : CKBR_OK;
-}
-
-static int ScriptHookBlockCallback(const CKBehaviorContext *context, void *arg) {
-    try {
-        return RunScriptHookBlockCallback(context, arg);
-    } catch (...) {
-        // Virtools invokes this through a native BB callback; exceptions must not escape.
-        return CKBR_OK;
+// The script callback of one entry. The Loader holds it for as long as the
+// Hook Block may run, which can outlive the entry, so it names the entry by
+// id and generation instead of pointing at it.
+class ScriptHookBlockFunction final {
+public:
+    ScriptHookBlockFunction(std::weak_ptr<ScriptHookBlockServiceState> state,
+                            unsigned int id, unsigned int generation,
+                            asIScriptFunction *function)
+        : m_State(std::move(state)), m_Id(id), m_Generation(generation),
+          m_Function(function) {
+        if (m_Function)
+            m_Function->AddRef();
     }
-}
+    ~ScriptHookBlockFunction() {
+        if (m_Function)
+            m_Function->Release();
+    }
+    ScriptHookBlockFunction(const ScriptHookBlockFunction &) = delete;
+    ScriptHookBlockFunction &operator=(const ScriptHookBlockFunction &) = delete;
 
-static void RetainScriptHookBlockFunction(void *value) {
-    if (value)
-        static_cast<asIScriptFunction *>(value)->AddRef();
-}
+    // The Block leaves its Outs to this callback, which activates them as the
+    // entry's Auto Activate Outputs setting says. A retiring or released entry
+    // passes the activation through without running the script.
+    Behavior::HookResult Invoke(const Behavior::HookEvent &source) {
+        std::shared_ptr<ScriptHookBlockServiceState> state = m_State.lock();
+        CKBehavior *block = ResolveBehavior(state, source.Block);
+        if (!block)
+            return Behavior::HookResult::Fault;
+        ScriptHookBlockEntry *entry = ResolveHookBlockEntry(state, m_Id, m_Generation);
+        if (!entry) {
+            ActivateAllOutputs(block);
+            return Behavior::HookResult::Ok;
+        }
+        bool activate = entry->AutoActivateOutputs;
+        if (!entry->Enabled || !m_Function || !state->ContextView ||
+            (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())) {
+            if (activate)
+                ActivateAllOutputs(block);
+            return Behavior::HookResult::Ok;
+        }
 
-static void ReleaseScriptHookBlockFunction(void *value) {
-    if (value)
-        static_cast<asIScriptFunction *>(value)->Release();
-}
+        ScriptHookBlockEventView event(
+            block, ResolveBehavior(state, source.Script), source.DeltaTime);
+        HookBlockFunctionCallArgs args = {state->ContextView, &event, CKBR_OK};
+        ScriptFunctionCall call;
+        call.Function = m_Function;
+        call.Owner = state->Owner;
+        call.Phase = ScriptDiagnosticPhase::Callback;
+        call.FailurePrefix = "HookBlock callback failed";
+        call.InvalidStateMessage = "HookBlock callback has invalid runtime state.";
+        call.ContextFailureMessage = "Unable to create AngelScript context for HookBlock callback.";
+        call.SuspendedMessage = "script HookBlock callback suspended";
+        call.WriteArgs = WriteHookBlockArgs;
+        call.ReadResult = ReadHookBlockResult;
+        call.UserData = &args;
+
+        ScriptDiagnostic diagnostic;
+        if (!ExecuteScriptFunction(call, diagnostic)) {
+            // A faulted callback closes this Hook Block's admission, and the
+            // Block passes every later activation through.
+            if (ScriptHookBlockEntry *failed = FindHookBlockEntry(state, m_Id, m_Generation))
+                failed->Enabled = false;
+            if (state->Owner)
+                state->Owner->SetLoadFailure(diagnostic);
+            return Behavior::HookResult::Fault;
+        }
+
+        if ((args.Result & CKBR_GENERICERROR) == CKBR_GENERICERROR)
+            return Behavior::HookResult::Error;
+        // The callback may have changed the setting or retired the entry.
+        if (ScriptHookBlockEntry *current = FindHookBlockEntry(state, m_Id, m_Generation))
+            activate = current->AutoActivateOutputs;
+        if (activate)
+            ActivateAllOutputs(block);
+        return (args.Result & CKBR_ACTIVATENEXTFRAME) != 0
+            ? Behavior::HookResult::AgainNextFrame
+            : Behavior::HookResult::Ok;
+    }
+
+private:
+    std::weak_ptr<ScriptHookBlockServiceState> m_State;
+    unsigned int m_Id = 0;
+    unsigned int m_Generation = 0;
+    asIScriptFunction *m_Function = nullptr;
+};
 
 static ScriptHookBlockRef *RegisterHookBlockEntry(const std::shared_ptr<ScriptHookBlockServiceState> &state,
                                                   std::unique_ptr<ScriptHookBlockEntry> entry) {
@@ -449,52 +466,66 @@ static std::unique_ptr<ScriptHookBlockEntry> CreateHookBlockEntry(
         RecordHookBlockDiagnostic(state, "HookBlock registration requires BML::HookBlockCallback.");
         return nullptr;
     }
-
-    inputCount = std::max(1, inputCount);
-    outputCount = std::max(1, outputCount);
+    const Behavior::Session *session = GetBehaviorSession(state);
+    if (!session)
+        return nullptr;
 
     std::unique_ptr<ScriptHookBlockEntry> entry(new (std::nothrow) ScriptHookBlockEntry());
     if (!entry) {
         RecordHookBlockDiagnostic(state, "Unable to create HookBlock entry.");
         return nullptr;
     }
-    entry->State = state;
     entry->Id = state->NextId++;
     entry->Generation = state->NextGeneration++;
     entry->Name = name.empty() ? DefaultHookBlockName(entry->Id) : name;
-    entry->OwnerScript = ownerScript;
-    entry->Callback = callback;
-    Behavior::Internal::PlanCallbackState callbackState =
-        Behavior::Internal::PlanCallbackState::Retained(
-            callback, RetainScriptHookBlockFunction,
-            ReleaseScriptHookBlockFunction);
-    entry->Binding = Behavior::Internal::HookBlock::Bind(
-        std::move(callbackState), ScriptHookBlockCallback, entry.get());
-    if (!entry->Binding) {
+
+    std::shared_ptr<ScriptHookBlockFunction> function;
+    try {
+        function = std::make_shared<ScriptHookBlockFunction>(
+            state, entry->Id, entry->Generation, callback);
+    } catch (const std::bad_alloc &) {
         RecordHookBlockDiagnostic(state, "HookBlock callback binding failed.");
         return nullptr;
     }
+    const Behavior::Hook hook(
+        [function](const Behavior::HookEvent &event) {
+            return function->Invoke(event);
+        });
+    Behavior::HookBlock shape;
+    shape.Inputs = std::max(1, inputCount);
+    shape.Outputs = std::max(1, outputCount);
+    shape.ActivatesOutputs = false;
+    auto spawned = session->SpawnIn(ownerScript, hook, shape);
+    if (!spawned) {
+        RecordHookBlockDiagnostic(
+            state, spawned.GetStatus().Message.empty()
+                ? "HookBlock creation failed."
+                : spawned.GetStatus().Message);
+        return nullptr;
+    }
+    entry->Instance.emplace(spawned.Take());
 
-    entry->Block = state->Context->BehaviorSessions().CreateUnmanaged(
-        ownerScript, Behavior::Internal::HookBlock::Make(
-            entry->Binding, inputCount, outputCount));
-    if (!entry->Block) {
-        entry->Binding->CloseAdmission();
+    auto shown = entry->Instance->Inspect(Behavior::View::Live);
+    auto owner = session->Reference(ownerScript);
+    CKBehavior *block = shown ? ResolveBehavior(state, shown->Root().Object()) : nullptr;
+    if (!block || !owner) {
+        (void) CloseHookBlock(state, *entry);
         RecordHookBlockDiagnostic(state, "HookBlock creation failed.");
         return nullptr;
     }
-
-    entry->Block->SetName((CKSTRING) entry->Name.c_str());
-    SetHookBlockAutoActivateOutputs(entry->Block, entry->AutoActivateOutputs);
+    entry->Block = shown->Root().Object();
+    entry->OwnerScript = owner.Value();
+    block->SetName((CKSTRING) entry->Name.c_str());
     return entry;
 }
 
 } // namespace
 
-ScriptHookBlockEventView::ScriptHookBlockEventView(const CKBehaviorContext *context, CKBehavior *ownerScript)
-    : m_Block(context ? context->Behavior : nullptr),
-      m_OwnerScript(ownerScript ? ownerScript : (m_Block ? m_Block->GetOwnerScript() : nullptr)),
-      m_DeltaTime(context ? context->DeltaTime : 0.0f) {}
+ScriptHookBlockEventView::ScriptHookBlockEventView(CKBehavior *block, CKBehavior *ownerScript,
+                                                   float deltaTime)
+    : m_Block(block),
+      m_OwnerScript(ownerScript ? ownerScript : (block ? block->GetOwnerScript() : nullptr)),
+      m_DeltaTime(deltaTime) {}
 
 int ScriptHookBlockEventView::GetBlockId() const {
     return m_Block ? static_cast<int>(m_Block->GetID()) : 0;
@@ -576,13 +607,13 @@ bool ScriptHookBlockRef::SetAutoActivateOutputs(bool enabled) {
     if (!entry)
         return false;
     entry->AutoActivateOutputs = enabled;
-    SetHookBlockAutoActivateOutputs(entry->Block, enabled);
     return true;
 }
 
 int ScriptHookBlockRef::GetBlockId() const {
     ScriptHookBlockEntry *entry = ResolveHookBlockEntry(m_State.lock(), m_Id, m_Generation);
-    return entry && entry->Block ? static_cast<int>(entry->Block->GetID()) : 0;
+    CKBehavior *block = entry ? ResolveBehavior(m_State.lock(), entry->Block) : nullptr;
+    return block ? static_cast<int>(block->GetID()) : 0;
 }
 
 std::string ScriptHookBlockRef::GetName() const {
@@ -592,12 +623,12 @@ std::string ScriptHookBlockRef::GetName() const {
 
 CKBehavior *ScriptHookBlockRef::BorrowBlock() const {
     ScriptHookBlockEntry *entry = ResolveHookBlockEntry(m_State.lock(), m_Id, m_Generation);
-    return entry ? entry->Block : nullptr;
+    return entry ? ResolveBehavior(m_State.lock(), entry->Block) : nullptr;
 }
 
 CKBehavior *ScriptHookBlockRef::BorrowOwnerScript() const {
     ScriptHookBlockEntry *entry = ResolveHookBlockEntry(m_State.lock(), m_Id, m_Generation);
-    return entry ? entry->OwnerScript : nullptr;
+    return entry ? ResolveBehavior(m_State.lock(), entry->OwnerScript) : nullptr;
 }
 
 bool ScriptHookBlockRef::Uninstall() {
@@ -614,7 +645,8 @@ ScriptHookBlockService::~ScriptHookBlockService() {
     }
 }
 
-bool ScriptHookBlockService::Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView) {
+bool ScriptHookBlockService::Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView,
+                                  const ScriptBehaviorService *behavior) {
     if (!m_State) {
         try {
             m_State = std::make_shared<ScriptHookBlockServiceState>();
@@ -625,6 +657,7 @@ bool ScriptHookBlockService::Bind(ModContext *context, ScriptMod *owner, ScriptM
     m_State->Context = context;
     m_State->Owner = owner;
     m_State->ContextView = contextView;
+    m_State->BehaviorService = behavior;
     m_State->Active = true;
     return true;
 }
@@ -723,16 +756,11 @@ void ScriptHookBlockService::Release(ScriptDiagnostic *) {
             continue;
         entry->Enabled = false;
         entry->Retiring = true;
-        if (entry->Binding)
-            entry->Binding->CloseAdmission();
         releasedState->Retirements.emplace_back(id, entry->Generation);
     }
     ProcessHookBlockRetirements(releasedState);
-    if (releasedState->Entries.empty()) {
-        releasedState->Authoring.Reset();
-    } else {
+    if (!releasedState->Entries.empty())
         m_RetiredStates.push_back(std::move(releasedState));
-    }
     m_State.reset();
 }
 
@@ -742,12 +770,10 @@ void ScriptHookBlockService::ProcessFrame() {
     for (auto position = m_RetiredStates.begin();
          position != m_RetiredStates.end();) {
         ProcessHookBlockRetirements(*position);
-        if ((*position)->Entries.empty()) {
-            (*position)->Authoring.Reset();
+        if ((*position)->Entries.empty())
             position = m_RetiredStates.erase(position);
-        } else {
+        else
             ++position;
-        }
     }
 }
 

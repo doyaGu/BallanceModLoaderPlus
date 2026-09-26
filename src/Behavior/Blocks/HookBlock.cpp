@@ -23,7 +23,8 @@ int Run(const CKBehaviorContext &context) {
     // activation through. Only a callback that completed and reported a CKBR
     // error code stops the chain. CK2 discards a sub-behavior's return code
     // (CKBehavior::Execute), so leaving every Out inactive is the only way to
-    // stop it.
+    // stop it. A Block whose Outs belong to its callback is transparent too
+    // when that callback did not complete, since nothing chose an Out.
     const bool completed = call.Invoked && !call.Fault;
     const bool reportedError = completed &&
         (call.ReturnCode & CKBR_GENERICERROR) == CKBR_GENERICERROR;
@@ -33,7 +34,7 @@ int Run(const CKBehaviorContext &context) {
     CKBOOL autoActivateOutputs = TRUE;
     if (behavior->GetLocalParameterCount() > 2)
         behavior->GetLocalParameterValue(2, &autoActivateOutputs);
-    if (autoActivateOutputs) {
+    if (autoActivateOutputs || !completed) {
         for (int i = 0; i < behavior->GetOutputCount(); ++i)
             behavior->ActivateOutput(i);
     }
@@ -72,11 +73,12 @@ CKObjectDeclaration *Declaration() {
 
 } // namespace
 
-BlockSpec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount) {
+BlockSpec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount,
+               bool autoActivateOutputs) {
     BlockSpec spec(HOOKS_HOOKBLOCK_GUID);
     if (!binding || inputCount < 0 || outputCount < 0)
         return BlockSpec();
-    CKBOOL autoActivate = TRUE;
+    CKBOOL autoActivate = autoActivateOutputs ? TRUE : FALSE;
     Binding *nativeBinding = binding.get();
     void *argument = binding->Argument();
     spec.Local(Slot::At(SlotKind::Local, 0, CKPGUID_POINTER),

@@ -741,6 +741,18 @@ enum class HookResult : int {
     Fault = BML_BEHAVIOR_HOOK_FAULT,
 };
 
+// The shape of a Hook Block that Session::SpawnIn places in a live graph.
+// Inputs is 1 to BML_BEHAVIOR_HOOK_BLOCK_MAX_PORTS and Outputs is 0 to that
+// cap.
+struct HookBlock {
+    std::int32_t Inputs = 1;
+    std::int32_t Outputs = 1;
+    // When false the Outs belong to the callback, which activates the ones it
+    // chooses on HookEvent::Block. A callback that did not complete still
+    // passes the activation through to every Out.
+    bool ActivatesOutputs = true;
+};
+
 enum class CloseState {
     Closing,
     Closed,

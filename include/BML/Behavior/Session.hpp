@@ -42,31 +42,22 @@ public:
         BML_BehaviorStatus status = Detail::EmptyStatus();
         code = api->OpenSession(Detail::Text(ownerId), &handle, &status);
         code = Detail::WireCode(code, status);
-        struct SessionHandle {
-            const BML_BehaviorInterface *Api = nullptr;
-            BML_BehaviorSession Value = nullptr;
-            ~SessionHandle() {
-                if (Api && Value)
-                    (void) Api->CloseSession(Value);
-            }
-        } owned{api, handle};
-        try {
-            if (code != BML_OK || !handle)
-                return Result<Session>::Failure(
-                    code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
-                    Detail::ReadStatus(status));
-            Session session;
-            session.m_State = std::make_shared<Detail::SessionState>();
-            session.m_State->Api = api;
-            session.m_State->Handle = handle;
-            owned.Value = nullptr;
-            return Result<Session>::Success(std::move(session),
-                                            Detail::ReadStatus(status));
-        } catch (const std::bad_alloc &) {
-            return Result<Session>::Failure(BML_ERROR_OUT_OF_MEMORY);
-        } catch (...) {
-            return Result<Session>::Failure(BML_ERROR_FAIL);
+        if (code != BML_OK || !handle) {
+            if (handle)
+                (void) api->CloseSession(handle);
+            return Result<Session>::Failure(
+                code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
+                Detail::ReadStatus(status));
         }
+        return Adopt(api, handle, status);
+    }
+    // Takes ownership of a Session handle opened through api by other means,
+    // such as a host that opens Sessions for the Mods it runs. The handle is
+    // closed when the last value built from this Session drops it, or at once
+    // when Adopt fails.
+    [[nodiscard]] static Result<Session> Adopt(
+        const BML_BehaviorInterface *api, BML_BehaviorSession handle) {
+        return Adopt(api, handle, Detail::EmptyStatus());
     }
 
     [[nodiscard]] explicit operator bool() const noexcept {
@@ -126,6 +117,21 @@ public:
             return Result<Graph>::Failure(reference.Code(), reference.GetStatus());
         return Inspect(reference.Value(), view);
     }
+    // Places a Hook Block inside the live graph named by graph and returns
+    // the Instance that owns it. The Block starts unlinked, so splice it into
+    // the graph with a Patch; each activation the graph then delivers runs
+    // hook. Closing the Instance stops the callback at once and removes the
+    // Block at a later safe point.
+    [[nodiscard]] Result<Instance> SpawnIn(
+        ObjectRef graph, const Hook &hook, HookBlock shape = {}) const;
+    [[nodiscard]] Result<Instance> SpawnIn(
+        CKBehavior *graph, const Hook &hook, HookBlock shape = {}) const {
+        const Result<ObjectRef> reference = Reference(graph);
+        return reference
+            ? SpawnIn(reference.Value(), hook, shape)
+            : Result<Instance>::Failure(
+                  reference.Code(), reference.GetStatus());
+    }
     // Creates the root and installs body before returning one inactive Script.
     // A rejected body publishes no Script and returns no partial handle.
     [[nodiscard]] Result<Behavior::Script> CreateScript(
@@ -171,6 +177,36 @@ public:
     }
 
 private:
+    [[nodiscard]] static Result<Session> Adopt(
+        const BML_BehaviorInterface *api, BML_BehaviorSession handle,
+        const BML_BehaviorStatus &status) {
+        struct SessionHandle {
+            const BML_BehaviorInterface *Api = nullptr;
+            BML_BehaviorSession Value = nullptr;
+            ~SessionHandle() {
+                if (Api && Value)
+                    (void) Api->CloseSession(Value);
+            }
+        } owned{api, handle};
+        if (!handle)
+            return Result<Session>::Failure(BML_ERROR_INVALID_PARAMETER);
+        // The facade needs the complete 1.0 interface.
+        if (!api || !BML_BEHAVIOR_HAS_1_0(api))
+            return Result<Session>::Failure(BML_ERROR_VERSION_MISMATCH);
+        try {
+            Session session;
+            session.m_State = std::make_shared<Detail::SessionState>();
+            session.m_State->Api = api;
+            session.m_State->Handle = handle;
+            owned.Value = nullptr;
+            return Result<Session>::Success(std::move(session),
+                                            Detail::ReadStatus(status));
+        } catch (const std::bad_alloc &) {
+            return Result<Session>::Failure(BML_ERROR_OUT_OF_MEMORY);
+        } catch (...) {
+            return Result<Session>::Failure(BML_ERROR_FAIL);
+        }
+    }
     [[nodiscard]] Result<Behavior::Patch> Apply(
         std::string_view name,
         std::vector<Detail::PatchTarget> targets) const;

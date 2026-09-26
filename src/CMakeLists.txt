@@ -681,6 +681,28 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/AngelScriptImGuiBindings.cpp
             AngelScript/generated/BMLImGuiAngelScriptBindings.cpp
     )
+
+    # The script Behavior projection is a client of the public C++ facade.
+    # Reaching into Loader Behavior internals or the facade's Detail headers
+    # would let it drift from what native Mods can do.
+    set(BML_ANGELSCRIPT_BEHAVIOR_PROJECTION
+            AngelScript/ScriptBehavior.h
+            AngelScript/ScriptBehavior.cpp
+            AngelScript/ScriptBehaviorBindings.inc
+            AngelScript/ScriptHookBlockService.h
+            AngelScript/ScriptHookBlockService.cpp
+    )
+    foreach (BML_PROJECTION_FILE IN LISTS BML_ANGELSCRIPT_BEHAVIOR_PROJECTION)
+        set(BML_PROJECTION_PATH "${CMAKE_CURRENT_SOURCE_DIR}/${BML_PROJECTION_FILE}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${BML_PROJECTION_PATH}")
+        file(STRINGS "${BML_PROJECTION_PATH}" BML_PROJECTION_INCLUDES
+                REGEX "^[ \t]*#[ \t]*include[ \t]*\"(Behavior/|BML/Behavior/Detail/)")
+        if (BML_PROJECTION_INCLUDES)
+            message(FATAL_ERROR
+                    "${BML_PROJECTION_FILE} includes a Behavior internal or Detail header: "
+                    "${BML_PROJECTION_INCLUDES}")
+        endif ()
+    endforeach ()
 endif ()
 
 set(IMGUI_HEADERS

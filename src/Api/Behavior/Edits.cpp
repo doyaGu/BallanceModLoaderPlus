@@ -833,46 +833,7 @@ Status ProgramDecoder::BlockAt(std::uint32_t index, ModContext &context,
 
 Status ProgramDecoder::HookAt(std::uint32_t index,
                               HookBlock::Hook &out) const {
-    const BML_BehaviorHookFunction *from =
-        Entry(m_Program->Hooks, m_Program->HookCount, index);
-    if (!from || from->StructSize < sizeof(*from) || !from->Invoke)
-        return InvalidValue("A Behavior Hook needs a callback.");
-    if ((from->Retain == nullptr) != (from->Release == nullptr)) {
-        return InvalidValue(
-            "A Behavior Hook needs both Retain and Release, or neither.");
-    }
-    // The record takes the caller reference here, so the caller may drop its
-    // own as soon as this edit is accepted. The matching Release runs when the
-    // last holder of the record drops it, which is later than retirement for a
-    // Conflicted Patch and earlier than any lease for an edit that never installs.
-    auto thunk = std::make_shared<HookThunk>();
-    thunk->Function = *from;
-    if (from->Retain) {
-        try {
-            from->Retain(from->State);
-            thunk->Retained = true;
-        } catch (const std::exception &exception) {
-            Status failure{Error::CallbackFailed, CK_OK,
-                           CKBR_BEHAVIORERROR, exception.what()};
-            failure.Details.Stage = Phase::LifecycleCallback;
-            return failure;
-        } catch (...) {
-            Status failure{
-                Error::CallbackFailed, CK_OK, CKBR_BEHAVIORERROR,
-                "A Behavior Hook Retain callback threw an exception."};
-            failure.Details.Stage = Phase::LifecycleCallback;
-            return failure;
-        }
-    }
-    out = HookBlock::Hook(
-        PlanCallbackState::Retained(thunk, from->State, nullptr, nullptr),
-        &InvokeHook, thunk.get(),
-        HookBlock::Hook::Identity{
-            reinterpret_cast<std::uintptr_t>(from->State),
-            reinterpret_cast<std::uintptr_t>(from->Retain),
-            reinterpret_cast<std::uintptr_t>(from->Release),
-            reinterpret_cast<std::uintptr_t>(from->Invoke)});
-    return {};
+    return ReadHook(Entry(m_Program->Hooks, m_Program->HookCount, index), out);
 }
 
 Status ProgramDecoder::ObjectAt(std::uint32_t index, const char *message,
@@ -1040,6 +1001,49 @@ Status ReadGraphEdits(
     } catch (const std::bad_alloc &) {
         return InvalidValue("The Loader could not retain the composed Behavior Patch.");
     }
+    return {};
+}
+
+Status ReadHook(const BML_BehaviorHookFunction *from,
+                HookBlock::Hook &out) {
+    if (!from || from->StructSize < sizeof(*from) || !from->Invoke)
+        return InvalidValue("A Behavior Hook needs a callback.");
+    if ((from->Retain == nullptr) != (from->Release == nullptr)) {
+        return InvalidValue(
+            "A Behavior Hook needs both Retain and Release, or neither.");
+    }
+    // The record takes the caller reference here, so the caller may drop its
+    // own as soon as the edit or AttachHook call returns. The matching Release
+    // runs when the last holder of the record drops it, which is later than
+    // retirement for a Conflicted Patch and earlier than any lease for an edit
+    // that never installs.
+    auto thunk = std::make_shared<HookThunk>();
+    thunk->Function = *from;
+    if (from->Retain) {
+        try {
+            from->Retain(from->State);
+            thunk->Retained = true;
+        } catch (const std::exception &exception) {
+            Status failure{Error::CallbackFailed, CK_OK,
+                           CKBR_BEHAVIORERROR, exception.what()};
+            failure.Details.Stage = Phase::LifecycleCallback;
+            return failure;
+        } catch (...) {
+            Status failure{
+                Error::CallbackFailed, CK_OK, CKBR_BEHAVIORERROR,
+                "A Behavior Hook Retain callback threw an exception."};
+            failure.Details.Stage = Phase::LifecycleCallback;
+            return failure;
+        }
+    }
+    out = HookBlock::Hook(
+        PlanCallbackState::Retained(thunk, from->State, nullptr, nullptr),
+        &InvokeHook, thunk.get(),
+        HookBlock::Hook::Identity{
+            reinterpret_cast<std::uintptr_t>(from->State),
+            reinterpret_cast<std::uintptr_t>(from->Retain),
+            reinterpret_cast<std::uintptr_t>(from->Release),
+            reinterpret_cast<std::uintptr_t>(from->Invoke)});
     return {};
 }
 

@@ -124,6 +124,30 @@ struct Layout {
             });
         return found == Slots.end() ? nullptr : &*found;
     }
+    // Finds the slot of kind that selector names, or nullptr. An Only or
+    // unique-name selector that matches several slots finds none and sets
+    // ambiguous.
+    [[nodiscard]] const Slot *Select(
+        SlotKind kind, const Selector &selector,
+        bool *ambiguous = nullptr) const noexcept {
+        if (ambiguous)
+            *ambiguous = false;
+        const Slot *found = nullptr;
+        for (const Slot &slot : Slots) {
+            if (slot.Kind != kind ||
+                !selector.Matches(slot.Index, slot.Occurrence, slot.Name))
+                continue;
+            if (!selector.RequiresUniqueMatch())
+                return &slot;
+            if (found) {
+                if (ambiguous)
+                    *ambiguous = true;
+                return nullptr;
+            }
+            found = &slot;
+        }
+        return found;
+    }
 };
 
 

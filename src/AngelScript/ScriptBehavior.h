@@ -13,6 +13,10 @@ class asIScriptEngine;
 
 namespace BML {
 
+namespace Behavior {
+class Session;
+} // namespace Behavior
+
 class ScriptMod;
 class ScriptBehaviorBlock;
 class ScriptBehaviorLayout;
@@ -33,6 +37,10 @@ public:
     bool Bind(ModContext *context, ScriptMod *owner);
     void Release(ScriptDiagnostic *diagnostic = nullptr);
     [[nodiscard]] std::size_t GetActiveCount() const;
+    // The Script Mod's Behavior session, or nullptr while the service is not
+    // bound or the session could not be opened. Other script services place
+    // their Behavior work through it.
+    [[nodiscard]] const Behavior::Session *GetSession() const;
 
     ScriptBehaviorBlock *Use(CKGUID prototype);
     ScriptBehaviorBlock *Find(const std::string &name,

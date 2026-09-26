@@ -1,6 +1,7 @@
 #include "ScriptStringInterop.h"
 #include "ScriptBehavior.h"
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <new>
@@ -13,6 +14,7 @@
 #include <variant>
 #include <vector>
 
+#include "Api/BehaviorApi.h"
 #include "Api/ObjectRefs.h"
 #include "BML/Behavior.hpp"
 #include "CKAngelScriptAdapter.h"
@@ -390,7 +392,38 @@ public:
     bool Active = false;
     std::atomic<std::size_t> CallbackHolders{0};
     std::optional<Authoring::Session> Session;
+    // Why Open failed at Bind. GetSession raises it for every later call.
+    std::string SessionFailure;
     std::vector<std::weak_ptr<ScriptBehaviorResource>> Resources;
+
+    // Opens the one Session every Behavior value of this Script Mod shares.
+    // The caller check in bml.behavior OpenSession cannot tell Script Mods
+    // apart, so the Session is opened for OwnerId through the Loader.
+    void Open() {
+        BML_BehaviorSession handle = nullptr;
+        BML_BehaviorStatus status{};
+        status.StructSize = sizeof(status);
+        const int code = BML::Api::OpenBehaviorSessionFor(
+            OwnerId, &handle, &status);
+        if (code != BML_OK) {
+            Authoring::Status failure;
+            failure.Message.assign(
+                status.Message,
+                std::min<std::size_t>(status.MessageLength,
+                                      sizeof(status.Message)));
+            SessionFailure = FailureText("Open Behavior session", code,
+                                         failure);
+            return;
+        }
+        auto adopted = Authoring::Session::Adopt(
+            &BML::Api::BehaviorInterface(), handle);
+        if (!adopted) {
+            SessionFailure = FailureText("Open Behavior session",
+                                         adopted.Code(), adopted.GetStatus());
+            return;
+        }
+        Session.emplace(adopted.Take());
+    }
 
     Authoring::Session *GetSession() {
         if (!Active || !Owner || !Context) {
@@ -399,11 +432,10 @@ public:
             return nullptr;
         }
         if (!Session) {
-            const char *ownerId = Owner->GetID();
-            auto opened = Authoring::Session::Open(ownerId ? ownerId : "");
-            if (!Accept("Open Behavior session", opened))
-                return nullptr;
-            Session.emplace(opened.Take());
+            ScriptStringInterop::RaiseActiveException(
+                SessionFailure.empty() ? "Behavior session is not open."
+                                       : SessionFailure.c_str());
+            return nullptr;
         }
         return &*Session;
     }
@@ -420,7 +452,8 @@ public:
         Resources.erase(out, Resources.end());
     }
 
-    BML::Behavior::Internal::Status Retire() {
+    // Returns why retirement failed, or an empty string.
+    std::string Retire() {
         if (!Active)
             return {};
         Active = false;
@@ -430,17 +463,21 @@ public:
         }
         Resources.clear();
         Session.reset();
-        BML::Behavior::Internal::Status status;
-        if (Context && !OwnerId.empty())
-            status = Context->RetireBehaviorOwner(OwnerId);
-        if (status && CallbackHolders.load(std::memory_order_acquire) != 0) {
-            status = BML::Behavior::Internal::Status(
-                BML::Behavior::Internal::Error::CallbackFailed,
-                CKERR_INVALIDPARAMETER, CKBR_BEHAVIORERROR,
-                "Behavior callbacks remained referenced after owner retirement.");
+        SessionFailure.clear();
+        std::string failure;
+        if (Context && !OwnerId.empty()) {
+            const auto status = Context->RetireBehaviorOwner(OwnerId);
+            if (!status)
+                failure = status.Message.empty()
+                    ? "Failed to retire Script Behavior resources."
+                    : status.Message;
         }
+        if (failure.empty() &&
+            CallbackHolders.load(std::memory_order_acquire) != 0)
+            failure =
+                "Behavior callbacks remained referenced after owner retirement.";
         Owner = nullptr;
-        return status;
+        return failure;
     }
 };
 
@@ -734,31 +771,18 @@ public:
             return nullptr;
         }
 
-        const BML_BehaviorSelector requested =
-            Authoring::Detail::Wire::From(selector.Value);
-        std::optional<std::size_t> found;
-        for (std::size_t index = 0; index < m_Layout->Slots.size(); ++index) {
-            const Authoring::Slot &slot = m_Layout->Slots[index];
-            if (static_cast<int>(slot.Kind) != kind ||
-                !Matches(requested, slot))
-                continue;
-            if (found && (requested.Kind == BML_BEHAVIOR_SELECTOR_ONLY ||
-                          requested.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME)) {
-                ScriptStringInterop::RaiseActiveException(
-                    "Behavior slot selector is ambiguous in this Layout.");
-                return nullptr;
-            }
-            found = index;
-            if (requested.Kind == BML_BEHAVIOR_SELECTOR_INDEX ||
-                requested.Kind == BML_BEHAVIOR_SELECTOR_NAME)
-                break;
-        }
+        bool ambiguous = false;
+        const Authoring::Slot *found = m_Layout->Select(
+            static_cast<Authoring::SlotKind>(kind), selector.Value,
+            &ambiguous);
         if (!found) {
             ScriptStringInterop::RaiseActiveException(
-                "Behavior slot selector matched nothing in this Layout.");
+                ambiguous
+                    ? "Behavior slot selector is ambiguous in this Layout."
+                    : "Behavior slot selector matched nothing in this Layout.");
             return nullptr;
         }
-        return Wrap(*found);
+        return Wrap(static_cast<std::size_t>(found - m_Layout->Slots.data()));
     }
     ScriptBehaviorSlot *FindNamed(int kind, const std::string &name) const {
         return Find(kind, ScriptBehaviorSelector(
@@ -766,24 +790,6 @@ public:
     }
 
 private:
-    static bool Matches(const BML_BehaviorSelector &selector,
-                        const Authoring::Slot &slot) noexcept {
-        switch (selector.Kind) {
-        case BML_BEHAVIOR_SELECTOR_ONLY:
-            return true;
-        case BML_BEHAVIOR_SELECTOR_INDEX:
-            return selector.Index == slot.Index;
-        case BML_BEHAVIOR_SELECTOR_NAME:
-            return selector.Occurrence == slot.Occurrence &&
-                std::string_view(selector.Name.Data, selector.Name.Length) ==
-                    slot.Name;
-        case BML_BEHAVIOR_SELECTOR_UNIQUE_NAME:
-            return std::string_view(selector.Name.Data, selector.Name.Length) ==
-                slot.Name;
-        default:
-            return false;
-        }
-    }
     ScriptBehaviorSlot *Wrap(std::size_t index) const {
         return NewScriptObject<ScriptBehaviorSlot>(
             "Behavior Slot", m_State, m_Layout, index);
@@ -3763,6 +3769,8 @@ bool ScriptBehaviorService::Bind(ModContext *context, ScriptMod *owner) {
         m_State->OwnerId = owner && owner->GetID() ? owner->GetID() : "";
         m_State->Active = context && owner && !m_State->OwnerId.empty() &&
             context->BehaviorSessions().RegisterOwner(m_State->OwnerId) != 0;
+        if (m_State->Active)
+            m_State->Open();
         return m_State->Active;
     } catch (...) {
         return false;
@@ -3773,14 +3781,10 @@ void ScriptBehaviorService::Release(ScriptDiagnostic *diagnostic) {
     if (!m_State)
         return;
     try {
-        const BML::Behavior::Internal::Status status = m_State->Retire();
-        if (!status && diagnostic) {
+        const std::string failure = m_State->Retire();
+        if (!failure.empty() && diagnostic)
             *diagnostic = MakeScriptDiagnostic(
-                ScriptDiagnosticPhase::Runtime,
-                status.Message.empty()
-                    ? "Failed to retire Script Behavior resources."
-                    : status.Message);
-        }
+                ScriptDiagnosticPhase::Runtime, failure);
     } catch (const std::exception &error) {
         if (diagnostic)
             *diagnostic = MakeScriptDiagnostic(
@@ -3804,6 +3808,11 @@ std::size_t ScriptBehaviorService::GetActiveCount() const {
             ++count;
     }
     return count;
+}
+
+const Authoring::Session *ScriptBehaviorService::GetSession() const {
+    return m_State && m_State->Active && m_State->Session
+        ? &*m_State->Session : nullptr;
 }
 
 ScriptBehaviorBlock *ScriptBehaviorService::Use(CKGUID prototype) {

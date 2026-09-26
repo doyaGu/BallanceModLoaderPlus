@@ -188,6 +188,7 @@ private:
     Detail::Run m_Run;
 
     friend class Block;
+    friend class Session;
 };
 
 
