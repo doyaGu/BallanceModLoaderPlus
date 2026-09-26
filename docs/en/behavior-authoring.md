@@ -100,6 +100,8 @@ The Loader verifies the calling DLL and binds the Session to the current Mod gen
 
 Objects created through a Session retain their own Session lease. Moving or `Reset()`-ing the original `Session` value releases that value's lease but does not invalidate a live Block, run, Script, Watch, Patch, or Plan. The native Session closes when its last lease is released.
 
+`Session::Adopt(api, handle)` takes ownership of a Session handle that was opened through the C table by other means, such as a host that opens Sessions for the Mods it runs. The adopted handle follows the same lease rule; if Adopt fails, it closes the handle at once.
+
 ### Find a Prototype
 
 Use a known `CKGUID` directly, or query the catalog when the GUID is unknown or the current provider identity must be pinned:
@@ -260,6 +262,8 @@ if (layout) {
 }
 ```
 
+`Layout::Find(kind, name, occurrence)` looks a Slot up by name. `Layout::Select(kind, selector)` accepts the same selectors as Block configuration; when a selector that requires a unique match finds several Slots, it returns null and reports the ambiguity through its optional flag.
+
 A lifecycle callback boundary invalidates old Slots because the provider may rebuild a same-shaped interface. Ordinary Execute advances the layout generation only when Target, In/Out, Pin/Pout, Setting, or Local identity actually changes. A stale Slot or Port returns `LayoutChanged` instead of retargeting an old ordinal.
 
 `Settings({...})` applies another live Setting stage. Runtime then reads the new Layout and restores Target, Pin, Local, and source relations that remain unique and type-compatible. Once native mutation begins, any write, callback, Layout, or relation failure makes the run `Failed`: `Info()` preserves the first `Status`, later mutation and execution are rejected with that same diagnostic, and the native Instance remains owned until `Close()`.
@@ -315,7 +319,7 @@ operation GUID, exact result/input type tuple, graph owner, and object identity.
 A Port retains its Node's layout generation, so it cannot be used against a
 later incompatible Layout.
 
-`Logical()` rereads the author-visible graph; `Live()` rereads the physical CK graph. Logical view keeps explicit Add and Flow edits, hides the exact infrastructure installed by Tap, Before, After, and Splice, and restores a splice anchor's logical endpoints. A graph fingerprint covers native identities, priorities, layouts, parameter operations, Link topology, child scheduling order, graph-Link order, and each source IO's Link traversal order. Patch journals restore those CK2 orders exactly. A native graph whose source IO reaches a Link owned by another graph is rejected rather than published. If foreign code changes a claimed after-image, Apply reports `GraphChanged`; Close reports `RevertConflict` before changing the graph.
+`Logical()` rereads the author-visible graph; `Live()` rereads the physical CK graph. Logical view keeps explicit Add and Flow edits, hides the exact infrastructure installed by Tap, Before, After, and Splice, and restores a splice anchor's logical endpoints. A graph fingerprint covers native identities, priorities, layouts, parameter operations, Link topology, child scheduling order, and each source IO's Link traversal order. The order of the graph's own Link collection only feeds CK2's activation flags, so the fingerprint leaves it out. Patch journals restore child scheduling order and source IO traversal order exactly. A native graph whose source IO reaches a Link owned by another graph is rejected rather than published. If foreign code changes a claimed after-image, Apply reports `GraphChanged`; Close reports `RevertConflict` before changing the graph.
 
 `Graph::Read` follows stored, direct, and shared sources without evaluating a Parameter Operation. Operation values are reported as indeterminate.
 
@@ -466,13 +470,11 @@ they are parked, and restores their original endpoints and delays when it
 closes. This prevents an active sibling's output port from traversing a Link
 that no longer belongs to the graph. Applying a removal requires the selected
 Node, its control ports, and every incident Link source to be idle;
-an already-active non-target sink no longer depends on that Link. CK2 does not
-expose delayed-list membership through the retail SDK. At an execution
-boundary, a Link outside that list has a remaining delay of zero or its initial
-delay; any other positive remaining delay is therefore treated as in-flight and
-rejected. This remains true when a graph was deactivated without a reset, since
-that operation leaves its delayed list intact. Unrelated graph work may remain
-active.
+an already-active non-target sink no longer depends on that Link. Removal also
+reads each incident Link's delayed-list flag and rejects a Link that CK2 still
+holds in the graph's delayed list. This covers a graph deactivated without a
+reset, since that operation leaves its delayed list intact. Unrelated graph
+work may remain active.
 
 `Reconnect` changes the source and destination relations of the selected native
 `CKBehaviorLink`. It preserves that Link's identity, initial delay, and current
@@ -594,6 +596,37 @@ of discarding it as though restoration had completed.
 
 Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.
 
+### Place a Hook Block
+
+`Tap`, `Before`, and `After` install a Hook as part of one Edit. When the Block must exist before the Patch that links it, or outlive several such Patches, place it directly with `Session::SpawnIn(graph, hook, shape)`. It returns the Instance that owns the Hook Block:
+
+```cpp
+HookBlock shape;
+shape.Outputs = 2;
+shape.ActivatesOutputs = false;
+
+auto spawned = m_Behavior.SpawnIn(script, Hook([](const HookEvent &event) {
+    ChooseBranch(event.Block);
+    return HookResult::Ok;
+}), shape);
+if (!spawned)
+    return;
+Instance hook = spawned.Take();
+```
+
+`HookBlock` sets the number of Ins and Outs and whether the Block activates every Out after the callback. With `ActivatesOutputs = false`, the callback activates the Outs it chooses on the Block that `HookEvent::Block` names. A callback that did not complete still passes the activation to every Out, so a faulted hook never stalls the graph.
+
+The Block starts unlinked. Inspect the graph, find the Node whose `Object()` names the Block (`hook.Inspect(View::Live)` returns it as the snapshot root), and splice it into a Link with a Patch:
+
+```cpp
+Edit edit;
+auto root = edit.Root();
+root.Splice(root.Use(link), root.Use(blockNode));
+auto placement = graph->Apply("my hook", edit);
+```
+
+Close the placement Patch before the Instance so the graph is restored before the Block leaves it. Closing the Instance stops the callback at once and removes the Block at a later safe point.
+
 ## 10. AngelScript
 
 When CKAngelScript is enabled, each Script Mod receives an owner-scoped
@@ -601,6 +634,8 @@ When CKAngelScript is enabled, each Script Mod receives an owner-scoped
 manually: `Use`, `Find`, `Describe`, `Inspect`, `Edit`, and `CreateScript` use
 the current Script Mod's identity. Before unload or hot reload, BML retires the
 Run, Watch, Patch, Plan, Script, and callback objects created through it.
+The projection uses only this C++ facade and the Session BML opens for the
+Script Mod, which the script Hook Block service shares.
 
 ```angelscript
 auto@ block = BML::Behavior::Find("My Building Block", "My Category")

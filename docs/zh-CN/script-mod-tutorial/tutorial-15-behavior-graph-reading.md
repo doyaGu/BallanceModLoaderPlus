@@ -345,11 +345,11 @@ Graph / Edit / Patch / Plan 模型。本章不走那条路：先从 DataArray、
 | 监听游戏事件 | 可以。知道行为图执行到了哪个阶段 |
 | 查看对象状态 | 可以。看到行为图设置的位置、可见性 |
 | 检查或修改行为图 | 使用 `BML::Behavior` 的 `Inspect` / `Edit` / `Patch` / `Plan`。脚本每次一个 Graph、一条 Plan 规则；要在一个 handle 里原子组合多个 Graph 或多条规则时仍用 Native C++。见 [Behavior 编写](../behavior-authoring.md) 第 10 节 |
-| 插入执行回调 | 优先 `BML::Behavior` 的 Hook / Before / After。`InsertHookBlock*` 是 legacy splice，卸载时会清，但没有 Patch journal |
+| 插入执行回调 | 优先 `BML::Behavior` 的 Hook / Before / After。`InsertHookBlock*` 用一个只含一条 Link 的 Patch 插入，移除或卸载时恢复原 Link，但不能并入更大的 Patch，也不会跟随 Script 进入之后的 world |
 
 优先通过事件、DataArray 和对象状态观察原版流程。能够在公开状态层完成的功能，
 不需要编辑行为图。只有目标行为确实由某段图控制，而且修改范围、回滚方式和冲突
-策略都明确时，才使用 `BML::Behavior`。不要把 legacy HookBlock 当作完整
+策略都明确时，才使用 `BML::Behavior`。HookBlock 只负责单点回调，不要把它当作完整
 graph-edit interface。
 
 ## 用脚本观察行为图的执行效果
@@ -461,8 +461,8 @@ DataArray（第 11 章）
 
 脚本层没有 `OnPreProcess` 固定回调。常规脚本主要在 `OnProcess` 中观察本帧
 状态，或通过 `GameEvent` 响应关卡阶段变化。需要改变执行路径时，使用
-`BML::Behavior` 的 Patch 或 Plan，而不是依赖未定义的回调顺序。`InsertHookBlock*`
-只适合插入一次性回调，不是可逆的 graph edit。
+`BML::Behavior` 的 Patch 或 Plan，不要依赖未定义的回调顺序。`InsertHookBlock*`
+只在一条 Link 上插入回调，world 重置后不会重新安装。
 
 **Q：行为图里的 Send Message 会触发 BML 事件吗？**
 

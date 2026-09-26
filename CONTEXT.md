@@ -247,7 +247,9 @@ AngelScript authoring layers. An owner-scoped Session configures Blocks from
 registered Prototypes, runs them as Calls, Tasks, or Instances, and builds
 graph Edits for Patches and Plans. Sessions survive world reset; world-bound
 objects and callbacks do not. The C, C++, and script layers use one native
-implementation. The legacy IMod interface still bootstraps Native Mods.
+implementation: the C++ facade encodes calls into the C table, and the
+AngelScript layer projects that facade without including a Loader Behavior or
+facade Detail header. The legacy IMod interface still bootstraps Native Mods.
 
 **Behavior Plan Instance** — A revisioned view of one Plan installation in a
 world. Symbolic Nodes and Ports can be resolved to checked Object References or
@@ -258,13 +260,27 @@ kept alive for the caller.
 **Behavior Runtime** — The private CK adapter that instantiates a configured
 Block as a real CKBehavior, executes it, captures Frames, and completes its
 lifecycle at safe points. It does not own top-level Script roots or graph
-mutation. Private implementation types live in BML::Behavior::Internal.
+mutation. Loader features reach it only through Sessions; the legacy APIs that
+hand a raw CKBehavior to their caller use a loader-only unmanaged create that
+no Run tracks. The CK2 primitives under it and under graph edits emulate the
+lifecycle messages CK2 never sends on its own, return an exact inverse for
+each graph change, and read the delayed-link state directly. Those facts come
+from the Ballanced CK2 source unless retail CK2.dll is observed to differ.
+Private implementation types live in BML::Behavior::Internal.
 
 **Behavior Graph Authoring** — Script owns a top-level root; Graph captures an
 immutable snapshot; Edit describes symbolic changes. Patch applies one exact
-world, while Plan resolves rules across later worlds. Installation and
-restoration are checked and atomic for each requested change; rejected or
-partially restored work remains visible as explicit status.
+world, while Plan resolves rules across later worlds; both are one
+installation aggregate that differs only in how its rules select graphs.
+Installation and restoration are checked and atomic for each requested change;
+rejected or partially restored work remains visible as explicit status.
+Inside the loader an Edit is one symbolic Program, checked without a world. It
+resolves against a graph Snapshot into Ops, and a Transaction applies them
+while journaling their inverses, so a rejected step undoes the applied prefix
+in reverse and reports any conflict. A Hook Block is a Block that runs a Mod
+callback on each activation it receives: Session::SpawnIn returns the Instance
+that owns it, and a Patch splices it into the graph. Closing the Instance
+stops the callback at once and removes the Block at a later safe point.
 
 **Graph Pattern** — A serializable structural selector inside an Edit. It
 matches observable Nodes, Ports, Links, and bounded paths without retaining a
@@ -284,8 +300,9 @@ world reset, rejecting stale identities. Destruction without CK notification is
 outside what it can observe.
 
 **ExecuteBB Adapter** — The API-side adapter that translates exported
-ExecuteBB calls into Blocks and delegates execution to Behavior Runtime.
-Behavior Runtime does not depend on ExecuteBB.
+ExecuteBB calls into Blocks and runs them on the loader's own Behavior
+Session. The AngelScript ExecuteBB bindings delegate to it, so there is one
+frontend. Behavior Runtime does not depend on ExecuteBB.
 
 ## Source ownership
 
@@ -294,9 +311,13 @@ Behavior Runtime does not depend on ExecuteBB.
   ModContext.* owns the runtime services and IBML entry point; ModManager.*
   connects both to CK manager lifecycle.
 - src/Api/ adapts public BML interfaces to private implementations.
+  src/Api/Behavior/ holds the Behavior C table and the Codec that reads and
+  writes its records.
 - src/Behavior/ owns Sessions, Prototypes, graph authoring, Runtime, and the
-  legacy ScriptHelper implementation. src/Behavior/Blocks/ holds private
-  implementations tied to individual BBs.
+  legacy ScriptHelper implementation. Core/ holds Status, values, parameters,
+  and layouts; Engine/ the CK2 primitives; Edit/ the Program, Ops, and
+  Transaction; Install/ the Patch and Plan aggregate and Script selection.
+  src/Behavior/Blocks/ holds private implementations tied to individual BBs.
 - src/Console/, src/HUD/, src/CustomMaps/, src/Gameplay/, and src/ModMenu/
   own their named built-in features.
 - src/UI/ owns shared Overlay, input, text, fonts, and IME infrastructure.

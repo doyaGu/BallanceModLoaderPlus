@@ -18,7 +18,6 @@ enum class ValueKind {
 class Value {
 public:
     static Value Raw(CKGUID type, const void *data, std::size_t size);
-    static Value UntypedRaw(const void *data, std::size_t size);
     static Value Text(CKGUID type, std::string text);
     static Value String(std::string text);
     static Value Null(CKGUID type);

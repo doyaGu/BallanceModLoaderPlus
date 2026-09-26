@@ -365,9 +365,6 @@ public:
         std::unique_ptr<Program> Body;
     };
 
-    [[nodiscard]] const std::vector<Step> &StepList() const noexcept {
-        return m_Steps;
-    }
     [[nodiscard]] const std::vector<Nested> &NestedGraphs() const noexcept {
         return m_Nested;
     }

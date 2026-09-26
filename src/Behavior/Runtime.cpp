@@ -2621,19 +2621,6 @@ int Runtime::ExecuteNative(CKBehavior *behavior, const CKBehaviorContext *frame)
     return behavior->Execute(m_Context->m_BehaviorContext.DeltaTime);
 }
 
-Status Runtime::Reacquire(std::uint64_t instanceId, CKBehavior *behavior,
-                                          Record *&record) {
-    record = FindRecord(instanceId);
-    if (!record || !behavior || ResolveBehavior(*record) != behavior ||
-        behavior->IsToBeDeleted()) {
-        return Failure(Error::InvalidState,
-                       "Building Block instance changed or disappeared during a callback.",
-                       CK_OK, CKBR_OK, Phase::LifecycleCallback,
-                       behavior ? PrototypeGuid(behavior) : CKGUID());
-    }
-    return {};
-}
-
 Runtime::Record *Runtime::FindRecord(const Instance &instance) {
     if (instance.m_Access.lock() != m_Access || !instance.m_Id)
         return nullptr;

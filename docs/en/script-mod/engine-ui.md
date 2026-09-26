@@ -116,10 +116,12 @@ semantics. See [Behavior authoring](../behavior-authoring.md) section 10.
 ## Hook Block
 
 Hook Block inserts a callback at a known point in an existing Virtools behavior
-graph. Prefer `BML::Behavior` Hook / Before / After when the change should
-participate in a Patch or Plan. `InsertHookBlock*` is a legacy splice: BML+
-owns the inserted native block and removes it at unload, but it has no Patch
-journal. CKAngelScript should find the owner script and Building Blocks.
+graph. `InsertHookBlock*` places the block through the Script Mod's Behavior
+Session and splices it into one Link with a Patch, so removing the hook or
+unloading the Mod restores the original Link. Prefer `BML::Behavior` Hook /
+Before / After when the change belongs to a larger Patch or must follow a
+Script into later worlds through a Plan. CKAngelScript should find the owner
+script and Building Blocks.
 
 ```angelscript
 BML::HookBlockRef@ hook;
@@ -147,7 +149,10 @@ target before insertion.
 
 By default the block activates all outputs after the callback. Set
 `AutoActivateOutputs` to `false` when the callback selects a branch through
-`event.ActivateOutput(index)`.
+`event.ActivateOutput(index)`. A disabled hook skips the callback and still
+follows `AutoActivateOutputs`. A callback that raises a script error faults
+the Mod, and its block then passes every activation to all of its outputs, so
+the game graph never stalls on it.
 
 BML+ removes installed hooks at unload. Store `HookBlockRef@` only when the mod
 needs to disable or uninstall a hook earlier. Do not store borrowed behavior

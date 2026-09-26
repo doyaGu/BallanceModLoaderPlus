@@ -1844,9 +1844,6 @@ public:
         return WrapPort(m_Node.Target(), "Behavior Node Target");
     }
     const Authoring::Node &Value() const noexcept { return m_Node; }
-    const std::shared_ptr<GraphResource> &GraphResourceValue() const noexcept {
-        return m_Graph;
-    }
     bool BelongsTo(const std::shared_ptr<GraphResource> &graph) const noexcept {
         return m_Graph == graph;
     }

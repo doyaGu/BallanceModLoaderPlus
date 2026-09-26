@@ -418,8 +418,6 @@ private:
                                     const ExecutionInput *input, bool once,
                                     const CKBehaviorContext *frame);
     [[nodiscard]] int ExecuteNative(CKBehavior *behavior, const CKBehaviorContext *frame) const;
-    [[nodiscard]] Status Reacquire(std::uint64_t instanceId, CKBehavior *behavior,
-                                           Record *&record);
     void RequestRelease(std::uint64_t instanceId);
     void Release(std::uint64_t instanceId);
     void QueueDestroy(Record &record);

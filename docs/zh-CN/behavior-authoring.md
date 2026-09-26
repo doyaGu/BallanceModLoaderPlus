@@ -100,6 +100,8 @@ Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Ses
 
 由 Session 创建的对象持有自己所需的 Session lease。移动或对最初的 `Session` 值调用 `Reset()`，只会释放这个值持有的 lease，不会使仍存活的 Block、run、Script、Watch、Patch 或 Plan 失效。最后一个 lease 释放时，native Session 才关闭。
 
+`Session::Adopt(api, handle)` 接管一个通过 C 函数表以其他方式打开的 Session handle，例如宿主替它运行的 Mod 打开的 Session。接管后的 handle 遵守同样的 lease 规则；Adopt 失败时会立即关闭该 handle。
+
 ### 查找 Prototype
 
 已知 GUID 时可以直接 `Use(CKGUID)`。不知道 GUID，或需要固定当前 provider 时，先查询 catalog：
@@ -258,6 +260,8 @@ if (layout) {
 }
 ```
 
+`Layout::Find(kind, name, occurrence)` 按名称查找 Slot。`Layout::Select(kind, selector)` 接受与 Block 配置相同的 selector；要求唯一匹配的 selector 命中多个 Slot 时返回 null，并通过可选的 flag 报告歧义。
+
 lifecycle callback 边界会使旧 Slot 失效，因为 provider 可能重建了相同形状的 interface。普通 Execute 只有在 Target、In/Out、Pin/Pout、Setting 或 Local identity 实际变化时才推进 layout generation。旧 Slot 或 Port 会返回 `LayoutChanged`，不会按旧 ordinal 写错参数。
 
 `Settings({...})` 可对 live run 应用新的 Setting stage。Runtime 会重新取得 Layout，并恢复仍然唯一且类型匹配的 Target、Pin、Local 和 source relation。native mutation 一旦开始，任何写入、callback、Layout 或 relation 失败都会让 run 进入 `Failed`：`Info()` 保留首个 `Status`，后续 mutation 和 execution 返回同一 diagnostic，而 native Instance 仍由该 run 持有，直到 `Close()`。
@@ -309,7 +313,7 @@ snapshot allocation 的轻量 view。`Graph::Operations()` 列出每个真实
 graph owner 和 object identity。Port 保留所属 Node 的 layout generation；把
 旧 snapshot 的 Port 用于新的 live Layout 会失败。
 
-`Logical()` 重新读取作者可见的 graph，`Live()` 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。graph fingerprint 包含 native identity、priority、layout、parameter operation、Link topology、child 调度顺序、graph Link 顺序以及每个 source IO 的 Link 遍历顺序。Patch journal 会精确恢复这些 CK2 顺序。source IO 若能到达属于另一 graph 的 Link，该 native graph 不完整，Runtime 会拒绝发布 snapshot。其他代码若改坏 Patch 声明的 after-image，Apply 返回 `GraphChanged`；Close 会在修改 graph 前返回 `RevertConflict`。
+`Logical()` 重新读取作者可见的 graph，`Live()` 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。graph fingerprint 包含 native identity、priority、layout、parameter operation、Link topology、child 调度顺序以及每个 source IO 的 Link 遍历顺序。graph 自身 Link 集合的顺序只影响 CK2 的激活标记，所以 fingerprint 不包含它。Patch journal 会精确恢复 child 调度顺序和 source IO 遍历顺序。source IO 若能到达属于另一 graph 的 Link，该 native graph 不完整，Runtime 会拒绝发布 snapshot。其他代码若改坏 Patch 声明的 after-image，Apply 返回 `GraphChanged`；Close 会在修改 graph 前返回 `RevertConflict`。
 
 `Graph::Read` 跟随 stored、direct 和 shared source，但不会为了读取而执行 Parameter Operation；operation value 会报告 indeterminate。
 
@@ -444,11 +448,10 @@ public interface 不一致，替换会直接失败，不会按位置猜测适配
 与 delay。这样，仍在运行的兄弟 Block 就无法从自己的 output port 遍历一条已经不属于
 graph 的 Link。应用 Remove 时，目标 Node、它的 control port 以及每条关联 Link 的
 source 都必须 idle；
-非目标 sink 已经 active 时不再依赖这条 Link。零售 SDK 不公开 CK2 delayed list 的
-成员关系；在一次执行边界上，不在该 list 中的 Link，其 remaining delay
-只会是 0 或 initial delay，因此其他正数状态一律按 in-flight 处理并拒绝。即使 graph
-通过不带 reset 的方式被 deactivate，这条规则仍成立，因为该操作不会清空 delayed
-list。graph 内无关的工作可以保持 active。
+非目标 sink 已经 active 时不再依赖这条 Link。Remove 还会读取每条关联 Link 的
+delayed list 标记，CK2 仍把它留在 graph delayed list 中时直接拒绝。graph 通过不带
+reset 的方式被 deactivate 时同样适用，因为该操作不会清空 delayed list。graph 内
+无关的工作可以保持 active。
 
 `Reconnect` 修改所选 native `CKBehaviorLink` 的 source 与 destination relation。
 它保留 Link identity、initial delay 和 current delay；关闭 Patch 时恢复原 endpoint
@@ -553,12 +556,45 @@ Close 会比较 installation 仍然拥有的 Link、source 和 graph after-image
 
 Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。
 
+### 放置 Hook Block
+
+`Tap`、`Before` 和 `After` 把 Hook 作为某个 Edit 的一部分安装。Block 需要先于连接它的 Patch 存在，或需要比多个这样的 Patch 活得更久时，用 `Session::SpawnIn(graph, hook, shape)` 直接放置。它返回持有该 Hook Block 的 Instance：
+
+```cpp
+HookBlock shape;
+shape.Outputs = 2;
+shape.ActivatesOutputs = false;
+
+auto spawned = m_Behavior.SpawnIn(script, Hook([](const HookEvent &event) {
+    ChooseBranch(event.Block);
+    return HookResult::Ok;
+}), shape);
+if (!spawned)
+    return;
+Instance hook = spawned.Take();
+```
+
+`HookBlock` 设置 In 与 Out 的数量，以及 callback 之后是否激活全部 Out。`ActivatesOutputs = false` 时，由 callback 在 `HookEvent::Block` 指向的 Block 上激活它选择的 Out。callback 没有完成时，这次激活仍会传给全部 Out，出错的 hook 不会让 graph 停住。
+
+Block 创建后没有任何连接。先 Inspect graph，找到 `Object()` 指向该 Block 的 Node（`hook.Inspect(View::Live)` 的 snapshot root 就是它），再用 Patch 把它 splice 到一条 Link 上：
+
+```cpp
+Edit edit;
+auto root = edit.Root();
+root.Splice(root.Use(link), root.Use(blockNode));
+auto placement = graph->Apply("my hook", edit);
+```
+
+先关闭放置用的 Patch，再关闭 Instance，这样 Block 离开之前 graph 已经恢复。关闭 Instance 会立即停止 callback，并在之后的 safe point 移除 Block。
+
 ## 10. AngelScript
 
 启用 CKAngelScript 时，每个 Script Mod 都会得到同一模型的 owner-scoped
 `BML::Behavior` 投影。无需手动打开 Session：`Use`、`Find`、`Describe`、
 `Inspect`、`Edit` 和 `CreateScript` 会使用当前 Script Mod 的身份，卸载或热重载前
-统一关闭它创建的 Run、Watch、Patch、Plan、Script 和 callback。
+统一关闭它创建的 Run、Watch、Patch、Plan、Script 和 callback。这个投影只使用
+C++ facade 和 BML 为该 Script Mod 打开的 Session，脚本 Hook Block 服务共用同一个
+Session。
 
 ```angelscript
 auto@ block = BML::Behavior::Find("My Building Block", "My Category")

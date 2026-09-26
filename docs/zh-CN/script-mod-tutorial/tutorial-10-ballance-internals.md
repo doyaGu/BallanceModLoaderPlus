@@ -128,7 +128,7 @@ Level_01.NMO 里的对象遵循 Ballance 的命名约定。上一章已经从 `C
 脚本 Mod 检查或修改行为图应使用 `BML::Behavior`（见第 15 章和
 [Behavior 编写](../behavior-authoring.md)）。CKAngelScript 的 `Behavior` /
 `BB` / `Param` 仍可做底层 CK2 操作，但没有 BML 的 owner retirement、Patch
-journal 或跨 world Plan。`InsertHookBlock*` 只适合插入一次性回调。行为图编辑会
+journal 或跨 world Plan。`InsertHookBlock*` 只适合在一条 Link 上插入回调。行为图编辑会
 直接影响原版游戏流程，必须明确节点身份、执行顺序、关卡生命周期和卸载清理。
 本教程先从只读观察开始，再在确有需要时使用范围明确、可撤销的编辑。
 

@@ -18,10 +18,6 @@ Value Value::Raw(CKGUID type, const void *data, std::size_t size) {
     return value;
 }
 
-Value Value::UntypedRaw(const void *data, std::size_t size) {
-    return Raw(CKGUID(), data, size);
-}
-
 Value Value::Text(CKGUID type, std::string text) {
     Value value;
     value.m_Kind = ValueKind::Text;

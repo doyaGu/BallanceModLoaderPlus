@@ -103,7 +103,6 @@ public:
     // caller: ExecuteBB::Create*, CreateHookBlock and BGui. The caller owns
     // the Block from then on, so no Run tracks it.
     CKBehavior *CreateUnmanaged(CKBehavior *graph, const BlockSpec &block);
-    Status CloseUnmanaged(CKBehavior *block);
     RunResult Continue(std::uintptr_t runId);
     RunResult Pulse(std::uintptr_t runId, const Slot &input);
 
