@@ -250,7 +250,7 @@ int ProbeCountedExecution(const CKBehaviorContext *, void *argument) {
 struct PatchCloseProbe {
     CKEdit *Editor = nullptr;
     Patch *Target = nullptr;
-    const Edit *Candidate = nullptr;
+    const Ops *Candidate = nullptr;
     Patch *CandidatePatch = nullptr;
     CKBehavior *Graph = nullptr;
     int NodesBefore = 0;
@@ -1759,7 +1759,7 @@ private:
         }
         const Layout layout = m_Runtime.Describe(m_SpliceSource);
 
-        Edit beta;
+        Ops beta;
         Link betaLink;
         if (!m_Editor->Begin(m_SpliceGraph, {"player", "beta"}, beta) ||
             !m_Editor->Use(beta, m_SpliceAnchor, betaLink)) {
@@ -1777,7 +1777,7 @@ private:
             return;
         }
 
-        Edit alpha;
+        Ops alpha;
         Link alphaLink;
         if (!m_Editor->Begin(m_SpliceGraph, {"player", "alpha"}, alpha) ||
             !m_Editor->Use(alpha, m_SpliceAnchor, alphaLink)) {
@@ -1871,20 +1871,26 @@ private:
             const Status closed = m_Editor->Close(m_SpliceAlpha);
             restored = static_cast<bool>(closed) && !m_SpliceAlpha;
         }
-        Status betaQueued;
+        // CKEdit is game-thread state. The cross-thread close queue belongs to
+        // the installation layer above it, so an off-thread Close here must be
+        // rejected without touching the Patch or the graph.
+        Status betaOffThread;
+        const PatchState betaState = m_SpliceBeta.State();
         CKBehaviorIO *betaHead = m_SpliceAnchor
             ? m_SpliceAnchor->GetOutBehaviorIO() : nullptr;
         if (m_SpliceBeta) {
             std::thread closeThread([&] {
-                betaQueued = m_Editor->Close(m_SpliceBeta);
+                betaOffThread = m_Editor->Close(m_SpliceBeta);
             });
             closeThread.join();
         }
-        const bool crossThreadQueued = betaQueued && m_SpliceBeta &&
-            m_SpliceBeta.State() == PatchState::Closing && m_SpliceAnchor &&
+        const bool offThreadRejected =
+            betaOffThread.Code == Error::WrongThread && m_SpliceBeta &&
+            m_SpliceBeta.State() == betaState && m_SpliceAnchor &&
             m_SpliceAnchor->GetOutBehaviorIO() == betaHead;
-        m_Editor->ProcessFrame();
-        const bool base = crossThreadQueued && !m_SpliceBeta && m_SpliceAnchor &&
+        const Status betaClosed = m_Editor->Close(m_SpliceBeta);
+        const bool base = offThreadRejected && betaClosed && !m_SpliceBeta &&
+            m_SpliceAnchor &&
             m_SpliceBeta.State() == PatchState::Closed &&
             m_SpliceAnchor->GetID() == m_SpliceAnchorId &&
             m_SpliceAnchor->GetOutBehaviorIO() == m_SpliceSink->GetInput(0) &&
@@ -1973,7 +1979,7 @@ private:
         // happened to have in the prototype Layout.
         setFixtureMode(
             BMLLifecycleFixtureMode::InsertPinOnSettingsEdited);
-        Edit shifted;
+        Ops shifted;
         Patch shiftedPatch;
         Node shiftedNode;
         Status shiftedStatus = m_Editor->Begin(
@@ -2025,7 +2031,7 @@ private:
         AttachResult changedPeer = m_Runtime.AddToGraph(
             m_EditFixture, LifecycleSpec());
         PeerPortChange peerChange{m_Context, changedPeer.Block};
-        Edit crossNode;
+        Ops crossNode;
         Patch crossNodePatch;
         Node crossTarget;
         Node crossSource;
@@ -2067,7 +2073,7 @@ private:
         AttachResult selfDelete = m_Runtime.AddToGraph(
             m_EditFixture, LifecycleSpec());
         EditedSelfDelete selfDeleteChange;
-        Edit deleting;
+        Ops deleting;
         Patch deletingPatch;
         Node deletingNode;
         Status deletingStatus = selfDelete
@@ -2125,7 +2131,7 @@ private:
             m_State = State::AdditiveEditClose;
             return;
         }
-        Edit sharedCycle;
+        Ops sharedCycle;
         Node sharedSource;
         Node sharedPeer;
         if (!m_Editor->Begin(m_EditFixture,
@@ -2155,7 +2161,7 @@ private:
             return;
         }
 
-        Edit rejected;
+        Ops rejected;
         Node rejectedSource;
         if (!m_Editor->Begin(m_EditFixture, {"player", "cycle-rejected"},
                              rejected) ||
@@ -2181,7 +2187,7 @@ private:
             return;
         }
 
-        Edit edit;
+        Ops edit;
         Node sourceNode;
         if (!m_Editor->Begin(m_EditFixture, {"player", "additive"}, edit) ||
             !m_Editor->Use(edit, m_EditSource, sourceNode)) {
@@ -2652,7 +2658,7 @@ private:
         CKParameter *installed = nullptr;
         CKParameter *otherInstalled = nullptr;
         if (passed) {
-            Edit alpha;
+            Ops alpha;
             Node target;
             Status status = m_Editor->Begin(
                 graph, {"player", "relation-alpha"}, alpha);
@@ -2676,7 +2682,7 @@ private:
         }
 
         if (passed) {
-            Edit beta;
+            Ops beta;
             Node target;
             Status status = m_Editor->Begin(
                 graph, {"player", "relation-beta"}, beta);
@@ -2725,7 +2731,7 @@ private:
             // A Conflicted Patch keeps its claim on every Pin it published, so
             // no other owner can move in while the teardown is unfinished.
             Patch gammaPatch;
-            Edit gamma;
+            Ops gamma;
             Node target;
             Status status = m_Editor->Begin(
                 graph, {"player", "relation-gamma"}, gamma);
@@ -2754,7 +2760,7 @@ private:
         if (passed) {
             // The retired key is free again once the retry completes.
             Patch againPatch;
-            Edit again;
+            Ops again;
             Node target;
             Status status = m_Editor->Begin(
                 graph, {"player", "relation-alpha"}, again);
@@ -2811,7 +2817,7 @@ private:
                 graph->AddSubBehavior(providerNode) == CK_OK;
 
             Patch providerPatch;
-            Edit providerEdit;
+            Ops providerEdit;
             Node provider;
             Status status = passed
                 ? m_Editor->Begin(
@@ -4217,7 +4223,7 @@ private:
     int m_GraphStartFrame = -1;
     CKBehavior *m_EditFixture = nullptr;
     CKBehavior *m_EditSource = nullptr;
-    Edit m_QueuedEdit;
+    Ops m_QueuedEdit;
     Patch m_EditPatch;
     Patch m_QueuedPatch;
     PatchCloseProbe m_EditTap;

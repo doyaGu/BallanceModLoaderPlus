@@ -155,7 +155,15 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Callback.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKEdit.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKGraph.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Journal.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Ops.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Ops/Interface.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Ops/Link.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Ops/Overlay.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Ops/Structure.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Ops/Value.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Revert.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Transaction.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Execution.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/FrameStore.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Lifecycle.cpp

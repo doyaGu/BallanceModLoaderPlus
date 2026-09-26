@@ -455,11 +455,13 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Block.h
         Behavior/Callback.h
         Behavior/CKEdit.h
-        Behavior/Edit.h
         Behavior/Execution.h
         Behavior/FrameStore.h
         Behavior/Graph.h
+        Behavior/Edit/Journal.h
+        Behavior/Edit/Ops.h
         Behavior/Edit/Program.h
+        Behavior/Edit/Transaction.h
         Behavior/Lifecycle.h
         Behavior/Pattern.h
         Behavior/PrototypeCatalog.h
@@ -495,10 +497,18 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/CKEdit.cpp
         Behavior/CKGraph.cpp
         Behavior/CKPrototypeSource.cpp
-        Behavior/Edit.cpp
         Behavior/Execution.cpp
         Behavior/FrameStore.cpp
+        Behavior/Edit/Journal.cpp
+        Behavior/Edit/Ops.cpp
+        Behavior/Edit/Ops/Interface.cpp
+        Behavior/Edit/Ops/Link.cpp
+        Behavior/Edit/Ops/Overlay.cpp
+        Behavior/Edit/Ops/Structure.cpp
+        Behavior/Edit/Ops/Value.cpp
         Behavior/Edit/Program.cpp
+        Behavior/Edit/Revert.cpp
+        Behavior/Edit/Transaction.cpp
         Behavior/Lifecycle.cpp
         Behavior/Pattern.cpp
         Behavior/PrototypeCatalog.cpp

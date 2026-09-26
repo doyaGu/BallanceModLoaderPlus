@@ -745,23 +745,28 @@ private:
                 HashText(out, port.Name);
             }
         }
-        // m_SubBehaviorLinks order drives graph-input propagation. Hash it in
-        // place, then hash the independent per-source traversal order below.
-        for (const GraphLink &link : graph.Links) {
-            Hash(out, link.Id);
-            Hash(out, link.Source.Node);
-            Hash(out, link.Source.Kind);
-            Hash(out, link.Source.Index);
-            Hash(out, link.Target.Node);
-            Hash(out, link.Target.Kind);
-            Hash(out, link.Target.Index);
-            Hash(out, link.InitialDelay);
-        }
-
+        // m_SubBehaviorLinks only feeds CK2's activation flags, so its order
+        // is not graph state. Hash the Links by identity, then hash the
+        // order each source IO fires them in.
         m_LinksBySource.clear();
         m_LinksBySource.reserve(graph.Links.size());
         for (const GraphLink &link : graph.Links)
             m_LinksBySource.push_back(&link);
+        std::sort(m_LinksBySource.begin(), m_LinksBySource.end(),
+                  [](const GraphLink *left, const GraphLink *right) {
+                      return left->Id < right->Id;
+                  });
+        for (const GraphLink *link : m_LinksBySource) {
+            Hash(out, link->Id);
+            Hash(out, link->Source.Node);
+            Hash(out, link->Source.Kind);
+            Hash(out, link->Source.Index);
+            Hash(out, link->Target.Node);
+            Hash(out, link->Target.Kind);
+            Hash(out, link->Target.Index);
+            Hash(out, link->InitialDelay);
+        }
+
         std::sort(
             m_LinksBySource.begin(), m_LinksBySource.end(),
             [](const GraphLink *left, const GraphLink *right) {

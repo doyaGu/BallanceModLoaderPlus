@@ -190,6 +190,18 @@ public:
     void ResetWorld();
     Status Close(CKBehavior *behavior);
 
+    // Graph edits own the Blocks they add. CreateInGraph stages one without
+    // a managed handle, and EditInGraph gives the staged Block its final
+    // relations once the whole edit is wired.
+    [[nodiscard]] AttachResult CreateInGraph(
+        CKBehavior *parent, const BlockSpec &spec,
+        const CKBehaviorContext *frame = nullptr);
+    [[nodiscard]] Status EditInGraph(
+        CKBehavior *behavior, const BlockSpec &spec,
+        const CKBehaviorContext *frame = nullptr);
+    [[nodiscard]] CKObject *ResolveSlotObject(CKBehavior *behavior,
+                                              const SlotInfo &slot) const;
+
 private:
     struct ObjectStamp {
         CK_ID Id = 0;
@@ -346,7 +358,6 @@ private:
     [[nodiscard]] CKGUID PrototypeGuid(CKBehavior *behavior) const;
     [[nodiscard]] CKBehaviorPrototype *PrototypeOf(CKBehavior *behavior) const;
     [[nodiscard]] CKParameter *ResolveParameter(CKBehavior *behavior, const SlotInfo &slot) const;
-    [[nodiscard]] CKObject *ResolveSlotObject(CKBehavior *behavior, const SlotInfo &slot) const;
     [[nodiscard]] Status ValidateSlot(const Record &record,
                                               const SlotRef &slot) const;
     [[nodiscard]] Status BindInput(CKBehavior *behavior, Record &record,
@@ -396,12 +407,6 @@ private:
                                    Record &record);
     [[nodiscard]] Status LifecycleStatus(
         const NativeLifecycleAdapter &adapter, const Record &record) const;
-    [[nodiscard]] AttachResult CreateInGraph(
-        CKBehavior *parent, const BlockSpec &spec,
-        const CKBehaviorContext *frame = nullptr);
-    [[nodiscard]] Status EditInGraph(
-        CKBehavior *behavior, const BlockSpec &spec,
-        const CKBehaviorContext *frame = nullptr);
     [[nodiscard]] Status ApplySettings(
         Instance &instance,
         const std::vector<std::vector<BlockSpec::Binding>> &settings,
@@ -452,7 +457,6 @@ private:
     std::vector<Record *> m_ConfiguringRecords;
 
     friend class Instance;
-    friend class CKEdit;
 };
 
 } // namespace BML::Behavior::Internal

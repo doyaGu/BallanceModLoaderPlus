@@ -105,11 +105,11 @@ add_bml_test(BehaviorSelectionAllocationTest
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
-add_bml_test(BehaviorEditTest
+add_bml_test(BehaviorOpsTest
         SOURCES
-        BehaviorEditTest.cpp
+        BehaviorOpsTest.cpp
         BehaviorBlockTestStubs.cpp
-        ${BML_SOURCE_DIR}/Behavior/Edit.cpp
+        ${BML_SOURCE_DIR}/Behavior/Edit/Ops.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
         ${BML_SOURCE_DIR}/Behavior/Core/Value.cpp
@@ -124,7 +124,7 @@ add_bml_test(BehaviorProgramTest
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
         ${BML_SOURCE_DIR}/Behavior/Edit/Program.cpp
         ${BML_SOURCE_DIR}/Behavior/Pattern.cpp
-        ${BML_SOURCE_DIR}/Behavior/Edit.cpp
+        ${BML_SOURCE_DIR}/Behavior/Edit/Ops.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
         ${BML_SOURCE_DIR}/Behavior/Topology.cpp

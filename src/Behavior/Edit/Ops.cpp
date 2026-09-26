@@ -1,4 +1,4 @@
-#include "Behavior/Edit.h"
+#include "Behavior/Edit/Ops.h"
 
 #include <algorithm>
 #include <functional>
@@ -312,26 +312,26 @@ Port ParameterOperation::Result() const {
     return {Value, Slot::At(SlotKind::OutputParameter, 0)};
 }
 
-Edit::Edit(PatchKey key, NativeRef graph, Layout layout)
+Ops::Ops(PatchKey key, NativeRef graph, Layout layout)
     : m_Key(std::move(key)) {
     m_Nodes.push_back(
         {{1}, graph, std::move(layout), std::nullopt, std::nullopt,
          NodeRole::Logical});
 }
 
-Port Edit::Entry(int index) const { return Graph().In(index); }
+Port Ops::Entry(int index) const { return Graph().In(index); }
 
-Port Edit::Entry(std::string name) const {
+Port Ops::Entry(std::string name) const {
     return Graph().In(std::move(name));
 }
 
-Port Edit::Exit(int index) const { return Graph().Out(index); }
+Port Ops::Exit(int index) const { return Graph().Out(index); }
 
-Port Edit::Exit(std::string name) const {
+Port Ops::Exit(std::string name) const {
     return Graph().Out(std::move(name));
 }
 
-Node Edit::Use(NativeRef native, Layout layout) {
+Node Ops::Use(NativeRef native, Layout layout) {
     const Node node{++m_NextNode};
     m_Nodes.push_back(
         {node, native, std::move(layout), std::nullopt, std::nullopt,
@@ -339,13 +339,13 @@ Node Edit::Use(NativeRef native, Layout layout) {
     return node;
 }
 
-Link Edit::Use(ObjectRef anchor) {
+Link Ops::Use(ObjectRef anchor) {
     const Link link{++m_NextLink};
     m_Links.push_back({link, anchor});
     return link;
 }
 
-Node Edit::Add(BlockSpec block, Layout declared, NodeRole role) {
+Node Ops::Add(BlockSpec block, Layout declared, NodeRole role) {
     const Node node{++m_NextNode};
     m_Nodes.push_back(
         {node, {}, std::move(declared), std::move(block), std::nullopt, role});
@@ -368,16 +368,16 @@ Node Edit::Add(BlockSpec block, Layout declared, NodeRole role) {
                 slot->Type = parameter.Type;
         }
     };
-    selectTypes(added.Block->m_PinTypes, SlotKind::InputParameter);
-    selectTypes(added.Block->m_PoutTypes, SlotKind::OutputParameter);
-    for (const std::string &name : added.Block->m_AddedInputs)
+    selectTypes(added.Block->PinTypes(), SlotKind::InputParameter);
+    selectTypes(added.Block->PoutTypes(), SlotKind::OutputParameter);
+    for (const std::string &name : added.Block->AddedInputs())
         (void) Append(node, SlotKind::Input, name, CKGUID(), true);
-    for (const std::string &name : added.Block->m_AddedOutputs)
+    for (const std::string &name : added.Block->AddedOutputs())
         (void) Append(node, SlotKind::Output, name, CKGUID(), true);
     return node;
 }
 
-Node Edit::AddGraph(std::string name, int priority, NodeRole role) {
+Node Ops::AddGraph(std::string name, int priority, NodeRole role) {
     const Node node{++m_NextNode};
     Layout layout;
     layout.Origin = LayoutOrigin::Live;
@@ -388,25 +388,25 @@ Node Edit::AddGraph(std::string name, int priority, NodeRole role) {
     return node;
 }
 
-ParameterOperation Edit::AddOperation(CKGUID operation, CKGUID result,
-                                      CKGUID input1, CKGUID input2) {
+ParameterOperation Ops::AddOperation(CKGUID operation, CKGUID result,
+                                     CKGUID input1, CKGUID input2) {
     const ParameterOperation handle{++m_NextNode};
     m_Operations.push_back(
         {handle, operation, result, input1, input2, NextOrdinal()});
     return handle;
 }
 
-void Edit::Flow(Port source, Port sink, int delay, Cycle cycle) {
+void Ops::Flow(Port source, Port sink, int delay, Cycle cycle) {
     m_Flows.push_back(
         {std::move(source), std::move(sink), delay, cycle, NextOrdinal()});
 }
 
-void Edit::Set(Port target, Parameter::Binding value) {
+void Ops::Set(Port target, Parameter::Binding value) {
     m_Sets.push_back(
         {std::move(target), std::move(value), NextOrdinal()});
 }
 
-void Edit::Bind(Port target, Parameter::Binding value) {
+void Ops::Bind(Port target, Parameter::Binding value) {
     EditBind bind;
     bind.Target = std::move(target);
     bind.Kind = BindKind::Literal;
@@ -415,7 +415,7 @@ void Edit::Bind(Port target, Parameter::Binding value) {
     m_Binds.push_back(std::move(bind));
 }
 
-void Edit::Bind(Port target, Port source) {
+void Ops::Bind(Port target, Port source) {
     EditBind bind;
     bind.Target = std::move(target);
     bind.Kind = BindKind::Direct;
@@ -424,7 +424,7 @@ void Edit::Bind(Port target, Port source) {
     m_Binds.push_back(std::move(bind));
 }
 
-void Edit::Share(Port target, Port source) {
+void Ops::Share(Port target, Port source) {
     EditBind bind;
     bind.Target = std::move(target);
     bind.Kind = BindKind::Shared;
@@ -433,67 +433,67 @@ void Edit::Share(Port target, Port source) {
     m_Binds.push_back(std::move(bind));
 }
 
-void Edit::Push(Port source, Port destination) {
+void Ops::Push(Port source, Port destination) {
     m_Pushes.push_back(
         {std::move(source), std::move(destination), NextOrdinal()});
 }
 
-void Edit::Tap(Port source,
-               std::shared_ptr<HookBlock::Binding> callback) {
+void Ops::Tap(Port source,
+              std::shared_ptr<HookBlock::Binding> callback) {
     m_Taps.push_back(
         {std::move(source), std::move(callback), NextOrdinal()});
 }
 
-void Edit::Splice(Link target, Node block, std::vector<Order> ordering) {
+void Ops::Splice(Link target, Node block, std::vector<Order> ordering) {
     Splice(target, block.In(), block.Out(), std::move(ordering));
 }
 
-void Edit::Splice(Link target, Port input, Port output,
-                  std::vector<Order> ordering) {
+void Ops::Splice(Link target, Port input, Port output,
+                 std::vector<Order> ordering) {
     m_Splices.push_back({target, {input.Owner}, std::move(input),
                          std::move(output), std::move(ordering), NextOrdinal()});
 }
 
-void Edit::Redirect(Link target, Port sink, std::vector<Order> ordering) {
+void Ops::Redirect(Link target, Port sink, std::vector<Order> ordering) {
     m_Redirects.push_back(
         {target, std::move(sink), std::move(ordering), NextOrdinal()});
 }
 
-void Edit::Reconnect(Link target, Port source, Port sink, Cycle cycle) {
+void Ops::Reconnect(Link target, Port source, Port sink, Cycle cycle) {
     m_Reconnections.push_back(
         {target, std::move(source), std::move(sink), cycle, NextOrdinal()});
 }
 
-void Edit::Replace(Node target, Node replacement) {
+void Ops::Replace(Node target, Node replacement) {
     m_Replacements.push_back({target, replacement, NextOrdinal()});
 }
 
-void Edit::Remove(Node target) {
+void Ops::Remove(Node target) {
     m_Removals.push_back({target, NextOrdinal()});
 }
 
-Port Edit::AppendIn(Node node, std::string name) {
+Port Ops::AppendIn(Node node, std::string name) {
     return Append(node, SlotKind::Input, std::move(name), CKGUID());
 }
 
-Port Edit::AppendOut(Node node, std::string name) {
+Port Ops::AppendOut(Node node, std::string name) {
     return Append(node, SlotKind::Output, std::move(name), CKGUID());
 }
 
-Port Edit::AppendPin(Node node, std::string name, CKGUID type) {
+Port Ops::AppendPin(Node node, std::string name, CKGUID type) {
     return Append(node, SlotKind::InputParameter, std::move(name), type);
 }
 
-Port Edit::AppendPout(Node node, std::string name, CKGUID type) {
+Port Ops::AppendPout(Node node, std::string name, CKGUID type) {
     return Append(node, SlotKind::OutputParameter, std::move(name), type);
 }
 
-Port Edit::AppendLocal(Node node, std::string name, CKGUID type) {
+Port Ops::AppendLocal(Node node, std::string name, CKGUID type) {
     return Append(node, SlotKind::Local, std::move(name), type);
 }
 
-Port Edit::Append(Node node, SlotKind kind, std::string name, CKGUID type,
-                  bool inBlockSpec) {
+Port Ops::Append(Node node, SlotKind kind, std::string name, CKGUID type,
+                 bool inBlockSpec) {
     EditNode *owner = Find(node);
     int index = 0;
     int occurrence = 0;
@@ -516,19 +516,19 @@ Port Edit::Append(Node node, SlotKind kind, std::string name, CKGUID type,
     return {node.Value, Slot::At(kind, index, type), identity};
 }
 
-const Edit::EditNode *Edit::Find(Node node) const noexcept {
+const Ops::EditNode *Ops::Find(Node node) const noexcept {
     const auto found = std::find_if(
         m_Nodes.begin(), m_Nodes.end(),
         [&](const EditNode &candidate) { return candidate.Handle == node; });
     return found == m_Nodes.end() ? nullptr : &*found;
 }
 
-Edit::EditNode *Edit::Find(Node node) noexcept {
+Ops::EditNode *Ops::Find(Node node) noexcept {
     return const_cast<EditNode *>(
         std::as_const(*this).Find(node));
 }
 
-const EditOperation *Edit::Find(ParameterOperation operation) const noexcept {
+const EditOperation *Ops::Find(ParameterOperation operation) const noexcept {
     const auto found = std::find_if(
         m_Operations.begin(), m_Operations.end(),
         [&](const EditOperation &candidate) {
@@ -537,9 +537,9 @@ const EditOperation *Edit::Find(ParameterOperation operation) const noexcept {
     return found == m_Operations.end() ? nullptr : &*found;
 }
 
-std::uint32_t Edit::NextOrdinal() noexcept { return m_NextAction++; }
+std::uint32_t Ops::NextOrdinal() noexcept { return m_NextAction++; }
 
-Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
+Status Ops::Validate(const GraphModel &base, CheckedOps &out) const {
     out = {};
     if (m_Key.Owner.empty() || m_Key.Name.empty())
         return Failure(Error::InvalidState,

@@ -110,24 +110,24 @@ public:
     explicit FakeResolver(GraphModel model) : Base(std::move(model)) {}
 
     Status Begin(const PatchKey &patch, const ObjectRef &graph,
-                 Edit &out, GraphModel &base) override {
+                 Ops &out, GraphModel &base) override {
         ++Begins;
         if (graph != Base.Root)
             return {Error::InvalidGraphLocality, CKERR_INVALIDOBJECT,
                     CKBR_PARAMETERERROR, "wrong graph"};
         const GraphNode &root = Base.Nodes.front();
-        out = Edit(patch, Native(root.Id), Shape("Start", "Done"));
+        out = Ops(patch, Native(root.Id), Shape("Start", "Done"));
         base = Base;
         return {};
     }
 
-    Status UseNode(Edit &edit, const ObjectRef &node, Node &out) override {
+    Status UseNode(Ops &edit, const ObjectRef &node, Node &out) override {
         UsedNodes.push_back(node);
         out = edit.Use(Native(node.Slot), Shape("In", "Out", NodeFlags));
         return {};
     }
 
-    Status UseLink(Edit &edit, const ObjectRef &link, Link &out) override {
+    Status UseLink(Ops &edit, const ObjectRef &link, Link &out) override {
         UsedLinks.push_back(link);
         out = edit.Use(link);
         return {};
@@ -146,7 +146,7 @@ public:
         return {};
     }
 
-    Status Add(Edit &edit, BlockSpec block, Node &out) override {
+    Status Add(Ops &edit, BlockSpec block, Node &out) override {
         ++Adds;
         AddedPrototypes.push_back(
             {block.Prototype(), block.PrototypeGeneration()});
@@ -157,7 +157,7 @@ public:
         return {};
     }
 
-    Status AddGraph(Edit &edit, std::string name, int priority,
+    Status AddGraph(Ops &edit, std::string name, int priority,
                     Node &out) override {
         ++Adds;
         AddedGraphName = std::move(name);
@@ -166,7 +166,7 @@ public:
         return {};
     }
 
-    Status Tap(Edit &edit, Port source,
+    Status Tap(Ops &edit, Port source,
                const HookBlock::Hook &hook) override {
         if (!hook)
             return {Error::CallbackFailed, CKERR_INVALIDPARAMETER,
@@ -176,7 +176,7 @@ public:
         return {};
     }
 
-    Status Interpose(Edit &edit, Link link,
+    Status Interpose(Ops &edit, Link link,
                      const HookBlock::Hook &hook) override {
         if (!hook)
             return {Error::CallbackFailed, CKERR_INVALIDPARAMETER,
@@ -189,7 +189,7 @@ public:
         return {};
     }
 
-    Status Interpose(Edit &edit, Port source, Port sink,
+    Status Interpose(Ops &edit, Port source, Port sink,
                      const HookBlock::Hook &hook) override {
         if (!hook)
             return {Error::CallbackFailed, CKERR_INVALIDPARAMETER,
@@ -238,7 +238,7 @@ Program SpliceEdit(std::optional<int> delay = std::nullopt) {
 TEST(BehaviorProgram, ResolvesSemanticNodesAndAnExactLinkBeforeAdding) {
     FakeResolver resolver(Model());
     Program plan = SpliceEdit();
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "checkpoint"}, resolver.Base.Root, resolver, edit));
     EXPECT_EQ(resolver.UsedNodes,
@@ -249,7 +249,7 @@ TEST(BehaviorProgram, ResolvesSemanticNodesAndAnExactLinkBeforeAdding) {
     EXPECT_EQ(resolver.AddedPrototypes.front().Guid, CKGUID(0x3333, 3));
     EXPECT_EQ(resolver.AddedPrototypes.front().Generation, 0u);
 
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Splices.size(), 1u);
     EXPECT_EQ(checked.Splices.front().Target.Anchor, Ref(201));
@@ -262,7 +262,7 @@ TEST(BehaviorProgram, ReusesOneLiveNodeForRepeatedStructuralRequirements) {
     (void) plan.RequireOne(wait);
     (void) plan.RequireOne(wait);
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "repeated-require"}, resolver.Base.Root, resolver, edit);
     ASSERT_TRUE(status) << status.Message;
@@ -289,7 +289,7 @@ TEST(BehaviorProgram, ResolvesNodePatternsByKindAndPortCounts) {
     Program edit;
     (void) edit.RequireOne(std::move(pattern));
 
-    Edit resolved;
+    Ops resolved;
     const Status status = edit.Resolve(
         {"mod", "pattern-shape"}, resolver.Base.Root, resolver, resolved);
     ASSERT_TRUE(status) << status.Message;
@@ -318,7 +318,7 @@ TEST(BehaviorProgram, ResolvesNodePatternsByObservedPortValue) {
     Program edit;
     (void) edit.RequireOne(std::move(pattern));
 
-    Edit resolved;
+    Ops resolved;
     const Status status = edit.Resolve(
         {"mod", "pattern-value"}, resolver.Base.Root, resolver, resolved);
     ASSERT_TRUE(status) << status.Message;
@@ -342,14 +342,14 @@ TEST(BehaviorProgram, RepeatsActionsForEveryPatternMatchInChildOrder) {
     const Node activators = plan.Each({"Activate Script"});
     plan.Flow(activators.Out(), plan.Exit("Done"));
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "each"}, resolver.Base.Root, resolver, edit);
     ASSERT_TRUE(status) << status.Message;
     EXPECT_EQ(resolver.UsedNodes,
               (std::vector<ObjectRef>{Ref(104), Ref(103)}));
 
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Flows.size(), 2u);
     EXPECT_NE(checked.Flows[0].Source.Owner,
@@ -362,7 +362,7 @@ TEST(BehaviorProgram, RequiresAtLeastOneNodeForEach) {
     FakeResolver resolver(Model());
     Program plan;
     (void) plan.Each({"Activate Script"});
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "each-missing"}, resolver.Base.Root, resolver, edit);
     EXPECT_EQ(status.Code, Error::QueryNotFound);
@@ -393,7 +393,7 @@ TEST(BehaviorProgram, RejectsInvalidOrUnresolvedNodePatterns) {
         Value::From(CKPGUID_INT, std::int32_t{1})});
     Program unresolved;
     (void) unresolved.RequireOne(std::move(unavailable));
-    Edit resolved;
+    Ops resolved;
     const Status status = unresolved.Resolve(
         {"mod", "pattern-unresolved"}, resolver.Base.Root, resolver,
         resolved);
@@ -406,7 +406,7 @@ TEST(BehaviorProgram, KeepsTheSelectedProviderForEveryInstallation) {
     Program plan;
     (void) plan.Add(PrototypeRef{CKGUID(0x3333, 3), 91});
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "provider"}, resolver.Base.Root, resolver, edit));
     ASSERT_EQ(resolver.AddedPrototypes.size(), 1u);
@@ -424,7 +424,7 @@ TEST(BehaviorProgram, AcceptsTheOnlyPortSelectorFromThePublicDsl) {
     const Link edge = edit.RequireOne(onlyOut, onlyIn);
     edit.Splice(edge, edit.Add(CKGUID(0x3333, 3)));
 
-    Edit resolved;
+    Ops resolved;
     ASSERT_TRUE(edit.Resolve(
         {"mod", "only-ports"}, resolver.Base.Root, resolver, resolved));
     EXPECT_EQ(resolver.UsedLinks,
@@ -443,7 +443,7 @@ TEST(BehaviorProgram, CompilesTheOnlyPortSelectorInActions) {
               Value::From(CKPGUID_INT, 7));
     edit.Tap(onlyOut, HookBlock::Hook(Noop));
 
-    Edit resolved;
+    Ops resolved;
     const Status status = edit.Resolve(
         {"mod", "only-actions"}, resolver.Base.Root, resolver, resolved);
     ASSERT_TRUE(status) << status.Message;
@@ -464,7 +464,7 @@ TEST(BehaviorProgram, RejectsAnAmbiguousNameBeforeResolvingLinksOrBlocks) {
     const Link edge = plan.RequireOne(wait.Out(), sink.In());
     plan.Splice(edge, plan.Add(CKGUID(0x3333, 3)));
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "checkpoint"}, resolver.Base.Root, resolver, edit);
     EXPECT_EQ(status.Code, Error::QueryAmbiguous);
@@ -482,7 +482,7 @@ TEST(BehaviorProgram, RequiresAUniqueParallelLink) {
     graph.Links.push_back(parallel);
 
     FakeResolver ambiguous(graph);
-    Edit edit;
+    Ops edit;
     Status status = SpliceEdit().Resolve(
         {"mod", "checkpoint"}, ambiguous.Base.Root, ambiguous, edit);
     EXPECT_EQ(status.Code, Error::QueryAmbiguous);
@@ -505,7 +505,7 @@ TEST(BehaviorProgram, ResolvesNodesAndLinksByTopology) {
     (void) plan.Entering(sink.In());
     (void) plan.To(wait.Out(), sink);
 
-    Edit edit;
+    Ops edit;
     Program::ResolvedSymbols symbols;
     const Status status = plan.Resolve(
         {"mod", "topology"}, resolver.Base.Root, resolver, edit, &symbols);
@@ -542,7 +542,7 @@ TEST(BehaviorProgram, ConstrainsRelatedNodesWithoutGlobalNameUniqueness) {
     const Node sink = plan.Next(wait.Out(), {"set Resetpoint"});
     (void) plan.To(wait.Out(), sink);
 
-    Edit edit;
+    Ops edit;
     Program::ResolvedSymbols symbols;
     const Status status = plan.Resolve(
         {"mod", "related-pattern"}, resolver.Base.Root, resolver, edit,
@@ -560,7 +560,7 @@ TEST(BehaviorProgram, RejectsARelatedNodeThatDoesNotMatchItsPattern) {
     const Node wait = plan.RequireOne({"Wait Message"});
     (void) plan.Next(wait.Out(), {"Send Message"});
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "wrong-related-pattern"}, resolver.Base.Root, resolver,
         edit);
@@ -584,7 +584,7 @@ TEST(BehaviorProgram, ResolvesTopologyAtTheGraphEntryAndExit) {
     (void) plan.Leaving(plan.Entry("Start"));
     (void) plan.Entering(plan.Exit("Done"));
 
-    Edit edit;
+    Ops edit;
     Program::ResolvedSymbols symbols;
     const Status status = plan.Resolve(
         {"mod", "graph-ends"}, resolver.Base.Root, resolver, edit, &symbols);
@@ -610,7 +610,7 @@ TEST(BehaviorProgram, RedirectsToTheDestinationOfAnotherLink) {
     const Link leaving = plan.Leaving(wait.Out());
     plan.Redirect(entering, leaving);
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "bypass"}, resolver.Base.Root, resolver, edit);
     ASSERT_TRUE(status) << status.Message;
@@ -619,7 +619,7 @@ TEST(BehaviorProgram, RedirectsToTheDestinationOfAnotherLink) {
     EXPECT_EQ(resolver.UsedNodes,
               (std::vector<ObjectRef>{Ref(101), Ref(102)}));
 
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Redirects.size(), 1u);
     EXPECT_EQ(checked.Redirects.front().Target.Anchor, Ref(202));
@@ -642,7 +642,7 @@ TEST(BehaviorProgram, RejectsMissingAmbiguousAndBackwardTopology) {
     Program branching;
     const Node source = branching.RequireOne({"Wait Message"});
     (void) branching.Next(source.Out());
-    Edit edit;
+    Ops edit;
     Status status = branching.Resolve(
         {"mod", "branching"}, ambiguous.Base.Root, ambiguous, edit);
     EXPECT_EQ(status.Code, Error::QueryAmbiguous);
@@ -671,7 +671,7 @@ TEST(BehaviorProgram, RejectsNonGraphLinksAndInvalidDelayBeforeCK) {
     EXPECT_EQ(invalidDelay.Validate().Code, Error::InvalidDelay);
 
     invalidDelay.Flow(wait.Out(), sink.In(), 32765);
-    Edit edit;
+    Ops edit;
     const Status status = invalidDelay.Resolve(
         {"mod", "invalid"}, resolver.Base.Root, resolver, edit);
     EXPECT_EQ(status.Code, Error::InvalidDelay);
@@ -682,8 +682,8 @@ TEST(BehaviorProgram, ResolvesTheSameIntentAgainForANewWorld) {
     Program plan = SpliceEdit();
     FakeResolver first(Model(1, 0));
     FakeResolver second(Model(2, 1000));
-    Edit firstEdit;
-    Edit secondEdit;
+    Ops firstEdit;
+    Ops secondEdit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "checkpoint"}, first.Base.Root, first, firstEdit));
     ASSERT_TRUE(plan.Resolve(
@@ -696,12 +696,12 @@ TEST(BehaviorProgram, ResolvesTheSameIntentAgainForANewWorld) {
 
 TEST(BehaviorProgram, PinsTheResolvedLogicalGraphUntilApply) {
     FakeResolver resolver(Model());
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(SpliceEdit().Resolve(
         {"mod", "checkpoint"}, resolver.Base.Root, resolver, edit));
     GraphModel changed = resolver.Base;
     ++changed.Fingerprint;
-    CheckedEdit checked;
+    CheckedOps checked;
     const Status status = edit.Validate(changed, checked);
     EXPECT_EQ(status.Code, Error::GraphChanged);
 }
@@ -714,10 +714,10 @@ TEST(BehaviorProgram, ReplaysRootAndNodeFlowWithSymbolicHandles) {
     plan.Flow(plan.Entry("Start"), wait.In());
     plan.Flow(wait.Out(), plan.Exit("Done"), 2);
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "flow"}, resolver.Base.Root, resolver, edit));
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Flows.size(), 2u);
     EXPECT_EQ(checked.Flows[1].Delay, 2);
@@ -730,12 +730,12 @@ TEST(BehaviorProgram, PlacesACallbackInsideANewFlow) {
     const Node sink = plan.RequireOne({"set Resetpoint"});
     plan.Flow(wait.Out(), HookBlock::Hook(Noop), sink.In());
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "callback-flow"}, resolver.Base.Root, resolver, edit));
     EXPECT_EQ(resolver.HookFlows, 1);
 
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Flows.size(), 2u);
     EXPECT_EQ(checked.Flows[0].Source.Owner.Value, 2u);
@@ -748,10 +748,10 @@ TEST(BehaviorProgram, CompilesAStoredValueUpdate) {
     const Node wait = plan.RequireOne({"Wait Message"});
     plan.Set(wait.Pin("Value"), Value::From(CKPGUID_INT, 42));
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "set-value"}, resolver.Base.Root, resolver, edit));
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Sets.size(), 1u);
     EXPECT_EQ(checked.Sets[0].Target.Owner.Value, 2u);
@@ -778,10 +778,10 @@ TEST(BehaviorProgram, KeepsControlDataAndSpliceDeclarationOrder) {
     plan.Push(wait.Pout("Result"), sink.Local("State"));
     plan.Splice(edge, hook);
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "data"}, resolver.Base.Root, resolver, edit));
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Binds.size(), 3u);
     ASSERT_EQ(checked.Flows.size(), 1u);
@@ -819,10 +819,10 @@ TEST(BehaviorProgram, ResolvesDynamicPortsForTheCurrentLayout) {
     plan.Bind(pin, Value::From(CKPGUID_INT, value));
     plan.Push(pout, sink.Local("State"));
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "interface"}, resolver.Base.Root, resolver, edit));
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Flows.size(), 2u);
     ASSERT_EQ(checked.Binds.size(), 1u);
@@ -841,10 +841,10 @@ TEST(BehaviorProgram, AppendsPrivateStateToTheGraphOrAnAddedBlock) {
     plan.Bind(state, Value::From(CKPGUID_INT, 7));
 
     ASSERT_TRUE(plan.Validate());
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "local"}, resolver.Base.Root, resolver, edit));
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Binds.size(), 1u);
     EXPECT_EQ(checked.Binds[0].Target.Slot.Kind, SlotKind::Local);
@@ -855,7 +855,7 @@ TEST(BehaviorProgram, AppendsPrivateStateToTheGraphOrAnAddedBlock) {
         rootState.Graph(), "Enabled", CKPGUID_BOOL);
     rootState.Bind(enabled, Value::From(CKPGUID_BOOL, TRUE));
     ASSERT_TRUE(rootState.Validate());
-    Edit rootEdit;
+    Ops rootEdit;
     Program::ResolvedSymbols rootSymbols;
     ASSERT_TRUE(rootState.Resolve(
         {"mod", "root-local"}, resolver.Base.Root, resolver, rootEdit,
@@ -890,10 +890,10 @@ TEST(BehaviorProgram, ComposesNativeParameterOperationsWithGraphPorts) {
     graph.Bind(sum.Input(1), Value::From(CKPGUID_INT, 2));
     graph.Bind(sink.Pin("Value"), sum.Result());
 
-    Edit resolved;
+    Ops resolved;
     ASSERT_TRUE(graph.Resolve(
         {"mod", "operation"}, resolver.Base.Root, resolver, resolved));
-    CheckedEdit checked;
+    CheckedOps checked;
     const Status status = resolved.Validate(resolver.Base, checked);
     ASSERT_TRUE(status) << status.Message;
     ASSERT_EQ(checked.Binds.size(), 4u);
@@ -911,11 +911,11 @@ TEST(BehaviorProgram, ReplacesAnIdleNodeThroughItsPublicInterface) {
     const Node replacement = graph.Replace(original, std::move(block));
     graph.Flow(replacement.Out(), graph.Exit("Done"));
 
-    Edit resolved;
+    Ops resolved;
     const Status compiled = graph.Resolve(
         {"mod", "replace"}, resolver.Base.Root, resolver, resolved);
     ASSERT_TRUE(compiled) << compiled.Message;
-    CheckedEdit checked;
+    CheckedOps checked;
     const Status status = resolved.Validate(resolver.Base, checked);
     ASSERT_TRUE(status) << status.Message;
     ASSERT_EQ(checked.Replacements.size(), 1u);
@@ -935,11 +935,11 @@ TEST(BehaviorProgram, RejectsReplacementInterfaceDriftAndParkedNodeUse) {
     Program changed;
     const Node original = changed.RequireOne({"Wait Message"});
     (void) changed.Replace(original, BlockSpec(CKGUID(0x3333, 3)));
-    Edit resolved;
+    Ops resolved;
     const Status compiled = changed.Resolve(
         {"mod", "replace-shape"}, mismatch.Base.Root, mismatch, resolved);
     ASSERT_TRUE(compiled) << compiled.Message;
-    CheckedEdit checked;
+    CheckedOps checked;
     EXPECT_EQ(resolved.Validate(mismatch.Base, checked).Code,
               Error::InterfaceUnsupported);
 
@@ -957,11 +957,11 @@ TEST(BehaviorProgram, ResolvesRemovalOfAnIdleChildNode) {
     graph.Remove(removed);
 
     ASSERT_TRUE(graph.Validate());
-    Edit resolved;
+    Ops resolved;
     const Status compiled = graph.Resolve(
         {"mod", "remove"}, resolver.Base.Root, resolver, resolved);
     ASSERT_TRUE(compiled) << compiled.Message;
-    CheckedEdit checked;
+    CheckedOps checked;
     const Status status = resolved.Validate(resolver.Base, checked);
     ASSERT_TRUE(status) << status.Message;
     ASSERT_EQ(checked.Removals.size(), 1u);
@@ -986,10 +986,10 @@ TEST(BehaviorProgram, RejectsUnsafeOrContradictoryNodeRemoval) {
     Program active;
     const Node target = active.RequireOne({"Wait Message"});
     active.Remove(target);
-    Edit resolved;
+    Ops resolved;
     ASSERT_TRUE(active.Resolve(
         {"mod", "active-remove"}, resolver.Base.Root, resolver, resolved));
-    CheckedEdit checked;
+    CheckedOps checked;
     EXPECT_TRUE(resolved.Validate(resolver.Base, checked));
 }
 
@@ -1002,11 +1002,11 @@ TEST(BehaviorProgram, CompilesAdjacentReplaceAndRemoveTogether) {
     graph.Remove(removed);
 
     ASSERT_TRUE(graph.Validate());
-    Edit resolved;
+    Ops resolved;
     const Status compiled = graph.Resolve(
         {"mod", "replace-remove"}, resolver.Base.Root, resolver, resolved);
     ASSERT_TRUE(compiled) << compiled.Message;
-    CheckedEdit checked;
+    CheckedOps checked;
     const Status checkedStatus = resolved.Validate(resolver.Base, checked);
     ASSERT_TRUE(checkedStatus) << checkedStatus.Message;
     EXPECT_EQ(checked.Replacements.size(), 1u);
@@ -1019,11 +1019,11 @@ TEST(BehaviorProgram, RejectsIncompleteAndCyclicParameterOperations) {
     const ParameterOperation missing = incomplete.AddOperation(
         CKGUID(0x12345678, 1), CKPGUID_INT, CKPGUID_INT, CKPGUID_NONE);
     (void) missing;
-    Edit resolved;
+    Ops resolved;
     ASSERT_TRUE(incomplete.Resolve(
         {"mod", "missing-operation-input"}, resolver.Base.Root,
         resolver, resolved));
-    CheckedEdit checked;
+    CheckedOps checked;
     EXPECT_EQ(resolved.Validate(resolver.Base, checked).Code,
               Error::OperationInvalid);
 
@@ -1049,10 +1049,10 @@ TEST(BehaviorProgram, KeepsTypedNullInAPlan) {
     plan.Bind(wait.Pin("Value"), Value::Null(CKPGUID_OBJECT));
 
     EXPECT_TRUE(plan.Validate());
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "null"}, resolver.Base.Root, resolver, edit));
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Binds.size(), 1u);
     EXPECT_EQ(checked.Binds[0].Value.Kind(), Parameter::BindingKind::Value);
@@ -1069,7 +1069,7 @@ TEST(BehaviorProgram, CarriesASettingWithTheBlockThatDeclaresIt) {
     (void) plan.Add(std::move(block));
 
     ASSERT_TRUE(plan.Validate());
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "setting"}, resolver.Base.Root, resolver, edit));
     EXPECT_EQ(resolver.Adds, 1);
@@ -1084,7 +1084,7 @@ TEST(BehaviorProgram, CarriesASettingWithTheBlockThatDeclaresIt) {
     EXPECT_EQ(mode, 2);
     // A Setting travels with the Block, so it is not an action the Edit
     // replays afterwards.
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     EXPECT_TRUE(checked.Binds.empty());
 }
@@ -1100,7 +1100,7 @@ TEST(BehaviorProgram, PreservesSettingStageBoundaries) {
         Value::From(CKPGUID_INT, 9));
     (void) edit.Add(std::move(block));
 
-    Edit compiled;
+    Ops compiled;
     ASSERT_TRUE(edit.Resolve(
         {"mod", "setting-stages"}, resolver.Base.Root, resolver, compiled));
     ASSERT_EQ(resolver.AddedSettings.size(), 2u);
@@ -1120,7 +1120,7 @@ TEST(BehaviorProgram, CompletesAPathAgainAndTapsItsFinalOut) {
     const PathRef path = plan.Follow(wait.Out());
     plan.After(path, HookBlock::Hook(Noop));
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "after"}, resolver.Base.Root, resolver, edit));
     EXPECT_EQ(resolver.Taps, 1);
@@ -1130,7 +1130,7 @@ TEST(BehaviorProgram, CompletesAPathAgainAndTapsItsFinalOut) {
     EXPECT_EQ(resolver.UsedNodes,
               (std::vector<ObjectRef>{Ref(101), Ref(102)}));
 
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Taps.size(), 1u);
     EXPECT_EQ(checked.Taps.front().Source.Slot.Kind, SlotKind::Output);
@@ -1148,7 +1148,7 @@ TEST(BehaviorProgram, PlacesAfterBeforeAGraphExit) {
     const Node wait = plan.RequireOne({"Wait Message"});
     plan.After(plan.Follow(wait.Out()), HookBlock::Hook(Noop));
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "exit"}, resolver.Base.Root, resolver, edit));
     EXPECT_EQ(resolver.Taps, 0);
@@ -1156,7 +1156,7 @@ TEST(BehaviorProgram, PlacesAfterBeforeAGraphExit) {
     EXPECT_EQ(resolver.UsedLinks,
               (std::vector<ObjectRef>{Ref(201), Ref(202)}));
 
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Splices.size(), 1u);
     EXPECT_EQ(checked.Splices.front().Target.Anchor, Ref(202));
@@ -1173,7 +1173,7 @@ TEST(BehaviorProgram, RejectsAnAmbiguousPathBeforeInstallingAHook) {
     const Node wait = plan.RequireOne({"Wait Message"});
     plan.After(plan.Follow(wait.Out()), HookBlock::Hook(Noop));
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "ambiguous-path"}, resolver.Base.Root, resolver, edit);
     EXPECT_EQ(status.Code, Error::PathAmbiguous);
@@ -1191,7 +1191,7 @@ TEST(BehaviorProgram, NamesANodeAndALinkTheAuthorAlreadyHolds) {
     plan.Splice(edge, hook);
     EXPECT_TRUE(plan.UsesIdentity());
 
-    Edit edit;
+    Ops edit;
     Program::ResolvedSymbols symbols;
     const Status status = plan.Resolve(
         {"mod", "by-reference"}, resolver.Base.Root, resolver, edit, &symbols);
@@ -1205,7 +1205,7 @@ TEST(BehaviorProgram, NamesANodeAndALinkTheAuthorAlreadyHolds) {
     EXPECT_EQ(symbols.Nodes.count(hook.Value), 1u);
     EXPECT_EQ(symbols.Nodes.count(plan.Graph().Value), 1u);
 
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     ASSERT_EQ(checked.Splices.size(), 1u);
     EXPECT_EQ(checked.Splices.front().Target.Anchor, Ref(201));
@@ -1217,7 +1217,7 @@ TEST(BehaviorProgram, ReportsAQueriedNodeUnderItsOwnHandle) {
     const Node wait = plan.RequireOne({"Wait Message", CKGUID(0x1111, 1)});
     EXPECT_FALSE(plan.UsesIdentity());
 
-    Edit edit;
+    Ops edit;
     Program::ResolvedSymbols symbols;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "queried"}, resolver.Base.Root, resolver, edit, &symbols));
@@ -1229,7 +1229,7 @@ TEST(BehaviorProgram, RejectsANodeReferenceOutsideTheTargetGraph) {
     Program plan;
     (void) plan.UseNode(Ref(999));
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "foreign-node"}, resolver.Base.Root, resolver, edit);
     EXPECT_EQ(status.Code, Error::InvalidGraphLocality);
@@ -1241,7 +1241,7 @@ TEST(BehaviorProgram, RejectsALinkReferenceOutsideTheTargetGraph) {
     Program plan;
     (void) plan.UseLink(Ref(999));
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "foreign-link"}, resolver.Base.Root, resolver, edit);
     EXPECT_EQ(status.Code, Error::LinkNotFound);
@@ -1260,7 +1260,7 @@ TEST(BehaviorProgram, ComposesIdentityNodesWithQueriedLinks) {
     const Link queried = plan.RequireOne(wait.Out(), sink.In());
     (void) queried;
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "mixed"}, resolver.Base.Root, resolver, edit))
         << "identity nodes and queried links compose";
@@ -1272,7 +1272,7 @@ TEST(BehaviorProgram, PutsACallbackOnALinkTheAuthorNamed) {
     const Link edge = plan.UseLink(Ref(201));
     plan.Before(edge, HookBlock::Hook(Noop));
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "before"}, resolver.Base.Root, resolver, edit);
     ASSERT_TRUE(status) << status.Message;
@@ -1290,7 +1290,7 @@ TEST(BehaviorProgram, PutsACallbackOnAQueriedLink) {
     plan.Before(plan.RequireOne(wait.Out(), sink.In()),
                 HookBlock::Hook(Noop));
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "before-query"}, resolver.Base.Root, resolver, edit);
     ASSERT_TRUE(status) << status.Message;
@@ -1301,7 +1301,7 @@ TEST(BehaviorProgram, RejectsABeforeWithoutALinkOrACallback) {
     FakeResolver resolver(Model());
     Program missingHook;
     missingHook.Before(missingHook.UseLink(Ref(201)), HookBlock::Hook());
-    Edit edit;
+    Ops edit;
     Status status = missingHook.Resolve(
         {"mod", "no-hook"}, resolver.Base.Root, resolver, edit);
     EXPECT_EQ(status.Code, Error::InvalidState);
@@ -1324,12 +1324,12 @@ TEST(BehaviorProgram, CompilesARedirectOntoTheExactLiveLink) {
     plan.Redirect(edge, detour.In());
     ASSERT_TRUE(plan.Validate());
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "detour"}, resolver.Base.Root, resolver, edit));
     EXPECT_EQ(resolver.UsedLinks, (std::vector<ObjectRef>{Ref(201)}));
 
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
     EXPECT_TRUE(checked.Splices.empty());
     ASSERT_EQ(checked.Redirects.size(), 1u);
@@ -1347,12 +1347,12 @@ TEST(BehaviorProgram, CompilesReconnectOntoTheExactLiveLink) {
     plan.Reconnect(edge, source.Out(), plan.Exit("Done"), Cycle::Confirmed);
     ASSERT_TRUE(plan.Validate());
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "reconnect"}, resolver.Base.Root, resolver, edit));
     EXPECT_EQ(resolver.UsedLinks, (std::vector<ObjectRef>{Ref(201)}));
 
-    CheckedEdit checked;
+    CheckedOps checked;
     const Status status = edit.Validate(resolver.Base, checked);
     ASSERT_TRUE(status) << status.Message;
     ASSERT_EQ(checked.Reconnections.size(), 1u);
@@ -1373,10 +1373,10 @@ TEST(BehaviorProgram, CompilesAConfiguredVariableParameterBlock) {
     plan.Bind(identity.Pin(0), Value::From(CKPGUID_BOOL, true));
     ASSERT_TRUE(plan.Validate());
 
-    Edit edit;
+    Ops edit;
     ASSERT_TRUE(plan.Resolve(
         {"mod", "parameter-types"}, resolver.Base.Root, resolver, edit));
-    CheckedEdit checked;
+    CheckedOps checked;
     const Status status = edit.Validate(resolver.Base, checked);
     ASSERT_TRUE(status) << status.Message;
     ASSERT_EQ(checked.Binds.size(), 1u);
@@ -1401,7 +1401,7 @@ TEST(BehaviorProgram, CompilesAPlainGraphNodeWithoutABlockPrototype) {
     plan.AppendIn(graph, "Start");
     plan.AppendOut(graph, "Done");
 
-    Edit edit;
+    Ops edit;
     const Status status = plan.Resolve(
         {"mod", "add-graph"}, resolver.Base.Root, resolver, edit);
     ASSERT_TRUE(status) << status.Message;
@@ -1409,7 +1409,7 @@ TEST(BehaviorProgram, CompilesAPlainGraphNodeWithoutABlockPrototype) {
     EXPECT_EQ(resolver.AddedGraphName, "Nested");
     EXPECT_EQ(resolver.AddedGraphPriority, 23);
 
-    CheckedEdit checked;
+    CheckedOps checked;
     ASSERT_TRUE(edit.Validate(resolver.Base, checked));
 }
 
@@ -1442,11 +1442,11 @@ TEST(BehaviorProgram, PublishesNestedPublicPortsWithTheParentNode) {
     // transaction, before the nested Graph's internal flow is published.
     plan.Flow(nestedNode.Out("Done"), plan.Exit("Done"));
 
-    Edit parent;
+    Ops parent;
     const Status parentStatus = plan.Resolve(
         {"mod", "nested-interface"}, resolver.Base.Root, resolver, parent);
     ASSERT_TRUE(parentStatus) << parentStatus.Message;
-    CheckedEdit parentChecked;
+    CheckedOps parentChecked;
     const Status parentValidation = parent.Validate(
         resolver.Base, parentChecked);
     ASSERT_TRUE(parentValidation) << parentValidation.Message;
@@ -1460,12 +1460,12 @@ TEST(BehaviorProgram, PublishesNestedPublicPortsWithTheParentNode) {
                {In(0, "Start"), Out(0, "Done")}),
     };
     FakeResolver nestedCompiler(std::move(nestedModel));
-    Edit body;
+    Ops body;
     const Status bodyStatus = nested.Resolve(
         {"mod", "nested-interface/7"}, nestedCompiler.Base.Root,
         nestedCompiler, body, nullptr, true);
     ASSERT_TRUE(bodyStatus) << bodyStatus.Message;
-    CheckedEdit bodyChecked;
+    CheckedOps bodyChecked;
     const Status bodyValidation = body.Validate(
         nestedCompiler.Base, bodyChecked);
     ASSERT_TRUE(bodyValidation) << bodyValidation.Message;
@@ -1480,11 +1480,11 @@ TEST(BehaviorProgram, KeepsNestedGraphLocalsOutOfTheParentInterface) {
     Program &nested = plan.Enter(nestedNode, 7);
     nested.AppendLocal(nested.Graph(), "Scratch", CKPGUID_INT);
 
-    Edit parent;
+    Ops parent;
     const Status parentStatus = plan.Resolve(
         {"mod", "nested-local"}, resolver.Base.Root, resolver, parent);
     ASSERT_TRUE(parentStatus) << parentStatus.Message;
-    CheckedEdit parentChecked;
+    CheckedOps parentChecked;
     const Status parentValidation = parent.Validate(
         resolver.Base, parentChecked);
     ASSERT_TRUE(parentValidation) << parentValidation.Message;
@@ -1497,12 +1497,12 @@ TEST(BehaviorProgram, KeepsNestedGraphLocalsOutOfTheParentInterface) {
                {In(0, "Start"), Out(0, "Done")}),
     };
     FakeResolver nestedCompiler(std::move(nestedModel));
-    Edit body;
+    Ops body;
     const Status bodyStatus = nested.Resolve(
         {"mod", "nested-local/7"}, nestedCompiler.Base.Root,
         nestedCompiler, body, nullptr, true);
     ASSERT_TRUE(bodyStatus) << bodyStatus.Message;
-    CheckedEdit bodyChecked;
+    CheckedOps bodyChecked;
     const Status bodyValidation = body.Validate(
         nestedCompiler.Base, bodyChecked);
     ASSERT_TRUE(bodyValidation) << bodyValidation.Message;

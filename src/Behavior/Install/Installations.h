@@ -110,13 +110,13 @@ public:
 
     // Legacy Edits name native objects directly and install as one Patch.
     Status Begin(const SessionOwner &owner, CKBehavior *graph,
-                 std::string name, Edit &out);
-    Status Use(Edit &edit, CKBehavior *behavior, Node &out);
-    Status Use(Edit &edit, CKBehaviorLink *link, Link &out);
-    Status Add(Edit &edit, BlockSpec block, Node &out) override;
-    Status AddGraph(Edit &edit, std::string name, int priority,
+                 std::string name, Ops &out);
+    Status Use(Ops &edit, CKBehavior *behavior, Node &out);
+    Status Use(Ops &edit, CKBehaviorLink *link, Link &out);
+    Status Add(Ops &edit, BlockSpec block, Node &out) override;
+    Status AddGraph(Ops &edit, std::string name, int priority,
                     Node &out) override;
-    Status Apply(const SessionOwner &owner, const Edit &edit, PatchId &out,
+    Status Apply(const SessionOwner &owner, const Ops &edit, PatchId &out,
                  const std::map<std::uint32_t, Node> *handles = nullptr);
 
     // Patches.
@@ -299,7 +299,7 @@ private:
                         const SymbolMap *authorSymbols);
     Status PublishScope(const SessionOwner &owner, const PatchKey &patch,
                         const ObjectRef &graph, const Program &edit,
-                        Edit resolved,
+                        Ops resolved,
                         Program::ResolvedSymbols compiled,
                         std::uint32_t scope, std::size_t target,
                         PatchRecord &out,
@@ -347,16 +347,16 @@ private:
                             PatchId &out) const;
 
     Status Begin(const PatchKey &patch, const ObjectRef &graph,
-                 Edit &out, GraphModel &base) override;
-    Status UseNode(Edit &edit, const ObjectRef &node, Node &out) override;
-    Status UseLink(Edit &edit, const ObjectRef &link, Link &out) override;
+                 Ops &out, GraphModel &base) override;
+    Status UseNode(Ops &edit, const ObjectRef &node, Node &out) override;
+    Status UseLink(Ops &edit, const ObjectRef &link, Link &out) override;
     Status ReadPatternValue(const GraphNode &node, const Slot &slot,
                             GraphValue &out) override;
-    Status Tap(Edit &edit, Port source,
+    Status Tap(Ops &edit, Port source,
                const HookBlock::Hook &hook) override;
-    Status Interpose(Edit &edit, Link link,
+    Status Interpose(Ops &edit, Link link,
                      const HookBlock::Hook &hook) override;
-    Status Interpose(Edit &edit, Port source, Port sink,
+    Status Interpose(Ops &edit, Port source, Port sink,
                      const HookBlock::Hook &hook) override;
 
     CKEdit m_Edit;

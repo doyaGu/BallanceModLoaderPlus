@@ -597,7 +597,7 @@ bool Installations::HasPendingChange(const R &record) {
 }
 
 Status Installations::Begin(const SessionOwner &owner, CKBehavior *graph,
-                            std::string name, Edit &out) {
+                            std::string name, Ops &out) {
     Status status = Ready();
     if (!status)
         return status;
@@ -607,24 +607,24 @@ Status Installations::Begin(const SessionOwner &owner, CKBehavior *graph,
     return m_Edit.Begin(graph, {owner.Id, std::move(name)}, out);
 }
 
-Status Installations::Use(Edit &edit, CKBehavior *behavior, Node &out) {
+Status Installations::Use(Ops &edit, CKBehavior *behavior, Node &out) {
     return m_Edit.Use(edit, behavior, out);
 }
 
-Status Installations::Use(Edit &edit, CKBehaviorLink *link, Link &out) {
+Status Installations::Use(Ops &edit, CKBehaviorLink *link, Link &out) {
     return m_Edit.Use(edit, link, out);
 }
 
-Status Installations::Add(Edit &edit, BlockSpec block, Node &out) {
+Status Installations::Add(Ops &edit, BlockSpec block, Node &out) {
     return m_Edit.Add(edit, std::move(block), out);
 }
 
-Status Installations::AddGraph(Edit &edit, std::string name, int priority,
+Status Installations::AddGraph(Ops &edit, std::string name, int priority,
                                Node &out) {
     return m_Edit.AddGraph(edit, std::move(name), priority, out);
 }
 
-Status Installations::Apply(const SessionOwner &owner, const Edit &edit,
+Status Installations::Apply(const SessionOwner &owner, const Ops &edit,
                             PatchId &out,
                             const std::map<std::uint32_t, Node> *handles) {
     out = 0;
@@ -841,7 +841,7 @@ Status Installations::InstallFrom(PatchRecord &patch,
 
     struct Prepared {
         const Target *TargetValue = nullptr;
-        Edit Value;
+        Ops Value;
         Program::ResolvedSymbols Symbols;
     };
 
@@ -933,7 +933,7 @@ Status Installations::InstallScope(const SessionOwner &owner,
                                    std::size_t targetIndex,
                                    PatchRecord &out,
                                    const SymbolMap *authorSymbols) {
-    Edit resolved;
+    Ops resolved;
     Program::ResolvedSymbols compiled;
     PatchKey scopedKey = patch;
     if (scopeId != RootGraphScope)
@@ -953,7 +953,7 @@ Status Installations::PublishScope(const SessionOwner &owner,
                                    const PatchKey &patch,
                                    const ObjectRef &graph,
                                    const Program &edit,
-                                   Edit resolved,
+                                   Ops resolved,
                                    Program::ResolvedSymbols compiled,
                                    std::uint32_t scopeId,
                                    std::size_t targetIndex,
@@ -1913,7 +1913,7 @@ Status Installations::CloseSelection(const SessionOwner &owner,
 }
 
 Status Installations::Begin(const PatchKey &patch, const ObjectRef &graph,
-                            Edit &out, GraphModel &base) {
+                            Ops &out, GraphModel &base) {
     out = {};
     base = {};
     CKObject *object = m_ResolveObject ? m_ResolveObject(graph) : nullptr;
@@ -1927,7 +1927,7 @@ Status Installations::Begin(const PatchKey &patch, const ObjectRef &graph,
     return status;
 }
 
-Status Installations::UseNode(Edit &edit, const ObjectRef &node, Node &out) {
+Status Installations::UseNode(Ops &edit, const ObjectRef &node, Node &out) {
     out = {};
     CKObject *object = m_ResolveObject ? m_ResolveObject(node) : nullptr;
     CKBehavior *behavior = object ? CKBehavior::Cast(object) : nullptr;
@@ -1937,7 +1937,7 @@ Status Installations::UseNode(Edit &edit, const ObjectRef &node, Node &out) {
                   "A Behavior Node disappeared during compilation.");
 }
 
-Status Installations::UseLink(Edit &edit, const ObjectRef &link, Link &out) {
+Status Installations::UseLink(Ops &edit, const ObjectRef &link, Link &out) {
     out = {};
     CKObject *object = m_ResolveObject ? m_ResolveObject(link) : nullptr;
     CKBehaviorLink *native = object ? CKBehaviorLink::Cast(object) : nullptr;
@@ -1960,7 +1960,7 @@ Status Installations::ReadPatternValue(const GraphNode &node, const Slot &slot,
                   : status;
 }
 
-Status Installations::Tap(Edit &edit, Port source,
+Status Installations::Tap(Ops &edit, Port source,
                           const HookBlock::Hook &hook) {
     std::shared_ptr<HookBlock::Binding> binding = hook.Bind();
     if (!binding) {
@@ -1971,7 +1971,7 @@ Status Installations::Tap(Edit &edit, Port source,
     return {};
 }
 
-Status Installations::Interpose(Edit &edit, Link link,
+Status Installations::Interpose(Ops &edit, Link link,
                                 const HookBlock::Hook &hook) {
     std::shared_ptr<HookBlock::Binding> binding = hook.Bind();
     if (!binding) {
@@ -1987,7 +1987,7 @@ Status Installations::Interpose(Edit &edit, Link link,
     return status;
 }
 
-Status Installations::Interpose(Edit &edit, Port source, Port sink,
+Status Installations::Interpose(Ops &edit, Port source, Port sink,
                                 const HookBlock::Hook &hook) {
     std::shared_ptr<HookBlock::Binding> binding = hook.Bind();
     if (!binding) {

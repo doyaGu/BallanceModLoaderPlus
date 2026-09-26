@@ -40,6 +40,15 @@ BlockSpec &BlockSpec::TargetShared(CKGUID type, CKParameterIn *source) {
     return *this;
 }
 
+BlockSpec &BlockSpec::TargetValue(CKGUID type, Parameter::Binding value) {
+    m_TargetMode = value.Kind() == Parameter::BindingKind::Value &&
+            value.Literal().IsNull()
+        ? TargetMode::ExplicitNull : TargetMode::Explicit;
+    m_TargetType = type;
+    m_TargetValue = std::move(value);
+    return *this;
+}
+
 BlockSpec &BlockSpec::Setting(Slot slot, Parameter::Binding value) {
     slot.Kind = SlotKind::Setting;
     m_SettingStages.back().push_back({std::move(slot), std::move(value)});

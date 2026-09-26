@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_EDIT_H
-#define BML_BEHAVIOR_EDIT_H
+#ifndef BML_BEHAVIOR_EDIT_OPS_H
+#define BML_BEHAVIOR_EDIT_OPS_H
 
 #include <cstdint>
 #include <memory>
@@ -174,18 +174,7 @@ struct EditReplace {
     std::uint32_t Ordinal = 0;
 };
 
-struct CheckedReplace {
-    Node Target;
-    Node Replacement;
-    std::uint32_t Ordinal = 0;
-};
-
 struct EditRemove {
-    Node Target;
-    std::uint32_t Ordinal = 0;
-};
-
-struct CheckedRemove {
     Node Target;
     std::uint32_t Ordinal = 0;
 };
@@ -278,7 +267,7 @@ struct CheckedReconnect {
     std::uint32_t Ordinal = 0;
 };
 
-struct CheckedEdit {
+struct CheckedOps {
     std::vector<CheckedFlow> Flows;
     std::vector<CheckedSet> Sets;
     std::vector<CheckedBind> Binds;
@@ -287,8 +276,8 @@ struct CheckedEdit {
     std::vector<CheckedSplice> Splices;
     std::vector<CheckedRedirect> Redirects;
     std::vector<CheckedReconnect> Reconnections;
-    std::vector<CheckedReplace> Replacements;
-    std::vector<CheckedRemove> Removals;
+    std::vector<EditReplace> Replacements;
+    std::vector<EditRemove> Removals;
 };
 
 struct GraphSpec {
@@ -301,10 +290,10 @@ struct GraphSpec {
 // A side-effect-free additive graph plan. Node and Port values are logical
 // plan identities; native CK objects are only resolved by the CK adapter after
 // the complete candidate has passed validation.
-class Edit final {
+class Ops final {
 public:
-    Edit() = default;
-    Edit(PatchKey key, NativeRef graph, Layout layout);
+    Ops() = default;
+    Ops(PatchKey key, NativeRef graph, Layout layout);
 
     [[nodiscard]] const PatchKey &Key() const noexcept { return m_Key; }
     [[nodiscard]] NativeRef GraphRef() const noexcept {
@@ -350,7 +339,7 @@ public:
     Port AppendPout(Node node, std::string name, CKGUID type);
     Port AppendLocal(Node node, std::string name, CKGUID type);
 
-    Status Validate(const GraphModel &base, CheckedEdit &out) const;
+    Status Validate(const GraphModel &base, CheckedOps &out) const;
 
 private:
     struct EditNode {
@@ -405,4 +394,4 @@ private:
 
 } // namespace BML::Behavior::Internal
 
-#endif // BML_BEHAVIOR_EDIT_H
+#endif // BML_BEHAVIOR_EDIT_OPS_H

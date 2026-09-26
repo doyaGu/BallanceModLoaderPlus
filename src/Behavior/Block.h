@@ -58,6 +58,9 @@ public:
     BlockSpec &NullTarget(CKGUID type);
     BlockSpec &TargetSource(CKGUID type, CKParameter *source);
     BlockSpec &TargetShared(CKGUID type, CKParameterIn *source);
+    // A checked graph value. A null literal selects ExplicitNull, as
+    // NullTarget does.
+    BlockSpec &TargetValue(CKGUID type, Parameter::Binding value);
     BlockSpec &Setting(Slot slot, Parameter::Binding value);
     BlockSpec &NextSettingStage();
     BlockSpec &Input(Slot slot, Parameter::Binding value);
@@ -147,6 +150,14 @@ public:
     [[nodiscard]] const std::vector<ParameterType> &PoutTypes() const noexcept {
         return m_PoutTypes;
     }
+    [[nodiscard]] const std::vector<std::string> &AddedInputs() const noexcept {
+        return m_AddedInputs;
+    }
+    [[nodiscard]] const std::vector<std::string> &AddedOutputs() const noexcept {
+        return m_AddedOutputs;
+    }
+    [[nodiscard]] const std::vector<std::shared_ptr<CallbackResource>> &
+    Callbacks() const noexcept { return m_KeepAlive; }
 
     friend bool operator==(const BlockSpec &, const BlockSpec &) = default;
 
@@ -191,8 +202,6 @@ private:
     std::vector<std::shared_ptr<CallbackResource>> m_KeepAlive;
 
     friend class Runtime;
-    friend class Edit;
-    friend class CKEdit;
 };
 
 } // namespace BML::Behavior::Internal

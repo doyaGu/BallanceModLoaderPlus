@@ -79,7 +79,7 @@ int BML_BEHAVIOR_CALL InstallSplice(
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
 
-        Behavior::Internal::Edit edit;
+        Behavior::Internal::Ops edit;
         Behavior::Internal::Installations &patches =
             context->BehaviorInstallations();
         Behavior::Internal::Status status = patches.Begin(
@@ -127,7 +127,7 @@ int BML_BEHAVIOR_CALL InstallTextSplice(
         options.Text = text;
         options.Alignment = BottomLeftAlignment;
 
-        Behavior::Internal::Edit edit;
+        Behavior::Internal::Ops edit;
         Behavior::Internal::Installations &patches =
             context->BehaviorInstallations();
         Behavior::Internal::Status status = patches.Begin(

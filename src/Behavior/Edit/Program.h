@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "Behavior/Block.h"
-#include "Behavior/Edit.h"
+#include "Behavior/Edit/Ops.h"
 #include "Behavior/Pattern.h"
 #include "Behavior/PrototypeCatalog.h"
 
@@ -268,23 +268,23 @@ public:
         virtual ~Resolver() = default;
 
         virtual Status Begin(const PatchKey &patch, const ObjectRef &graph,
-                             Edit &out, GraphModel &base) = 0;
-        virtual Status UseNode(Edit &edit, const ObjectRef &node,
+                             Ops &out, GraphModel &base) = 0;
+        virtual Status UseNode(Ops &edit, const ObjectRef &node,
                                Node &out) = 0;
-        virtual Status UseLink(Edit &edit, const ObjectRef &link,
+        virtual Status UseLink(Ops &edit, const ObjectRef &link,
                                Link &out) = 0;
-        virtual Status Add(Edit &edit, BlockSpec block, Node &out) = 0;
-        virtual Status AddGraph(Edit &edit, std::string name, int priority,
+        virtual Status Add(Ops &edit, BlockSpec block, Node &out) = 0;
+        virtual Status AddGraph(Ops &edit, std::string name, int priority,
                                 Node &out) = 0;
-        virtual Status Tap(Edit &edit, Port source,
+        virtual Status Tap(Ops &edit, Port source,
                            const HookBlock::Hook &hook) = 0;
         // Puts a callback inside one Link, so control reaches the callback
         // after the source Out fired and before the sink In runs. Both After
         // and Before land here; they differ only in how the author named the
         // Link.
-        virtual Status Interpose(Edit &edit, Link link,
+        virtual Status Interpose(Ops &edit, Link link,
                                  const HookBlock::Hook &hook) = 0;
-        virtual Status Interpose(Edit &edit, Port source, Port sink,
+        virtual Status Interpose(Ops &edit, Port source, Port sink,
                                  const HookBlock::Hook &hook) = 0;
     };
 
@@ -389,7 +389,7 @@ public:
     // Node or appended Port each handle resolved to, so an installation can
     // resolve author symbols without retaining a native CK pointer.
     Status Resolve(const PatchKey &patch, const ObjectRef &graph,
-                   Resolver &resolver, Edit &out,
+                   Resolver &resolver, Ops &out,
                    ResolvedSymbols *symbols = nullptr,
                    bool rootInterfaceExists = false) const;
 

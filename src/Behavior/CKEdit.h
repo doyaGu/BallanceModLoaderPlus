@@ -1,16 +1,14 @@
 #ifndef BML_BEHAVIOR_CKEDIT_H
 #define BML_BEHAVIOR_CKEDIT_H
 
-#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <set>
 #include <thread>
 #include <vector>
 
-#include "Behavior/Edit.h"
+#include "Behavior/Edit/Ops.h"
 #include "Behavior/PrototypeCatalog.h"
 #include "Behavior/Relations.h"
 
@@ -86,14 +84,14 @@ public:
            GraphSource &graph);
     ~CKEdit();
 
-    Status Begin(CKBehavior *graph, PatchKey key, Edit &out);
-    Status Use(Edit &edit, CKBehavior *behavior, Node &out);
-    Status Use(Edit &edit, CKBehaviorLink *link, Link &out);
-    Status Add(Edit &edit, BlockSpec block, Node &out,
+    Status Begin(CKBehavior *graph, PatchKey key, Ops &out);
+    Status Use(Ops &edit, CKBehavior *behavior, Node &out);
+    Status Use(Ops &edit, CKBehaviorLink *link, Link &out);
+    Status Add(Ops &edit, BlockSpec block, Node &out,
                NodeRole role = NodeRole::Logical);
-    Status AddGraph(Edit &edit, std::string name, int priority, Node &out,
+    Status AddGraph(Ops &edit, std::string name, int priority, Node &out,
                     NodeRole role = NodeRole::Logical);
-    Status Apply(const Edit &edit, Patch &out,
+    Status Apply(const Ops &edit, Patch &out,
                  std::shared_ptr<const CallbackAdmission> admission = {});
     // Reads back the live Node an applied Edit gave this handle. Busy while
     // the Patch is still waiting for its safe point.
@@ -132,10 +130,9 @@ public:
 private:
     Status Ready() const;
     [[nodiscard]] bool InDispatch() const noexcept;
-    Status ApplyNow(const Edit &edit,
+    Status ApplyNow(const Ops &edit,
                     const std::shared_ptr<Patch::Journal> &journal);
     Status CloseNow(const std::shared_ptr<Patch::Journal> &journal);
-    Status Undo(Patch::Journal &journal);
     Status ResolvePort(const Patch &patch, Port port,
                        CKBehavior *&behavior, SlotInfo &slot) const;
     Status Materialize(std::uint64_t graphId, CKBehavior *graph);
@@ -147,6 +144,7 @@ private:
     void Queue(Request request);
 
     struct Links;
+    class Transaction;
 
     CKContext *m_Context = nullptr;
     Runtime &m_Runtime;
@@ -163,14 +161,12 @@ private:
     // exact inverse has restored those Nodes and Links.
     std::set<std::uint64_t> m_StructuralEdits;
     std::unique_ptr<Links> m_Links;
-    std::mutex m_QueueMutex;
     std::vector<Request> m_Queue;
-    std::atomic<bool> m_HasQueuedRequests{false};
     [[nodiscard]] bool Deferred() const noexcept;
 
     // ProcessFrame re-enters through CK's SequenceToBeDeleted notification
     // while it destroys Patch objects. Nested requests wait for the next
-    // safe point instead of running inside a half-finished Apply or Undo.
+    // safe point instead of running inside a half-finished Apply or revert.
     bool m_Processing = false;
     // Depth of the synchronous ApplyNow/CloseNow publishing to CK right now.
     // A native teardown or EDITED callback that reaches Apply or Close from

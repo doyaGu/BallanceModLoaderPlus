@@ -849,7 +849,7 @@ bool Program::SameAs(const Program &other) const noexcept {
 }
 
 Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
-                        Resolver &resolver, Edit &out,
+                        Resolver &resolver, Ops &out,
                         ResolvedSymbols *symbols,
                         bool rootInterfaceExists) const {
     if (symbols)
@@ -864,7 +864,7 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
         return status;
 
     GraphModel base;
-    Edit resolved;
+    Ops resolved;
     status = resolver.Begin(patch, graph, resolved, base);
     if (!status)
         return status;
