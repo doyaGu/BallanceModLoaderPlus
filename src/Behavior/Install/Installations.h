@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "Behavior/CKEdit.h"
-#include "Behavior/GraphEdit.h"
+#include "Behavior/Edit/Program.h"
 #include "Behavior/Install/Selection.h"
 #include "Behavior/Sessions.h"
 
@@ -38,7 +38,7 @@ struct PatchInfo {
 // through Selections. Both share one lifecycle: a requested definition, the
 // prefix actually applied, the previous definition to fall back to, and the
 // failures met on the way. CKEdit remains the CK2 graph transaction adapter.
-class Installations final : private GraphEdit::Compiler {
+class Installations final : private Program::Resolver {
 public:
     using ResolveObject = std::function<CKObject *(const ObjectRef &)>;
     using IssueObject = std::function<ObjectRef(CKObject *)>;
@@ -89,14 +89,14 @@ public:
         ObjectRef Graph;
         std::uint64_t Fingerprint = 0;
         std::uint64_t Binding = 0;
-        std::shared_ptr<const GraphEdit> Body;
+        std::shared_ptr<const Program> Body;
         SymbolMap Symbols;
     };
 
     struct Rule {
         ScriptSelection Scripts;
         std::uint64_t Binding = 0;
-        std::shared_ptr<const GraphEdit> Body;
+        std::shared_ptr<const Program> Body;
         SymbolMap Symbols;
     };
 
@@ -121,7 +121,7 @@ public:
 
     // Patches.
     Status Apply(const SessionOwner &owner, const ObjectRef &graph,
-                 std::string name, GraphEdit edit, PatchId &out,
+                 std::string name, Program edit, PatchId &out,
                  const SymbolMap *authorSymbols = nullptr);
     Status Apply(const SessionOwner &owner, std::string name,
                  std::vector<Target> targets, PatchId &out);
@@ -165,7 +165,7 @@ public:
     // One bare Script Selection with a single canonical body, for the Behavior
     // test interface.
     Status SubmitSelection(const SessionOwner &owner, ScriptSelection target,
-                           std::string name, GraphEdit edit,
+                           std::string name, Program edit,
                            SelectionId &out);
     Status ReadSelection(const SessionOwner &owner, SelectionId selection,
                          PlanInfo &out) const;
@@ -255,7 +255,7 @@ private:
             std::size_t Target = 0;
             CK_ID Graph = 0;
             Patch Value;
-            GraphEdit::CompiledSymbols Symbols;
+            Program::ResolvedSymbols Symbols;
         };
 
         CK_ID Graph = 0;
@@ -293,14 +293,14 @@ private:
     Status InstallFrom(PlanRecord &plan, const std::vector<Rule> &definition,
                        std::size_t rule);
     Status InstallScope(const SessionOwner &owner, const PatchKey &patch,
-                        const ObjectRef &graph, const GraphEdit &edit,
+                        const ObjectRef &graph, const Program &edit,
                         std::uint32_t scope, std::size_t target,
                         PatchRecord &out,
                         const SymbolMap *authorSymbols);
     Status PublishScope(const SessionOwner &owner, const PatchKey &patch,
-                        const ObjectRef &graph, const GraphEdit &edit,
+                        const ObjectRef &graph, const Program &edit,
                         Edit resolved,
-                        GraphEdit::CompiledSymbols compiled,
+                        Program::ResolvedSymbols compiled,
                         std::uint32_t scope, std::size_t target,
                         PatchRecord &out,
                         const SymbolMap *authorSymbols);

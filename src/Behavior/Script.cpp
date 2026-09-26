@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "Behavior/Callback.h"
-#include "Behavior/GraphEdit.h"
+#include "Behavior/Edit/Program.h"
 #include "Behavior/Install/Installations.h"
 #include "CKAll.h"
 
@@ -131,7 +131,7 @@ public:
 
     Status Define(const SessionOwner &owner,
                   const ScriptIdentity &script,
-                  GraphEdit body, ScriptBodyId &out) override {
+                  Program body, ScriptBodyId &out) override {
         out = 0;
         PatchId patch = 0;
         Status status = m_Installations.Apply(
@@ -320,7 +320,7 @@ bool Scripts::OwnedBy(const Entry &entry,
 ScriptResult Scripts::Create(const SessionOwner &owner,
                              std::uintptr_t session,
                              void *nativeOwner, std::string name,
-                             int priority, GraphEdit body) {
+                             int priority, Program body) {
     Status status = Ready();
     if (!status)
         return {std::move(status), 0, {}};

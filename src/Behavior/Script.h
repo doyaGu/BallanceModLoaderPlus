@@ -19,7 +19,7 @@ class CKContext;
 
 namespace BML::Behavior::Internal {
 
-class GraphEdit;
+class Program;
 class Installations;
 
 using ScriptId = std::uintptr_t;
@@ -79,7 +79,7 @@ public:
     // The returned body stays owned by the Script and closes before its root.
     virtual Status Define(const SessionOwner &owner,
                           const ScriptIdentity &script,
-                          GraphEdit body, ScriptBodyId &out) = 0;
+                          Program body, ScriptBodyId &out) = 0;
     virtual Status Read(const ScriptIdentity &script, bool &active) = 0;
     virtual Status SetActive(const ScriptIdentity &script, bool active,
                              bool reset) = 0;
@@ -105,7 +105,7 @@ public:
 
     ScriptResult Create(const SessionOwner &owner, std::uintptr_t session,
                         void *nativeOwner, std::string name, int priority,
-                        GraphEdit body);
+                        Program body);
     Status Read(const SessionOwner &owner, ScriptId script,
                 ScriptInfo &out);
     Status SetActive(const SessionOwner &owner, ScriptId script, bool active,

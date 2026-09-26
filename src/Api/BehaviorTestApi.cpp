@@ -283,7 +283,7 @@ int BML_BEHAVIOR_CALL SubmitEdit(
         Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        Behavior::Internal::GraphEdit edit;
+        Behavior::Internal::Program edit;
         const Behavior::Internal::Node source = edit.RequireOne({sourceNode});
         const Behavior::Internal::Node sink = edit.RequireOne({sinkNode});
         const Behavior::Internal::Link link = edit.RequireOne(source.Out(), sink.In());

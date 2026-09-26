@@ -294,6 +294,8 @@ struct CheckedEdit {
 struct GraphSpec {
     std::string Name;
     int Priority = 0;
+
+    friend bool operator==(const GraphSpec &, const GraphSpec &) = default;
 };
 
 // A side-effect-free additive graph plan. Node and Port values are logical
@@ -398,7 +400,7 @@ private:
     std::uint64_t m_ExpectedFingerprint = 0;
 
     friend class CKEdit;
-    friend class GraphEdit;
+    friend class Program;
 };
 
 } // namespace BML::Behavior::Internal

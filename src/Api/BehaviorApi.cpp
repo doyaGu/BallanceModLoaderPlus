@@ -63,7 +63,7 @@ using BML::Behavior::Internal::WatchKind;
 using BML::Behavior::Internal::WatchSpec;
 using BML::Behavior::Internal::Cycle;
 using BML::Behavior::Internal::DetachedCompatibility;
-using BML::Behavior::Internal::GraphEdit;
+using BML::Behavior::Internal::Program;
 using BML::Behavior::Internal::Link;
 using BML::Behavior::Internal::Node;
 using BML::Behavior::Internal::NodePattern;
@@ -2801,12 +2801,12 @@ struct EditHandle {
     Port PortValue;
 };
 
-// Translates the shared wire edit program into symbolic graph intent. The same
+// Translates the shared wire edit steps into one symbolic Program. The same
 // value can be applied once to a known graph or retained by a Plan.
-class EditProgram final {
+class ProgramDecoder final {
 public:
     Status Build(const BML_BehaviorEditStep *steps, std::uint32_t count,
-                 ModContext &context, GraphEdit &edit);
+                 ModContext &context, Program &edit);
     // Reports every symbolic Node and appended Port the caller can address in
     // an installed Patch or Plan.
     [[nodiscard]] BML::Behavior::Internal::Installations::SymbolMap
@@ -2816,7 +2816,7 @@ private:
     static bool Defines(std::uint32_t kind) noexcept;
 
     Status Step(const BML_BehaviorEditStep &step, ModContext &context,
-                GraphEdit &edit);
+                Program &edit);
     Status Use(std::uint32_t scope, std::uint32_t id, EditHandleKind kind,
                const EditHandle *&out) const;
     Status ReadPort(const BML_BehaviorPortRef &from, Port &out) const;
@@ -2827,10 +2827,30 @@ private:
 
     using HandleKey = std::pair<std::uint32_t, std::uint32_t>;
     std::map<HandleKey, EditHandle> m_Handles;
-    std::map<std::uint32_t, GraphEdit *> m_Graphs;
+    std::map<std::uint32_t, Program *> m_Graphs;
 };
 
-bool EditProgram::Defines(std::uint32_t kind) noexcept {
+// The only decoder from wire edit steps to a Program. Symbols, when asked
+// for, reports every Node and appended Port the author can address, under
+// the caller's binding.
+Status DecodeProgram(
+    const BML_BehaviorEditStep *steps, std::uint32_t count,
+    ModContext &context, Program &out,
+    BML::Behavior::Internal::Installations::SymbolMap *symbols = nullptr,
+    std::uint64_t binding = 0) {
+    ProgramDecoder decoder;
+    const Status status = decoder.Build(steps, count, context, out);
+    if (!status || !symbols)
+        return status;
+    for (const auto &[reference, symbol] : decoder.Symbols()) {
+        auto bound = reference;
+        bound.Binding = binding;
+        symbols->emplace(bound, symbol);
+    }
+    return {};
+}
+
+bool ProgramDecoder::Defines(std::uint32_t kind) noexcept {
     switch (kind) {
     case BML_BEHAVIOR_EDIT_REQUIRE_NODE:
     case BML_BEHAVIOR_EDIT_REQUIRE_LINK:
@@ -2855,9 +2875,9 @@ bool EditProgram::Defines(std::uint32_t kind) noexcept {
     }
 }
 
-Status EditProgram::Build(const BML_BehaviorEditStep *steps,
-                          std::uint32_t count, ModContext &context,
-                          GraphEdit &edit) {
+Status ProgramDecoder::Build(const BML_BehaviorEditStep *steps,
+                             std::uint32_t count, ModContext &context,
+                             Program &edit) {
     EditHandle graph;
     graph.Scope = BML_BEHAVIOR_EDIT_GRAPH;
     graph.NodeValue = edit.Graph();
@@ -2874,7 +2894,7 @@ Status EditProgram::Build(const BML_BehaviorEditStep *steps,
     return {};
 }
 
-BML::Behavior::Internal::Installations::SymbolMap EditProgram::Symbols() const {
+BML::Behavior::Internal::Installations::SymbolMap ProgramDecoder::Symbols() const {
     BML::Behavior::Internal::Installations::SymbolMap symbols;
     for (const auto &entry : m_Handles) {
         if (entry.second.Kind == EditHandleKind::Node) {
@@ -2977,14 +2997,14 @@ Status ReadNodePattern(const BML_BehaviorEditStep &step,
     return {};
 }
 
-Status EditProgram::Step(const BML_BehaviorEditStep &step,
-                         ModContext &context, GraphEdit &root) {
+Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
+                            ModContext &context, Program &root) {
     if (step.StructSize < sizeof(step))
         return InvalidValue("A Behavior edit step has an unsupported StructSize.");
     const auto graph = m_Graphs.find(step.Graph);
     if (graph == m_Graphs.end() || !graph->second)
         return InvalidValue("A Behavior edit step names an unknown graph scope.");
-    GraphEdit &edit = *graph->second;
+    Program &edit = *graph->second;
     std::uint32_t allowedFlags = 0;
     if (step.Kind == BML_BEHAVIOR_EDIT_REQUIRE_LINK)
         allowedFlags = BML_BEHAVIOR_EDIT_HAS_DELAY;
@@ -3138,7 +3158,7 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         if (status = Use(step.Graph, step.Target, EditHandleKind::Node,
                          target); !status)
             return status;
-        GraphEdit &nested = edit.Enter(target->NodeValue, step.Result);
+        Program &nested = edit.Enter(target->NodeValue, step.Result);
         m_Graphs.emplace(step.Result, &nested);
         EditHandle nestedRoot;
         nestedRoot.Scope = step.Result;
@@ -3438,9 +3458,9 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
     return {};
 }
 
-Status EditProgram::Use(std::uint32_t scope, std::uint32_t id,
-                        EditHandleKind kind,
-                        const EditHandle *&out) const {
+Status ProgramDecoder::Use(std::uint32_t scope, std::uint32_t id,
+                           EditHandleKind kind,
+                           const EditHandle *&out) const {
     const auto found = m_Handles.find({scope, id});
     if (found == m_Handles.end()) {
         return InvalidValue(
@@ -3452,7 +3472,7 @@ Status EditProgram::Use(std::uint32_t scope, std::uint32_t id,
     return {};
 }
 
-Status EditProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
+Status ProgramDecoder::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
     if (from.StructSize < sizeof(from))
         return InvalidValue("A Behavior port has an unsupported StructSize.");
     const EditHandle *handle = nullptr;
@@ -3489,8 +3509,8 @@ Status EditProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
     return {};
 }
 
-Status EditProgram::ReadHook(const BML_BehaviorHookFunction *from,
-                             HookBlock::Hook &out) const {
+Status ProgramDecoder::ReadHook(const BML_BehaviorHookFunction *from,
+                                HookBlock::Hook &out) const {
     if (!from || from->StructSize < sizeof(*from) || !from->Invoke)
         return InvalidValue("A Behavior Hook needs a callback.");
     if ((from->Retain == nullptr) != (from->Release == nullptr)) {
@@ -3531,8 +3551,8 @@ Status EditProgram::ReadHook(const BML_BehaviorHookFunction *from,
     return {};
 }
 
-Status EditProgram::ReadOrdering(const BML_BehaviorEditStep &step,
-                                 std::vector<Order> &out) const {
+Status ProgramDecoder::ReadOrdering(const BML_BehaviorEditStep &step,
+                                    std::vector<Order> &out) const {
     if (step.OrderCount && !step.Ordering)
         return InvalidValue("A Behavior Patch ordering array is missing.");
     for (std::uint32_t index = 0; index < step.OrderCount; ++index) {
@@ -3870,21 +3890,16 @@ Status ReadScriptEdits(
             std::string script;
             if (!ReadString(source.Script, script) || script.empty())
                 return InvalidValue("A Script Edit requires an exact name.");
-            GraphEdit edit;
-            EditProgram program;
-            Status status = program.Build(source.Steps, source.StepCount,
-                                          context, edit);
+            Program edit;
+            BML::Behavior::Internal::Installations::SymbolMap symbols;
+            const Status status = DecodeProgram(
+                source.Steps, source.StepCount, context, edit, &symbols,
+                source.Binding);
             if (!status)
                 return status;
-            BML::Behavior::Internal::Installations::SymbolMap symbols;
-            for (const auto &[reference, symbol] : program.Symbols()) {
-                auto bound = reference;
-                bound.Binding = source.Binding;
-                symbols.emplace(bound, symbol);
-            }
             out.push_back({ScriptSelection{std::move(script), targets},
                            source.Binding,
-                           std::make_shared<GraphEdit>(std::move(edit)),
+                           std::make_shared<Program>(std::move(edit)),
                            std::move(symbols)});
         }
     } catch (const std::bad_alloc &) {
@@ -3981,25 +3996,19 @@ Status ReadGraphEdits(
                 return InvalidValue(
                     "Graph Edits in one Behavior Patch require distinct bindings.");
             }
-            GraphEdit edit;
-            EditProgram program;
-            Status status = program.Build(source.Steps, source.StepCount,
-                                          context, edit);
+            Program edit;
+            BML::Behavior::Internal::Installations::SymbolMap symbols;
+            const Status status = DecodeProgram(
+                source.Steps, source.StepCount, context, edit, &symbols,
+                source.Binding);
             if (!status)
                 return status;
-            const auto localSymbols = program.Symbols();
-            BML::Behavior::Internal::Installations::SymbolMap symbols;
-            for (const auto &[reference, symbol] : localSymbols) {
-                auto publicReference = reference;
-                publicReference.Binding = source.Binding;
-                symbols.emplace(publicReference, symbol);
-            }
             BML::Behavior::Internal::Installations::Target target;
             target.Graph = {source.Graph.Domain, source.Graph.Slot,
                             source.Graph.Generation};
             target.Fingerprint = source.Fingerprint;
             target.Binding = source.Binding;
-            target.Body = std::make_shared<GraphEdit>(std::move(edit));
+            target.Body = std::make_shared<Program>(std::move(edit));
             target.Symbols = std::move(symbols);
             out.push_back(std::move(target));
         }
@@ -4473,10 +4482,8 @@ int BML_BEHAVIOR_CALL CreateScript(
             WriteStatus(status, result);
             return ResultCode(result);
         }
-        GraphEdit body;
-        EditProgram program;
-        result = program.Build(
-            spec->Steps, spec->StepCount, *context, body);
+        Program body;
+        result = DecodeProgram(spec->Steps, spec->StepCount, *context, body);
         if (!result) {
             WriteStatus(status, result);
             return ResultCode(result);

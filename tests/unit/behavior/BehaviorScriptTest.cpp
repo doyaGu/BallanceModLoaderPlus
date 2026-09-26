@@ -1,5 +1,5 @@
 #include "Behavior/Script.h"
-#include "Behavior/GraphEdit.h"
+#include "Behavior/Edit/Program.h"
 
 #include <algorithm>
 #include <functional>
@@ -43,7 +43,7 @@ public:
     }
 
     Status Define(const SessionOwner &, const ScriptIdentity &script,
-                  GraphEdit, ScriptBodyId &out) override {
+                  Program, ScriptBodyId &out) override {
         Events.emplace_back("define");
         Defined.push_back(script.Root.Id);
         if (!DefineResult)

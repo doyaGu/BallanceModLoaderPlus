@@ -152,7 +152,7 @@ Status PlanStatus(Status status, const std::string &name,
 class Installations::PlanWorld final : public Selection::World {
 public:
     PlanWorld(Installations &installations, SessionOwner owner, PatchKey patch,
-              std::shared_ptr<const GraphEdit> edit,
+              std::shared_ptr<const Program> edit,
               SymbolMap symbols,
               std::shared_ptr<const CallbackAdmission> admission = {})
         : m_Installations(installations), m_Owner(std::move(owner)),
@@ -195,7 +195,7 @@ private:
     Installations &m_Installations;
     SessionOwner m_Owner;
     PatchKey m_Patch;
-    std::shared_ptr<const GraphEdit> m_Edit;
+    std::shared_ptr<const Program> m_Edit;
     SymbolMap m_Symbols;
     std::shared_ptr<const CallbackAdmission> m_Admission;
 };
@@ -719,12 +719,12 @@ Status Installations::Apply(const SessionOwner &owner, const Edit &edit,
 }
 
 Status Installations::Apply(const SessionOwner &owner, const ObjectRef &graph,
-                            std::string name, GraphEdit edit, PatchId &out,
+                            std::string name, Program edit, PatchId &out,
                             const SymbolMap *authorSymbols) {
     try {
         Target target;
         target.Graph = graph;
-        target.Body = std::make_shared<GraphEdit>(std::move(edit));
+        target.Body = std::make_shared<Program>(std::move(edit));
         if (authorSymbols)
             target.Symbols = *authorSymbols;
         std::vector<Target> targets;
@@ -842,7 +842,7 @@ Status Installations::InstallFrom(PatchRecord &patch,
     struct Prepared {
         const Target *TargetValue = nullptr;
         Edit Value;
-        GraphEdit::CompiledSymbols Symbols;
+        Program::ResolvedSymbols Symbols;
     };
 
     const PatchKey key{patch.Owner.Id, patch.Name};
@@ -886,7 +886,7 @@ Status Installations::InstallFrom(PatchRecord &patch,
         }
         Prepared item;
         item.TargetValue = &target;
-        status = target.Body->Compile(
+        status = target.Body->Resolve(
             key, target.Graph, *this, item.Value, &item.Symbols);
         if (!status) {
             NoteFailure(patch, index);
@@ -928,17 +928,17 @@ Status Installations::InstallFrom(PatchRecord &patch,
 Status Installations::InstallScope(const SessionOwner &owner,
                                    const PatchKey &patch,
                                    const ObjectRef &graph,
-                                   const GraphEdit &edit,
+                                   const Program &edit,
                                    std::uint32_t scopeId,
                                    std::size_t targetIndex,
                                    PatchRecord &out,
                                    const SymbolMap *authorSymbols) {
     Edit resolved;
-    GraphEdit::CompiledSymbols compiled;
+    Program::ResolvedSymbols compiled;
     PatchKey scopedKey = patch;
     if (scopeId != RootGraphScope)
         scopedKey.Name += "/" + std::to_string(scopeId);
-    Status status = edit.Compile(
+    Status status = edit.Resolve(
         scopedKey, graph, *this, resolved, &compiled,
         scopeId != RootGraphScope);
     if (!status)
@@ -952,9 +952,9 @@ Status Installations::InstallScope(const SessionOwner &owner,
 Status Installations::PublishScope(const SessionOwner &owner,
                                    const PatchKey &patch,
                                    const ObjectRef &graph,
-                                   const GraphEdit &edit,
+                                   const Program &edit,
                                    Edit resolved,
-                                   GraphEdit::CompiledSymbols compiled,
+                                   Program::ResolvedSymbols compiled,
                                    std::uint32_t scopeId,
                                    std::size_t targetIndex,
                                    PatchRecord &out,
@@ -1026,7 +1026,7 @@ Status Installations::PublishScope(const SessionOwner &owner,
         if (!status)
             return status;
 
-        for (const GraphEdit::Nested &nested : edit.NestedGraphs()) {
+        for (const Program::Nested &nested : edit.NestedGraphs()) {
             if (!nested.Body)
                 return Failure(Error::InvalidState,
                                "A nested Graph Edit has no body.");
@@ -1868,7 +1868,7 @@ Status Installations::ClosePlan(const SessionOwner &owner, PlanId id) {
 
 Status Installations::SubmitSelection(const SessionOwner &owner,
                                       ScriptSelection target,
-                                      std::string name, GraphEdit edit,
+                                      std::string name, Program edit,
                                       SelectionId &out) {
     out = 0;
     Status status = Ready();
@@ -1888,7 +1888,7 @@ Status Installations::SubmitSelection(const SessionOwner &owner,
     if (!status)
         return status;
     try {
-        auto body = std::make_shared<GraphEdit>(std::move(edit));
+        auto body = std::make_shared<Program>(std::move(edit));
         auto world = std::make_shared<PlanWorld>(
             *this, owner, PatchKey{owner.Id, name}, std::move(body),
             SymbolMap{});

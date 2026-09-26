@@ -116,13 +116,13 @@ add_bml_test(BehaviorEditTest
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
-add_bml_test(BehaviorGraphEditTest
+add_bml_test(BehaviorProgramTest
         SOURCES
-        BehaviorGraphEditTest.cpp
+        BehaviorProgramTest.cpp
         BehaviorBlockTestStubs.cpp
         ${BML_SOURCE_DIR}/Behavior/Block.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
-        ${BML_SOURCE_DIR}/Behavior/GraphEdit.cpp
+        ${BML_SOURCE_DIR}/Behavior/Edit/Program.cpp
         ${BML_SOURCE_DIR}/Behavior/Pattern.cpp
         ${BML_SOURCE_DIR}/Behavior/Edit.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
