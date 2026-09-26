@@ -140,6 +140,7 @@ std::shared_ptr<CallbackAdmission> Patches::RegisterAdmission(
         parent ? std::move(parent) : owner.Admission);
     std::lock_guard<std::mutex> lock(m_AdmissionMutex);
     m_Admissions.emplace(std::make_pair(plan, id), AdmissionRecord{owner, admission});
+    m_HasAdmissions = true;
     return admission;
 }
 
@@ -2263,12 +2264,22 @@ void Patches::ResetWorld() {
     // already closed, and the CK world is about to disappear; do not retain a
     // journal whose native identities belong to the old world.
     m_Patches.clear();
+    Collect();
 }
 
 void Patches::ProcessFrame(Plans &plans) {
     if (std::this_thread::get_id() != m_Thread)
         return;
-    m_Edit.ProcessFrame();
+    const bool editPending = m_Edit.NeedsFrameProcessing();
+    if (m_Plans.empty() && m_Patches.empty() && !editPending) {
+        if (m_HasAdmissions)
+            Collect();
+        return;
+    }
+    if (editPending)
+        m_Edit.ProcessFrame();
+
+    bool needsCollection = editPending;
     for (auto plan = m_Plans.begin(); plan != m_Plans.end();) {
         if (HasPendingChange(plan->second)) {
             Status status = ReconcilePlan(plans, plan->second);
@@ -2277,16 +2288,22 @@ void Patches::ProcessFrame(Plans &plans) {
         if (plan->second.Goal == PlanGoal::Closed &&
             plan->second.Rules.empty()) {
             plan = m_Plans.erase(plan);
+            needsCollection = true;
             continue;
         }
         ++plan;
     }
     for (auto &entry : m_Patches) {
         OwnedPatch &patch = entry.second;
-        if (HasPendingChange(patch) && m_Edit.CanPublish())
+        if (HasPendingChange(patch) && m_Edit.CanPublish()) {
             (void) Reconcile(patch);
+            needsCollection = true;
+        }
+        if (patch.Goal == PatchGoal::Closed)
+            needsCollection = true;
     }
-    Collect();
+    if (needsCollection)
+        Collect();
 }
 
 void Patches::Collect() {
@@ -2298,12 +2315,15 @@ void Patches::Collect() {
         else
             ++patch;
     }
-    std::lock_guard<std::mutex> lock(m_AdmissionMutex);
-    for (auto record = m_Admissions.begin(); record != m_Admissions.end();) {
-        if (record->second.Admission.expired())
-            record = m_Admissions.erase(record);
-        else
-            ++record;
+    if (m_HasAdmissions) {
+        std::lock_guard<std::mutex> lock(m_AdmissionMutex);
+        for (auto record = m_Admissions.begin(); record != m_Admissions.end();) {
+            if (record->second.Admission.expired())
+                record = m_Admissions.erase(record);
+            else
+                ++record;
+        }
+        m_HasAdmissions = !m_Admissions.empty();
     }
 }
 

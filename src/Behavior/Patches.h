@@ -361,6 +361,9 @@ private:
     // is reconciled at the next safe point.
     std::mutex m_AdmissionMutex;
     std::map<std::pair<bool, std::uint64_t>, AdmissionRecord> m_Admissions;
+    // Registration and collection are game-thread operations. Worker threads
+    // only look up an admission while holding m_AdmissionMutex.
+    bool m_HasAdmissions{false};
     PatchId m_NextId = 1;
     PlanId m_NextPlanId = 1;
     std::map<PatchId, OwnedPatch> m_Patches;

@@ -1,6 +1,7 @@
 #ifndef BML_BEHAVIOR_CKEDIT_H
 #define BML_BEHAVIOR_CKEDIT_H
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -120,6 +121,7 @@ public:
     // The aggregate owner schedules the inverse at its next safe point.
     void CloseAdmission(Patch &patch) noexcept;
     void ProcessFrame();
+    [[nodiscard]] bool NeedsFrameProcessing() const noexcept;
 
     [[nodiscard]] std::uint64_t TopologyFingerprint(CKBehavior *graph) const;
     // Aggregate authoring must not publish the first graph of a composed Edit
@@ -163,6 +165,7 @@ private:
     std::unique_ptr<Links> m_Links;
     std::mutex m_QueueMutex;
     std::vector<Request> m_Queue;
+    std::atomic<bool> m_HasQueuedRequests{false};
     [[nodiscard]] bool Deferred() const noexcept;
 
     // ProcessFrame re-enters through CK's SequenceToBeDeleted notification

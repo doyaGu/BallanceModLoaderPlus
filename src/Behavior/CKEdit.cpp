@@ -1011,6 +1011,12 @@ Status CKEdit::PublishLogicalGraph(std::uint64_t graphId) {
 void CKEdit::Queue(Request request) {
     std::lock_guard<std::mutex> lock(m_QueueMutex);
     m_Queue.push_back(std::move(request));
+    m_HasQueuedRequests.store(true, std::memory_order_release);
+}
+
+bool CKEdit::NeedsFrameProcessing() const noexcept {
+    return !m_LostOverlays.empty() ||
+           m_HasQueuedRequests.load(std::memory_order_acquire);
 }
 
 Status CKEdit::Ready() const {
@@ -5568,6 +5574,7 @@ void CKEdit::ObjectsToBeDeleted(const CK_ID *ids, int count) {
             }
             request = m_Queue.erase(request);
         }
+        m_HasQueuedRequests.store(!m_Queue.empty(), std::memory_order_release);
     }
 
     for (CK_ID id : deleting) {
@@ -5628,9 +5635,10 @@ void CKEdit::ProcessFrame() {
     }
 
     std::vector<Request> requests;
-    {
+    if (m_HasQueuedRequests.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> lock(m_QueueMutex);
         requests.swap(m_Queue);
+        m_HasQueuedRequests.store(false, std::memory_order_release);
     }
     for (Request &request : requests) {
         const std::shared_ptr<Patch::Journal> &patch = request.Patch;
