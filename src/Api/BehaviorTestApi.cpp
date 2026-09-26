@@ -52,7 +52,7 @@ int Result(const Behavior::Internal::Status &status) {
     }
 }
 
-bool Ready(ModContext *context) {
+bool Ready(const ModContextLease &context) {
     return context && context->AreModsLoaded() && context->IsMainThread();
 }
 
