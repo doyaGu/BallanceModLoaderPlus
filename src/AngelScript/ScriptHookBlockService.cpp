@@ -247,7 +247,8 @@ static bool RestoreHookBlockGraph(const std::shared_ptr<ScriptHookBlockServiceSt
     bool closed = true;
     if (entry.Block) {
         if (state && state->Context) {
-            Behavior::Internal::Status status = state->Context->Behaviors().Close(entry.Block);
+            Behavior::Internal::Status status =
+                state->Context->BehaviorSessions().CloseUnmanaged(entry.Block);
             closed = static_cast<bool>(status);
             if (!closed)
                 RecordHookBlockDiagnostic(state, status.Message);
@@ -474,10 +475,9 @@ static std::unique_ptr<ScriptHookBlockEntry> CreateHookBlockEntry(
         return nullptr;
     }
 
-    Behavior::Internal::AttachResult created = state->Context->Behaviors().AddToGraph(
+    entry->Block = state->Context->BehaviorSessions().CreateUnmanaged(
         ownerScript, Behavior::Internal::HookBlock::Make(
             entry->Binding, inputCount, outputCount));
-    entry->Block = created ? created.Block : nullptr;
     if (!entry->Block) {
         entry->Binding->CloseAdmission();
         RecordHookBlockDiagnostic(state, "HookBlock creation failed.");

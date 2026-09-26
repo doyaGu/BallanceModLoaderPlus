@@ -235,7 +235,7 @@ CKBehavior *Create2DText(CKBehavior *script, CK2dEntity *target, FontType font, 
     definition.Flags = flags;
     ModContextLease context;
     auto *adapter = GetAdapter(context);
-    return adapter ? adapter->AddToGraph(
+    return adapter ? adapter->CreateUnmanaged(
         script, BML::Behavior::Internal::BlockSpec::From(definition)) : nullptr;
 }
 
@@ -252,7 +252,7 @@ CKBehavior *CreatePhysicalizeConvex(CKBehavior *script, CK3dEntity *target, CKBO
         massCenter);
     options.Geometry = BML::Behavior::Blocks::Physicalize::Shape::Convex;
     options.Mesh = mesh;
-    return adapter ? adapter->AddToGraph(
+    return adapter ? adapter->CreateUnmanaged(
         script, BML::Behavior::Internal::BlockSpec::From(options)) : nullptr;
 }
 
@@ -270,7 +270,7 @@ CKBehavior *CreatePhysicalizeBall(CKBehavior *script, CK3dEntity *target, CKBOOL
     options.Geometry = BML::Behavior::Blocks::Physicalize::Shape::Ball;
     options.Center = ballCenter;
     options.Radius = ballRadius;
-    return adapter ? adapter->AddToGraph(
+    return adapter ? adapter->CreateUnmanaged(
         script, BML::Behavior::Internal::BlockSpec::From(options)) : nullptr;
 }
 
@@ -287,7 +287,7 @@ CKBehavior *CreatePhysicalizeConcave(CKBehavior *script, CK3dEntity *target, CKB
         massCenter);
     options.Geometry = BML::Behavior::Blocks::Physicalize::Shape::Concave;
     options.Mesh = mesh;
-    return adapter ? adapter->AddToGraph(
+    return adapter ? adapter->CreateUnmanaged(
         script, BML::Behavior::Internal::BlockSpec::From(options)) : nullptr;
 }
 
@@ -296,7 +296,7 @@ CKBehavior *CreateSetPhysicsForce(CKBehavior *script, CK3dEntity *target, VxVect
                                   CK3dEntity *directionRef, float force) {
     ModContextLease context;
     auto *adapter = GetAdapter(context);
-    return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::BlockSpec::From(
+    return adapter ? adapter->CreateUnmanaged(script, BML::Behavior::Internal::BlockSpec::From(
         MakeForceOptions<BML::Behavior::Blocks::PhysicsForce::Options>(
             target, position, posRef, direction, directionRef, force))) : nullptr;
 }
@@ -306,7 +306,7 @@ CKBehavior *CreatePhysicsImpulse(CKBehavior *script, CK3dEntity *target, VxVecto
                                  float impulse) {
     ModContextLease context;
     auto *adapter = GetAdapter(context);
-    return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::BlockSpec::From(
+    return adapter ? adapter->CreateUnmanaged(script, BML::Behavior::Internal::BlockSpec::From(
         MakeForceOptions<BML::Behavior::Blocks::PhysicsImpulse::Options>(
             target, position, posRef, direction, dirRef, impulse))) : nullptr;
 }
@@ -314,7 +314,7 @@ CKBehavior *CreatePhysicsImpulse(CKBehavior *script, CK3dEntity *target, VxVecto
 CKBehavior *CreatePhysicsWakeUp(CKBehavior *script, CK3dEntity *target) {
     ModContextLease context;
     auto *adapter = GetAdapter(context);
-    return adapter ? adapter->AddToGraph(
+    return adapter ? adapter->CreateUnmanaged(
         script, BML::Behavior::Internal::BlockSpec::From(
             BML::Behavior::Blocks::PhysicsWakeUp::Options{target})) : nullptr;
 }
@@ -324,7 +324,7 @@ CKBehavior *CreateObjectLoad(CKBehavior *script, const char *file, const char *m
                              CKBOOL reuseMtl, CKBOOL dynamic) {
     ModContextLease context;
     auto *adapter = GetAdapter(context);
-    return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::BlockSpec::From(
+    return adapter ? adapter->CreateUnmanaged(script, BML::Behavior::Internal::BlockSpec::From(
         MakeObjectLoadOptions(file, mastername, filter,
                               addToScene, reuseMesh, reuseMtl, dynamic))) : nullptr;
 }
@@ -332,7 +332,7 @@ CKBehavior *CreateObjectLoad(CKBehavior *script, const char *file, const char *m
 CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *dest) {
     ModContextLease context;
     auto *adapter = GetAdapter(context);
-    return adapter ? adapter->AddToGraph(
+    return adapter ? adapter->CreateUnmanaged(
         script, BML::Behavior::Internal::BlockSpec::From(
             BML::Behavior::Blocks::Send::Options{
                 msg ? msg : "", dest})) : nullptr;
@@ -342,7 +342,7 @@ CKBehavior *CreateHookBlock(CKBehavior *script, CKBehaviorCallback callback, voi
                             int inCount, int outCount) {
     ModContextLease context;
     auto *adapter = GetAdapter(context);
-    return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::HookBlock::Make(
+    return adapter ? adapter->CreateUnmanaged(script, BML::Behavior::Internal::HookBlock::Make(
         callback, arg, inCount, outCount)) : nullptr;
 }
 

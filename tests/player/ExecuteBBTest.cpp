@@ -1,4 +1,6 @@
 #include <BML/ExecuteBB.h>
+#include <BML/Gui/Input.h>
+#include <BML/Gui/Label.h>
 #include <BML/IBML.h>
 #include <BML/ILogger.h>
 #include <BML/IMod.h>
@@ -7,8 +9,22 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstring>
 
 namespace {
+
+// Reads the 2D Text Block a Label keeps, which is otherwise only visible to
+// the Gui that owns the element.
+template <typename Element>
+class GuiProbe final : public Element {
+public:
+    using Element::Element;
+    [[nodiscard]] CKBehavior *Block() const { return this->m_Text2d; }
+};
+
+[[nodiscard]] bool SameText(const char *actual, const char *expected) {
+    return actual && std::strcmp(actual, expected) == 0;
+}
 
 // Probes the ExecuteBB physics operations on a body the test owns. The Player
 // flow around it belongs to PlayerFlowDriver, so this Mod only runs once the
@@ -198,12 +214,39 @@ private:
         m_ReleasedX = ReadX();
         const float pushTravel = m_PushedX - m_PushStartX;
         const float pullTravel = m_PushedX - m_PulledX;
-        const bool passed = BodyPositionIsFinite() &&
-                            pushTravel > kMinimumTravel &&
-                            pullTravel > kMinimumTravel &&
-                            std::fabs(m_ReleasedX - kReleasedX) <= kReleaseTolerance &&
-                            m_PhysicalizeSeen && m_UnphysicalizeSeen;
-        Report(passed, passed ? "completed" : "result-mismatch");
+        const bool physics = BodyPositionIsFinite() &&
+                             pushTravel > kMinimumTravel &&
+                             pullTravel > kMinimumTravel &&
+                             std::fabs(m_ReleasedX - kReleasedX) <= kReleaseTolerance &&
+                             m_PhysicalizeSeen && m_UnphysicalizeSeen;
+        m_GuiPassed = CheckGui();
+        const bool passed = physics && m_GuiPassed;
+        Report(passed, passed ? "completed"
+                              : physics ? "gui-mismatch" : "result-mismatch");
+    }
+
+    // A BGui Label owns a 2D Text Block in Level_Init, and an Input draws its
+    // caret as a backspace in that Block's text.
+    [[nodiscard]] bool CheckGui() const {
+        CKBehavior *script = m_BML ? m_BML->GetScriptByName("Level_Init") : nullptr;
+        if (!script)
+            return false;
+
+        GuiProbe<BGui::Label> label("__BML_ExecuteBB_Label");
+        label.SetText("label-probe");
+        const bool labelPassed = label.Block() &&
+                                 label.Block()->GetParent() == script &&
+                                 SameText(label.GetText(), "label-probe");
+        label.Process();
+
+        GuiProbe<BGui::Input> input("__BML_ExecuteBB_Input");
+        input.SetText("input-probe");
+        const bool inputPassed = input.Block() &&
+                                 input.Block()->GetParent() == script &&
+                                 SameText(input.GetText(), "input-probe") &&
+                                 SameText(input.Label::GetText(), "input-probe\b");
+        input.Process();
+        return labelPassed && inputPassed;
     }
 
     void Report(bool passed, const char *reason) {
@@ -221,11 +264,12 @@ private:
         GetLogger()->Info(
             "ExecuteBB probe: status=%s reason=%s x0=%.6f push_start=%.6f "
             "pushed=%.6f pulled=%.6f released=%.6f physicalize_event=%s "
-            "unphysicalize_event=%s",
+            "unphysicalize_event=%s gui=%s",
             passed ? "pass" : "fail", reason, m_InitialX, m_PushStartX,
             m_PushedX, m_PulledX, m_ReleasedX,
             m_PhysicalizeSeen ? "true" : "false",
-            m_UnphysicalizeSeen ? "true" : "false");
+            m_UnphysicalizeSeen ? "true" : "false",
+            m_GuiPassed ? "true" : "false");
         DestroyBody();
         if (passed)
             BML::PlayerTest::ProbeReport::Pass(reason);
@@ -278,6 +322,7 @@ private:
     bool m_UnphysicalizeSeen = false;
     bool m_Physicalized = false;
     bool m_ForceSet = false;
+    bool m_GuiPassed = false;
     std::chrono::steady_clock::time_point m_StartedAt{};
     std::chrono::steady_clock::time_point m_PhaseStartedAt{};
 };

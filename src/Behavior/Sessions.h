@@ -99,6 +99,11 @@ public:
     OpenRun Attach(std::uintptr_t sessionId, CKBehavior *graph,
                    const BlockSpec &block,
                    FrameRetention retention = FrameRetention::Signals());
+    // Loader-only, for the legacy APIs that hand a native Block to their
+    // caller: ExecuteBB::Create*, CreateHookBlock and BGui. The caller owns
+    // the Block from then on, so no Run tracks it.
+    CKBehavior *CreateUnmanaged(CKBehavior *graph, const BlockSpec &block);
+    Status CloseUnmanaged(CKBehavior *block);
     RunResult Continue(std::uintptr_t runId);
     RunResult Pulse(std::uintptr_t runId, const Slot &input);
 
@@ -134,6 +139,9 @@ public:
     Status ReadWatch(std::uintptr_t watchId, WatchInfo &info) const;
     void CloseWatch(std::uintptr_t watchId);
     std::shared_ptr<FrameStore> Frames(std::uintptr_t runId) const;
+    // Loader-only. ExecuteBB::ObjectLoad returns an array its Block owns, so
+    // the Loader reads the Block that the Run keeps alive.
+    [[nodiscard]] CKBehavior *Block(std::uintptr_t runId) const;
     void CloseRun(std::uintptr_t runId);
 
     void ProcessFrame();

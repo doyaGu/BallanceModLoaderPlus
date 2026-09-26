@@ -240,7 +240,7 @@ ModContext::ModContext(CKContext *context)
                       status.Message.c_str());
           }),
       m_PhysicsForce(context, m_Behaviors),
-      m_ExecuteBB(m_Behaviors, m_PhysicsForce),
+      m_ExecuteBB(m_BehaviorSessions, m_PhysicsForce),
       m_Loader(*this) {
     assert(context != nullptr);
     m_CommandApi = std::make_unique<BML::Api::CommandApi>(*this);
@@ -560,14 +560,6 @@ void ModContext::ProcessVirtoolsFrame() {
     m_BehaviorPatches.ProcessFrame(m_BehaviorPlans);
     m_BehaviorScripts.ProcessFrame();
     m_ExecuteBB.ProcessFrame();
-}
-
-BML::Behavior::Internal::SessionOwner ModContext::LoaderBehaviorOwner() const {
-    BML::Behavior::Internal::SessionOwner owner;
-    if (!m_Loader.GetBuiltinMod())
-        return owner;
-    (void) m_BehaviorSessions.ReadOwner(m_Loader.GetBuiltinMod()->GetID(), owner);
-    return owner;
 }
 
 BML::Behavior::Internal::Status ModContext::RetireBehaviorEdits(
@@ -1771,15 +1763,33 @@ bool ModContext::RegisterModOwner(const std::string &ownerId) noexcept {
         return false;
     }
 
-    if (BML::DataShareStore::ActivateCallbacksFromOwner(ownerId))
-        return true;
-
-    try {
-        (void) m_BehaviorSessions.RetireOwner(ownerId);
-    } catch (...) {
+    if (!BML::DataShareStore::ActivateCallbacksFromOwner(ownerId)) {
+        try {
+            (void) m_BehaviorSessions.RetireOwner(ownerId);
+        } catch (...) {
+        }
+        if (m_Logger)
+            m_Logger->Error("Mod registration failed: cannot register DataShare owner %s.", ownerId.c_str());
+        return false;
     }
-    if (m_Logger)
-        m_Logger->Error("Mod registration failed: cannot register DataShare owner %s.", ownerId.c_str());
+
+    // The Loader's own Behavior work runs in the built-in Mod's Session. It
+    // opens with that owner and retires with it, after every other Mod.
+    IMod *builtin = m_Loader.GetBuiltinMod();
+    if (!builtin || ownerId != builtin->GetID())
+        return true;
+    try {
+        const BML::Behavior::Internal::Status opened = m_ExecuteBB.Open(ownerId);
+        if (opened)
+            return true;
+        if (m_Logger)
+            m_Logger->Error("Mod registration failed: cannot open the Loader Behavior Session: %s",
+                            opened.Message.c_str());
+    } catch (...) {
+        if (m_Logger)
+            m_Logger->Error("Mod registration failed: cannot open the Loader Behavior Session.");
+    }
+    RetireFailedModOwner(ownerId);
     return false;
 }
 

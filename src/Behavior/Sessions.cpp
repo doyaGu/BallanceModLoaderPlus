@@ -286,6 +286,16 @@ OpenRun Sessions::Attach(std::uintptr_t sessionId, CKBehavior *graph,
                    created.Descriptor.ProviderGeneration});
 }
 
+CKBehavior *Sessions::CreateUnmanaged(CKBehavior *graph,
+                                      const BlockSpec &block) {
+    const AttachResult created = m_Runtime.AddToGraph(graph, block);
+    return created ? created.Block : nullptr;
+}
+
+Status Sessions::CloseUnmanaged(CKBehavior *block) {
+    return m_Runtime.Close(block);
+}
+
 RunResult Sessions::Continue(std::uintptr_t runId) {
     Status ready = Ready();
     if (!ready)
@@ -690,6 +700,14 @@ std::shared_ptr<FrameStore> Sessions::Frames(std::uintptr_t runId) const {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const std::shared_ptr<const Run> run = FindRun(runId);
     return run ? run->Frames : nullptr;
+}
+
+CKBehavior *Sessions::Block(std::uintptr_t runId) const {
+    if (!Ready())
+        return nullptr;
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    const std::shared_ptr<const Run> run = FindRun(runId);
+    return run ? run->Block.Get() : nullptr;
 }
 
 void Sessions::CloseRun(std::uintptr_t runId) {

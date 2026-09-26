@@ -207,6 +207,17 @@ CreateResult Runtime::AttachToGraph(CKBehavior *parent, const BlockSpec &spec,
     return Instantiate(nullptr, spec, frame, retention);
 }
 
+AttachResult Runtime::AddToGraph(CKBehavior *, const BlockSpec &,
+                                 const CKBehaviorContext *) {
+    return {{Error::Unavailable, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
+             "The Session golden test has no live graph."}, nullptr, {}};
+}
+
+Status Runtime::Close(CKBehavior *) {
+    return {Error::InvalidState, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
+            "The Session golden test owns no graph-resident Block."};
+}
+
 CallResult Runtime::Call(CKBeObject *owner, const BlockSpec &spec,
                          const Slot &input, const CKBehaviorContext *frame,
                          FrameRetention retention) {

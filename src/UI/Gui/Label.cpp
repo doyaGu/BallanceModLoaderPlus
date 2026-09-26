@@ -15,9 +15,11 @@ BML::Behavior::Internal::Text2DView::View Text(CKContext *context, CKBehavior *b
 
 Label::Label(const char *name) : Element(name) {
     ModContext *context = BML_GetModContext();
-    m_Text2d = BML::Behavior::Internal::Text2DView::Add(
-        context->Behaviors(), context->GetScriptByName("Level_Init"),
-        {m_2dEntity, context->GetGameFonts().Resolve(BML::GameFont::None)});
+    // ~Label destroys the Block itself, so no Run may own it.
+    m_Text2d = context->BehaviorSessions().CreateUnmanaged(
+        context->GetScriptByName("Level_Init"),
+        BML::Behavior::Internal::BlockSpec::From(BML::Behavior::Internal::Text2DView::Options{
+            m_2dEntity, context->GetGameFonts().Resolve(BML::GameFont::None)}));
 }
 
 Label::~Label() {

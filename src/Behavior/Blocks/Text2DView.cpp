@@ -48,12 +48,6 @@ T Read(CKParameter *parameter, T fallback) {
 
 } // namespace
 
-CKBehavior *Add(Runtime &runtime, CKBehavior *graph, const Options &options) {
-    const AttachResult added = runtime.AddToGraph(
-        graph, BML::Behavior::Internal::BlockSpec::From(options));
-    return added ? added.Block : nullptr;
-}
-
 CKParameter *View::Find(const Slot &slot) const {
     if (!*this)
         return nullptr;

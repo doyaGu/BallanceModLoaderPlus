@@ -1252,36 +1252,12 @@ static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions
     definition.ReuseMeshes = options.ReuseMeshes ? TRUE : FALSE;
     definition.ReuseMaterials = options.ReuseMaterials ? TRUE : FALSE;
     definition.Dynamic = options.Dynamic ? TRUE : FALSE;
-    BML::Behavior::Internal::CreateResult load = ctx->Behaviors().Instantiate(
-        nullptr, BML::Behavior::Internal::BlockSpec::From(definition));
-    if (!load)
-        return BMLAS_CreateObjectLoadResult(ctx->GetCKContext(), false, 0, {});
-    BML::Behavior::Internal::RunResult executed = ctx->Behaviors().Pulse(
-        load.Handle, BML::Behavior::Internal::Slot::At(BML::Behavior::Internal::SlotKind::Input, 0));
-    CKBehavior *loader = load.Handle.Get();
-    XObjectArray *loaded = executed && loader
-        ? *static_cast<XObjectArray **>(loader->GetOutputParameterWriteDataPtr(0)) : nullptr;
-    CKObject *master = executed && loader && loader->GetOutputParameterCount() > 1
-        ? loader->GetOutputParameterObject(1) : nullptr;
+    const auto [loaded, master] = ctx->ExecuteBB().LoadObjects(definition, options.Rename);
     std::vector<CK_ID> objects;
-    static unsigned int loadCount = 0;
-    if (loaded) {
-        const unsigned int suffix = options.Rename ? ++loadCount : loadCount;
-        objects.reserve(static_cast<std::size_t>(loaded->Size()));
-        for (CK_ID *id = loaded->Begin(); id != loaded->End(); ++id) {
-            objects.push_back(*id);
-            if (!options.Rename)
-                continue;
-            if (CKObject *object = ctx->GetCKContext()->GetObject(*id);
-                object && CKIsChildClassOf(object, CKCID_BEOBJECT)) {
-                std::string name = object->GetName() ? object->GetName() : "";
-                name += "_BMLLoad_" + std::to_string(suffix);
-                object->SetName(const_cast<CKSTRING>(name.c_str()));
-            }
-        }
-    }
+    if (loaded)
+        objects.assign(loaded->Begin(), loaded->End());
     const CK_ID masterId = master ? master->GetID() : 0;
-    return BMLAS_CreateObjectLoadResult(ctx->GetCKContext(), executed && (loaded || master),
+    return BMLAS_CreateObjectLoadResult(ctx->GetCKContext(), loaded || master,
                                         masterId, std::move(objects));
 }
 
@@ -1314,9 +1290,8 @@ static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
     recipe.CaretSize = definition.CaretSize;
     recipe.CaretMaterial = caretMaterial;
     recipe.Flags = definition.Flags;
-    BML::Behavior::Internal::AttachResult created = ctx->Behaviors().AddToGraph(
+    return ctx->ExecuteBB().CreateUnmanaged(
         ownerScript, BML::Behavior::Internal::BlockSpec::From(recipe));
-    return created ? created.Block : nullptr;
 }
 
 static CKBehavior *BMLAS_Text_Create2DTextDefaultMaterials(CKBehavior *ownerScript,
@@ -1511,14 +1486,12 @@ static bool BMLAS_Physics_HasTarget(CK3dEntity *target, ModContext *&context) {
     return target && RequireLoadedContext(context);
 }
 
+// A Block that is still pending keeps running in the Loader's Session until
+// it finishes, exactly as the native ExecuteBB call does.
 static bool BMLAS_RunBehavior(ModContext &context, CKBeObject *owner,
                               const BML::Behavior::Internal::BlockSpec &spec, int input = 0) {
-    BML::Behavior::Internal::CreateResult created = context.Behaviors().Instantiate(owner, spec);
-    if (!created)
-        return false;
-    BML::Behavior::Internal::RunResult result = context.Behaviors().Pulse(
-        created.Handle, BML::Behavior::Internal::Slot::At(BML::Behavior::Internal::SlotKind::Input, input));
-    return result && result.State == BML::Behavior::Internal::RunState::Ready;
+    const BML::Behavior::Internal::RunResult result = context.ExecuteBB().Run(owner, spec, input);
+    return result && result.State != BML::Behavior::Internal::RunState::Failed;
 }
 
 static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,

@@ -3,15 +3,12 @@
 
 #include "BML/Behavior/Blocks/Text2D.hpp"
 #include "Behavior/Block.h"
-#include "Behavior/Runtime.h"
+#include "Behavior/Core/Parameter.h"
+#include "Behavior/Core/Status.h"
 
 namespace BML::Behavior::Internal::Text2DView {
 
 using Options = BML::Behavior::Blocks::Text2D::Options;
-
-// Adds a 2D Text Block to a live graph and hands back the Block itself, which
-// is what a caller that keeps drawing the text holds on to.
-CKBehavior *Add(Runtime &runtime, CKBehavior *graph, const Options &options);
 
 // The Slots of a live 2D Text Block, addressed by role. Which parameter of the
 // retail prototype carries the text is this module's business, so a caller that

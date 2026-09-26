@@ -316,8 +316,6 @@ public:
     void ExitGame() override;
 
     BML::ObjectRefs &ObjectRefs() noexcept { return m_ObjectRefs; }
-    BML::Behavior::Internal::Runtime &Behaviors() noexcept { return m_Behaviors; }
-    const BML::Behavior::Internal::Runtime &Behaviors() const noexcept { return m_Behaviors; }
     BML::Behavior::Internal::Sessions &BehaviorSessions() noexcept {
         return m_BehaviorSessions;
     }
@@ -327,9 +325,6 @@ public:
     BML::Behavior::Internal::Patches &BehaviorPatches() noexcept {
         return m_BehaviorPatches;
     }
-    // The owner the Loader's built-in modules edit game scripts under: the BML
-    // Mod's active generation, or an empty owner before that Mod is registered.
-    BML::Behavior::Internal::SessionOwner LoaderBehaviorOwner() const;
     BML::Behavior::Internal::Plans &BehaviorPlans() noexcept {
         return m_BehaviorPlans;
     }
