@@ -175,7 +175,10 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/PhysicsForce.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/Text2DView.cpp
 
-        ${PROJECT_SOURCE_DIR}/src/Behavior/CKGraphOrder.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Engine/Access.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Engine/Graph.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Engine/Message.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Engine/Pout.cpp
 )
 target_include_directories(BehaviorRuntimeSemanticsTest PRIVATE
         ${PROJECT_SOURCE_DIR}/src

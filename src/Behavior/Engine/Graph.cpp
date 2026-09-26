@@ -1,50 +1,33 @@
-#include "Behavior/CKGraphOrder.h"
+#include "Behavior/Engine/Graph.h"
+
+#include "Behavior/Engine/Access.h"
 
 #include <algorithm>
 #include <vector>
 
-namespace BML {
-namespace {
+namespace BML::Behavior::Internal::Engine {
 
-class BehaviorMember : public CKBehavior {
-public:
-    static BehaviorGraphData *Data(CKBehavior *behavior) noexcept {
-        return behavior
-            ? behavior->*(&BehaviorMember::m_GraphData) : nullptr;
+bool Contains(CKBehavior *graph, CKBehavior *node) {
+    if (!graph || !node)
+        return false;
+    for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
+        if (graph->GetSubBehavior(index) == node)
+            return true;
     }
-
-    static void Parent(CKBehavior *behavior, CKBehavior *parent) noexcept {
-        if (behavior)
-            behavior->*(&BehaviorMember::m_BehParent) =
-                parent ? parent->GetID() : 0;
-    }
-};
-
-class IoMember : public CKBehaviorIO {
-public:
-    static XSObjectPointerArray *Links(CKBehaviorIO *io) noexcept {
-        return io ? &(io->*(&IoMember::m_Links)) : nullptr;
-    }
-};
-
-} // namespace
-
-XObjectPointerArray *CKGraphOrder::Nodes(CKBehavior *graph) noexcept {
-    BehaviorGraphData *data = BehaviorMember::Data(graph);
-    return data ? &data->m_SubBehaviors : nullptr;
+    return false;
 }
 
-XObjectPointerArray *CKGraphOrder::Links(CKBehavior *graph) noexcept {
-    BehaviorGraphData *data = BehaviorMember::Data(graph);
-    return data ? &data->m_SubBehaviorLinks : nullptr;
+bool Contains(CKBehavior *graph, CKBehaviorLink *link) {
+    if (!graph || !link)
+        return false;
+    for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
+        if (graph->GetSubBehaviorLink(index) == link)
+            return true;
+    }
+    return false;
 }
 
-XSObjectPointerArray *CKGraphOrder::Outgoing(
-    CKBehaviorIO *source) noexcept {
-    return IoMember::Links(source);
-}
-
-CKERROR CKGraphOrder::Add(CKBehavior *graph, CKBehavior *node) {
+CKERROR AddChild(CKBehavior *graph, CKBehavior *node) {
     XObjectPointerArray *nodes = Nodes(graph);
     if (!nodes || !node)
         return CKERR_INVALIDPARAMETER;
@@ -85,7 +68,7 @@ CKERROR CKGraphOrder::Add(CKBehavior *graph, CKBehavior *node) {
         // allowed to destroy the rejected Node.
         if (nodes->GetPosition(node) >= 0)
             (void) graph->RemoveSubBehavior(node);
-        BehaviorMember::Parent(node, parent);
+        SetParentId(node, parent);
         (void) node->SetOwner(owner, TRUE);
         node->SetFlags(flags);
         const bool originalMembers = nodes->Size() ==
@@ -115,4 +98,60 @@ CKERROR CKGraphOrder::Add(CKBehavior *graph, CKBehavior *node) {
     return CK_OK;
 }
 
-} // namespace BML
+void DestroyConnectedLinks(CKContext *context, CKBehavior *graph,
+                           CKBehavior *node) {
+    if (!context || !graph || !node)
+        return;
+    for (int i = graph->GetSubBehaviorLinkCount() - 1; i >= 0; --i) {
+        CKBehaviorLink *link = graph->GetSubBehaviorLink(i);
+        if (!link)
+            continue;
+        CKBehaviorIO *source = link->GetInBehaviorIO();
+        CKBehaviorIO *destination = link->GetOutBehaviorIO();
+        if ((!source || source->GetOwner() != node) &&
+            (!destination || destination->GetOwner() != node)) {
+            continue;
+        }
+        link = graph->RemoveSubBehaviorLink(i);
+        if (link)
+            context->DestroyObject(link);
+    }
+}
+
+void MarkOwnedParametersDynamic(CKContext *context, CKBehavior *behavior) {
+    auto mark = [context](CKObject *object) {
+        if (object)
+            context->ChangeObjectDynamic(object, TRUE);
+    };
+
+    mark(behavior->GetTargetParameter());
+    for (int index = 0; index < behavior->GetInputParameterCount(); ++index)
+        mark(behavior->GetInputParameter(index));
+    for (int index = 0; index < behavior->GetOutputParameterCount(); ++index)
+        mark(behavior->GetOutputParameter(index));
+    for (int index = 0; index < behavior->GetLocalParameterCount(); ++index)
+        mark(behavior->GetLocalParameter(index));
+
+    for (int index = 0; index < behavior->GetParameterOperationCount(); ++index) {
+        CKParameterOperation *operation = behavior->GetParameterOperation(index);
+        if (!operation || !operation->IsDynamic())
+            continue;
+        mark(operation->GetInParameter1());
+        mark(operation->GetInParameter2());
+        mark(operation->GetOutParameter());
+    }
+    for (int index = 0; index < behavior->GetSubBehaviorCount(); ++index) {
+        CKBehavior *child = behavior->GetSubBehavior(index);
+        if (child && child->IsDynamic())
+            MarkOwnedParametersDynamic(context, child);
+    }
+}
+
+void DestroyBlock(CKContext *context, CKBehavior *behavior) {
+    if (!context || !behavior)
+        return;
+    MarkOwnedParametersDynamic(context, behavior);
+    context->DestroyObject(behavior);
+}
+
+} // namespace BML::Behavior::Internal::Engine

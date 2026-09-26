@@ -443,11 +443,15 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Core/Status.h
         Behavior/Core/Value.h
 
+        Behavior/Engine/Access.h
+        Behavior/Engine/Graph.h
+        Behavior/Engine/Message.h
+        Behavior/Engine/Pout.h
+        Behavior/Engine/Scope.h
+
         Behavior/Block.h
         Behavior/Callback.h
-        Behavior/CKBehaviorContext.h
         Behavior/CKEdit.h
-        Behavior/CKGraphOrder.h
         Behavior/Edit.h
         Behavior/Execution.h
         Behavior/FrameStore.h
@@ -477,11 +481,15 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Core/Status.cpp
         Behavior/Core/Value.cpp
 
+        Behavior/Engine/Access.cpp
+        Behavior/Engine/Graph.cpp
+        Behavior/Engine/Message.cpp
+        Behavior/Engine/Pout.cpp
+
         Behavior/Block.cpp
         Behavior/Callback.cpp
         Behavior/CKEdit.cpp
         Behavior/CKGraph.cpp
-        Behavior/CKGraphOrder.cpp
         Behavior/CKPrototypeSource.cpp
         Behavior/Edit.cpp
         Behavior/Execution.cpp

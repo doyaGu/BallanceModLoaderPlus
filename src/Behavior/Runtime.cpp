@@ -1,7 +1,9 @@
 #include "Behavior/Runtime.h"
 
-#include "Behavior/CKBehaviorContext.h"
-#include "Behavior/CKGraphOrder.h"
+#include "Behavior/Engine/Graph.h"
+#include "Behavior/Engine/Message.h"
+#include "Behavior/Engine/Pout.h"
+#include "Behavior/Engine/Scope.h"
 
 #include <algorithm>
 #include <sstream>
@@ -85,25 +87,6 @@ std::string GuidText(CKGUID guid) {
     return stream.str();
 }
 
-class BehaviorExecutionScope final {
-public:
-    BehaviorExecutionScope(CKContext *context, CKBehavior *behavior,
-                           const CKBehaviorContext *frame)
-        : m_BehaviorContext(context, behavior, frame), m_Context(context),
-          m_SavedDeferDestroy(context->m_DeferDestroyObjects) {
-        m_Context->m_DeferDestroyObjects = TRUE;
-    }
-
-    ~BehaviorExecutionScope() {
-        m_Context->m_DeferDestroyObjects = m_SavedDeferDestroy;
-    }
-
-private:
-    CKBehaviorContextScope m_BehaviorContext;
-    CKContext *m_Context;
-    CKDWORD m_SavedDeferDestroy;
-};
-
 class FlagScope final {
 public:
     explicit FlagScope(bool &flag) : m_Flag(flag) { m_Flag = true; }
@@ -112,55 +95,6 @@ public:
 private:
     bool &m_Flag;
 };
-
-class CKBehaviorAccess final : public CKBehavior {
-public:
-    static BehaviorBlockData *BlockData(CKBehavior *behavior) {
-        BehaviorBlockData *CKBehavior::*member = &CKBehaviorAccess::m_BlockData;
-        return behavior ? behavior->*member : nullptr;
-    }
-};
-
-void MarkOwnedParametersDynamic(CKContext *context, CKBehavior *behavior) {
-    auto mark = [context](CKObject *object) {
-        if (object)
-            context->ChangeObjectDynamic(object, TRUE);
-    };
-
-    mark(behavior->GetTargetParameter());
-    for (int index = 0; index < behavior->GetInputParameterCount(); ++index)
-        mark(behavior->GetInputParameter(index));
-    for (int index = 0; index < behavior->GetOutputParameterCount(); ++index)
-        mark(behavior->GetOutputParameter(index));
-    for (int index = 0; index < behavior->GetLocalParameterCount(); ++index)
-        mark(behavior->GetLocalParameter(index));
-
-    for (int index = 0; index < behavior->GetParameterOperationCount(); ++index) {
-        CKParameterOperation *operation = behavior->GetParameterOperation(index);
-        if (!operation || !operation->IsDynamic())
-            continue;
-        mark(operation->GetInParameter1());
-        mark(operation->GetInParameter2());
-        mark(operation->GetOutParameter());
-    }
-    for (int index = 0; index < behavior->GetSubBehaviorCount(); ++index) {
-        CKBehavior *child = behavior->GetSubBehavior(index);
-        if (child && child->IsDynamic())
-            MarkOwnedParametersDynamic(context, child);
-    }
-}
-
-// A dynamic CKBehavior does not pass its dynamic flag to Pin, Pout, Setting,
-// Local, Target, or Parameter Operation parameters. Retail CK2 consequently
-// excludes those objects from dependency deletion. Include parameters owned
-// by the dynamic Behavior tree, then let CK2 perform its normal dependency
-// walk so native owner/source cleanup remains authoritative.
-void DestroyOwnedBehavior(CKContext *context, CKBehavior *behavior) {
-    if (!context || !behavior)
-        return;
-    MarkOwnedParametersDynamic(context, behavior);
-    context->DestroyObject(behavior);
-}
 
 } // namespace
 
@@ -348,215 +282,9 @@ public:
             value.TypeGuid1 = static_cast<std::uint32_t>(port.Type.d1);
             value.TypeGuid2 = static_cast<std::uint32_t>(port.Type.d2);
             value.Kind = port.Kind;
-            if (port.Kind == PoutKind::Utf8) {
-                const int size = parameter->GetStringValue(nullptr, FALSE);
-                if (size < 0) {
-                    return Fail(
-                        ExecutionError::PoutReadFailed, size,
-                        std::string("Pout '") + SafeName(parameter) +
-                            "' could not be read.",
-                        fault);
-                }
-                value.Text.resize(static_cast<std::size_t>(size) + 1u, '\0');
-                if (size > 0 &&
-                    parameter->GetStringValue(value.Text.data(), FALSE) < 0) {
-                    return Fail(
-                        ExecutionError::PoutReadFailed, CKBR_PARAMETERERROR,
-                        std::string("Pout '") + SafeName(parameter) +
-                            "' changed while it was being read.",
-                        fault);
-                }
-                value.Text.resize(std::char_traits<char>::length(
-                    value.Text.c_str()));
-            } else if (port.Kind == PoutKind::Object) {
-                CKObject *object = parameter->GetValueObject(FALSE);
-                if (object) {
-                    if (!m_Runtime.m_IssueObjectRef) {
-                        return Fail(
-                            ExecutionError::PoutReadFailed,
-                            CKBR_PARAMETERERROR,
-                            "An object Pout cannot be retained without ObjectRefs.",
-                            fault);
-                    }
-                    const ObjectRef reference = m_Runtime.m_IssueObjectRef(object);
-                    if (reference.IsNull()) {
-                        return Fail(
-                            ExecutionError::PoutReadFailed,
-                            CKBR_PARAMETERERROR,
-                            "ObjectRefs rejected an object Pout.",
-                            fault);
-                    }
-                    value.ObjectDomain = reference.Domain;
-                    value.ObjectSlot = reference.Slot;
-                    value.ObjectGeneration = reference.Generation;
-                }
-            } else if (port.Kind == PoutKind::ObjectList) {
-                const void *storage = parameter->GetReadDataPtr(FALSE);
-                XObjectArray *objects = storage
-                    ? *static_cast<XObjectArray *const *>(storage) : nullptr;
-                if (!objects) {
-                    return Fail(
-                        ExecutionError::PoutReadFailed,
-                        CKBR_PARAMETERERROR,
-                        std::string("Pout '") + SafeName(parameter) +
-                            "' has no Object List value.",
-                        fault);
-                }
-                if (!m_Runtime.m_IssueObjectRef) {
-                    return Fail(
-                        ExecutionError::PoutReadFailed,
-                        CKBR_PARAMETERERROR,
-                        "An Object List Pout cannot be retained without ObjectRefs.",
-                        fault);
-                }
-                const int count = objects->Size();
-                if (count < 0) {
-                    return Fail(
-                        ExecutionError::PoutReadFailed,
-                        CKBR_PARAMETERERROR,
-                        std::string("Pout '") + SafeName(parameter) +
-                            "' has an invalid Object List size.",
-                        fault);
-                }
-                value.Objects.reserve(static_cast<std::size_t>(count));
-                for (int item = 0; item < count; ++item) {
-                    const CK_ID id = (*objects)[item];
-                    if (id == 0) {
-                        value.Objects.push_back({});
-                        continue;
-                    }
-                    CKObject *object = m_Runtime.m_Context
-                        ? m_Runtime.m_Context->GetObject(id) : nullptr;
-                    const ObjectRef reference = object
-                        ? m_Runtime.m_IssueObjectRef(object) : ObjectRef{};
-                    if (reference.IsNull()) {
-                        return Fail(
-                            ExecutionError::PoutReadFailed,
-                            CKBR_PARAMETERERROR,
-                            std::string("Pout '") + SafeName(parameter) +
-                                "' contains an object that cannot be retained.",
-                            fault);
-                    }
-                    value.Objects.push_back(reference);
-                }
-            } else {
-                const int size = parameter->GetDataSize();
-                if (size < 0 || static_cast<std::size_t>(size) !=
-                                    port.Size ||
-                    port.Size > sizeof(value.Components)) {
-                    return Fail(
-                        ExecutionError::PoutReadFailed, CKBR_PARAMETERERROR,
-                        std::string("Pout '") + SafeName(parameter) +
-                            "' has an invalid value size.",
-                        fault);
-                }
-                std::array<std::byte, sizeof(value.Components)> bytes{};
-                const CKERROR error = parameter->GetValue(bytes.data(), FALSE);
-                if (error != CK_OK) {
-                    return Fail(
-                        ExecutionError::PoutReadFailed, error,
-                        std::string("Pout '") + SafeName(parameter) +
-                            "' could not be read.",
-                        fault);
-                }
-                if (port.Kind == PoutKind::Bool ||
-                    port.Kind == PoutKind::Int32) {
-                    std::memcpy(&value.Int32, bytes.data(), sizeof(value.Int32));
-                    if (port.Kind == PoutKind::Bool)
-                        value.Int32 = value.Int32 != 0 ? 1 : 0;
-                } else if (port.Kind == PoutKind::Float32) {
-                    std::memcpy(&value.Float32, bytes.data(), sizeof(value.Float32));
-                } else {
-                    switch (port.Kind) {
-                    case PoutKind::Vec2: {
-                        Vx2DVector native;
-                        std::memcpy(&native, bytes.data(), sizeof(native));
-                        value.Components[0] = native.x;
-                        value.Components[1] = native.y;
-                        value.ComponentCount = 2;
-                        break;
-                    }
-                    case PoutKind::Vec3: {
-                        VxVector native;
-                        std::memcpy(&native, bytes.data(), sizeof(native));
-                        value.Components[0] = native.x;
-                        value.Components[1] = native.y;
-                        value.Components[2] = native.z;
-                        value.ComponentCount = 3;
-                        break;
-                    }
-                    case PoutKind::Quaternion: {
-                        VxQuaternion native;
-                        std::memcpy(&native, bytes.data(), sizeof(native));
-                        value.Components[0] = native.x;
-                        value.Components[1] = native.y;
-                        value.Components[2] = native.z;
-                        value.Components[3] = native.w;
-                        value.ComponentCount = 4;
-                        break;
-                    }
-                    case PoutKind::Euler: {
-                        float native[3];
-                        std::memcpy(native, bytes.data(), sizeof(native));
-                        std::copy(std::begin(native), std::end(native),
-                                  value.Components.begin());
-                        value.ComponentCount = 3;
-                        break;
-                    }
-                    case PoutKind::Rect: {
-                        VxRect native;
-                        std::memcpy(&native, bytes.data(), sizeof(native));
-                        value.Components[0] = native.left;
-                        value.Components[1] = native.top;
-                        value.Components[2] = native.right;
-                        value.Components[3] = native.bottom;
-                        value.ComponentCount = 4;
-                        break;
-                    }
-                    case PoutKind::Color: {
-                        VxColor native;
-                        std::memcpy(&native, bytes.data(), sizeof(native));
-                        value.Components[0] = native.r;
-                        value.Components[1] = native.g;
-                        value.Components[2] = native.b;
-                        value.Components[3] = native.a;
-                        value.ComponentCount = 4;
-                        break;
-                    }
-                    case PoutKind::Box: {
-                        VxBbox native;
-                        std::memcpy(&native, bytes.data(), sizeof(native));
-                        value.Components[0] = native.Min.x;
-                        value.Components[1] = native.Min.y;
-                        value.Components[2] = native.Min.z;
-                        value.Components[3] = native.Max.x;
-                        value.Components[4] = native.Max.y;
-                        value.Components[5] = native.Max.z;
-                        value.ComponentCount = 6;
-                        break;
-                    }
-                    case PoutKind::Mat4: {
-                        VxMatrix native;
-                        std::memcpy(&native, bytes.data(), sizeof(native));
-                        for (int row = 0; row < 4; ++row) {
-                            for (int column = 0; column < 4; ++column) {
-                                value.Components[static_cast<std::size_t>(
-                                    row * 4 + column)] = native[row][column];
-                            }
-                        }
-                        value.ComponentCount = 16;
-                        break;
-                    }
-                    default:
-                        return Fail(
-                            ExecutionError::PoutReadFailed,
-                            CKBR_PARAMETERERROR,
-                            std::string("Pout '") + SafeName(parameter) +
-                                "' has an invalid numeric value form.",
-                            fault);
-                    }
-                }
-            }
+            if (!Engine::ReadPout(m_Runtime.m_Context, parameter, port.Size,
+                                  m_Runtime.m_IssueObjectRef, value, fault))
+                return false;
             pouts.push_back(std::move(value));
         }
         return true;
@@ -579,68 +307,6 @@ public:
     }
 
 private:
-    struct PoutInfo {
-        PoutKind Kind = PoutKind::Int32;
-        std::size_t Size = 0;
-    };
-
-    bool GetPoutInfo(CKParameter *parameter, PoutInfo &info) const {
-        if (!parameter)
-            return false;
-        if (parameter->GetGUID() == CKPGUID_OBJECTARRAY) {
-            info = {PoutKind::ObjectList, 0};
-            return true;
-        }
-        CKParameterManager *manager = m_Runtime.m_Context
-            ? m_Runtime.m_Context->GetParameterManager() : nullptr;
-        const Parameter::Type type =
-            Parameter::Describe(manager, parameter->GetGUID());
-        switch (type.ValueForm) {
-        case Parameter::Form::Object:
-            info = {PoutKind::Object, 0};
-            break;
-        case Parameter::Form::Bool:
-            info = {PoutKind::Bool, sizeof(CKBOOL)};
-            break;
-        case Parameter::Form::Int32:
-            info = {PoutKind::Int32, sizeof(int)};
-            break;
-        case Parameter::Form::Float32:
-            info = {PoutKind::Float32, sizeof(float)};
-            break;
-        case Parameter::Form::Utf8:
-            info = {PoutKind::Utf8, 0};
-            break;
-        case Parameter::Form::Vec2:
-            info = {PoutKind::Vec2, sizeof(Vx2DVector)};
-            break;
-        case Parameter::Form::Vec3:
-            info = {PoutKind::Vec3, sizeof(VxVector)};
-            break;
-        case Parameter::Form::Quaternion:
-            info = {PoutKind::Quaternion, sizeof(VxQuaternion)};
-            break;
-        case Parameter::Form::Euler:
-            info = {PoutKind::Euler, sizeof(float) * 3};
-            break;
-        case Parameter::Form::Rect:
-            info = {PoutKind::Rect, sizeof(VxRect)};
-            break;
-        case Parameter::Form::Color:
-            info = {PoutKind::Color, sizeof(VxColor)};
-            break;
-        case Parameter::Form::Box:
-            info = {PoutKind::Box, sizeof(VxBbox)};
-            break;
-        case Parameter::Form::Mat4:
-            info = {PoutKind::Mat4, sizeof(VxMatrix)};
-            break;
-        case Parameter::Form::Unsupported:
-            return false;
-        }
-        return true;
-    }
-
     bool ReadOutputLayout(Record &record, CKBehavior *behavior,
                           ExecutionFault &fault) {
         if (record.OutputLayoutGeneration == record.LayoutGeneration) {
@@ -723,8 +389,10 @@ private:
 
         for (int index = 0; index < behavior->GetOutputParameterCount(); ++index) {
             CKParameterOut *parameter = behavior->GetOutputParameter(index);
-            PoutInfo info;
-            if (!parameter || !GetPoutInfo(parameter, info)) {
+            PoutKind kind = PoutKind::Int32;
+            std::size_t size = 0;
+            if (!parameter ||
+                !Engine::PoutForm(m_Runtime.m_Context, parameter, kind, size)) {
                 return Fail(
                     ExecutionError::UnsupportedPout, CKBR_PARAMETERERROR,
                     std::string("Pout '") + SafeName(parameter) +
@@ -736,7 +404,7 @@ private:
             const int occurrence = poutOccurrences[name]++;
             pouts.push_back({m_Runtime.CaptureObject(parameter), index,
                              std::move(name), occurrence,
-                             parameter->GetGUID(), info.Kind, info.Size});
+                             parameter->GetGUID(), kind, size});
         }
 
         record.Pouts = std::move(pouts);
@@ -870,7 +538,7 @@ public:
         if (m_Parent.Id != 0 && !parent)
             return false;
         if (parent) {
-            const CKERROR addError = CKGraphOrder::Add(parent, behavior);
+            const CKERROR addError = Engine::AddChild(parent, behavior);
             if (addError != CK_OK) {
                 return Fail(Failure(Error::OwnerInvalid,
                                     "Failed to add Building Block to parent graph.",
@@ -904,7 +572,7 @@ public:
         identity.Owner = Convert(m_Runtime.CaptureObject(behavior->GetOwner()));
         CKBehavior *parent = behavior->GetParent();
         identity.Parent = Convert(m_Runtime.CaptureObject(parent));
-        identity.ParentContainsBehavior = Contains(parent, behavior);
+        identity.ParentContainsBehavior = Engine::Contains(parent, behavior);
         return true;
     }
 
@@ -1077,16 +745,6 @@ public:
     }
 
 private:
-    static bool Contains(CKBehavior *parent, CKBehavior *behavior) {
-        if (!parent || !behavior)
-            return false;
-        for (int index = 0; index < parent->GetSubBehaviorCount(); ++index) {
-            if (parent->GetSubBehavior(index) == behavior)
-                return true;
-        }
-        return false;
-    }
-
     static LifecycleObject Convert(ObjectStamp stamp) {
         return {static_cast<std::uint64_t>(stamp.Id),
                 reinterpret_cast<std::uintptr_t>(stamp.Address)};
@@ -1248,6 +906,26 @@ Status Runtime::ReadyStatus() const {
         return Failure(Error::ContextExpired, "Virtools context is no longer available.");
     if (m_Thread != std::this_thread::get_id())
         return Failure(Error::WrongThread, "Runtime may only be used on the game thread.");
+    return {};
+}
+
+Status Runtime::Admit(const Instance &instance, Record *&record,
+                      CKBehavior **behavior, const char *idle) {
+    record = nullptr;
+    Status ready = ReadyStatus();
+    if (!ready)
+        return ready;
+    Record *found = FindRecord(instance);
+    CKBehavior *block = found && behavior ? ResolveBehavior(*found) : nullptr;
+    if (!found || (behavior && !block))
+        return Failure(Error::InvalidState, "Behavior instance has expired.");
+    if (found->Failure.Code != Error::None)
+        return found->Failure;
+    if (idle && found->Protocol.State() != ExecutionState::Idle)
+        return Failure(Error::InvalidState, idle);
+    record = found;
+    if (behavior)
+        *behavior = block;
     return {};
 }
 
@@ -1453,10 +1131,9 @@ Status Runtime::CreateBehavior(const BlockSpec &spec, CKBehavior *&behavior,
         return Failure(Error::CreateFailed, "Failed to create CKBehavior.",
                        CK_OK, CKBR_OK, Phase::Creation, spec.Prototype());
     }
-    behavior->UseFunction();
     const CKERROR initError = behavior->InitFromGuid(spec.Prototype());
     if (initError != CK_OK) {
-        DestroyOwnedBehavior(m_Context, behavior);
+        Engine::DestroyBlock(m_Context, behavior);
         behavior = nullptr;
         return Failure(Error::InitFailed,
                        "Failed to initialize Building Block from Prototype.",
@@ -1492,27 +1169,45 @@ Status Runtime::CheckDetached(
     return {};
 }
 
-CreateResult Runtime::Instantiate(CKBeObject *owner, const BlockSpec &spec,
-                                  const CKBehaviorContext *frame,
-                                  FrameRetention retention) {
-    CreateResult result;
+Runtime::Opened Runtime::Open(const BlockSpec &spec,
+                              const Placement &placement,
+                              const CKBehaviorContext *frame) {
+    Opened result;
     result.Detail = ReadyStatus();
     if (!result.Detail)
         return result;
-    result.Detail = CheckDetached(spec, result.Detached);
-    if (!result.Detail)
-        return result;
-    if (owner && owner->GetCKContext() != m_Context) {
-        result.Detail = Failure(Error::OwnerInvalid, "Behavior owner belongs to another CKContext.");
-        return result;
-    }
-    // CaptureObject drops a to-be-deleted object silently. An owner in that
-    // state must fail admission instead of degrading into an ownerless ATTACH.
-    if (owner && (owner->IsToBeDeleted() ||
-                  CKGetObject(m_Context, owner->GetID()) != owner)) {
-        result.Detail = Failure(Error::OwnerInvalid,
-                                "Behavior owner is being deleted.");
-        return result;
+    CKBehavior *const parent = placement.Graph ? placement.Parent : nullptr;
+    CKBeObject *owner = placement.Owner;
+    DetachedCompatibility compatibility = DetachedCompatibility::Unverified;
+    if (!placement.Graph) {
+        result.Detail = CheckDetached(spec, result.Detached);
+        if (!result.Detail)
+            return result;
+        if (owner && owner->GetCKContext() != m_Context) {
+            result.Detail = Failure(Error::OwnerInvalid, "Behavior owner belongs to another CKContext.");
+            return result;
+        }
+        // CaptureObject drops a to-be-deleted object silently. An owner in that
+        // state must fail admission instead of degrading into an ownerless ATTACH.
+        if (owner && (owner->IsToBeDeleted() ||
+                      CKGetObject(m_Context, owner->GetID()) != owner)) {
+            result.Detail = Failure(Error::OwnerInvalid,
+                                    "Behavior owner is being deleted.");
+            return result;
+        }
+    } else {
+        if (!parent || parent->GetCKContext() != m_Context ||
+            parent->IsToBeDeleted() || parent->IsUsingFunction()) {
+            result.Detail = Failure(
+                Error::OwnerInvalid,
+                "Parent graph is invalid, retiring, or belongs to another CKContext.");
+            return result;
+        }
+        owner = parent->GetOwner();
+        // A Prototype the catalog never heard of still parks fine; it just
+        // reports Unverified.
+        if (placement.Managed && !CheckDetached(spec, compatibility, true))
+            compatibility = DetachedCompatibility::Unverified;
     }
     result.Detail = ValidateTarget(owner, spec);
     if (!result.Detail)
@@ -1520,29 +1215,61 @@ CreateResult Runtime::Instantiate(CKBeObject *owner, const BlockSpec &spec,
 
     Record record;
     record.Id = m_NextInstanceId++;
+    record.Parent = CaptureObject(parent);
+    record.GraphResident = placement.Graph;
+    record.OwnerDriven = placement.Graph && placement.Managed;
     record.KeepAlive = spec.m_KeepAlive;
-    record.Protocol = Execution(retention);
+    record.Protocol = Execution(placement.Managed ? placement.Retention
+                                                  : FrameRetention::Ignore());
     CKBehavior *behavior = nullptr;
     result.Detail = CreateBehavior(spec, behavior, record);
     if (!result.Detail)
         return result;
 
     record.Behavior = CaptureObject(behavior);
-    result.Detail = Configure(behavior, owner, nullptr, spec, frame, record);
+    result.Detail = placement.Staged
+        ? CreateBlock(behavior, owner, parent, spec, frame, record)
+        : Configure(behavior, owner, parent, spec, frame, record);
     if (!result.Detail) {
+        // Lifecycle has already balanced every callback it admitted and
+        // queued this unowned Block for destruction. Creation runs at a safe
+        // point, so leave no transient child in the graph.
         DestroyReady(DestroyMode::Ready);
         return result;
     }
+    // A staged Block keeps its whole spec until EditInGraph applies it.
     record.Desired = spec;
-    record.Desired.m_SettingStages.clear();
-    record.Desired.m_AddedInputs.clear();
-    record.Desired.m_AddedOutputs.clear();
-    record.Desired.m_KeepAlive.clear();
+    if (!placement.Staged)
+        StripDesired(record.Desired);
 
-    const std::uint64_t instanceId = record.Id;
-    m_Records.emplace(instanceId, std::move(record));
-    result.Descriptor = Describe(behavior, m_Records.at(instanceId).LayoutGeneration);
-    result.Handle = Instance(m_Access, instanceId);
+    result.Block = behavior;
+    result.Id = record.Id;
+    if (placement.Graph)
+        result.Detached = compatibility;
+    m_Records.emplace(result.Id, std::move(record));
+    result.Descriptor = Describe(
+        behavior, m_Records.at(result.Id).LayoutGeneration);
+    return result;
+}
+
+void Runtime::StripDesired(BlockSpec &spec) {
+    spec.m_SettingStages.clear();
+    spec.m_AddedInputs.clear();
+    spec.m_AddedOutputs.clear();
+    spec.m_KeepAlive.clear();
+}
+
+CreateResult Runtime::Instantiate(CKBeObject *owner, const BlockSpec &spec,
+                                  const CKBehaviorContext *frame,
+                                  FrameRetention retention) {
+    Opened opened = Open(
+        spec, {.Owner = owner, .Retention = retention}, frame);
+    CreateResult result;
+    result.Detail = std::move(opened.Detail);
+    result.Descriptor = std::move(opened.Descriptor);
+    result.Detached = opened.Detached;
+    if (result.Detail)
+        result.Handle = Instance(m_Access, opened.Id);
     return result;
 }
 
@@ -1584,73 +1311,37 @@ CallResult Runtime::Call(CKBeObject *owner, const BlockSpec &spec,
 }
 
 AttachResult Runtime::AddToGraph(CKBehavior *parent, const BlockSpec &spec,
-                                             const CKBehaviorContext *frame) {
-    return Attach(parent, spec, frame, nullptr, nullptr,
-                  FrameRetention::Ignore());
+                                 const CKBehaviorContext *frame) {
+    Opened opened = Open(
+        spec, {.Graph = true, .Parent = parent, .Managed = false}, frame);
+    return {std::move(opened.Detail), opened.Block,
+            std::move(opened.Descriptor)};
 }
 
 CreateResult Runtime::AttachToGraph(CKBehavior *parent, const BlockSpec &spec,
                                     const CKBehaviorContext *frame,
                                     FrameRetention retention) {
-    CreateResult created;
-    Instance handle;
-    DetachedCompatibility detached = DetachedCompatibility::Unverified;
-    AttachResult attached = Attach(parent, spec, frame, &handle, &detached,
-                                   retention);
-    created.Detail = std::move(attached.Detail);
-    created.Descriptor = std::move(attached.Descriptor);
-    created.Handle = std::move(handle);
-    created.Detached = detached;
-    return created;
+    Opened opened = Open(
+        spec, {.Graph = true, .Parent = parent, .Retention = retention},
+        frame);
+    CreateResult result;
+    result.Detail = std::move(opened.Detail);
+    result.Descriptor = std::move(opened.Descriptor);
+    result.Detached = opened.Detached;
+    if (result.Detail)
+        result.Handle = Instance(m_Access, opened.Id);
+    return result;
 }
 
 AttachResult Runtime::CreateInGraph(CKBehavior *parent,
                                     const BlockSpec &spec,
                                     const CKBehaviorContext *frame) {
-    AttachResult result;
-    result.Detail = ReadyStatus();
-    if (!result.Detail)
-        return result;
-    if (!parent || parent->GetCKContext() != m_Context ||
-        parent->IsToBeDeleted() || parent->IsUsingFunction()) {
-        result.Detail = Failure(
-            Error::OwnerInvalid,
-            "Parent graph is invalid, retiring, or belongs to another CKContext.");
-        return result;
-    }
-    result.Detail = ValidateTarget(parent->GetOwner(), spec);
-    if (!result.Detail)
-        return result;
-
-    Record record;
-    record.Id = m_NextInstanceId++;
-    record.Parent = CaptureObject(parent);
-    record.GraphResident = true;
-    record.KeepAlive = spec.m_KeepAlive;
-    record.Protocol = Execution(FrameRetention::Ignore());
-    CKBehavior *behavior = nullptr;
-    result.Detail = CreateBehavior(spec, behavior, record);
-    if (!result.Detail)
-        return result;
-
-    record.Behavior = CaptureObject(behavior);
-    result.Detail = CreateBlock(
-        behavior, parent->GetOwner(), parent, spec, frame, record);
-    if (!result.Detail) {
-        // Lifecycle has already balanced every callback it admitted and
-        // queued this unowned Block for destruction. This call runs at the
-        // graph edit safe point, so leave no transient child in the graph.
-        DestroyReady(DestroyMode::Ready);
-        return result;
-    }
-    record.Desired = spec;
-
-    result.Block = behavior;
-    const std::uint64_t instanceId = record.Id;
-    m_Records.emplace(instanceId, std::move(record));
-    result.Descriptor = Describe(
-        behavior, m_Records.at(instanceId).LayoutGeneration);
-    return result;
+    Opened opened = Open(spec,
+                         {.Graph = true, .Parent = parent,
+                          .Managed = false, .Staged = true},
+                         frame);
+    return {std::move(opened.Detail), opened.Block,
+            std::move(opened.Descriptor)};
 }
 
 Status Runtime::EditInGraph(CKBehavior *behavior, const BlockSpec &spec,
@@ -1677,9 +1368,7 @@ Status Runtime::EditInGraph(CKBehavior *behavior, const BlockSpec &spec,
     if (!status) {
         record = FindRecord(id);
         if (record) {
-            record->Protocol.RequestClose();
-            record->NativeLifecycle.RequestClose();
-            CloseCallbacks(*record);
+            CloseRecord(*record);
         }
         DrainCloseQueue();
         DestroyReady(DestroyMode::Ready);
@@ -1690,73 +1379,8 @@ Status Runtime::EditInGraph(CKBehavior *behavior, const BlockSpec &spec,
     if (!record)
         return Failure(Error::InvalidState,
                        "The graph Block disappeared during EDITED.");
-    record->Desired.m_SettingStages.clear();
-    record->Desired.m_AddedInputs.clear();
-    record->Desired.m_AddedOutputs.clear();
-    record->Desired.m_KeepAlive.clear();
+    StripDesired(record->Desired);
     return {};
-}
-
-AttachResult Runtime::Attach(CKBehavior *parent, const BlockSpec &spec,
-                             const CKBehaviorContext *frame,
-                             Instance *handle,
-                             DetachedCompatibility *detached,
-                             FrameRetention retention) {
-    AttachResult result;
-    result.Detail = ReadyStatus();
-    if (!result.Detail)
-        return result;
-    if (!parent || parent->GetCKContext() != m_Context ||
-        parent->IsToBeDeleted() || parent->IsUsingFunction()) {
-        result.Detail = Failure(
-            Error::OwnerInvalid,
-            "Parent graph is invalid, retiring, or belongs to another CKContext.");
-        return result;
-    }
-    // A graph-resident Block runs where a GraphOnly Block belongs, so the
-    // catalog answer is reported rather than enforced here.  A Prototype the
-    // catalog never heard of still parks fine; it just reports Unverified.
-    DetachedCompatibility compatibility = DetachedCompatibility::Unverified;
-    if (detached && !CheckDetached(spec, compatibility, true))
-        compatibility = DetachedCompatibility::Unverified;
-    result.Detail = ValidateTarget(parent->GetOwner(), spec);
-    if (!result.Detail)
-        return result;
-
-    Record record;
-    record.Id = m_NextInstanceId++;
-    record.Parent = CaptureObject(parent);
-    record.GraphResident = true;
-    record.OwnerDriven = handle != nullptr;
-    record.KeepAlive = spec.m_KeepAlive;
-    record.Protocol = Execution(handle ? retention : FrameRetention::Ignore());
-    CKBehavior *behavior = nullptr;
-    result.Detail = CreateBehavior(spec, behavior, record);
-    if (!result.Detail)
-        return result;
-
-    record.Behavior = CaptureObject(behavior);
-    result.Detail = Configure(behavior, parent->GetOwner(), parent, spec, frame, record);
-    if (!result.Detail) {
-        DestroyReady(DestroyMode::Ready);
-        return result;
-    }
-    record.Desired = spec;
-    record.Desired.m_SettingStages.clear();
-    record.Desired.m_AddedInputs.clear();
-    record.Desired.m_AddedOutputs.clear();
-    record.Desired.m_KeepAlive.clear();
-
-    result.Block = behavior;
-    const std::uint64_t instanceId = record.Id;
-    m_Records.emplace(instanceId, std::move(record));
-    result.Descriptor = Describe(
-        behavior, m_Records.at(instanceId).LayoutGeneration);
-    if (handle)
-        *handle = Instance(m_Access, instanceId);
-    if (detached)
-        *detached = compatibility;
-    return result;
 }
 
 Layout Runtime::Describe(CKBehavior *behavior, std::uint64_t generation) const {
@@ -2412,22 +2036,18 @@ void Runtime::SweepRecords() {
         CKBehavior *behavior = ResolveBehavior(record);
         if (!behavior) {
             record.Expired = true;
-            record.Protocol.RequestClose({
+            CloseRecord(record, {
                 ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
                 "Behavior object was deleted during execution."});
-            record.NativeLifecycle.RequestClose();
-            CloseCallbacks(record);
             continue;
         }
         Status provider = ValidateProvider(record);
         if (!provider) {
             if (record.Failure.Code == Error::None)
                 record.Failure = provider;
-            record.Protocol.RequestClose({
+            CloseRecord(record, {
                 ExecutionError::InvalidState, CKBR_BEHAVIORERROR,
                 provider.Message});
-            record.NativeLifecycle.RequestClose();
-            CloseCallbacks(record);
             continue;
         }
         m_SharedBindings->Sources.Update(behavior);
@@ -2535,23 +2155,7 @@ Status Runtime::CallCallback(Record &record, CKDWORD message,
 
     const CK_ID behaviorId = behavior->GetID();
     const CKGUID prototypeGuid = record.PrototypeGuid;
-    int result = CK_OK;
-    if (message == CKM_BEHAVIORCREATE) {
-        // Ballance's retail CK2.dll maps CKM_BEHAVIORCREATE to a zero callback
-        // mask inside CallCallbackFunction. Dispatch CREATE from the live block
-        // data so the provider's current callback, mask, and argument are kept.
-        BehaviorBlockData *block = CKBehaviorAccess::BlockData(behavior);
-        if (block && block->m_Callback &&
-            (block->m_CallbackMask & CKCB_BEHAVIORCREATE) != 0) {
-            CKBehaviorContextScope scope(m_Context, behavior, frame);
-            m_Context->m_BehaviorContext.CallbackMessage = message;
-            m_Context->m_BehaviorContext.CallbackArg = block->m_CallbackArg;
-            result = block->m_Callback(m_Context->m_BehaviorContext);
-        }
-    } else {
-        CKBehaviorContextScope scope(m_Context, behavior, frame);
-        result = behavior->CallCallbackFunction(message);
-    }
+    const int result = Engine::Send(m_Context, behavior, message, frame);
     CKObject *current = m_Context->GetObject(behaviorId);
     if (current != behavior || (current && current->IsToBeDeleted())) {
         Status status = Failure(
@@ -2582,19 +2186,12 @@ Status Runtime::SetInput(Instance &instance, const Slot &selector,
 Status Runtime::SetInput(Instance &instance,
                                          const SlotRef &slot,
                                          const Parameter::Binding &value) {
-    Status ready = ReadyStatus();
-    if (!ready)
-        return ready;
-    Record *record = FindRecord(instance);
-    CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
-    if (!record || !behavior)
-        return Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (record->Failure.Code != Error::None)
-        return record->Failure;
-    if (record->Protocol.State() != ExecutionState::Idle)
-        return Failure(Error::InvalidState,
-                       "Inputs can only be rebound while the instance is idle.");
-    Status status = ValidateSlot(*record, slot);
+    Record *record = nullptr;
+    CKBehavior *behavior = nullptr;
+    Status status = Admit(instance, record, &behavior,
+                          "Inputs can only be rebound while the instance is idle.");
+    if (status)
+        status = ValidateSlot(*record, slot);
     if (!status)
         return status;
     if (slot.Slot.Kind != SlotKind::InputParameter &&
@@ -2626,19 +2223,12 @@ Status Runtime::SetLocal(Instance &instance, const Slot &selector,
 Status Runtime::SetLocal(Instance &instance,
                                          const SlotRef &slot,
                                          const Parameter::Binding &value) {
-    Status ready = ReadyStatus();
-    if (!ready)
-        return ready;
-    Record *record = FindRecord(instance);
-    CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
-    if (!record || !behavior)
-        return Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (record->Failure.Code != Error::None)
-        return record->Failure;
-    if (record->Protocol.State() != ExecutionState::Idle)
-        return Failure(Error::InvalidState,
-                       "Locals can only be edited while the instance is idle.");
-    Status status = ValidateSlot(*record, slot);
+    Record *record = nullptr;
+    CKBehavior *behavior = nullptr;
+    Status status = Admit(instance, record, &behavior,
+                          "Locals can only be edited while the instance is idle.");
+    if (status)
+        status = ValidateSlot(*record, slot);
     if (!status)
         return status;
     if (slot.Slot.Kind != SlotKind::Local)
@@ -2708,18 +2298,12 @@ Status Runtime::Configure(Instance &instance, const BlockSpec &settings,
 
 Status Runtime::Reconfigure(Instance &instance, const BlockSpec &spec,
                                             const CKBehaviorContext *frame) {
-    Status ready = ReadyStatus();
-    if (!ready)
-        return ready;
-    Record *record = FindRecord(instance);
-    CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
-    if (!record || !behavior)
-        return Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (record->Failure.Code != Error::None)
-        return record->Failure;
-    if (record->Protocol.State() != ExecutionState::Idle)
-        return Failure(Error::InvalidState,
-                       "Reconfiguration requires an idle behavior instance.");
+    Record *record = nullptr;
+    CKBehavior *behavior = nullptr;
+    Status admitted = Admit(instance, record, &behavior,
+                            "Reconfiguration requires an idle behavior instance.");
+    if (!admitted)
+        return admitted;
     if (spec.Prototype() != record->PrototypeGuid)
         return Failure(Error::InvalidState,
                        "Reconfiguration spec names a different Building Block Prototype.");
@@ -2733,10 +2317,7 @@ Status Runtime::Reconfigure(Instance &instance, const BlockSpec &spec,
         record = FindRecord(instance);
         if (record) {
             record->Desired = spec;
-            record->Desired.m_SettingStages.clear();
-            record->Desired.m_AddedInputs.clear();
-            record->Desired.m_AddedOutputs.clear();
-            record->Desired.m_KeepAlive.clear();
+            StripDesired(record->Desired);
         }
     }
     return status;
@@ -2746,18 +2327,12 @@ Status Runtime::ApplySettings(
     Instance &instance,
     const std::vector<std::vector<BlockSpec::Binding>> &settings,
     const BlockSpec &desired, const CKBehaviorContext *frame) {
-    Status ready = ReadyStatus();
-    if (!ready)
-        return ready;
-    Record *record = FindRecord(instance);
-    CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
-    if (!record || !behavior)
-        return Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (record->Failure.Code != Error::None)
-        return record->Failure;
-    if (record->Protocol.State() != ExecutionState::Idle)
-        return Failure(Error::InvalidState,
-                       "Configuration requires an idle behavior instance.");
+    Record *record = nullptr;
+    CKBehavior *behavior = nullptr;
+    Status admitted = Admit(instance, record, &behavior,
+                            "Configuration requires an idle behavior instance.");
+    if (!admitted)
+        return admitted;
 
     Status provider = ValidateProvider(*record);
     if (!provider)
@@ -2815,16 +2390,11 @@ RunResult Runtime::Pulse(Instance &instance, const Slot &input,
 RunResult Runtime::Pulse(Instance &instance,
                                        const SlotRef &input,
                                        const CKBehaviorContext *frame) {
-    Status ready = ReadyStatus();
-    if (!ready)
-        return {std::move(ready), RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    Record *record = FindRecord(instance);
-    CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
-    if (!record || !behavior)
-        return {Failure(Error::InvalidState, "Behavior instance has expired."),
-                RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    if (record->Failure.Code != Error::None)
-        return {record->Failure, RunState::Failed, CKBR_BEHAVIORERROR, {}};
+    Record *record = nullptr;
+    CKBehavior *behavior = nullptr;
+    Status admitted = Admit(instance, record, &behavior);
+    if (!admitted)
+        return {std::move(admitted), RunState::Failed, CKBR_BEHAVIORERROR, {}};
     Status status = ValidateSlot(*record, input);
     if (!status)
         return {std::move(status), RunState::Failed, CKBR_PARAMETERERROR, {}};
@@ -2837,15 +2407,10 @@ RunResult Runtime::Pulse(Instance &instance,
 }
 
 RunResult Runtime::Step(Instance &instance, const CKBehaviorContext *frame) {
-    Status ready = ReadyStatus();
-    if (!ready)
-        return {std::move(ready), RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    Record *record = FindRecord(instance);
-    if (!record)
-        return {Failure(Error::InvalidState, "Behavior instance has expired."),
-                RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    if (record->Failure.Code != Error::None)
-        return {record->Failure, RunState::Failed, CKBR_BEHAVIORERROR, {}};
+    Record *record = nullptr;
+    Status admitted = Admit(instance, record);
+    if (!admitted)
+        return {std::move(admitted), RunState::Failed, CKBR_BEHAVIORERROR, {}};
     return Execute(record->Id, nullptr, false, frame);
 }
 
@@ -2855,14 +2420,10 @@ RunResult Runtime::StartTask(Instance &instance, const Slot &input,
 }
 
 Status Runtime::Continue(Instance &instance) {
-    Status ready = ReadyStatus();
-    if (!ready)
-        return ready;
-    Record *record = FindRecord(instance);
-    if (!record)
-        return Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (record->Failure.Code != Error::None)
-        return record->Failure;
+    Record *record = nullptr;
+    Status admitted = Admit(instance, record);
+    if (!admitted)
+        return admitted;
     Status provider = ValidateProvider(*record);
     if (!provider)
         return provider;
@@ -3047,9 +2608,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
         // lifecycle state, owned sources, and callback leases retire through
         // the normal close path instead of being destroyed here.
         record->Expired = true;
-        record->Protocol.RequestClose();
-        record->NativeLifecycle.RequestClose();
-        CloseCallbacks(*record);
+        CloseRecord(*record);
     }
 
     return result;
@@ -3058,7 +2617,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
 int Runtime::ExecuteNative(CKBehavior *behavior, const CKBehaviorContext *frame) const {
     if (!behavior || !m_Context)
         return CKBR_BEHAVIORERROR;
-    BehaviorExecutionScope scope(m_Context, behavior, frame);
+    Engine::ExecutionScope scope(m_Context, behavior, frame);
     return behavior->Execute(m_Context->m_BehaviorContext.DeltaTime);
 }
 
@@ -3188,9 +2747,7 @@ void Runtime::Release(std::uint64_t instanceId) {
     auto it = m_Records.find(instanceId);
     if (it == m_Records.end())
         return;
-    it->second.Protocol.RequestClose();
-    it->second.NativeLifecycle.RequestClose();
-    CloseCallbacks(it->second);
+    CloseRecord(it->second);
 }
 
 void Runtime::QueueDestroy(Record &record) {
@@ -3203,6 +2760,13 @@ void Runtime::QueueDestroy(Record &record) {
     pending.DestroyBehavior = true;
     pending.GraphResident = record.NativeLifecycle.Ledger().Placed;
     m_PendingDestroy.push_back(std::move(pending));
+}
+
+void Runtime::CloseRecord(Record &record, ExecutionFault reason,
+                          bool reset) noexcept {
+    record.Protocol.RequestClose(std::move(reason));
+    record.NativeLifecycle.RequestClose(reset);
+    CloseCallbacks(record);
 }
 
 void Runtime::CloseCallbacks(Record &record) noexcept {
@@ -3258,25 +2822,6 @@ void Runtime::QueueSourceDestroy(ObjectStamp source, int frames) {
     m_PendingDestroy.push_back(std::move(pending));
 }
 
-void Runtime::DestroyConnectedLinks(CKBehavior *parent, CKBehavior *behavior) {
-    if (!parent || !behavior)
-        return;
-    for (int i = parent->GetSubBehaviorLinkCount() - 1; i >= 0; --i) {
-        CKBehaviorLink *link = parent->GetSubBehaviorLink(i);
-        if (!link)
-            continue;
-        CKBehaviorIO *source = link->GetInBehaviorIO();
-        CKBehaviorIO *destination = link->GetOutBehaviorIO();
-        if ((!source || source->GetOwner() != behavior) &&
-            (!destination || destination->GetOwner() != behavior)) {
-            continue;
-        }
-        link = parent->RemoveSubBehaviorLink(i);
-        if (link)
-            m_Context->DestroyObject(link);
-    }
-}
-
 void Runtime::AdoptSharedBindings() {
     if (!m_SharedBindings || m_SharedBindings->Pending.empty())
         return;
@@ -3288,9 +2833,7 @@ void Runtime::Close() {
         return;
     DrainDeferredReleases();
     for (auto &[instanceId, record] : m_Records) {
-        record.Protocol.RequestClose();
-        record.NativeLifecycle.RequestClose();
-        CloseCallbacks(record);
+        CloseRecord(record);
     }
     DrainCloseQueue();
     DestroyReady(DestroyMode::Close);
@@ -3352,14 +2895,14 @@ void Runtime::DestroyReady(DestroyMode mode) {
                 CKObject *parentObject = ResolveObject(it->Parent);
                 if (parentObject && CKIsChildClassOf(parentObject, CKCID_BEHAVIOR)) {
                     auto *parent = static_cast<CKBehavior *>(parentObject);
-                    DestroyConnectedLinks(parent, behavior);
+                    Engine::DestroyConnectedLinks(m_Context, parent, behavior);
                     parent->RemoveSubBehavior(behavior);
                 }
             }
             behavior = resolveBehavior();
             if (behavior) {
                 behavior->SetOwner(nullptr, FALSE);
-                DestroyOwnedBehavior(m_Context, behavior);
+                Engine::DestroyBlock(m_Context, behavior);
             }
         }
         for (ObjectStamp source : sources) {
@@ -3420,11 +2963,9 @@ void Runtime::ObjectsToBeDeleted(const CK_ID *ids, int count) {
             continue;
         }
         it->second.Expired = true;
-        it->second.Protocol.RequestClose({
+        CloseRecord(it->second, {
             ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
             "Behavior object, owner, or parent graph was deleted."});
-        it->second.NativeLifecycle.RequestClose();
-        CloseCallbacks(it->second);
         ++it;
     }
 }
@@ -3435,11 +2976,9 @@ void Runtime::ResetWorld() {
     DrainDeferredReleases();
     AdoptSharedBindings();
     for (auto &[instanceId, record] : m_Records) {
-        record.Protocol.RequestClose({
+        CloseRecord(record, {
             ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
-            "World reset cancelled behavior execution."});
-        record.NativeLifecycle.RequestClose(true);
-        CloseCallbacks(record);
+            "World reset cancelled behavior execution."}, true);
     }
     DrainCloseQueue(true);
 }
@@ -3457,9 +2996,7 @@ Status Runtime::Close(CKBehavior *behavior) {
         Record *record = *it;
         if (!record || ResolveBehavior(*record) != behavior)
             continue;
-        record->Protocol.RequestClose();
-        record->NativeLifecycle.RequestClose();
-        CloseCallbacks(*record);
+        CloseRecord(*record);
         return {};
     }
 
@@ -3471,9 +3008,7 @@ Status Runtime::Close(CKBehavior *behavior) {
                 Error::InvalidState,
                 "Runtime::Close only accepts Runtime-owned graph nodes.");
         }
-        record.Protocol.RequestClose();
-        record.NativeLifecycle.RequestClose();
-        CloseCallbacks(record);
+        CloseRecord(record);
         if (record.Protocol.State() == ExecutionState::Running ||
             record.NativeLifecycle.State() == LifecycleState::Configuring ||
             record.NativeLifecycle.State() == LifecycleState::Closing) {

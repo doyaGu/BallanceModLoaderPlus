@@ -293,7 +293,36 @@ private:
         Reset,
     };
 
+    // Where Open places a new Block and who drives it. A detached Block
+    // runs on Owner; a Graph Block joins Parent's graph and takes the
+    // graph's owner. Managed hands back an Instance, which also makes the
+    // holder the driver of a graph Block. Staged stops after CREATE so a
+    // graph edit can wire the final relations before EDITED.
+    struct Placement {
+        bool Graph = false;
+        CKBeObject *Owner = nullptr;
+        CKBehavior *Parent = nullptr;
+        bool Managed = true;
+        bool Staged = false;
+        FrameRetention Retention = FrameRetention::Ignore();
+    };
+
+    struct Opened {
+        Status Detail;
+        CKBehavior *Block = nullptr;
+        Layout Descriptor;
+        std::uint64_t Id = 0;
+        DetachedCompatibility Detached = DetachedCompatibility::Unverified;
+    };
+
     [[nodiscard]] Status ReadyStatus() const;
+    // Admits a request against a live Instance: the Runtime is ready, the
+    // Record exists, and no failed Setting stage has poisoned it. Passing
+    // behavior also requires the native Block to be live; passing idle also
+    // requires an idle Run and fails with that message otherwise.
+    [[nodiscard]] Status Admit(const Instance &instance, Record *&record,
+                               CKBehavior **behavior = nullptr,
+                               const char *idle = nullptr);
     [[nodiscard]] Record *FindRecord(std::uint64_t instanceId);
     [[nodiscard]] const Record *FindRecord(std::uint64_t instanceId) const;
     [[nodiscard]] Record *FindRecord(CKBehavior *behavior);
@@ -338,14 +367,15 @@ private:
         const Record &record) const;
     [[nodiscard]] Status BindTarget(CKBehavior *behavior, CKBeObject *owner,
                                             const BlockSpec &spec, Record &record);
-    // The shared body of AddToGraph and AttachToGraph. It hands back a
-    // managed handle only when the caller asked for one, and reports what
-    // the catalog knows about detached support without refusing a GraphOnly
-    // Block: a parent graph is exactly where such a Block belongs.
-    AttachResult Attach(CKBehavior *parent, const BlockSpec &spec,
-                        const CKBehaviorContext *frame, Instance *handle,
-                        DetachedCompatibility *detached = nullptr,
-                        FrameRetention retention = FrameRetention::Ignore());
+    // The one creation path. A detached Block must support running without
+    // a graph; a managed graph Block only reports what the catalog knows,
+    // since a parent graph is exactly where a GraphOnly Block belongs.
+    [[nodiscard]] Opened Open(const BlockSpec &spec, const Placement &placement,
+                              const CKBehaviorContext *frame);
+    // Settings are events and are never replayed, and the added interface
+    // and callback leases belong to creation, so none of them is desired
+    // state once applied.
+    static void StripDesired(BlockSpec &spec);
     void PruneOwnedSources(Record &record);
     void SweepRecords();
     class NativeLifecycleAdapter;
@@ -389,11 +419,14 @@ private:
     void Release(std::uint64_t instanceId);
     void QueueDestroy(Record &record);
     void QueueSourceDestroy(ObjectStamp source, int frames = 2);
-    void DestroyConnectedLinks(CKBehavior *parent, CKBehavior *behavior);
     void DrainDeferredReleases();
     void QueueFrame(Record &record);
     [[nodiscard]] Status DrainRecord(Record &record, bool &closed);
     bool DrainCloseQueue(bool force = false);
+    // Closes execution admission, then the native lifecycle, then callback
+    // admission. Every close path runs these three steps in this order.
+    static void CloseRecord(Record &record, ExecutionFault reason = {},
+                            bool reset = false) noexcept;
     static void CloseCallbacks(Record &record) noexcept;
     void AdoptSharedBindings();
     void Close();

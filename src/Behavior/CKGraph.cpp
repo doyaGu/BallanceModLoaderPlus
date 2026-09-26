@@ -1,7 +1,8 @@
 #include "Behavior/Graph.h"
 
-#include "Behavior/CKGraphOrder.h"
 #include "Behavior/Core/Hash.h"
+#include "Behavior/Engine/Access.h"
+#include "Behavior/Engine/Graph.h"
 
 #include <algorithm>
 #include <bit>
@@ -564,7 +565,7 @@ private:
             auto sourceOrder = m_SourceOrder.find(link);
             if (sourceOrder == m_SourceOrder.end()) {
                 if (XSObjectPointerArray *outgoing =
-                        CKGraphOrder::Outgoing(sourceIo)) {
+                        Engine::Outgoing(sourceIo)) {
                     for (int linkIndex = 0; linkIndex < outgoing->Size();
                          ++linkIndex) {
                         auto *outgoingLink = CKBehaviorLink::Cast(
@@ -605,18 +606,9 @@ private:
         if (object != reference.Address || !Valid(object) ||
             !CKIsChildClassOf(object, type))
             return false;
-        if (type == CKCID_BEHAVIOR) {
-            for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
-                if (graph->GetSubBehavior(index) == object)
-                    return true;
-            }
-            return false;
-        }
-        for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
-            if (graph->GetSubBehaviorLink(index) == object)
-                return true;
-        }
-        return false;
+        if (type == CKCID_BEHAVIOR)
+            return Engine::Contains(graph, static_cast<CKBehavior *>(object));
+        return Engine::Contains(graph, static_cast<CKBehaviorLink *>(object));
     }
 
     static GraphLinkShape Shape(const GraphLink &link) {

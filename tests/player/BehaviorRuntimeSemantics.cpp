@@ -9,6 +9,7 @@
 
 #include "Behavior/Blocks/HookBlock.h"
 #include "Behavior/CKEdit.h"
+#include "Behavior/Engine/Access.h"
 #include "BML/Behavior/Blocks.hpp"
 #include "Behavior/Block.h"
 #include "Behavior/Blocks/PhysicsForce.h"
@@ -1548,12 +1549,21 @@ private:
                 m_GraphImmediateDestination.ContextMatched;
             if (!firstFrame || !contextsMatched)
                 Fail("graph-scheduler-immediate");
+            // The delayed Link joined the graph's delayed list this frame and
+            // counted down once at its end, so it is still in flight.
+            if (!Engine::IsDelayed(m_GraphDelayedLink))
+                Fail("graph-scheduler-delayed-list-joined");
             m_State = State::GraphSchedulerWaitSecond;
             return;
         }
         if (m_State == State::GraphSchedulerWaitSecond) {
             if (m_GraphDelayedDestination.Calls != 0 || !m_Graph->IsActive())
                 Fail("graph-scheduler-delay-pending");
+            // CK2 leaves the delayed list exactly when the countdown reaches
+            // zero and arms the destination for the next frame.
+            if (Engine::IsDelayed(m_GraphDelayedLink) !=
+                (m_GraphDelayedLink->GetActivationDelay() > 0))
+                Fail("graph-scheduler-delayed-list-pending");
             m_State = State::GraphSchedulerWaitThird;
             return;
         }
@@ -1561,6 +1571,8 @@ private:
             !m_GraphDelayedDestination.ContextMatched || m_Graph->IsActive() ||
             !m_Graph->GetOutput(0)->IsActive())
             Fail("graph-scheduler-delay-complete");
+        if (Engine::IsDelayed(m_GraphDelayedLink))
+            Fail("graph-scheduler-delayed-list-cleared");
         m_State = State::GraphSchedulerCleanup;
     }
 

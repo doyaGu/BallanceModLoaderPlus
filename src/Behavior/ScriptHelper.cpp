@@ -1,6 +1,6 @@
 #include "BML/ScriptHelper.h"
 
-#include "Behavior/CKGraphOrder.h"
+#include "Behavior/Engine/Graph.h"
 
 namespace ScriptHelper {
     bool FindBB(CKBehavior *script, std::function<bool(CKBehavior *)> callback, const char *name, bool hierarchically,
@@ -65,7 +65,7 @@ namespace ScriptHelper {
         beh->InitFromGuid(guid);
         if (target)
             beh->UseTarget();
-        if (BML::CKGraphOrder::Add(script, beh) != CK_OK) {
+        if (BML::Behavior::Internal::Engine::AddChild(script, beh) != CK_OK) {
             script->GetCKContext()->DestroyObject(beh);
             return nullptr;
         }

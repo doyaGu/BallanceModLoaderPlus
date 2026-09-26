@@ -1,9 +1,10 @@
 #include "Behavior/CKEdit.h"
 
 #include "Behavior/Blocks/HookBlock.h"
-#include "Behavior/CKBehaviorContext.h"
-#include "Behavior/CKGraphOrder.h"
 #include "Behavior/Core/Hash.h"
+#include "Behavior/Engine/Access.h"
+#include "Behavior/Engine/Graph.h"
+#include "Behavior/Engine/Message.h"
 #include "Behavior/Runtime.h"
 
 #include <algorithm>
@@ -247,29 +248,6 @@ GraphEndpoint DescribeLocal(CKParameterLocal *local) {
             index};
 }
 
-bool ContainsLink(CKBehavior *graph, CKBehaviorLink *link) {
-    if (!graph || !link)
-        return false;
-    for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
-        if (graph->GetSubBehaviorLink(index) == link)
-            return true;
-    }
-    return false;
-}
-
-bool ContainsNode(CKBehavior *graph, CKBehavior *node) {
-    // Membership is the graph fact used by scheduling. Retail CK2 may retain
-    // a cached GetParent() value after removal, so parent identity alone does
-    // not prove that a Behavior is still a sub-behavior.
-    if (!graph || !node)
-        return false;
-    for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
-        if (graph->GetSubBehavior(index) == node)
-            return true;
-    }
-    return false;
-}
-
 bool MayBePending(CKBehaviorLink *link) {
     if (!link)
         return false;
@@ -282,13 +260,6 @@ bool MayBePending(CKBehaviorLink *link) {
     const int remaining = link->GetActivationDelay();
     return remaining > 0 &&
         remaining != link->GetInitialActivationDelay();
-}
-
-int NotifyEdited(CKContext *context, CKBehavior *behavior) {
-    if (!context || !behavior)
-        return CKERR_INVALIDOBJECT;
-    CKBehaviorContextScope scope(context, behavior);
-    return behavior->CallCallbackFunction(CKM_BEHAVIOREDITED);
 }
 
 struct NativeGraphOrder {
@@ -502,8 +473,8 @@ Status OrderFailure(bool restoring, std::string message) {
 
 Status CaptureOrder(CKBehavior *graph, NativeGraphOrder &out) {
     out = {};
-    XObjectPointerArray *nodes = CKGraphOrder::Nodes(graph);
-    XObjectPointerArray *links = CKGraphOrder::Links(graph);
+    XObjectPointerArray *nodes = Engine::Nodes(graph);
+    XObjectPointerArray *links = Engine::Links(graph);
     if (!nodes || !links)
         return OrderFailure(false, "The target is not a live Behavior graph.");
 
@@ -536,7 +507,7 @@ Status CaptureOrder(CKBehavior *graph, NativeGraphOrder &out) {
         out.Links.push_back(Capture(link));
         if (!sources.insert(source).second)
             continue;
-        XSObjectPointerArray *outgoing = CKGraphOrder::Outgoing(source);
+        XSObjectPointerArray *outgoing = Engine::Outgoing(source);
         if (!outgoing)
             return OrderFailure(false,
                                 "A source Behavior IO has no Link order.");
@@ -654,7 +625,7 @@ Status ArrangeSource(CKContext *context,
             ? Status{}
             : OrderFailure(false,
                            "A source Behavior IO disappeared while the Edit was applied.");
-    XSObjectPointerArray *array = CKGraphOrder::Outgoing(source);
+    XSObjectPointerArray *array = Engine::Outgoing(source);
     std::vector<CKBehaviorLink *> current =
         ReadOrder<CKBehaviorLink>(array);
     std::vector<CKBehaviorLink *> expected;
@@ -691,11 +662,11 @@ Status ArrangeOrder(CKContext *context, CKBehavior *graph,
     if (!graph)
         return OrderFailure(restoring, "The ordered Behavior graph disappeared.");
     Status status = ArrangeArray<CKBehavior>(
-        context, CKGraphOrder::Nodes(graph), before.Nodes, nodeAliases,
+        context, Engine::Nodes(graph), before.Nodes, nodeAliases,
         CKCID_BEHAVIOR, restoring, true);
     if (status)
         status = ArrangeArray<CKBehaviorLink>(
-            context, CKGraphOrder::Links(graph), before.Links, {},
+            context, Engine::Links(graph), before.Links, {},
             CKCID_BEHAVIORLINK, restoring, false);
     if (!status)
         return status;
@@ -781,7 +752,7 @@ Status ValidateOrder(CKContext *context, CKBehavior *graph,
                      RevertSubject &subject) {
     subject = RevertSubject::Node;
     if (!graph || !KeepsNodeOrder(
-            context, CKGraphOrder::Nodes(graph), expected.Nodes,
+            context, Engine::Nodes(graph), expected.Nodes,
             expected.NodePriorities)) {
         return OrderFailure(
             true,
@@ -790,7 +761,7 @@ Status ValidateOrder(CKContext *context, CKBehavior *graph,
 
     subject = RevertSubject::Link;
     if (!KeepsRelativeOrder<CKBehaviorLink>(
-            context, CKGraphOrder::Links(graph), expected.Links,
+            context, Engine::Links(graph), expected.Links,
             CKCID_BEHAVIORLINK)) {
         return OrderFailure(
             true,
@@ -801,7 +772,7 @@ Status ValidateOrder(CKContext *context, CKBehavior *graph,
         if (!source)
             continue;
         if (!KeepsRelativeOrder<CKBehaviorLink>(
-                context, CKGraphOrder::Outgoing(source), sourceOrder.Links,
+                context, Engine::Outgoing(source), sourceOrder.Links,
                 CKCID_BEHAVIORLINK)) {
             return OrderFailure(
                 true,
@@ -1573,7 +1544,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                 continue;
             CKBehavior *node = Resolve<CKBehavior>(
                 m_Context, item.Node, CKCID_BEHAVIOR);
-            if (!node || ContainsNode(currentGraph, node)) {
+            if (!node || Engine::Contains(currentGraph, node)) {
                 return Failure(
                     Error::GraphChanged,
                     "A removed Behavior Node changed identity during Apply.",
@@ -1591,7 +1562,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
             CKBehaviorIO *sink = ResolveIo(
                 m_Context, item.SinkDetached
                     ? patch->DetachedSink : item.Sink);
-            if (!link || ContainsLink(currentGraph, link) ||
+            if (!link || Engine::Contains(currentGraph, link) ||
                 !source || !sink || link->GetInBehaviorIO() != source ||
                 link->GetOutBehaviorIO() != sink ||
                 link->GetInitialActivationDelay() != item.InitialDelay ||
@@ -1617,7 +1588,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                           patch->GraphOwner, CKCID_BEOBJECT) ||
             !IsSameObject(m_Context, currentParent, patch->GraphParent,
                           CKCID_BEHAVIOR) ||
-            (currentParent && !ContainsNode(currentParent, currentGraph))) {
+            (currentParent && !Engine::Contains(currentParent, currentGraph))) {
             return Failure(
                 Error::GraphChanged,
                 "The edited Behavior graph changed owner or parent during a callback.",
@@ -1628,7 +1599,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                 m_Context, stamp, CKCID_BEHAVIOR);
             if (!current || (handle != edit.Graph().Value &&
                              (current->GetParent() != currentGraph ||
-                              !ContainsNode(currentGraph, current) ||
+                              !Engine::Contains(currentGraph, current) ||
                               !IsSameObject(m_Context, current->GetOwner(),
                                             patch->GraphOwner,
                                             CKCID_BEOBJECT)))) {
@@ -1642,7 +1613,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
             CKBehavior *current = Resolve<CKBehavior>(
                 m_Context, stamp, CKCID_BEHAVIOR);
             if (!current || current->GetParent() != currentGraph ||
-                !ContainsNode(currentGraph, current) ||
+                !Engine::Contains(currentGraph, current) ||
                 !IsSameObject(m_Context, current->GetOwner(),
                               patch->GraphOwner, CKCID_BEOBJECT)) {
                 return Failure(
@@ -1655,7 +1626,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
             CKBehavior *current = Resolve<CKBehavior>(
                 m_Context, stamp, CKCID_BEHAVIOR);
             if (!current || current->GetParent() != currentGraph ||
-                !ContainsNode(currentGraph, current) ||
+                !Engine::Contains(currentGraph, current) ||
                 !IsSameObject(m_Context, current->GetOwner(),
                               patch->GraphOwner, CKCID_BEOBJECT) ||
                 current->IsUsingFunction()) {
@@ -2085,7 +2056,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                     CKERR_OUTOFMEMORY));
             added->UseGraph();
             added->SetPriority(node.Subgraph->Priority);
-            const CKERROR attached = CKGraphOrder::Add(graph, added);
+            const CKERROR attached = Engine::AddChild(graph, added);
             if (attached != CK_OK) {
                 m_Context->DestroyObject(added);
                 return fail(Failure(
@@ -2275,7 +2246,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                 "A Block disappeared before reconciling its variable interface.",
                 CKERR_INVALIDOBJECT));
         rememberObserved(edited);
-        const int result = NotifyEdited(m_Context, behavior);
+        const int result = Engine::Send(m_Context, behavior, CKM_BEHAVIOREDITED);
         if (result != CK_OK) {
             return fail(Failure(
                 Error::CallbackFailed,
@@ -3156,7 +3127,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                 continue;
             CKBehaviorLink *link = Resolve<CKBehaviorLink>(
                 m_Context, change.Link, CKCID_BEHAVIORLINK);
-            if (!link || !ContainsLink(graphFor(), link) ||
+            if (!link || !Engine::Contains(graphFor(), link) ||
                 Capture(link->GetInBehaviorIO()) != change.InstalledSource ||
                 Capture(link->GetOutBehaviorIO()) != change.InstalledSink ||
                 link->GetInitialActivationDelay() != change.InitialDelay ||
@@ -3435,7 +3406,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                 Error::GraphChanged,
                 "Virtools could not park the original Behavior Node.",
                 CKERR_INVALIDOBJECT));
-        if (ContainsNode(graph, original))
+        if (Engine::Contains(graph, original))
             return fail(Failure(
                 Error::GraphChanged,
                 "Virtools kept the parked Behavior Node in its graph.",
@@ -3456,7 +3427,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
         std::unordered_set<CKBehavior *> removedNodes;
         for (const CheckedRemove &item : checked.Removals) {
             CKBehavior *node = behaviorFor(item.Target);
-            if (!node || !ContainsNode(graph, node) || node->IsActive()) {
+            if (!node || !Engine::Contains(graph, node) || node->IsActive()) {
                 return fail(Failure(
                     Error::Busy,
                     "A removal target is no longer an idle child Node."));
@@ -3545,7 +3516,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
         for (std::size_t index = 0; index < incidentLinks.size(); ++index) {
             CKBehaviorLink *link = incidentLinks[index];
             if (graph->RemoveSubBehaviorLink(link) != link ||
-                ContainsLink(graph, link)) {
+                Engine::Contains(graph, link)) {
                 return fail(Failure(
                     Error::GraphChanged,
                     "Virtools could not remove a Behavior Link.",
@@ -3582,7 +3553,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
             CKBehavior *node = Resolve<CKBehavior>(
                 m_Context, patch->Removals[index].Node, CKCID_BEHAVIOR);
             if (!node || graph->RemoveSubBehavior(node) != node ||
-                ContainsNode(graph, node)) {
+                Engine::Contains(graph, node)) {
                 return fail(Failure(
                     Error::GraphChanged,
                     "Virtools could not remove a Behavior Node.",
@@ -3621,7 +3592,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
             return fail(Failure(Error::GraphChanged,
                                 "A changed Block disappeared before EDITED."));
         rememberObserved(edited);
-        const int result = NotifyEdited(m_Context, behavior);
+        const int result = Engine::Send(m_Context, behavior, CKM_BEHAVIOREDITED);
         if (result != CK_OK)
             return fail(Failure(Error::CallbackFailed,
                                 "A Block EDITED callback failed.", result));
@@ -3648,7 +3619,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                   {static_cast<CK_ID>(nativeRecord->Id),
                    m_Context->GetObject(static_cast<CK_ID>(nativeRecord->Id))},
                   CKCID_BEHAVIORLINK);
-        if (!graph || !link || !ContainsLink(graph, link) ||
+        if (!graph || !link || !Engine::Contains(graph, link) ||
             link->GetInitialActivationDelay() !=
                 reconnect.Target.Delay ||
             link->GetActivationDelay() != nativeRecord->RemainingDelay) {
@@ -3919,7 +3890,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
     }
 
     patch->GraphObserved = true;
-    const int edited = NotifyEdited(m_Context, graph);
+    const int edited = Engine::Send(m_Context, graph, CKM_BEHAVIOREDITED);
     if (edited != CK_OK)
         return fail(Failure(Error::CallbackFailed,
                             "The graph EDITED callback failed.", edited));
@@ -4255,7 +4226,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                           CKCID_BEOBJECT) ||
             !IsSameObject(m_Context, parent, patch.GraphParent,
                           CKCID_BEHAVIOR) ||
-            (parent && !ContainsNode(parent, graph))) {
+            (parent && !Engine::Contains(parent, graph))) {
             return replacementConflict(
                 RevertSubject::Node,
                 "The edited Behavior graph changed owner or parent before the Patch closed.");
@@ -4294,7 +4265,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                     RevertSubject::Node,
                     "The installed replacement Node no longer exists.");
             if (installed->GetParent() != graph ||
-                !ContainsNode(graph, installed))
+                !Engine::Contains(graph, installed))
                 return replacementConflict(
                     RevertSubject::Node,
                     "The installed replacement Node left its graph.");
@@ -4308,7 +4279,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                 return replacementConflict(
                     RevertSubject::Node,
                     "The original replacement Node changed owner.");
-            if (ContainsNode(graph, original) ==
+            if (Engine::Contains(graph, original) ==
                 replacement.OriginalRemoved)
                 return replacementConflict(
                     RevertSubject::Node,
@@ -4385,7 +4356,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
             if (!node ||
                 !IsSameObject(m_Context, node->GetOwner(), patch.GraphOwner,
                               CKCID_BEOBJECT) ||
-                ContainsNode(graph, node) == removal.Removed) {
+                Engine::Contains(graph, node) == removal.Removed) {
                 return replacementConflict(
                     RevertSubject::Node,
                     "A removed Behavior Node changed after the Patch was published.");
@@ -4403,7 +4374,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
             CKBehaviorIO *sink = ResolveIo(
                 m_Context, removed.SinkDetached
                     ? patch.DetachedSink : removed.Sink);
-            if (!link || ContainsLink(graph, link) == removed.Removed ||
+            if (!link || Engine::Contains(graph, link) == removed.Removed ||
                 !source || !sink || link->GetInBehaviorIO() != source ||
                 link->GetOutBehaviorIO() != sink ||
                 link->GetInitialActivationDelay() != removed.InitialDelay ||
@@ -4419,7 +4390,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                 continue;
             CKBehaviorLink *link = Resolve<CKBehaviorLink>(
                 m_Context, reconnection.Link, CKCID_BEHAVIORLINK);
-            if (!link || !ContainsLink(graph, link) ||
+            if (!link || !Engine::Contains(graph, link) ||
                 Capture(link->GetInBehaviorIO()) !=
                     reconnection.InstalledSource ||
                 Capture(link->GetOutBehaviorIO()) !=
@@ -4689,7 +4660,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         CKBehaviorIO *installedSink = ResolveIo(
             m_Context, item->InstalledSink);
         CKERROR error = link && source && sink && installedSource &&
-                installedSink && ContainsLink(graph, link)
+                installedSink && Engine::Contains(graph, link)
             ? link->SetInBehaviorIO(source) : CKERR_INVALIDOBJECT;
         if (error == CK_OK)
             error = link->SetOutBehaviorIO(sink);
@@ -4747,8 +4718,8 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                 continue;
             }
             if (item->Removed) {
-                const CKERROR added = CKGraphOrder::Add(graph, node);
-                if (added != CK_OK || !ContainsNode(graph, node)) {
+                const CKERROR added = Engine::AddChild(graph, node);
+                if (added != CK_OK || !Engine::Contains(graph, node)) {
                     remember(replacementConflict(
                         RevertSubject::Node,
                         "Virtools could not restore a removed Behavior Node."));
@@ -4816,7 +4787,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                     link->SetInitialActivationDelay(item->InitialDelay);
                     link->SetActivationDelay(item->Delay);
                     const CKERROR added = graph->AddSubBehaviorLink(link);
-                    if (added != CK_OK || !ContainsLink(graph, link)) {
+                    if (added != CK_OK || !Engine::Contains(graph, link)) {
                         remember(replacementConflict(
                             RevertSubject::Link,
                             "Virtools could not restore a removed Behavior Link."));
@@ -4847,7 +4818,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                 continue;
             }
             if (item->OriginalRemoved) {
-                const CKERROR added = CKGraphOrder::Add(graph, original);
+                const CKERROR added = Engine::AddChild(graph, original);
                 if (added != CK_OK) {
                     remember(replacementConflict(
                         RevertSubject::Node,
@@ -5197,7 +5168,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                 m_Context, edited, CKCID_BEHAVIOR);
             if (!block)
                 continue;
-            const int result = NotifyEdited(m_Context, block);
+            const int result = Engine::Send(m_Context, block, CKM_BEHAVIOREDITED);
             if (result != CK_OK) {
                 remember(Failure(
                     Error::CallbackFailed,
@@ -5209,7 +5180,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                 m_Context, patch.Graph, CKCID_BEHAVIOR);
             block = Resolve<CKBehavior>(m_Context, edited, CKCID_BEHAVIOR);
             if (!graph || !block || block->GetParent() != graph ||
-                !ContainsNode(graph, block) ||
+                !Engine::Contains(graph, block) ||
                 !IsSameObject(m_Context, block->GetOwner(), patch.GraphOwner,
                               CKCID_BEOBJECT)) {
                 remember(Failure(
@@ -5226,7 +5197,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
     graph = Resolve<CKBehavior>(m_Context, patch.Graph, CKCID_BEHAVIOR);
     if (graph && !pinsRetained && !patch.RestoredGraph &&
         (patch.Published || patch.GraphObserved)) {
-        const int result = NotifyEdited(m_Context, graph);
+        const int result = Engine::Send(m_Context, graph, CKM_BEHAVIOREDITED);
         if (result != CK_OK)
             remember(Failure(Error::CallbackFailed,
                              "The graph EDITED callback failed while the Patch closed.",
@@ -5240,7 +5211,7 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                               CKCID_BEOBJECT) ||
                 !IsSameObject(m_Context, parent, patch.GraphParent,
                               CKCID_BEHAVIOR) ||
-                (parent && !ContainsNode(parent, current))) {
+                (parent && !Engine::Contains(parent, current))) {
                 remember(Failure(
                     Error::GraphChanged,
                     "The graph changed owner, parent, or identity during its teardown EDITED callback.",
