@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -50,56 +51,24 @@ public:
     }
 
     template <class T>
-    NodePattern &Pin(Selector slot, T &&value) {
+    NodePattern &Pin(SlotSelector slot, T &&value) {
         return Observe(SlotKind::Pin, std::move(slot),
                        Behavior::Value(std::forward<T>(value)));
     }
     template <class T>
-    NodePattern &Pin(std::int32_t index, T &&value) {
-        return Pin(Selector::At(index), std::forward<T>(value));
-    }
-    template <class T>
-    NodePattern &Pin(std::string_view name, T &&value) {
-        return Pin(Selector::Unique(name), std::forward<T>(value));
-    }
-    template <class T>
-    NodePattern &Pout(Selector slot, T &&value) {
+    NodePattern &Pout(SlotSelector slot, T &&value) {
         return Observe(SlotKind::Pout, std::move(slot),
                        Behavior::Value(std::forward<T>(value)));
     }
     template <class T>
-    NodePattern &Pout(std::int32_t index, T &&value) {
-        return Pout(Selector::At(index), std::forward<T>(value));
-    }
-    template <class T>
-    NodePattern &Pout(std::string_view name, T &&value) {
-        return Pout(Selector::Unique(name), std::forward<T>(value));
-    }
-    template <class T>
-    NodePattern &Setting(Selector slot, T &&value) {
+    NodePattern &Setting(SlotSelector slot, T &&value) {
         return Observe(SlotKind::Setting, std::move(slot),
                        Behavior::Value(std::forward<T>(value)));
     }
     template <class T>
-    NodePattern &Setting(std::int32_t index, T &&value) {
-        return Setting(Selector::At(index), std::forward<T>(value));
-    }
-    template <class T>
-    NodePattern &Setting(std::string_view name, T &&value) {
-        return Setting(Selector::Unique(name), std::forward<T>(value));
-    }
-    template <class T>
-    NodePattern &Local(Selector slot, T &&value) {
+    NodePattern &Local(SlotSelector slot, T &&value) {
         return Observe(SlotKind::Local, std::move(slot),
                        Behavior::Value(std::forward<T>(value)));
-    }
-    template <class T>
-    NodePattern &Local(std::int32_t index, T &&value) {
-        return Local(Selector::At(index), std::forward<T>(value));
-    }
-    template <class T>
-    NodePattern &Local(std::string_view name, T &&value) {
-        return Local(Selector::Unique(name), std::forward<T>(value));
     }
     template <class T>
     NodePattern &Target(T &&value) {
@@ -139,6 +108,8 @@ private:
     CKGUID m_Prototype{0, 0};
     std::optional<BehaviorKind> m_Kind;
     std::uint64_t m_PortShape = 0;
+    // The exact name a snapshot position held when the author read it.
+    std::string m_Name;
     std::vector<PortCount> m_Counts;
     std::vector<PortValue> m_Values;
 

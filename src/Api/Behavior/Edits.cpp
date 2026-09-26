@@ -98,12 +98,12 @@ struct EditHandle {
     Port PortValue;
 };
 
-// Translates the shared wire edit steps into one symbolic Program. The same
-// value can be applied once to a known graph or retained by a Plan.
+// Translates one wire edit program into one symbolic Program. The same value
+// can be applied once to a known graph or retained by a Plan.
 class ProgramDecoder final {
 public:
-    Status Build(const BML_BehaviorEditStep *steps, std::uint32_t count,
-                 ModContext &context, Program &edit);
+    Status Build(const BML_BehaviorEditProgram &program, ModContext &context,
+                 Program &edit);
     // Reports every symbolic Node and appended Port the caller can address in
     // an installed Patch or Plan.
     [[nodiscard]] Installations::SymbolMap
@@ -116,16 +116,36 @@ private:
                 Program &edit);
     Status Use(std::uint32_t scope, std::uint32_t id, EditHandleKind kind,
                const EditHandle *&out) const;
-    Status ReadPort(const BML_BehaviorPortRef &from, Port &out) const;
-    Status ReadHook(const BML_BehaviorHookFunction *from,
-                    HookBlock::Hook &out) const;
-    Status ReadOrdering(const BML_BehaviorEditStep &step,
-                        std::vector<Order> &out) const;
+
+    // Pool readers. Every index is one-based and checked against its pool.
+    Status PortRefAt(std::uint32_t index,
+                     const BML_BehaviorPortRef *&out) const;
+    Status PortAt(std::uint32_t index, Port &out) const;
+    Status PatternAt(std::uint32_t index, bool required,
+                     NodePattern &out) const;
+    Status ValueAt(std::uint32_t index, ModContext &context,
+                   Parameter::Binding &out) const;
+    Status BlockAt(std::uint32_t index, ModContext &context,
+                   const char *role, BlockSpec &out) const;
+    Status HookAt(std::uint32_t index, HookBlock::Hook &out) const;
+    Status ObjectAt(std::uint32_t index, const char *message,
+                    BML::Behavior::Internal::ObjectRef &out) const;
+    Status OperationAt(std::uint32_t index,
+                       const BML_BehaviorOperationSpec *&out) const;
+    Status OrdersAt(const BML_BehaviorEditStep &step,
+                    std::vector<Order> &out) const;
 
     using HandleKey = std::pair<std::uint32_t, std::uint32_t>;
+    const BML_BehaviorEditProgram *m_Program = nullptr;
     std::map<HandleKey, EditHandle> m_Handles;
     std::map<std::uint32_t, Program *> m_Graphs;
 };
+
+template <typename T>
+const T *Entry(const T *pool, std::uint32_t count,
+               std::uint32_t index) noexcept {
+    return index && index <= count ? &pool[index - 1] : nullptr;
+}
 
 bool ProgramDecoder::Defines(std::uint32_t kind) noexcept {
     switch (kind) {
@@ -152,9 +172,22 @@ bool ProgramDecoder::Defines(std::uint32_t kind) noexcept {
     }
 }
 
-Status ProgramDecoder::Build(const BML_BehaviorEditStep *steps,
-                             std::uint32_t count, ModContext &context,
-                             Program &edit) {
+Status ProgramDecoder::Build(const BML_BehaviorEditProgram &program,
+                             ModContext &context, Program &edit) {
+    if (program.StructSize < sizeof(program))
+        return InvalidValue(
+            "A Behavior edit program has an unsupported StructSize.");
+    if ((program.StepCount && !program.Steps) ||
+        (program.PortCount && !program.Ports) ||
+        (program.ValueCount && !program.Values) ||
+        (program.PatternCount && !program.Patterns) ||
+        (program.BlockCount && !program.Blocks) ||
+        (program.HookCount && !program.Hooks) ||
+        (program.OrderCount && !program.Orders) ||
+        (program.ObjectCount && !program.Objects) ||
+        (program.OperationCount && !program.Operations))
+        return InvalidValue("A Behavior edit program pool is missing.");
+    m_Program = &program;
     EditHandle graph;
     graph.Scope = BML_BEHAVIOR_EDIT_GRAPH;
     graph.NodeValue = edit.Graph();
@@ -163,8 +196,8 @@ Status ProgramDecoder::Build(const BML_BehaviorEditStep *steps,
     m_Graphs.emplace(BML_BEHAVIOR_EDIT_GRAPH, &edit);
     m_Handles.emplace(HandleKey{BML_BEHAVIOR_EDIT_GRAPH,
                                 BML_BEHAVIOR_EDIT_GRAPH}, graph);
-    for (std::uint32_t index = 0; index < count; ++index) {
-        const Status status = Step(steps[index], context, edit);
+    for (std::uint32_t index = 0; index < program.StepCount; ++index) {
+        const Status status = Step(program.Steps[index], context, edit);
         if (!status)
             return status;
     }
@@ -197,40 +230,31 @@ Installations::SymbolMap ProgramDecoder::Symbols() const {
     return symbols;
 }
 
-Status ReadNodePattern(const BML_BehaviorEditStep &step,
+Status ReadNodePattern(const BML_BehaviorNodePattern &from,
                        NodePattern &out, bool required) {
     out = {};
-    const CKGUID prototype = Guid(step.Prototype.Prototype);
-    if ((prototype.IsValid() || step.Prototype.Generation != 0) &&
-        step.Prototype.StructSize < sizeof(step.Prototype)) {
-        return InvalidValue(
-            "A Node Pattern has an unsupported Prototype reference.");
-    }
-    if (step.Prototype.Generation != 0) {
-        return InvalidValue(
-            "A Node Pattern matches a Prototype GUID, not a provider generation.");
-    }
-
-    switch (step.Selector.Kind) {
+    if (from.StructSize < sizeof(from))
+        return InvalidValue("A Node Pattern has an unsupported StructSize.");
+    const BML_BehaviorSelector &selector = from.Selector;
+    switch (selector.Kind) {
     case BML_BEHAVIOR_SELECTOR_INDEX:
-        if (step.Selector.StructSize < sizeof(step.Selector) ||
-            step.Selector.Index < 0)
+        if (selector.StructSize < sizeof(selector) || selector.Index < 0)
             return InvalidValue("A Node Pattern index is invalid.");
         out.Selector = NodePattern::SelectorKind::Index;
-        out.Index = step.Selector.Index;
+        out.Index = selector.Index;
         break;
     case BML_BEHAVIOR_SELECTOR_NAME:
     case BML_BEHAVIOR_SELECTOR_UNIQUE_NAME:
-        if (step.Selector.StructSize < sizeof(step.Selector) ||
-            !ReadString(step.Selector.Name, out.Name) || out.Name.empty() ||
-            step.Selector.Occurrence < 0)
+        if (selector.StructSize < sizeof(selector) ||
+            !ReadString(selector.Name, out.Name) || out.Name.empty() ||
+            selector.Occurrence < 0)
             return InvalidValue("A Node Pattern name is invalid.");
         out.Selector = NodePattern::SelectorKind::Name;
-        out.Occurrence = step.Selector.Occurrence;
-        out.Unique = step.Selector.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME;
+        out.Occurrence = selector.Occurrence;
+        out.Unique = selector.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME;
         break;
     case BML_BEHAVIOR_SELECTOR_ONLY:
-        if (step.Selector.StructSize < sizeof(step.Selector))
+        if (selector.StructSize < sizeof(selector))
             return InvalidValue("A Node Pattern selector is invalid.");
         out.Selector = NodePattern::SelectorKind::Only;
         break;
@@ -239,7 +263,7 @@ Status ReadNodePattern(const BML_BehaviorEditStep &step,
     }
 
     std::string expectedName;
-    if (!ReadString(step.Name, expectedName))
+    if (!ReadString(from.Name, expectedName))
         return InvalidValue("A Node Pattern expected name is invalid.");
     if (!expectedName.empty()) {
         if (out.Selector == NodePattern::SelectorKind::Name &&
@@ -250,25 +274,22 @@ Status ReadNodePattern(const BML_BehaviorEditStep &step,
         out.Name = std::move(expectedName);
     }
 
-    out.Prototype = prototype;
-    if (step.ExpectedKind) {
-        switch (step.ExpectedKind) {
-        case BML_BEHAVIOR_KIND_FUNCTION:
-            out.ExpectedKind = BehaviorKind::Function;
-            break;
-        case BML_BEHAVIOR_KIND_CALLBACK:
-            out.ExpectedKind = BehaviorKind::Callback;
-            break;
-        case BML_BEHAVIOR_KIND_GRAPH:
-            out.ExpectedKind = BehaviorKind::Graph;
-            break;
-        default:
-            return InvalidValue("A Node Pattern Behavior kind is unknown.");
-        }
+    out.Prototype = Guid(from.Prototype);
+    switch (from.Kind) {
+    case 0: break;
+    case BML_BEHAVIOR_KIND_FUNCTION:
+        out.ExpectedKind = BehaviorKind::Function;
+        break;
+    case BML_BEHAVIOR_KIND_CALLBACK:
+        out.ExpectedKind = BehaviorKind::Callback;
+        break;
+    case BML_BEHAVIOR_KIND_GRAPH:
+        out.ExpectedKind = BehaviorKind::Graph;
+        break;
+    default:
+        return InvalidValue("A Node Pattern Behavior kind is unknown.");
     }
-    if (step.ReservedShape != 0)
-        return InvalidValue("A Node Pattern has reserved shape data.");
-    out.PortShape = step.PortShape;
+    out.PortShape = from.Shape;
     if (required && !out)
         return InvalidValue("A Node Pattern has no observable condition.");
     return {};
@@ -310,7 +331,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
     case BML_BEHAVIOR_EDIT_REQUIRE_NODE:
     case BML_BEHAVIOR_EDIT_EACH_NODE: {
         NodePattern query;
-        if (status = ReadNodePattern(step, query, true); !status)
+        if (status = PatternAt(step.Operand, true, query); !status)
             return status;
         defined.Kind = EditHandleKind::Node;
         defined.NodeValue = step.Kind == BML_BEHAVIOR_EDIT_EACH_NODE
@@ -319,53 +340,53 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_REQUIRE_LINK: {
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
         std::optional<int> delay;
         if (step.Flags & BML_BEHAVIOR_EDIT_HAS_DELAY)
-            delay = step.Delay;
+            delay = step.Number;
         defined.Kind = EditHandleKind::Link;
         defined.LinkValue = edit.RequireOne(source, sink, delay);
         break;
     }
-    case BML_BEHAVIOR_EDIT_NEXT_NODE: {
-        if (status = ReadPort(step.Source, source); !status)
-            return status;
-        NodePattern expected;
-        if (status = ReadNodePattern(step, expected, false); !status)
-            return status;
-        defined.Kind = EditHandleKind::Node;
-        defined.NodeValue = expected
-            ? edit.Next(source, std::move(expected)) : edit.Next(source);
-        break;
-    }
+    case BML_BEHAVIOR_EDIT_NEXT_NODE:
     case BML_BEHAVIOR_EDIT_PREVIOUS_NODE: {
-        if (status = ReadPort(step.Sink, sink); !status)
+        const bool next = step.Kind == BML_BEHAVIOR_EDIT_NEXT_NODE;
+        Port &end = next ? source : sink;
+        if (status = PortAt(next ? step.Source : step.Sink, end); !status)
             return status;
         NodePattern expected;
-        if (status = ReadNodePattern(step, expected, false); !status)
-            return status;
+        if (step.Operand) {
+            if (status = PatternAt(step.Operand, false, expected); !status)
+                return status;
+        }
         defined.Kind = EditHandleKind::Node;
-        defined.NodeValue = expected
-            ? edit.Previous(sink, std::move(expected)) : edit.Previous(sink);
+        if (next) {
+            defined.NodeValue = expected
+                ? edit.Next(source, std::move(expected)) : edit.Next(source);
+        } else {
+            defined.NodeValue = expected
+                ? edit.Previous(sink, std::move(expected))
+                : edit.Previous(sink);
+        }
         break;
     }
     case BML_BEHAVIOR_EDIT_LEAVING_LINK:
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
         defined.Kind = EditHandleKind::Link;
         defined.LinkValue = edit.Leaving(source);
         break;
     case BML_BEHAVIOR_EDIT_ENTERING_LINK:
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
         defined.Kind = EditHandleKind::Link;
         defined.LinkValue = edit.Entering(sink);
         break;
     case BML_BEHAVIOR_EDIT_LINK_TO_NODE: {
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
         const EditHandle *target = nullptr;
         if (status = Use(step.Graph, step.Target, EditHandleKind::Node,
@@ -376,45 +397,36 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_FOLLOW:
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
         defined.Kind = EditHandleKind::Path;
         defined.PathValue = edit.Follow(source);
         break;
     case BML_BEHAVIOR_EDIT_USE_NODE: {
-        if (!step.Object.Domain) {
-            return InvalidValue(
-                "A used Behavior node needs an object reference.");
-        }
+        BML::Behavior::Internal::ObjectRef object;
+        if (status = ObjectAt(step.Operand,
+                              "A used Behavior node needs an object reference.",
+                              object); !status)
+            return status;
         defined.Kind = EditHandleKind::Node;
-        defined.NodeValue = edit.UseNode(
-            BML::Behavior::Internal::ObjectRef{step.Object.Domain, step.Object.Slot,
-                                     step.Object.Generation});
+        defined.NodeValue = edit.UseNode(object);
         break;
     }
     case BML_BEHAVIOR_EDIT_USE_LINK: {
-        if (!step.Object.Domain) {
-            return InvalidValue(
-                "A used Behavior link needs an object reference.");
-        }
+        BML::Behavior::Internal::ObjectRef object;
+        if (status = ObjectAt(step.Operand,
+                              "A used Behavior link needs an object reference.",
+                              object); !status)
+            return status;
         defined.Kind = EditHandleKind::Link;
-        defined.LinkValue = edit.UseLink(
-            BML::Behavior::Internal::ObjectRef{step.Object.Domain, step.Object.Slot,
-                                     step.Object.Generation});
+        defined.LinkValue = edit.UseLink(object);
         break;
     }
     case BML_BEHAVIOR_EDIT_ADD_BLOCK: {
-        if (!step.Block)
-            return InvalidValue("An added Behavior Block is missing.");
         BlockSpec block;
-        if (!ReadBlock(*step.Block, context, block, status))
+        if (status = BlockAt(step.Operand, context, "An added", block);
+            !status)
             return status;
-        if (!block.Prototype().IsValid())
-            return InvalidValue("An added Behavior Block needs a Prototype.");
-        if (!block.PrototypeGeneration()) {
-            return InvalidValue(
-                "An added Behavior Block needs a fixed Prototype provider generation.");
-        }
         defined.Kind = EditHandleKind::Node;
         defined.NodeValue = edit.Add(std::move(block));
         break;
@@ -424,13 +436,10 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         if (!ReadString(step.Name, name) || name.empty())
             return InvalidValue("An added graph-backed Node needs a name.");
         defined.Kind = EditHandleKind::Node;
-        defined.NodeValue = edit.AddGraph(std::move(name), step.Priority);
+        defined.NodeValue = edit.AddGraph(std::move(name), step.Number);
         break;
     }
     case BML_BEHAVIOR_EDIT_ENTER_GRAPH: {
-        if (!step.Result || step.Result == BML_BEHAVIOR_EDIT_GRAPH ||
-            m_Graphs.find(step.Result) != m_Graphs.end())
-            return InvalidValue("A nested graph scope handle is invalid.");
         const EditHandle *target = nullptr;
         if (status = Use(step.Graph, step.Target, EditHandleKind::Node,
                          target); !status)
@@ -448,17 +457,10 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         const EditHandle *target = nullptr;
         if (status = Use(step.Graph, step.Target, EditHandleKind::Node, target); !status)
             return status;
-        if (!step.Block)
-            return InvalidValue("A replacement Behavior Block is missing.");
         BlockSpec block;
-        if (!ReadBlock(*step.Block, context, block, status))
+        if (status = BlockAt(step.Operand, context, "A replacement", block);
+            !status)
             return status;
-        if (!block.Prototype().IsValid())
-            return InvalidValue("A replacement Behavior Block needs a Prototype.");
-        if (!block.PrototypeGeneration()) {
-            return InvalidValue(
-                "A replacement Behavior Block needs a fixed Prototype provider generation.");
-        }
         defined.Kind = EditHandleKind::Node;
         defined.NodeValue = edit.Replace(target->NodeValue, std::move(block));
         break;
@@ -476,39 +478,34 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
                          target); !status)
             return status;
         SlotKind kind;
-        switch (step.SlotKind) {
-        case BML_BEHAVIOR_SLOT_IN: kind = SlotKind::Input; break;
-        case BML_BEHAVIOR_SLOT_OUT: kind = SlotKind::Output; break;
-        case BML_BEHAVIOR_SLOT_PIN: kind = SlotKind::InputParameter; break;
-        case BML_BEHAVIOR_SLOT_POUT: kind = SlotKind::OutputParameter; break;
-        case BML_BEHAVIOR_SLOT_SETTING: kind = SlotKind::Setting; break;
-        case BML_BEHAVIOR_SLOT_LOCAL: kind = SlotKind::Local; break;
-        case BML_BEHAVIOR_SLOT_TARGET: kind = SlotKind::Target; break;
-        default:
+        if (!ReadSlotKind(step.SlotKind, kind)) {
             return InvalidValue(
                 "A Node Pattern port count names an unknown port kind.");
         }
-        if (step.Delay < 0)
+        if (step.Number < 0)
             return InvalidValue("A Node Pattern port count cannot be negative.");
-        return edit.Count(target->NodeValue, kind, step.Delay);
+        return edit.Count(target->NodeValue, kind, step.Number);
     }
     case BML_BEHAVIOR_EDIT_PATTERN_PORT_VALUE: {
         const EditHandle *target = nullptr;
         if (status = Use(step.Graph, step.Target, EditHandleKind::Node,
                          target); !status)
             return status;
-        if (step.Sink.Graph != step.Graph ||
-            step.Sink.Handle != step.Target || step.Sink.Kind == 0) {
+        const BML_BehaviorPortRef *reference = nullptr;
+        if (status = PortRefAt(step.Sink, reference); !status)
+            return status;
+        if (reference->Graph != step.Graph ||
+            reference->Handle != step.Target || reference->Kind == 0) {
             return InvalidValue(
                 "A Node Pattern value must name a port of its target Node.");
         }
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
         if (sink.Owner != target->NodeValue.Value)
             return InvalidValue(
                 "A Node Pattern value resolved to a different Node.");
         Parameter::Binding binding;
-        if (!ReadValue(step.Value, context, binding, status))
+        if (status = ValueAt(step.Operand, context, binding); !status)
             return status;
         if (binding.Kind() != Parameter::BindingKind::Value) {
             return {Error::WorldBoundValue, CKERR_INVALIDPARAMETER,
@@ -518,14 +515,13 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         return edit.Observe(std::move(sink), binding.Literal());
     }
     case BML_BEHAVIOR_EDIT_ADD_OPERATION: {
-        if (step.Operation.StructSize < sizeof(step.Operation)) {
-            return InvalidValue(
-                "A Behavior Parameter Operation has an unsupported StructSize.");
-        }
-        const CKGUID operation = Guid(step.Operation.Operation);
-        const CKGUID result = Guid(step.Operation.Result);
-        const CKGUID input1 = Guid(step.Operation.Input1);
-        const CKGUID input2 = Guid(step.Operation.Input2);
+        const BML_BehaviorOperationSpec *spec = nullptr;
+        if (status = OperationAt(step.Operand, spec); !status)
+            return status;
+        const CKGUID operation = Guid(spec->Operation);
+        const CKGUID result = Guid(spec->Result);
+        const CKGUID input1 = Guid(spec->Input1);
+        const CKGUID input2 = Guid(spec->Input2);
         if (!operation.IsValid() || !result.IsValid() ||
             result == CKPGUID_NONE) {
             return InvalidValue(
@@ -583,38 +579,33 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_FLOW:
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
-        edit.Flow(source, sink, step.Delay,
+        edit.Flow(source, sink, step.Number,
                   (step.Flags & BML_BEHAVIOR_EDIT_CONFIRM_CYCLE)
                       ? Cycle::Confirmed : Cycle::Reject);
         break;
-    case BML_BEHAVIOR_EDIT_BIND_VALUE: {
-        if (status = ReadPort(step.Sink, sink); !status)
-            return status;
-        Parameter::Binding binding;
-        if (!ReadValue(step.Value, context, binding, status))
-            return status;
-        edit.Bind(sink, std::move(binding));
-        break;
-    }
+    case BML_BEHAVIOR_EDIT_BIND_VALUE:
     case BML_BEHAVIOR_EDIT_SET_VALUE: {
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
         Parameter::Binding binding;
-        if (!ReadValue(step.Value, context, binding, status))
+        if (status = ValueAt(step.Operand, context, binding); !status)
             return status;
-        edit.Set(sink, std::move(binding));
+        if (step.Kind == BML_BEHAVIOR_EDIT_BIND_VALUE)
+            edit.Bind(sink, std::move(binding));
+        else
+            edit.Set(sink, std::move(binding));
         break;
     }
     case BML_BEHAVIOR_EDIT_BIND_PORT:
     case BML_BEHAVIOR_EDIT_SHARE:
     case BML_BEHAVIOR_EDIT_PUSH:
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
         if (step.Kind == BML_BEHAVIOR_EDIT_BIND_PORT)
             edit.Bind(sink, source);
@@ -624,21 +615,21 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
             edit.Push(source, sink);
         break;
     case BML_BEHAVIOR_EDIT_TAP: {
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
         HookBlock::Hook hook;
-        if (status = ReadHook(step.Hook, hook); !status)
+        if (status = HookAt(step.Operand, hook); !status)
             return status;
         edit.Tap(source, std::move(hook));
         break;
     }
     case BML_BEHAVIOR_EDIT_FLOW_HOOK: {
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
         HookBlock::Hook hook;
-        if (status = ReadHook(step.Hook, hook); !status)
+        if (status = HookAt(step.Operand, hook); !status)
             return status;
         edit.Flow(source, std::move(hook), sink);
         break;
@@ -648,7 +639,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         if (status = Use(step.Graph, step.Target, EditHandleKind::Path, path); !status)
             return status;
         HookBlock::Hook hook;
-        if (status = ReadHook(step.Hook, hook); !status)
+        if (status = HookAt(step.Operand, hook); !status)
             return status;
         edit.After(path->PathValue, std::move(hook));
         break;
@@ -658,7 +649,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         if (status = Use(step.Graph, step.Target, EditHandleKind::Link, link); !status)
             return status;
         HookBlock::Hook hook;
-        if (status = ReadHook(step.Hook, hook); !status)
+        if (status = HookAt(step.Operand, hook); !status)
             return status;
         edit.Before(link->LinkValue, std::move(hook));
         break;
@@ -668,7 +659,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         if (status = Use(step.Graph, step.Target, EditHandleKind::Link, link); !status)
             return status;
         std::vector<Order> ordering;
-        if (status = ReadOrdering(step, ordering); !status)
+        if (status = OrdersAt(step, ordering); !status)
             return status;
         if (step.Node) {
             const EditHandle *block = nullptr;
@@ -677,9 +668,9 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
             edit.Splice(link->LinkValue, block->NodeValue, std::move(ordering));
             break;
         }
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
         edit.Splice(link->LinkValue, sink, source, std::move(ordering));
         break;
@@ -689,9 +680,9 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         if (status = Use(step.Graph, step.Target, EditHandleKind::Link, link); !status)
             return status;
         std::vector<Order> ordering;
-        if (status = ReadOrdering(step, ordering); !status)
+        if (status = OrdersAt(step, ordering); !status)
             return status;
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
         edit.Redirect(link->LinkValue, sink, std::move(ordering));
         break;
@@ -706,7 +697,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
                          destination); !status)
             return status;
         std::vector<Order> ordering;
-        if (status = ReadOrdering(step, ordering); !status)
+        if (status = OrdersAt(step, ordering); !status)
             return status;
         edit.Redirect(link->LinkValue, destination->LinkValue,
                       std::move(ordering));
@@ -717,9 +708,9 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         if (status = Use(step.Graph, step.Target, EditHandleKind::Link,
                          link); !status)
             return status;
-        if (status = ReadPort(step.Source, source); !status)
+        if (status = PortAt(step.Source, source); !status)
             return status;
-        if (status = ReadPort(step.Sink, sink); !status)
+        if (status = PortAt(step.Sink, sink); !status)
             return status;
         edit.Reconnect(link->LinkValue, source, sink,
                        (step.Flags & BML_BEHAVIOR_EDIT_CONFIRM_CYCLE)
@@ -749,24 +740,36 @@ Status ProgramDecoder::Use(std::uint32_t scope, std::uint32_t id,
     return {};
 }
 
-Status ProgramDecoder::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
-    if (from.StructSize < sizeof(from))
+Status ProgramDecoder::PortRefAt(std::uint32_t index,
+                                 const BML_BehaviorPortRef *&out) const {
+    out = Entry(m_Program->Ports, m_Program->PortCount, index);
+    if (!out)
+        return InvalidValue("A Behavior edit step names no port in its program.");
+    if (out->StructSize < sizeof(*out))
         return InvalidValue("A Behavior port has an unsupported StructSize.");
+    return {};
+}
+
+Status ProgramDecoder::PortAt(std::uint32_t index, Port &out) const {
+    const BML_BehaviorPortRef *from = nullptr;
+    Status status = PortRefAt(index, from);
+    if (!status)
+        return status;
     const EditHandle *handle = nullptr;
-    if (from.Kind == 0) {
-        const Status status = Use(from.Graph, from.Handle,
-                                  EditHandleKind::Port, handle);
-        if (!status)
+    if (from->Kind == 0) {
+        if (status = Use(from->Graph, from->Handle, EditHandleKind::Port,
+                         handle); !status)
             return status;
         out = handle->PortValue;
         return {};
     }
     SlotKind kind;
-    if (!ReadSlotKind(from.Kind, kind))
+    if (!ReadSlotKind(from->Kind, kind))
         return InvalidValue("A Behavior port names an unknown slot kind.");
-    Status status = Use(from.Graph, from.Handle, EditHandleKind::Node, handle);
+    status = Use(from->Graph, from->Handle, EditHandleKind::Node, handle);
     if (!status) {
-        status = Use(from.Graph, from.Handle, EditHandleKind::Operation, handle);
+        status = Use(from->Graph, from->Handle, EditHandleKind::Operation,
+                     handle);
         if (!status)
             return InvalidValue(
                 "A Behavior port owner is neither a Node nor a Parameter Operation.");
@@ -777,7 +780,7 @@ Status ProgramDecoder::ReadPort(const BML_BehaviorPortRef &from, Port &out) cons
         }
     }
     Slot slot;
-    if (!ReadSelector(from.Slot, kind, Guid(from.Type), slot, status))
+    if (!ReadSelector(from->Slot, kind, Guid(from->Type), slot, status))
         return status;
     out = Port{handle->Kind == EditHandleKind::Node
                    ? handle->NodeValue.Value
@@ -786,8 +789,52 @@ Status ProgramDecoder::ReadPort(const BML_BehaviorPortRef &from, Port &out) cons
     return {};
 }
 
-Status ProgramDecoder::ReadHook(const BML_BehaviorHookFunction *from,
-                                HookBlock::Hook &out) const {
+Status ProgramDecoder::PatternAt(std::uint32_t index, bool required,
+                                 NodePattern &out) const {
+    const BML_BehaviorNodePattern *from =
+        Entry(m_Program->Patterns, m_Program->PatternCount, index);
+    if (!from) {
+        return InvalidValue(
+            "A Behavior edit step names no Node Pattern in its program.");
+    }
+    return ReadNodePattern(*from, out, required);
+}
+
+Status ProgramDecoder::ValueAt(std::uint32_t index, ModContext &context,
+                               Parameter::Binding &out) const {
+    const BML_BehaviorValue *from =
+        Entry(m_Program->Values, m_Program->ValueCount, index);
+    if (!from)
+        return InvalidValue("A Behavior edit step names no Value in its program.");
+    Status status;
+    ReadValue(*from, context, out, status);
+    return status;
+}
+
+Status ProgramDecoder::BlockAt(std::uint32_t index, ModContext &context,
+                               const char *role, BlockSpec &out) const {
+    const BML_BehaviorBlock *from =
+        Entry(m_Program->Blocks, m_Program->BlockCount, index);
+    if (!from)
+        return InvalidValue(std::string(role) + " Behavior Block is missing.");
+    Status status;
+    if (!ReadBlock(*from, context, out, status))
+        return status;
+    if (!out.Prototype().IsValid())
+        return InvalidValue(std::string(role) +
+                            " Behavior Block needs a Prototype.");
+    if (!out.PrototypeGeneration()) {
+        return InvalidValue(
+            std::string(role) +
+            " Behavior Block needs a fixed Prototype provider generation.");
+    }
+    return {};
+}
+
+Status ProgramDecoder::HookAt(std::uint32_t index,
+                              HookBlock::Hook &out) const {
+    const BML_BehaviorHookFunction *from =
+        Entry(m_Program->Hooks, m_Program->HookCount, index);
     if (!from || from->StructSize < sizeof(*from) || !from->Invoke)
         return InvalidValue("A Behavior Hook needs a callback.");
     if ((from->Retain == nullptr) != (from->Release == nullptr)) {
@@ -828,12 +875,44 @@ Status ProgramDecoder::ReadHook(const BML_BehaviorHookFunction *from,
     return {};
 }
 
-Status ProgramDecoder::ReadOrdering(const BML_BehaviorEditStep &step,
-                                    std::vector<Order> &out) const {
-    if (step.OrderCount && !step.Ordering)
-        return InvalidValue("A Behavior Patch ordering array is missing.");
-    for (std::uint32_t index = 0; index < step.OrderCount; ++index) {
-        const BML_BehaviorEditOrder &order = step.Ordering[index];
+Status ProgramDecoder::ObjectAt(std::uint32_t index, const char *message,
+                                BML::Behavior::Internal::ObjectRef &out) const {
+    const BML_ObjectRef *from =
+        Entry(m_Program->Objects, m_Program->ObjectCount, index);
+    if (!from || !from->Domain)
+        return InvalidValue(message);
+    out = {from->Domain, from->Slot, from->Generation};
+    return {};
+}
+
+Status ProgramDecoder::OperationAt(
+    std::uint32_t index, const BML_BehaviorOperationSpec *&out) const {
+    out = Entry(m_Program->Operations, m_Program->OperationCount, index);
+    if (!out) {
+        return InvalidValue(
+            "A Behavior edit step names no Parameter Operation in its program.");
+    }
+    if (out->StructSize < sizeof(*out)) {
+        return InvalidValue(
+            "A Behavior Parameter Operation has an unsupported StructSize.");
+    }
+    return {};
+}
+
+Status ProgramDecoder::OrdersAt(const BML_BehaviorEditStep &step,
+                                std::vector<Order> &out) const {
+    // Operand names the first entry and Number the entry count.
+    const std::uint32_t first = step.Operand;
+    const std::uint32_t available = m_Program->OrderCount;
+    if (step.Number < 0 || (step.Number == 0) != (first == 0) ||
+        (first && (first - 1 > available ||
+                   static_cast<std::uint32_t>(step.Number) >
+                       available - (first - 1)))) {
+        return InvalidValue(
+            "A Behavior Patch ordering range lies outside its program.");
+    }
+    for (std::int32_t offset = 0; offset < step.Number; ++offset) {
+        const BML_BehaviorEditOrder &order = m_Program->Orders[first - 1 + offset];
         if (order.StructSize < sizeof(order)) {
             return InvalidValue(
                 "A Behavior Patch ordering entry has an unsupported StructSize.");
@@ -861,12 +940,10 @@ Status ProgramDecoder::ReadOrdering(const BML_BehaviorEditStep &step,
 } // namespace
 
 Status DecodeProgram(
-    const BML_BehaviorEditStep *steps, std::uint32_t count,
-    ModContext &context, Program &out,
-    Installations::SymbolMap *symbols,
-    std::uint64_t binding) {
+    const BML_BehaviorEditProgram &program, ModContext &context, Program &out,
+    Installations::SymbolMap *symbols, std::uint64_t binding) {
     ProgramDecoder decoder;
-    const Status status = decoder.Build(steps, count, context, out);
+    const Status status = decoder.Build(program, context, out);
     if (!status || !symbols)
         return status;
     for (const auto &[reference, symbol] : decoder.Symbols()) {
@@ -889,9 +966,7 @@ Status ReadScriptEdits(
         std::set<std::uint64_t> bindings;
         for (std::uint32_t index = 0; index < count; ++index) {
             const BML_BehaviorScriptEdit &source = edits[index];
-            if (!HasStructSize(&source) || !source.Binding ||
-                source.Reserved != 0 ||
-                (source.StepCount && !source.Steps))
+            if (!HasStructSize(&source) || !source.Binding)
                 return InvalidValue("A Script Edit descriptor is malformed.");
             if (!bindings.insert(source.Binding).second) {
                 return InvalidValue(
@@ -910,8 +985,7 @@ Status ReadScriptEdits(
             Program edit;
             Installations::SymbolMap symbols;
             const Status status = DecodeProgram(
-                source.Steps, source.StepCount, context, edit, &symbols,
-                source.Binding);
+                source.Program, context, edit, &symbols, source.Binding);
             if (!status)
                 return status;
             out.push_back({ScriptSelection{std::move(script), targets},
@@ -942,9 +1016,7 @@ Status ReadGraphEdits(
         for (std::uint32_t index = 0; index < count; ++index) {
             const BML_BehaviorGraphEdit &source = edits[index];
             if (!HasStructSize(&source) || source.Reserved != 0 ||
-                !source.Binding ||
-                !source.Graph.Domain ||
-                (source.StepCount && !source.Steps))
+                !source.Binding || !source.Graph.Domain)
                 return InvalidValue("A Graph Edit descriptor is malformed.");
             if (!bindings.insert(source.Binding).second) {
                 return InvalidValue(
@@ -953,8 +1025,7 @@ Status ReadGraphEdits(
             Program edit;
             Installations::SymbolMap symbols;
             const Status status = DecodeProgram(
-                source.Steps, source.StepCount, context, edit, &symbols,
-                source.Binding);
+                source.Program, context, edit, &symbols, source.Binding);
             if (!status)
                 return status;
             Installations::Target target;

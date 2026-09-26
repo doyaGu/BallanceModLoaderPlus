@@ -8,7 +8,7 @@
 
 // FNV-1a over the in-memory bytes of each value. Graph fingerprints, overlay
 // identities, Layout identities, and the Pattern port shape all hash through
-// here. The port shape must stay bit-identical to Detail's Edit::Shape.
+// here.
 namespace BML::Behavior::Internal::Fnv {
 
 inline constexpr std::uint64_t Offset = 1469598103934665603ull;

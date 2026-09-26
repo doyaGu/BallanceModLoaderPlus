@@ -60,6 +60,10 @@ struct NodePattern {
                            const NodePattern &) = default;
 };
 
+// The structural identity of a Node's ports. Snapshots carry it to authors,
+// and Require(snapshot Node) hands it back as NodePattern::PortShape.
+[[nodiscard]] std::uint64_t PortShape(const GraphNode &node);
+
 // Reads only the values a NodePattern asks for. Implementations must use
 // non-forcing Virtools reads: pattern resolution is observation, not graph
 // execution.

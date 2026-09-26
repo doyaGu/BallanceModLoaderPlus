@@ -14,6 +14,7 @@
 namespace BML::Api::Behavior {
 namespace {
 
+using BML::Behavior::Internal::Phase;
 using BML::Behavior::Internal::PlanCallbackState;
 
 enum class Thread { Game, Any };
@@ -328,6 +329,52 @@ int BML_BEHAVIOR_CALL ReadDeclaredLayout(
             return ResultCode(result);
         return WriteLayoutResult(source, layout, payload, payloadCapacity,
                                  outPayloadSize);
+    });
+}
+
+int BML_BEHAVIOR_CALL ValidateBlock(BML_BehaviorSession session,
+                                    const BML_BehaviorBlock *block,
+                                    BML_BehaviorPrototypeRef *outPrototype,
+                                    BML_BehaviorStatus *status) {
+    if (!PrepareStatus(status) || !session || !block ||
+        !HasStructSize(outPrototype))
+        return BML_ERROR_INVALID_PARAMETER;
+    return Enter(status, [&](ModContext &context, Status &result) {
+        // The identity checks come before ReadBlock resolves any object, so
+        // a Block without a Prototype reports that rather than its Target.
+        if (HasStructSize(block) && !Guid(block->Prototype).IsValid()) {
+            result = {Error::PrototypeNotFound, CKERR_INVALIDPARAMETER,
+                      CKBR_PARAMETERERROR, "A Block requires a Prototype GUID."};
+            result.Details.Stage = Phase::PrototypeResolution;
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        if (HasStructSize(block) &&
+            block->Target.StructSize >= sizeof(block->Target) &&
+            block->Target.Kind != BML_BEHAVIOR_TARGET_OWNER &&
+            !Guid(block->Target.Type).IsValid()) {
+            result = {Error::TargetInvalid, CKERR_INVALIDPARAMETER,
+                      CKBR_PARAMETERERROR,
+                      "An explicit Target requires a parameter type."};
+            result.Details.Stage = Phase::TargetBinding;
+            result.Details.Prototype = Guid(block->Prototype);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        BlockSpec spec;
+        if (!ReadBlock(*block, context, spec, result))
+            return BML_ERROR_INVALID_PARAMETER;
+        Layout declared;
+        result = context.BehaviorSessions().ReadDeclaredLayout(
+            SessionId(session),
+            PrototypeRef{spec.Prototype(), spec.PrototypeGeneration()},
+            declared);
+        if (!result)
+            return ResultCode(result);
+        result = CheckDeclared(declared, spec, context.GetParameterManager());
+        if (!result)
+            return ResultCode(result);
+        outPrototype->Prototype = Guid(declared.Prototype);
+        outPrototype->Generation = declared.ProviderGeneration;
+        return BML_OK;
     });
 }
 
@@ -1087,8 +1134,7 @@ int BML_BEHAVIOR_CALL CreateScript(
     BML_BehaviorScript *outScript, BML_BehaviorScriptInfo *info,
     BML_BehaviorStatus *status) {
     if (!PrepareStatus(status) || !session || !HasStructSize(spec) ||
-        !outScript || (info && !HasStructSize(info)) ||
-        (spec->StepCount && !spec->Steps) || !spec->Owner.Domain)
+        !outScript || (info && !HasStructSize(info)) || !spec->Owner.Domain)
         return BML_ERROR_INVALID_PARAMETER;
     *outScript = nullptr;
     return Enter(status, [&](ModContext &context, Status &result) {
@@ -1099,7 +1145,7 @@ int BML_BEHAVIOR_CALL CreateScript(
         if (!ReadSessionOwner(session, context, owner, result))
             return ResultCode(result);
         Program body;
-        result = DecodeProgram(spec->Steps, spec->StepCount, context, body);
+        result = DecodeProgram(spec->Program, context, body);
         if (!result)
             return ResultCode(result);
         CKBeObject *nativeOwner = ReadOwner(spec->Owner, context, result);
@@ -1224,6 +1270,7 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &WritePatchValue,
     &ReadPlanInstanceValue,
     &WritePlanInstanceValue,
+    &ValidateBlock,
 };
 
 } // namespace

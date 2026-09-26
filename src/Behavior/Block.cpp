@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "Behavior/Core/Status.h"
 #include "Behavior/Core/Value.h"
 
 namespace BML::Behavior::Internal {
@@ -132,6 +133,160 @@ bool BlockSpec::WorldBound() const noexcept {
             return true;
     }
     return false;
+}
+
+namespace {
+
+std::string SlotLabel(const Slot &slot) {
+    if (slot.RequireOnly)
+        return "<only>";
+    if (!slot.UsesName())
+        return "#" + std::to_string(slot.Index);
+    return "'" + slot.Name + "'";
+}
+
+Status Rejected(Error error, Phase phase, const Layout &layout, CKGUID type,
+                std::string message) {
+    Status status{error, CKERR_INVALIDPARAMETER, CKBR_PARAMETERERROR,
+                  std::move(message)};
+    status.Details.Stage = phase;
+    status.Details.Prototype = layout.Prototype;
+    status.Details.ActualType = type;
+    return status;
+}
+
+// Only the first stage is checked: a later stage may address Settings that
+// the SETTINGSEDITED callback of an earlier one creates.
+Status CheckSetting(const Layout &layout, const BlockSpec::Binding &binding,
+                    CKParameterManager *parameters) {
+    const Slot &selector = binding.Target;
+    const SlotInfo *found = nullptr;
+    int matches = 0;
+    for (const SlotInfo &slot : layout.Slots) {
+        if (slot.Kind != SlotKind::Setting)
+            continue;
+        bool match = true;
+        if (selector.UsesName()) {
+            match = slot.Name == selector.Name;
+            if (match && !selector.RequireUnique &&
+                slot.Occurrence != selector.Occurrence)
+                continue;
+        } else if (!selector.RequireOnly) {
+            match = slot.Index == selector.Index;
+        }
+        if (!match)
+            continue;
+        found = &slot;
+        ++matches;
+    }
+    if (!matches) {
+        return Rejected(Error::SlotNotFound, Phase::Settings, layout, CKGUID(),
+                        "Setting " + SlotLabel(selector) +
+                            " is absent from the declared Layout.");
+    }
+    if (matches != 1) {
+        return Rejected(Error::AmbiguousSlot, Phase::Settings, layout, CKGUID(),
+                        "Setting " + SlotLabel(selector) +
+                            " is ambiguous in the declared Layout.");
+    }
+    if (found->ValueForm == Parameter::Form::Unsupported) {
+        return Rejected(Error::ParameterTypeUnsupported, Phase::Settings,
+                        layout, found->Type,
+                        "The Setting parameter type has no public value form.");
+    }
+    const Parameter::BindingKind kind = binding.Source.Kind();
+    if (kind != Parameter::BindingKind::Value &&
+        kind != Parameter::BindingKind::Object)
+        return {};
+    if (Parameter::Describe(parameters, binding.Source.Type()).ValueForm !=
+        found->ValueForm) {
+        return Rejected(Error::TypeMismatch, Phase::Settings, layout,
+                        found->Type,
+                        "The Setting value form does not match the declared Layout.");
+    }
+    return {};
+}
+
+Status CheckParameterType(const Layout &layout,
+                          const BlockSpec::ParameterType &parameter) {
+    const Slot &selector = parameter.Target;
+    const bool pin = selector.Kind == SlotKind::InputParameter;
+    const char *family = pin ? "Pin " : "Pout ";
+    const SlotInfo *found = nullptr;
+    int matches = 0;
+    for (const SlotInfo &slot : layout.Slots) {
+        if (slot.Kind != selector.Kind)
+            continue;
+        bool match = true;
+        if (selector.UsesName()) {
+            match = slot.Name == selector.Name &&
+                    (selector.RequireUnique ||
+                     slot.Occurrence == selector.Occurrence);
+        } else if (!selector.RequireOnly) {
+            match = slot.Index == selector.Index;
+        }
+        if (!match)
+            continue;
+        found = &slot;
+        ++matches;
+    }
+    if (!matches) {
+        const CKDWORD created = pin
+            ? (CKBEHAVIOR_VARIABLEPARAMETERINPUTS |
+               CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS)
+            : (CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS |
+               CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS);
+        if ((layout.BehaviorFlags & created) != 0)
+            return {};
+        return Rejected(Error::SlotNotFound, Phase::StaticLayout, layout,
+                        parameter.Type,
+                        family + SlotLabel(selector) +
+                            " is absent from the declared Layout.");
+    }
+    if (matches != 1) {
+        return Rejected(Error::AmbiguousSlot, Phase::StaticLayout, layout,
+                        parameter.Type,
+                        family + SlotLabel(selector) +
+                            " is ambiguous in the declared Layout.");
+    }
+    if (!found->Dynamic) {
+        return Rejected(Error::InterfaceUnsupported, Phase::StaticLayout,
+                        layout, parameter.Type,
+                        family + SlotLabel(selector) +
+                            " belongs to a fixed native interface.");
+    }
+    return {};
+}
+
+} // namespace
+
+Status CheckDeclared(const Layout &layout, const BlockSpec &block,
+                     CKParameterManager *parameters) {
+    if (!block.Settings().empty()) {
+        for (const BlockSpec::Binding &setting : block.Settings().front()) {
+            Status checked = CheckSetting(layout, setting, parameters);
+            if (!checked)
+                return checked;
+        }
+    }
+    if (block.Targeting() != TargetMode::Owner &&
+        (layout.BehaviorFlags & CKBEHAVIOR_TARGETABLE) == 0) {
+        Status status{Error::TargetInvalid, CKERR_INVALIDPARAMETER,
+                      CKBR_PARAMETERERROR,
+                      "The Prototype does not declare an explicit Target."};
+        status.Details.Stage = Phase::TargetBinding;
+        status.Details.Prototype = layout.Prototype;
+        status.Details.ActualType = block.TargetType();
+        return status;
+    }
+    for (const auto *types : {&block.PinTypes(), &block.PoutTypes()}) {
+        for (const BlockSpec::ParameterType &parameter : *types) {
+            Status checked = CheckParameterType(layout, parameter);
+            if (!checked)
+                return checked;
+        }
+    }
+    return {};
 }
 
 } // namespace BML::Behavior::Internal

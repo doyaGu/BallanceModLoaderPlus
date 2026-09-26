@@ -99,6 +99,8 @@ public:
             status = ApplyLogical(graph, out);
             if (!status)
                 return status;
+        } else {
+            MarkRoles(graph, out);
         }
 
         ObjectRef rootObject;
@@ -613,6 +615,29 @@ private:
 
     static GraphLinkShape Shape(const GraphLink &link) {
         return {link.Source, link.Target, link.InitialDelay};
+    }
+
+    // Roles are view data: the fingerprint leaves them out, so marking a
+    // Live view does not change its generation.
+    void MarkRoles(CKBehavior *graph, GraphModel &model) const {
+        const auto found = m_Logical.find(static_cast<std::uint32_t>(
+            graph->GetID()));
+        if (found == m_Logical.end() || found->second.Root.Address != graph)
+            return;
+        const LogicalState &state = found->second;
+        const auto listed = [](const std::vector<NativeRef> &nodes,
+                               std::uint64_t id) {
+            return std::any_of(nodes.begin(), nodes.end(),
+                               [&](const NativeRef &node) {
+                                   return node.Id == id;
+                               });
+        };
+        for (GraphNode &node : model.Nodes) {
+            if (listed(state.Graph.InfrastructureNodes, node.Id))
+                node.Role = NodeRole::Infrastructure;
+            else if (listed(state.RetiredNodes, node.Id))
+                node.Role = NodeRole::Retired;
+        }
     }
 
     Status ApplyLogical(CKBehavior *graph, GraphModel &model) {

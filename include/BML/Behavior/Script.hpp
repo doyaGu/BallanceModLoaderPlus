@@ -30,18 +30,13 @@ struct ScriptInfo {
 
 namespace Detail {
 
-inline bool KnownScriptState(std::uint32_t state) noexcept {
-    return state >= BML_BEHAVIOR_SCRIPT_READY &&
-           state <= BML_BEHAVIOR_SCRIPT_FAILED;
-}
-
 inline bool SameScriptObject(ObjectRef left, ObjectRef right) noexcept {
     return left.Domain == right.Domain && left.Slot == right.Slot &&
            left.Generation == right.Generation;
 }
 
 inline bool ValidScriptInfo(const BML_BehaviorScriptInfo &info) noexcept {
-    return info.StructSize >= sizeof(info) && KnownScriptState(info.State) &&
+    return info.StructSize >= sizeof(info) &&
            info.Active <= 1 && info.RequestedActive <= 1 &&
            ValidObjectRef(info.Root) && info.Root.Domain != 0 &&
            ValidObjectRef(info.Owner) && info.Owner.Domain != 0 &&

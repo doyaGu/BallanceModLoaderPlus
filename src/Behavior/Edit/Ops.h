@@ -86,11 +86,6 @@ enum class BindKind {
     Shared,
 };
 
-enum class NodeRole {
-    Logical,
-    Infrastructure,
-};
-
 struct EditFlow {
     Port Source;
     Port Sink;

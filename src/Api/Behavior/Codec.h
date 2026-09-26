@@ -215,10 +215,10 @@ int WriteFrames(FrameStore &store, BML_BehaviorRunFrame *headers,
 BML::Behavior::Internal::WatchBinding::Function WatchThunk(
     ModContext &context, const BML_BehaviorWatchFunction &function);
 
-// The only decoder from wire edit steps to a Program. Symbols, when asked
-// for, reports every Node and appended Port the author can address, under
-// the caller's binding.
-Status DecodeProgram(const BML_BehaviorEditStep *steps, std::uint32_t count,
+// The only decoder from a wire edit program to a Program. Symbols, when
+// asked for, reports every Node and appended Port the author can address,
+// under the caller's binding.
+Status DecodeProgram(const BML_BehaviorEditProgram &program,
                      ModContext &context, Program &out,
                      Installations::SymbolMap *symbols = nullptr,
                      std::uint64_t binding = 0);

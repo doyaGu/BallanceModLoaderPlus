@@ -111,8 +111,6 @@ inline BML_BehaviorString Text(std::string_view value) noexcept {
     return {value.data(), static_cast<std::uint32_t>(value.size())};
 }
 
-inline bool KnownError(std::uint32_t value) noexcept;
-inline bool KnownPhase(std::uint32_t value) noexcept;
 inline bool ValidStatus(const BML_BehaviorStatus &value) noexcept;
 
 inline int WireCode(int code,
@@ -279,15 +277,6 @@ bool TextAt(const Payload &payload,
     return true;
 }
 
-inline bool KnownSlotKind(std::uint32_t kind) noexcept {
-    return kind >= BML_BEHAVIOR_SLOT_IN && kind <= BML_BEHAVIOR_SLOT_TARGET;
-}
-
-inline bool KnownTruth(std::uint32_t value) noexcept {
-    return value == BML_BEHAVIOR_FALSE || value == BML_BEHAVIOR_TRUE ||
-        value == BML_BEHAVIOR_UNKNOWN;
-}
-
 inline bool KnownFlag(std::uint32_t value) noexcept {
     return value == 0 || value == 1;
 }
@@ -298,43 +287,10 @@ inline bool ValidObjectRef(BML_ObjectRef value) noexcept {
         : value.Slot != 0 && value.Generation != 0;
 }
 
-inline bool KnownError(std::uint32_t value) noexcept {
-    return value <= BML_BEHAVIOR_ERROR_REDIRECT_CONFLICT;
-}
-
-inline bool KnownPhase(std::uint32_t value) noexcept {
-    return value <= BML_BEHAVIOR_PHASE_EDIT;
-}
-
+// Enumerations are read as the Loader wrote them. A value this header does
+// not name comes from a later minor and is passed through, not rejected.
 inline bool ValidStatus(const BML_BehaviorStatus &value) noexcept {
-    return value.StructSize >= sizeof(value) && KnownError(value.Error) &&
-        KnownPhase(value.Phase);
-}
-
-inline bool KnownWatchState(std::uint32_t value) noexcept {
-    return value >= BML_BEHAVIOR_WATCH_ACTIVE &&
-        value <= BML_BEHAVIOR_WATCH_FAILED;
-}
-
-inline bool KnownPlanState(std::uint32_t value) noexcept {
-    return value >= BML_BEHAVIOR_PLAN_RECONCILING &&
-        value <= BML_BEHAVIOR_PLAN_RETIRING;
-}
-
-inline bool KnownPatchState(std::uint32_t value) noexcept {
-    return value >= BML_BEHAVIOR_PATCH_PENDING &&
-        value <= BML_BEHAVIOR_PATCH_FAILED;
-}
-
-inline bool KnownObservationState(std::uint32_t value) noexcept {
-    return value == BML_BEHAVIOR_VALUE_AVAILABLE ||
-        value == BML_BEHAVIOR_VALUE_INDETERMINATE ||
-        value == BML_BEHAVIOR_VALUE_UNSUPPORTED;
-}
-
-inline bool KnownRelation(std::uint32_t value) noexcept {
-    return value >= BML_BEHAVIOR_VALUE_STORED &&
-        value <= BML_BEHAVIOR_VALUE_OPERATION;
+    return value.StructSize >= sizeof(value);
 }
 
 inline bool KnownValueKind(std::uint32_t kind) noexcept {
@@ -409,8 +365,7 @@ inline bool ReadLayout(const BML_BehaviorLayout &wire,
     decoded.Slots.reserve(wire.SlotCount);
     for (std::uint32_t index = 0; index < wire.SlotCount; ++index) {
         BML_BehaviorSlotRecord record{};
-        if (!RecordAt(payload, wire.SlotOffset, index, record) ||
-            !KnownSlotKind(record.Kind))
+        if (!RecordAt(payload, wire.SlotOffset, index, record))
             return false;
         Slot slot;
         slot.Kind = static_cast<SlotKind>(record.Kind);
@@ -617,7 +572,6 @@ inline bool Frames::Accept(std::size_t count, std::size_t payloadSize) noexcept 
     for (std::size_t frameIndex = 0; frameIndex < m_Count; ++frameIndex) {
         const BML_BehaviorRunFrame &header = m_Headers[frameIndex];
         if (header.StructSize < sizeof(header) || !header.Sequence ||
-            !Detail::KnownError(header.Error) ||
             (!first && header.Sequence <= previousSequence) ||
             (header.Continuation & ~(BML_BEHAVIOR_CONTINUATION_NATIVE |
                                      BML_BEHAVIOR_CONTINUATION_QUEUED_INPUT)) != 0)
@@ -697,8 +651,6 @@ inline bool Frames::Accept(std::size_t count, std::size_t payloadSize) noexcept 
             BML_BehaviorDiagnosticRecord record{};
             const std::uint8_t *message = nullptr;
             if (!Record(header.DiagnosticOffset, index, record) ||
-                !Detail::KnownError(record.Error) ||
-                !Detail::KnownPhase(record.Phase) ||
                 !Bytes(record.MessageOffset, record.MessageLength, message))
                 return false;
         }
@@ -1194,7 +1146,6 @@ inline Result<WatchInfo> Watch::Info() const {
     if (code != BML_OK)
         return Result<WatchInfo>::Failure(code, Detail::ReadStatus(status));
     if (info.StructSize < sizeof(info) ||
-        !Detail::KnownWatchState(info.State) ||
         !Detail::ValidStatus(info.Diagnostic))
         return Result<WatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
     return Result<WatchInfo>::Success(

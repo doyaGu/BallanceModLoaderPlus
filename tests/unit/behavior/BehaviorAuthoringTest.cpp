@@ -71,9 +71,10 @@ struct CapturedStep {
     std::uint32_t Target = 0;
     std::uint32_t Node = 0;
     std::uint32_t SlotKind = 0;
-    std::int32_t Delay = 0;
-    std::int32_t Priority = 0;
+    std::int32_t Number = 0;
     std::string Name;
+    // The Node Pattern in Operand, when the Kind reads one.
+    std::string PatternName;
     std::uint32_t SelectorKind = 0;
     std::int32_t SelectorIndex = 0;
     std::int32_t SelectorOccurrence = 0;
@@ -678,35 +679,38 @@ const FakeSlot kText2dSlots[] = {
      BML_BEHAVIOR_VALUE_OBJECT, "Caret Material"},
 };
 
+const FakeSlot kGenericSlots[] = {
+    {BML_BEHAVIOR_SLOT_IN, 0, 0, CKGUID(), 0, "Run", false},
+    {BML_BEHAVIOR_SLOT_SETTING, 0, 0, CKPGUID_STRING,
+     BML_BEHAVIOR_VALUE_UTF8, "Caption"},
+    {BML_BEHAVIOR_SLOT_SETTING, 1, 0, CKPGUID_BOOL,
+     BML_BEHAVIOR_VALUE_BOOL, "Retry"},
+    {BML_BEHAVIOR_SLOT_SETTING, 2, 0, CKPGUID_BOOL,
+     BML_BEHAVIOR_VALUE_BOOL, "Extended Layout"},
+    {BML_BEHAVIOR_SLOT_SETTING, 4, 1, CKPGUID_BOOL,
+     BML_BEHAVIOR_VALUE_BOOL, "Duplicate"},
+    {BML_BEHAVIOR_SLOT_SETTING, 3, 0, CKPGUID_INT,
+     BML_BEHAVIOR_VALUE_INT32, "Duplicate"},
+    {BML_BEHAVIOR_SLOT_SETTING, 5, 0, CKGUID(91, 92), 0,
+     "Opaque", false},
+    {BML_BEHAVIOR_SLOT_PIN, 0, 0, CKPGUID_INT,
+     BML_BEHAVIOR_VALUE_INT32, "Value"},
+    {BML_BEHAVIOR_SLOT_LOCAL, 0, 0, CKPGUID_INT,
+     BML_BEHAVIOR_VALUE_INT32, "State"},
+};
+
+std::pair<const FakeSlot *, std::size_t> DeclaredSlots(
+    const BML_BehaviorGuid &prototype) {
+    if (prototype.Data1 == VT_INTERFACE_2DTEXT.d1 &&
+        prototype.Data2 == VT_INTERFACE_2DTEXT.d2)
+        return {kText2dSlots, std::size(kText2dSlots)};
+    return {kGenericSlots, std::size(kGenericSlots)};
+}
+
 std::vector<std::uint8_t> DeclaredLayout(
     const BML_BehaviorPrototypeRef &prototype,
     BML_BehaviorLayout &layout) {
-    const FakeSlot genericSlots[] = {
-        {BML_BEHAVIOR_SLOT_IN, 0, 0, CKGUID(), 0, "Run", false},
-        {BML_BEHAVIOR_SLOT_SETTING, 0, 0, CKPGUID_STRING,
-         BML_BEHAVIOR_VALUE_UTF8, "Caption"},
-        {BML_BEHAVIOR_SLOT_SETTING, 1, 0, CKPGUID_BOOL,
-         BML_BEHAVIOR_VALUE_BOOL, "Retry"},
-        {BML_BEHAVIOR_SLOT_SETTING, 2, 0, CKPGUID_BOOL,
-         BML_BEHAVIOR_VALUE_BOOL, "Extended Layout"},
-        {BML_BEHAVIOR_SLOT_SETTING, 4, 1, CKPGUID_BOOL,
-         BML_BEHAVIOR_VALUE_BOOL, "Duplicate"},
-        {BML_BEHAVIOR_SLOT_SETTING, 3, 0, CKPGUID_INT,
-         BML_BEHAVIOR_VALUE_INT32, "Duplicate"},
-        {BML_BEHAVIOR_SLOT_SETTING, 5, 0, CKGUID(91, 92), 0,
-         "Opaque", false},
-        {BML_BEHAVIOR_SLOT_PIN, 0, 0, CKPGUID_INT,
-         BML_BEHAVIOR_VALUE_INT32, "Value"},
-        {BML_BEHAVIOR_SLOT_LOCAL, 0, 0, CKPGUID_INT,
-         BML_BEHAVIOR_VALUE_INT32, "State"},
-    };
-
-    const bool isText2d =
-        prototype.Prototype.Data1 == VT_INTERFACE_2DTEXT.d1 &&
-        prototype.Prototype.Data2 == VT_INTERFACE_2DTEXT.d2;
-    const FakeSlot *slots = isText2d ? kText2dSlots : genericSlots;
-    const std::size_t slotCount =
-        isText2d ? std::size(kText2dSlots) : std::size(genericSlots);
+    const auto [slots, slotCount] = DeclaredSlots(prototype.Prototype);
 
     std::vector<std::uint8_t> payload(slotCount *
                                       sizeof(BML_BehaviorSlotRecord));
@@ -1195,7 +1199,13 @@ std::string Copy(BML_BehaviorString text) {
     return text.Data ? std::string(text.Data, text.Length) : std::string();
 }
 
-void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
+// Resolves the one-based pool index a step carries, or null when absent.
+template <class T>
+const T *PoolEntry(const T *pool, std::uint32_t count, std::uint32_t index) {
+    return pool && index != 0 && index <= count ? pool + index - 1 : nullptr;
+}
+
+void CaptureSteps(const BML_BehaviorEditProgram &program,
                   std::vector<CapturedStep> &capturedSteps,
                   std::vector<BML_BehaviorHookFunction> &hooks) {
     const auto captureBindings = [](const BML_BehaviorBinding *bindings,
@@ -1227,8 +1237,8 @@ void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
     };
     capturedSteps.clear();
     hooks.clear();
-    for (std::uint32_t index = 0; index < count; ++index) {
-        const BML_BehaviorEditStep &step = steps[index];
+    for (std::uint32_t index = 0; index < program.StepCount; ++index) {
+        const BML_BehaviorEditStep &step = program.Steps[index];
         CapturedStep captured;
         captured.Kind = step.Kind;
         captured.Graph = step.Graph;
@@ -1237,57 +1247,114 @@ void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
         captured.Target = step.Target;
         captured.Node = step.Node;
         captured.SlotKind = step.SlotKind;
-        captured.Delay = step.Delay;
-        captured.Priority = step.Priority;
+        captured.Number = step.Number;
         captured.Name = Copy(step.Name);
-        captured.SelectorKind = step.Selector.Kind;
-        captured.SelectorIndex = step.Selector.Index;
-        captured.SelectorOccurrence = step.Selector.Occurrence;
-        captured.SelectorName = Copy(step.Selector.Name);
-        captured.ExpectedKind = step.ExpectedKind;
-        captured.PortShape = step.PortShape;
-        captured.Prototype = step.Prototype;
-        if (step.Block) {
+        captured.Type = step.Type;
+        if (const BML_BehaviorPortRef *source = PoolEntry(
+                program.Ports, program.PortCount, step.Source)) {
+            captured.Source = *source;
+            captured.SourceSlot = Copy(source->Slot.Name);
+        }
+        if (const BML_BehaviorPortRef *sink = PoolEntry(
+                program.Ports, program.PortCount, step.Sink)) {
+            captured.Sink = *sink;
+            captured.SinkSlot = Copy(sink->Slot.Name);
+        }
+
+        const BML_BehaviorNodePattern *pattern = nullptr;
+        const BML_BehaviorBlock *block = nullptr;
+        const BML_BehaviorHookFunction *hook = nullptr;
+        switch (step.Kind) {
+        case BML_BEHAVIOR_EDIT_REQUIRE_NODE:
+        case BML_BEHAVIOR_EDIT_EACH_NODE:
+        case BML_BEHAVIOR_EDIT_NEXT_NODE:
+        case BML_BEHAVIOR_EDIT_PREVIOUS_NODE:
+            pattern = PoolEntry(program.Patterns, program.PatternCount,
+                                step.Operand);
+            break;
+        case BML_BEHAVIOR_EDIT_ADD_BLOCK:
+        case BML_BEHAVIOR_EDIT_REPLACE_BLOCK:
+            block = PoolEntry(program.Blocks, program.BlockCount,
+                              step.Operand);
+            break;
+        case BML_BEHAVIOR_EDIT_BIND_VALUE:
+        case BML_BEHAVIOR_EDIT_SET_VALUE:
+        case BML_BEHAVIOR_EDIT_PATTERN_PORT_VALUE:
+            if (const BML_BehaviorValue *value = PoolEntry(
+                    program.Values, program.ValueCount, step.Operand))
+                captured.Value = *value;
+            break;
+        case BML_BEHAVIOR_EDIT_TAP:
+        case BML_BEHAVIOR_EDIT_AFTER:
+        case BML_BEHAVIOR_EDIT_BEFORE:
+        case BML_BEHAVIOR_EDIT_FLOW_HOOK:
+            hook = PoolEntry(program.Hooks, program.HookCount, step.Operand);
+            break;
+        case BML_BEHAVIOR_EDIT_USE_NODE:
+        case BML_BEHAVIOR_EDIT_USE_LINK:
+            if (const BML_ObjectRef *object = PoolEntry(
+                    program.Objects, program.ObjectCount, step.Operand))
+                captured.Object = *object;
+            break;
+        case BML_BEHAVIOR_EDIT_ADD_OPERATION:
+            if (const BML_BehaviorOperationSpec *operation = PoolEntry(
+                    program.Operations, program.OperationCount,
+                    step.Operand))
+                captured.Operation = *operation;
+            break;
+        case BML_BEHAVIOR_EDIT_SPLICE:
+        case BML_BEHAVIOR_EDIT_REDIRECT:
+        case BML_BEHAVIOR_EDIT_REDIRECT_TO_LINK:
+            for (std::int32_t entry = 0; entry < step.Number; ++entry) {
+                const BML_BehaviorEditOrder *order = PoolEntry(
+                    program.Orders, program.OrderCount,
+                    step.Operand + static_cast<std::uint32_t>(entry));
+                if (!order)
+                    break;
+                captured.Ordering.push_back(
+                    {order->Kind,
+                     Copy(order->Owner) + "/" + Copy(order->Name)});
+            }
+            break;
+        default:
+            break;
+        }
+        if (pattern) {
+            captured.ExpectedKind = pattern->Kind;
+            captured.SelectorKind = pattern->Selector.Kind;
+            captured.SelectorIndex = pattern->Selector.Index;
+            captured.SelectorOccurrence = pattern->Selector.Occurrence;
+            captured.SelectorName = Copy(pattern->Selector.Name);
+            captured.PatternName = Copy(pattern->Name);
+            captured.PortShape = pattern->Shape;
+            captured.Prototype.StructSize = sizeof(captured.Prototype);
+            captured.Prototype.Prototype = pattern->Prototype;
+        }
+        if (block) {
             captured.HasBlock = true;
             captured.BlockPrototype.StructSize =
                 sizeof(captured.BlockPrototype);
-            captured.BlockPrototype.Prototype = step.Block->Prototype;
-            captured.BlockPrototype.Generation =
-                step.Block->PrototypeGeneration;
-            captured.BlockTarget = step.Block->Target;
+            captured.BlockPrototype.Prototype = block->Prototype;
+            captured.BlockPrototype.Generation = block->PrototypeGeneration;
+            captured.BlockTarget = block->Target;
             for (std::uint32_t stage = 0;
-                 stage < step.Block->SettingStageCount; ++stage) {
+                 stage < block->SettingStageCount; ++stage) {
                 const BML_BehaviorSettingStage &settings =
-                    step.Block->SettingStages[stage];
+                    block->SettingStages[stage];
                 captured.Settings.push_back(captureBindings(
                     settings.Settings, settings.SettingCount));
             }
-            captured.Pins = captureBindings(
-                step.Block->Pins, step.Block->PinCount);
+            captured.Pins = captureBindings(block->Pins, block->PinCount);
             captured.Locals = captureBindings(
-                step.Block->Locals, step.Block->LocalCount);
+                block->Locals, block->LocalCount);
             captured.PinTypes = captureTypes(
-                step.Block->PinTypes, step.Block->PinTypeCount);
+                block->PinTypes, block->PinTypeCount);
             captured.PoutTypes = captureTypes(
-                step.Block->PoutTypes, step.Block->PoutTypeCount);
+                block->PoutTypes, block->PoutTypeCount);
         }
-        captured.Type = step.Type;
-        captured.Source = step.Source;
-        captured.Sink = step.Sink;
-        captured.SourceSlot = Copy(step.Source.Slot.Name);
-        captured.SinkSlot = Copy(step.Sink.Slot.Name);
-        captured.Value = step.Value;
-        captured.Object = step.Object;
-        captured.Operation = step.Operation;
-        captured.HasHook = step.Hook != nullptr;
-        for (std::uint32_t entry = 0; entry < step.OrderCount; ++entry) {
-            captured.Ordering.push_back(
-                {step.Ordering[entry].Kind,
-                 Copy(step.Ordering[entry].Owner) + "/" +
-                     Copy(step.Ordering[entry].Name)});
-        }
-        if (step.Hook)
-            hooks.push_back(*step.Hook);
+        captured.HasHook = hook != nullptr;
+        if (hook)
+            hooks.push_back(*hook);
         capturedSteps.push_back(std::move(captured));
     }
 }
@@ -1308,8 +1375,8 @@ int BML_BEHAVIOR_CALL SubmitPlan(
     if (spec->EditCount != 0 && spec->Edits) {
         g_State.PlanScript = Copy(spec->Edits[0].Script);
         g_State.PlanTargets = spec->Edits[0].Targets;
-        CaptureSteps(spec->Edits[0].Steps, spec->Edits[0].StepCount,
-                     g_State.PlanSteps, g_State.PlanHooks);
+        CaptureSteps(spec->Edits[0].Program, g_State.PlanSteps,
+                     g_State.PlanHooks);
     }
     if (g_State.PlanSubmitCode != BML_OK &&
         !g_State.ReturnPlanHandleOnError) {
@@ -1378,8 +1445,8 @@ int BML_BEHAVIOR_CALL ApplyPatch(
         g_State.ActivePatchBinding = g_State.PatchBindings.front();
     if (spec->EditCount != 0 && spec->Edits) {
         g_State.PatchGraph = spec->Edits[0].Graph;
-        CaptureSteps(spec->Edits[0].Steps, spec->Edits[0].StepCount,
-                     g_State.PatchSteps, g_State.PatchHooks);
+        CaptureSteps(spec->Edits[0].Program, g_State.PatchSteps,
+                     g_State.PatchHooks);
     }
     if (g_State.PatchApplyCode != BML_OK &&
         !g_State.ReturnPatchHandleOnError) {
@@ -1496,8 +1563,7 @@ int BML_BEHAVIOR_CALL CreateScript(
     g_State.ScriptOwner = spec->Owner;
     g_State.ScriptName = Copy(spec->Name);
     g_State.ScriptPriority = spec->Priority;
-    CaptureSteps(spec->Steps, spec->StepCount, g_State.ScriptSteps,
-                 g_State.ScriptHooks);
+    CaptureSteps(spec->Program, g_State.ScriptSteps, g_State.ScriptHooks);
     if (g_State.ScriptCreateCode != BML_OK) {
         g_State.ScriptHooks.clear();
         return g_State.ScriptCreateCode;
@@ -1787,6 +1853,122 @@ int BML_BEHAVIOR_CALL WritePlanInstanceValue(
     return BML_OK;
 }
 
+bool SelectorMatches(const BML_BehaviorSelector &selector,
+                     const FakeSlot &slot) {
+    const std::string_view name(
+        selector.Name.Data ? selector.Name.Data : "", selector.Name.Length);
+    switch (selector.Kind) {
+    case BML_BEHAVIOR_SELECTOR_INDEX:
+        return slot.Index == selector.Index;
+    case BML_BEHAVIOR_SELECTOR_NAME:
+        return slot.Name == name && slot.Occurrence == selector.Occurrence;
+    case BML_BEHAVIOR_SELECTOR_UNIQUE_NAME:
+        return slot.Name == name;
+    case BML_BEHAVIOR_SELECTOR_ONLY:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Mirrors the Loader's declared-layout check against the fake Layout: the
+// first Setting stage, an explicit Target, and Pin and Pout type selections.
+int BML_BEHAVIOR_CALL ValidateBlock(
+    BML_BehaviorSession, const BML_BehaviorBlock *block,
+    BML_BehaviorPrototypeRef *outPrototype, BML_BehaviorStatus *status) {
+    ++g_State.LayoutCalls;
+    Success(status);
+    if (g_State.LayoutUnavailable)
+        return BML_ERROR_UNAVAILABLE;
+    const auto reject = [&](std::uint32_t error, std::uint32_t phase,
+                            const char *message) {
+        SetError(status, error, message);
+        status->Phase = phase;
+        return BML_ERROR_FAIL;
+    };
+    const auto [slots, slotCount] = DeclaredSlots(block->Prototype);
+    const auto find = [&, slots = slots, slotCount = slotCount](
+                          std::uint32_t kind,
+                          const BML_BehaviorSelector &selector,
+                          int &matches) -> const FakeSlot * {
+        const FakeSlot *found = nullptr;
+        matches = 0;
+        for (std::size_t index = 0; index < slotCount; ++index) {
+            if (slots[index].Kind != kind ||
+                !SelectorMatches(selector, slots[index]))
+                continue;
+            found = &slots[index];
+            ++matches;
+        }
+        return found;
+    };
+
+    if (block->SettingStageCount != 0) {
+        const BML_BehaviorSettingStage &stage = block->SettingStages[0];
+        for (std::uint32_t index = 0; index < stage.SettingCount; ++index) {
+            const BML_BehaviorBinding &binding = stage.Settings[index];
+            int matches = 0;
+            const FakeSlot *slot =
+                find(BML_BEHAVIOR_SLOT_SETTING, binding.Slot, matches);
+            if (!matches)
+                return reject(BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              "The Setting is absent from the declared Layout.");
+            if (matches != 1)
+                return reject(BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              "The Setting is ambiguous in the declared Layout.");
+            if (!slot->Supported)
+                return reject(BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              "The Setting parameter type has no public value form.");
+            if (slot->ValueKind != binding.Value.Kind)
+                return reject(BML_BEHAVIOR_ERROR_TYPE_MISMATCH,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              "The Setting value form does not match the declared Layout.");
+        }
+    }
+    if (block->Target.Kind != BML_BEHAVIOR_TARGET_OWNER &&
+        !g_State.DeclaredTargetable)
+        return reject(BML_BEHAVIOR_ERROR_TARGET_INVALID,
+                      BML_BEHAVIOR_PHASE_TARGET,
+                      "The Prototype does not declare an explicit Target.");
+    const struct {
+        std::uint32_t Kind;
+        const BML_BehaviorParameterType *Types;
+        std::uint32_t Count;
+    } families[] = {
+        {BML_BEHAVIOR_SLOT_PIN, block->PinTypes, block->PinTypeCount},
+        {BML_BEHAVIOR_SLOT_POUT, block->PoutTypes, block->PoutTypeCount},
+    };
+    for (const auto &family : families) {
+        for (std::uint32_t index = 0; index < family.Count; ++index) {
+            int matches = 0;
+            (void) find(family.Kind, family.Types[index].Slot, matches);
+            if (!matches) {
+                if (g_State.DeclaredVariableParameters)
+                    continue;
+                return reject(BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND,
+                              BML_BEHAVIOR_PHASE_LAYOUT,
+                              "The parameter is absent from the declared Layout.");
+            }
+            if (matches != 1)
+                return reject(BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS,
+                              BML_BEHAVIOR_PHASE_LAYOUT,
+                              "The parameter is ambiguous in the declared Layout.");
+            if (!g_State.DeclaredVariableParameters)
+                return reject(BML_BEHAVIOR_ERROR_INTERFACE_UNSUPPORTED,
+                              BML_BEHAVIOR_PHASE_LAYOUT,
+                              "The parameter belongs to a fixed native interface.");
+        }
+    }
+
+    outPrototype->Prototype = block->Prototype;
+    outPrototype->Generation = block->PrototypeGeneration
+        ? block->PrototypeGeneration : g_State.ProviderGeneration;
+    return BML_OK;
+}
+
 BML_BehaviorInterface g_Interface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -1839,6 +2021,7 @@ BML_BehaviorInterface g_Interface = {
     &WritePatchValue,
     &ReadPlanInstanceValue,
     &WritePlanInstanceValue,
+    &ValidateBlock,
 };
 
 } // namespace
@@ -2012,7 +2195,7 @@ TEST(BehaviorAuthoring, OwnsBlockTextAndUsesDomainSelectors) {
     EXPECT_EQ(g_State.FrameKind, BML_BEHAVIOR_FRAMES_EACH_FRAME);
     EXPECT_EQ(g_State.FrameLimit, 8u);
     EXPECT_EQ(g_State.Generation, 37u);
-    EXPECT_EQ(g_State.LayoutCalls, 2);
+    EXPECT_EQ(g_State.LayoutCalls, 1);
 }
 
 TEST(BehaviorAuthoring, TakesOwnedFramesAndContinuesTheSameRun) {
@@ -2496,7 +2679,7 @@ TEST(BehaviorAuthoring, PinsProviderAndReusesOneBlockAcrossOwners) {
     EXPECT_EQ(g_State.RunOwners[0].Domain, firstOwner.Domain);
     EXPECT_EQ(g_State.RunOwners[1].Domain, secondOwner.Domain);
     EXPECT_EQ(g_State.Generation, g_State.ProviderGeneration);
-    EXPECT_EQ(g_State.LayoutCalls, 2);
+    EXPECT_EQ(g_State.LayoutCalls, 1);
 }
 
 TEST(BehaviorAuthoring, ValidateChecksTheDeclaredLayout) {
@@ -2639,10 +2822,10 @@ TEST(BehaviorAuthoring, RejectsMalformedDeclaredLayoutBeforeAllocation) {
     ASSERT_TRUE(opened);
     Session session = opened.Take();
 
-    auto validated = session.Use(CKGUID(17, 18)).Validate();
-    EXPECT_FALSE(validated);
-    EXPECT_EQ(validated.Code(), BML_ERROR_MALFORMED_MESSAGE);
-    EXPECT_EQ(validated.GetStatus().Error, Error::LayoutUnavailable);
+    auto layout = session.Layout(Prototype(CKGUID(17, 18)));
+    EXPECT_FALSE(layout);
+    EXPECT_EQ(layout.Code(), BML_ERROR_MALFORMED_MESSAGE);
+    EXPECT_EQ(layout.GetStatus().Error, Error::LayoutUnavailable);
 }
 
 TEST(BehaviorAuthoring, ContainsMalformedRunResults) {
@@ -2866,7 +3049,7 @@ TEST(BehaviorAuthoring, RequiresSnapshotNodesByRecordedStructure) {
               static_cast<std::uint32_t>(
                   BML_BEHAVIOR_SELECTOR_INDEX));
     EXPECT_EQ(required.SelectorName, "");
-    EXPECT_EQ(required.Name, "Root");
+    EXPECT_EQ(required.PatternName, "Root");
     EXPECT_EQ(required.SelectorIndex, 0);
     EXPECT_EQ(required.Prototype.Prototype.Data1, 21u);
     EXPECT_EQ(required.ExpectedKind,
@@ -2894,7 +3077,7 @@ TEST(BehaviorAuthoring, UsesChildPositionWhenRequiringASnapshotNode) {
               static_cast<std::uint32_t>(
                   BML_BEHAVIOR_SELECTOR_INDEX));
     EXPECT_EQ(g_State.PlanSteps[0].SelectorIndex, 1);
-    EXPECT_EQ(g_State.PlanSteps[0].Name, "Root");
+    EXPECT_EQ(g_State.PlanSteps[0].PatternName, "Root");
     EXPECT_EQ(g_State.PlanSteps[0].SelectorName, "");
 }
 
@@ -2910,7 +3093,6 @@ TEST(BehaviorAuthoring, RejectsIncoherentGraphSnapshots) {
         &FakeState::GraphLinkUsesNodeObject,
         &FakeState::InvalidGraphObject,
         &FakeState::InvalidGraphLinkKind,
-        &FakeState::InvalidGraphPortFlag,
         &FakeState::InvalidGraphOccurrence,
         &FakeState::InvalidGraphNodeIndex,
         &FakeState::InvalidGraphNodeOccurrence,
@@ -2928,6 +3110,21 @@ TEST(BehaviorAuthoring, RejectsIncoherentGraphSnapshots) {
         EXPECT_FALSE(inspected);
         EXPECT_EQ(inspected.Code(), BML_ERROR_MALFORMED_MESSAGE);
     }
+}
+
+// A truth value the Loader writes as nonzero reads as true, like a C bool.
+TEST(BehaviorAuthoring, ReadsANonzeroPortActivityAsActive) {
+    g_State = {};
+    g_State.InvalidGraphPortFlag = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected) << inspected.GetStatus().Message;
+    const Port done = inspected->Root().Out("Done");
+    ASSERT_TRUE(done);
+    EXPECT_TRUE(done.Active());
 }
 
 TEST(BehaviorAuthoring, TraversesOutgoingLinksInVirtoolsSourceOrder) {
@@ -3371,7 +3568,7 @@ TEST(BehaviorAuthoring, SubmitsTheSameEditAsAPlan) {
                   static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REQUIRE_LINK));
         EXPECT_EQ(between.Flags & BML_BEHAVIOR_EDIT_HAS_DELAY,
                   static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_HAS_DELAY));
-        EXPECT_EQ(between.Delay, 2);
+        EXPECT_EQ(between.Number, 2);
         EXPECT_EQ(between.Source.Handle, require.Result);
         EXPECT_EQ(between.Source.Kind,
                   static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_OUT));
@@ -3413,7 +3610,7 @@ TEST(BehaviorAuthoring, SubmitsTheSameEditAsAPlan) {
                   static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_PUSH));
         EXPECT_EQ(g_State.PlanSteps[9].Kind,
                   static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_FLOW));
-        EXPECT_EQ(g_State.PlanSteps[9].Delay, 1);
+        EXPECT_EQ(g_State.PlanSteps[9].Number, 1);
         EXPECT_EQ(g_State.PlanSteps[10].Flags & BML_BEHAVIOR_EDIT_CONFIRM_CYCLE,
                   static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_CONFIRM_CYCLE));
 
@@ -3503,7 +3700,7 @@ TEST(BehaviorAuthoring, EncodesStructuralNodePatternsWithoutLiveGraphDiscovery) 
         EXPECT_EQ(count.Target, required.Result);
         EXPECT_EQ(count.SlotKind,
                   static_cast<std::uint32_t>(countKinds[index]));
-        EXPECT_EQ(count.Delay, counts[index]);
+        EXPECT_EQ(count.Number, counts[index]);
     }
 
     const CapturedStep &value = g_State.PlanSteps[5];
@@ -3632,7 +3829,7 @@ TEST(BehaviorAuthoring, EncodesNestedGraphScopesAndGraphNodes) {
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_GRAPH));
     EXPECT_EQ(addGraph.Graph, BML_BEHAVIOR_EDIT_GRAPH);
     EXPECT_EQ(addGraph.Name, "Child");
-    EXPECT_EQ(addGraph.Priority, 17);
+    EXPECT_EQ(addGraph.Number, 17);
 
     const CapturedStep &enter = g_State.PlanSteps[1];
     EXPECT_EQ(enter.Kind,
@@ -5019,6 +5216,41 @@ TEST(BehaviorAuthoring, ClosesPlanAndPatchHandlesReturnedWithErrors) {
     EXPECT_TRUE(g_State.PatchHooks.empty());
 }
 
+TEST(BehaviorAuthoring, PassesThroughStatesFromALaterMinor) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+
+    auto watched = inspected->Watch(GraphChanged{}, [](const Change &) {});
+    ASSERT_TRUE(watched);
+    Watch watch = watched.Take();
+    Edit planEdit;
+    auto submitted = session.Plan(
+        "info", Scripts::Each("Gameplay_Events"), planEdit);
+    ASSERT_TRUE(submitted);
+    Plan plan = submitted.Take();
+    Edit patchEdit;
+    auto applied = inspected->Apply("info", patchEdit);
+    ASSERT_TRUE(applied);
+    Patch patch = applied.Take();
+
+    g_State.WatchState = 99;
+    auto watchInfo = watch.Info();
+    ASSERT_TRUE(watchInfo);
+    EXPECT_EQ(static_cast<std::uint32_t>(watchInfo->State), 99u);
+    g_State.PlanState = 99;
+    auto planInfo = plan.Info();
+    ASSERT_TRUE(planInfo);
+    EXPECT_EQ(static_cast<std::uint32_t>(planInfo->State), 99u);
+    g_State.PatchState = 99;
+    auto patchInfo = patch.Info();
+    ASSERT_TRUE(patchInfo);
+    EXPECT_EQ(static_cast<std::uint32_t>(patchInfo->State), 99u);
+}
+
 TEST(BehaviorAuthoring, RejectsMalformedWatchPlanAndPatchInfo) {
     g_State = {};
     auto opened = Session::Open();
@@ -5042,23 +5274,14 @@ TEST(BehaviorAuthoring, RejectsMalformedWatchPlanAndPatchInfo) {
     ASSERT_TRUE(applied);
     Patch patch = applied.Take();
 
-    g_State.WatchState = 99;
-    EXPECT_EQ(watch.Info().Code(), BML_ERROR_MALFORMED_MESSAGE);
-    g_State.WatchState = BML_BEHAVIOR_WATCH_ACTIVE;
     g_State.MalformedInfoDiagnostic = true;
     EXPECT_EQ(watch.Info().Code(), BML_ERROR_MALFORMED_MESSAGE);
     g_State.MalformedInfoDiagnostic = false;
 
-    g_State.PlanState = 99;
-    EXPECT_EQ(plan.Info().Code(), BML_ERROR_MALFORMED_MESSAGE);
-    g_State.PlanState = BML_BEHAVIOR_PLAN_ACTIVE;
     g_State.MalformedInfoDiagnostic = true;
     EXPECT_EQ(plan.Info().Code(), BML_ERROR_MALFORMED_MESSAGE);
     g_State.MalformedInfoDiagnostic = false;
 
-    g_State.PatchState = 99;
-    EXPECT_EQ(patch.Info().Code(), BML_ERROR_MALFORMED_MESSAGE);
-    g_State.PatchState = BML_BEHAVIOR_PATCH_ACTIVE;
     g_State.MalformedInfoDiagnostic = true;
     EXPECT_EQ(patch.Info().Code(), BML_ERROR_MALFORMED_MESSAGE);
     g_State.MalformedInfoDiagnostic = false;

@@ -26,7 +26,8 @@ bool Readable(SlotKind kind) noexcept {
         kind == SlotKind::Setting || kind == SlotKind::Local;
 }
 
-// Must match Detail's Edit::Shape, which hashes the public port kind.
+} // namespace
+
 std::uint64_t PortShape(const GraphNode &node) {
     std::uint64_t hash = Fnv::Offset;
     for (const GraphPort &port : node.Ports) {
@@ -39,6 +40,8 @@ std::uint64_t PortShape(const GraphNode &node) {
     }
     return hash;
 }
+
+namespace {
 
 Status ResolveSlot(const GraphNode &node, const Slot &selector,
                    const GraphPort *&out) {

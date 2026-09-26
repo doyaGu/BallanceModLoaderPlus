@@ -24,13 +24,9 @@ struct EditStep {
     std::uint32_t Target = 0;
     std::uint32_t Node = 0;
     std::uint32_t SlotKind = 0;
-    std::int32_t Delay = 0;
-    std::int32_t Priority = 0;
+    // A link delay or a graph priority.
+    std::int32_t Number = 0;
     std::string Name;
-    Behavior::Selector Selector;
-    Behavior::Prototype PrototypeRef;
-    Behavior::BehaviorKind ExpectedKind = Behavior::BehaviorKind::Function;
-    std::uint64_t PortShape = 0;
     std::optional<NodePattern> Pattern;
     std::shared_ptr<const CompiledBlock> Block;
     CKGUID Type{0, 0};
@@ -46,9 +42,39 @@ struct EditStep {
     CKGUID OperationInput2{0, 0};
 };
 
+// The pools of one encoded edit program. Blocks and Hooks are copies of
+// records whose storage the Edit keeps, so the Edit must outlive the call
+// that receives Record().
 struct EditWire {
-    std::vector<BML_BehaviorEditOrder> Ordering;
     std::vector<BML_BehaviorEditStep> Steps;
+    std::vector<BML_BehaviorPortRef> Ports;
+    std::vector<BML_BehaviorValue> Values;
+    std::vector<BML_BehaviorNodePattern> Patterns;
+    std::vector<BML_BehaviorBlock> Blocks;
+    std::vector<BML_BehaviorHookFunction> Hooks;
+    std::vector<BML_BehaviorEditOrder> Orders;
+    std::vector<BML_ObjectRef> Objects;
+    std::vector<BML_BehaviorOperationSpec> Operations;
+
+    [[nodiscard]] BML_BehaviorEditProgram Record() const noexcept {
+        const auto pool = [](const auto &entries, auto &data,
+                             std::uint32_t &count) {
+            data = entries.empty() ? nullptr : entries.data();
+            count = static_cast<std::uint32_t>(entries.size());
+        };
+        BML_BehaviorEditProgram program{};
+        program.StructSize = sizeof(program);
+        pool(Steps, program.Steps, program.StepCount);
+        pool(Ports, program.Ports, program.PortCount);
+        pool(Values, program.Values, program.ValueCount);
+        pool(Patterns, program.Patterns, program.PatternCount);
+        pool(Blocks, program.Blocks, program.BlockCount);
+        pool(Hooks, program.Hooks, program.HookCount);
+        pool(Orders, program.Orders, program.OrderCount);
+        pool(Objects, program.Objects, program.ObjectCount);
+        pool(Operations, program.Operations, program.OperationCount);
+        return program;
+    }
 };
 
 struct EditProgram {
@@ -170,33 +196,6 @@ inline Edit::Graph Edit::EnterGraph(
     return Graph{program, step.Result};
 }
 
-inline std::uint64_t Edit::Shape(const Behavior::Node &node) {
-    constexpr std::uint64_t offset = 1469598103934665603ull;
-    constexpr std::uint64_t prime = 1099511628211ull;
-    std::uint64_t hash = offset;
-    const auto append = [&](const void *data, std::size_t size) {
-        const auto *bytes = static_cast<const unsigned char *>(data);
-        for (std::size_t index = 0; index < size; ++index) {
-            hash ^= bytes[index];
-            hash *= prime;
-        }
-    };
-    for (Behavior::Port port : node.Ports()) {
-        const auto kind = static_cast<std::uint32_t>(port.Kind());
-        const auto index = port.Index();
-        const auto occurrence = port.Occurrence();
-        const CKGUID type = port.Type();
-        append(&kind, sizeof(kind));
-        append(&index, sizeof(index));
-        append(&occurrence, sizeof(occurrence));
-        append(&type.d1, sizeof(type.d1));
-        append(&type.d2, sizeof(type.d2));
-        const std::string_view name = port.Name();
-        append(name.data(), name.size());
-    }
-    return hash;
-}
-
 inline std::shared_ptr<const Edit> Edit::Snapshot() const {
     if (!m_Program)
         throw std::logic_error("The Behavior Edit no longer exists.");
@@ -279,10 +278,10 @@ inline Edit::Node Edit::Graph::Require(const Behavior::Node &node) const {
     // world. A name occurrence cannot serve as the position: occurrences are
     // evaluated after the other Pattern conditions have filtered candidates.
     NodePattern pattern(Behavior::At(node.Index()));
-    step.Name.assign(node.Name());
+    pattern.m_Name.assign(node.Name());
     pattern.m_Prototype = node.Prototype();
     pattern.m_Kind = node.Kind();
-    pattern.m_PortShape = Edit::Shape(node);
+    pattern.m_PortShape = node.Shape();
     step.Pattern.emplace(std::move(pattern));
     return Node{m_Edit, m_Scope, step.Result};
 }
@@ -360,7 +359,7 @@ inline Edit::Link Edit::Graph::Between(Port source, Port sink,
     step.Source = std::move(source);
     step.Sink = std::move(sink);
     step.Flags |= BML_BEHAVIOR_EDIT_HAS_DELAY;
-    step.Delay = delay;
+    step.Number = delay;
     return Link{m_Edit, m_Scope, step.Result};
 }
 
@@ -385,17 +384,9 @@ inline Edit::Node Edit::Graph::Next(Port source, NodePattern expected) const {
     return Node{m_Edit, m_Scope, step.Result};
 }
 
-inline Edit::Node Edit::Graph::Next(Node source) const {
-    return Next(source.Out());
-}
-
 inline Edit::Node Edit::Graph::Next(
-    Node source, Behavior::Selector output) const {
+    Node source, Behavior::SlotSelector output) const {
     return Next(source.Out(std::move(output)));
-}
-
-inline Edit::Node Edit::Graph::Next(Node source, std::int32_t output) const {
-    return Next(std::move(source), Behavior::At(output));
 }
 
 inline Edit::Node Edit::Graph::Previous(Port sink) const {
@@ -419,17 +410,9 @@ inline Edit::Node Edit::Graph::Previous(Port sink, NodePattern expected) const {
     return Node{m_Edit, m_Scope, step.Result};
 }
 
-inline Edit::Node Edit::Graph::Previous(Node sink) const {
-    return Previous(sink.In());
-}
-
 inline Edit::Node Edit::Graph::Previous(
-    Node sink, Behavior::Selector input) const {
+    Node sink, Behavior::SlotSelector input) const {
     return Previous(sink.In(std::move(input)));
-}
-
-inline Edit::Node Edit::Graph::Previous(Node sink, std::int32_t input) const {
-    return Previous(std::move(sink), Behavior::At(input));
 }
 
 inline Edit::Link Edit::Graph::Leaving(Port source) const {
@@ -442,18 +425,9 @@ inline Edit::Link Edit::Graph::Leaving(Port source) const {
     return Link{m_Edit, m_Scope, step.Result};
 }
 
-inline Edit::Link Edit::Graph::Leaving(Node source) const {
-    return Leaving(source.Out());
-}
-
 inline Edit::Link Edit::Graph::Leaving(
-    Node source, Behavior::Selector output) const {
+    Node source, Behavior::SlotSelector output) const {
     return Leaving(source.Out(std::move(output)));
-}
-
-inline Edit::Link Edit::Graph::Leaving(Node source,
-                                       std::int32_t output) const {
-    return Leaving(std::move(source), Behavior::At(output));
 }
 
 inline Edit::Link Edit::Graph::Entering(Port sink) const {
@@ -466,18 +440,9 @@ inline Edit::Link Edit::Graph::Entering(Port sink) const {
     return Link{m_Edit, m_Scope, step.Result};
 }
 
-inline Edit::Link Edit::Graph::Entering(Node sink) const {
-    return Entering(sink.In());
-}
-
 inline Edit::Link Edit::Graph::Entering(
-    Node sink, Behavior::Selector input) const {
+    Node sink, Behavior::SlotSelector input) const {
     return Entering(sink.In(std::move(input)));
-}
-
-inline Edit::Link Edit::Graph::Entering(Node sink,
-                                        std::int32_t input) const {
-    return Entering(std::move(sink), Behavior::At(input));
 }
 
 inline Edit::Link Edit::Graph::To(Port source, Node target) const {
@@ -504,8 +469,6 @@ inline Edit::Path Edit::Graph::Follow(Port source) const {
 
 inline Edit::Node Edit::Graph::Add(const Block &block) const {
     const auto edit = Program();
-    const Prototype fallback = block.m_State
-        ? block.m_State->Spec.PrototypeRef : Prototype{};
     auto compiled = block.Compile();
     if (!compiled) {
         if (edit->Code == BML_OK) {
@@ -514,7 +477,6 @@ inline Edit::Node Edit::Graph::Add(const Block &block) const {
         }
         Detail::EditStep &failed = Edit::Define(
             *edit, m_Scope, BML_BEHAVIOR_EDIT_ADD_BLOCK);
-        failed.PrototypeRef = fallback;
         return Node{m_Edit, m_Scope, failed.Result};
     }
     if (edit->Session && edit->Session != block.m_Session &&
@@ -558,7 +520,7 @@ inline Edit::Node Edit::Graph::AddGraph(std::string_view name,
     Detail::EditStep &step = Edit::Define(
         *edit, m_Scope, BML_BEHAVIOR_EDIT_ADD_GRAPH);
     step.Name.assign(name);
-    step.Priority = priority;
+    step.Number = priority;
     return Node{m_Edit, m_Scope, step.Result};
 }
 
@@ -666,7 +628,7 @@ inline Edit::Graph Edit::Graph::Flow(Port source, Port sink,
         *edit, m_Scope, BML_BEHAVIOR_EDIT_FLOW, 0);
     step.Source = std::move(source);
     step.Sink = std::move(sink);
-    step.Delay = delay;
+    step.Number = delay;
     return *this;
 }
 
@@ -690,7 +652,7 @@ inline Edit::Graph Edit::Graph::FlowCycle(Port source, Port sink,
         *edit, m_Scope, BML_BEHAVIOR_EDIT_FLOW, 0);
     step.Source = std::move(source);
     step.Sink = std::move(sink);
-    step.Delay = delay;
+    step.Number = delay;
     step.Flags |= BML_BEHAVIOR_EDIT_CONFIRM_CYCLE;
     return *this;
 }
@@ -957,42 +919,36 @@ inline Edit::Graph Edit::Graph::Redirect(
 }
 
 inline void Edit::Encode(Detail::EditWire &out) const {
-    const auto encodePort = [](const Port &source) {
-        BML_BehaviorPortRef port{};
-        port.StructSize = sizeof(port);
-        port.Graph = source.m_Scope;
-        port.Handle = source.m_Id;
-        port.Kind = source.m_Kind;
-        port.Type = Detail::WireGuid(source.m_Type);
-        port.Slot = Detail::Wire::From(source.m_Slot);
-        return port;
+    out = Detail::EditWire{};
+    // Pool indices are one-based so that zero can mean absent.
+    const auto push = [](auto &pool, auto record) {
+        pool.push_back(std::move(record));
+        return static_cast<std::uint32_t>(pool.size());
     };
-    std::size_t orderCount = 0;
-    for (const Detail::EditStep &step : m_Program->Steps)
-        orderCount += step.Ordering.size();
-    // Both arrays are sized up front, so nothing a step points at moves.
-    out.Ordering.clear();
-    out.Ordering.reserve(orderCount);
-    for (const Detail::EditStep &step : m_Program->Steps) {
-        for (const PatchOrder &order : step.Ordering) {
-            BML_BehaviorEditOrder wire{};
-            wire.StructSize = sizeof(wire);
-            wire.Kind = order.Kind;
-            wire.Owner = Detail::Text(order.Owner);
-            wire.Name = Detail::Text(order.Name);
-            out.Ordering.push_back(wire);
-        }
-    }
+    const auto port = [&](const Port &source) -> std::uint32_t {
+        if (!source.m_Id)
+            return 0;
+        BML_BehaviorPortRef record{};
+        record.StructSize = sizeof(record);
+        record.Graph = source.m_Scope;
+        record.Handle = source.m_Id;
+        record.Kind = source.m_Kind;
+        record.Type = Detail::WireGuid(source.m_Type);
+        record.Slot = Detail::Wire::From(source.m_Slot);
+        return push(out.Ports, record);
+    };
+    const auto pattern = [&](const NodePattern &source) {
+        BML_BehaviorNodePattern record{};
+        record.StructSize = sizeof(record);
+        record.Kind = source.m_Kind
+            ? static_cast<std::uint32_t>(*source.m_Kind) : 0;
+        record.Selector = Detail::Wire::From(source.m_Selector);
+        record.Prototype = Detail::WireGuid(source.m_Prototype);
+        record.Shape = source.m_PortShape;
+        record.Name = Detail::Text(source.m_Name);
+        return push(out.Patterns, record);
+    };
 
-    std::size_t patternSteps = 0;
-    for (const Detail::EditStep &step : m_Program->Steps) {
-        if (step.Pattern)
-            patternSteps += step.Pattern->m_Counts.size() +
-                step.Pattern->m_Values.size();
-    }
-    out.Steps.clear();
-    out.Steps.reserve(m_Program->Steps.size() + patternSteps);
-    std::size_t consumed = 0;
     for (const Detail::EditStep &step : m_Program->Steps) {
         BML_BehaviorEditStep wire{};
         wire.StructSize = sizeof(wire);
@@ -1002,66 +958,75 @@ inline void Edit::Encode(Detail::EditWire &out) const {
         wire.Flags = step.Flags;
         wire.Target = step.Target;
         wire.Node = step.Node;
+        wire.Source = port(step.Source);
+        wire.Sink = port(step.Sink);
         wire.SlotKind = step.SlotKind;
-        wire.Delay = step.Delay;
-        wire.Priority = step.Priority;
-        wire.Name = Detail::Text(step.Name);
-        const NodePattern *pattern = step.Pattern ? &*step.Pattern : nullptr;
-        wire.Selector = Detail::Wire::From(
-            pattern ? pattern->m_Selector : step.Selector);
-        wire.Prototype.StructSize = sizeof(wire.Prototype);
-        wire.Prototype.Prototype = Detail::WireGuid(
-            pattern ? pattern->m_Prototype : step.PrototypeRef.Id);
-        wire.Prototype.Generation = pattern ? 0 : step.PrototypeRef.Generation;
-        wire.ExpectedKind = pattern && pattern->m_Kind
-            ? static_cast<std::uint32_t>(*pattern->m_Kind)
-            : step.PortShape
-                ? static_cast<std::uint32_t>(step.ExpectedKind) : 0;
-        wire.PortShape = pattern ? pattern->m_PortShape : step.PortShape;
-        wire.Block = step.Block ? &step.Block->Wire : nullptr;
+        wire.Number = step.Number;
         wire.Type = Detail::WireGuid(step.Type);
-        wire.Source = encodePort(step.Source);
-        wire.Sink = encodePort(step.Sink);
-        if (step.Value)
-            wire.Value = Detail::Wire::From(*step.Value);
-        wire.Hook = step.Hook ? &step.Hook->Function : nullptr;
-        wire.Object = step.Object;
-        wire.Operation.StructSize = sizeof(wire.Operation);
-        wire.Operation.Operation = Detail::WireGuid(step.Operation);
-        wire.Operation.Result = Detail::WireGuid(step.OperationResult);
-        wire.Operation.Input1 = Detail::WireGuid(step.OperationInput1);
-        wire.Operation.Input2 = Detail::WireGuid(step.OperationInput2);
-        wire.OrderCount = static_cast<std::uint32_t>(step.Ordering.size());
-        wire.Ordering = wire.OrderCount
-            ? out.Ordering.data() + consumed : nullptr;
-        consumed += step.Ordering.size();
+        wire.Name = Detail::Text(step.Name);
+        if (step.Pattern) {
+            wire.Operand = pattern(*step.Pattern);
+        } else if (step.Block) {
+            wire.Operand = push(out.Blocks, step.Block->Wire);
+        } else if (step.Value) {
+            wire.Operand = push(out.Values, Detail::Wire::From(*step.Value));
+        } else if (step.Hook) {
+            wire.Operand = push(out.Hooks, step.Hook->Function);
+        } else if (step.Kind == BML_BEHAVIOR_EDIT_USE_NODE ||
+                   step.Kind == BML_BEHAVIOR_EDIT_USE_LINK) {
+            wire.Operand = push(out.Objects, step.Object);
+        } else if (step.Kind == BML_BEHAVIOR_EDIT_ADD_OPERATION) {
+            BML_BehaviorOperationSpec operation{};
+            operation.StructSize = sizeof(operation);
+            operation.Operation = Detail::WireGuid(step.Operation);
+            operation.Result = Detail::WireGuid(step.OperationResult);
+            operation.Input1 = Detail::WireGuid(step.OperationInput1);
+            operation.Input2 = Detail::WireGuid(step.OperationInput2);
+            wire.Operand = push(out.Operations, operation);
+        } else if (!step.Ordering.empty()) {
+            wire.Operand = static_cast<std::uint32_t>(out.Orders.size() + 1);
+            wire.Number = static_cast<std::int32_t>(step.Ordering.size());
+            for (const PatchOrder &order : step.Ordering) {
+                BML_BehaviorEditOrder record{};
+                record.StructSize = sizeof(record);
+                record.Kind = order.Kind;
+                record.Owner = Detail::Text(order.Owner);
+                record.Name = Detail::Text(order.Name);
+                out.Orders.push_back(record);
+            }
+        }
         out.Steps.push_back(wire);
 
-        if (!pattern)
+        if (!step.Pattern)
             continue;
-        for (const NodePattern::PortCount &condition : pattern->m_Counts) {
+        for (const NodePattern::PortCount &condition :
+             step.Pattern->m_Counts) {
             BML_BehaviorEditStep count{};
             count.StructSize = sizeof(count);
             count.Kind = BML_BEHAVIOR_EDIT_PATTERN_PORT_COUNT;
             count.Graph = step.Graph;
             count.Target = step.Result;
             count.SlotKind = static_cast<std::uint32_t>(condition.Kind);
-            count.Delay = condition.Count;
+            count.Number = condition.Count;
             out.Steps.push_back(count);
         }
-        for (const NodePattern::PortValue &condition : pattern->m_Values) {
+        for (const NodePattern::PortValue &condition :
+             step.Pattern->m_Values) {
+            BML_BehaviorPortRef sink{};
+            sink.StructSize = sizeof(sink);
+            sink.Graph = step.Graph;
+            sink.Handle = step.Result;
+            sink.Kind = static_cast<std::uint32_t>(condition.Kind);
+            sink.Type = Detail::WireGuid(condition.Expected.Type());
+            sink.Slot = Detail::Wire::From(condition.Slot);
             BML_BehaviorEditStep value{};
             value.StructSize = sizeof(value);
             value.Kind = BML_BEHAVIOR_EDIT_PATTERN_PORT_VALUE;
             value.Graph = step.Graph;
             value.Target = step.Result;
-            value.Sink.StructSize = sizeof(value.Sink);
-            value.Sink.Graph = step.Graph;
-            value.Sink.Handle = step.Result;
-            value.Sink.Kind = static_cast<std::uint32_t>(condition.Kind);
-            value.Sink.Type = Detail::WireGuid(condition.Expected.Type());
-            value.Sink.Slot = Detail::Wire::From(condition.Slot);
-            value.Value = Detail::Wire::From(condition.Expected);
+            value.Sink = push(out.Ports, sink);
+            value.Operand = push(
+                out.Values, Detail::Wire::From(condition.Expected));
             out.Steps.push_back(value);
         }
     }
@@ -1152,8 +1117,7 @@ inline Result<Behavior::Script> Session::CreateScript(
         spec.Owner = owner;
         spec.Name = Detail::Text(name);
         spec.Priority = priority;
-        spec.StepCount = static_cast<std::uint32_t>(program.Steps.size());
-        spec.Steps = program.Steps.empty() ? nullptr : program.Steps.data();
+        spec.Program = program.Record();
         BML_BehaviorScript handle = nullptr;
         BML_BehaviorScriptInfo info{};
         info.StructSize = sizeof(info);
@@ -1547,10 +1511,7 @@ struct PatchWire {
             edit.Graph = target.Graph;
             edit.Fingerprint = target.Fingerprint;
             edit.Binding = binding;
-            edit.Steps = wire.Programs.back().Steps.empty()
-                ? nullptr : wire.Programs.back().Steps.data();
-            edit.StepCount = static_cast<std::uint32_t>(
-                wire.Programs.back().Steps.size());
+            edit.Program = wire.Programs.back().Record();
             wire.Targets.push_back(edit);
             wire.Symbols.push_back(
                 {target.Symbols, binding,
@@ -1602,10 +1563,7 @@ struct PlanWire {
             edit.Targets = rule.Targets;
             edit.Script = Detail::Text(rule.Script);
             edit.Binding = binding;
-            edit.Steps = wire.Programs.back().Steps.empty()
-                ? nullptr : wire.Programs.back().Steps.data();
-            edit.StepCount = static_cast<std::uint32_t>(
-                wire.Programs.back().Steps.size());
+            edit.Program = wire.Programs.back().Record();
             wire.Rules.push_back(edit);
             wire.Symbols.push_back(
                 {rule.Symbols, binding,

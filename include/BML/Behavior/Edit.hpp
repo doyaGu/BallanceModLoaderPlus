@@ -217,64 +217,28 @@ public:
     public:
         Nodes() = default;
 
-        [[nodiscard]] Ports In(Behavior::Selector slot = {}) const {
+        [[nodiscard]] Ports In(Behavior::SlotSelector slot = {}) const {
             return Ports(Port{m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_IN,
                               CKGUID(0, 0), std::move(slot)});
         }
-        [[nodiscard]] Ports In(std::int32_t index) const {
-            return In(Behavior::At(index));
-        }
-        [[nodiscard]] Ports In(std::string_view name) const {
-            return In(Behavior::Unique(name));
-        }
-        [[nodiscard]] Ports Out(Behavior::Selector slot = {}) const {
+        [[nodiscard]] Ports Out(Behavior::SlotSelector slot = {}) const {
             return Ports(Port{m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_OUT,
                               CKGUID(0, 0), std::move(slot)});
         }
-        [[nodiscard]] Ports Out(std::int32_t index) const {
-            return Out(Behavior::At(index));
-        }
-        [[nodiscard]] Ports Out(std::string_view name) const {
-            return Out(Behavior::Unique(name));
-        }
-        [[nodiscard]] Ports Pin(Behavior::Selector slot,
+        [[nodiscard]] Ports Pin(Behavior::SlotSelector slot,
                                 CKGUID type = CKGUID(0, 0)) const {
             return Ports(Port{m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_PIN,
                               type, std::move(slot)});
         }
-        [[nodiscard]] Ports Pin(std::int32_t index,
-                                CKGUID type = CKGUID(0, 0)) const {
-            return Pin(Behavior::At(index), type);
-        }
-        [[nodiscard]] Ports Pin(std::string_view name,
-                                CKGUID type = CKGUID(0, 0)) const {
-            return Pin(Behavior::Unique(name), type);
-        }
-        [[nodiscard]] Ports Pout(Behavior::Selector slot,
+        [[nodiscard]] Ports Pout(Behavior::SlotSelector slot,
                                  CKGUID type = CKGUID(0, 0)) const {
             return Ports(Port{m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_POUT,
                               type, std::move(slot)});
         }
-        [[nodiscard]] Ports Pout(std::int32_t index,
-                                 CKGUID type = CKGUID(0, 0)) const {
-            return Pout(Behavior::At(index), type);
-        }
-        [[nodiscard]] Ports Pout(std::string_view name,
-                                 CKGUID type = CKGUID(0, 0)) const {
-            return Pout(Behavior::Unique(name), type);
-        }
-        [[nodiscard]] Ports Local(Behavior::Selector slot,
+        [[nodiscard]] Ports Local(Behavior::SlotSelector slot,
                                   CKGUID type = CKGUID(0, 0)) const {
             return Ports(Port{m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_LOCAL,
                               type, std::move(slot)});
-        }
-        [[nodiscard]] Ports Local(std::int32_t index,
-                                  CKGUID type = CKGUID(0, 0)) const {
-            return Local(Behavior::At(index), type);
-        }
-        [[nodiscard]] Ports Local(std::string_view name,
-                                  CKGUID type = CKGUID(0, 0)) const {
-            return Local(Behavior::Unique(name), type);
         }
         [[nodiscard]] Ports Target() const {
             return Ports(Port{m_Edit, m_Scope, m_Id,
@@ -298,64 +262,28 @@ public:
     public:
         Node() = default;
 
-        [[nodiscard]] Port In(Behavior::Selector slot = {}) const {
+        [[nodiscard]] Port In(Behavior::SlotSelector slot = {}) const {
             return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_IN, CKGUID(0, 0),
                     std::move(slot)};
         }
-        [[nodiscard]] Port In(std::int32_t index) const {
-            return In(Behavior::Selector::At(index));
-        }
-        [[nodiscard]] Port In(std::string_view name) const {
-            return In(Behavior::Selector::Unique(name));
-        }
-        [[nodiscard]] Port Out(Behavior::Selector slot = {}) const {
+        [[nodiscard]] Port Out(Behavior::SlotSelector slot = {}) const {
             return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_OUT, CKGUID(0, 0),
                     std::move(slot)};
         }
-        [[nodiscard]] Port Out(std::int32_t index) const {
-            return Out(Behavior::Selector::At(index));
-        }
-        [[nodiscard]] Port Out(std::string_view name) const {
-            return Out(Behavior::Selector::Unique(name));
-        }
-        [[nodiscard]] Port Pin(Behavior::Selector slot,
+        [[nodiscard]] Port Pin(Behavior::SlotSelector slot,
                                CKGUID type = CKGUID(0, 0)) const {
             return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_PIN, type,
                     std::move(slot)};
         }
-        [[nodiscard]] Port Pin(std::int32_t index,
-                               CKGUID type = CKGUID(0, 0)) const {
-            return Pin(Behavior::Selector::At(index), type);
-        }
-        [[nodiscard]] Port Pin(std::string_view name,
-                               CKGUID type = CKGUID(0, 0)) const {
-            return Pin(Behavior::Selector::Unique(name), type);
-        }
-        [[nodiscard]] Port Pout(Behavior::Selector slot,
+        [[nodiscard]] Port Pout(Behavior::SlotSelector slot,
                                 CKGUID type = CKGUID(0, 0)) const {
             return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_POUT, type,
                     std::move(slot)};
         }
-        [[nodiscard]] Port Pout(std::int32_t index,
-                                CKGUID type = CKGUID(0, 0)) const {
-            return Pout(Behavior::Selector::At(index), type);
-        }
-        [[nodiscard]] Port Pout(std::string_view name,
-                                CKGUID type = CKGUID(0, 0)) const {
-            return Pout(Behavior::Selector::Unique(name), type);
-        }
-        [[nodiscard]] Port Local(Behavior::Selector slot,
+        [[nodiscard]] Port Local(Behavior::SlotSelector slot,
                                  CKGUID type = CKGUID(0, 0)) const {
             return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_LOCAL, type,
                     std::move(slot)};
-        }
-        [[nodiscard]] Port Local(std::int32_t index,
-                                 CKGUID type = CKGUID(0, 0)) const {
-            return Local(Behavior::Selector::At(index), type);
-        }
-        [[nodiscard]] Port Local(std::string_view name,
-                                 CKGUID type = CKGUID(0, 0)) const {
-            return Local(Behavior::Selector::Unique(name), type);
         }
         [[nodiscard]] Port Target() const {
             return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_TARGET, CKGUID(0, 0), {}};
@@ -475,24 +403,18 @@ public:
                                    std::int32_t delay) const;
         [[nodiscard]] Node Next(Port source) const;
         [[nodiscard]] Node Next(Port source, NodePattern expected) const;
-        [[nodiscard]] Node Next(Node source) const;
-        [[nodiscard]] Node Next(Node source, Behavior::Selector output) const;
-        [[nodiscard]] Node Next(Node source, std::int32_t output) const;
+        [[nodiscard]] Node Next(Node source,
+                                Behavior::SlotSelector output = {}) const;
         [[nodiscard]] Node Previous(Port sink) const;
         [[nodiscard]] Node Previous(Port sink, NodePattern expected) const;
-        [[nodiscard]] Node Previous(Node sink) const;
-        [[nodiscard]] Node Previous(Node sink, Behavior::Selector input) const;
-        [[nodiscard]] Node Previous(Node sink, std::int32_t input) const;
+        [[nodiscard]] Node Previous(Node sink,
+                                    Behavior::SlotSelector input = {}) const;
         [[nodiscard]] Link Leaving(Port source) const;
-        [[nodiscard]] Link Leaving(Node source) const;
         [[nodiscard]] Link Leaving(Node source,
-                                   Behavior::Selector output) const;
-        [[nodiscard]] Link Leaving(Node source, std::int32_t output) const;
+                                   Behavior::SlotSelector output = {}) const;
         [[nodiscard]] Link Entering(Port sink) const;
-        [[nodiscard]] Link Entering(Node sink) const;
         [[nodiscard]] Link Entering(Node sink,
-                                    Behavior::Selector input) const;
-        [[nodiscard]] Link Entering(Node sink, std::int32_t input) const;
+                                    Behavior::SlotSelector input = {}) const;
         [[nodiscard]] Link To(Port source, Node target) const;
         [[nodiscard]] Path Follow(Port source) const;
         [[nodiscard]] Node Add(const Block &block) const;
@@ -614,7 +536,6 @@ private:
     [[nodiscard]] static Graph EnterGraph(
         const std::shared_ptr<Detail::EditProgram> &program,
         std::uint32_t scope, const Node &node);
-    [[nodiscard]] static std::uint64_t Shape(const Behavior::Node &node);
     void Encode(Detail::EditWire &out) const;
     [[nodiscard]] std::shared_ptr<const Edit> Snapshot() const;
 

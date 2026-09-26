@@ -53,7 +53,7 @@ BML_C_ABI_ASSERT(BmlBehaviorLayoutSize,
 BML_C_ABI_ASSERT(BmlBehaviorGraphPortSize,
                  sizeof(BML_BehaviorGraphPort) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphNodeSize,
-                 sizeof(BML_BehaviorGraphNode) == 96u);
+                 sizeof(BML_BehaviorGraphNode) == 104u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphLinkSize,
                  sizeof(BML_BehaviorGraphLink) == 80u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphLinkSourceOrderOffset,
@@ -102,9 +102,9 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 88u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 64u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 204u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 208u);
 BML_C_ABI_ASSERT(BmlBehaviorScriptSpecSize,
-                 sizeof(BML_BehaviorScriptSpec) == 36u);
+                 sizeof(BML_BehaviorScriptSpec) == 104u);
 BML_C_ABI_ASSERT(BmlBehaviorSlotRefSize, sizeof(BML_BehaviorSlotRef) == 48u);
 BML_C_ABI_ASSERT(BmlBehaviorValueRefSize, sizeof(BML_BehaviorValueRef) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
@@ -124,15 +124,17 @@ BML_C_ABI_ASSERT(BmlBehaviorOperationSpecSize,
 BML_C_ABI_ASSERT(BmlBehaviorPortRefSize,
                  sizeof(BML_BehaviorPortRef) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorEditStepSize,
-                 sizeof(BML_BehaviorEditStep) == 384u);
+                 sizeof(BML_BehaviorEditStep) == 64u);
+BML_C_ABI_ASSERT(BmlBehaviorEditProgramSize,
+                 sizeof(BML_BehaviorEditProgram) == 76u);
 BML_C_ABI_ASSERT(BmlBehaviorPlanSpecSize,
                  sizeof(BML_BehaviorPlanSpec) == 28u);
 BML_C_ABI_ASSERT(BmlBehaviorPatchSpecSize,
                  sizeof(BML_BehaviorPatchSpec) == 28u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphEditSize,
-                 sizeof(BML_BehaviorGraphEdit) == 48u);
+                 sizeof(BML_BehaviorGraphEdit) == 120u);
 BML_C_ABI_ASSERT(BmlBehaviorScriptEditSize,
-                 sizeof(BML_BehaviorScriptEdit) == 40u);
+                 sizeof(BML_BehaviorScriptEdit) == 104u);
 #else
 BML_C_ABI_ASSERT(BmlModMenuPageFrameSize,
                  sizeof(BML_ModMenuPageFrame) == 272u);
@@ -147,9 +149,9 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 128u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 96u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 408u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 416u);
 BML_C_ABI_ASSERT(BmlBehaviorScriptSpecSize,
-                 sizeof(BML_BehaviorScriptSpec) == 48u);
+                 sizeof(BML_BehaviorScriptSpec) == 192u);
 BML_C_ABI_ASSERT(BmlBehaviorSlotRefSize, sizeof(BML_BehaviorSlotRef) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorValueRefSize, sizeof(BML_BehaviorValueRef) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
@@ -169,15 +171,17 @@ BML_C_ABI_ASSERT(BmlBehaviorOperationSpecSize,
 BML_C_ABI_ASSERT(BmlBehaviorPortRefSize,
                  sizeof(BML_BehaviorPortRef) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorEditStepSize,
-                 sizeof(BML_BehaviorEditStep) == 424u);
+                 sizeof(BML_BehaviorEditStep) == 72u);
+BML_C_ABI_ASSERT(BmlBehaviorEditProgramSize,
+                 sizeof(BML_BehaviorEditProgram) == 152u);
 BML_C_ABI_ASSERT(BmlBehaviorPlanSpecSize,
                  sizeof(BML_BehaviorPlanSpec) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorPatchSpecSize,
                  sizeof(BML_BehaviorPatchSpec) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphEditSize,
-                 sizeof(BML_BehaviorGraphEdit) == 56u);
+                 sizeof(BML_BehaviorGraphEdit) == 192u);
 BML_C_ABI_ASSERT(BmlBehaviorScriptEditSize,
-                 sizeof(BML_BehaviorScriptEdit) == 48u);
+                 sizeof(BML_BehaviorScriptEdit) == 184u);
 #endif
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {

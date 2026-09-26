@@ -364,18 +364,6 @@ typedef enum BML_BehaviorScriptState {
     BML_BEHAVIOR_SCRIPT_FAILED = 3
 } BML_BehaviorScriptState;
 
-typedef struct BML_BehaviorScriptSpec {
-    uint32_t StructSize;
-    BML_ObjectRef Owner;
-    BML_BehaviorString Name;
-    int32_t Priority;
-    // The complete initial graph. Handle BML_BEHAVIOR_EDIT_GRAPH denotes the
-    // new Script root. The Loader validates and applies every step before it
-    // publishes the Script or returns its handle.
-    uint32_t StepCount;
-    const struct BML_BehaviorEditStep *Steps;
-} BML_BehaviorScriptSpec;
-
 typedef struct BML_BehaviorScriptInfo {
     uint32_t StructSize;
     uint32_t State;
@@ -601,6 +589,17 @@ typedef struct BML_BehaviorGraphPort {
     BML_BehaviorText Name;
 } BML_BehaviorGraphPort;
 
+// Why a Node appears in a snapshot. The Logical view reports only LOGICAL
+// Nodes; the Live view also reports the Nodes Patches and Plans own.
+typedef enum BML_BehaviorNodeRole {
+    BML_BEHAVIOR_NODE_LOGICAL = 1,
+    // A Block a Patch or Plan inserted as plumbing, such as a Hook Block.
+    BML_BEHAVIOR_NODE_INFRASTRUCTURE = 2,
+    // Infrastructure a Patch or Plan no longer uses but could not destroy,
+    // such as a Node a revert conflict left behind.
+    BML_BEHAVIOR_NODE_RETIRED = 3
+} BML_BehaviorNodeRole;
+
 typedef struct BML_BehaviorGraphNode {
     uint32_t StructSize;
     uint64_t Id;
@@ -612,7 +611,12 @@ typedef struct BML_BehaviorGraphNode {
     int32_t Occurrence;
     // A BML_BehaviorKind. Graph-backed Nodes are navigable with Inspect.
     uint32_t Kind;
+    // A BML_BehaviorNodeRole.
+    uint32_t Role;
     uint64_t LayoutGeneration;
+    // Hash of the ordered port list: kind, index, occurrence, type, and name
+    // of every port. A Node Pattern copies it to detect a changed interface.
+    uint64_t Shape;
     BML_BehaviorGuid Prototype;
     int32_t Priority;
     uint32_t Active;
@@ -982,22 +986,40 @@ typedef struct BML_BehaviorPortRef {
     BML_BehaviorSelector Slot;
 } BML_BehaviorPortRef;
 
+// The conditions one Node must satisfy. Every nonzero field must match. A
+// Node Pattern with no condition at all is rejected where one is required.
+typedef struct BML_BehaviorNodePattern {
+    uint32_t StructSize;
+    // A BML_BehaviorKind, or zero for any kind.
+    uint32_t Kind;
+    // Which sibling to take. A name selector also filters by name before the
+    // occurrence is counted.
+    BML_BehaviorSelector Selector;
+    // Prototype GUID, or zero for any Prototype.
+    BML_BehaviorGuid Prototype;
+    // A snapshot BML_BehaviorGraphNode Shape, or zero for any port list.
+    uint64_t Shape;
+    // Exact Node name, or empty. Used with an INDEX selector to check that a
+    // snapshot position still holds the Behavior the author read.
+    BML_BehaviorString Name;
+} BML_BehaviorNodePattern;
+
 typedef enum BML_BehaviorEditKind {
-    // Result names the one existing node matching Name and Prototype.
+    // Result names the one existing node matching the Pattern in Operand.
     BML_BEHAVIOR_EDIT_REQUIRE_NODE = 1,
     // Result names the one existing link from Source to Sink.
     BML_BEHAVIOR_EDIT_REQUIRE_LINK = 2,
     // Result names the unique non-branching path leaving Source.
     BML_BEHAVIOR_EDIT_FOLLOW = 3,
-    // Result names a new Block created from Prototype.
+    // Result names a new Block created from the Block in Operand.
     BML_BEHAVIOR_EDIT_ADD_BLOCK = 4,
     // Result names a slot appended to Target, of SlotKind, called Name. A
     // Local may be appended to the graph root or to a Block created by this
     // same edit, never to a borrowed child node.
     BML_BEHAVIOR_EDIT_APPEND_SLOT = 5,
-    // Adds a behavior link from Source to Sink.
+    // Adds a behavior link from Source to Sink with a delay of Number.
     BML_BEHAVIOR_EDIT_FLOW = 6,
-    // Writes Value into Sink.
+    // Writes the Value in Operand into Sink.
     BML_BEHAVIOR_EDIT_BIND_VALUE = 7,
     // Makes Sink read Source directly.
     BML_BEHAVIOR_EDIT_BIND_PORT = 8,
@@ -1005,34 +1027,35 @@ typedef enum BML_BehaviorEditKind {
     BML_BEHAVIOR_EDIT_SHARE = 9,
     // Copies Source into Sink after each execution of the node owning Source.
     BML_BEHAVIOR_EDIT_PUSH = 10,
-    // Inserts Hook on every link leaving Source.
+    // Inserts the Hook in Operand on every link leaving Source.
     BML_BEHAVIOR_EDIT_TAP = 11,
-    // Inserts Hook at the end of the path named by Target.
+    // Inserts the Hook in Operand at the end of the path named by Target.
     BML_BEHAVIOR_EDIT_AFTER = 12,
     // Reroutes the link named by Target through Node, or through the Sink and
     // Source ports when Node is zero, keeping the delay of that link.
     BML_BEHAVIOR_EDIT_SPLICE = 13,
-    // Result names the existing node Object refers to. The node must live
-    // directly inside the target graph.
+    // Result names the existing node the Object in Operand refers to. The
+    // node must live directly inside the target graph.
     BML_BEHAVIOR_EDIT_USE_NODE = 14,
-    // Result names the existing behavior link Object refers to.
+    // Result names the existing behavior link the Object in Operand refers to.
     BML_BEHAVIOR_EDIT_USE_LINK = 15,
-    // Inserts Hook inside the link named by Target, so the callback runs
-    // before the node that link feeds. The Hook Block is infrastructure and
-    // does not appear in the Logical view of the graph.
+    // Inserts the Hook in Operand inside the link named by Target, so the
+    // callback runs before the node that link feeds. The Hook Block is
+    // infrastructure and does not appear in the Logical view of the graph.
     BML_BEHAVIOR_EDIT_BEFORE = 16,
     // Sends the link named by Target to Sink instead of its own destination.
     // Unlike a splice the original destination is dropped while the patch is
     // open, so the Logical view of the graph reports the new one. Only one
     // patch at a time may redirect one link.
     BML_BEHAVIOR_EDIT_REDIRECT = 17,
-    // Result names a CKParameterOperation owned by the target graph. Its
-    // inputs and result are addressed as Pin 0, Pin 1, and Pout 0 on Result.
+    // Result names a CKParameterOperation owned by the target graph, created
+    // from the Operation in Operand. Its inputs and result are addressed as
+    // Pin 0, Pin 1, and Pout 0 on Result.
     BML_BEHAVIOR_EDIT_ADD_OPERATION = 18,
-    // Replaces the existing child Node named by Target with the configured
-    // Block. Result names the replacement. The two Nodes must expose the same
-    // public control and parameter interface; private Settings and Locals are
-    // owned by their respective Blocks and are not copied.
+    // Replaces the existing child Node named by Target with the Block in
+    // Operand. Result names the replacement. The two Nodes must expose the
+    // same public control and parameter interface; private Settings and
+    // Locals are owned by their respective Blocks and are not copied.
     BML_BEHAVIOR_EDIT_REPLACE_BLOCK = 19,
     // Removes the existing child Node named by Target, together with every
     // behavior link entering or leaving it. The Patch keeps the exact native
@@ -1043,22 +1066,23 @@ typedef enum BML_BehaviorEditKind {
     BML_BEHAVIOR_EDIT_REMOVE_NODE = 20,
     // Result names a graph scope rooted at the graph-backed Node in Target.
     BML_BEHAVIOR_EDIT_ENTER_GRAPH = 21,
-    // Result names a new graph-backed child Node in the current graph scope.
+    // Result names a new graph-backed child Node in the current graph scope,
+    // called Name, with a priority of Number.
     BML_BEHAVIOR_EDIT_ADD_GRAPH = 22,
     // Adds an exact port-count condition to the Node Pattern named by Target.
-    // SlotKind selects the port family and Delay carries the non-negative
+    // SlotKind selects the port family and Number carries the non-negative
     // count. The step defines no handle.
     BML_BEHAVIOR_EDIT_PATTERN_PORT_COUNT = 23,
     // Adds an observed-value condition to the Node Pattern owning Sink.
-    // Value is compared through the port's registered Virtools value form.
-    // The step defines no handle.
+    // The Value in Operand is compared through the registered Virtools value
+    // form of the port. The step defines no handle.
     BML_BEHAVIOR_EDIT_PATTERN_PORT_VALUE = 24,
     // Result names the Node reached by the unique Link leaving Source. When
-    // this step carries a Node Pattern, only Links whose destination Node
-    // matches that Pattern participate in the uniqueness check.
+    // Operand names a Node Pattern, only Links whose destination Node matches
+    // that Pattern participate in the uniqueness check.
     BML_BEHAVIOR_EDIT_NEXT_NODE = 25,
-    // Result names the Node feeding the unique Link entering Sink. When this
-    // step carries a Node Pattern, only Links whose source Node matches that
+    // Result names the Node feeding the unique Link entering Sink. When
+    // Operand names a Node Pattern, only Links whose source Node matches that
     // Pattern participate in the uniqueness check.
     BML_BEHAVIOR_EDIT_PREVIOUS_NODE = 26,
     // Result names the unique Link leaving Source.
@@ -1071,26 +1095,28 @@ typedef enum BML_BehaviorEditKind {
     // Sends the Link named by Target to the same destination as the Link
     // named by Node. The destination Link itself is not changed.
     BML_BEHAVIOR_EDIT_REDIRECT_TO_LINK = 30,
-    // Result names every child Node matching the Pattern, in native child
-    // index order. At least one Node must match. Actions using one of its
-    // ports are repeated for every matched Node.
+    // Result names every child Node matching the Pattern in Operand, in
+    // native child index order. At least one Node must match. Actions using
+    // one of its ports are repeated for every matched Node.
     BML_BEHAVIOR_EDIT_EACH_NODE = 31,
     // Moves the existing Link named by Target to Source and Sink. The Link
     // object and its current activation delay are preserved. Like FLOW, a
     // newly introduced same-frame cycle requires CONFIRM_CYCLE.
     BML_BEHAVIOR_EDIT_RECONNECT = 32,
-    // Writes Value through the parameter currently read by Sink without
-    // changing its direct/shared source relation. The previous value is
-    // restored when the Patch closes.
+    // Writes the Value in Operand through the parameter currently read by
+    // Sink without changing its direct/shared source relation. The previous
+    // value is restored when the Patch closes.
     BML_BEHAVIOR_EDIT_SET_VALUE = 33,
-    // Inserts Hook in a new control-flow route from Source to Sink. The
-    // callback runs after Source fires and before Sink is activated. The Hook
-    // Block and both connecting Links are hidden from the Logical view.
+    // Inserts the Hook in Operand in a new control-flow route from Source to
+    // Sink. The callback runs after Source fires and before Sink is
+    // activated. The Hook Block and both connecting Links are hidden from the
+    // Logical view.
     BML_BEHAVIOR_EDIT_FLOW_HOOK = 34
 } BML_BehaviorEditKind;
 
 typedef enum BML_BehaviorEditFlags {
-    // BML_BEHAVIOR_EDIT_REQUIRE_LINK matches Delay as well as its endpoints.
+    // BML_BEHAVIOR_EDIT_REQUIRE_LINK matches Number as the delay as well as
+    // its endpoints.
     BML_BEHAVIOR_EDIT_HAS_DELAY = 1u << 0,
     // BML_BEHAVIOR_EDIT_FLOW and BML_BEHAVIOR_EDIT_RECONNECT may close a
     // same-frame cycle. Without this the edit is rejected instead.
@@ -1099,6 +1125,8 @@ typedef enum BML_BehaviorEditFlags {
 
 // One step of an edit program. Only the fields its Kind documents are read,
 // and the whole program is validated before any of it reaches a live graph.
+// Source, Sink, and Operand are one-based indices into the pools of the
+// owning BML_BehaviorEditProgram; zero means absent.
 typedef struct BML_BehaviorEditStep {
     uint32_t StructSize;
     uint32_t Kind;
@@ -1112,43 +1140,53 @@ typedef struct BML_BehaviorEditStep {
     // The Block a splice routes through, or the destination Link used by
     // REDIRECT_TO_LINK.
     uint32_t Node;
-    // BML_BehaviorSlotKind of an appended slot.
+    // Entries in Ports.
+    uint32_t Source;
+    uint32_t Sink;
+    // An entry in the pool the Kind reads: Patterns, Blocks, Values, Hooks,
+    // Objects, or Operations. SPLICE, REDIRECT, and REDIRECT_TO_LINK name
+    // their first entry in Orders and carry the entry count in Number.
+    uint32_t Operand;
+    // BML_BehaviorSlotKind of an appended slot or a port-count condition.
     uint32_t SlotKind;
-    int32_t Delay;
-    // Priority of a graph-backed Node created by ADD_GRAPH.
-    int32_t Priority;
-    // Expected Node name copied from a snapshot REQUIRE_NODE, or the name of
-    // an appended slot/graph. For other Node Patterns the selector carries
-    // the name.
-    BML_BehaviorString Name;
-    // Node selector used by REQUIRE_NODE. Name above remains the interface or
-    // graph name used by other step kinds.
-    BML_BehaviorSelector Selector;
-    // Prototype matched by REQUIRE_NODE.
-    BML_BehaviorPrototypeRef Prototype;
-    // Optional structural facts copied by Require(snapshotNode).
-    uint32_t ExpectedKind;
-    uint32_t ReservedShape;
-    uint64_t PortShape;
-    // Complete configured Block created by ADD_BLOCK. Its Prototype provider
-    // generation must already be resolved. The Loader deep-copies the Block
-    // with the edit program.
-    const BML_BehaviorBlock *Block;
+    // A link delay, a graph priority, a port count, or an order count.
+    int32_t Number;
     // Virtools parameter type of an appended Pin, Pout, or Local.
     BML_BehaviorGuid Type;
-    BML_BehaviorPortRef Source;
-    BML_BehaviorPortRef Sink;
-    BML_BehaviorValue Value;
-    const BML_BehaviorHookFunction *Hook;
-    const BML_BehaviorEditOrder *Ordering;
-    uint32_t OrderCount;
-    uint32_t Reserved;
-    // The node or link a USE step names. Identity is resolved once, against
-    // the graph this program is applied to, so a Plan cannot carry it across worlds.
-    BML_ObjectRef Object;
-    // Concrete native operation overload created by ADD_OPERATION.
-    BML_BehaviorOperationSpec Operation;
+    // Name of an appended slot or an added graph.
+    BML_BehaviorString Name;
 } BML_BehaviorEditStep;
+
+// One edit program. Steps read their operands from the pools by index, so a
+// record appears once however many steps use it. The Loader deep-copies
+// everything it keeps before the call that receives the program returns.
+typedef struct BML_BehaviorEditProgram {
+    uint32_t StructSize;
+    const BML_BehaviorEditStep *Steps;
+    uint32_t StepCount;
+    const BML_BehaviorPortRef *Ports;
+    uint32_t PortCount;
+    const BML_BehaviorValue *Values;
+    uint32_t ValueCount;
+    const BML_BehaviorNodePattern *Patterns;
+    uint32_t PatternCount;
+    // Complete configured Blocks. Each Prototype provider generation must
+    // already be resolved.
+    const BML_BehaviorBlock *Blocks;
+    uint32_t BlockCount;
+    const BML_BehaviorHookFunction *Hooks;
+    uint32_t HookCount;
+    const BML_BehaviorEditOrder *Orders;
+    uint32_t OrderCount;
+    // Nodes and links a USE step names. Identity is resolved once, against
+    // the graph this program is applied to, so a Plan cannot carry it across
+    // worlds.
+    const BML_ObjectRef *Objects;
+    uint32_t ObjectCount;
+    // Concrete native operation overloads created by ADD_OPERATION.
+    const BML_BehaviorOperationSpec *Operations;
+    uint32_t OperationCount;
+} BML_BehaviorEditProgram;
 
 // One exact live Graph and its owned Edit program. Fingerprint is the logical
 // snapshot fingerprint observed by the author; Apply rejects a changed Graph
@@ -1161,8 +1199,7 @@ typedef struct BML_BehaviorGraphEdit {
     // Nonzero caller identity copied into Node/Port bindings. It must not be
     // reused while the resulting Patch handle is alive.
     uint64_t Binding;
-    const BML_BehaviorEditStep *Steps;
-    uint32_t StepCount;
+    BML_BehaviorEditProgram Program;
 } BML_BehaviorGraphEdit;
 
 // One Script rule and its owned Edit program.
@@ -1173,10 +1210,19 @@ typedef struct BML_BehaviorScriptEdit {
     // Nonzero caller identity copied into Plan instance snapshots. It must not
     // be reused while the resulting Plan handle is alive.
     uint64_t Binding;
-    const BML_BehaviorEditStep *Steps;
-    uint32_t StepCount;
-    uint32_t Reserved;
+    BML_BehaviorEditProgram Program;
 } BML_BehaviorScriptEdit;
+
+typedef struct BML_BehaviorScriptSpec {
+    uint32_t StructSize;
+    BML_ObjectRef Owner;
+    BML_BehaviorString Name;
+    int32_t Priority;
+    // The complete initial graph. Handle BML_BEHAVIOR_EDIT_GRAPH denotes the
+    // new Script root. The Loader validates and applies every step before it
+    // publishes the Script or returns its handle.
+    BML_BehaviorEditProgram Program;
+} BML_BehaviorScriptSpec;
 
 typedef struct BML_BehaviorPlanSpec {
     uint32_t StructSize;
@@ -1573,19 +1619,30 @@ typedef struct BML_BehaviorInterface {
         const BML_BehaviorPortRef *port,
         const BML_BehaviorValue *value,
         BML_BehaviorStatus *status);
+    // Checks a configured Block against the declared Layout of its Prototype
+    // without creating anything: selectors, value kinds, Setting types, the
+    // Target, and Pin/Pout type selections. On success it writes the exact
+    // Prototype reference a later Run or Edit should carry. It reports
+    // BML_ERROR_UNAVAILABLE when the Prototype declares no Layout, in which
+    // case the Block can still run and the native lifecycle checks it.
+    int (BML_BEHAVIOR_CALL *ValidateBlock)(
+        BML_BehaviorSession session,
+        const BML_BehaviorBlock *block,
+        BML_BehaviorPrototypeRef *outPrototype,
+        BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 // The complete function table for bml.behavior 1.0. Use
 // BML_IFACE_HAS on a function a later minor appends.
 #define BML_BEHAVIOR_INTERFACE_1_0_SIZE                                      \
-    (offsetof(BML_BehaviorInterface, WritePlanInstanceValue) +                \
-     sizeof(((BML_BehaviorInterface *) 0)->WritePlanInstanceValue))
+    (offsetof(BML_BehaviorInterface, ValidateBlock) +                         \
+     sizeof(((BML_BehaviorInterface *) 0)->ValidateBlock))
 
 // The single capability checkpoint for the complete 1.0 surface. A Mod may
 // accept a later minor when this is true, then probe later additions with
 // BML_IFACE_HAS before calling them.
 #define BML_BEHAVIOR_HAS_1_0(iface)                                          \
-    BML_IFACE_HAS((iface), BML_BehaviorInterface, WritePlanInstanceValue)
+    BML_IFACE_HAS((iface), BML_BehaviorInterface, ValidateBlock)
 
 #pragma pack(pop)
 

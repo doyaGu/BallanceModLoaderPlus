@@ -49,7 +49,7 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorLayoutSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphPortSize,
                         sizeof(BML_BehaviorGraphPort) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphNodeSize,
-                        sizeof(BML_BehaviorGraphNode) == 96u);
+                        sizeof(BML_BehaviorGraphNode) == 104u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphLinkSize,
                         sizeof(BML_BehaviorGraphLink) == 80u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphLinkSourceOrderOffset,
@@ -74,6 +74,12 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchInfoSize,
                         sizeof(BML_BehaviorWatchInfo) == 304u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptInfoSize,
                         sizeof(BML_BehaviorScriptInfo) == 352u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorEditOperandOffset,
+                        offsetof(BML_BehaviorEditStep, Operand) == 36u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorEditNumberOffset,
+                        offsetof(BML_BehaviorEditStep, Number) == 44u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorEditTypeOffset,
+                        offsetof(BML_BehaviorEditStep, Type) == 48u);
 
 #if UINTPTR_MAX == UINT32_MAX
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSelectorSize,
@@ -88,11 +94,11 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 204u);
+                        sizeof(BML_BehaviorInterface) == 208u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 204u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 208u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,
-                        sizeof(BML_BehaviorScriptSpec) == 36u);
+                        sizeof(BML_BehaviorScriptSpec) == 104u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
                         sizeof(BML_BehaviorSlotRef) == 48u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorValueRefSize,
@@ -113,22 +119,20 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorOperationSpecSize,
                         sizeof(BML_BehaviorOperationSpec) == 36u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPortRefSize,
                         sizeof(BML_BehaviorPortRef) == 56u);
-BML_BEHAVIOR_ABI_ASSERT(BehaviorEditPrototypeOffset,
-                        offsetof(BML_BehaviorEditStep, Prototype) == 72u);
-BML_BEHAVIOR_ABI_ASSERT(BehaviorEditGenerationOffset,
-                        offsetof(BML_BehaviorEditStep, Prototype) +
-                            offsetof(BML_BehaviorPrototypeRef, Generation) ==
-                            88u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditStepSize,
-                        sizeof(BML_BehaviorEditStep) == 384u);
+                        sizeof(BML_BehaviorEditStep) == 64u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorNodePatternSize,
+                        sizeof(BML_BehaviorNodePattern) == 56u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorEditProgramSize,
+                        sizeof(BML_BehaviorEditProgram) == 76u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPlanSpecSize,
                         sizeof(BML_BehaviorPlanSpec) == 28u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPatchSpecSize,
                         sizeof(BML_BehaviorPatchSpec) == 28u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphEditSize,
-                        sizeof(BML_BehaviorGraphEdit) == 48u);
+                        sizeof(BML_BehaviorGraphEdit) == 120u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptEditSize,
-                        sizeof(BML_BehaviorScriptEdit) == 40u);
+                        sizeof(BML_BehaviorScriptEdit) == 104u);
 #else
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSelectorSize,
                         sizeof(BML_BehaviorSelector) == 32u);
@@ -142,11 +146,11 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 408u);
+                        sizeof(BML_BehaviorInterface) == 416u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 408u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 416u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,
-                        sizeof(BML_BehaviorScriptSpec) == 48u);
+                        sizeof(BML_BehaviorScriptSpec) == 192u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
                         sizeof(BML_BehaviorSlotRef) == 56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorValueRefSize,
@@ -167,22 +171,20 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorOperationSpecSize,
                         sizeof(BML_BehaviorOperationSpec) == 36u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPortRefSize,
                         sizeof(BML_BehaviorPortRef) == 64u);
-BML_BEHAVIOR_ABI_ASSERT(BehaviorEditPrototypeOffset,
-                        offsetof(BML_BehaviorEditStep, Prototype) == 88u);
-BML_BEHAVIOR_ABI_ASSERT(BehaviorEditGenerationOffset,
-                        offsetof(BML_BehaviorEditStep, Prototype) +
-                            offsetof(BML_BehaviorPrototypeRef, Generation) ==
-                            104u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditStepSize,
-                        sizeof(BML_BehaviorEditStep) == 424u);
+                        sizeof(BML_BehaviorEditStep) == 72u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorNodePatternSize,
+                        sizeof(BML_BehaviorNodePattern) == 72u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorEditProgramSize,
+                        sizeof(BML_BehaviorEditProgram) == 152u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPlanSpecSize,
                         sizeof(BML_BehaviorPlanSpec) == 40u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPatchSpecSize,
                         sizeof(BML_BehaviorPatchSpec) == 40u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphEditSize,
-                        sizeof(BML_BehaviorGraphEdit) == 56u);
+                        sizeof(BML_BehaviorGraphEdit) == 192u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptEditSize,
-                        sizeof(BML_BehaviorScriptEdit) == 48u);
+                        sizeof(BML_BehaviorScriptEdit) == 184u);
 #endif
 
 static int BML_BEHAVIOR_CALL BehaviorOpenSessionSignature(

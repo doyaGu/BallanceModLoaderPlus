@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "BML/ImcWire.hpp"
+#include "Behavior/Pattern.h"
 #include "Loader/ModContext.h"
 
 namespace BML::Api::Behavior {
@@ -319,7 +320,19 @@ bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
             record.Kind = BML_BEHAVIOR_KIND_GRAPH;
             break;
         }
+        switch (node.Role) {
+        case BML::Behavior::Internal::NodeRole::Logical:
+            record.Role = BML_BEHAVIOR_NODE_LOGICAL;
+            break;
+        case BML::Behavior::Internal::NodeRole::Infrastructure:
+            record.Role = BML_BEHAVIOR_NODE_INFRASTRUCTURE;
+            break;
+        case BML::Behavior::Internal::NodeRole::Retired:
+            record.Role = BML_BEHAVIOR_NODE_RETIRED;
+            break;
+        }
         record.LayoutGeneration = node.LayoutGeneration;
+        record.Shape = BML::Behavior::Internal::PortShape(node);
         record.Prototype = Guid(node.Prototype);
         record.Priority = node.Priority;
         record.Active = node.Active ? 1u : 0u;

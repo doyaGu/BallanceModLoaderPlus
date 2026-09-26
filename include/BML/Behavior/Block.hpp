@@ -164,9 +164,12 @@ private:
           m_State(std::make_shared<Detail::BlockState>(
               Detail::BlockSpec(prototype))) {}
 
+    // The one creation path. Function places the compiled Block through one
+    // table entry: it receives the Block, the frame policy, and the three
+    // outputs, and returns the entry's code.
     template <class Handle, class Function>
-    Result<Handle> Open(Function function, RunKind kind, ObjectRef owner,
-                        const Selector *input, FramePolicy frames) const;
+    Result<Handle> Open(RunKind kind, FramePolicy frames,
+                        Function function) const;
     [[nodiscard]] Result<std::shared_ptr<const Detail::CompiledBlock>>
     Compile(bool requireDeclared = false) const;
     [[nodiscard]] Status Accept(const BML_BehaviorRunInfo &info,

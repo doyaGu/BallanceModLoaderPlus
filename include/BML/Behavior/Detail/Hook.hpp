@@ -82,8 +82,7 @@ inline Result<PlanInfo> CompletePlanInfo(
     const std::shared_ptr<SessionState> &session, BML_BehaviorPlan handle,
     const BML_BehaviorPlanInfo &wire,
     const BML_BehaviorStatus &callStatus) {
-    if (wire.StructSize < sizeof(wire) || !KnownPlanState(wire.State) ||
-        !ValidStatus(wire.LastStatus))
+    if (wire.StructSize < sizeof(wire) || !ValidStatus(wire.LastStatus))
         return Result<PlanInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
     PlanInfo info = ReadPlanInfo(wire);
     if (info.LastStatus.Error == Error::None)
@@ -102,7 +101,7 @@ inline Result<PatchInfo> CompletePatchInfo(
     const BML_BehaviorPatchInfo &wire,
     const BML_BehaviorStatus &callStatus) {
     if (wire.StructSize < sizeof(wire) || wire.Reserved != 0 ||
-        !KnownPatchState(wire.State) || !ValidStatus(wire.LastStatus))
+        !ValidStatus(wire.LastStatus))
         return Result<PatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
     PatchInfo info = ReadPatchInfo(wire);
     if (info.LastStatus.Error == Error::None)

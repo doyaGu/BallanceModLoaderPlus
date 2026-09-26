@@ -134,6 +134,8 @@ public:
     [[nodiscard]] std::uint64_t PrototypeGeneration() const noexcept {
         return m_PrototypeGeneration;
     }
+    [[nodiscard]] TargetMode Targeting() const noexcept { return m_TargetMode; }
+    [[nodiscard]] CKGUID TargetType() const noexcept { return m_TargetType; }
     // A Plan may retain owned literals, but not pointers into one CK world.
     [[nodiscard]] bool WorldBound() const noexcept;
     [[nodiscard]] const std::vector<std::vector<Binding>> &Settings() const
@@ -203,6 +205,13 @@ private:
 
     friend class Runtime;
 };
+
+// Checks a Block against the declared Layout of its Prototype before any
+// native object exists: first-stage Settings, an explicit Target, and the
+// Pin and Pout type selections. Anything the native lifecycle may create
+// later is left to it.
+[[nodiscard]] Status CheckDeclared(const Layout &layout, const BlockSpec &block,
+                                   CKParameterManager *parameters);
 
 } // namespace BML::Behavior::Internal
 #endif // BML_BEHAVIOR_BLOCK_H

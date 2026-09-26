@@ -41,4 +41,12 @@ Binding Binding::Shared(CKParameterIn *source) {
     return binding;
 }
 
+// Block's declared-layout check links against this; no test here gives it a
+// parameter manager.
+Type Describe(CKParameterManager *, CKGUID type) {
+    Type description;
+    description.Guid = type;
+    return description;
+}
+
 } // namespace BML::Behavior::Internal::Parameter

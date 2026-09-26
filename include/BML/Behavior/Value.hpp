@@ -208,6 +208,19 @@ inline Selector Named(std::string_view name, std::int32_t occurrence) {
 }
 inline Selector Unique(std::string_view name) { return Selector::Unique(name); }
 
+// The parameter type of a slot accessor. It is a Selector that a slot index
+// or a unique name also converts to, so each accessor needs one overload.
+class SlotSelector : public Selector {
+public:
+    using Selector::Selector;
+    SlotSelector() = default;
+    SlotSelector(Selector selector) : Selector(std::move(selector)) {}
+    SlotSelector(std::int32_t index) : Selector(Selector::At(index)) {}
+    SlotSelector(const char *name)
+        : Selector(std::string_view(name ? name : "")) {}
+    SlotSelector(const std::string &name) : Selector(std::string_view(name)) {}
+};
+
 enum class ValueKind : std::uint32_t {
     Bool = BML_BEHAVIOR_VALUE_BOOL,
     Int32 = BML_BEHAVIOR_VALUE_INT32,

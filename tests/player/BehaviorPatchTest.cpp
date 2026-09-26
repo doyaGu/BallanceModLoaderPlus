@@ -939,31 +939,35 @@ private:
         block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
         block.PrototypeGeneration = m_FixturePrototype.Generation;
 
+        BML_BehaviorPortRef ports[2]{};
+        ports[0].StructSize = sizeof(ports[0]);
+        ports[0].Graph = BML_BEHAVIOR_EDIT_GRAPH;
+        ports[0].Handle = BML_BEHAVIOR_EDIT_GRAPH;
+        ports[0].Kind = BML_BEHAVIOR_SLOT_IN;
+        ports[0].Slot.StructSize = sizeof(ports[0].Slot);
+        ports[0].Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
+        ports[0].Slot.Index = 0;
+        ports[1].StructSize = sizeof(ports[1]);
+        ports[1].Graph = BML_BEHAVIOR_EDIT_GRAPH;
+        ports[1].Handle = BML_BEHAVIOR_EDIT_GRAPH;
+        ports[1].Kind = BML_BEHAVIOR_SLOT_OUT;
+        ports[1].Slot.StructSize = sizeof(ports[1].Slot);
+        ports[1].Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
+        ports[1].Slot.Index = 0;
+
         BML_BehaviorEditStep steps[3]{};
         steps[0].StructSize = sizeof(steps[0]);
         steps[0].Kind = BML_BEHAVIOR_EDIT_ADD_BLOCK;
         steps[0].Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[0].Result = 2;
-        steps[0].Block = &block;
+        steps[0].Operand = 1;
 
         steps[1].StructSize = sizeof(steps[1]);
         steps[1].Kind = BML_BEHAVIOR_EDIT_REQUIRE_LINK;
         steps[1].Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[1].Result = 3;
-        steps[1].Source.StructSize = sizeof(steps[1].Source);
-        steps[1].Source.Graph = BML_BEHAVIOR_EDIT_GRAPH;
-        steps[1].Source.Handle = BML_BEHAVIOR_EDIT_GRAPH;
-        steps[1].Source.Kind = BML_BEHAVIOR_SLOT_IN;
-        steps[1].Source.Slot.StructSize = sizeof(steps[1].Source.Slot);
-        steps[1].Source.Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
-        steps[1].Source.Slot.Index = 0;
-        steps[1].Sink.StructSize = sizeof(steps[1].Sink);
-        steps[1].Sink.Graph = BML_BEHAVIOR_EDIT_GRAPH;
-        steps[1].Sink.Handle = BML_BEHAVIOR_EDIT_GRAPH;
-        steps[1].Sink.Kind = BML_BEHAVIOR_SLOT_OUT;
-        steps[1].Sink.Slot.StructSize = sizeof(steps[1].Sink.Slot);
-        steps[1].Sink.Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
-        steps[1].Sink.Slot.Index = 0;
+        steps[1].Source = 1;
+        steps[1].Sink = 2;
 
         steps[2].StructSize = sizeof(steps[2]);
         steps[2].Kind = BML_BEHAVIOR_EDIT_SPLICE;
@@ -978,8 +982,13 @@ private:
         target.StructSize = sizeof(target);
         target.Binding = 1;
         target.Graph = graph;
-        target.Steps = steps;
-        target.StepCount = 3;
+        target.Program.StructSize = sizeof(target.Program);
+        target.Program.Steps = steps;
+        target.Program.StepCount = 3;
+        target.Program.Ports = ports;
+        target.Program.PortCount = 2;
+        target.Program.Blocks = &block;
+        target.Program.BlockCount = 1;
         spec.Edits = &target;
         spec.EditCount = 1;
         return m_Behavior->ApplyPatch(m_Session, &spec, out, nullptr, status);

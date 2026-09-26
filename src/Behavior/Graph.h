@@ -50,6 +50,16 @@ struct GraphPort {
     bool Active = false;
 };
 
+// What an installed edit made of a Node. Only a Live view reports anything
+// but Logical: a Logical view hides the other two.
+enum class NodeRole {
+    Logical,
+    // Created by a Patch or Plan to realize its edit.
+    Infrastructure,
+    // Infrastructure an installation no longer uses but has not destroyed.
+    Retired,
+};
+
 struct GraphNode {
     std::uint64_t Id = 0;
     ObjectRef Object;
@@ -58,6 +68,7 @@ struct GraphNode {
     int Occurrence = 0;
     std::uint64_t LayoutGeneration = 0;
     BehaviorKind Kind = BehaviorKind::Function;
+    NodeRole Role = NodeRole::Logical;
     CKGUID Prototype = CKGUID();
     std::string Name;
     int Priority = 0;

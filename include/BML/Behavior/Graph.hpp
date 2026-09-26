@@ -22,6 +22,15 @@ enum class View : std::uint32_t {
     Live = BML_BEHAVIOR_GRAPH_LIVE,
 };
 
+// Why a Node appears in a snapshot. Only the Live view reports anything but
+// Logical: Infrastructure is plumbing a Patch or Plan inserted, such as a Hook
+// Block, and Retired is infrastructure a revert conflict left behind.
+enum class NodeRole : std::uint32_t {
+    Logical = BML_BEHAVIOR_NODE_LOGICAL,
+    Infrastructure = BML_BEHAVIOR_NODE_INFRASTRUCTURE,
+    Retired = BML_BEHAVIOR_NODE_RETIRED,
+};
+
 enum class TruthValue : std::uint32_t {
     No = BML_BEHAVIOR_FALSE,
     Yes = BML_BEHAVIOR_TRUE,
@@ -71,10 +80,12 @@ struct GraphNodeData {
     std::int32_t Occurrence = 0;
     std::uint64_t LayoutGeneration = 0;
     BehaviorKind Kind = BehaviorKind::Function;
+    NodeRole Role = NodeRole::Logical;
     CKGUID Prototype{0, 0};
     std::int32_t Priority = 0;
     bool Active = false;
     std::string Name;
+    std::uint64_t Shape = 0;
     std::size_t PortOffset = 0;
     std::size_t PortCount = 0;
 };
@@ -164,60 +175,27 @@ public:
     [[nodiscard]] std::int32_t Occurrence() const noexcept;
     [[nodiscard]] std::uint64_t LayoutGeneration() const noexcept;
     [[nodiscard]] BehaviorKind Kind() const noexcept;
+    [[nodiscard]] NodeRole Role() const noexcept;
     [[nodiscard]] bool IsGraph() const noexcept;
     [[nodiscard]] CKGUID Prototype() const noexcept;
     [[nodiscard]] std::int32_t Priority() const noexcept;
     [[nodiscard]] bool Active() const noexcept;
     [[nodiscard]] std::string_view Name() const noexcept;
+    // A hash of the port list the Loader computed. Two snapshots of the same
+    // Node agree on it while its interface is unchanged.
+    [[nodiscard]] std::uint64_t Shape() const noexcept;
     [[nodiscard]] GraphRange<Port> Ports() const noexcept;
 
-    [[nodiscard]] Port In(Selector slot = Selector::Only()) const;
-    [[nodiscard]] Port In(std::int32_t index) const {
-        return In(Selector::At(index));
-    }
-    [[nodiscard]] Port In(std::string_view name) const {
-        return Select(SlotKind::In, name);
-    }
-    [[nodiscard]] Port Out(Selector slot = Selector::Only()) const;
-    [[nodiscard]] Port Out(std::int32_t index) const {
-        return Out(Selector::At(index));
-    }
-    [[nodiscard]] Port Out(std::string_view name) const {
-        return Select(SlotKind::Out, name);
-    }
-    [[nodiscard]] Port Pin(Selector slot = Selector::Only()) const;
-    [[nodiscard]] Port Pin(std::int32_t index) const {
-        return Pin(Selector::At(index));
-    }
-    [[nodiscard]] Port Pin(std::string_view name) const {
-        return Select(SlotKind::Pin, name);
-    }
-    [[nodiscard]] Port Pout(Selector slot = Selector::Only()) const;
-    [[nodiscard]] Port Pout(std::int32_t index) const {
-        return Pout(Selector::At(index));
-    }
-    [[nodiscard]] Port Pout(std::string_view name) const {
-        return Select(SlotKind::Pout, name);
-    }
-    [[nodiscard]] Port Setting(Selector slot = Selector::Only()) const;
-    [[nodiscard]] Port Setting(std::int32_t index) const {
-        return Setting(Selector::At(index));
-    }
-    [[nodiscard]] Port Setting(std::string_view name) const {
-        return Select(SlotKind::Setting, name);
-    }
-    [[nodiscard]] Port Local(Selector slot = Selector::Only()) const;
-    [[nodiscard]] Port Local(std::int32_t index) const {
-        return Local(Selector::At(index));
-    }
-    [[nodiscard]] Port Local(std::string_view name) const {
-        return Select(SlotKind::Local, name);
-    }
+    [[nodiscard]] Port In(SlotSelector slot = {}) const;
+    [[nodiscard]] Port Out(SlotSelector slot = {}) const;
+    [[nodiscard]] Port Pin(SlotSelector slot = {}) const;
+    [[nodiscard]] Port Pout(SlotSelector slot = {}) const;
+    [[nodiscard]] Port Setting(SlotSelector slot = {}) const;
+    [[nodiscard]] Port Local(SlotSelector slot = {}) const;
     [[nodiscard]] Port Target() const;
 
 private:
     [[nodiscard]] Port Select(SlotKind kind, Selector slot) const;
-    [[nodiscard]] Port Select(SlotKind kind, std::string_view name) const;
     Node(std::shared_ptr<const Detail::GraphData> graph,
          std::size_t index) noexcept
         : m_Graph(std::move(graph)), m_Index(index) {}
@@ -540,25 +518,6 @@ inline Port Node::Select(SlotKind kind, Selector slot) const {
     return match ? Port(m_Graph, matchIndex) : Port{};
 }
 
-inline Port Node::Select(SlotKind kind, std::string_view name) const {
-    if (!*this)
-        return {};
-    const Detail::GraphNodeData &node = m_Graph->Nodes[m_Index];
-    std::size_t match = 0;
-    bool found = false;
-    for (std::size_t index = node.PortOffset;
-         index < node.PortOffset + node.PortCount; ++index) {
-        const Detail::GraphPortData &port = m_Graph->Ports[index];
-        if (port.Kind != kind || port.Name != name)
-            continue;
-        if (found)
-            return {};
-        found = true;
-        match = index;
-    }
-    return found ? Port(m_Graph, match) : Port{};
-}
-
 inline Node::operator bool() const noexcept {
     return m_Graph && m_Index < m_Graph->Nodes.size();
 }
@@ -569,11 +528,13 @@ inline std::int32_t Node::Index() const noexcept { return (*this) ? m_Graph->Nod
 inline std::int32_t Node::Occurrence() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Occurrence : -1; }
 inline std::uint64_t Node::LayoutGeneration() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].LayoutGeneration : 0; }
 inline BehaviorKind Node::Kind() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Kind : BehaviorKind::Function; }
+inline NodeRole Node::Role() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Role : NodeRole::Logical; }
 inline bool Node::IsGraph() const noexcept { return (*this) && Kind() == BehaviorKind::Graph; }
 inline CKGUID Node::Prototype() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Prototype : CKGUID(0, 0); }
 inline std::int32_t Node::Priority() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Priority : 0; }
 inline bool Node::Active() const noexcept { return (*this) && m_Graph->Nodes[m_Index].Active; }
 inline std::string_view Node::Name() const noexcept { return (*this) ? std::string_view(m_Graph->Nodes[m_Index].Name) : std::string_view{}; }
+inline std::uint64_t Node::Shape() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Shape : 0; }
 inline GraphRange<Port> Node::Ports() const noexcept {
     if (!*this)
         return {};
@@ -640,22 +601,22 @@ inline std::string_view ParameterOperation::Name() const noexcept {
                    : std::string_view{};
 }
 
-inline Port Node::In(Selector slot) const {
+inline Port Node::In(SlotSelector slot) const {
     return Select(SlotKind::In, std::move(slot));
 }
-inline Port Node::Out(Selector slot) const {
+inline Port Node::Out(SlotSelector slot) const {
     return Select(SlotKind::Out, std::move(slot));
 }
-inline Port Node::Pin(Selector slot) const {
+inline Port Node::Pin(SlotSelector slot) const {
     return Select(SlotKind::Pin, std::move(slot));
 }
-inline Port Node::Pout(Selector slot) const {
+inline Port Node::Pout(SlotSelector slot) const {
     return Select(SlotKind::Pout, std::move(slot));
 }
-inline Port Node::Setting(Selector slot) const {
+inline Port Node::Setting(SlotSelector slot) const {
     return Select(SlotKind::Setting, std::move(slot));
 }
-inline Port Node::Local(Selector slot) const {
+inline Port Node::Local(SlotSelector slot) const {
     return Select(SlotKind::Local, std::move(slot));
 }
 inline Port Node::Target() const {

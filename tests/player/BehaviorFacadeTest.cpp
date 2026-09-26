@@ -2814,21 +2814,25 @@ private:
         steps[0].Name = {appendedName,
                          static_cast<std::uint32_t>(sizeof(appendedName) - 1)};
 
+        BML_BehaviorPortRef ports[2]{};
+        ports[0].Handle = 2;
+        ports[0].Graph = BML_BEHAVIOR_EDIT_GRAPH;
+        ports[0].Kind = 0;
+        // StructSize deliberately remains zero. Appended-slot references are
+        // still complete public DTOs and must not bypass wire validation.
+        ports[1].StructSize = sizeof(ports[1]);
+        ports[1].Handle = BML_BEHAVIOR_EDIT_GRAPH;
+        ports[1].Graph = BML_BEHAVIOR_EDIT_GRAPH;
+        ports[1].Kind = BML_BEHAVIOR_SLOT_OUT;
+        ports[1].Slot.StructSize = sizeof(ports[1].Slot);
+        ports[1].Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
+        ports[1].Slot.Index = 0;
+
         steps[1].StructSize = sizeof(steps[1]);
         steps[1].Kind = BML_BEHAVIOR_EDIT_FLOW;
         steps[1].Graph = BML_BEHAVIOR_EDIT_GRAPH;
-        steps[1].Source.Handle = 2;
-        steps[1].Source.Graph = BML_BEHAVIOR_EDIT_GRAPH;
-        steps[1].Source.Kind = 0;
-        // StructSize deliberately remains zero. Appended-slot references are
-        // still complete public DTOs and must not bypass wire validation.
-        steps[1].Sink.StructSize = sizeof(steps[1].Sink);
-        steps[1].Sink.Handle = BML_BEHAVIOR_EDIT_GRAPH;
-        steps[1].Sink.Graph = BML_BEHAVIOR_EDIT_GRAPH;
-        steps[1].Sink.Kind = BML_BEHAVIOR_SLOT_OUT;
-        steps[1].Sink.Slot.StructSize = sizeof(steps[1].Sink.Slot);
-        steps[1].Sink.Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
-        steps[1].Sink.Slot.Index = 0;
+        steps[1].Source = 1;
+        steps[1].Sink = 2;
 
         BML_BehaviorPatchSpec spec{};
         spec.StructSize = sizeof(spec);
@@ -2838,8 +2842,11 @@ private:
         target.StructSize = sizeof(target);
         target.Binding = 1;
         target.Graph = graph;
-        target.Steps = steps;
-        target.StepCount = 2;
+        target.Program.StructSize = sizeof(target.Program);
+        target.Program.Steps = steps;
+        target.Program.StepCount = 2;
+        target.Program.Ports = ports;
+        target.Program.PortCount = 2;
         spec.Edits = &target;
         spec.EditCount = 1;
         BML_BehaviorPatch patch = nullptr;
