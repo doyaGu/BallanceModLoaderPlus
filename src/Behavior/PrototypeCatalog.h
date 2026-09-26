@@ -8,7 +8,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "Behavior/Status.h"
+#include "Behavior/Core/Status.h"
 
 namespace BML::Behavior::Internal {
 

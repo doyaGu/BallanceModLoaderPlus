@@ -1,4 +1,4 @@
-#include "Behavior/Layout.h"
+#include "Behavior/Core/Layout.h"
 
 #include <cstdint>
 #include <cstring>
@@ -6,13 +6,11 @@
 #include <unordered_map>
 #include <utility>
 
-#include "Behavior/Status.h"
+#include "Behavior/Core/Hash.h"
+#include "Behavior/Core/Status.h"
 
 namespace BML::Behavior::Internal {
 namespace {
-
-constexpr std::uint64_t kIdentityOffset = 1469598103934665603ull;
-constexpr std::uint64_t kIdentityPrime = 1099511628211ull;
 
 constexpr CKDWORD kLayoutFlags =
     static_cast<CKDWORD>(CKBEHAVIOR_TARGETABLE) |
@@ -33,25 +31,13 @@ constexpr CKDWORD kExecuteLayoutFlags =
     static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS) |
     static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDLOCALPARAMS);
 
-void IdentityBytes(std::uint64_t &identity, const void *data,
-                   std::size_t size) noexcept {
-    const auto *bytes = static_cast<const unsigned char *>(data);
-    for (std::size_t index = 0; index < size; ++index) {
-        identity ^= bytes[index];
-        identity *= kIdentityPrime;
-    }
-}
-
 template <class T>
 void IdentityPart(std::uint64_t &identity, const T &value) noexcept {
-    IdentityBytes(identity, &value, sizeof(value));
+    Fnv::Value(identity, value);
 }
 
 void IdentityText(std::uint64_t &identity, const char *text) noexcept {
-    const std::size_t size = text ? std::strlen(text) : 0;
-    IdentityPart(identity, size);
-    if (size)
-        IdentityBytes(identity, text, size);
+    Fnv::Text(identity, text ? std::string_view(text) : std::string_view());
 }
 
 void IdentityObject(std::uint64_t &identity, CKObject *object) noexcept {
@@ -331,7 +317,7 @@ Status SlotFailure(Error error, std::string message, CKGUID prototype,
 } // namespace
 
 std::uint64_t LayoutIdentity(CKBehavior *behavior) noexcept {
-    std::uint64_t identity = kIdentityOffset;
+    std::uint64_t identity = Fnv::Offset;
     if (!behavior)
         return identity;
 

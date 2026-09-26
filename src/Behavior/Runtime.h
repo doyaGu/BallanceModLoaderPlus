@@ -20,11 +20,11 @@
 #include "Behavior/Callback.h"
 #include "Behavior/Execution.h"
 #include "Behavior/Lifecycle.h"
-#include "Behavior/Layout.h"
-#include "Behavior/ObjectRef.h"
-#include "Behavior/Parameter.h"
+#include "Behavior/Core/Layout.h"
+#include "Behavior/Core/ObjectRef.h"
+#include "Behavior/Core/Parameter.h"
 #include "Behavior/PrototypeCatalog.h"
-#include "Behavior/Status.h"
+#include "Behavior/Core/Status.h"
 
 namespace BML::Behavior::Internal {
 
@@ -421,9 +421,6 @@ private:
     friend class Instance;
     friend class CKEdit;
 };
-
-const char *DescribeError(Error error);
-const char *DescribePhase(Phase phase);
 
 } // namespace BML::Behavior::Internal
 

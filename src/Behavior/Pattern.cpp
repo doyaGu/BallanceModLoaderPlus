@@ -1,5 +1,7 @@
 #include "Behavior/Pattern.h"
 
+#include "Behavior/Core/Hash.h"
+
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -24,25 +26,16 @@ bool Readable(SlotKind kind) noexcept {
         kind == SlotKind::Setting || kind == SlotKind::Local;
 }
 
+// Must match Detail's Edit::Shape, which hashes the public port kind.
 std::uint64_t PortShape(const GraphNode &node) {
-    constexpr std::uint64_t offset = 1469598103934665603ull;
-    constexpr std::uint64_t prime = 1099511628211ull;
-    std::uint64_t hash = offset;
-    const auto append = [&](const void *data, std::size_t size) {
-        const auto *bytes = static_cast<const unsigned char *>(data);
-        for (std::size_t index = 0; index < size; ++index) {
-            hash ^= bytes[index];
-            hash *= prime;
-        }
-    };
+    std::uint64_t hash = Fnv::Offset;
     for (const GraphPort &port : node.Ports) {
-        const auto kind = static_cast<std::uint32_t>(port.Kind) + 1u;
-        append(&kind, sizeof(kind));
-        append(&port.Index, sizeof(port.Index));
-        append(&port.Occurrence, sizeof(port.Occurrence));
-        append(&port.Type.d1, sizeof(port.Type.d1));
-        append(&port.Type.d2, sizeof(port.Type.d2));
-        append(port.Name.data(), port.Name.size());
+        Fnv::Value(hash, static_cast<std::uint32_t>(port.Kind) + 1u);
+        Fnv::Value(hash, port.Index);
+        Fnv::Value(hash, port.Occurrence);
+        Fnv::Value(hash, port.Type.d1);
+        Fnv::Value(hash, port.Type.d2);
+        Fnv::Bytes(hash, port.Name.data(), port.Name.size());
     }
     return hash;
 }

@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_OBJECTREF_H
-#define BML_BEHAVIOR_OBJECTREF_H
+#ifndef BML_BEHAVIOR_CORE_OBJECTREF_H
+#define BML_BEHAVIOR_CORE_OBJECTREF_H
 
 #include <cstdint>
 
@@ -17,4 +17,4 @@ struct ObjectRef {
 
 } // namespace BML::Behavior::Internal
 
-#endif // BML_BEHAVIOR_OBJECTREF_H
+#endif // BML_BEHAVIOR_CORE_OBJECTREF_H

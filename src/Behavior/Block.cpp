@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "Behavior/Value.h"
+#include "Behavior/Core/Value.h"
 
 namespace BML::Behavior::Internal {
 BlockSpec &BlockSpec::TargetOwner() {

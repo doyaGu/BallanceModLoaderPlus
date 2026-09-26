@@ -1,7 +1,10 @@
 #include "Behavior/CKEdit.h"
 
+#include "Behavior/Blocks/HookBlock.h"
 #include "Behavior/CKBehaviorContext.h"
 #include "Behavior/CKGraphOrder.h"
+#include "Behavior/Core/Hash.h"
+#include "Behavior/Runtime.h"
 
 #include <algorithm>
 #include <array>
@@ -121,13 +124,8 @@ ParameterId NativeParameter(CKObject *parameter) {
 }
 
 std::uint64_t HashTap(const GraphEndpoint &source, std::uint32_t ordinal) {
-    std::uint64_t hash = 1469598103934665603ull;
-    const auto add = [&](std::uint64_t value) {
-        for (int byte = 0; byte < 8; ++byte) {
-            hash ^= static_cast<unsigned char>(value >> (byte * 8));
-            hash *= 1099511628211ull;
-        }
-    };
+    std::uint64_t hash = Fnv::Offset;
+    const auto add = [&](std::uint64_t value) { Fnv::Value(hash, value); };
     add(source.Node);
     add(static_cast<std::uint64_t>(source.Kind));
     add(static_cast<std::uint32_t>(source.Index));
@@ -137,13 +135,8 @@ std::uint64_t HashTap(const GraphEndpoint &source, std::uint32_t ordinal) {
 
 std::uint64_t HashSplice(const LinkBase &link, std::uint32_t ordinal,
                          std::uint32_t node) {
-    std::uint64_t hash = 1469598103934665603ull;
-    const auto add = [&](std::uint64_t value) {
-        for (int byte = 0; byte < 8; ++byte) {
-            hash ^= static_cast<unsigned char>(value >> (byte * 8));
-            hash *= 1099511628211ull;
-        }
-    };
+    std::uint64_t hash = Fnv::Offset;
+    const auto add = [&](std::uint64_t value) { Fnv::Value(hash, value); };
     add(link.Anchor.Domain);
     add(link.Anchor.Slot);
     add(link.Anchor.Generation);
@@ -154,13 +147,8 @@ std::uint64_t HashSplice(const LinkBase &link, std::uint32_t ordinal,
 
 std::uint64_t HashRedirect(const LinkBase &link, std::uint32_t ordinal,
                            const GraphEndpoint &sink) {
-    std::uint64_t hash = 1469598103934665603ull;
-    const auto add = [&](std::uint64_t value) {
-        for (int byte = 0; byte < 8; ++byte) {
-            hash ^= static_cast<unsigned char>(value >> (byte * 8));
-            hash *= 1099511628211ull;
-        }
-    };
+    std::uint64_t hash = Fnv::Offset;
+    const auto add = [&](std::uint64_t value) { Fnv::Value(hash, value); };
     add(link.Anchor.Domain);
     add(link.Anchor.Slot);
     add(link.Anchor.Generation);
@@ -172,13 +160,8 @@ std::uint64_t HashRedirect(const LinkBase &link, std::uint32_t ordinal,
 }
 
 std::uint64_t HashBind(const GraphEndpoint &pin, const CheckedBind &bind) {
-    std::uint64_t hash = 1469598103934665603ull;
-    const auto add = [&](std::uint64_t value) {
-        for (int byte = 0; byte < 8; ++byte) {
-            hash ^= static_cast<unsigned char>(value >> (byte * 8));
-            hash *= 1099511628211ull;
-        }
-    };
+    std::uint64_t hash = Fnv::Offset;
+    const auto add = [&](std::uint64_t value) { Fnv::Value(hash, value); };
     add(pin.Node);
     add(static_cast<std::uint64_t>(pin.Kind));
     add(static_cast<std::uint32_t>(pin.Index));

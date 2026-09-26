@@ -1,6 +1,7 @@
 #include "Behavior/Graph.h"
 
 #include "Behavior/CKGraphOrder.h"
+#include "Behavior/Core/Hash.h"
 
 #include <algorithm>
 #include <bit>
@@ -17,27 +18,13 @@
 namespace BML::Behavior::Internal {
 namespace {
 
-constexpr std::uint64_t kHashOffset = 1469598103934665603ull;
-constexpr std::uint64_t kHashPrime = 1099511628211ull;
-
-void HashBytes(std::uint64_t &hash, const void *data, std::size_t size) {
-    const auto *bytes = static_cast<const unsigned char *>(data);
-    for (std::size_t index = 0; index < size; ++index) {
-        hash ^= bytes[index];
-        hash *= kHashPrime;
-    }
-}
-
 template <typename T>
 void Hash(std::uint64_t &hash, const T &value) {
-    HashBytes(hash, &value, sizeof(value));
+    Fnv::Value(hash, value);
 }
 
-void HashText(std::uint64_t &hash, const char *text) {
-    const std::size_t size = text ? std::strlen(text) : 0;
-    Hash(hash, size);
-    if (size)
-        HashBytes(hash, text, size);
+void HashText(std::uint64_t &hash, const std::string &text) {
+    Fnv::Text(hash, text);
 }
 
 std::string Utf8Name(std::string_view name) {
@@ -727,7 +714,7 @@ private:
     }
 
     std::uint64_t Fingerprint(const GraphModel &graph) {
-        std::uint64_t out = kHashOffset;
+        std::uint64_t out = Fnv::Offset;
         const auto root = std::find_if(
             graph.Nodes.begin(), graph.Nodes.end(),
             [](const GraphNode &node) { return node.Parent == 0; });
@@ -748,7 +735,7 @@ private:
             Hash(out, node.Kind);
             Hash(out, node.Prototype.d1);
             Hash(out, node.Prototype.d2);
-            HashText(out, node.Name.c_str());
+            HashText(out, node.Name);
             Hash(out, node.Priority);
             // A logical fingerprint describes the current graph, not the
             // history of mutations that produced it. LayoutGeneration is a
@@ -763,7 +750,7 @@ private:
                 Hash(out, port.Type.d1);
                 Hash(out, port.Type.d2);
                 Hash(out, port.Dynamic);
-                HashText(out, port.Name.c_str());
+                HashText(out, port.Name);
             }
         }
         // m_SubBehaviorLinks order drives graph-input propagation. Hash it in
@@ -826,7 +813,7 @@ private:
             Hash(out, operation.Input1.d2);
             Hash(out, operation.Input2.d1);
             Hash(out, operation.Input2.d2);
-            HashText(out, operation.Name.c_str());
+            HashText(out, operation.Name);
         }
         m_OperationsById.clear();
         return out;

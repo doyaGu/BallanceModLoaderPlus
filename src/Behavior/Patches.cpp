@@ -1,5 +1,7 @@
 #include "Behavior/Patches.h"
 
+#include "Behavior/Blocks/HookBlock.h"
+
 #include <algorithm>
 #include <limits>
 #include <set>

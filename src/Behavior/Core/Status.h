@@ -1,12 +1,14 @@
-#ifndef BML_BEHAVIOR_STATUS_H
-#define BML_BEHAVIOR_STATUS_H
+#ifndef BML_BEHAVIOR_CORE_STATUS_H
+#define BML_BEHAVIOR_CORE_STATUS_H
 
 #include <string>
 #include <utility>
 
-#include "Behavior/Layout.h"
+#include "Behavior/Core/Layout.h"
 
 namespace BML::Behavior::Internal {
+
+enum class ExecutionError;
 
 enum class Error {
     None,
@@ -112,6 +114,12 @@ struct Status {
     explicit operator bool() const noexcept { return Code == Error::None; }
 };
 
+const char *DescribeError(Error error) noexcept;
+const char *DescribePhase(Phase phase) noexcept;
+// The one mapping from Execution faults, which stay CK-free for the
+// allocation tests, into the Runtime error space.
+Error ToError(ExecutionError error) noexcept;
+
 } // namespace BML::Behavior::Internal
 
-#endif // BML_BEHAVIOR_STATUS_H
+#endif // BML_BEHAVIOR_CORE_STATUS_H

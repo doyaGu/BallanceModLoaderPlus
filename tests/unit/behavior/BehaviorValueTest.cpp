@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Behavior/Value.h"
+#include "Behavior/Core/Value.h"
 
 namespace BML::Behavior::Internal {
 namespace {

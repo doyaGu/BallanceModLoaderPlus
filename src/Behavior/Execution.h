@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "Behavior/ObjectRef.h"
+#include "Behavior/Core/ObjectRef.h"
 
 namespace BML::Behavior::Internal {
 

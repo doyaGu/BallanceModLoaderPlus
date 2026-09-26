@@ -7,8 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "Behavior/Block.h"
 #include "Behavior/Graph.h"
-#include "Behavior/Blocks/HookBlock.h"
+#include "Behavior/Blocks/Hook.h"
 #include "Behavior/Topology.h"
 
 namespace BML::Behavior::Internal {

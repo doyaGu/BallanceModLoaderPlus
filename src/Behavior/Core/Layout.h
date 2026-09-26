@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_LAYOUT_H
-#define BML_BEHAVIOR_LAYOUT_H
+#ifndef BML_BEHAVIOR_CORE_LAYOUT_H
+#define BML_BEHAVIOR_CORE_LAYOUT_H
 
 #include <cstdint>
 #include <string>
@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "CKAll.h"
-#include "Behavior/Parameter.h"
+#include "Behavior/Core/Parameter.h"
 
 namespace BML::Behavior::Internal {
 
@@ -174,4 +174,4 @@ private:
 
 } // namespace BML::Behavior::Internal
 
-#endif // BML_BEHAVIOR_LAYOUT_H
+#endif // BML_BEHAVIOR_CORE_LAYOUT_H

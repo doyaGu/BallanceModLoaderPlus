@@ -1,5 +1,7 @@
 #include "Behavior/Topology.h"
 
+#include "Behavior/Core/Hash.h"
+
 #include <algorithm>
 #include <limits>
 #include <queue>
@@ -11,9 +13,6 @@
 
 namespace BML::Behavior::Internal {
 namespace {
-
-constexpr std::uint64_t kHashOffset = 1469598103934665603ull;
-constexpr std::uint64_t kHashPrime = 1099511628211ull;
 
 Status Failure(Error error, std::string message) {
     return {error, CKERR_INVALIDPARAMETER, CKBR_PARAMETERERROR, std::move(message)};
@@ -33,31 +32,11 @@ struct GraphEndpointLess {
 
 template <typename T> void Hash(std::uint64_t &hash, T value) {
     static_assert(std::is_integral_v<T> || std::is_enum_v<T>);
-    if constexpr (std::is_enum_v<T>) {
-        using Unsigned = std::make_unsigned_t<std::underlying_type_t<T>>;
-        Unsigned bits = static_cast<Unsigned>(value);
-        for (std::size_t index = 0; index < sizeof(bits); ++index) {
-            hash ^= static_cast<unsigned char>(bits & 0xffu);
-            hash *= kHashPrime;
-            bits >>= 8u;
-        }
-    } else {
-        using Unsigned = std::make_unsigned_t<T>;
-        Unsigned bits = static_cast<Unsigned>(value);
-        for (std::size_t index = 0; index < sizeof(bits); ++index) {
-            hash ^= static_cast<unsigned char>(bits & 0xffu);
-            hash *= kHashPrime;
-            bits >>= 8u;
-        }
-    }
+    Fnv::Value(hash, value);
 }
 
 void HashText(std::uint64_t &hash, const std::string &text) {
-    Hash(hash, static_cast<std::uint64_t>(text.size()));
-    for (const unsigned char byte : text) {
-        hash ^= byte;
-        hash *= kHashPrime;
-    }
+    Fnv::Text(hash, text);
 }
 
 void Hash(std::uint64_t &hash, const ObjectRef &value) {
@@ -199,7 +178,7 @@ Status Topology::Identify(const LinkBase &base, LinkId &out) {
     LogicalLink link;
     link.Id = id;
     link.Base = base;
-    link.Fingerprint = kHashOffset;
+    link.Fingerprint = Fnv::Offset;
     Hash(link.Fingerprint, base);
     m_Anchors.emplace(base.Anchor, id);
     m_Links.emplace(id, std::move(link));
@@ -583,7 +562,7 @@ Status Topology::Compose(const PatchMap &patches, LinkMap &links, TapMap &taps,
             return Failure(Error::OverlayOrderCycle, message.str());
         }
 
-        link.Fingerprint = kHashOffset;
+        link.Fingerprint = Fnv::Offset;
         Hash(link.Fingerprint, link.Base);
         const PatchKey *redirected = nullptr;
         for (const std::size_t index : ordered) {
@@ -634,7 +613,7 @@ Status Topology::Compose(const PatchMap &patches, LinkMap &links, TapMap &taps,
                   });
     }
 
-    fingerprint = kHashOffset;
+    fingerprint = Fnv::Offset;
     std::vector<const LogicalLink *> stableLinks;
     stableLinks.reserve(links.size());
     for (const auto &[id, link] : links)

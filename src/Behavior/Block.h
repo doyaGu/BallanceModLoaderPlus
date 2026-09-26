@@ -12,8 +12,8 @@
 #include "CKAll.h"
 #include "BML/Behavior/Detail/BlockAccess.hpp"
 #include "Behavior/Callback.h"
-#include "Behavior/Layout.h"
-#include "Behavior/Parameter.h"
+#include "Behavior/Core/Layout.h"
+#include "Behavior/Core/Parameter.h"
 
 namespace BML::Behavior::Internal {
 

@@ -11,9 +11,9 @@
 #include <variant>
 #include <vector>
 
-#include "Behavior/Layout.h"
-#include "Behavior/ObjectRef.h"
-#include "Behavior/Status.h"
+#include "Behavior/Core/Layout.h"
+#include "Behavior/Core/ObjectRef.h"
+#include "Behavior/Core/Status.h"
 
 namespace BML::Behavior::Internal {
 

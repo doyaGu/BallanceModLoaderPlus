@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "Behavior/Graph.h"
-#include "Behavior/Value.h"
+#include "Behavior/Core/Value.h"
 
 namespace BML::Behavior::Internal {
 

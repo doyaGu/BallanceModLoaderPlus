@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_VALUE_H
-#define BML_BEHAVIOR_VALUE_H
+#ifndef BML_BEHAVIOR_CORE_VALUE_H
+#define BML_BEHAVIOR_CORE_VALUE_H
 
 #include <cstddef>
 #include <string>
@@ -51,4 +51,4 @@ private:
 
 } // namespace BML::Behavior::Internal
 
-#endif // BML_BEHAVIOR_VALUE_H
+#endif // BML_BEHAVIOR_CORE_VALUE_H

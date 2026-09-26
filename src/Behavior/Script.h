@@ -11,9 +11,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Behavior/ObjectRef.h"
+#include "Behavior/Core/ObjectRef.h"
 #include "Behavior/Sessions.h"
-#include "Behavior/Status.h"
+#include "Behavior/Core/Status.h"
 
 class CKContext;
 

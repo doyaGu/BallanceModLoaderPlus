@@ -1,11 +1,11 @@
-#include "Behavior/Parameter.h"
+#include "Behavior/Core/Parameter.h"
 
 #include <algorithm>
 #include <cstring>
 #include <utility>
 #include <vector>
 
-#include "Behavior/Status.h"
+#include "Behavior/Core/Status.h"
 
 namespace BML::Behavior::Internal {
 

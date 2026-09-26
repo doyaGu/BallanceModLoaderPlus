@@ -1,12 +1,12 @@
-#ifndef BML_BEHAVIOR_PARAMETER_H
-#define BML_BEHAVIOR_PARAMETER_H
+#ifndef BML_BEHAVIOR_CORE_PARAMETER_H
+#define BML_BEHAVIOR_CORE_PARAMETER_H
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "CKAll.h"
-#include "Behavior/Value.h"
+#include "Behavior/Core/Value.h"
 
 namespace BML::Behavior::Internal {
 struct Status;
@@ -168,4 +168,4 @@ private:
 } // namespace Parameter
 } // namespace BML::Behavior::Internal
 
-#endif // BML_BEHAVIOR_PARAMETER_H
+#endif // BML_BEHAVIOR_CORE_PARAMETER_H

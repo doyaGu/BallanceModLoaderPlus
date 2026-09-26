@@ -1,4 +1,4 @@
-#include "Behavior/Blocks/HookBlock.h"
+#include "Behavior/Blocks/Hook.h"
 
 namespace BML::Behavior::Internal::HookBlock {
 

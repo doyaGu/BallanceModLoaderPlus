@@ -159,14 +159,15 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Execution.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/FrameStore.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Lifecycle.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/Layout.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/Parameter.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Core/Layout.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Core/Parameter.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PrototypeCatalog.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Relations.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Sessions.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Topology.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/Value.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Core/Status.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Core/Value.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Watch.cpp
 
         ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/Hook.cpp

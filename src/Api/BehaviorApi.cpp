@@ -237,23 +237,7 @@ std::uint32_t PublicError(Error error) noexcept {
 }
 
 std::uint32_t PublicError(ExecutionError error) noexcept {
-    switch (error) {
-    case ExecutionError::None: return BML_BEHAVIOR_ERROR_NONE;
-    case ExecutionError::SelectorNotFound: return BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND;
-    case ExecutionError::SelectorAmbiguous: return BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS;
-    case ExecutionError::LayoutStale: return BML_BEHAVIOR_ERROR_LAYOUT_CHANGED;
-    case ExecutionError::UnsupportedBreak: return BML_BEHAVIOR_ERROR_BREAK_UNSUPPORTED;
-    case ExecutionError::UnsupportedPout: return BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED;
-    case ExecutionError::OutUnavailable:
-        return BML_BEHAVIOR_ERROR_NATIVE_ERROR;
-    case ExecutionError::PoutReadFailed: return BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE;
-    case ExecutionError::FrameQueueFull: return BML_BEHAVIOR_ERROR_FRAME_QUEUE_FULL;
-    case ExecutionError::Cancelled: return BML_BEHAVIOR_ERROR_CANCELLED;
-    case ExecutionError::InvalidState:
-    case ExecutionError::ActivationFailed: return BML_BEHAVIOR_ERROR_STATE_INVALID;
-    case ExecutionError::NativeFailed: return BML_BEHAVIOR_ERROR_NATIVE_ERROR;
-    }
-    return BML_BEHAVIOR_ERROR_NATIVE_ERROR;
+    return PublicError(ToError(error));
 }
 
 std::uint32_t PublicPhase(Phase phase) noexcept {

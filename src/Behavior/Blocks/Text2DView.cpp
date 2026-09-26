@@ -4,8 +4,8 @@
 #include <string>
 #include <utility>
 
-#include "Behavior/Layout.h"
-#include "Behavior/Parameter.h"
+#include "Behavior/Core/Layout.h"
+#include "Behavior/Core/Parameter.h"
 
 namespace BML::Behavior::Internal::Text2DView {
 namespace {

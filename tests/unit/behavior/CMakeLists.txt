@@ -112,7 +112,7 @@ add_bml_test(BehaviorEditTest
         ${BML_SOURCE_DIR}/Behavior/Edit.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
-        ${BML_SOURCE_DIR}/Behavior/Value.cpp
+        ${BML_SOURCE_DIR}/Behavior/Core/Value.cpp
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
@@ -128,14 +128,14 @@ add_bml_test(BehaviorGraphEditTest
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
         ${BML_SOURCE_DIR}/Behavior/Topology.cpp
-        ${BML_SOURCE_DIR}/Behavior/Value.cpp
+        ${BML_SOURCE_DIR}/Behavior/Core/Value.cpp
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
 add_bml_test(BehaviorValueTest
         SOURCES
         BehaviorValueTest.cpp
-        ${BML_SOURCE_DIR}/Behavior/Value.cpp
+        ${BML_SOURCE_DIR}/Behavior/Core/Value.cpp
 )
 target_include_directories(BehaviorValueTest PRIVATE
         "${VIRTOOLS_SDK_INCLUDE_DIR}"

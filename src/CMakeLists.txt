@@ -436,6 +436,13 @@ set(BML_HOOK_SOURCES
 )
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
+        Behavior/Core/Hash.h
+        Behavior/Core/Layout.h
+        Behavior/Core/ObjectRef.h
+        Behavior/Core/Parameter.h
+        Behavior/Core/Status.h
+        Behavior/Core/Value.h
+
         Behavior/Block.h
         Behavior/Callback.h
         Behavior/CKBehaviorContext.h
@@ -447,9 +454,6 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Graph.h
         Behavior/GraphEdit.h
         Behavior/Lifecycle.h
-        Behavior/Layout.h
-        Behavior/ObjectRef.h
-        Behavior/Parameter.h
         Behavior/Patches.h
         Behavior/Pattern.h
         Behavior/Plan.h
@@ -458,17 +462,21 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Runtime.h
         Behavior/Script.h
         Behavior/Sessions.h
-        Behavior/Status.h
         Behavior/Topology.h
-        Behavior/Value.h
         Behavior/Watch.h
 
+        Behavior/Blocks/Hook.h
         Behavior/Blocks/HookBlock.h
         Behavior/Blocks/PhysicsForce.h
         Behavior/Blocks/Text2DView.h
 )
 
 set(BML_BEHAVIOR_SOURCES
+        Behavior/Core/Layout.cpp
+        Behavior/Core/Parameter.cpp
+        Behavior/Core/Status.cpp
+        Behavior/Core/Value.cpp
+
         Behavior/Block.cpp
         Behavior/Callback.cpp
         Behavior/CKEdit.cpp
@@ -480,8 +488,6 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/FrameStore.cpp
         Behavior/GraphEdit.cpp
         Behavior/Lifecycle.cpp
-        Behavior/Layout.cpp
-        Behavior/Parameter.cpp
         Behavior/Patches.cpp
         Behavior/Pattern.cpp
         Behavior/Plan.cpp
@@ -492,7 +498,6 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/ScriptHelper.cpp
         Behavior/Sessions.cpp
         Behavior/Topology.cpp
-        Behavior/Value.cpp
         Behavior/Watch.cpp
 
         Behavior/Blocks/Hook.cpp
