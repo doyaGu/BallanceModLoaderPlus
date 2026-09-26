@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -139,7 +138,6 @@ private:
     std::unique_ptr<ScriptWorld> m_World;
     Loaded m_Loaded;
     std::thread::id m_Thread;
-    mutable std::recursive_mutex m_Mutex;
     ScriptId m_NextId = 1;
     std::unordered_map<ScriptId, std::shared_ptr<Entry>> m_Scripts;
     // Native roots whose initial graph was rejected and whose cleanup must

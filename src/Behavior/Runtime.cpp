@@ -838,17 +838,13 @@ Instance &Instance::operator=(Instance &&other) noexcept {
 
 Instance::operator bool() const noexcept {
     std::shared_ptr<Access> access = m_Access.lock();
-    if (!access || m_Id == 0)
-        return false;
-    std::lock_guard<std::mutex> lock(access->Mutex);
-    return access->Owner != nullptr;
+    return access && m_Id != 0 && access->Owner != nullptr;
 }
 
 CKBehavior *Instance::Get() const {
     std::shared_ptr<Access> access = m_Access.lock();
     if (!access)
         return nullptr;
-    std::lock_guard<std::mutex> lock(access->Mutex);
     Runtime *runtime = access->Owner;
     if (!runtime || !runtime->ReadyStatus())
         return nullptr;
@@ -860,7 +856,6 @@ std::uint64_t Instance::LayoutGeneration() const {
     std::shared_ptr<Access> access = m_Access.lock();
     if (!access)
         return 0;
-    std::lock_guard<std::mutex> lock(access->Mutex);
     Runtime *runtime = access->Owner;
     if (!runtime || !runtime->ReadyStatus())
         return 0;
@@ -872,10 +867,7 @@ void Instance::Reset() {
     std::shared_ptr<Access> access = m_Access.lock();
     const std::uint64_t id = std::exchange(m_Id, 0);
     m_Access.reset();
-    if (!access || !id)
-        return;
-    std::lock_guard<std::mutex> lock(access->Mutex);
-    if (access->Owner)
+    if (access && id && access->Owner)
         access->Owner->RequestRelease(id);
 }
 
@@ -894,10 +886,7 @@ Runtime::Runtime(CKContext *context,
 }
 
 Runtime::~Runtime() {
-    {
-        std::lock_guard<std::mutex> lock(m_Access->Mutex);
-        m_Access->Owner = nullptr;
-    }
+    m_Access->Owner = nullptr;
     Close();
 }
 
@@ -2512,7 +2501,6 @@ void Runtime::ProcessFrame() {
         return;
     FlagScope processing(m_ProcessingFrame);
     ++m_Frame;
-    DrainDeferredReleases();
     SweepRecords();
     const bool lifecycleRan = DrainCloseQueue();
     const bool behaviorRan = ProcessTasks(&m_Context->m_BehaviorContext);
@@ -2535,7 +2523,6 @@ void Runtime::ProcessFrame() {
 void Runtime::ClosePending() {
     if (!ReadyStatus())
         return;
-    DrainDeferredReleases();
     SweepRecords();
     DrainCloseQueue();
     AdoptSharedBindings();
@@ -2703,23 +2690,9 @@ CKBehavior *Runtime::ResolveBehavior(const Record &record) const {
 }
 
 void Runtime::RequestRelease(std::uint64_t instanceId) {
-    if (!instanceId)
-        return;
-    if (m_Thread == std::this_thread::get_id()) {
-        Release(instanceId);
-        return;
-    }
-    std::lock_guard<std::mutex> lock(m_DeferredMutex);
-    m_DeferredReleases.push_back(instanceId);
-}
-
-void Runtime::DrainDeferredReleases() {
-    std::vector<std::uint64_t> releases;
-    {
-        std::lock_guard<std::mutex> lock(m_DeferredMutex);
-        releases.swap(m_DeferredReleases);
-    }
-    for (std::uint64_t instanceId : releases)
+    // Off the game thread the Record stays until ResetWorld or Close drains
+    // it on the game thread.
+    if (instanceId && m_Thread == std::this_thread::get_id())
         Release(instanceId);
 }
 
@@ -2818,7 +2791,6 @@ void Runtime::AdoptSharedBindings() {
 void Runtime::Close() {
     if (!m_Context || m_Thread != std::this_thread::get_id())
         return;
-    DrainDeferredReleases();
     for (auto &[instanceId, record] : m_Records) {
         CloseRecord(record);
     }
@@ -2960,7 +2932,6 @@ void Runtime::ObjectsToBeDeleted(const CK_ID *ids, int count) {
 void Runtime::ResetWorld() {
     if (!m_Context || m_Thread != std::this_thread::get_id())
         return;
-    DrainDeferredReleases();
     AdoptSharedBindings();
     for (auto &[instanceId, record] : m_Records) {
         CloseRecord(record, {

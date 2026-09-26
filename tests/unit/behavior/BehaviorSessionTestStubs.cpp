@@ -172,10 +172,8 @@ Runtime::Runtime(CKContext *context,
 }
 
 Runtime::~Runtime() {
-    if (m_Access) {
-        std::lock_guard<std::mutex> accessLock(m_Access->Mutex);
+    if (m_Access)
         m_Access->Owner = nullptr;
-    }
     std::lock_guard<std::mutex> lock(g_FakeMutex);
     g_FakeInstances.clear();
 }

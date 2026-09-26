@@ -698,7 +698,7 @@ These adapters return ordinary Blocks and do not bypass lifecycle, execution, or
 | World reset | Survives | Closes | Closes with the old world | Closes with the old graph | Survives and reconciles in the next world |
 | Mod unload/reload | Owner generation retires | Closes before DLL unload | Leaves its owner and closes before DLL unload | Callback and graph state retire first | Retires before callback code unloads |
 
-Except for Close, Behavior operations require the game thread. Every `Result<T>` carries both a stable error category and `Status`; branch on the error and phase, not on message text.
+Every Behavior operation, Close included, requires the game thread. A call from any other thread returns `BML_ERROR_WRONG_THREAD` and changes nothing, so destroy facade values on the game thread too: a destructor that runs elsewhere cannot close what it owns, and the Loader reclaims it only when the Mod retires. Every `Result<T>` carries both a stable error category and `Status`; branch on the error and phase, not on message text.
 
 Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, `TakeFrames(Frames&)` avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, LinkRange, and Frame values are views rather than copied records. Both LinkRange directions use snapshot-owned indices. Plans reconcile only Script names reported as changed; disabled definitions and unchanged Replace prefixes do not rebuild native graphs.
 

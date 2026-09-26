@@ -1884,9 +1884,8 @@ private:
             const Status closed = m_Editor->Close(m_SpliceAlpha);
             restored = static_cast<bool>(closed) && !m_SpliceAlpha;
         }
-        // CKEdit is game-thread state. The cross-thread close queue belongs to
-        // the installation layer above it, so an off-thread Close here must be
-        // rejected without touching the Patch or the graph.
+        // CKEdit is game-thread state. An off-thread Close must be rejected
+        // without touching the Patch or the graph.
         Status betaOffThread;
         const PatchState betaState = m_SpliceBeta.State();
         CKBehaviorIO *betaHead = m_SpliceAnchor

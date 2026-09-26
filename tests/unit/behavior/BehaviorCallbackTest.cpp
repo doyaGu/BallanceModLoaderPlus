@@ -1,7 +1,6 @@
 #include "Behavior/Blocks/HookBlock.h"
 
 #include <stdexcept>
-#include <thread>
 #include <utility>
 
 #include <gtest/gtest.h>
@@ -301,7 +300,7 @@ TEST(BehaviorCallback, HookErrorCodeKeepsTheCallbackInstalled) {
     EXPECT_FALSE(binding->Diagnostic());
 }
 
-TEST(BehaviorCallback, OtherThreadCloseDoesNotWaitForInvocation) {
+TEST(BehaviorCallback, CloseDuringInvocationReleasesAfterItEnds) {
     ReferenceCounts counts;
     PlanCallbackState plan =
         PlanCallbackState::Retained(&counts, Retain, Release);
@@ -309,10 +308,7 @@ TEST(BehaviorCallback, OtherThreadCloseDoesNotWaitForInvocation) {
     CallbackInvocation invocation = lease.Enter();
     ASSERT_TRUE(invocation);
 
-    CallbackCloseResult result = CallbackCloseResult::Closed;
-    std::thread closer([&] { result = lease.Close(); });
-    closer.join();
-    EXPECT_EQ(result, CallbackCloseResult::Queued);
+    EXPECT_EQ(lease.Close(), CallbackCloseResult::Queued);
     EXPECT_EQ(lease.State(), CallbackLeaseState::Closing);
 
     plan.Retire();
@@ -408,8 +404,7 @@ TEST(BehaviorCallback, ParentCloseStopsExistingAndNotYetPublishedInstallations) 
     auto first = hook.Bind();
     first->AdmitThrough(patch);
     ASSERT_TRUE(first->Invoke(nullptr).Invoked);
-    std::thread closer([&] { plan->Close(); });
-    closer.join();
+    plan->Close();
     EXPECT_FALSE(first->Invoke(nullptr).Invoked);
     // A binding prepared after closure must not reopen admission.
     auto late = hook.Bind();
@@ -432,8 +427,7 @@ TEST(BehaviorCallback, ParentCloseDoesNotWaitForOrReleaseCurrentInvocation) {
     auto binding = HookBlock::Bind(state,
         [](const CKBehaviorContext *, void *argument) -> int {
             auto &parent = *static_cast<std::shared_ptr<CallbackAdmission> *>(argument);
-            std::thread closer([&] { parent->Close(); });
-            closer.join();
+            parent->Close();
             return CKBR_OK;
         }, &admission);
     binding->AdmitThrough(admission);

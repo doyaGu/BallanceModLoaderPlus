@@ -1,9 +1,6 @@
 #include "Behavior/Watch.h"
 
-#include <chrono>
-#include <future>
 #include <stdexcept>
-#include <thread>
 
 #include <gtest/gtest.h>
 
@@ -233,40 +230,6 @@ TEST(BehaviorWatch, CallbackExceptionFailsTheWatchAndKeepsTheFirstDiagnostic) {
     EXPECT_TRUE(watch->RetireAtSafePoint());
     EXPECT_EQ(references.Releases, 1);
     EXPECT_EQ(watch->Read().State, WatchState::Failed);
-}
-
-TEST(BehaviorWatch, CloseFromAnotherThreadDoesNotWaitForTheCallback) {
-    FakeGraph source;
-    std::promise<void> entered;
-    std::promise<void> leave;
-    std::shared_future<void> mayLeave = leave.get_future().share();
-    std::shared_ptr<Watch> watch;
-    ASSERT_TRUE(Watch::Open(
-        source, GraphSpec(), PlanCallbackState::Static(),
-        [&](const WatchEvent &) {
-            entered.set_value();
-            mayLeave.wait();
-            return Status{};
-        }, watch));
-    source.Structure = 14;
-
-    std::thread polling([&] { (void) watch->Poll(1); });
-    const auto admission = entered.get_future().wait_for(
-        std::chrono::seconds(2));
-    if (admission != std::future_status::ready) {
-        leave.set_value();
-        polling.join();
-        FAIL() << "The Watch callback was not admitted.";
-    }
-    const auto before = std::chrono::steady_clock::now();
-    watch->Close();
-    const auto elapsed = std::chrono::steady_clock::now() - before;
-    EXPECT_LT(elapsed, std::chrono::milliseconds(100));
-    EXPECT_FALSE(watch->IsOpen());
-
-    leave.set_value();
-    polling.join();
-    EXPECT_TRUE(watch->RetireAtSafePoint());
 }
 
 } // namespace

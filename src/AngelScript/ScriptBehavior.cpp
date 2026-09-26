@@ -390,7 +390,7 @@ public:
     ScriptMod *Owner = nullptr;
     std::string OwnerId;
     bool Active = false;
-    std::atomic<std::size_t> CallbackHolders{0};
+    std::size_t CallbackHolders = 0;
     std::optional<Authoring::Session> Session;
     // Why Open failed at Bind. GetSession raises it for every later call.
     std::string SessionFailure;
@@ -473,7 +473,7 @@ public:
                     : status.Message;
         }
         if (failure.empty() &&
-            CallbackHolders.load(std::memory_order_acquire) != 0)
+            CallbackHolders != 0)
             failure =
                 "Behavior callbacks remained referenced after owner retirement.";
         Owner = nullptr;
@@ -2184,7 +2184,7 @@ public:
                                asIScriptFunction *function)
         : m_State(std::move(state)), m_Function(function) {
         if (m_State)
-            m_State->CallbackHolders.fetch_add(1, std::memory_order_relaxed);
+            ++m_State->CallbackHolders;
         if (m_Function)
             m_Function->AddRef();
     }
@@ -2192,7 +2192,7 @@ public:
         if (m_Function)
             m_Function->Release();
         if (m_State)
-            m_State->CallbackHolders.fetch_sub(1, std::memory_order_acq_rel);
+            --m_State->CallbackHolders;
     }
 
     static bool HasSignature(asIScriptFunction *function) {
@@ -2250,7 +2250,7 @@ public:
                                 asIScriptFunction *function)
         : m_State(std::move(state)), m_Function(function) {
         if (m_State)
-            m_State->CallbackHolders.fetch_add(1, std::memory_order_relaxed);
+            ++m_State->CallbackHolders;
         if (m_Function)
             m_Function->AddRef();
     }
@@ -2258,7 +2258,7 @@ public:
         if (m_Function)
             m_Function->Release();
         if (m_State)
-            m_State->CallbackHolders.fetch_sub(1, std::memory_order_acq_rel);
+            --m_State->CallbackHolders;
     }
 
     static bool HasSignature(asIScriptFunction *function) {

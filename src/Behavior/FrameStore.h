@@ -2,7 +2,6 @@
 #define BML_BEHAVIOR_FRAMESTORE_H
 
 #include <cstdint>
-#include <mutex>
 #include <optional>
 #include <span>
 #include <vector>
@@ -26,8 +25,8 @@ enum class FrameBatchResult {
 };
 
 // A destination for one atomic read of the Frames currently owned by a Run.
-// FrameStore holds its lock across both passes, so the measured set is exactly
-// the set written and is consumed only after every Frame was accepted.
+// Nothing changes the store between the two passes, so the measured set is
+// exactly the set written and is consumed only after every Frame was accepted.
 class FrameBatch {
 public:
     virtual ~FrameBatch() = default;
@@ -55,16 +54,14 @@ private:
     [[nodiscard]] bool ShouldRetain(
         const RunFrame &frame) const noexcept;
     void StoreNonContinuing(RunFrame frame);
-    [[nodiscard]] std::vector<RunFrame> ReadLocked() const;
-    [[nodiscard]] bool MatchesLocked(
+    [[nodiscard]] bool Matches(
         std::span<const std::uint64_t> sequences) const;
-    [[nodiscard]] const RunFrame *NextLocked(
+    [[nodiscard]] const RunFrame *Next(
         std::uint64_t after, bool first) const noexcept;
-    [[nodiscard]] bool VisitLocked(FrameBatch &batch, bool write) const;
-    void ClearLocked() noexcept;
+    [[nodiscard]] bool Visit(FrameBatch &batch, bool write) const;
+    void Clear() noexcept;
 
     FrameRetention m_Retention;
-    mutable std::mutex m_Mutex;
     std::vector<RunFrame> m_Frames;
     std::optional<RunFrame> m_Latest;
     std::optional<RunFrame> m_LastError;

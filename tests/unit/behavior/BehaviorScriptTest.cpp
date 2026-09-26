@@ -225,9 +225,7 @@ TEST(BehaviorScript, CloseOnlyRetiresAtASafePoint) {
         Owner(), 7, this, "Script", 0, {});
     ASSERT_TRUE(opened);
 
-    Status close;
-    std::thread worker([&] { close = scripts.Close(Owner(), opened.Id); });
-    worker.join();
+    const Status close = scripts.Close(Owner(), opened.Id);
     EXPECT_EQ(close.Code, Error::Busy);
     EXPECT_TRUE(native->Destroyed.empty());
 
@@ -239,6 +237,29 @@ TEST(BehaviorScript, CloseOnlyRetiresAtASafePoint) {
     EXPECT_EQ(native->Destroyed, std::vector<std::uint64_t>{10});
     EXPECT_FALSE(scripts.Read(Owner(), opened.Id, closing));
     EXPECT_TRUE(scripts.Close(Owner(), opened.Id));
+}
+
+TEST(BehaviorScript, CloseOffTheGameThreadChangesNothing) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    FakeScriptWorld *native = world.get();
+    ScriptSet scripts(std::move(world));
+    const ScriptResult opened = scripts.Create(
+        Owner(), 7, this, "Script", 0, {});
+    ASSERT_TRUE(opened);
+
+    Status close;
+    std::thread worker([&] {
+        close = scripts.Close(Owner(), opened.Id);
+        scripts.CloseSession(7);
+    });
+    worker.join();
+    EXPECT_EQ(close.Code, Error::WrongThread);
+
+    ScriptInfo info;
+    ASSERT_TRUE(scripts.Read(Owner(), opened.Id, info));
+    EXPECT_EQ(info.State, ScriptState::Ready);
+    scripts.ProcessFrame();
+    EXPECT_TRUE(native->Destroyed.empty());
 }
 
 TEST(BehaviorScript, SelfCloseNeverWaitsForTheActivityCallback) {
@@ -460,12 +481,9 @@ TEST(BehaviorScript, CloseAtEndOfDefineCannotPublishAnOrphanRoot) {
     auto admission = std::make_shared<SessionAdmission>(41);
     SessionOwner owner{"mod", 1, admission};
     native->OnDefine = [&] {
-        std::thread worker([&] {
-            // C CloseSession invalidates Sessions first, then closes Scripts.
-            admission->Open.store(false, std::memory_order_release);
-            scripts.CloseSession(41);
-        });
-        worker.join();
+        // C CloseSession invalidates Sessions first, then closes Scripts.
+        admission->Close();
+        scripts.CloseSession(41);
     };
     auto opened = scripts.Create(owner, 41, this, "Closing Session", 0, {});
     EXPECT_FALSE(opened);

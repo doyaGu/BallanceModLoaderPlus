@@ -234,30 +234,11 @@ PlanId Installations::NextPlanId() {
     return m_NextPlanId++;
 }
 
-std::shared_ptr<CallbackAdmission> Installations::RegisterAdmission(
-    bool plan, std::uint64_t id, const SessionOwner &owner,
+std::shared_ptr<CallbackAdmission> Installations::OpenAdmission(
+    const SessionOwner &owner,
     std::shared_ptr<const CallbackAdmission> parent) {
-    auto admission = std::make_shared<CallbackAdmission>(
+    return std::make_shared<CallbackAdmission>(
         parent ? std::move(parent) : owner.Admission);
-    std::lock_guard<std::mutex> lock(m_AdmissionMutex);
-    m_Admissions.emplace(std::make_pair(plan, id), AdmissionRecord{owner, admission});
-    m_HasAdmissions = true;
-    return admission;
-}
-
-Status Installations::RequestClose(bool plan, std::uint64_t id,
-                                   const SessionOwner &owner) {
-    std::lock_guard<std::mutex> lock(m_AdmissionMutex);
-    const auto found = m_Admissions.find({plan, id});
-    if (found == m_Admissions.end())
-        return {};
-    if (found->second.Owner.Id != owner.Id ||
-        found->second.Owner.Generation != owner.Generation)
-        return Failure(Error::OwnerInvalid,
-                       "The Behavior handle belongs to another Mod generation.");
-    if (auto admission = found->second.Admission.lock())
-        admission->Close();
-    return {};
 }
 
 Status Installations::Validate(const std::vector<Target> &targets,
@@ -647,7 +628,7 @@ Status Installations::Apply(const SessionOwner &owner, const Ops &edit,
                        "The Behavior Edit graph has no live CK identity.");
     }
 
-    auto admission = RegisterAdmission(false, id, owner);
+    auto admission = OpenAdmission(owner);
     PatchRecord owned;
     try {
         owned.Id = id;
@@ -768,8 +749,7 @@ Status Installations::Apply(
     PatchRecord patch;
     patch.Id = id;
     patch.Owner = owner;
-    patch.Admission = RegisterAdmission(
-        false, id, owner, std::move(parentAdmission));
+    patch.Admission = OpenAdmission(owner, std::move(parentAdmission));
     patch.Name = std::move(name);
     patch.DefinitionBindings = std::move(definitionBindings);
     patch.Requested = std::move(targets);
@@ -1418,11 +1398,9 @@ Status Installations::Replace(const SessionOwner &owner, PatchId id,
 }
 
 Status Installations::Close(const SessionOwner &owner, PatchId id) {
-    Status requested = RequestClose(false, id, owner);
-    if (!requested)
-        return requested;
-    if (std::this_thread::get_id() != m_Thread)
-        return Failure(Error::Busy, "The Behavior Patch is Closing.", Phase::Teardown);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Patches.find(id);
     if (found == m_Patches.end())
         return {};
@@ -1461,7 +1439,7 @@ Status Installations::Submit(const SessionOwner &owner, std::string name,
     PlanRecord plan;
     plan.Id = id;
     plan.Owner = owner;
-    plan.Admission = RegisterAdmission(true, id, owner);
+    plan.Admission = OpenAdmission(owner);
     plan.Name = std::move(name);
     plan.DefinitionBindings = std::move(definitionBindings);
     plan.Requested = std::move(rules);
@@ -1835,11 +1813,9 @@ Status Installations::ReplacePlan(const SessionOwner &owner, PlanId id,
 }
 
 Status Installations::ClosePlan(const SessionOwner &owner, PlanId id) {
-    Status requested = RequestClose(true, id, owner);
-    if (!requested)
-        return requested;
-    if (std::this_thread::get_id() != m_Thread)
-        return Failure(Error::Busy, "The Behavior Plan is Retiring.", Phase::Teardown);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end())
         return {};
@@ -1847,11 +1823,12 @@ Status Installations::ClosePlan(const SessionOwner &owner, PlanId id) {
         found->second.Owner.Generation != owner.Generation)
         return Failure(Error::OwnerInvalid,
                        "The Behavior Plan belongs to another Mod generation.");
+    found->second.Admission->Close();
     found->second.Goal = InstallGoal::Closed;
     ++found->second.Revision;
     found->second.RestoreFrom = 0;
-    // Closing admission is thread-safe, but the rule Selections this Plan
-    // retires may be closed only at a CK edit safe point.
+    // Admission is closed at once, but the rule Selections this Plan retires
+    // may be closed only at a CK edit safe point.
     if (!m_Edit.CanPublish()) {
         Status queued = Failure(Error::Busy,
                                 "The Behavior Plan is Retiring.",
@@ -2006,9 +1983,9 @@ Status Installations::Interpose(Ops &edit, Port source, Port sink,
 }
 
 Status Installations::RetireOwner(const std::string &ownerId) {
-    // A Plan can be waiting on a Patch request that was already queued by an
-    // off-thread Close. Request Plan retirement, complete every owned Patch at
-    // the CK edit safe point, then collect Plans whose installations closed.
+    // A Plan can be waiting on a Patch request that is still queued. Request
+    // Plan retirement, complete every owned Patch at the CK edit safe point,
+    // then collect Plans whose installations closed.
     (void) m_Selections.RetireOwner(ownerId);
     const Status patches = RetireRecords(ownerId);
     const Status plans = m_Selections.RetireOwner(ownerId);
@@ -2141,11 +2118,8 @@ Status Installations::ProcessFrame() {
     if (std::this_thread::get_id() != m_Thread)
         return selections;
     const bool editPending = m_Edit.NeedsFrameProcessing();
-    if (m_Plans.empty() && m_Patches.empty() && !editPending) {
-        if (m_HasAdmissions)
-            Collect();
+    if (m_Plans.empty() && m_Patches.empty() && !editPending)
         return selections;
-    }
     if (editPending)
         m_Edit.ProcessFrame();
 
@@ -2185,16 +2159,6 @@ void Installations::Collect() {
             patch = m_Patches.erase(patch);
         else
             ++patch;
-    }
-    if (m_HasAdmissions) {
-        std::lock_guard<std::mutex> lock(m_AdmissionMutex);
-        for (auto record = m_Admissions.begin(); record != m_Admissions.end();) {
-            if (record->second.Admission.expired())
-                record = m_Admissions.erase(record);
-            else
-                ++record;
-        }
-        m_HasAdmissions = !m_Admissions.empty();
     }
 }
 

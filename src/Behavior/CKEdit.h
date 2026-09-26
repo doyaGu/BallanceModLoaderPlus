@@ -76,8 +76,7 @@ private:
 };
 
 // The CK2 adapter for one live graph. Patch requests made by an author
-// callback, or Close requests made from another thread, are published only by
-// ProcessFrame on the game thread.
+// callback are published only by ProcessFrame at the next safe point.
 class CKEdit final {
 public:
     CKEdit(CKContext *context, Runtime &runtime, PrototypeCatalog *catalog,

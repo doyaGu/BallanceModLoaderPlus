@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <map>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -453,13 +452,12 @@ TEST(BehaviorLifecycle, CallbackSelfCloseQueuesTeardownWithoutSelfWait) {
     EXPECT_EQ(lifecycle.Failure().Code, LifecycleError::Cancelled);
 }
 
-TEST(BehaviorLifecycle, ExternalThreadCloseOnlyMutatesAtDrainSafePoint) {
+TEST(BehaviorLifecycle, RequestedCloseOnlyMutatesAtDrainSafePoint) {
     Lifecycle lifecycle;
     FakeLifecycleAdapter adapter;
     ASSERT_TRUE(lifecycle.Configure({true, {false}}, adapter));
 
-    std::thread closer([&] { lifecycle.RequestClose(true); });
-    closer.join();
+    lifecycle.RequestClose(true);
 
     EXPECT_EQ(lifecycle.State(), LifecycleState::Ready);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Reset], 0);

@@ -2,7 +2,6 @@
 #define BML_BEHAVIOR_CALLBACK_H
 
 #include <exception>
-#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -49,12 +48,11 @@ struct CallbackAdmission {
     explicit CallbackAdmission(std::shared_ptr<const CallbackAdmission> parent = {})
         : Parent(std::move(parent)) {}
     [[nodiscard]] bool IsOpen() const noexcept {
-        return Open.load(std::memory_order_acquire) &&
-            (!Parent || Parent->IsOpen());
+        return Open && (!Parent || Parent->IsOpen());
     }
-    void Close() noexcept { Open.store(false, std::memory_order_release); }
+    void Close() noexcept { Open = false; }
 
-    std::atomic<bool> Open{true};
+    bool Open = true;
     const std::shared_ptr<const CallbackAdmission> Parent;
 };
 
@@ -84,10 +82,9 @@ public:
                                       Reference retain, Reference release);
     static PlanCallbackState Static(void *state = nullptr);
 
-    // Allocates before acquiring the author's reference. Retain runs without
-    // internal locks held; if it throws, the plan ledger remains unchanged.
-    // A reentrant attempt while the first Retain is in progress never waits
-    // and returns an empty lease.
+    // Allocates before acquiring the author's reference. If Retain throws,
+    // the plan ledger remains unchanged. A reentrant attempt while the first
+    // Retain is in progress returns an empty lease.
     CallbackLease OpenLease() const;
     void Retire() const noexcept;
 

@@ -111,8 +111,9 @@ Status WatchBinding::Invoke(const WatchEvent &event) noexcept {
 }
 
 void WatchBinding::CloseAdmission() noexcept {
-    if (m_Retired.exchange(true, std::memory_order_acq_rel))
+    if (m_Retired)
         return;
+    m_Retired = true;
     (void) m_Lease.Close();
     m_State.Retire();
 }
@@ -186,8 +187,7 @@ Status Watch::Poll(std::uint64_t frame, WatchReadings &readings) {
 }
 
 Status Watch::Poll(std::uint64_t frame, WatchReadings *readings) {
-    if (!m_Open.load(std::memory_order_acquire)) {
-        std::lock_guard<std::mutex> lock(m_StateMutex);
+    if (!m_Open) {
         if (m_Info.State == WatchState::Failed)
             return m_Info.Diagnostic;
         return Failure(Error::InvalidState,
@@ -250,12 +250,10 @@ Status Watch::Poll(std::uint64_t frame, WatchReadings *readings) {
 }
 
 WatchInfo Watch::Read() const {
-    std::lock_guard<std::mutex> lock(m_StateMutex);
     return m_Info;
 }
 
 void Watch::Fail(Status status) {
-    std::lock_guard<std::mutex> lock(m_StateMutex);
     if (m_Info.State == WatchState::Failed)
         return;
     m_Info.State = WatchState::Failed;
@@ -264,8 +262,9 @@ void Watch::Fail(Status status) {
 }
 
 void Watch::Close() noexcept {
-    if (!m_Open.exchange(false, std::memory_order_acq_rel))
+    if (!m_Open)
         return;
+    m_Open = false;
     if (m_Binding)
         m_Binding->CloseAdmission();
 }

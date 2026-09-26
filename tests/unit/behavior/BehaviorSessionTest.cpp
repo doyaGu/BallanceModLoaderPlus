@@ -2,9 +2,7 @@
 #include "Behavior/FrameStore.h"
 
 #include <cstdlib>
-#include <chrono>
 #include <functional>
-#include <future>
 #include <new>
 #include <stdexcept>
 #include <thread>
@@ -235,8 +233,7 @@ TEST(BehaviorSessions, SessionAdmissionSurvivesResetButClosesWithItsSession) {
     sessions.ResetWorld();
     EXPECT_TRUE(firstOwner);
     EXPECT_TRUE(secondOwner);
-    std::thread closer([&] { sessions.CloseSession(first); });
-    closer.join();
+    sessions.CloseSession(first);
     EXPECT_FALSE(firstOwner);
     EXPECT_TRUE(secondOwner);
     EXPECT_TRUE(nativeOwner);
@@ -329,23 +326,36 @@ TEST(BehaviorSessions, RetiringOwnerClosesSessionsIdempotently) {
     EXPECT_EQ(rejected, 0u);
 }
 
-TEST(BehaviorSessions, CloseSessionMayRunOffTheGameThread) {
+TEST(BehaviorSessions, CloseOffTheGameThreadChangesNothing) {
     Runtime runtime(nullptr);
     Sessions sessions(runtime);
     ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
+    OpenRun run = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(9, 10)));
+    ASSERT_TRUE(run);
+    SessionOwner owner;
+    ASSERT_TRUE(sessions.ReadOwner(session, owner));
 
-    std::thread close([&] { sessions.CloseSession(session); });
+    std::thread close([&] {
+        sessions.CloseRun(run.Id);
+        sessions.CloseSession(session);
+    });
     close.join();
+    EXPECT_TRUE(owner);
+    RunInfo info;
+    EXPECT_TRUE(sessions.ReadRun(run.Id, info));
+
     sessions.CloseSession(session);
+    EXPECT_FALSE(owner);
+    sessions.ProcessFrame();
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
 }
 
-TEST(BehaviorSessions, SessionOwnerMayBeReadOffTheGameThread) {
+TEST(BehaviorSessions, SessionOwnerReadRequiresTheGameThread) {
     Runtime runtime(nullptr);
     Sessions sessions(runtime);
-    const std::uint64_t generation = sessions.RegisterOwner("mod");
-    ASSERT_NE(generation, 0u);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
 
@@ -354,9 +364,8 @@ TEST(BehaviorSessions, SessionOwnerMayBeReadOffTheGameThread) {
     std::thread read([&] { status = sessions.ReadOwner(session, owner); });
     read.join();
 
-    ASSERT_TRUE(status);
-    EXPECT_EQ(owner.Id, "mod");
-    EXPECT_EQ(owner.Generation, generation);
+    EXPECT_EQ(status.Code, Error::WrongThread);
+    EXPECT_TRUE(owner.Id.empty());
 }
 
 TEST(BehaviorSessions, OtherOperationsRequireTheGameThread) {
@@ -1027,7 +1036,7 @@ TEST(BehaviorSessions, ProviderRetirementRemainsVisibleOnTheRun) {
     EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
 }
 
-TEST(BehaviorSessions, SettingsCallbackDoesNotBlockWorkerClose) {
+TEST(BehaviorSessions, SettingsCallbackMayCloseItsRun) {
     for (bool closeSession : {false, true}) {
         Runtime runtime(nullptr);
         Sessions sessions(runtime);
@@ -1037,25 +1046,15 @@ TEST(BehaviorSessions, SettingsCallbackDoesNotBlockWorkerClose) {
         OpenRun run = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(1, 2)));
         ASSERT_TRUE(run);
 
-        std::promise<void> closed;
-        auto finished = closed.get_future();
-        std::thread closer;
         SetBehaviorSessionConfigureCallback([&] {
-            closer = std::thread([&] {
-                if (closeSession)
-                    sessions.CloseSession(session);
-                else
-                    sessions.CloseRun(run.Id);
-                closed.set_value();
-            });
-            // Bound the old deadlock so the failing test can still clean up.
-            EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
-                      std::future_status::ready);
+            if (closeSession)
+                sessions.CloseSession(session);
+            else
+                sessions.CloseRun(run.Id);
         });
         std::uint64_t generation = 0;
         (void) sessions.Configure(run.Id, BlockSpec{}, generation);
         SetBehaviorSessionConfigureCallback({});
-        closer.join();
         RunInfo info;
         EXPECT_EQ(sessions.ReadRun(run.Id, info).Code, Error::InvalidState);
         sessions.ProcessFrame();
@@ -1063,7 +1062,7 @@ TEST(BehaviorSessions, SettingsCallbackDoesNotBlockWorkerClose) {
     }
 }
 
-TEST(BehaviorSessions, ExecutionCallbackDoesNotBlockWorkerClose) {
+TEST(BehaviorSessions, ExecutionCallbackMayCloseItsRun) {
     Runtime runtime(nullptr);
     Sessions sessions(runtime);
     ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
@@ -1072,20 +1071,9 @@ TEST(BehaviorSessions, ExecutionCallbackDoesNotBlockWorkerClose) {
     OpenRun run = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(1, 2)));
     ASSERT_TRUE(run);
 
-    std::promise<void> closed;
-    auto finished = closed.get_future();
-    std::thread closer;
-    SetBehaviorSessionPulseCallback([&] {
-        closer = std::thread([&] {
-            sessions.CloseRun(run.Id);
-            closed.set_value();
-        });
-        EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
-                  std::future_status::ready);
-    });
+    SetBehaviorSessionPulseCallback([&] { sessions.CloseRun(run.Id); });
     const RunResult pulsed = sessions.Pulse(run.Id, Input("Run"));
     SetBehaviorSessionPulseCallback({});
-    closer.join();
 
     EXPECT_TRUE(pulsed);
     RunInfo stale;
@@ -1095,7 +1083,7 @@ TEST(BehaviorSessions, ExecutionCallbackDoesNotBlockWorkerClose) {
     EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
 }
 
-TEST(BehaviorSessions, ParameterReadDoesNotBlockWorkerSessionClose) {
+TEST(BehaviorSessions, ParameterReadMayCloseItsSession) {
     Runtime runtime(nullptr);
     auto source = std::make_unique<FakeGraphSource>();
     FakeGraphSource *graph = source.get();
@@ -1104,23 +1092,12 @@ TEST(BehaviorSessions, ParameterReadDoesNotBlockWorkerSessionClose) {
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
 
-    std::promise<void> closed;
-    auto finished = closed.get_future();
-    std::thread closer;
-    graph->OnReadValue = [&] {
-        closer = std::thread([&] {
-            sessions.CloseSession(session);
-            closed.set_value();
-        });
-        EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
-                  std::future_status::ready);
-    };
+    graph->OnReadValue = [&] { sessions.CloseSession(session); };
     GraphValue value;
     const Status read = sessions.ReadGraphValue(
         session, reinterpret_cast<void *>(1), 0,
         Slot::Named(SlotKind::InputParameter, "Value"),
         ReadMode::NonForcing, value);
-    closer.join();
 
     EXPECT_EQ(read.Code, Error::Unavailable);
     SessionOwner stale;
@@ -1345,7 +1322,7 @@ TEST(BehaviorSessions, WorldResetClosesRunsButKeepsTheSession) {
     EXPECT_TRUE(afterReset);
 }
 
-TEST(BehaviorSessions, OffThreadSessionCloseDefersNativeTeardown) {
+TEST(BehaviorSessions, SessionCloseDefersNativeTeardown) {
     Runtime runtime(nullptr);
     Sessions sessions(runtime);
     ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
@@ -1355,8 +1332,7 @@ TEST(BehaviorSessions, OffThreadSessionCloseDefersNativeTeardown) {
     ASSERT_TRUE(run);
     ASSERT_EQ(LiveBehaviorSessionInstances(), 1u);
 
-    std::thread close([&] { sessions.CloseSession(session); });
-    close.join();
+    sessions.CloseSession(session);
     EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
     RunInfo stale;
     EXPECT_EQ(sessions.ReadRun(run.Id, stale).Code, Error::InvalidState);

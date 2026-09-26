@@ -2,9 +2,7 @@
 #define BML_BEHAVIOR_SESSIONS_H
 
 #include <cstdint>
-#include <atomic>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -60,7 +58,7 @@ struct SessionOwner {
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return !Id.empty() && Generation != 0 &&
-            (!Admission || Admission->Open.load(std::memory_order_acquire));
+            (!Admission || Admission->IsOpen());
     }
 };
 
@@ -78,8 +76,7 @@ public:
 
     Status OpenSession(const std::string &ownerId, std::uintptr_t &sessionId);
     void CloseSession(std::uintptr_t sessionId);
-    // Reads only Loader-owned identity and may be used by close requests from
-    // any thread. It never enters CK2.
+    // Reads only Loader-owned identity. It never enters CK2.
     Status ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const;
     // Reads the active generation of a registered owner without opening a
     // Session. The Loader uses it for the Patches its own modules own.
@@ -205,7 +202,6 @@ private:
     PrototypeCatalog *m_Catalog = nullptr;
     std::unique_ptr<GraphSource> m_Graph;
     std::thread::id m_Thread;
-    mutable std::recursive_mutex m_Mutex;
     std::uintptr_t m_NextId = 1;
     std::uint64_t m_NextOwnerGeneration = 1;
     std::unordered_map<std::string, Owner> m_Owners;

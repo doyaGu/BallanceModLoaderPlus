@@ -62,28 +62,21 @@ Sessions::~Sessions() {
 std::uint64_t Sessions::RegisterOwner(std::string ownerId) {
     if (ownerId.empty() || std::this_thread::get_id() != m_Thread)
         return 0;
-    std::uint64_t retiring = 0;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        auto existing = m_Owners.find(ownerId);
-        if (existing != m_Owners.end() &&
-            existing->second.State != OwnerState::Released) {
-            retiring = existing->second.Generation;
-            CloseOwner(ownerId, retiring);
-        }
-    }
-    if (retiring)
-        DrainOwner(ownerId, retiring);
-
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    const auto existing = m_Owners.find(ownerId);
+    auto existing = m_Owners.find(ownerId);
     if (existing != m_Owners.end() &&
         existing->second.State != OwnerState::Released) {
+        const std::uint64_t retiring = existing->second.Generation;
+        CloseOwner(ownerId, retiring);
+        DrainOwner(ownerId, retiring);
         // Author Release may register this owner while the retired generation
-        // is drained without the Sessions lock. That registration satisfies
-        // the outer request; replacing it would orphan its Sessions and Runs.
-        return existing->second.State == OwnerState::Active
-            ? existing->second.Generation : 0;
+        // drains. That registration satisfies the outer request; replacing it
+        // would orphan its Sessions and Runs.
+        existing = m_Owners.find(ownerId);
+        if (existing != m_Owners.end() &&
+            existing->second.State != OwnerState::Released) {
+            return existing->second.State == OwnerState::Active
+                ? existing->second.Generation : 0;
+        }
     }
     if (m_NextOwnerGeneration == 0)
         return 0;
@@ -95,15 +88,11 @@ std::uint64_t Sessions::RegisterOwner(std::string ownerId) {
 void Sessions::RetireOwner(const std::string &ownerId) {
     if (std::this_thread::get_id() != m_Thread)
         return;
-    std::uint64_t generation = 0;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        auto owner = m_Owners.find(ownerId);
-        if (owner == m_Owners.end() || owner->second.State == OwnerState::Released)
-            return;
-        generation = owner->second.Generation;
-        CloseOwner(ownerId, generation);
-    }
+    const auto owner = m_Owners.find(ownerId);
+    if (owner == m_Owners.end() || owner->second.State == OwnerState::Released)
+        return;
+    const std::uint64_t generation = owner->second.Generation;
+    CloseOwner(ownerId, generation);
     DrainOwner(ownerId, generation);
 }
 
@@ -113,7 +102,6 @@ Status Sessions::OpenSession(const std::string &ownerId,
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto owner = m_Owners.find(ownerId);
     if (owner == m_Owners.end() || owner->second.State != OwnerState::Active)
         return Fail(Error::InvalidState, "The Mod is not an active Behavior owner.");
@@ -127,13 +115,12 @@ Status Sessions::OpenSession(const std::string &ownerId,
 }
 
 void Sessions::CloseSession(std::uintptr_t sessionId) {
-    if (!sessionId)
+    if (!sessionId || !Ready())
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto session = m_Sessions.find(sessionId);
     if (session == m_Sessions.end())
         return;
-    session->second.Admission->Open.store(false, std::memory_order_release);
+    session->second.Admission->Close();
     for (auto run = m_Runs.begin(); run != m_Runs.end();) {
         if (run->second->SessionId != sessionId) {
             ++run;
@@ -155,7 +142,9 @@ void Sessions::CloseSession(std::uintptr_t sessionId) {
 
 Status Sessions::ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const {
     out = {};
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const Session *session = FindSession(sessionId);
     if (!session || !SessionIsActive(*session))
         return Fail(Error::InvalidState,
@@ -167,7 +156,9 @@ Status Sessions::ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const {
 Status Sessions::ReadOwner(const std::string &ownerId,
                            SessionOwner &out) const {
     out = {};
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto owner = m_Owners.find(ownerId);
     if (owner == m_Owners.end() || owner->second.State != OwnerState::Active)
         return Fail(Error::InvalidState, "The Mod is not an active Behavior owner.");
@@ -181,14 +172,11 @@ OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), 0, {}};
-    Session session;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        Session *found = FindSession(sessionId);
-        if (!found || !SessionIsActive(*found))
-            return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
-        session = *found;
-    }
+    const Session *found = FindSession(sessionId);
+    if (!found || !SessionIsActive(*found))
+        return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
+    // Provider code may close the Session. AddRun checks it again.
+    const Session session = *found;
 
     CallResult called = m_Runtime.Call(owner, block, input, nullptr, retention);
     if (!called.Handle)
@@ -208,14 +196,11 @@ OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), 0, {}};
-    Session session;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        Session *found = FindSession(sessionId);
-        if (!found || !SessionIsActive(*found))
-            return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
-        session = *found;
-    }
+    const Session *found = FindSession(sessionId);
+    if (!found || !SessionIsActive(*found))
+        return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
+    // Provider code may close the Session. AddRun checks it again.
+    const Session session = *found;
 
     CreateResult created = m_Runtime.Instantiate(owner, block, nullptr,
                                                  retention);
@@ -238,14 +223,11 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), 0, {}};
-    Session session;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        Session *found = FindSession(sessionId);
-        if (!found || !SessionIsActive(*found))
-            return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
-        session = *found;
-    }
+    const Session *found = FindSession(sessionId);
+    if (!found || !SessionIsActive(*found))
+        return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
+    // Provider code may close the Session. AddRun checks it again.
+    const Session session = *found;
     CreateResult created = m_Runtime.Instantiate(owner, block, nullptr,
                                                  retention);
     if (!created)
@@ -266,14 +248,11 @@ OpenRun Sessions::Attach(std::uintptr_t sessionId, CKBehavior *graph,
     if (!graph)
         return {Fail(Error::OwnerInvalid,
                      "Attach requires a live parent graph."), 0, {}};
-    Session session;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        Session *found = FindSession(sessionId);
-        if (!found || !SessionIsActive(*found))
-            return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
-        session = *found;
-    }
+    const Session *found = FindSession(sessionId);
+    if (!found || !SessionIsActive(*found))
+        return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
+    // Provider code may close the Session. AddRun checks it again.
+    const Session session = *found;
     CreateResult created = m_Runtime.AttachToGraph(graph, block, nullptr,
                                                    retention);
     if (!created)
@@ -296,23 +275,15 @@ RunResult Sessions::Continue(std::uintptr_t runId) {
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    std::shared_ptr<Run> run;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run = FindRun(runId);
-        if (!run || run->Info.Kind != RunKind::Call || !run->Block)
-            return FailedRun(Error::InvalidState, "The Run is not a pending Call.");
-    }
+    const std::shared_ptr<Run> run = FindRun(runId);
+    if (!run || run->Info.Kind != RunKind::Call || !run->Block)
+        return FailedRun(Error::InvalidState, "The Run is not a pending Call.");
     Status status = m_Runtime.Continue(run->Block);
-    RunInfo info = run->Info;
+    RunInfo &info = run->Info;
     info.LastStatus = status;
     RefreshRunInfo(m_Runtime, run->Block, info);
     if (status)
         info.Kind = RunKind::Task;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run->Info = info;
-    }
     return {std::move(status), info.State, CKBR_OK, {}};
 }
 
@@ -320,27 +291,18 @@ RunResult Sessions::Pulse(std::uintptr_t runId, const Slot &input) {
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    std::shared_ptr<Run> run;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run = FindRun(runId);
-        if (!run || run->Info.Kind == RunKind::Call || !run->Block)
-            return FailedRun(Error::InvalidState,
-                             "Pulse requires a live Task or Instance Run.");
-    }
+    const std::shared_ptr<Run> run = FindRun(runId);
+    if (!run || run->Info.Kind == RunKind::Call || !run->Block)
+        return FailedRun(Error::InvalidState,
+                         "Pulse requires a live Task or Instance Run.");
     RunResult result = m_Runtime.Pulse(run->Block, input);
     if (result.State == RunState::Pending) {
         Status continued = m_Runtime.Continue(run->Block);
         if (!continued && result.Detail)
             result.Detail = std::move(continued);
     }
-    RunInfo info = run->Info;
-    info.LastStatus = result.Detail;
-    RefreshRunInfo(m_Runtime, run->Block, info);
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run->Info = std::move(info);
-    }
+    run->Info.LastStatus = result.Detail;
+    RefreshRunInfo(m_Runtime, run->Block, run->Info);
     return result;
 }
 
@@ -350,14 +312,10 @@ Status Sessions::ReadRun(std::uintptr_t runId, RunInfo &info) const {
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<const Run> run;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run = FindRun(runId);
-        if (!run)
-            return Fail(Error::InvalidState, "The Behavior Run is stale.");
-        info = run->Info;
-    }
+    const std::shared_ptr<const Run> run = FindRun(runId);
+    if (!run)
+        return Fail(Error::InvalidState, "The Behavior Run is stale.");
+    info = run->Info;
     if (run->Block)
         RefreshRunInfo(m_Runtime, run->Block, info);
     return {};
@@ -398,14 +356,9 @@ Status Sessions::ReadLiveLayout(std::uintptr_t runId, Layout &out) const {
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<const Run> run;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run = FindRun(runId);
-        if (!run)
-            return Fail(Error::InvalidState,
-                        "Behavior Run handle is stale.");
-    }
+    const std::shared_ptr<const Run> run = FindRun(runId);
+    if (!run)
+        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
     return m_Runtime.Describe(run->Block, out);
 }
 
@@ -417,17 +370,13 @@ Status Sessions::Set(std::uintptr_t runId,
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<Run> run;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run = FindRun(runId);
-        if (!run || !run->Block)
-            return Fail(Error::InvalidState, "Behavior Run handle is stale.");
-        if (layoutGeneration &&
-            run->Block.LayoutGeneration() != layoutGeneration) {
-            return Fail(Error::StaleLayout,
-                        "The live Behavior Layout has changed.");
-        }
+    const std::shared_ptr<Run> run = FindRun(runId);
+    if (!run || !run->Block)
+        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+    if (layoutGeneration &&
+        run->Block.LayoutGeneration() != layoutGeneration) {
+        return Fail(Error::StaleLayout,
+                    "The live Behavior Layout has changed.");
     }
     SlotRef resolved;
     Status status = m_Runtime.Resolve(run->Block, slot, resolved);
@@ -456,20 +405,15 @@ Status Sessions::Bind(std::uintptr_t runId,
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<Run> run;
-    GraphSource *graph = nullptr;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run = FindRun(runId);
-        if (!run || !run->Block)
-            return Fail(Error::InvalidState, "Behavior Run handle is stale.");
-        if (layoutGeneration &&
-            run->Block.LayoutGeneration() != layoutGeneration) {
-            return Fail(Error::StaleLayout,
-                        "The live Behavior Layout has changed.");
-        }
-        graph = m_Graph.get();
+    const std::shared_ptr<Run> run = FindRun(runId);
+    if (!run || !run->Block)
+        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+    if (layoutGeneration &&
+        run->Block.LayoutGeneration() != layoutGeneration) {
+        return Fail(Error::StaleLayout,
+                    "The live Behavior Layout has changed.");
     }
+    GraphSource *graph = m_Graph.get();
     if (slot.Kind != SlotKind::InputParameter)
         return Fail(Error::InvalidState, "Bind accepts a live Pin.");
     if (sourceLayoutGeneration) {
@@ -504,24 +448,17 @@ Status Sessions::Configure(std::uintptr_t runId, const BlockSpec &settings,
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<Run> run;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run = FindRun(runId);
-        if (!run || !run->Block)
-            return Fail(Error::InvalidState, "Behavior Run handle is stale.");
-    }
-    // Settings enter provider callbacks. Keep the Run alive, but let worker
-    // Close requests stop admission without waiting for those callbacks.
+    const std::shared_ptr<Run> run = FindRun(runId);
+    if (!run || !run->Block)
+        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+    // Settings enter provider callbacks, which may close this Run. The shared
+    // Run stays alive until Configure returns.
     Status status = m_Runtime.Configure(run->Block, settings);
-    RunInfo info = run->Info;
-    RefreshRunInfo(m_Runtime, run->Block, info);
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    if (status)
-        layoutGeneration = run->Block.LayoutGeneration();
     // A precondition rejection (for example a pending Task) does not fail the
     // Instance. Runtime records failures only once configuration has begun.
-    run->Info = std::move(info);
+    RefreshRunInfo(m_Runtime, run->Block, run->Info);
+    if (status)
+        layoutGeneration = run->Block.LayoutGeneration();
     return status;
 }
 
@@ -530,16 +467,10 @@ Status Sessions::ReadGraph(std::uintptr_t runId, GraphView view,
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<Run> run;
-    GraphSource *graph = nullptr;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run = FindRun(runId);
-        if (!run)
-            return Fail(Error::InvalidState,
-                        "Behavior Run handle is stale.");
-        graph = m_Graph.get();
-    }
+    const std::shared_ptr<Run> run = FindRun(runId);
+    if (!run)
+        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+    GraphSource *graph = m_Graph.get();
     CKBehavior *behavior = run->Block.Get();
     if (!behavior)
         return Fail(Error::InvalidState,
@@ -617,20 +548,15 @@ Status Sessions::OpenWatch(std::uintptr_t sessionId, void *root, void *node,
     Status ready = Ready();
     if (!ready)
         return ready;
-    Session session;
-    GraphSource *graph = nullptr;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        Session *found = FindSession(sessionId);
-        if (!found || !SessionIsActive(*found))
-            return Fail(Error::InvalidState,
-                        "Behavior Session is stale or retiring.");
-        if (!m_Graph)
-            return Fail(Error::Unavailable,
-                        "Behavior graph observation is unavailable.");
-        session = *found;
-        graph = m_Graph.get();
-    }
+    const Session *found = FindSession(sessionId);
+    if (!found || !SessionIsActive(*found))
+        return Fail(Error::InvalidState,
+                    "Behavior Session is stale or retiring.");
+    GraphSource *graph = m_Graph.get();
+    if (!graph)
+        return Fail(Error::Unavailable,
+                    "Behavior graph observation is unavailable.");
+    const Session session = *found;
     Status status;
     if (root) {
         status = graph->Refer(root, spec.Root);
@@ -648,7 +574,6 @@ Status Sessions::OpenWatch(std::uintptr_t sessionId, void *root, void *node,
     if (!status)
         return status;
 
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Session *current = FindSession(session.Id);
     if (!current || current->OwnerGeneration != session.OwnerGeneration ||
         !SessionIsActive(*current)) {
@@ -671,9 +596,8 @@ Status Sessions::OpenWatch(std::uintptr_t sessionId, void *root, void *node,
 }
 
 void Sessions::CloseWatch(std::uintptr_t watchId) {
-    if (!watchId)
+    if (!watchId || !Ready())
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     auto watch = m_Watches.find(watchId);
     if (watch == m_Watches.end())
         return;
@@ -683,7 +607,9 @@ void Sessions::CloseWatch(std::uintptr_t watchId) {
 
 Status Sessions::ReadWatch(std::uintptr_t watchId, WatchInfo &info) const {
     info = {};
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto watch = m_Watches.find(watchId);
     if (watch == m_Watches.end())
         return Fail(Error::InvalidState,
@@ -693,7 +619,8 @@ Status Sessions::ReadWatch(std::uintptr_t watchId, WatchInfo &info) const {
 }
 
 std::shared_ptr<FrameStore> Sessions::Frames(std::uintptr_t runId) const {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    if (!Ready())
+        return nullptr;
     const std::shared_ptr<const Run> run = FindRun(runId);
     return run ? run->Frames : nullptr;
 }
@@ -701,15 +628,13 @@ std::shared_ptr<FrameStore> Sessions::Frames(std::uintptr_t runId) const {
 CKBehavior *Sessions::Block(std::uintptr_t runId) const {
     if (!Ready())
         return nullptr;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const std::shared_ptr<const Run> run = FindRun(runId);
     return run ? run->Block.Get() : nullptr;
 }
 
 void Sessions::CloseRun(std::uintptr_t runId) {
-    if (!runId)
+    if (!runId || !Ready())
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     auto run = m_Runs.find(runId);
     if (run == m_Runs.end())
         return;
@@ -726,34 +651,30 @@ void Sessions::ProcessFrame() {
         ~FrameEnd() { Processing = false; }
     } frameEnd{m_ProcessingFrame};
 
-    std::uint64_t frame = 0;
+    const std::uint64_t frame = ++m_Frame;
     bool runsClosed = false;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        frame = ++m_Frame;
-        if (m_Catalog && m_Catalog->TracksRetirement()) {
-            for (auto &[id, run] : m_Runs) {
-                (void) id;
-                if (!run || !run->Block ||
-                    (run->Info.State == RunState::Failed &&
-                     run->Info.LastStatus.Code != Error::None)) {
-                    continue;
-                }
-                Status provider = m_Catalog->Current(run->Info.Prototype);
-                if (provider)
-                    continue;
-                run->Info.State = RunState::Failed;
-                run->Info.LastStatus = std::move(provider);
-                run->Block.Reset();
-                runsClosed = true;
+    if (m_Catalog && m_Catalog->TracksRetirement()) {
+        for (auto &[id, run] : m_Runs) {
+            (void) id;
+            if (!run || !run->Block ||
+                (run->Info.State == RunState::Failed &&
+                 run->Info.LastStatus.Code != Error::None)) {
+                continue;
             }
+            Status provider = m_Catalog->Current(run->Info.Prototype);
+            if (provider)
+                continue;
+            run->Info.State = RunState::Failed;
+            run->Info.LastStatus = std::move(provider);
+            run->Block.Reset();
+            runsClosed = true;
         }
-        runsClosed = CloseQueuedRuns() || runsClosed;
-        m_FrameWatches.clear();
-        m_FrameWatches.reserve(m_Watches.size());
-        for (const auto &[id, watch] : m_Watches)
-            m_FrameWatches.emplace_back(id, watch.Value);
     }
+    runsClosed = CloseQueuedRuns() || runsClosed;
+    m_FrameWatches.clear();
+    m_FrameWatches.reserve(m_Watches.size());
+    for (const auto &[id, watch] : m_Watches)
+        m_FrameWatches.emplace_back(id, watch.Value);
     if (runsClosed)
         m_Runtime.ClosePending();
     m_WatchReadings.BeginFrame(frame);
@@ -772,7 +693,6 @@ void Sessions::ProcessFrame() {
             continue;
         }
         if (!watch->IsOpen()) {
-            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
             const auto current = m_Watches.find(id);
             if (current != m_Watches.end() &&
                 current->second.Value == watch) {
@@ -783,14 +703,10 @@ void Sessions::ProcessFrame() {
     }
     m_FrameWatches.clear();
     CollectWatches();
-    {
-        // Watch callbacks and callback Release functions can close Runs. Their
-        // handles stop accepting calls immediately; submit the native close at
-        // this same game-thread safe point.
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        runsClosed = CloseQueuedRuns();
-    }
-    if (runsClosed)
+    // Watch callbacks and callback Release functions can close Runs. Their
+    // handles stop accepting calls immediately; submit the native close at
+    // this same safe point.
+    if (CloseQueuedRuns())
         m_Runtime.ClosePending();
 }
 
@@ -812,16 +728,13 @@ void Sessions::ObjectsToBeDeleted(const CK_ID *ids, int count) {
 }
 
 void Sessions::RetireWorldHandles() {
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        for (auto &[id, run] : m_Runs)
-            QueueClose(std::move(run));
-        m_Runs.clear();
-        for (auto &[id, watch] : m_Watches)
-            QueueWatch(std::move(watch.Value));
-        m_Watches.clear();
-        (void) CloseQueuedRuns();
-    }
+    for (auto &[id, run] : m_Runs)
+        QueueClose(std::move(run));
+    m_Runs.clear();
+    for (auto &[id, watch] : m_Watches)
+        QueueWatch(std::move(watch.Value));
+    m_Watches.clear();
+    (void) CloseQueuedRuns();
     CollectWatches();
 }
 
@@ -891,27 +804,17 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
     run->Block = std::move(block);
     run->Frames = std::move(frames);
 
-    std::uintptr_t id = 0;
-    bool sessionClosed = false;
-    bool exhausted = false;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        Session *current = FindSession(session.Id);
-        sessionClosed = !current ||
-            current->OwnerGeneration != session.OwnerGeneration ||
-            !SessionIsActive(*current);
-        if (!sessionClosed) {
-            id = NextId();
-            exhausted = id == 0;
-        }
-        if (!sessionClosed && !exhausted) {
-            run->Id = id;
-            const auto [stored, inserted] = m_Runs.emplace(id, run);
-            if (inserted) {
-                Status admitted;
-                return {std::move(admitted), id, stored->second->Info};
-            }
-        }
+    const Session *current = FindSession(session.Id);
+    const bool sessionClosed = !current ||
+        current->OwnerGeneration != session.OwnerGeneration ||
+        !SessionIsActive(*current);
+    const std::uintptr_t id = sessionClosed ? 0 : NextId();
+    const bool exhausted = !sessionClosed && id == 0;
+    if (!sessionClosed && !exhausted) {
+        run->Id = id;
+        const auto [stored, inserted] = m_Runs.emplace(id, run);
+        if (inserted)
+            return {Status{}, id, stored->second->Info};
     }
 
     run->Block.Reset();
@@ -924,7 +827,6 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
     if (exhausted)
         return {Fail(Error::InvalidState, "Behavior Run ids are exhausted."), 0, {}};
     return {Fail(Error::InvalidState, "Behavior Run id collision."), 0, {}};
-
 }
 
 void Sessions::QueueClose(std::shared_ptr<Run> run) {
@@ -960,7 +862,7 @@ void Sessions::CloseOwner(const std::string &ownerId,
     for (auto session = m_Sessions.begin(); session != m_Sessions.end();) {
         if (session->second.OwnerId == ownerId &&
             session->second.OwnerGeneration == generation) {
-            session->second.Admission->Open.store(false, std::memory_order_release);
+            session->second.Admission->Close();
             session = m_Sessions.erase(session);
         } else
             ++session;
@@ -982,7 +884,6 @@ void Sessions::DrainOwner(const std::string &ownerId,
                           std::uint64_t generation) {
     CollectWatches();
     m_Runtime.ClosePending();
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     auto owner = m_Owners.find(ownerId);
     if (owner != m_Owners.end() && owner->second.Generation == generation &&
         owner->second.State == OwnerState::Draining) {
@@ -999,10 +900,7 @@ void Sessions::QueueWatch(std::shared_ptr<Watch> watch) {
 
 void Sessions::CollectWatches() {
     std::vector<std::shared_ptr<Watch>> pending;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        pending.swap(m_ClosingWatches);
-    }
+    pending.swap(m_ClosingWatches);
     while (!pending.empty()) {
         std::vector<std::shared_ptr<Watch>> waiting;
         waiting.reserve(pending.size());
@@ -1011,14 +909,10 @@ void Sessions::CollectWatches() {
                 waiting.push_back(std::move(watch));
         }
         std::vector<std::shared_ptr<Watch>> discovered;
-        {
-            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-            discovered.swap(m_ClosingWatches);
-            m_ClosingWatches.insert(
-                m_ClosingWatches.end(),
-                std::make_move_iterator(waiting.begin()),
-                std::make_move_iterator(waiting.end()));
-        }
+        discovered.swap(m_ClosingWatches);
+        m_ClosingWatches.insert(m_ClosingWatches.end(),
+                                std::make_move_iterator(waiting.begin()),
+                                std::make_move_iterator(waiting.end()));
         pending = std::move(discovered);
     }
 }

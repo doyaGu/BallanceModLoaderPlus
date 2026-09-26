@@ -327,7 +327,7 @@ $checks['BehaviorSessionClose'] = $log.Contains(
     'Behavior session close: status=pass calls=1')
 $checks['BehaviorCloseRaces'] = $log.Contains(
     'Behavior plan downstream close: downstream_calls=0') -and
-    $log.Contains('Behavior install worker close: entered=true completed_in_callback=true close=0 apply=-11') -and
+    $log.Contains('Behavior install close: entered=true worker=-14 close=0 apply=-11') -and
     $log -match 'Behavior reenable close: close=0 enable=-11 native_hooks=\d+ callbacks_after_close=0' -and
     $log.Contains(
         'Behavior plan install close: closing=true hooks=0 restored=true retired=true')

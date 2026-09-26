@@ -655,7 +655,7 @@ if (made) {
 | world reset | 保持有效 | 关闭 | 随旧 world 关闭 | 随旧 graph 关闭 | 保持有效，在新 world reconcile |
 | Mod unload/reload | owner generation 退出 | DLL unload 前关闭 | 离开 owner，并在 DLL unload 前关闭 | callback 和 graph state 先退役 | callback code unload 前退役 |
 
-除 Close 外，Behavior 操作要求 game thread。所有 `Result<T>` 都同时包含稳定错误类别和 `Status`；控制流只应判断 error/phase，不应解析 message 文本。
+所有 Behavior 操作都要求 game thread，Close 也一样。在其他线程调用会返回 `BML_ERROR_WRONG_THREAD`，不做任何改动。facade 值也应在 game thread 销毁：在其他线程运行的析构函数关不掉它持有的资源，Loader 要等 Mod retire 时才回收。所有 `Result<T>` 都同时包含稳定错误类别和 `Status`；控制流只应判断 error/phase，不应解析 message 文本。
 
 高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`TakeFrames(Frames&)` 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string，两个方向的 LinkRange 都使用 snapshot 自带的索引。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。
 

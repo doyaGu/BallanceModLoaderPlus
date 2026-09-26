@@ -19,22 +19,18 @@ using BML::Behavior::Internal::Phase;
 using BML::Behavior::Internal::PlanCallbackState;
 namespace HookBlock = BML::Behavior::Internal::HookBlock;
 
-enum class Thread { Game, Any };
-
 // Every entry checks its own pointers first. Enter then takes the
-// ModContext lease, checks the thread, runs body and writes the Status body
-// leaves behind, including when body throws. Only the Close entries run on
-// any thread, and they have no status to write.
+// ModContext lease, refuses every call off the game thread, runs body and
+// writes the Status body leaves behind, including when body throws.
 template <typename Body>
-int Enter(BML_BehaviorStatus *status, Body &&body,
-          Thread thread = Thread::Game) noexcept {
+int Enter(BML_BehaviorStatus *status, Body &&body) noexcept {
     Status result;
     int code;
     try {
         ModContextLease context;
         if (!context)
             code = BML_ERROR_FROZEN;
-        else if (thread == Thread::Game && !context->IsMainThread())
+        else if (!context->IsMainThread())
             code = BML_ERROR_WRONG_THREAD;
         else
             code = body(*context, result);
@@ -98,7 +94,7 @@ int BML_BEHAVIOR_CALL CloseSession(BML_BehaviorSession session) {
         context.BehaviorSessions().CloseSession(id);
         context.BehaviorScripts().CloseSession(id);
         return BML_OK;
-    }, Thread::Any);
+    });
 }
 
 enum class OpenKind { Call, Start, Spawn };
@@ -333,7 +329,7 @@ int BML_BEHAVIOR_CALL CloseRun(BML_BehaviorRun run) {
     return Enter(nullptr, [&](ModContext &context, Status &) {
         context.BehaviorSessions().CloseRun(RunId(run));
         return BML_OK;
-    }, Thread::Any);
+    });
 }
 
 int BML_BEHAVIOR_CALL FindPrototypes(
@@ -600,7 +596,7 @@ int BML_BEHAVIOR_CALL CloseWatch(BML_BehaviorWatch watch) {
     return Enter(nullptr, [&](ModContext &context, Status &) {
         context.BehaviorSessions().CloseWatch(WatchId(watch));
         return BML_OK;
-    }, Thread::Any);
+    });
 }
 
 int BML_BEHAVIOR_CALL ReadWatch(BML_BehaviorWatch watch,
@@ -818,7 +814,7 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
             return ResultCode(result);
         return ResultCode(context.BehaviorInstallations().ClosePlan(
             owner, PlanIdOf(plan)));
-    }, Thread::Any);
+    });
 }
 
 int BML_BEHAVIOR_CALL SetPlanActive(
@@ -952,7 +948,7 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
             return ResultCode(result);
         return ResultCode(context.BehaviorInstallations().Close(
             owner, PatchIdOf(patch)));
-    }, Thread::Any);
+    });
 }
 
 int BML_BEHAVIOR_CALL SetPatchActive(
@@ -1268,7 +1264,7 @@ int BML_BEHAVIOR_CALL CloseScript(BML_BehaviorSession session,
             return ResultCode(result);
         return ResultCode(context.BehaviorScripts().Close(
             owner, ScriptIdOf(script)));
-    }, Thread::Any);
+    });
 }
 
 const BML_BehaviorInterface kBehaviorInterface = {

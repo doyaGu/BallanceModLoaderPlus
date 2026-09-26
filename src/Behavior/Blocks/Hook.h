@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <utility>
 
 #include "CKAll.h"
@@ -45,7 +44,6 @@ private:
     Callback m_Callback = nullptr;
     void *m_Argument = nullptr;
     bool m_OwnsState = true;
-    mutable std::mutex m_DiagnosticMutex;
     CallbackFault m_Diagnostic;
 
     friend class Hook;

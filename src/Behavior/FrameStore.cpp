@@ -36,7 +36,6 @@ bool FrameStore::KeepsPouts(const RunFrame &frame) const noexcept {
 }
 
 FrameAppendResult FrameStore::Retain(RunFrame frame) {
-    std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_Retention.Kind == RetentionKind::Latest) {
         if (HasNoContinuation(frame)) {
             if (frame.Fault && m_LastError &&
@@ -85,26 +84,18 @@ FrameAppendResult FrameStore::Retain(RunFrame frame) {
 }
 
 bool FrameStore::Empty() const {
-    std::lock_guard<std::mutex> lock(m_Mutex);
     return m_Frames.empty() && !m_Latest && !m_LastError &&
            !m_NonContinuing;
 }
 
-std::vector<RunFrame> FrameStore::Read() const {
-    std::lock_guard<std::mutex> lock(m_Mutex);
-    return ReadLocked();
-}
-
 bool FrameStore::Consume(std::span<const std::uint64_t> sequences) {
-    std::lock_guard<std::mutex> lock(m_Mutex);
-    if (!MatchesLocked(sequences))
+    if (!Matches(sequences))
         return false;
-    ClearLocked();
+    Clear();
     return true;
 }
 
 std::vector<RunFrame> FrameStore::Take() {
-    std::lock_guard<std::mutex> lock(m_Mutex);
     std::vector<RunFrame> drained;
     drained.reserve(m_Frames.size() + (m_Latest ? 1u : 0u) +
                     (m_LastError ? 1u : 0u) +
@@ -127,20 +118,19 @@ std::vector<RunFrame> FrameStore::Take() {
                         return left.Sequence == right.Sequence;
                     }),
         drained.end());
-    ClearLocked();
+    Clear();
     return drained;
 }
 
 FrameBatchResult FrameStore::Take(FrameBatch &batch) {
-    std::lock_guard<std::mutex> lock(m_Mutex);
-    if (!VisitLocked(batch, false))
+    if (!Visit(batch, false))
         return FrameBatchResult::Failed;
     const FrameBatchResult ready = batch.Ready();
     if (ready != FrameBatchResult::Complete)
         return ready;
-    if (!VisitLocked(batch, true))
+    if (!Visit(batch, true))
         return FrameBatchResult::Failed;
-    ClearLocked();
+    Clear();
     return FrameBatchResult::Complete;
 }
 
@@ -170,7 +160,7 @@ void FrameStore::StoreNonContinuing(RunFrame frame) {
     m_NonContinuing = std::move(frame);
 }
 
-std::vector<RunFrame> FrameStore::ReadLocked() const {
+std::vector<RunFrame> FrameStore::Read() const {
     std::vector<const RunFrame *> visible;
     visible.reserve(m_Frames.size() + (m_Latest ? 1u : 0u) +
                     (m_LastError ? 1u : 0u) +
@@ -201,7 +191,7 @@ std::vector<RunFrame> FrameStore::ReadLocked() const {
     return frames;
 }
 
-bool FrameStore::MatchesLocked(
+bool FrameStore::Matches(
     std::span<const std::uint64_t> sequences) const {
     std::vector<std::uint64_t> current;
     current.reserve(m_Frames.size() + (m_Latest ? 1u : 0u) +
@@ -221,7 +211,7 @@ bool FrameStore::MatchesLocked(
         std::equal(current.begin(), current.end(), sequences.begin());
 }
 
-const RunFrame *FrameStore::NextLocked(
+const RunFrame *FrameStore::Next(
     std::uint64_t after, bool first) const noexcept {
     const RunFrame *next = nullptr;
     const auto consider = [&](const RunFrame &candidate) {
@@ -249,10 +239,10 @@ const RunFrame *FrameStore::NextLocked(
     return next;
 }
 
-bool FrameStore::VisitLocked(FrameBatch &batch, bool write) const {
+bool FrameStore::Visit(FrameBatch &batch, bool write) const {
     std::uint64_t sequence = 0;
     bool first = true;
-    while (const RunFrame *frame = NextLocked(sequence, first)) {
+    while (const RunFrame *frame = Next(sequence, first)) {
         if (write ? !batch.Write(*frame) : !batch.Measure(*frame))
             return false;
         sequence = frame->Sequence;
@@ -261,7 +251,7 @@ bool FrameStore::VisitLocked(FrameBatch &batch, bool write) const {
     return true;
 }
 
-void FrameStore::ClearLocked() noexcept {
+void FrameStore::Clear() noexcept {
     m_Frames.clear();
     m_Latest.reset();
     m_LastError.reset();

@@ -1269,14 +1269,13 @@ typedef struct BML_BehaviorPatchSpec {
 typedef struct BML_BehaviorInterface {
     BML_InterfaceHeader Header;
 
-    // Except for the six Close functions, every function in this Interface
-    // must be called on the game thread. CloseSession, CloseRun, CloseWatch,
-    // ClosePlan, ClosePatch, and CloseScript may be called from any thread.
-    // They close new
-    // admission immediately and never wait for a running callback or Execute;
-    // native teardown and callback Release finish at a later game-thread safe
-    // point. Repeating CloseSession, CloseRun, or CloseWatch with the same
-    // non-null stale handle is harmless and returns BML_OK.
+    // Every function in this Interface must be called on the game thread. A
+    // call from any other thread returns BML_ERROR_WRONG_THREAD and changes
+    // nothing. The six Close functions close new admission immediately and
+    // never wait for a running callback or Execute; native teardown and
+    // callback Release finish at a later safe point. Repeating CloseSession,
+    // CloseRun, or CloseWatch with the same non-null stale handle is harmless
+    // and returns BML_OK.
     //
     // OpenSession authenticates the calling Native Mod from the DLL containing
     // the call site. An empty ownerId selects that Mod. A non-empty ownerId must
@@ -1416,8 +1415,8 @@ typedef struct BML_BehaviorInterface {
                                       BML_BehaviorPlan plan,
                                       BML_BehaviorPlanInfo *info,
                                       BML_BehaviorStatus *status);
-    // May be called from any thread. Retires every instance the Plan still
-    // owns. BML_ERROR_BUSY means an inverse is waiting for the next safe point.
+    // Retires every instance the Plan still owns. BML_ERROR_BUSY means an
+    // inverse is waiting for the next safe point.
     // A graph conflict returns an error and leaves the Plan readable. Once
     // ClosePlan has been accepted, the Loader retries unfinished inverses at
     // safe points.
@@ -1473,11 +1472,10 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorPatch patch,
         BML_BehaviorPatchInfo *info,
         BML_BehaviorStatus *status);
-    // May be called from any thread. Stops callback admission immediately.
-    // BML_ERROR_BUSY means restoration will continue at the next game-thread
-    // safe point. A revert conflict returns an error and keeps the Patch
-    // readable; the Loader also retries the requested retirement at later safe
-    // points.
+    // Stops callback admission immediately. BML_ERROR_BUSY means restoration
+    // will continue at the next safe point. A revert conflict returns an error
+    // and keeps the Patch readable; the Loader also retries the requested
+    // retirement at later safe points.
     int (BML_BEHAVIOR_CALL *ClosePatch)(BML_BehaviorSession session,
                                         BML_BehaviorPatch patch);
     // Reads the retained state of a live Watch. A callback ERROR or exception

@@ -366,9 +366,8 @@ ScriptResult Scripts::Create(const SessionOwner &owner,
     }
     if (status) {
         try {
-            // CloseSession uses this same registry lock. It must either see
-            // this Entry or revoke its Session before we admit it.
-            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+            // CloseSession closes only admitted Entries. A Session closed while
+            // the graph was being defined must not admit this one.
             if (!owner)
                 status = Failure(Error::OwnerInvalid,
                                  "The Behavior Session closed while creating the Script.",
@@ -389,7 +388,6 @@ ScriptResult Scripts::Create(const SessionOwner &owner,
         const Status retired = Retire(*entry);
         if (!retired) {
             entry->Info.LastStatus = retired;
-            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
             m_Retiring.push_back(entry);
         }
         return {rejected, 0, {}};
@@ -399,16 +397,12 @@ ScriptResult Scripts::Create(const SessionOwner &owner,
         if (m_Loaded)
             m_Loaded(name, identity.Root.Reference);
     } catch (...) {
-        {
-            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-            Close(*entry);
-        }
+        Close(*entry);
         Process(entry);
         return {Failure(Error::CreateFailed,
                         "The Loader could not publish the new Script.",
                         Phase::Creation), 0, {}};
     }
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     return {{}, id, entry->Info};
 }
 
@@ -418,26 +412,21 @@ Status Scripts::Read(const SessionOwner &owner, ScriptId script,
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<Entry> entry;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        const auto found = m_Scripts.find(script);
-        if (found == m_Scripts.end())
-            return Failure(Error::InvalidState,
-                           "The Behavior Script handle is stale.",
-                           Phase::OwnerBinding);
-        if (!OwnedBy(*found->second, owner))
-            return Failure(
-                Error::OwnerInvalid,
-                "The Behavior Script belongs to another Mod generation.",
-                Phase::OwnerBinding);
-        entry = found->second;
-        out = entry->Info;
-    }
+    const auto found = m_Scripts.find(script);
+    if (found == m_Scripts.end())
+        return Failure(Error::InvalidState,
+                       "The Behavior Script handle is stale.",
+                       Phase::OwnerBinding);
+    if (!OwnedBy(*found->second, owner))
+        return Failure(
+            Error::OwnerInvalid,
+            "The Behavior Script belongs to another Mod generation.",
+            Phase::OwnerBinding);
+    const std::shared_ptr<Entry> entry = found->second;
+    out = entry->Info;
     if (out.State == ScriptState::Ready) {
         bool active = false;
         Status observed = m_World->Read(out.Identity, active);
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         const auto current = m_Scripts.find(script);
         if (current == m_Scripts.end() || current->second != entry)
             return Failure(Error::GraphChanged,
@@ -466,7 +455,6 @@ Status Scripts::SetActive(const SessionOwner &owner, ScriptId script,
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto found = m_Scripts.find(script);
     if (found == m_Scripts.end())
         return Failure(Error::InvalidState,
@@ -510,7 +498,10 @@ Status Scripts::Close(const SessionOwner &owner, ScriptId script) {
         return Failure(Error::InvalidState,
                        "The Behavior Script handle is null.",
                        Phase::Teardown);
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    if (std::this_thread::get_id() != m_Thread)
+        return Failure(Error::WrongThread,
+                       "Behavior Scripts require the game thread.",
+                       Phase::Teardown);
     const auto found = m_Scripts.find(script);
     if (found == m_Scripts.end())
         return {};
@@ -525,9 +516,8 @@ Status Scripts::Close(const SessionOwner &owner, ScriptId script) {
 }
 
 void Scripts::CloseSession(std::uintptr_t session) {
-    if (!session)
+    if (!session || std::this_thread::get_id() != m_Thread)
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     for (auto &[id, entry] : m_Scripts) {
         if (entry->Session == session)
             Close(*entry);
@@ -538,15 +528,11 @@ Status Scripts::RetireOwner(std::string_view owner) {
     Status ready = Ready();
     if (!ready)
         return ready;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        for (auto &[id, entry] : m_Scripts) {
-            if (entry->Owner.Id == owner)
-                Close(*entry);
-        }
+    for (auto &[id, entry] : m_Scripts) {
+        if (entry->Owner.Id == owner)
+            Close(*entry);
     }
     ProcessFrame();
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     for (const auto &[id, entry] : m_Scripts) {
         if (entry->Owner.Id == owner)
             return Failure(Error::Busy,
@@ -566,7 +552,6 @@ Status Scripts::RetireOwner(std::string_view owner) {
 void Scripts::ObjectToBeDeleted(std::uint64_t object) {
     if (!object || std::this_thread::get_id() != m_Thread)
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     for (auto script = m_Scripts.begin(); script != m_Scripts.end();) {
         const ScriptIdentity &identity = script->second->Info.Identity;
         const bool deleting = object == identity.Root.Id ||
@@ -590,25 +575,23 @@ void Scripts::ObjectToBeDeleted(std::uint64_t object) {
 }
 
 void Scripts::Process(const std::shared_ptr<Entry> &entry) {
-    ScriptInfo snapshot;
-    bool reset = false;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    // World calls enter CK2, which may close or erase this Entry. Work from a
+    // snapshot and check the Entry is still registered after each call.
+    const auto registered = [this, &entry] {
         const auto current = m_Scripts.find(entry->Id);
-        if (current == m_Scripts.end() || current->second != entry)
-            return;
-        snapshot = entry->Info;
-        reset = entry->ResetOnActivation;
-    }
+        return current != m_Scripts.end() && current->second == entry;
+    };
+    if (!registered())
+        return;
+    ScriptInfo snapshot = entry->Info;
+    bool reset = entry->ResetOnActivation;
 
     if (snapshot.State == ScriptState::Closing) {
         const Status status = Retire(*entry);
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        const auto current = m_Scripts.find(entry->Id);
-        if (current == m_Scripts.end() || current->second != entry)
+        if (!registered())
             return;
         if (status)
-            m_Scripts.erase(current);
+            m_Scripts.erase(entry->Id);
         else
             entry->Info.LastStatus = status;
         return;
@@ -618,23 +601,18 @@ void Scripts::Process(const std::shared_ptr<Entry> &entry) {
 
     bool active = false;
     Status observed = m_World->Read(snapshot.Identity, active);
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        const auto current = m_Scripts.find(entry->Id);
-        if (current == m_Scripts.end() || current->second != entry ||
-            entry->Info.State != ScriptState::Ready)
-            return;
-        if (!observed) {
-            entry->Info.State = ScriptState::Failed;
-            entry->Info.LastStatus = std::move(observed);
-            entry->Info.RequestedActive = entry->Info.Active;
-            entry->ResetOnActivation = false;
-            return;
-        }
-        entry->Info.Active = active;
-        snapshot = entry->Info;
-        reset = entry->ResetOnActivation;
+    if (!registered() || entry->Info.State != ScriptState::Ready)
+        return;
+    if (!observed) {
+        entry->Info.State = ScriptState::Failed;
+        entry->Info.LastStatus = std::move(observed);
+        entry->Info.RequestedActive = entry->Info.Active;
+        entry->ResetOnActivation = false;
+        return;
     }
+    entry->Info.Active = active;
+    snapshot = entry->Info;
+    reset = entry->ResetOnActivation;
     if (snapshot.Active == snapshot.RequestedActive && !reset)
         return;
 
@@ -645,11 +623,7 @@ void Scripts::Process(const std::shared_ptr<Entry> &entry) {
     if (observed)
         observed = m_World->Read(snapshot.Identity, active);
 
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    const auto current = m_Scripts.find(entry->Id);
-    if (current == m_Scripts.end() || current->second != entry)
-        return;
-    if (entry->Info.State != ScriptState::Ready)
+    if (!registered() || entry->Info.State != ScriptState::Ready)
         return;
     if (!observed) {
         entry->Info.State = ScriptState::Failed;
@@ -664,32 +638,20 @@ void Scripts::Process(const std::shared_ptr<Entry> &entry) {
 }
 
 void Scripts::ProcessFrame() {
-    if (!Ready())
+    if (!Ready() || m_Processing)
         return;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        if (m_Processing)
-            return;
-        m_Processing = true;
-        m_FrameEntries.clear();
-        m_FrameEntries.reserve(m_Scripts.size());
-        for (const auto &[id, entry] : m_Scripts)
-            m_FrameEntries.push_back(entry);
-    }
+    m_Processing = true;
+    m_FrameEntries.clear();
+    m_FrameEntries.reserve(m_Scripts.size());
+    for (const auto &[id, entry] : m_Scripts)
+        m_FrameEntries.push_back(entry);
     try {
         for (const std::shared_ptr<Entry> &entry : m_FrameEntries)
             Process(entry);
         std::size_t index = 0;
-        while (true) {
-            std::shared_ptr<Entry> entry;
-            {
-                std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-                if (index >= m_Retiring.size())
-                    break;
-                entry = m_Retiring[index];
-            }
+        while (index < m_Retiring.size()) {
+            const std::shared_ptr<Entry> entry = m_Retiring[index];
             const Status status = Retire(*entry);
-            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
             const auto found = std::find(
                 m_Retiring.begin(), m_Retiring.end(), entry);
             if (found == m_Retiring.end())
@@ -703,30 +665,22 @@ void Scripts::ProcessFrame() {
             }
         }
     } catch (...) {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         m_FrameEntries.clear();
         m_Processing = false;
         throw;
     }
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        m_FrameEntries.clear();
-        m_Processing = false;
-    }
+    m_FrameEntries.clear();
+    m_Processing = false;
 }
 
 void Scripts::ResetWorld() {
     if (std::this_thread::get_id() != m_Thread)
         return;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        for (auto &[id, entry] : m_Scripts)
-            Close(*entry);
-    }
+    for (auto &[id, entry] : m_Scripts)
+        Close(*entry);
     ProcessFrame();
     // Object references are about to enter a new world. Any native teardown
     // failure is no longer a usable Script handle in that world.
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     m_Scripts.clear();
     m_Retiring.clear();
 }

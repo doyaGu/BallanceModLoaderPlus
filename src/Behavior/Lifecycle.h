@@ -1,7 +1,6 @@
 #ifndef BML_BEHAVIOR_LIFECYCLE_H
 #define BML_BEHAVIOR_LIFECYCLE_H
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -152,7 +151,7 @@ public:
         return m_Failure;
     }
     [[nodiscard]] bool CloseRequested() const noexcept {
-        return m_CloseRequested.load(std::memory_order_acquire);
+        return m_CloseRequested;
     }
 
 private:
@@ -181,8 +180,8 @@ private:
     LifecycleFault m_Failure;
     LifecycleIdentity m_Identity;
     bool m_HasIdentity = false;
-    std::atomic<bool> m_CloseRequested{false};
-    std::atomic<bool> m_ResetRequested{false};
+    bool m_CloseRequested = false;
+    bool m_ResetRequested = false;
 };
 
 } // namespace BML::Behavior::Internal

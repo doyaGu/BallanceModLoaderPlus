@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <functional>
 #include <map>
-#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -276,10 +275,9 @@ private:
     [[nodiscard]] Status Ready() const;
     [[nodiscard]] PatchId NextId();
     [[nodiscard]] PlanId NextPlanId();
-    std::shared_ptr<CallbackAdmission> RegisterAdmission(
-        bool plan, std::uint64_t id, const SessionOwner &owner,
+    static std::shared_ptr<CallbackAdmission> OpenAdmission(
+        const SessionOwner &owner,
         std::shared_ptr<const CallbackAdmission> parent = {});
-    Status RequestClose(bool plan, std::uint64_t id, const SessionOwner &owner);
     static Status Validate(const std::vector<Target> &targets, bool replacing);
     static Status Validate(const std::vector<Rule> &rules, bool replacing);
 
@@ -365,18 +363,6 @@ private:
     ResolveObject m_ResolveObject;
     IssueObject m_IssueObject;
     std::thread::id m_Thread;
-    struct AdmissionRecord {
-        SessionOwner Owner;
-        std::weak_ptr<CallbackAdmission> Admission;
-    };
-    // Only this admission registry crosses threads. A worker Close stops new
-    // callbacks here; Patch and Plan graph state remains game-thread owned and
-    // is reconciled at the next safe point.
-    std::mutex m_AdmissionMutex;
-    std::map<std::pair<bool, std::uint64_t>, AdmissionRecord> m_Admissions;
-    // Registration and collection are game-thread operations. Worker threads
-    // only look up an admission while holding m_AdmissionMutex.
-    bool m_HasAdmissions{false};
     PatchId m_NextId = 1;
     PlanId m_NextPlanId = 1;
     std::map<PatchId, PatchRecord> m_Patches;

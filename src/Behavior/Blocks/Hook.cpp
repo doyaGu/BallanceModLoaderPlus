@@ -26,11 +26,8 @@ CallbackCall Binding::Invoke(const CKBehaviorContext *context) noexcept {
         call.Fault = {CallbackError::Exception,
                       "Behavior Hook callback reported a fault."};
     }
-    if (call.Fault) {
-        std::lock_guard<std::mutex> lock(m_DiagnosticMutex);
-        if (!m_Diagnostic)
-            m_Diagnostic = call.Fault;
-    }
+    if (call.Fault && !m_Diagnostic)
+        m_Diagnostic = call.Fault;
     // A callback that ran but did not complete is a bug, not a decision. Keep
     // its first diagnostic and stop invoking this occurrence; the Hook Block
     // treats the faulted call as if no callback ran, the same way CK2 swallows
@@ -58,7 +55,6 @@ CallbackLeaseState Binding::State() const noexcept {
 }
 
 CallbackFault Binding::Diagnostic() const {
-    std::lock_guard<std::mutex> lock(m_DiagnosticMutex);
     return m_Diagnostic;
 }
 

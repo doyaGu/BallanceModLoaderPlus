@@ -1,10 +1,8 @@
 #ifndef BML_BEHAVIOR_WATCH_H
 #define BML_BEHAVIOR_WATCH_H
 
-#include <atomic>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <unordered_map>
 
 #include "Behavior/Callback.h"
@@ -125,7 +123,7 @@ private:
     PlanCallbackState m_State;
     CallbackLease m_Lease;
     Function m_Function;
-    std::atomic<bool> m_Retired{false};
+    bool m_Retired = false;
 };
 
 class Watch final {
@@ -140,9 +138,7 @@ public:
     [[nodiscard]] WatchInfo Read() const;
     void Close() noexcept;
     [[nodiscard]] bool RetireAtSafePoint() noexcept;
-    [[nodiscard]] bool IsOpen() const noexcept {
-        return m_Open.load(std::memory_order_acquire);
-    }
+    [[nodiscard]] bool IsOpen() const noexcept { return m_Open; }
 
 private:
     Watch(GraphSource &source, WatchSpec spec,
@@ -160,9 +156,8 @@ private:
     std::uint64_t m_Fingerprint = 0;
     GraphValue m_Value;
     std::uint64_t m_Sequence = 0;
-    mutable std::mutex m_StateMutex;
     WatchInfo m_Info;
-    std::atomic<bool> m_Open{true};
+    bool m_Open = true;
 };
 
 } // namespace BML::Behavior::Internal

@@ -31,17 +31,11 @@ Lifecycle &Lifecycle::operator=(Lifecycle &&other) noexcept {
     m_Failure = std::move(other.m_Failure);
     m_Identity = std::move(other.m_Identity);
     m_HasIdentity = other.m_HasIdentity;
-    m_CloseRequested.store(
-        other.m_CloseRequested.load(std::memory_order_acquire),
-        std::memory_order_release);
-    m_ResetRequested.store(
-        other.m_ResetRequested.load(std::memory_order_acquire),
-        std::memory_order_release);
+    m_CloseRequested = std::exchange(other.m_CloseRequested, false);
+    m_ResetRequested = std::exchange(other.m_ResetRequested, false);
     other.m_State = LifecycleState::Closed;
     other.m_Ledger = {};
     other.m_HasIdentity = false;
-    other.m_CloseRequested.store(false, std::memory_order_release);
-    other.m_ResetRequested.store(false, std::memory_order_release);
     return *this;
 }
 
@@ -337,8 +331,8 @@ bool Lifecycle::FailConfiguration(LifecycleFault fault,
 
 void Lifecycle::RequestClose(bool reset) noexcept {
     if (reset)
-        m_ResetRequested.store(true, std::memory_order_release);
-    m_CloseRequested.store(true, std::memory_order_release);
+        m_ResetRequested = true;
+    m_CloseRequested = true;
 }
 
 bool Lifecycle::Drain(LifecycleAdapter &adapter) {
@@ -358,7 +352,7 @@ bool Lifecycle::Drain(LifecycleAdapter &adapter) {
     }
 
     const LifecycleIdentity *identity = m_HasIdentity ? &m_Identity : nullptr;
-    if (m_ResetRequested.load(std::memory_order_acquire) && m_Ledger.Created)
+    if (m_ResetRequested && m_Ledger.Created)
         TeardownCallback(adapter, LifecycleCallback::Reset, identity);
     if (m_Ledger.Attached)
         TeardownCallback(adapter, LifecycleCallback::Detach, identity);

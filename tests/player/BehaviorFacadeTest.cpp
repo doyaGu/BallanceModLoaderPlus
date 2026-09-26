@@ -13,8 +13,6 @@
 #include "CKAll.h"
 
 #include <algorithm>
-#include <chrono>
-#include <future>
 #include "BML/Guids/Hooks.h"
 #include <cstdint>
 #include <cstring>
@@ -861,14 +859,19 @@ private:
     }
 
     void ClosePlan() {
-        BML::Behavior::Result<BML::Behavior::CloseState> closed;
-        std::thread closer([&] { closed = m_Plan.Close(); });
+        // Off the game thread Close is refused and leaves the Plan as it was.
+        const auto before = m_Plan.Info();
+        BML::Behavior::Result<BML::Behavior::CloseState> refused;
+        std::thread closer([&] { refused = m_Plan.Close(); });
         closer.join();
-        const auto closing = m_Plan.Info();
-        if (!closed || closed.Value() != BML::Behavior::CloseState::Closing ||
-            !m_Plan || !closing ||
-            closing->State != PlanState::Retiring) {
+        const auto after = m_Plan.Info();
+        if (refused || refused.Code() != BML_ERROR_WRONG_THREAD || !m_Plan ||
+            !before || !after || after->State != before->State) {
             Finish(false, "plan-thread-close");
+            return;
+        }
+        if (!m_Plan.Close()) {
+            Finish(false, "plan-close");
             return;
         }
         m_WaitUntil = m_Frame + 30;
@@ -974,46 +977,42 @@ private:
     }
 
 
-    bool WorkerCloseDuringInstall() {
+    bool CloseDuringInstall() {
         auto opened = BML::Behavior::Session::Open();
-        if (!opened) { GetLogger()->Error("Behavior install worker close: setup=open"); return false; }
+        if (!opened) { GetLogger()->Error("Behavior install close: setup=open"); return false; }
         auto session = opened.Take();
         auto graph = session.Inspect(m_Graph);
         auto setter = reinterpret_cast<BMLLifecycleFixtureSetEditedHookFn>(
             ::GetProcAddress(::GetModuleHandleA("BehaviorLifecycleFixture.dll"),
                              "BMLLifecycleFixtureSetEditedHook"));
-        if (!graph || !setter) { GetLogger()->Error("Behavior install worker close: setup=graph"); return false; }
+        if (!graph || !setter) { GetLogger()->Error("Behavior install close: setup=graph"); return false; }
         struct State {
             const BML_BehaviorInterface *Api;
             BML_BehaviorSession Session;
             bool Entered = false;
-            bool FinishedInCallback = false;
+            int WorkerCode = 999;
             int CloseCode = 999;
-            std::promise<void> Done;
-            std::thread Worker;
         } state{session.Api(), session.Handle()};
         setter([](CKBehavior *, void *argument) {
             auto &state = *static_cast<State *>(argument);
             if (state.Entered) return CK_OK;
             state.Entered = true;
-            auto done = state.Done.get_future();
-            state.Worker = std::thread([&state] {
-                state.CloseCode = state.Api->CloseSession(state.Session);
-                state.Done.set_value();
+            // A worker cannot close the Session, so the callback closes it.
+            std::thread worker([&state] {
+                state.WorkerCode = state.Api->CloseSession(state.Session);
             });
-            state.FinishedInCallback = done.wait_for(std::chrono::seconds(2)) ==
-                std::future_status::ready;
+            worker.join();
+            state.CloseCode = state.Api->CloseSession(state.Session);
             return CK_OK;
         }, &state);
         BML::Behavior::Edit edit;
         (void) edit.Root().Add(session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
-        auto applied = graph->Apply("correctness-review-worker", edit);
+        auto applied = graph->Apply("correctness-review-install", edit);
         setter(nullptr, nullptr);
-        if (state.Worker.joinable()) state.Worker.join();
-        GetLogger()->Info("Behavior install worker close: entered=%s completed_in_callback=%s close=%d apply=%d",
-            state.Entered ? "true" : "false", state.FinishedInCallback ? "true" : "false",
+        GetLogger()->Info("Behavior install close: entered=%s worker=%d close=%d apply=%d",
+            state.Entered ? "true" : "false", state.WorkerCode,
             state.CloseCode, applied.Code());
-        return state.Entered && state.FinishedInCallback &&
+        return state.Entered && state.WorkerCode == BML_ERROR_WRONG_THREAD &&
             state.CloseCode == BML_OK && !applied;
     }
 
@@ -1232,8 +1231,8 @@ private:
     // its settings and pulses it.
     void AttachBlock() {
         if (m_CloseRaceStage == 0) {
-            if (!WorkerCloseDuringInstall()) {
-                Finish(false, "install-worker-close");
+            if (!CloseDuringInstall()) {
+                Finish(false, "install-close");
                 return;
             }
             m_WaitUntil = m_Frame + 30;
@@ -3415,14 +3414,23 @@ private:
             Finish(false, "patch-conflict-setup");
             return;
         }
-        BML::Behavior::Result<BML::Behavior::CloseState> closed;
-        std::thread closer([&] { closed = m_Patch.Close(); });
+        // Off the game thread Close is refused and leaves the Patch as it was.
+        const auto before = m_Patch.Info();
+        BML::Behavior::Result<BML::Behavior::CloseState> refused;
+        std::thread closer([&] { refused = m_Patch.Close(); });
         closer.join();
-        const auto closing = m_Patch.Info();
-        if (!closed || closed.Value() != BML::Behavior::CloseState::Closing ||
-            !m_Patch || !closing ||
-            closing->State != PatchState::Closing) {
+        const auto after = m_Patch.Info();
+        if (refused || refused.Code() != BML_ERROR_WRONG_THREAD || !m_Patch ||
+            !before || !after || after->State != before->State) {
             Finish(false, "patch-thread-close");
+            return;
+        }
+        // The anchor no longer leads where the Patch left it, so the inverse
+        // conflicts. Close reports that now or at the next safe point, and the
+        // Patch stays readable either way.
+        (void) m_Patch.Close();
+        if (!m_Patch) {
+            Finish(false, "patch-close");
             return;
         }
         m_WaitUntil = m_Frame + 30;

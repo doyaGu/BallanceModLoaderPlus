@@ -11,7 +11,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -5590,26 +5589,6 @@ TEST(BehaviorAuthoring, DestructionRequestsRetirementBeforeReleasingTheSession) 
         session.Reset();
         EXPECT_EQ(g_State.SessionCloses, 0);
     }
-    EXPECT_EQ(g_State.PlanCloses, 1);
-    EXPECT_EQ(g_State.SessionCloses, 1);
-}
-
-TEST(BehaviorAuthoring, DestructionMayRequestRetirementFromAnotherThread) {
-    g_State = {};
-    g_State.PlanCloseCode = BML_ERROR_BUSY;
-    auto opened = Session::Open();
-    ASSERT_TRUE(opened);
-    Session session = opened.Take();
-    Edit edit;
-    auto submitted = session.Plan(
-        "retiring", Scripts::Each("Gameplay_Events"), edit);
-    ASSERT_TRUE(submitted);
-    Plan plan = submitted.Take();
-    session.Reset();
-
-    std::thread retire([plan = std::move(plan)]() mutable {});
-    retire.join();
-
     EXPECT_EQ(g_State.PlanCloses, 1);
     EXPECT_EQ(g_State.SessionCloses, 1);
 }

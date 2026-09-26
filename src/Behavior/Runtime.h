@@ -7,7 +7,6 @@
 #include <functional>
 #include <list>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -62,7 +61,6 @@ public:
 
 private:
     struct Access {
-        std::mutex Mutex;
         Runtime *Owner = nullptr;
     };
 
@@ -422,7 +420,6 @@ private:
     void Release(std::uint64_t instanceId);
     void QueueDestroy(Record &record);
     void QueueSourceDestroy(ObjectStamp source, int frames = 2);
-    void DrainDeferredReleases();
     void QueueFrame(Record &record);
     [[nodiscard]] Status DrainRecord(Record &record, bool &closed);
     bool DrainCloseQueue(bool force = false);
@@ -444,8 +441,6 @@ private:
     std::list<PendingDestroy> m_PendingDestroy;
     bool m_Destroying = false;
     bool m_ForceDestroyPending = false;
-    std::mutex m_DeferredMutex;
-    std::vector<std::uint64_t> m_DeferredReleases;
     std::vector<std::uint64_t> m_FrameQueue;
     std::vector<std::uint64_t> m_FrameRecords;
     std::shared_ptr<Instance::Access> m_Access;
