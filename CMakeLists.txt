@@ -58,6 +58,7 @@ add_compile_options(
 include(CMakeDependentOption)
 
 option(BML_BUILD_TESTS "Build the BML test suite" OFF)
+option(BML_BUILD_BENCHMARKS "Build standalone BML microbenchmarks" OFF)
 cmake_dependent_option(
         BML_ENABLE_BEHAVIOR_TEST_INTERFACE
         "Expose the private Behavior interface used by real Player tests"
@@ -159,6 +160,9 @@ if (BML_BUILD_MODS)
 endif ()
 if (BML_BUILD_UPDATER)
     add_subdirectory(tools/updater)
+endif ()
+if (BML_BUILD_BENCHMARKS)
+    add_subdirectory(tools/benchmarks)
 endif ()
 if (BML_BUILD_TESTS)
     add_subdirectory(tests)
