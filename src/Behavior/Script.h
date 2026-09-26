@@ -20,7 +20,7 @@ class CKContext;
 namespace BML::Behavior::Internal {
 
 class GraphEdit;
-class Patches;
+class Installations;
 
 using ScriptId = std::uintptr_t;
 using ScriptBodyId = std::uintptr_t;
@@ -150,7 +150,7 @@ private:
 };
 
 [[nodiscard]] std::unique_ptr<ScriptWorld> MakeCKScriptWorld(
-    CKContext *context, Patches &patches,
+    CKContext *context, Installations &installations,
     std::function<ObjectRef(const void *)> issueObjectRef);
 
 } // namespace BML::Behavior::Internal

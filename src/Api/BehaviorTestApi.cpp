@@ -2,8 +2,8 @@
 
 #include <cstring>
 
-#include "Behavior/Patches.h"
 #include "Behavior/Block.h"
+#include "Behavior/Install/Installations.h"
 #include "BML/Behavior/Blocks/Text2D.hpp"
 #include "Loader/ModContext.h"
 
@@ -80,7 +80,8 @@ int BML_BEHAVIOR_CALL InstallSplice(
             return BML_ERROR_ACCESS_DENIED;
 
         Behavior::Internal::Edit edit;
-        Behavior::Internal::Patches &patches = context->BehaviorPatches();
+        Behavior::Internal::Installations &patches =
+            context->BehaviorInstallations();
         Behavior::Internal::Status status = patches.Begin(
             owner, static_cast<CKBehavior *>(rawGraph), name, edit);
         Behavior::Internal::Link anchor;
@@ -127,7 +128,8 @@ int BML_BEHAVIOR_CALL InstallTextSplice(
         options.Alignment = BottomLeftAlignment;
 
         Behavior::Internal::Edit edit;
-        Behavior::Internal::Patches &patches = context->BehaviorPatches();
+        Behavior::Internal::Installations &patches =
+            context->BehaviorInstallations();
         Behavior::Internal::Status status = patches.Begin(
             owner, static_cast<CKBehavior *>(rawGraph), name, edit);
         Behavior::Internal::Link anchor;
@@ -164,7 +166,7 @@ int BML_BEHAVIOR_CALL ReadPatch(BML_BehaviorSession session,
             return BML_ERROR_ACCESS_DENIED;
         Behavior::Internal::PatchInfo info;
         const Behavior::Internal::Status status =
-            context->BehaviorPatches().Read(owner, patch, info);
+            context->BehaviorInstallations().Read(owner, patch, info);
         if (!status)
             return Result(status);
         switch (info.State) {
@@ -208,7 +210,7 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
         Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        return Result(context->BehaviorPatches().Close(owner, patch));
+        return Result(context->BehaviorInstallations().Close(owner, patch));
     } catch (...) {
         return BML_ERROR_FAIL;
     }
@@ -223,7 +225,7 @@ int BML_BEHAVIOR_CALL ResetPatches(BML_BehaviorSession session) {
         Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        context->BehaviorPatches().ResetWorld();
+        context->BehaviorInstallations().ResetWorld();
         return BML_OK;
     } catch (...) {
         return BML_ERROR_FAIL;
@@ -239,11 +241,7 @@ int BML_BEHAVIOR_CALL RetirePatches(BML_BehaviorSession session) {
         Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        Behavior::Internal::Status status =
-            context->BehaviorPlans().RetireOwner(owner.Id);
-        if (status)
-            status = context->BehaviorPatches().RetireOwner(owner.Id);
-        return Result(status);
+        return Result(context->BehaviorInstallations().RetireOwner(owner.Id));
     } catch (...) {
         return BML_ERROR_FAIL;
     }
@@ -322,10 +320,10 @@ int BML_BEHAVIOR_CALL SubmitEdit(
         edit.Share(shared, block.Pin("Source"));
         edit.Push(value, destination);
         edit.Splice(link, block);
-        Behavior::Internal::PlanId plan = 0;
-        const Behavior::Internal::Status status = context->BehaviorPatches().Submit(
-            context->BehaviorPlans(), owner, {script}, name,
-            std::move(edit), plan);
+        Behavior::Internal::SelectionId plan = 0;
+        const Behavior::Internal::Status status =
+            context->BehaviorInstallations().SubmitSelection(
+                owner, {script}, name, std::move(edit), plan);
         if (status)
             *out = static_cast<std::uintptr_t>(plan);
         return Result(status);
@@ -353,8 +351,8 @@ int BML_BEHAVIOR_CALL ReadPlan(
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
         Behavior::Internal::PlanInfo info;
-        const Behavior::Internal::Status status = context->BehaviorPlans().Read(
-            owner.Id, owner.Generation, plan, info);
+        const Behavior::Internal::Status status =
+            context->BehaviorInstallations().ReadSelection(owner, plan, info);
         if (!status)
             return Result(status);
         switch (info.State) {
@@ -401,8 +399,8 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
         Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        return Result(context->BehaviorPlans().Close(
-            owner.Id, owner.Generation, plan));
+        return Result(
+            context->BehaviorInstallations().CloseSelection(owner, plan));
     } catch (...) {
         return BML_ERROR_FAIL;
     }
@@ -417,12 +415,14 @@ int BML_BEHAVIOR_CALL ResetPlans(BML_BehaviorSession session) {
         Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        Behavior::Internal::Status status = context->BehaviorPlans().ResetWorld();
+        Behavior::Internal::Installations &installations =
+            context->BehaviorInstallations();
+        const Behavior::Internal::Status status = installations.LeaveWorld();
         if (!status && context->GetLogger())
             context->GetLogger()->Error(
                 "Behavior test world reset failed: %s",
                 status.Message.c_str());
-        context->BehaviorPatches().ResetWorld();
+        installations.ResetWorld();
         return Result(status);
     } catch (...) {
         return BML_ERROR_FAIL;

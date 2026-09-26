@@ -1,4 +1,4 @@
-#include "Behavior/Plan.h"
+#include "Behavior/Install/Selection.h"
 
 #include <functional>
 #include <map>
@@ -18,7 +18,7 @@ ObjectRef Target(std::uint32_t slot, std::uint32_t generation = 1) {
     return {3, slot, generation};
 }
 
-class FakeWorld final : public Plan::World {
+class FakeWorld final : public Selection::World {
 public:
     Status Install(const PatchKey &, const ObjectRef &target, Epoch epoch,
                    Installation &out) override {
@@ -58,8 +58,8 @@ public:
     std::function<void()> OnClose;
 };
 
-TEST(BehaviorPlan, ReconcilesTheDesiredTargetSetDeterministically) {
-    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+TEST(BehaviorSelection, ReconcilesTheDesiredTargetSetDeterministically) {
+    Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     ASSERT_TRUE(plan.Reconcile({Target(2), Target(1), Target(2)}, 4, world));
     EXPECT_EQ(plan.State(), PlanState::Active);
@@ -74,8 +74,8 @@ TEST(BehaviorPlan, ReconcilesTheDesiredTargetSetDeterministically) {
     EXPECT_EQ(world.Calls.back(), "+3@4");
 }
 
-TEST(BehaviorPlan, ReplacesInstallationsAcrossWorldEpochs) {
-    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+TEST(BehaviorSelection, ReplacesInstallationsAcrossWorldEpochs) {
+    Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     ASSERT_TRUE(plan.Reconcile({Target(1)}, 7, world));
     const Installation first = world.Live.begin()->first;
@@ -87,8 +87,8 @@ TEST(BehaviorPlan, ReplacesInstallationsAcrossWorldEpochs) {
               (std::vector<std::string>{"+1@7", "-1", "+1@8"}));
 }
 
-TEST(BehaviorPlan, IsUnsatisfiedWhenNoScriptMatches) {
-    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+TEST(BehaviorSelection, IsUnsatisfiedWhenNoScriptMatches) {
+    Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     ASSERT_TRUE(plan.Reconcile({Target(1)}, 1, world));
 
@@ -99,8 +99,8 @@ TEST(BehaviorPlan, IsUnsatisfiedWhenNoScriptMatches) {
     EXPECT_TRUE(world.Live.empty());
 }
 
-TEST(BehaviorPlan, EnforcesContinuousSingleTargetCardinality) {
-    Plan plan({"mod", "single"}, {"Gameplay_Events", TargetSet::One});
+TEST(BehaviorSelection, EnforcesContinuousSingleTargetCardinality) {
+    Selection plan({"mod", "single"}, {"Gameplay_Events", TargetSet::One});
     FakeWorld world;
     ASSERT_TRUE(plan.Reconcile({Target(1)}, 1, world));
     Status status = plan.Reconcile({Target(1), Target(2)}, 1, world);
@@ -111,8 +111,8 @@ TEST(BehaviorPlan, EnforcesContinuousSingleTargetCardinality) {
     EXPECT_TRUE(world.Live.empty());
 }
 
-TEST(BehaviorPlan, SingleTargetPlanWithoutTargetsIsUnsatisfiedNotFailed) {
-    Plan plan({"mod", "single"}, {"Gameplay_Events", TargetSet::One});
+TEST(BehaviorSelection, SingleTargetPlanWithoutTargetsIsUnsatisfiedNotFailed) {
+    Selection plan({"mod", "single"}, {"Gameplay_Events", TargetSet::One});
     FakeWorld world;
     ASSERT_TRUE(plan.Reconcile({Target(1)}, 1, world));
 
@@ -128,8 +128,8 @@ TEST(BehaviorPlan, SingleTargetPlanWithoutTargetsIsUnsatisfiedNotFailed) {
     EXPECT_TRUE(plan.Contains(Target(2)));
 }
 
-TEST(BehaviorPlan, RollsBackNewInstallationsAndKeepsTheCanonicalPlan) {
-    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+TEST(BehaviorSelection, RollsBackNewInstallationsAndKeepsTheCanonicalPlan) {
+    Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     world.FailInstall.insert(2);
     const Status status = plan.Reconcile({Target(1), Target(2)}, 1, world);
@@ -150,8 +150,8 @@ TEST(BehaviorPlan, RollsBackNewInstallationsAndKeepsTheCanonicalPlan) {
     EXPECT_TRUE(plan.RestoreFailure());
 }
 
-TEST(BehaviorPlan, IsPartialWhenAnExistingTargetSurvivesAnInstallFailure) {
-    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+TEST(BehaviorSelection, IsPartialWhenAnExistingTargetSurvivesAnInstallFailure) {
+    Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     ASSERT_TRUE(plan.Reconcile({Target(1)}, 1, world));
     world.FailInstall.insert(2);
@@ -167,8 +167,8 @@ TEST(BehaviorPlan, IsPartialWhenAnExistingTargetSurvivesAnInstallFailure) {
     EXPECT_TRUE(plan.RestoreFailure());
 }
 
-TEST(BehaviorPlan, PreservesAConflictedInstallationForRepair) {
-    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+TEST(BehaviorSelection, PreservesAConflictedInstallationForRepair) {
+    Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     ASSERT_TRUE(plan.Reconcile({Target(1)}, 1, world));
     world.FailClose.insert(world.Live.begin()->first);
@@ -183,8 +183,8 @@ TEST(BehaviorPlan, PreservesAConflictedInstallationForRepair) {
     EXPECT_EQ(plan.RestoreFailure().Code, Error::RevertConflict);
 }
 
-TEST(BehaviorPlan, ClosesEveryIndependentInstallationWhenOneNeedsRepair) {
-    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+TEST(BehaviorSelection, ClosesEveryIndependentInstallationWhenOneNeedsRepair) {
+    Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     ASSERT_TRUE(plan.Reconcile({Target(1), Target(2), Target(3)}, 1, world));
     const Installation conflicted = world.Live.begin()->first;
@@ -199,8 +199,8 @@ TEST(BehaviorPlan, ClosesEveryIndependentInstallationWhenOneNeedsRepair) {
     EXPECT_EQ(world.Live.size(), 1u);
 }
 
-TEST(BehaviorPlan, KeepsOnlyRollbackConflictsAfterAnInstallFailure) {
-    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+TEST(BehaviorSelection, KeepsOnlyRollbackConflictsAfterAnInstallFailure) {
+    Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     world.FailInstall.insert(3);
     world.FailClose.insert(1);
@@ -218,8 +218,8 @@ TEST(BehaviorPlan, KeepsOnlyRollbackConflictsAfterAnInstallFailure) {
     EXPECT_EQ(plan.RestoreFailure().Code, Error::RevertConflict);
 }
 
-TEST(BehaviorPlan, RetirementIsIdempotentAndRejectsNewTargets) {
-    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+TEST(BehaviorSelection, RetirementIsIdempotentAndRejectsNewTargets) {
+    Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     ASSERT_TRUE(plan.Reconcile({Target(1), Target(2)}, 1, world));
     ASSERT_TRUE(plan.Retire(world));
@@ -229,11 +229,11 @@ TEST(BehaviorPlan, RetirementIsIdempotentAndRejectsNewTargets) {
     EXPECT_FALSE(plan.Reconcile({Target(3)}, 1, world));
 }
 
-TEST(BehaviorPlans, AFreshlySubmittedPlanIsReconcilingNotUnsatisfied) {
-    Plans plans;
+TEST(BehaviorSelections, AFreshlySubmittedPlanIsReconcilingNotUnsatisfied) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
-    // The script is already known, so the only thing keeping the Plan out of
+    SelectionId plan = 0;
+    // The script is already known, so the only thing keeping the Selection out of
     // the world is that no reconciliation pass has run yet.
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
     ASSERT_TRUE(plans.Submit(
@@ -253,10 +253,10 @@ TEST(BehaviorPlans, AFreshlySubmittedPlanIsReconcilingNotUnsatisfied) {
     EXPECT_EQ(info.Instances, 1u);
 }
 
-TEST(BehaviorPlans, MatchesExactScriptNamesAtTheSafePoint) {
-    Plans plans;
+TEST(BehaviorSelections, MatchesExactScriptNamesAtTheSafePoint) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 1, {"Gameplay_Events"}, world, plan));
     ASSERT_NE(plan, 0u);
@@ -277,10 +277,10 @@ TEST(BehaviorPlans, MatchesExactScriptNamesAtTheSafePoint) {
     EXPECT_EQ(info.World, plans.WorldEpoch());
 }
 
-TEST(BehaviorPlans, InstallationSnapshotsChangeWhenTheirWorldBindingChanges) {
-    Plans plans;
+TEST(BehaviorSelections, InstallationSnapshotsChangeWhenTheirWorldBindingChanges) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 1, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(2)));
@@ -306,10 +306,10 @@ TEST(BehaviorPlans, InstallationSnapshotsChangeWhenTheirWorldBindingChanges) {
     EXPECT_NE(second[0].Revision, first[0].Revision);
 }
 
-TEST(BehaviorPlans, ReconcilesContinuousSingleInstanceCardinality) {
-    Plans plans;
+TEST(BehaviorSelections, ReconcilesContinuousSingleInstanceCardinality) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "single"}, 1, {"Gameplay_Events", TargetSet::One},
         world, plan));
@@ -337,10 +337,10 @@ TEST(BehaviorPlans, ReconcilesContinuousSingleInstanceCardinality) {
     EXPECT_EQ(world->Live.begin()->second, Target(2));
 }
 
-TEST(BehaviorPlans, RemovingTheOnlyScriptLeavesASingleTargetPlanUnsatisfied) {
-    Plans plans;
+TEST(BehaviorSelections, RemovingTheOnlyScriptLeavesASingleTargetPlanUnsatisfied) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "single"}, 1, {"Gameplay_Events", TargetSet::One},
         world, plan));
@@ -361,10 +361,10 @@ TEST(BehaviorPlans, RemovingTheOnlyScriptLeavesASingleTargetPlanUnsatisfied) {
     EXPECT_EQ(info.Instances, 0u);
 }
 
-TEST(BehaviorPlans, LeavesTheOldWorldAndReinstallsAfterScriptLoad) {
-    Plans plans;
+TEST(BehaviorSelections, LeavesTheOldWorldAndReinstallsAfterScriptLoad) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 1, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
@@ -390,10 +390,10 @@ TEST(BehaviorPlans, LeavesTheOldWorldAndReinstallsAfterScriptLoad) {
               (std::vector<std::string>{"+1@1", "-1", "+1@2"}));
 }
 
-TEST(BehaviorPlans, TreatsReloadedObjectGenerationsAsNewInstances) {
-    Plans plans;
+TEST(BehaviorSelections, TreatsReloadedObjectGenerationsAsNewInstances) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 1, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(5, 1)));
@@ -408,14 +408,14 @@ TEST(BehaviorPlans, TreatsReloadedObjectGenerationsAsNewInstances) {
               (std::vector<std::string>{"+5@1", "-1", "+5@1"}));
 }
 
-TEST(BehaviorPlans, ReplacesAKeyAndRetiresEveryPlanOwnedByAMod) {
-    Plans plans;
+TEST(BehaviorSelections, ReplacesAKeyAndRetiresEveryPlanOwnedByAMod) {
+    Selections plans;
     auto first = std::make_shared<FakeWorld>();
     auto replacement = std::make_shared<FakeWorld>();
     auto other = std::make_shared<FakeWorld>();
-    PlanId oldId = 0;
-    PlanId newId = 0;
-    PlanId otherId = 0;
+    SelectionId oldId = 0;
+    SelectionId newId = 0;
+    SelectionId otherId = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 1, {"Gameplay_Events"}, first, oldId));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
@@ -441,10 +441,10 @@ TEST(BehaviorPlans, ReplacesAKeyAndRetiresEveryPlanOwnedByAMod) {
     EXPECT_EQ(plans.Size(), 1u);
 }
 
-TEST(BehaviorPlans, RejectsHandlesFromAnotherOwnerGeneration) {
-    Plans plans;
+TEST(BehaviorSelections, RejectsHandlesFromAnotherOwnerGeneration) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
 
@@ -459,10 +459,10 @@ TEST(BehaviorPlans, RejectsHandlesFromAnotherOwnerGeneration) {
     EXPECT_EQ(plans.Size(), 0u);
 }
 
-TEST(BehaviorPlans, FinishesAClosingPlanAtALaterSafePoint) {
-    Plans plans;
+TEST(BehaviorSelections, FinishesAClosingPlanAtALaterSafePoint) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
@@ -485,10 +485,10 @@ TEST(BehaviorPlans, FinishesAClosingPlanAtALaterSafePoint) {
     EXPECT_EQ(plans.Read(plan, info).Code, Error::InvalidState);
 }
 
-TEST(BehaviorPlans, RetriesABusyTargetRemovalAtTheNextSafePoint) {
-    Plans plans;
+TEST(BehaviorSelections, RetriesABusyTargetRemovalAtTheNextSafePoint) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
@@ -508,10 +508,10 @@ TEST(BehaviorPlans, RetriesABusyTargetRemovalAtTheNextSafePoint) {
     EXPECT_TRUE(world->Live.empty());
 }
 
-TEST(BehaviorPlans, RetriesAConflictedTargetSetOnlyWhenRequested) {
-    Plans plans;
+TEST(BehaviorSelections, RetriesAConflictedTargetSetOnlyWhenRequested) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
@@ -536,10 +536,10 @@ TEST(BehaviorPlans, RetriesAConflictedTargetSetOnlyWhenRequested) {
     EXPECT_EQ(info.State, PlanState::Unsatisfied);
 }
 
-TEST(BehaviorPlans, KeepsItsWorldOnTheGameThread) {
-    Plans plans;
+TEST(BehaviorSelections, KeepsItsWorldOnTheGameThread) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
@@ -562,10 +562,10 @@ TEST(BehaviorPlans, KeepsItsWorldOnTheGameThread) {
     EXPECT_EQ(plans.Size(), 0u);
 }
 
-TEST(BehaviorPlans, DefersACloseRequestedWhileInstalling) {
-    Plans plans;
+TEST(BehaviorSelections, DefersACloseRequestedWhileInstalling) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
@@ -588,10 +588,10 @@ TEST(BehaviorPlans, DefersACloseRequestedWhileInstalling) {
     EXPECT_EQ(plans.Size(), 0u);
 }
 
-TEST(BehaviorPlans, PreservesAScriptChangeObservedWhileInstalling) {
-    Plans plans;
+TEST(BehaviorSelections, PreservesAScriptChangeObservedWhileInstalling) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
@@ -611,10 +611,10 @@ TEST(BehaviorPlans, PreservesAScriptChangeObservedWhileInstalling) {
     EXPECT_EQ(info.Instances, 2u);
 }
 
-TEST(BehaviorPlans, RetriesAConflictedRetirementWithoutTheCallerHandle) {
-    Plans plans;
+TEST(BehaviorSelections, RetriesAConflictedRetirementWithoutTheCallerHandle) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
@@ -635,18 +635,18 @@ TEST(BehaviorPlans, RetriesAConflictedRetirementWithoutTheCallerHandle) {
     EXPECT_EQ(plans.Size(), 0u);
 }
 
-TEST(BehaviorPlans, KeepsThePreviousPlanWhenReplacementCannotRetireIt) {
-    Plans plans;
+TEST(BehaviorSelections, KeepsThePreviousPlanWhenReplacementCannotRetireIt) {
+    Selections plans;
     auto first = std::make_shared<FakeWorld>();
     auto replacement = std::make_shared<FakeWorld>();
-    PlanId oldId = 0;
+    SelectionId oldId = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 1, {"Gameplay_Events"}, first, oldId));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
     ASSERT_TRUE(plans.ProcessFrame());
     first->FailClose.insert(first->Live.begin()->first);
 
-    PlanId newId = 0;
+    SelectionId newId = 0;
     const Status status = plans.Submit(
         {"mod", "events"}, 1, {"Gameplay_Ingame"}, replacement, newId);
     EXPECT_EQ(status.Code, Error::RevertConflict);
@@ -659,10 +659,10 @@ TEST(BehaviorPlans, KeepsThePreviousPlanWhenReplacementCannotRetireIt) {
     EXPECT_TRUE(replacement->Live.empty());
 }
 
-TEST(BehaviorPlans, ObjectDeletionRemovesEveryGenerationForThatIdentity) {
-    Plans plans;
+TEST(BehaviorSelections, ObjectDeletionRemovesEveryGenerationForThatIdentity) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 1, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(7, 1)));
@@ -680,10 +680,10 @@ TEST(BehaviorPlans, ObjectDeletionRemovesEveryGenerationForThatIdentity) {
     EXPECT_EQ(info.Instances, 0u);
 }
 
-TEST(BehaviorPlans, WorldResetDropsOldInstallationIdentityAfterAConflict) {
-    Plans plans;
+TEST(BehaviorSelections, WorldResetDropsOldInstallationIdentityAfterAConflict) {
+    Selections plans;
     auto world = std::make_shared<FakeWorld>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(plans.Submit(
         {"mod", "events"}, 1, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));

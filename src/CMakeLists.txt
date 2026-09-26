@@ -449,6 +449,9 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Engine/Pout.h
         Behavior/Engine/Scope.h
 
+        Behavior/Install/Installations.h
+        Behavior/Install/Selection.h
+
         Behavior/Block.h
         Behavior/Callback.h
         Behavior/CKEdit.h
@@ -458,9 +461,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Graph.h
         Behavior/GraphEdit.h
         Behavior/Lifecycle.h
-        Behavior/Patches.h
         Behavior/Pattern.h
-        Behavior/Plan.h
         Behavior/PrototypeCatalog.h
         Behavior/Relations.h
         Behavior/Runtime.h
@@ -486,6 +487,9 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Engine/Message.cpp
         Behavior/Engine/Pout.cpp
 
+        Behavior/Install/Installations.cpp
+        Behavior/Install/Selection.cpp
+
         Behavior/Block.cpp
         Behavior/Callback.cpp
         Behavior/CKEdit.cpp
@@ -496,9 +500,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/FrameStore.cpp
         Behavior/GraphEdit.cpp
         Behavior/Lifecycle.cpp
-        Behavior/Patches.cpp
         Behavior/Pattern.cpp
-        Behavior/Plan.cpp
         Behavior/PrototypeCatalog.cpp
         Behavior/Relations.cpp
         Behavior/Runtime.cpp

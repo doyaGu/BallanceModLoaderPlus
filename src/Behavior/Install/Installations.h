@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_PATCHES_H
-#define BML_BEHAVIOR_PATCHES_H
+#ifndef BML_BEHAVIOR_INSTALL_INSTALLATIONS_H
+#define BML_BEHAVIOR_INSTALL_INSTALLATIONS_H
 
 #include <cstdint>
 #include <functional>
@@ -15,12 +15,13 @@
 
 #include "Behavior/CKEdit.h"
 #include "Behavior/GraphEdit.h"
-#include "Behavior/Plan.h"
+#include "Behavior/Install/Selection.h"
 #include "Behavior/Sessions.h"
 
 namespace BML::Behavior::Internal {
 
 using PatchId = std::uintptr_t;
+using PlanId = std::uint64_t;
 inline constexpr std::uint32_t RootGraphScope = 1;
 
 struct PatchInfo {
@@ -31,9 +32,13 @@ struct PatchInfo {
     std::vector<RevertConflict> Conflicts;
 };
 
-// Owns live graph Patches for Mod generations. CKEdit remains the CK2 graph
-// transaction adapter; this collection supplies the Loader lifetime boundary.
-class Patches final : private GraphEdit::Compiler {
+// Owns every live graph installation a Mod generation asked for. A Patch is a
+// definition whose targets name Graphs in the current world; a Plan is one
+// whose rules select Scripts and is installed again into every later world
+// through Selections. Both share one lifecycle: a requested definition, the
+// prefix actually applied, the previous definition to fall back to, and the
+// failures met on the way. CKEdit remains the CK2 graph transaction adapter.
+class Installations final : private GraphEdit::Compiler {
 public:
     using ResolveObject = std::function<CKObject *(const ObjectRef &)>;
     using IssueObject = std::function<ObjectRef(CKObject *)>;
@@ -95,14 +100,15 @@ public:
         SymbolMap Symbols;
     };
 
-    Patches(CKContext *context, Runtime &runtime, PrototypeCatalog *catalog,
-            GraphSource &graph, ResolveObject resolveObject,
-            IssueObject issueObject);
-    ~Patches();
+    Installations(CKContext *context, Runtime &runtime,
+                  PrototypeCatalog *catalog, GraphSource &graph,
+                  ResolveObject resolveObject, IssueObject issueObject);
+    ~Installations();
 
-    Patches(const Patches &) = delete;
-    Patches &operator=(const Patches &) = delete;
+    Installations(const Installations &) = delete;
+    Installations &operator=(const Installations &) = delete;
 
+    // Legacy Edits name native objects directly and install as one Patch.
     Status Begin(const SessionOwner &owner, CKBehavior *graph,
                  std::string name, Edit &out);
     Status Use(Edit &edit, CKBehavior *behavior, Node &out);
@@ -112,11 +118,15 @@ public:
                     Node &out) override;
     Status Apply(const SessionOwner &owner, const Edit &edit, PatchId &out,
                  const std::map<std::uint32_t, Node> *handles = nullptr);
+
+    // Patches.
     Status Apply(const SessionOwner &owner, const ObjectRef &graph,
                  std::string name, GraphEdit edit, PatchId &out,
                  const SymbolMap *authorSymbols = nullptr);
     Status Apply(const SessionOwner &owner, std::string name,
                  std::vector<Target> targets, PatchId &out);
+    Status Read(const SessionOwner &owner, PatchId patch,
+                PatchInfo &out) const;
     // Issues a reference for a Node this Patch named. Busy while the Patch is
     // still waiting for its safe point.
     Status ResolveNode(const SessionOwner &owner, PatchId patch,
@@ -126,102 +136,105 @@ public:
     Status WriteValue(const SessionOwner &owner, PatchId patch,
                       const PortQuery &port,
                       const Parameter::Binding &value);
-    Status Submit(Plans &plans, const SessionOwner &owner,
-                  ScriptSelection target,
-                  std::string name, GraphEdit edit, PlanId &out);
-    Status Submit(Plans &plans, const SessionOwner &owner,
-                  std::string name, std::vector<Rule> rules, PlanId &out);
-    Status ReadPlan(Plans &plans, const SessionOwner &owner,
-                    PlanId plan, PlanInfo &out) const;
-    Status ReadPlanInstances(
-        Plans &plans, const SessionOwner &owner, PlanId plan,
-        std::vector<PlanInstance> &out) const;
-    Status ResolvePlanNode(
-        Plans &plans, const SessionOwner &owner, PlanId plan,
-        const PlanInstance &instance, const SymbolRef &node,
-        ObjectRef &out) const;
-    Status ReadPlanValue(
-        Plans &plans, const SessionOwner &owner, PlanId plan,
-        const PlanInstance &instance, const PortQuery &port,
-        GraphValue &out) const;
-    Status WritePlanValue(
-        Plans &plans, const SessionOwner &owner, PlanId plan,
-        const PlanInstance &instance, const PortQuery &port,
-        const Parameter::Binding &value);
-    Status SetPlanActive(Plans &plans, const SessionOwner &owner,
-                         PlanId plan, bool active);
-    Status ReplacePlan(Plans &plans, const SessionOwner &owner,
-                       PlanId plan, std::vector<Rule> rules);
-    Status ClosePlan(Plans &plans, const SessionOwner &owner, PlanId plan);
-    Status Read(const SessionOwner &owner, PatchId patch,
-                PatchInfo &out) const;
     Status SetActive(const SessionOwner &owner, PatchId patch, bool active);
     Status Replace(const SessionOwner &owner, PatchId patch,
                    std::vector<Target> targets);
     Status Close(const SessionOwner &owner, PatchId patch);
 
+    // Plans.
+    Status Submit(const SessionOwner &owner, std::string name,
+                  std::vector<Rule> rules, PlanId &out);
+    Status ReadPlan(const SessionOwner &owner, PlanId plan,
+                    PlanInfo &out) const;
+    Status ReadPlanInstances(const SessionOwner &owner, PlanId plan,
+                             std::vector<PlanInstance> &out) const;
+    Status ResolvePlanNode(const SessionOwner &owner, PlanId plan,
+                           const PlanInstance &instance,
+                           const SymbolRef &node, ObjectRef &out) const;
+    Status ReadPlanValue(const SessionOwner &owner, PlanId plan,
+                         const PlanInstance &instance, const PortQuery &port,
+                         GraphValue &out) const;
+    Status WritePlanValue(const SessionOwner &owner, PlanId plan,
+                          const PlanInstance &instance, const PortQuery &port,
+                          const Parameter::Binding &value);
+    Status SetPlanActive(const SessionOwner &owner, PlanId plan, bool active);
+    Status ReplacePlan(const SessionOwner &owner, PlanId plan,
+                       std::vector<Rule> rules);
+    Status ClosePlan(const SessionOwner &owner, PlanId plan);
+
+    // One bare Script Selection with a single canonical body, for the Behavior
+    // test interface.
+    Status SubmitSelection(const SessionOwner &owner, ScriptSelection target,
+                           std::string name, GraphEdit edit,
+                           SelectionId &out);
+    Status ReadSelection(const SessionOwner &owner, SelectionId selection,
+                         PlanInfo &out) const;
+    Status CloseSelection(const SessionOwner &owner, SelectionId selection);
+
+    // Retires every Plan and Patch the owner holds.
     Status RetireOwner(const std::string &ownerId);
+
+    // Script load and unload only change the known Plan targets; Plans are
+    // reconciled against them at ProcessFrame.
+    Status LoadScript(std::string name, ObjectRef script);
+    void RemoveObject(std::uint32_t domain, std::uint32_t slot);
     void ObjectsToBeDeleted(const CK_ID *ids, int count);
+    // A world reset leaves the Plan world first, before Scripts reset, and
+    // closes every Patch afterwards.
+    Status LeaveWorld();
     void ResetWorld();
-    void ProcessFrame(Plans &plans);
+    // Reports only a failure to reconcile Plan Selections. Patch failures stay
+    // on the Patch.
+    Status ProcessFrame();
 
 private:
     class PlanWorld;
 
-    enum class PatchGoal {
+    enum class InstallGoal {
         Enabled,
         Disabled,
         Closed,
     };
 
-    enum class PatchRecovery {
+    enum class InstallRecovery {
         None,
-        PreviousDefinition,
+        Previous,
         Blocked,
     };
 
-    enum class PlanGoal {
-        Enabled,
-        Disabled,
-        Closed,
-    };
-
-    enum class PlanRecovery {
-        None,
-        PreviousRules,
-        Blocked,
-    };
-
-    struct OwnedPlan {
-        struct MaintainedRule {
-            Rule Definition;
-            PlanId Id = 0;
-        };
-
-        PlanId Id = 0;
+    template <class Definition>
+    struct Record {
+        std::uint64_t Id = 0;
         SessionOwner Owner;
         std::shared_ptr<CallbackAdmission> Admission;
         std::string Name;
-        PlanGoal Goal = PlanGoal::Enabled;
-        PlanRecovery Recovery = PlanRecovery::None;
+        InstallGoal Goal = InstallGoal::Enabled;
+        InstallRecovery Recovery = InstallRecovery::None;
         std::uint64_t Revision = 1;
         Status LastStatus;
         Status PrimaryFailure;
         Status RecoveryFailure;
         std::optional<std::size_t> ApplyAt;
         std::optional<std::size_t> RestoreAt;
+        // Only a Plan names the Script its failing rule selects.
         std::string ApplyScript;
         std::string RestoreScript;
-        // Definition bindings are never reused while this Plan handle lives;
+        // Definition bindings are never reused while this handle lives;
         // retired tokens keep stale symbols from aliasing later definitions.
         std::set<std::uint64_t> DefinitionBindings;
-        std::vector<Rule> RequestedRules;
-        std::vector<Rule> PreviousRules;
+        // Requested is the last requested content. Applied describes the
+        // installed prefix while a replacement is being reconciled. Previous
+        // is the last complete definition to restore when new content cannot
+        // be installed.
+        std::vector<Definition> Requested;
+        std::vector<Definition> Applied;
+        std::vector<Definition> Previous;
         std::optional<std::size_t> RestoreFrom;
-        std::vector<MaintainedRule> Rules;
     };
 
-    struct OwnedPatch {
+    struct PatchRecord : Record<Target> {
+        static constexpr bool IsPlan = false;
+
         struct ResolvedSymbol {
             ResolvedSymbol() = default;
             ResolvedSymbol(std::size_t scopeIndex, Node node)
@@ -245,34 +258,19 @@ private:
             GraphEdit::CompiledSymbols Symbols;
         };
 
-        PatchId Id = 0;
-        SessionOwner Owner;
-        std::shared_ptr<CallbackAdmission> Admission;
-        std::string Name;
         CK_ID Graph = 0;
-        PatchGoal Goal = PatchGoal::Enabled;
         bool TargetDeleted = false;
-        PatchRecovery Recovery = PatchRecovery::None;
-        std::uint64_t Revision = 1;
-        Status LastStatus;
-        Status PrimaryFailure;
-        Status RecoveryFailure;
-        std::optional<std::size_t> ApplyAt;
-        std::optional<std::size_t> RestoreAt;
-        // See OwnedPlan::DefinitionBindings.
-        std::set<std::uint64_t> DefinitionBindings;
-        // RequestedDefinition is the last requested content.
-        // AppliedDefinition describes the installed prefix while a
-        // replacement is being reconciled;
-        // PreviousDefinition is the last complete definition to restore when
-        // new content cannot be installed.
-        std::vector<Target> RequestedDefinition;
-        std::vector<Target> AppliedDefinition;
-        std::vector<Target> PreviousDefinition;
-        std::optional<std::size_t> RestoreFrom;
         std::vector<Scope> Scopes;
         // Public handle -> resolved symbol in one installed scope.
         std::map<SymbolRef, ResolvedSymbol> Symbols;
+    };
+
+    struct PlanRecord : Record<Rule> {
+        static constexpr bool IsPlan = true;
+
+        // The Selection that keeps each applied rule installed, parallel to
+        // Applied.
+        std::vector<SelectionId> Selections;
     };
 
     [[nodiscard]] Status Ready() const;
@@ -282,57 +280,71 @@ private:
         bool plan, std::uint64_t id, const SessionOwner &owner,
         std::shared_ptr<const CallbackAdmission> parent = {});
     Status RequestClose(bool plan, std::uint64_t id, const SessionOwner &owner);
-    Status Restore(OwnedPatch &patch);
-    Status RestoreFrom(OwnedPatch &patch, std::size_t target);
-    Status Close(OwnedPatch &patch);
-    void CloseAdmission(OwnedPatch &patch);
+    static Status Validate(const std::vector<Target> &targets, bool replacing);
+    static Status Validate(const std::vector<Rule> &rules, bool replacing);
+
     Status Apply(const SessionOwner &owner, std::string name,
                  std::vector<Target> targets, PatchId &out,
                  std::shared_ptr<const CallbackAdmission> parentAdmission);
-    Status Install(OwnedPatch &patch);
-    Status InstallFrom(OwnedPatch &patch,
+    Status Install(PatchRecord &patch);
+    Status InstallFrom(PatchRecord &patch,
                        const std::vector<Target> &definition,
                        std::size_t target);
+    Status InstallFrom(PlanRecord &plan, const std::vector<Rule> &definition,
+                       std::size_t rule);
     Status InstallScope(const SessionOwner &owner, const PatchKey &patch,
                         const ObjectRef &graph, const GraphEdit &edit,
                         std::uint32_t scope, std::size_t target,
-                        OwnedPatch &out,
+                        PatchRecord &out,
                         const SymbolMap *authorSymbols);
     Status PublishScope(const SessionOwner &owner, const PatchKey &patch,
                         const ObjectRef &graph, const GraphEdit &edit,
                         Edit resolved,
                         GraphEdit::CompiledSymbols compiled,
                         std::uint32_t scope, std::size_t target,
-                        OwnedPatch &out,
+                        PatchRecord &out,
                         const SymbolMap *authorSymbols);
-    Status Reconcile(OwnedPatch &patch);
-    Status Activate(Plans &plans, OwnedPlan &plan);
-    Status Deactivate(Plans &plans, OwnedPlan &plan);
-    Status ActivateFrom(Plans &plans, OwnedPlan &plan,
-                        const std::vector<Rule> &definition,
-                        std::size_t rule);
-    Status DeactivateFrom(Plans &plans, OwnedPlan &plan,
-                          std::size_t rule);
-    Status ReconcilePlan(Plans &plans, OwnedPlan &plan);
-    [[nodiscard]] static std::size_t CommonRulePrefix(
-        const OwnedPlan &plan, const std::vector<Rule> &rules);
-    [[nodiscard]] static std::vector<Rule> CurrentRules(
-        const OwnedPlan &plan);
-    [[nodiscard]] PlanState State(Plans &plans,
-                                  const OwnedPlan &plan) const;
-    [[nodiscard]] PatchState State(const OwnedPatch &patch) const;
-    [[nodiscard]] Status LastStatus(const OwnedPatch &patch) const;
-    [[nodiscard]] Status ApplyFailure(const OwnedPatch &patch) const;
-    [[nodiscard]] Status RestoreFailure(const OwnedPatch &patch) const;
-    [[nodiscard]] static bool HasPendingChange(const OwnedPlan &plan);
-    [[nodiscard]] static bool HasPendingChange(const OwnedPatch &patch);
-    void RebuildSymbols(OwnedPatch &patch);
-    Status ResolvePort(const OwnedPatch &patch, const PortQuery &query,
-                       Port &out) const;
-    Status ValidatePlanInstance(
-        Plans &plans, const OwnedPlan &plan,
-        const PlanInstance &instance, PatchId &out) const;
+    Status Uninstall(PatchRecord &patch, std::size_t target);
+    Status Uninstall(PlanRecord &plan, std::size_t rule);
+    void CloseAdmission(PatchRecord &patch);
+    Status Close(PatchRecord &patch);
+    void Retire(PatchRecord &patch) { CloseAdmission(patch); }
+    static void Retire(PlanRecord &plan) { plan.Goal = InstallGoal::Closed; }
+    void Settle(PatchRecord &patch);
+    static void Settle(PlanRecord &) {}
+    static Status Refresh(PatchRecord &, std::size_t) { return {}; }
+    Status Refresh(PlanRecord &plan, std::size_t prefix);
+
+    template <class R>
+    Status Reconcile(R &record);
+    Status Fallback(PatchRecord &patch, std::size_t prefix,
+                    const Status &requestedFailure);
+    Status Fallback(PlanRecord &plan, std::size_t prefix,
+                    const Status &requestedFailure);
+    template <class R>
+    Status SetGoal(R &record, bool active);
+    template <class R, class Definition>
+    Status Redefine(R &record, std::vector<Definition> definitions);
+    Status RetireRecords(const std::string &ownerId);
     void Collect();
+
+    [[nodiscard]] PatchState State(const PatchRecord &patch) const;
+    [[nodiscard]] PlanState State(const PlanRecord &plan) const;
+    [[nodiscard]] Status LastStatus(const PatchRecord &patch) const;
+    [[nodiscard]] Status RestoreFailure(const PatchRecord &patch) const;
+    [[nodiscard]] static bool Installed(const PatchRecord &patch) noexcept {
+        return !patch.Scopes.empty();
+    }
+    [[nodiscard]] static bool Installed(const PlanRecord &plan) noexcept {
+        return !plan.Selections.empty();
+    }
+    template <class R>
+    [[nodiscard]] static bool HasPendingChange(const R &record);
+    Status ResolvePort(const PatchRecord &patch, const PortQuery &query,
+                       Port &out) const;
+    Status FindPlanInstance(const PlanRecord &plan,
+                            const PlanInstance &instance,
+                            PatchId &out) const;
 
     Status Begin(const PatchKey &patch, const ObjectRef &graph,
                  Edit &out, GraphModel &base) override;
@@ -348,6 +360,7 @@ private:
                      const HookBlock::Hook &hook) override;
 
     CKEdit m_Edit;
+    Selections m_Selections;
     GraphSource &m_Graph;
     ResolveObject m_ResolveObject;
     IssueObject m_IssueObject;
@@ -366,10 +379,10 @@ private:
     bool m_HasAdmissions{false};
     PatchId m_NextId = 1;
     PlanId m_NextPlanId = 1;
-    std::map<PatchId, OwnedPatch> m_Patches;
-    std::map<PlanId, OwnedPlan> m_Plans;
+    std::map<PatchId, PatchRecord> m_Patches;
+    std::map<PlanId, PlanRecord> m_Plans;
 };
 
 } // namespace BML::Behavior::Internal
 
-#endif // BML_BEHAVIOR_PATCHES_H
+#endif // BML_BEHAVIOR_INSTALL_INSTALLATIONS_H

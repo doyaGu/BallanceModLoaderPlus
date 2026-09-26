@@ -91,17 +91,17 @@ add_bml_test(BehaviorRelationsTest
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
-add_bml_test(BehaviorPlanTest
+add_bml_test(BehaviorSelectionTest
         SOURCES
-        BehaviorPlanTest.cpp
-        ${BML_SOURCE_DIR}/Behavior/Plan.cpp
+        BehaviorSelectionTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/Install/Selection.cpp
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
-add_bml_test(BehaviorPlanAllocationTest
+add_bml_test(BehaviorSelectionAllocationTest
         SOURCES
-        BehaviorPlanAllocationTest.cpp
-        ${BML_SOURCE_DIR}/Behavior/Plan.cpp
+        BehaviorSelectionAllocationTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/Install/Selection.cpp
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 

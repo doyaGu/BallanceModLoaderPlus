@@ -1,4 +1,4 @@
-#include "Behavior/Plan.h"
+#include "Behavior/Install/Selection.h"
 
 #include <algorithm>
 #include <limits>
@@ -32,20 +32,20 @@ private:
 
 } // namespace
 
-Plan::Plan(PatchKey patch, ScriptSelection target)
+Selection::Selection(PatchKey patch, ScriptSelection target)
     : m_Patch(std::move(patch)), m_Target(std::move(target)) {}
 
-bool Plan::RefLess::operator()(const ObjectRef &left,
+bool Selection::RefLess::operator()(const ObjectRef &left,
                                const ObjectRef &right) const noexcept {
     return std::tie(left.Domain, left.Slot, left.Generation) <
            std::tie(right.Domain, right.Slot, right.Generation);
 }
 
-bool Plan::Contains(const ObjectRef &target) const noexcept {
+bool Selection::Contains(const ObjectRef &target) const noexcept {
     return m_Installed.contains(target);
 }
 
-std::vector<InstallationInfo> Plan::Installations() const {
+std::vector<InstallationInfo> Selection::Installations() const {
     std::vector<InstallationInfo> result;
     result.reserve(m_Installed.size());
     for (const auto &[target, installation] : m_Installed)
@@ -53,32 +53,32 @@ std::vector<InstallationInfo> Plan::Installations() const {
     return result;
 }
 
-void Plan::Touch() noexcept {
+void Selection::Touch() noexcept {
     m_Revision = m_Revision == (std::numeric_limits<std::uint64_t>::max)()
         ? 1 : m_Revision + 1;
 }
 
-Status Plan::Applied(Status status) {
+Status Selection::Applied(Status status) {
     m_LastStatus = status;
     if (!status && m_ApplyFailure)
         m_ApplyFailure = status;
     return status;
 }
 
-Status Plan::Restored(Status status) {
+Status Selection::Restored(Status status) {
     m_LastStatus = status;
     m_RestoreFailure = status;
     return status;
 }
 
-Status Plan::Settled() {
+Status Selection::Settled() {
     m_LastStatus = {};
     m_ApplyFailure = {};
     m_RestoreFailure = {};
     return {};
 }
 
-Status Plan::CloseAll(World &world) {
+Status Selection::CloseAll(World &world) {
     Status first;
     for (auto item = m_Installed.begin(); item != m_Installed.end();) {
         Status status = world.Close(item->second);
@@ -100,7 +100,7 @@ Status Plan::CloseAll(World &world) {
     return {};
 }
 
-Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
+Status Selection::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
                        World &world) {
     // A changed Script set begins a new reconciliation attempt. Keep an apply
     // failure separate from a rollback or removal that cannot be restored.
@@ -139,7 +139,7 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
 
     // Only an ambiguous target set is a cardinality failure. A world with no
     // matching script yet, or one whose only script was just deleted, leaves
-    // the Plan Unsatisfied below and waits for the next epoch.
+    // the Selection Unsatisfied below and waits for the next epoch.
     if (m_Target.Instances == TargetSet::One && targets.size() > 1) {
         Status status = CloseAll(world);
         if (!status)
@@ -219,7 +219,7 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
     return Settled();
 }
 
-Status Plan::LeaveWorld(World &world) {
+Status Selection::LeaveWorld(World &world) {
     const bool hadWorld = m_Epoch != 0;
     Status status = CloseAll(world);
     // The old world is no longer a revert target. Even when an inverse cannot
@@ -233,7 +233,7 @@ Status Plan::LeaveWorld(World &world) {
     return status ? Settled() : Restored(std::move(status));
 }
 
-Status Plan::Retire(World &world) {
+Status Selection::Retire(World &world) {
     m_Retiring = true;
     m_State = PlanState::Retiring;
     Status status = CloseAll(world);
@@ -243,36 +243,36 @@ Status Plan::Retire(World &world) {
     return Settled();
 }
 
-bool Plans::RefLess::operator()(const ObjectRef &left,
+bool Selections::RefLess::operator()(const ObjectRef &left,
                                 const ObjectRef &right) const noexcept {
     return std::tie(left.Domain, left.Slot, left.Generation) <
            std::tie(right.Domain, right.Slot, right.Generation);
 }
 
-PlanId Plans::NextId() noexcept {
+SelectionId Selections::NextId() noexcept {
     if (m_NextId == 0 ||
-        m_NextId == (std::numeric_limits<PlanId>::max)())
+        m_NextId == (std::numeric_limits<SelectionId>::max)())
         return 0;
     return m_NextId++;
 }
 
-Status Plans::Ready() const {
+Status Selections::Ready() const {
     return std::this_thread::get_id() == m_Thread
         ? Status{}
         : Failure(Error::WrongThread,
                   "Behavior Plans require the game thread.");
 }
 
-void Plans::Mark(std::string_view name) noexcept {
+void Selections::Mark(std::string_view name) noexcept {
     for (auto &[id, record] : m_Plans) {
         if (record->Value.Target().Name == name)
             record->Dirty = true;
     }
 }
 
-Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
+Status Selections::Submit(PatchKey patch, std::uint64_t ownerGeneration,
                      ScriptSelection target,
-                     std::shared_ptr<Plan::World> world, PlanId &out) {
+                     std::shared_ptr<Selection::World> world, SelectionId &out) {
     out = 0;
     Status ready = Ready();
     if (!ready)
@@ -286,7 +286,7 @@ Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
             Error::InvalidState,
             "A Behavior Plan requires an owner, key, script, and world.");
 
-    const PlanId id = NextId();
+    const SelectionId id = NextId();
     if (!id)
         return Failure(Error::InvalidState,
                        "Behavior Plan ids are exhausted.");
@@ -307,7 +307,7 @@ Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
 
     const auto current = m_Keys.find(patch);
     if (current != m_Keys.end()) {
-        const PlanId previous = current->second;
+        const SelectionId previous = current->second;
         Status status;
         {
             WorldCall call(m_InWorld);
@@ -333,7 +333,7 @@ Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
     return {};
 }
 
-Status Plans::Read(PlanId id, PlanInfo &out) const {
+Status Selections::Read(SelectionId id, PlanInfo &out) const {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -353,8 +353,8 @@ Status Plans::Read(PlanId id, PlanInfo &out) const {
     return {};
 }
 
-Status Plans::Read(std::string_view owner, std::uint64_t ownerGeneration,
-                   PlanId id, PlanInfo &out) const {
+Status Selections::Read(std::string_view owner, std::uint64_t ownerGeneration,
+                   SelectionId id, PlanInfo &out) const {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -377,8 +377,8 @@ Status Plans::Read(std::string_view owner, std::uint64_t ownerGeneration,
     return {};
 }
 
-Status Plans::ReadInstallations(
-    std::string_view owner, std::uint64_t ownerGeneration, PlanId id,
+Status Selections::ReadInstallations(
+    std::string_view owner, std::uint64_t ownerGeneration, SelectionId id,
     std::vector<InstallationInfo> &out) const {
     out.clear();
     Status ready = Ready();
@@ -400,7 +400,7 @@ Status Plans::ReadInstallations(
     return {};
 }
 
-Status Plans::Close(PlanId id) {
+Status Selections::Close(SelectionId id) {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -422,8 +422,8 @@ Status Plans::Close(PlanId id) {
     return {};
 }
 
-Status Plans::Close(std::string_view owner, std::uint64_t ownerGeneration,
-                    PlanId id) {
+Status Selections::Close(std::string_view owner, std::uint64_t ownerGeneration,
+                    SelectionId id) {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -449,7 +449,7 @@ Status Plans::Close(std::string_view owner, std::uint64_t ownerGeneration,
     return {};
 }
 
-Status Plans::Retry(PlanId id) {
+Status Selections::Retry(SelectionId id) {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -468,7 +468,7 @@ Status Plans::Retry(PlanId id) {
     return {};
 }
 
-Status Plans::RetireOwner(std::string_view owner) {
+Status Selections::RetireOwner(std::string_view owner) {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -503,7 +503,7 @@ Status Plans::RetireOwner(std::string_view owner) {
     return first;
 }
 
-Status Plans::LoadScript(std::string name, ObjectRef script) {
+Status Selections::LoadScript(std::string name, ObjectRef script) {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -532,7 +532,7 @@ Status Plans::LoadScript(std::string name, ObjectRef script) {
     return {};
 }
 
-void Plans::Remove(ObjectRef script) {
+void Selections::Remove(ObjectRef script) {
     if (!Ready())
         return;
     const auto found = m_Scripts.find(script);
@@ -543,7 +543,7 @@ void Plans::Remove(ObjectRef script) {
     Mark(name);
 }
 
-void Plans::Remove(const std::vector<ObjectRef> &scripts) {
+void Selections::Remove(const std::vector<ObjectRef> &scripts) {
     if (!Ready())
         return;
     for (const ObjectRef &script : scripts) {
@@ -556,7 +556,7 @@ void Plans::Remove(const std::vector<ObjectRef> &scripts) {
     }
 }
 
-void Plans::RemoveObject(std::uint32_t domain, std::uint32_t slot) {
+void Selections::RemoveObject(std::uint32_t domain, std::uint32_t slot) {
     if (!Ready())
         return;
     for (auto script = m_Scripts.begin(); script != m_Scripts.end();) {
@@ -570,7 +570,7 @@ void Plans::RemoveObject(std::uint32_t domain, std::uint32_t slot) {
     }
 }
 
-Status Plans::ResetWorld() {
+Status Selections::ResetWorld() {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -592,7 +592,7 @@ Status Plans::ResetWorld() {
     return first;
 }
 
-Status Plans::ProcessFrame() {
+Status Selections::ProcessFrame() {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -658,11 +658,11 @@ Status Plans::ProcessFrame() {
     return first;
 }
 
-Epoch Plans::WorldEpoch() const {
+Epoch Selections::WorldEpoch() const {
     return m_Epoch;
 }
 
-std::size_t Plans::Size() const {
+std::size_t Selections::Size() const {
     return m_Plans.size();
 }
 

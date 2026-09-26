@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_PLAN_H
-#define BML_BEHAVIOR_PLAN_H
+#ifndef BML_BEHAVIOR_INSTALL_SELECTION_H
+#define BML_BEHAVIOR_INSTALL_SELECTION_H
 
 #include <cstdint>
 #include <map>
@@ -53,9 +53,10 @@ enum class PlanState {
     Retiring,
 };
 
-// A Plan has no retained author callback. Its World resolves a canonical Edit
-// for each target and owns the native Installation it returns.
-class Plan final {
+// A Selection keeps one Plan rule installed on every live Script it matches.
+// It has no retained author callback. Its World resolves a canonical Edit for
+// each target and owns the native Installation it returns.
+class Selection final {
 public:
     class World {
     public:
@@ -65,7 +66,7 @@ public:
         virtual Status Close(Installation installation) = 0;
     };
 
-    Plan(PatchKey patch, ScriptSelection target);
+    Selection(PatchKey patch, ScriptSelection target);
 
     Status Reconcile(std::vector<ObjectRef> targets, Epoch epoch, World &world);
     Status LeaveWorld(World &world);
@@ -92,7 +93,7 @@ public:
     }
 
 private:
-    friend class Plans;
+    friend class Selections;
 
     struct RefLess {
         bool operator()(const ObjectRef &left,
@@ -107,7 +108,7 @@ private:
 
     PatchKey m_Patch;
     ScriptSelection m_Target;
-    // A Plan the Loader has accepted but never reconciled is Reconciling, not
+    // A Selection the Loader has accepted but never reconciled is Reconciling, not
     // Unsatisfied. Unsatisfied means a pass ran and found no usable target.
     PlanState m_State = PlanState::Reconciling;
     Epoch m_Epoch = 0;
@@ -119,7 +120,7 @@ private:
     Status m_RestoreFailure;
 };
 
-using PlanId = std::uint64_t;
+using SelectionId = std::uint64_t;
 
 struct PlanInfo {
     PlanState State = PlanState::Unsatisfied;
@@ -131,29 +132,29 @@ struct PlanInfo {
     Status RestoreFailure;
 };
 
-// A loader-owned Behavior Plan. Script load/unload events only change the known
-// target set; native reconciliation happens on the game thread at
+// The loader-owned Script Selections behind every Behavior Plan rule. Script
+// load/unload events only change the known target set; native reconciliation happens on the game thread at
 // ProcessFrame. World implementations and their canonical Edit data are owned
 // by the Loader, not by a Mod callback or a live CK object. A World callback
 // may request retirement or mark another Script change, but those facts are
 // consumed only after the current World call returns.
-class Plans final {
+class Selections final {
 public:
-    Plans() = default;
+    Selections() = default;
 
     Status Submit(PatchKey patch, std::uint64_t ownerGeneration,
                   ScriptSelection target,
-                  std::shared_ptr<Plan::World> world, PlanId &out);
-    Status Read(PlanId id, PlanInfo &out) const;
+                  std::shared_ptr<Selection::World> world, SelectionId &out);
+    Status Read(SelectionId id, PlanInfo &out) const;
     Status Read(std::string_view owner, std::uint64_t ownerGeneration,
-                PlanId id, PlanInfo &out) const;
+                SelectionId id, PlanInfo &out) const;
     Status ReadInstallations(
-        std::string_view owner, std::uint64_t ownerGeneration, PlanId id,
+        std::string_view owner, std::uint64_t ownerGeneration, SelectionId id,
         std::vector<InstallationInfo> &out) const;
-    Status Close(PlanId id);
+    Status Close(SelectionId id);
     Status Close(std::string_view owner, std::uint64_t ownerGeneration,
-                 PlanId id);
-    Status Retry(PlanId id);
+                 SelectionId id);
+    Status Retry(SelectionId id);
     Status RetireOwner(std::string_view owner);
 
     Status LoadScript(std::string name, ObjectRef script);
@@ -168,16 +169,16 @@ public:
 
 private:
     struct Record {
-        PlanId Id = 0;
+        SelectionId Id = 0;
         std::uint64_t OwnerGeneration = 0;
-        std::shared_ptr<Plan::World> World;
-        Plan Value;
+        std::shared_ptr<Selection::World> World;
+        Selection Value;
         std::size_t Matches = 0;
         bool Dirty = true;
         bool CloseRequested = false;
 
-        Record(PlanId id, std::uint64_t ownerGeneration,
-               std::shared_ptr<Plan::World> world,
+        Record(SelectionId id, std::uint64_t ownerGeneration,
+               std::shared_ptr<Selection::World> world,
                PatchKey patch, ScriptSelection target)
             : Id(id), OwnerGeneration(ownerGeneration),
               World(std::move(world)),
@@ -189,19 +190,19 @@ private:
                         const ObjectRef &right) const noexcept;
     };
 
-    [[nodiscard]] PlanId NextId() noexcept;
+    [[nodiscard]] SelectionId NextId() noexcept;
     [[nodiscard]] Status Ready() const;
     void Mark(std::string_view name) noexcept;
 
     Epoch m_Epoch = 1;
-    PlanId m_NextId = 1;
+    SelectionId m_NextId = 1;
     std::thread::id m_Thread = std::this_thread::get_id();
     bool m_InWorld = false;
-    std::map<PlanId, std::unique_ptr<Record>> m_Plans;
-    std::map<PatchKey, PlanId> m_Keys;
+    std::map<SelectionId, std::unique_ptr<Record>> m_Plans;
+    std::map<PatchKey, SelectionId> m_Keys;
     std::map<ObjectRef, std::string, RefLess> m_Scripts;
 };
 
 } // namespace BML::Behavior::Internal
 
-#endif // BML_BEHAVIOR_PLAN_H
+#endif // BML_BEHAVIOR_INSTALL_SELECTION_H

@@ -30,8 +30,7 @@
 #include "Behavior/Runtime.h"
 #include "Behavior/Script.h"
 #include "Behavior/Sessions.h"
-#include "Behavior/Patches.h"
-#include "Behavior/Plan.h"
+#include "Behavior/Install/Installations.h"
 #include "Behavior/PrototypeCatalog.h"
 #include "Api/ExecuteBBAdapter.h"
 #include "Behavior/Blocks/PhysicsForce.h"
@@ -322,11 +321,8 @@ public:
     BML::Behavior::Internal::Scripts &BehaviorScripts() noexcept {
         return m_BehaviorScripts;
     }
-    BML::Behavior::Internal::Patches &BehaviorPatches() noexcept {
-        return m_BehaviorPatches;
-    }
-    BML::Behavior::Internal::Plans &BehaviorPlans() noexcept {
-        return m_BehaviorPlans;
+    BML::Behavior::Internal::Installations &BehaviorInstallations() noexcept {
+        return m_BehaviorInstallations;
     }
     BML::Behavior::Internal::PrototypeCatalog &BehaviorPrototypes() noexcept {
         return m_BehaviorPrototypes;
@@ -481,7 +477,17 @@ private:
     std::wstring GetShellEnvironmentPath() const;
     void LoadShellEnvironment();
 
-    BML::Behavior::Internal::Status RetireBehaviorEdits(const std::string &ownerId);
+    enum class BehaviorRetirement {
+        // Runs every step and reports the first failure to the caller.
+        Report,
+        // Runs every step and logs each failure for the Mod.
+        Log,
+        // Logs the first failed step and stops there, so the owner stays
+        // registered and its unload can be retried.
+        Unload,
+    };
+    BML::Behavior::Internal::Status RetireBehaviorState(
+        const std::string &ownerId, BehaviorRetirement mode) noexcept;
     bool CleanupModRegistrations(const std::string &ownerId) noexcept;
     bool CanScheduleTimer() const;
     bool m_Inited = false;
@@ -491,8 +497,7 @@ private:
     BML::Behavior::Internal::PrototypeCatalog m_BehaviorPrototypes;
     BML::Behavior::Internal::Runtime m_Behaviors;
     BML::Behavior::Internal::Sessions m_BehaviorSessions;
-    BML::Behavior::Internal::Patches m_BehaviorPatches;
-    BML::Behavior::Internal::Plans m_BehaviorPlans;
+    BML::Behavior::Internal::Installations m_BehaviorInstallations;
     BML::Behavior::Internal::Scripts m_BehaviorScripts;
     BML::Behavior::Internal::PhysicsForce::Sessions m_PhysicsForce;
     BML::ExecuteBBAdapter m_ExecuteBB;

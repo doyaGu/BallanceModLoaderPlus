@@ -1,4 +1,4 @@
-#include "Behavior/Plan.h"
+#include "Behavior/Install/Selection.h"
 
 #include <atomic>
 #include <cstdlib>
@@ -26,7 +26,7 @@ public:
     }
 };
 
-class World final : public BML::Behavior::Internal::Plan::World {
+class World final : public BML::Behavior::Internal::Selection::World {
 public:
     BML::Behavior::Internal::Status
     Install(const BML::Behavior::Internal::PatchKey &,
@@ -48,21 +48,21 @@ public:
     std::size_t Closes = 0;
 };
 
-TEST(BehaviorPlanAllocation, SettledPlanDoesNoWorkOnUnchangedFrames) {
+TEST(BehaviorSelectionAllocation, SettledSelectionDoesNoWorkOnUnchangedFrames) {
     using namespace BML::Behavior::Internal;
 
     std::size_t emptyAllocations = 0;
     {
-        Plans empty;
+        Selections empty;
         AllocationScope scope;
         for (std::size_t frame = 0; frame < 4096; ++frame)
             ASSERT_TRUE(empty.ProcessFrame());
         emptyAllocations = scope.Count();
     }
 
-    Plans plans;
+    Selections plans;
     auto world = std::make_shared<World>();
-    PlanId plan = 0;
+    SelectionId plan = 0;
     ASSERT_TRUE(
         plans.Submit({"mod", "events"}, 1, {"Gameplay_Events"}, world, plan));
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", ObjectRef{1, 2, 3}));
@@ -86,7 +86,7 @@ TEST(BehaviorPlanAllocation, SettledPlanDoesNoWorkOnUnchangedFrames) {
     EXPECT_TRUE(succeeded);
 #if defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL > 0
     // MSVC's checked map iterators allocate debug proxy state even for an
-    // empty Plans collection. A settled Plan must add no work above that
+    // empty Selections collection. A settled Selection must add no work above that
     // toolchain baseline.
     EXPECT_EQ(allocations, emptyAllocations);
 #else

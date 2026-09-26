@@ -205,22 +205,21 @@ ModContext::ModContext(CKContext *context)
                       reference.Domain, reference.Slot,
                       reference.Generation};
               })),
-      m_BehaviorPatches(context, m_Behaviors, &m_BehaviorPrototypes,
-                        RequireBehaviorGraph(m_BehaviorSessions),
-                        [this](const BML::Behavior::Internal::ObjectRef &reference) {
-                            return m_ObjectRefs.Resolve({
-                                reference.Domain, reference.Slot,
-                                reference.Generation});
-                        },
-                        [this](CKObject *object) {
-                            const BML_ObjectRef issued =
-                                m_ObjectRefs.Issue(object);
-                            return BML::Behavior::Internal::ObjectRef{
-                                issued.Domain, issued.Slot, issued.Generation};
-                        }),
+      m_BehaviorInstallations(
+          context, m_Behaviors, &m_BehaviorPrototypes,
+          RequireBehaviorGraph(m_BehaviorSessions),
+          [this](const BML::Behavior::Internal::ObjectRef &reference) {
+              return m_ObjectRefs.Resolve({
+                  reference.Domain, reference.Slot, reference.Generation});
+          },
+          [this](CKObject *object) {
+              const BML_ObjectRef issued = m_ObjectRefs.Issue(object);
+              return BML::Behavior::Internal::ObjectRef{
+                  issued.Domain, issued.Slot, issued.Generation};
+          }),
       m_BehaviorScripts(
           BML::Behavior::Internal::MakeCKScriptWorld(
-              context, m_BehaviorPatches, [this](const void *object) {
+              context, m_BehaviorInstallations, [this](const void *object) {
                   if (!object)
                       return BML::Behavior::Internal::ObjectRef{};
                   const BML_ObjectRef reference = m_ObjectRefs.Issue(
@@ -233,7 +232,8 @@ ModContext::ModContext(CKContext *context)
           [this](std::string_view name,
                  const BML::Behavior::Internal::ObjectRef &script) {
               const BML::Behavior::Internal::Status status =
-                  m_BehaviorPlans.LoadScript(std::string(name), script);
+                  m_BehaviorInstallations.LoadScript(std::string(name),
+                                                     script);
               if (!status && m_Logger)
                   m_Logger->Error(
                       "Failed to publish an authored Behavior Script: %s",
@@ -499,12 +499,13 @@ void ModContext::ResetVirtoolsWorld() {
     // to the API seam and are reset only after internal teardown is complete.
     m_ExecuteBB.Reset();
     m_PhysicsForce.Reset();
-    const BML::Behavior::Internal::Status plans = m_BehaviorPlans.ResetWorld();
+    const BML::Behavior::Internal::Status plans =
+        m_BehaviorInstallations.LeaveWorld();
     if (!plans && m_Logger)
         m_Logger->Error("Failed to leave the current Behavior Plan world: %s",
                         plans.Message.c_str());
     m_BehaviorScripts.ResetWorld();
-    m_BehaviorPatches.ResetWorld();
+    m_BehaviorInstallations.ResetWorld();
     m_BehaviorSessions.ResetWorld();
     m_ObjectRefs.Reset();
 }
@@ -518,14 +519,15 @@ void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
             m_BehaviorScripts.ObjectToBeDeleted(
                 static_cast<std::uint32_t>(ids[index]));
     }
-    m_BehaviorPatches.ObjectsToBeDeleted(ids, count);
+    m_BehaviorInstallations.ObjectsToBeDeleted(ids, count);
     // Dropping the target only marks the world dirty. Reconciliation waits for
     // the next Loader frame: Virtools is still inside DeleteObjects here, so a
     // Plan that installed onto the doomed script must not try to reach it, and
-    // Patches::Close already succeeds for an installation this pass erased.
+    // Installations::Close already succeeds for an installation this pass
+    // erased.
     if (ids && count > 0) {
         for (int index = 0; index < count; ++index) {
-            m_BehaviorPlans.RemoveObject(
+            m_BehaviorInstallations.RemoveObject(
                 BML_OBJECT_DOMAIN_VIRTOOLS,
                 static_cast<std::uint32_t>(ids[index]));
         }
@@ -540,9 +542,10 @@ void ModContext::BehaviorScriptLoaded(CKBehavior *script) {
         return;
     const BML_ObjectRef reference = m_ObjectRefs.Issue(script);
     const char *name = script->GetName();
-    const BML::Behavior::Internal::Status status = m_BehaviorPlans.LoadScript(
-        name ? name : "",
-        {reference.Domain, reference.Slot, reference.Generation});
+    const BML::Behavior::Internal::Status status =
+        m_BehaviorInstallations.LoadScript(
+            name ? name : "",
+            {reference.Domain, reference.Slot, reference.Generation});
     if (!status && m_Logger)
         m_Logger->Error("Failed to retain a live Behavior script: %s",
                         status.Message.c_str());
@@ -553,28 +556,57 @@ void ModContext::ProcessVirtoolsFrame() {
     m_PhysicsForce.ProcessFrame();
     m_Behaviors.ProcessFrame();
     m_BehaviorSessions.ProcessFrame();
-    const BML::Behavior::Internal::Status plans = m_BehaviorPlans.ProcessFrame();
+    const BML::Behavior::Internal::Status plans =
+        m_BehaviorInstallations.ProcessFrame();
     if (!plans && m_Logger)
         m_Logger->Error("Failed to reconcile Behavior Plans: %s",
                         plans.Message.c_str());
-    m_BehaviorPatches.ProcessFrame(m_BehaviorPlans);
     m_BehaviorScripts.ProcessFrame();
     m_ExecuteBB.ProcessFrame();
 }
 
-BML::Behavior::Internal::Status ModContext::RetireBehaviorEdits(
-    const std::string &ownerId) {
-    // A Plan can be waiting on a Patch request that was already queued by an
-    // off-thread Close. Request Plan retirement, complete every owned Patch at
-    // the CK edit safe point, then collect Plans whose installations closed.
-    (void) m_BehaviorPlans.RetireOwner(ownerId);
-    const BML::Behavior::Internal::Status patches =
-        m_BehaviorPatches.RetireOwner(ownerId);
-    const BML::Behavior::Internal::Status plans =
-        m_BehaviorPlans.RetireOwner(ownerId);
-    if (!plans)
-        return plans;
-    return patches;
+BML::Behavior::Internal::Status ModContext::RetireBehaviorState(
+    const std::string &ownerId, BehaviorRetirement mode) noexcept {
+    using BML::Behavior::Internal::Error;
+    using BML::Behavior::Internal::Status;
+    // Every Behavior owner retires through this one sequence. Graph
+    // installations go first because Script bodies are installations too,
+    // then the Scripts, then the owner's Sessions with their Runs and Watches.
+    Status first;
+    const auto retire = [&](const char *step, auto &&action) noexcept {
+        if (!first && mode == BehaviorRetirement::Unload)
+            return;
+        Status status;
+        bool thrown = false;
+        try {
+            status = action();
+        } catch (...) {
+            thrown = true;
+            status = Status(Error::InvalidState, CKERR_INVALIDPARAMETER,
+                            CKBR_OK, {});
+        }
+        if (status)
+            return;
+        if (mode != BehaviorRetirement::Report && m_Logger) {
+            if (thrown)
+                m_Logger->Error("Failed to retire Behavior %s for Mod %s.",
+                                step, ownerId.c_str());
+            else
+                m_Logger->Error("Failed to retire Behavior %s for Mod %s: %s",
+                                step, ownerId.c_str(), status.Message.c_str());
+        }
+        if (first)
+            first = std::move(status);
+    };
+    retire("edits", [&] {
+        return m_BehaviorInstallations.RetireOwner(ownerId);
+    });
+    retire("Scripts", [&] { return m_BehaviorScripts.RetireOwner(ownerId); });
+    retire("sessions", [&] {
+        m_BehaviorSessions.RetireOwner(ownerId);
+        return Status();
+    });
+    return first;
 }
 
 BML::Behavior::Internal::Status ModContext::RetireBehaviorOwner(
@@ -586,12 +618,7 @@ BML::Behavior::Internal::Status ModContext::RetireBehaviorOwner(
                       "Behavior owners can only retire on the game thread.");
     }
 
-    Status result = RetireBehaviorEdits(ownerId);
-    const Status scripts = m_BehaviorScripts.RetireOwner(ownerId);
-    if (result && !scripts)
-        result = scripts;
-    m_BehaviorSessions.RetireOwner(ownerId);
-    return result;
+    return RetireBehaviorState(ownerId, BehaviorRetirement::Report);
 }
 
 void ModContext::RegisterCommand(ICommand *cmd) {
@@ -1795,30 +1822,12 @@ bool ModContext::RegisterModOwner(const std::string &ownerId) noexcept {
 
 void ModContext::RetireFailedModOwner(const std::string &ownerId) noexcept {
     (void) BML::DataShareStore::RetireCallbacksFromOwner(ownerId);
-    try {
-        (void) m_BehaviorSessions.RetireOwner(ownerId);
-    } catch (...) {
-    }
+    (void) RetireBehaviorState(ownerId, BehaviorRetirement::Report);
 }
 
 bool ModContext::PrepareModUnload(const std::string &ownerId) {
-    const BML::Behavior::Internal::Status edits = RetireBehaviorEdits(ownerId);
-    if (!edits) {
-        if (m_Logger)
-            m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
-                            ownerId.c_str(), edits.Message.c_str());
+    if (!RetireBehaviorState(ownerId, BehaviorRetirement::Unload))
         return false;
-    }
-
-    const BML::Behavior::Internal::Status scripts = m_BehaviorScripts.RetireOwner(ownerId);
-    if (!scripts) {
-        if (m_Logger)
-            m_Logger->Error("Failed to retire Behavior Scripts for Mod %s: %s",
-                            ownerId.c_str(), scripts.Message.c_str());
-        return false;
-    }
-
-    m_BehaviorSessions.RetireOwner(ownerId);
     return CleanupModRegistrations(ownerId);
 }
 
@@ -1857,34 +1866,7 @@ bool ModContext::CleanupModRegistrations(const std::string &ownerId) noexcept {
 }
 
 void ModContext::RetireModBehaviorState(const std::string &ownerId) noexcept {
-    try {
-        const BML::Behavior::Internal::Status edits = RetireBehaviorEdits(ownerId);
-        if (!edits && m_Logger) {
-            m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
-                            ownerId.c_str(), edits.Message.c_str());
-        }
-    } catch (...) {
-        if (m_Logger)
-            m_Logger->Error("Failed to retire Behavior edits for Mod %s.", ownerId.c_str());
-    }
-
-    try {
-        const BML::Behavior::Internal::Status scripts = m_BehaviorScripts.RetireOwner(ownerId);
-        if (!scripts && m_Logger) {
-            m_Logger->Error("Failed to retire Behavior Scripts for Mod %s: %s",
-                            ownerId.c_str(), scripts.Message.c_str());
-        }
-    } catch (...) {
-        if (m_Logger)
-            m_Logger->Error("Failed to retire Behavior Scripts for Mod %s.", ownerId.c_str());
-    }
-
-    try {
-        m_BehaviorSessions.RetireOwner(ownerId);
-    } catch (...) {
-        if (m_Logger)
-            m_Logger->Error("Failed to retire Behavior sessions for Mod %s.", ownerId.c_str());
-    }
+    (void) RetireBehaviorState(ownerId, BehaviorRetirement::Log);
 }
 
 void ModContext::CleanupModState(const std::string &ownerId) noexcept {

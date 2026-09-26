@@ -7,7 +7,7 @@
 
 #include "Behavior/Callback.h"
 #include "Behavior/GraphEdit.h"
-#include "Behavior/Patches.h"
+#include "Behavior/Install/Installations.h"
 #include "CKAll.h"
 
 namespace BML::Behavior::Internal {
@@ -39,9 +39,9 @@ T *Resolve(CKContext *context, const ScriptObject &object,
 
 class CKScriptWorld final : public ScriptWorld {
 public:
-    CKScriptWorld(CKContext *context, Patches &patches,
+    CKScriptWorld(CKContext *context, Installations &installations,
                   std::function<ObjectRef(const void *)> issueObjectRef)
-        : m_Context(context), m_Patches(patches),
+        : m_Context(context), m_Installations(installations),
           m_IssueObjectRef(std::move(issueObjectRef)) {}
 
     bool InDispatch() const noexcept override {
@@ -134,7 +134,7 @@ public:
                   GraphEdit body, ScriptBodyId &out) override {
         out = 0;
         PatchId patch = 0;
-        Status status = m_Patches.Apply(
+        Status status = m_Installations.Apply(
             owner, script.Root.Reference,
             "Script/" + std::to_string(script.Root.Id),
             std::move(body), patch);
@@ -146,7 +146,7 @@ public:
                            Phase::Edit);
         out = patch;
         PatchInfo info;
-        status = m_Patches.Read(owner, patch, info);
+        status = m_Installations.Read(owner, patch, info);
         if (!status)
             return status;
         if (info.State != PatchState::Active) {
@@ -209,7 +209,7 @@ public:
 
     Status CloseBody(const SessionOwner &owner,
                      ScriptBodyId body) override {
-        return m_Patches.Close(owner, static_cast<PatchId>(body));
+        return m_Installations.Close(owner, static_cast<PatchId>(body));
     }
 
     Status Destroy(const ScriptIdentity &script) override {
@@ -276,7 +276,7 @@ private:
     }
 
     CKContext *m_Context = nullptr;
-    Patches &m_Patches;
+    Installations &m_Installations;
     std::function<ObjectRef(const void *)> m_IssueObjectRef;
 };
 
@@ -734,10 +734,10 @@ void Scripts::ResetWorld() {
 #ifndef BML_BEHAVIOR_SCRIPT_DOMAIN_ONLY
 
 std::unique_ptr<ScriptWorld> MakeCKScriptWorld(
-    CKContext *context, Patches &patches,
+    CKContext *context, Installations &installations,
     std::function<ObjectRef(const void *)> issueObjectRef) {
     return std::make_unique<CKScriptWorld>(
-        context, patches, std::move(issueObjectRef));
+        context, installations, std::move(issueObjectRef));
 }
 
 #endif // BML_BEHAVIOR_SCRIPT_DOMAIN_ONLY
