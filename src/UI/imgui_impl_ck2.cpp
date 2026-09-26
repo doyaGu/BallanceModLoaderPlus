@@ -12,11 +12,144 @@
 
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
+//  2026-09-25: Virtools: Streamed VtxOffset segments and fixed transient vertex buffer release.
 //  2025-08-20: Virtools: Added support for ImGuiBackendFlags_RendererHasTextures, for dynamic font atlas.
 //  2025-08-20: Virtools: Changed default texture sampler to Clamp instead of Repeat/Wrap.
 
 #include "imgui.h"
 #include "UI/imgui_impl_ck2.h"
+
+static const unsigned int ImGui_ImplCK2_MaxIndexedVertices = 0x10000U;
+static const unsigned int ImGui_ImplCK2_MaxSegmentExpansion = 2U;
+
+struct ImGui_ImplCK2_DrawSegment
+{
+    unsigned int VertexOffset;
+    unsigned int VertexCount;
+    int EndCommand;
+};
+
+struct ImGui_ImplCK2_DrawSlice
+{
+    unsigned int VertexOffset;
+    unsigned int VertexCount;
+    ImVector<ImDrawIdx> Indices;
+};
+
+struct ImGui_ImplCK2_FrameMetrics
+{
+    ImU64 RenderTimeMicroseconds;
+    unsigned int DrawListCount;
+    unsigned int DrawCommandCount;
+    unsigned int DrawCallCount;
+    unsigned int GeometryUploadCount;
+    unsigned int UploadedVertexCount;
+    unsigned int RebasedIndexCount;
+    unsigned int RenderStateSetupCount;
+    unsigned int TextureBindRequestCount;
+    unsigned int TextureBindCallCount;
+    unsigned int VertexBufferFallbackCount;
+    unsigned int GeometryUploadFailureCount;
+    unsigned int VertexBufferReleaseFailureCount;
+};
+
+struct ImGui_ImplCK2_TextureBindingState
+{
+    ImTextureID Texture;
+    bool Known;
+
+    void Invalidate()
+    {
+        Known = false;
+    }
+
+    bool RequiresBinding(ImTextureID texture) const
+    {
+        return !Known || Texture != texture;
+    }
+
+    void RecordBinding(ImTextureID texture)
+    {
+        Texture = texture;
+        Known = true;
+    }
+};
+
+static bool ImGui_ImplCK2_BuildDrawSegment(const ImDrawCmd *commands, int command_count,
+                                            int first_command, int vertex_count,
+                                            ImGui_ImplCK2_DrawSegment *segment)
+{
+    if (!commands || !segment || command_count <= 0 || first_command < 0 ||
+        first_command >= command_count || vertex_count <= 0)
+        return false;
+
+    const unsigned int vertex_offset = commands[first_command].VtxOffset;
+    if (vertex_offset >= (unsigned int)vertex_count)
+        return false;
+
+    int end_command = first_command + 1;
+    while (end_command < command_count && commands[end_command].VtxOffset == vertex_offset)
+        ++end_command;
+
+    unsigned int end_offset = (unsigned int)vertex_count;
+    if (end_command < command_count)
+    {
+        end_offset = commands[end_command].VtxOffset;
+        if (end_offset <= vertex_offset || end_offset > (unsigned int)vertex_count)
+            return false;
+    }
+
+    const unsigned int vertex_count_in_segment = end_offset - vertex_offset;
+    if (vertex_count_in_segment == 0 || vertex_count_in_segment > ImGui_ImplCK2_MaxIndexedVertices)
+        return false;
+
+    segment->VertexOffset = vertex_offset;
+    segment->VertexCount = vertex_count_in_segment;
+    segment->EndCommand = end_command;
+    return true;
+}
+
+static bool ImGui_ImplCK2_ShouldUploadDrawSegment(const ImDrawCmd *commands,
+                                                   const ImDrawIdx *indices,
+                                                   int index_count,
+                                                   const ImGui_ImplCK2_DrawSegment &segment,
+                                                   int first_command)
+{
+    if (!commands || !indices || index_count <= 0 || first_command < 0 ||
+        first_command >= segment.EndCommand)
+        return false;
+
+    ImU64 sliced_vertex_count = 0;
+    bool has_draw_commands = false;
+    for (int command_index = first_command; command_index < segment.EndCommand; ++command_index)
+    {
+        const ImDrawCmd &command = commands[command_index];
+        if (command.UserCallback || command.ElemCount == 0)
+            continue;
+        if (command.IdxOffset > (unsigned int)index_count ||
+            command.ElemCount > (unsigned int)index_count - command.IdxOffset)
+            return false;
+
+        const ImDrawIdx *command_indices = indices + command.IdxOffset;
+        ImDrawIdx minimum = command_indices[0];
+        ImDrawIdx maximum = command_indices[0];
+        for (unsigned int i = 1; i < command.ElemCount; ++i)
+        {
+            if (command_indices[i] < minimum)
+                minimum = command_indices[i];
+            if (command_indices[i] > maximum)
+                maximum = command_indices[i];
+        }
+        if ((unsigned int)maximum >= segment.VertexCount)
+            return false;
+
+        sliced_vertex_count += (unsigned int)maximum - minimum + 1U;
+        has_draw_commands = true;
+    }
+
+    return has_draw_commands &&
+           segment.VertexCount <= sliced_vertex_count * ImGui_ImplCK2_MaxSegmentExpansion;
+}
 
 #if !defined(BML_TEST_CK2_BACKEND_LOGIC)
 // Virtools
@@ -27,6 +160,14 @@
 #include "CKMaterial.h"
 
 #include "HookUtils.h"
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
 
 enum ImGui_ImplCK2_TextureFailure
 {
@@ -66,8 +207,23 @@ struct ImGui_ImplCK2_Data
     int TextureMaxHeight;
     ImGui_ImplCK2_TextureFailure LastTextureFailure;
     unsigned int LastTextureFailureCount;
+    ImU64 PerformanceFrequency;
+    ImU64 TotalRenderTimeMicroseconds;
+    ImU64 PeakRenderTimeMicroseconds;
+    ImU64 RenderedFrameCount;
+    ImU64 TotalGeometryUploadFailureCount;
+    ImU64 TotalVertexBufferReleaseFailureCount;
+    ImGui_ImplCK2_FrameMetrics LastFrameMetrics;
+    ImGui_ImplCK2_DrawSlice DrawSlice;
 
-    ImGui_ImplCK2_Data() { memset(this, 0, sizeof(*this)); }
+    ImGui_ImplCK2_Data()
+        : Context(NULL), RenderContext(NULL), FrameIndex(0), TextureMaxWidth(0), TextureMaxHeight(0),
+          LastTextureFailure(ImGui_ImplCK2_TextureFailure_None), LastTextureFailureCount(0),
+          PerformanceFrequency(0), TotalRenderTimeMicroseconds(0), PeakRenderTimeMicroseconds(0),
+          RenderedFrameCount(0), TotalGeometryUploadFailureCount(0),
+          TotalVertexBufferReleaseFailureCount(0), LastFrameMetrics{}
+    {
+    }
 };
 #endif
 
@@ -140,13 +296,6 @@ private:
 };
 #endif
 
-struct ImGui_ImplCK2_DrawSlice
-{
-    unsigned int VertexOffset;
-    unsigned int VertexCount;
-    ImVector<ImDrawIdx> Indices;
-};
-
 static bool ImGui_ImplCK2_BuildDrawSlice(const ImDrawIdx *indices, unsigned int index_count,
                                          unsigned int vertex_offset, int vertex_count,
                                          ImGui_ImplCK2_DrawSlice *slice)
@@ -175,7 +324,7 @@ static bool ImGui_ImplCK2_BuildDrawSlice(const ImDrawIdx *indices, unsigned int 
         return false;
 
     const ImU64 slice_vertex_count = last_vertex - first_vertex + 1;
-    if (slice_vertex_count > 0x10000U)
+    if (slice_vertex_count > ImGui_ImplCK2_MaxIndexedVertices)
         return false;
 
     slice->Indices.resize((int)index_count);
@@ -260,6 +409,57 @@ bool ImGui_ImplCK2_TestBuildDrawSlice(const ImDrawIdx *indices, unsigned int ind
     return true;
 }
 
+bool ImGui_ImplCK2_TestBuildDrawSegment(const ImDrawCmd *commands, int command_count,
+                                        int first_command, int vertex_count,
+                                        unsigned int *segment_vertex_offset,
+                                        unsigned int *segment_vertex_count,
+                                        int *end_command)
+{
+    if (!segment_vertex_offset || !segment_vertex_count || !end_command)
+        return false;
+
+    ImGui_ImplCK2_DrawSegment segment;
+    if (!ImGui_ImplCK2_BuildDrawSegment(commands, command_count, first_command, vertex_count, &segment))
+        return false;
+
+    *segment_vertex_offset = segment.VertexOffset;
+    *segment_vertex_count = segment.VertexCount;
+    *end_command = segment.EndCommand;
+    return true;
+}
+
+bool ImGui_ImplCK2_TestShouldUploadDrawSegment(const ImDrawCmd *commands, int command_count,
+                                               const ImDrawIdx *indices, int index_count,
+                                               int first_command, int vertex_count)
+{
+    ImGui_ImplCK2_DrawSegment segment;
+    return ImGui_ImplCK2_BuildDrawSegment(
+               commands, command_count, first_command, vertex_count, &segment) &&
+           ImGui_ImplCK2_ShouldUploadDrawSegment(
+               commands, indices, index_count, segment, first_command);
+}
+
+unsigned int ImGui_ImplCK2_TestCountTextureBindings(const ImTextureID *textures,
+                                                     const bool *invalidate_before,
+                                                     int texture_count)
+{
+    if (!textures || texture_count <= 0)
+        return 0;
+
+    ImGui_ImplCK2_TextureBindingState state{};
+    unsigned int binding_count = 0;
+    for (int i = 0; i < texture_count; ++i)
+    {
+        if (invalidate_before && invalidate_before[i])
+            state.Invalidate();
+        if (!state.RequiresBinding(textures[i]))
+            continue;
+        state.RecordBinding(textures[i]);
+        ++binding_count;
+    }
+    return binding_count;
+}
+
 unsigned int ImGui_ImplCK2_TestGetTextureRetryDelay(unsigned int failure_count)
 {
     return ImGui_ImplCK2_GetTextureRetryDelay(failure_count);
@@ -330,6 +530,23 @@ bool ImGui_ImplCK2_GetDiagnostics(ImGui_ImplCK2_Diagnostics *diagnostics)
     diagnostics->TextureMaxHeight = bd->TextureMaxHeight;
     diagnostics->LastTextureFailure = ImGui_ImplCK2_GetTextureFailureName(bd->LastTextureFailure);
     diagnostics->LastTextureFailureCount = bd->LastTextureFailureCount;
+    diagnostics->LastRenderTimeMicroseconds = bd->LastFrameMetrics.RenderTimeMicroseconds;
+    diagnostics->AverageRenderTimeMicroseconds = bd->RenderedFrameCount == 0 ? 0 :
+        bd->TotalRenderTimeMicroseconds / bd->RenderedFrameCount;
+    diagnostics->PeakRenderTimeMicroseconds = bd->PeakRenderTimeMicroseconds;
+    diagnostics->RenderedFrameCount = bd->RenderedFrameCount;
+    diagnostics->DrawListCount = bd->LastFrameMetrics.DrawListCount;
+    diagnostics->DrawCommandCount = bd->LastFrameMetrics.DrawCommandCount;
+    diagnostics->DrawCallCount = bd->LastFrameMetrics.DrawCallCount;
+    diagnostics->GeometryUploadCount = bd->LastFrameMetrics.GeometryUploadCount;
+    diagnostics->UploadedVertexCount = bd->LastFrameMetrics.UploadedVertexCount;
+    diagnostics->RebasedIndexCount = bd->LastFrameMetrics.RebasedIndexCount;
+    diagnostics->RenderStateSetupCount = bd->LastFrameMetrics.RenderStateSetupCount;
+    diagnostics->TextureBindRequestCount = bd->LastFrameMetrics.TextureBindRequestCount;
+    diagnostics->TextureBindCallCount = bd->LastFrameMetrics.TextureBindCallCount;
+    diagnostics->VertexBufferFallbackCount = bd->LastFrameMetrics.VertexBufferFallbackCount;
+    diagnostics->GeometryUploadFailureCount = bd->TotalGeometryUploadFailureCount;
+    diagnostics->VertexBufferReleaseFailureCount = bd->TotalVertexBufferReleaseFailureCount;
     return true;
 }
 
@@ -483,6 +700,73 @@ static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data)
     dev->SetTextureStageState(CKRST_TSS_MAGFILTER, VXTEXTUREFILTER_LINEAR);
 }
 
+static VxDrawPrimitiveData *ImGui_ImplCK2_UploadVertices(CKRenderContext *dev,
+                                                         const ImDrawVert *vertices,
+                                                         int vertex_count,
+                                                         ImGui_ImplCK2_FrameMetrics *metrics,
+                                                         bool *abort_render)
+{
+    if (!dev || !vertices || vertex_count <= 0 ||
+        (unsigned int)vertex_count > ImGui_ImplCK2_MaxIndexedVertices ||
+        !metrics || !abort_render)
+        return NULL;
+
+    VxDrawPrimitiveData *data = dev->GetDrawPrimitiveStructure(
+        (CKRST_DPFLAGS)(CKRST_DP_CL_VCT | CKRST_DP_VBUFFER), vertex_count);
+    if (!data)
+        data = dev->GetDrawPrimitiveStructure(CKRST_DP_CL_VCT, vertex_count);
+
+    if (!data)
+    {
+        ++metrics->GeometryUploadFailureCount;
+        return NULL;
+    }
+
+    const bool uses_vertex_buffer = (data->Flags & CKRST_DP_VBUFFER) != 0;
+    if (!uses_vertex_buffer)
+        ++metrics->VertexBufferFallbackCount;
+
+    const bool layout_valid = data->VertexCount >= vertex_count && data->PositionPtr &&
+                              data->PositionStride >= sizeof(VxVector4) && data->ColorPtr &&
+                              data->ColorStride >= sizeof(CKDWORD) && data->TexCoordPtr &&
+                              data->TexCoordStride >= sizeof(VxUV);
+    if (layout_valid)
+    {
+        XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
+        XPtrStrided<CKDWORD> colors(data->ColorPtr, data->ColorStride);
+        XPtrStrided<VxUV> uvs(data->TexCoordPtr, data->TexCoordStride);
+
+        for (int i = 0; i < vertex_count; ++i)
+        {
+            positions->Set(vertices[i].pos.x, vertices[i].pos.y, 0.0f, 1.0f);
+            *colors = IMGUI_COL_TO_ARGB(vertices[i].col);
+            uvs->u = vertices[i].uv.x;
+            uvs->v = vertices[i].uv.y;
+            ++positions;
+            ++colors;
+            ++uvs;
+        }
+    }
+
+    if (uses_vertex_buffer && !dev->ReleaseCurrentVB())
+    {
+        ++metrics->GeometryUploadFailureCount;
+        ++metrics->VertexBufferReleaseFailureCount;
+        *abort_render = true;
+        return NULL;
+    }
+
+    if (!layout_valid)
+    {
+        ++metrics->GeometryUploadFailureCount;
+        return NULL;
+    }
+
+    ++metrics->GeometryUploadCount;
+    metrics->UploadedVertexCount += (unsigned int)vertex_count;
+    return data;
+}
+
 void ImGui_ImplCK2_UpdateTexture(ImTextureData *tex)
 {
     ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
@@ -623,22 +907,10 @@ void ImGui_ImplCK2_UpdateTexture(ImTextureData *tex)
     }
 }
 
-// Render function.
-void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
+static void ImGui_ImplCK2_RenderDrawDataInternal(ImDrawData *draw_data, ImGui_ImplCK2_Data *bd,
+                                                  int fb_width, int fb_height,
+                                                  ImGui_ImplCK2_FrameMetrics *metrics)
 {
-    static_assert(sizeof(ImDrawIdx) == sizeof(CKWORD),
-                  "The CK2 backend requires 16-bit ImGui indices");
-
-    // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
-    int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
-    int fb_height = (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
-    if (fb_width == 0 || fb_height == 0)
-        return;
-
-    ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
-    if (!bd || !bd->RenderContext)
-        return;
-
     CKRenderContext *dev = bd->RenderContext;
 
     // Catch up with texture updates. Most of the times, the list will have 1 element with an OK status, aka nothing to do.
@@ -652,60 +924,47 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
 
     // Setup desired render state
     ImGui_ImplCK2_SetupRenderState(draw_data);
+    ++metrics->RenderStateSetupCount;
 
     // Will project scissor/clipping rectangles into framebuffer space
     ImVec2 clip_off = draw_data->DisplayPos;         // (0,0) unless using multi-viewports
     ImVec2 clip_scale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
 
     // Render command lists
+    metrics->DrawListCount = (unsigned int)draw_data->CmdListsCount;
+    ImGui_ImplCK2_TextureBindingState texture_binding{};
     for (int n = 0; n < draw_data->CmdListsCount; n++)
     {
         const ImDrawList *cmd_list = draw_data->CmdLists[n];
         const ImDrawVert *vtx_buffer = cmd_list->VtxBuffer.Data;
         const ImDrawIdx *idx_buffer = cmd_list->IdxBuffer.Data;
+        ImGui_ImplCK2_DrawSegment segment{};
+        int segment_end_command = 0;
+        bool segment_valid = false;
+        bool upload_whole_segment = false;
+        bool segment_upload_attempted = false;
+        VxDrawPrimitiveData *segment_data = NULL;
 
-        VxDrawPrimitiveData *data = NULL;
-        bool use_command_slices = cmd_list->VtxBuffer.Size >= 0xFFFF;
-        for (int cmd_i = 0; !use_command_slices && cmd_i < cmd_list->CmdBuffer.Size; ++cmd_i)
-            use_command_slices = cmd_list->CmdBuffer[cmd_i].VtxOffset != 0;
-        ImGui_ImplCK2_DrawSlice draw_slice;
+        bool use_single_upload = cmd_list->VtxBuffer.Size > 0 &&
+                                 (unsigned int)cmd_list->VtxBuffer.Size <= ImGui_ImplCK2_MaxIndexedVertices;
+        for (int cmd_i = 0; use_single_upload && cmd_i < cmd_list->CmdBuffer.Size; ++cmd_i)
+            use_single_upload = cmd_list->CmdBuffer[cmd_i].VtxOffset == 0;
 
-        // For normal sized meshes, prepare all vertices at once
-        if (!use_command_slices)
+        if (use_single_upload)
         {
-            const ImDrawVert *vtx_src = vtx_buffer;
-            int vtx_count = cmd_list->VtxBuffer.Size;
-
-            data = dev->GetDrawPrimitiveStructure((CKRST_DPFLAGS)(CKRST_DP_CL_VCT | CKRST_DP_VBUFFER), vtx_count);
-            if (!data)
-            {
-                data = dev->GetDrawPrimitiveStructure(CKRST_DP_CL_VCT, vtx_count);
-                if (!data)
-                    continue;
-            }
-
-            XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
-            XPtrStrided<CKDWORD> colors(data->ColorPtr, data->ColorStride);
-            XPtrStrided<VxUV> uvs(data->TexCoordPtr, data->TexCoordStride);
-
-            for (int i = 0; i < vtx_count; i++)
-            {
-                positions->Set(vtx_src->pos.x, vtx_src->pos.y, 0.0f, 1.0f);
-                *colors = IMGUI_COL_TO_ARGB(vtx_src->col);
-                uvs->u = vtx_src->uv.x;
-                uvs->v = vtx_src->uv.y;
-
-                ++positions;
-                ++colors;
-                ++uvs;
-                ++vtx_src;
-            }
+            segment.VertexOffset = 0;
+            segment.VertexCount = (unsigned int)cmd_list->VtxBuffer.Size;
+            segment.EndCommand = cmd_list->CmdBuffer.Size;
+            segment_end_command = segment.EndCommand;
+            segment_valid = true;
+            upload_whole_segment = true;
         }
 
         // Process command buffer
         for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
         {
             const ImDrawCmd *pcmd = &cmd_list->CmdBuffer[cmd_i];
+            ++metrics->DrawCommandCount;
 
             // Handle user callbacks
             if (pcmd->UserCallback)
@@ -713,10 +972,32 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
                 // User callback, registered via ImDrawList::AddCallback()
                 // (ImDrawCallback_ResetRenderState is a special callback value used by the user to request the renderer to reset render state.)
                 if (pcmd->UserCallback == ImDrawCallback_ResetRenderState)
+                {
                     ImGui_ImplCK2_SetupRenderState(draw_data);
+                    ++metrics->RenderStateSetupCount;
+                    texture_binding.Invalidate();
+                }
                 else
+                {
                     pcmd->UserCallback(cmd_list, pcmd);
+                    segment_upload_attempted = false;
+                    segment_data = NULL;
+                    texture_binding.Invalidate();
+                }
                 continue;
+            }
+
+            if (cmd_i >= segment_end_command)
+            {
+                segment_valid = ImGui_ImplCK2_BuildDrawSegment(
+                    cmd_list->CmdBuffer.Data, cmd_list->CmdBuffer.Size, cmd_i,
+                    cmd_list->VtxBuffer.Size, &segment);
+                segment_end_command = segment_valid ? segment.EndCommand : cmd_i + 1;
+                upload_whole_segment = segment_valid && ImGui_ImplCK2_ShouldUploadDrawSegment(
+                    cmd_list->CmdBuffer.Data, idx_buffer, cmd_list->IdxBuffer.Size,
+                    segment, cmd_i);
+                segment_upload_attempted = false;
+                segment_data = NULL;
             }
 
             // Project scissor/clipping rectangles into framebuffer space
@@ -737,66 +1018,133 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
 
             const ImDrawIdx *command_indices = idx_buffer + pcmd->IdxOffset;
             const CKWORD *draw_indices = reinterpret_cast<const CKWORD *>(command_indices);
+            const ImTextureID texture_id = pcmd->GetTexID();
+            CKObject *obj = (CKObject *)texture_id;
+            if (!obj)
+                continue;
 
-            // CK2 has no base-vertex draw call. For commands using VtxOffset, upload
-            // only the referenced vertex range and rebase this command's indices.
-            if (use_command_slices || pcmd->VtxOffset != 0)
+            const CK_CLASSID class_id = obj->GetClassID();
+            if (class_id != CKCID_TEXTURE && class_id != CKCID_MATERIAL)
+                continue;
+
+            VxDrawPrimitiveData *data = NULL;
+            bool abort_render = false;
+            bool use_draw_slice = !(segment_valid && upload_whole_segment &&
+                                    pcmd->VtxOffset == segment.VertexOffset);
+
+            // CK2 has no base-vertex draw call. Dear ImGui keeps 16-bit indices local
+            // to each VtxOffset segment, so upload that segment once and reuse it.
+            if (!use_draw_slice)
             {
+                if (!segment_upload_attempted)
+                {
+                    segment_data = ImGui_ImplCK2_UploadVertices(
+                        dev, vtx_buffer + segment.VertexOffset, (int)segment.VertexCount,
+                        metrics, &abort_render);
+                    segment_upload_attempted = true;
+                }
+                if (abort_render)
+                    return;
+                data = segment_data;
+                use_draw_slice = data == NULL;
+            }
+
+            // Retain the command-local path for malformed draw data and drivers
+            // that cannot allocate a complete ImGui vertex segment.
+            if (use_draw_slice)
+            {
+                ImGui_ImplCK2_DrawSlice *draw_slice = &bd->DrawSlice;
                 if (!ImGui_ImplCK2_BuildDrawSlice(command_indices, pcmd->ElemCount,
                                                   pcmd->VtxOffset, cmd_list->VtxBuffer.Size,
-                                                  &draw_slice))
+                                                  draw_slice))
                     continue;
 
-                const ImDrawVert *vtx_src = vtx_buffer + draw_slice.VertexOffset;
-                const int vtx_count = static_cast<int>(draw_slice.VertexCount);
-
-                data = dev->GetDrawPrimitiveStructure((CKRST_DPFLAGS)(CKRST_DP_CL_VCT | CKRST_DP_VBUFFER), vtx_count);
-                if (!data)
+                if (segment_data)
                 {
-                    data = dev->GetDrawPrimitiveStructure(CKRST_DP_CL_VCT, vtx_count);
-                    if (!data)
-                        continue;
+                    segment_upload_attempted = false;
+                    segment_data = NULL;
                 }
-
-                // Copy vertex data
-                XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
-                XPtrStrided<CKDWORD> colors(data->ColorPtr, data->ColorStride);
-                XPtrStrided<VxUV> uvs(data->TexCoordPtr, data->TexCoordStride);
-
-                for (int i = 0; i < vtx_count; i++)
-                {
-                    positions->Set(vtx_src[i].pos.x, vtx_src[i].pos.y, 0.0f, 1.0f);
-                    *colors = IMGUI_COL_TO_ARGB(vtx_src[i].col);
-                    uvs->u = vtx_src[i].uv.x;
-                    uvs->v = vtx_src[i].uv.y;
-
-                    ++positions;
-                    ++colors;
-                    ++uvs;
-                }
-
-                draw_indices = draw_slice.Indices.Data;
+                data = ImGui_ImplCK2_UploadVertices(
+                    dev, vtx_buffer + draw_slice->VertexOffset, (int)draw_slice->VertexCount,
+                    metrics, &abort_render);
+                if (abort_render)
+                    return;
+                draw_indices = reinterpret_cast<const CKWORD *>(draw_slice->Indices.Data);
+                metrics->RebasedIndexCount += pcmd->ElemCount;
             }
+
+            if (!data)
+                continue;
 
             // Set texture or material
-            CKObject *obj = (CKObject *)pcmd->GetTexID();
-            if (!obj)
-                continue; // Skip if no texture/material
-
-            if (obj->GetClassID() == CKCID_TEXTURE)
+            if (class_id == CKCID_TEXTURE)
             {
                 CKTexture *texture = (CKTexture *)obj;
-                dev->SetTexture(texture);
-                dev->DrawPrimitive(VX_TRIANGLELIST, (CKWORD *)draw_indices, pcmd->ElemCount, data);
+                ++metrics->TextureBindRequestCount;
+                if (texture_binding.RequiresBinding(texture_id))
+                {
+                    ++metrics->TextureBindCallCount;
+                    if (!dev->SetTexture(texture))
+                    {
+                        texture_binding.Invalidate();
+                        continue;
+                    }
+                    texture_binding.RecordBinding(texture_id);
+                }
+                dev->DrawPrimitive(VX_TRIANGLELIST, const_cast<CKWORD *>(draw_indices), pcmd->ElemCount, data);
+                ++metrics->DrawCallCount;
             }
-            else if (obj->GetClassID() == CKCID_MATERIAL)
+            else if (class_id == CKCID_MATERIAL)
             {
                 ((CKMaterial *)obj)->SetAsCurrent(dev);
-                dev->DrawPrimitive(VX_TRIANGLELIST, (CKWORD *)draw_indices, pcmd->ElemCount, data);
+                dev->DrawPrimitive(VX_TRIANGLELIST, const_cast<CKWORD *>(draw_indices), pcmd->ElemCount, data);
+                ++metrics->DrawCallCount;
                 ImGui_ImplCK2_SetupRenderState(draw_data);
+                ++metrics->RenderStateSetupCount;
+                texture_binding.Invalidate();
             }
         }
     }
+}
+
+// Render function.
+void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
+{
+    static_assert(sizeof(ImDrawIdx) == sizeof(CKWORD),
+                  "The CK2 backend requires 16-bit ImGui indices");
+
+    if (!draw_data)
+        return;
+
+    // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
+    const int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
+    const int fb_height = (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
+    if (fb_width <= 0 || fb_height <= 0)
+        return;
+
+    ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
+    if (!bd || !bd->RenderContext)
+        return;
+
+    LARGE_INTEGER start{};
+    const bool timing_available = bd->PerformanceFrequency != 0 && QueryPerformanceCounter(&start);
+    ImGui_ImplCK2_FrameMetrics metrics{};
+    ImGui_ImplCK2_RenderDrawDataInternal(draw_data, bd, fb_width, fb_height, &metrics);
+
+    LARGE_INTEGER end{};
+    if (timing_available && QueryPerformanceCounter(&end) && end.QuadPart >= start.QuadPart)
+    {
+        metrics.RenderTimeMicroseconds = (ImU64)(end.QuadPart - start.QuadPart) * 1000000ULL /
+                                         bd->PerformanceFrequency;
+    }
+
+    bd->LastFrameMetrics = metrics;
+    bd->TotalRenderTimeMicroseconds += metrics.RenderTimeMicroseconds;
+    bd->TotalGeometryUploadFailureCount += metrics.GeometryUploadFailureCount;
+    bd->TotalVertexBufferReleaseFailureCount += metrics.VertexBufferReleaseFailureCount;
+    if (metrics.RenderTimeMicroseconds > bd->PeakRenderTimeMicroseconds)
+        bd->PeakRenderTimeMicroseconds = metrics.RenderTimeMicroseconds;
+    ++bd->RenderedFrameCount;
 }
 
 bool ImGui_ImplCK2_Init(CKContext *context)
@@ -844,6 +1192,9 @@ bool ImGui_ImplCK2_Init(CKContext *context)
     bd->RenderContext = render_context;
     bd->TextureMaxWidth = texture_limits.Width;
     bd->TextureMaxHeight = texture_limits.Height;
+    LARGE_INTEGER performance_frequency{};
+    if (QueryPerformanceFrequency(&performance_frequency) && performance_frequency.QuadPart > 0)
+        bd->PerformanceFrequency = (ImU64)performance_frequency.QuadPart;
 
     if (texture_limits.UsedFallback)
         utils::OutputDebugA("BML CK2 renderer received invalid texture limits; using %dx%d\n",

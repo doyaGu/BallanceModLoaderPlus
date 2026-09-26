@@ -21,6 +21,22 @@ struct ImGui_ImplCK2_Diagnostics
     int TextureMaxHeight;
     const char *LastTextureFailure;
     unsigned int LastTextureFailureCount;
+    ImU64 LastRenderTimeMicroseconds;
+    ImU64 AverageRenderTimeMicroseconds;
+    ImU64 PeakRenderTimeMicroseconds;
+    ImU64 RenderedFrameCount;
+    unsigned int DrawListCount;
+    unsigned int DrawCommandCount;
+    unsigned int DrawCallCount;
+    unsigned int GeometryUploadCount;
+    unsigned int UploadedVertexCount;
+    unsigned int RebasedIndexCount;
+    unsigned int RenderStateSetupCount;
+    unsigned int TextureBindRequestCount;
+    unsigned int TextureBindCallCount;
+    unsigned int VertexBufferFallbackCount;
+    ImU64 GeometryUploadFailureCount;
+    ImU64 VertexBufferReleaseFailureCount;
 };
 
 IMGUI_IMPL_API bool     ImGui_ImplCK2_Init(CKContext *context);

@@ -11,6 +11,17 @@ bool ImGui_ImplCK2_TestBuildDrawSlice(const ImDrawIdx *indices, unsigned int ind
                                       unsigned int *slice_vertex_count,
                                       ImDrawIdx *rebased_indices,
                                       unsigned int rebased_capacity);
+bool ImGui_ImplCK2_TestBuildDrawSegment(const ImDrawCmd *commands, int command_count,
+                                        int first_command, int vertex_count,
+                                        unsigned int *segment_vertex_offset,
+                                        unsigned int *segment_vertex_count,
+                                        int *end_command);
+bool ImGui_ImplCK2_TestShouldUploadDrawSegment(const ImDrawCmd *commands, int command_count,
+                                               const ImDrawIdx *indices, int index_count,
+                                               int first_command, int vertex_count);
+unsigned int ImGui_ImplCK2_TestCountTextureBindings(const ImTextureID *textures,
+                                                     const bool *invalidate_before,
+                                                     int texture_count);
 unsigned int ImGui_ImplCK2_TestGetTextureRetryDelay(unsigned int failure_count);
 void ImGui_ImplCK2_TestCopyTextureRegion(bool use_colors, const ImU32 *src, int src_pitch,
                                          ImU32 *dst, int dst_pitch, int width, int height);
@@ -60,6 +71,109 @@ TEST(ImGuiBackendTest, RejectsDrawSliceOutsideTheVertexBuffer) {
 
     EXPECT_FALSE(ImGui_ImplCK2_TestBuildDrawSlice(
         indices, 2, 8, 12, &vertexOffset, &vertexCount, rebased, 2));
+}
+
+TEST(ImGuiBackendTest, GroupsCommandsByTheirVertexOffset) {
+    ImDrawCmd commands[4];
+    commands[0].VtxOffset = 0;
+    commands[1].VtxOffset = 0;
+    commands[2].VtxOffset = 60000;
+    commands[3].VtxOffset = 60000;
+
+    unsigned int vertexOffset = 0;
+    unsigned int vertexCount = 0;
+    int endCommand = 0;
+    ASSERT_TRUE(ImGui_ImplCK2_TestBuildDrawSegment(
+        commands, 4, 0, 90000, &vertexOffset, &vertexCount, &endCommand));
+    EXPECT_EQ(vertexOffset, 0u);
+    EXPECT_EQ(vertexCount, 60000u);
+    EXPECT_EQ(endCommand, 2);
+
+    ASSERT_TRUE(ImGui_ImplCK2_TestBuildDrawSegment(
+        commands, 4, 2, 90000, &vertexOffset, &vertexCount, &endCommand));
+    EXPECT_EQ(vertexOffset, 60000u);
+    EXPECT_EQ(vertexCount, 30000u);
+    EXPECT_EQ(endCommand, 4);
+}
+
+TEST(ImGuiBackendTest, AcceptsTheLargest16BitVertexSegment) {
+    ImDrawCmd command;
+    command.VtxOffset = 0;
+    unsigned int vertexOffset = 0;
+    unsigned int vertexCount = 0;
+    int endCommand = 0;
+
+    ASSERT_TRUE(ImGui_ImplCK2_TestBuildDrawSegment(
+        &command, 1, 0, 65536, &vertexOffset, &vertexCount, &endCommand));
+    EXPECT_EQ(vertexCount, 65536u);
+}
+
+TEST(ImGuiBackendTest, RejectsOversizedOrBackwardVertexSegments) {
+    ImDrawCmd oversized;
+    oversized.VtxOffset = 0;
+    unsigned int vertexOffset = 0;
+    unsigned int vertexCount = 0;
+    int endCommand = 0;
+    EXPECT_FALSE(ImGui_ImplCK2_TestBuildDrawSegment(
+        &oversized, 1, 0, 65537, &vertexOffset, &vertexCount, &endCommand));
+
+    ImDrawCmd backward[2];
+    backward[0].VtxOffset = 40000;
+    backward[1].VtxOffset = 20000;
+    EXPECT_FALSE(ImGui_ImplCK2_TestBuildDrawSegment(
+        backward, 2, 0, 60000, &vertexOffset, &vertexCount, &endCommand));
+}
+
+TEST(ImGuiBackendTest, UploadsDenseLargeSegmentsOnce) {
+    ImDrawCmd commands[2];
+    commands[0].VtxOffset = 0;
+    commands[0].IdxOffset = 0;
+    commands[0].ElemCount = 4;
+    commands[1].VtxOffset = 0;
+    commands[1].IdxOffset = 4;
+    commands[1].ElemCount = 4;
+    const ImDrawIdx indices[] = {0, 1, 2, 3, 4, 5, 6, 7};
+
+    EXPECT_TRUE(ImGui_ImplCK2_TestShouldUploadDrawSegment(
+        commands, 2, indices, 8, 0, 8));
+}
+
+TEST(ImGuiBackendTest, SlicesSparseLargeSegmentsPerCommand) {
+    ImDrawCmd commands[2];
+    commands[0].VtxOffset = 0;
+    commands[0].IdxOffset = 0;
+    commands[0].ElemCount = 3;
+    commands[1].VtxOffset = 0;
+    commands[1].IdxOffset = 3;
+    commands[1].ElemCount = 3;
+    const ImDrawIdx indices[] = {0, 1, 2, 97, 98, 99};
+
+    EXPECT_FALSE(ImGui_ImplCK2_TestShouldUploadDrawSegment(
+        commands, 2, indices, 6, 0, 100));
+}
+
+TEST(ImGuiBackendTest, RejectsSegmentIndicesOutsideItsVertexRange) {
+    ImDrawCmd command;
+    command.VtxOffset = 0;
+    command.IdxOffset = 0;
+    command.ElemCount = 3;
+    const ImDrawIdx indices[] = {0, 42, 60};
+
+    EXPECT_FALSE(ImGui_ImplCK2_TestShouldUploadDrawSegment(
+        &command, 1, indices, 3, 0, 60));
+}
+
+TEST(ImGuiBackendTest, ReusesConsecutiveTextureBindings) {
+    const ImTextureID textures[] = {1, 1, 1, 2, 2, 1};
+
+    EXPECT_EQ(ImGui_ImplCK2_TestCountTextureBindings(textures, nullptr, 6), 3u);
+}
+
+TEST(ImGuiBackendTest, RebindsTextureAfterUntrustedRendering) {
+    const ImTextureID textures[] = {1, 1, 1, 1};
+    const bool invalidateBefore[] = {false, false, true, false};
+
+    EXPECT_EQ(ImGui_ImplCK2_TestCountTextureBindings(textures, invalidateBefore, 4), 2u);
 }
 
 TEST(ImGuiBackendTest, TextureFailureBackoffIsBounded) {
