@@ -171,6 +171,8 @@ namespace BML::Diagnostics {
             unsigned int Dpi = 0;
             unsigned int TextureMaxWidth = 0;
             unsigned int TextureMaxHeight = 0;
+            bool BackendAvailable = false;
+            ImGui_ImplCK2_Diagnostics Backend{};
         };
 
         struct FontState {
@@ -186,11 +188,6 @@ namespace BML::Diagnostics {
             int AtlasWidth = 0;
             int AtlasHeight = 0;
             ImTextureStatus AtlasStatus = ImTextureStatus_Destroyed;
-            bool BackendAvailable = false;
-            int BackendMaxWidth = 0;
-            int BackendMaxHeight = 0;
-            std::string LastBackendFailure;
-            unsigned int LastBackendFailureCount = 0;
         };
 
         struct ModState {
@@ -273,11 +270,8 @@ namespace BML::Diagnostics {
 
                     ImGui_ImplCK2_Diagnostics backend{};
                     if (ImGui_ImplCK2_GetDiagnostics(&backend)) {
-                        data.Fonts.BackendAvailable = true;
-                        data.Fonts.BackendMaxWidth = backend.TextureMaxWidth;
-                        data.Fonts.BackendMaxHeight = backend.TextureMaxHeight;
-                        data.Fonts.LastBackendFailure = backend.LastTextureFailure;
-                        data.Fonts.LastBackendFailureCount = backend.LastTextureFailureCount;
+                        data.Renderer.BackendAvailable = true;
+                        data.Renderer.Backend = backend;
                     }
                 }
             }
@@ -350,7 +344,9 @@ namespace BML::Diagnostics {
                 std::ostringstream rendererLine;
                 rendererLine << "Renderer: driver " << m_Data.Renderer.DriverIndex << ' '
                              << m_Data.Renderer.DriverName;
-                if (m_Data.Renderer.DriverAvailable)
+                if (m_Data.Renderer.DriverAvailable &&
+                    m_Data.Renderer.DriverDescription != "unknown" &&
+                    m_Data.Renderer.DriverDescription != m_Data.Renderer.DriverName)
                     rendererLine << " (" << m_Data.Renderer.DriverDescription << ')';
                 m_Lines.push_back(rendererLine.str());
 
@@ -368,6 +364,42 @@ namespace BML::Diagnostics {
                                 << m_Data.Renderer.TextureMaxHeight;
                 }
                 m_Lines.push_back(displayLine.str());
+
+                if (m_Data.Renderer.BackendAvailable) {
+                    const ImGui_ImplCK2_Diagnostics &backend = m_Data.Renderer.Backend;
+                    const unsigned int reusedTextureBindings =
+                        backend.TextureBindRequestCount >= backend.TextureBindCallCount ?
+                        backend.TextureBindRequestCount - backend.TextureBindCallCount : 0;
+                    std::ostringstream backendLine;
+                    backendLine << "ImGui renderer: " << backend.LastRenderTimeMicroseconds
+                                << " us (avg " << backend.AverageRenderTimeMicroseconds
+                                << " over " << backend.RenderedFrameCount
+                                << " frames, peak " << backend.PeakRenderTimeMicroseconds << "), "
+                                << backend.DrawListCount << " lists/"
+                                << backend.DrawCommandCount << " commands/"
+                                << backend.DrawCallCount << " draws, "
+                                << backend.UploadedVertexCount << " vertices in "
+                                << backend.GeometryUploadCount << " uploads, "
+                                << backend.RebasedIndexCount << " rebased indices, "
+                                << backend.RenderStateSetupCount << " state setups, "
+                                << backend.TextureBindCallCount << " texture calls/"
+                                << backend.TextureBindRequestCount << " requests ("
+                                << reusedTextureBindings << " reused), "
+                                << backend.VertexBufferFallbackCount << " VB fallbacks";
+                    if (backend.GeometryUploadFailureCount != 0 ||
+                        backend.VertexBufferReleaseFailureCount != 0) {
+                        backendLine << ", geometry failures " << backend.GeometryUploadFailureCount
+                                    << " (release " << backend.VertexBufferReleaseFailureCount << ')';
+                    }
+                    m_Lines.push_back(backendLine.str());
+
+                    std::ostringstream textureLine;
+                    textureLine << "ImGui textures: limit " << backend.TextureMaxWidth << 'x'
+                                << backend.TextureMaxHeight << ", last failure "
+                                << backend.LastTextureFailure << " ("
+                                << backend.LastTextureFailureCount << ')';
+                    m_Lines.push_back(textureLine.str());
+                }
             }
 
             void AddFonts() {
@@ -398,12 +430,6 @@ namespace BML::Diagnostics {
                     line << "Font atlas: unavailable";
                 }
 
-                if (m_Data.Fonts.BackendAvailable) {
-                    line << ", backend limit " << m_Data.Fonts.BackendMaxWidth << 'x'
-                         << m_Data.Fonts.BackendMaxHeight << ", last failure "
-                         << m_Data.Fonts.LastBackendFailure << " ("
-                         << m_Data.Fonts.LastBackendFailureCount << ')';
-                }
                 m_Lines.push_back(line.str());
             }
 
