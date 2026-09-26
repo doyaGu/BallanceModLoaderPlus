@@ -93,18 +93,20 @@ WatchBinding::WatchBinding(PlanCallbackState state, Function function)
       m_Function(std::move(function)) {}
 
 Status WatchBinding::Invoke(const WatchEvent &event) noexcept {
+    Status reported;
     CallbackCall call = InvokeCallback(
         m_Lease, CKBR_BEHAVIORERROR, [&] {
             if (m_Function)
-                m_Function(event);
+                reported = m_Function(event);
             return CKBR_OK;
         });
-    if (!call.Fault)
-        return {};
-    Status status = Failure(call.Fault.Code == CallbackError::Exception
-                                ? Error::CallbackFailed : Error::InvalidState,
-                            call.Fault.Message);
-    status.Details.Stage = Phase::LifecycleCallback;
+    Status status = call.Fault
+        ? Failure(call.Fault.Code == CallbackError::Exception
+                      ? Error::CallbackFailed : Error::InvalidState,
+                  call.Fault.Message)
+        : std::move(reported);
+    if (!status)
+        status.Details.Stage = Phase::LifecycleCallback;
     return status;
 }
 

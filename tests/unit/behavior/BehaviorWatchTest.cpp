@@ -106,7 +106,10 @@ TEST(BehaviorWatch, GraphWatchUsesTheSelectedViewAndOnlyReportsChanges) {
     std::shared_ptr<Watch> watch;
     ASSERT_TRUE(Watch::Open(
         source, GraphSpec(GraphView::Live), PlanCallbackState::Static(),
-        [&](const WatchEvent &event) { events.push_back(event); }, watch));
+        [&](const WatchEvent &event) {
+            events.push_back(event);
+            return Status{};
+        }, watch));
 
     ASSERT_TRUE(watch->Poll(1));
     EXPECT_TRUE(events.empty());
@@ -126,7 +129,7 @@ TEST(BehaviorWatch, SampledValueWatchDoesNotClaimBetweenSampleWrites) {
     std::shared_ptr<Watch> watch;
     ASSERT_TRUE(Watch::Open(
         source, ValueSpec(), PlanCallbackState::Static(),
-        [&](const WatchEvent &) { ++calls; }, watch));
+        [&](const WatchEvent &) { ++calls; return Status{}; }, watch));
 
     source.Value.Data = std::int32_t{2};
     source.Value.Data = std::int32_t{1};
@@ -145,7 +148,8 @@ TEST(BehaviorWatch, RejectsANodeFromAnOlderLayout) {
     std::shared_ptr<Watch> watch;
     const Status status = Watch::Open(
         source, LayoutSpec(source.LayoutMark - 1),
-        PlanCallbackState::Static(), [](const WatchEvent &) {}, watch);
+        PlanCallbackState::Static(),
+        [](const WatchEvent &) { return Status{}; }, watch);
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::StaleLayout);
     EXPECT_FALSE(watch);
@@ -157,7 +161,10 @@ TEST(BehaviorWatch, NonForcingValueCanBecomeIndeterminate) {
     std::shared_ptr<Watch> watch;
     ASSERT_TRUE(Watch::Open(
         source, ValueSpec(), PlanCallbackState::Static(),
-        [&](const WatchEvent &event) { observed = event; }, watch));
+        [&](const WatchEvent &event) {
+            observed = event;
+            return Status{};
+        }, watch));
 
     source.Value.State = ValueState::Indeterminate;
     source.Value.Relation = ValueRelation::Operation;
@@ -176,7 +183,7 @@ TEST(BehaviorWatch, SelfCloseStopsAdmissionWithoutWaiting) {
         source, GraphSpec(),
         PlanCallbackState::Retained(
             &references, &References::Retain, &References::Release),
-        [&](const WatchEvent &) { watch->Close(); }, watch));
+        [&](const WatchEvent &) { watch->Close(); return Status{}; }, watch));
     EXPECT_EQ(references.Retains, 1);
 
     source.Structure = 12;
@@ -197,7 +204,9 @@ TEST(BehaviorWatch, CallbackExceptionFailsTheWatchAndKeepsTheFirstDiagnostic) {
         source, GraphSpec(),
         PlanCallbackState::Retained(
             &references, &References::Retain, &References::Release),
-        [](const WatchEvent &) { throw std::runtime_error("watch failed"); },
+        [](const WatchEvent &) -> Status {
+            throw std::runtime_error("watch failed");
+        },
         watch));
     EXPECT_EQ(references.Retains, 1);
     source.Structure = 13;
@@ -237,6 +246,7 @@ TEST(BehaviorWatch, CloseFromAnotherThreadDoesNotWaitForTheCallback) {
         [&](const WatchEvent &) {
             entered.set_value();
             mayLeave.wait();
+            return Status{};
         }, watch));
     source.Structure = 14;
 

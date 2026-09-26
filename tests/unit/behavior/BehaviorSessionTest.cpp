@@ -277,7 +277,7 @@ TEST(BehaviorSessions, RegisterOwnerKeepsAReentrantOwnerGeneration) {
         PlanCallbackState::Retained(
             &registration, &ReentrantOwnerRegistration::Retain,
             &ReentrantOwnerRegistration::Release),
-        [](const WatchEvent &) {}, watch));
+        [](const WatchEvent &) { return Status{}; }, watch));
 
     const std::uint64_t generation = sessions.RegisterOwner("mod");
     EXPECT_EQ(registration.Releases, 1);
@@ -464,7 +464,8 @@ TEST(BehaviorSessions, GraphWatchesShareOneReadingPerGraphAndView) {
         std::uintptr_t watch = 0;
         ASSERT_TRUE(sessions.OpenWatch(
             session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
-            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+            PlanCallbackState::Static(),
+            [](const WatchEvent &) { return Status{}; }, watch));
     }
     const int baselineReads = graph->GraphFingerprintCalls;
 
@@ -489,7 +490,7 @@ TEST(BehaviorSessions, GraphWatchReadingsKeepLogicalAndLiveSeparate) {
         ASSERT_TRUE(sessions.OpenWatch(
             session, reinterpret_cast<void *>(1), nullptr,
             GraphWatchSpec(view), PlanCallbackState::Static(),
-            [](const WatchEvent &) {}, watch));
+            [](const WatchEvent &) { return Status{}; }, watch));
     }
     const int baselineReads = graph->GraphFingerprintCalls;
 
@@ -515,7 +516,8 @@ TEST(BehaviorSessions, DistinctWatchTargetsDoNotAllocateAfterWarmup) {
             static_cast<std::uintptr_t>(index + 1));
         ASSERT_TRUE(sessions.OpenWatch(
             session, root, nullptr, GraphWatchSpec(),
-            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+            PlanCallbackState::Static(),
+            [](const WatchEvent &) { return Status{}; }, watch));
     }
     for (int index = 0; index < kWatchCount; ++index) {
         std::uintptr_t watch = 0;
@@ -523,7 +525,8 @@ TEST(BehaviorSessions, DistinctWatchTargetsDoNotAllocateAfterWarmup) {
             static_cast<std::uintptr_t>(kWatchCount + index + 1));
         ASSERT_TRUE(sessions.OpenWatch(
             session, nullptr, node, LayoutWatchSpec(),
-            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+            PlanCallbackState::Static(),
+            [](const WatchEvent &) { return Status{}; }, watch));
     }
 
     sessions.ProcessFrame();
@@ -550,7 +553,8 @@ TEST(BehaviorSessions, StableGraphWatchesDoNotAllocateWhilePolling) {
             WatchSpec spec = GraphWatchSpec();
             spec.Root = {41, reinterpret_cast<void *>(1)};
             return spec;
-        }(), PlanCallbackState::Static(), [](const WatchEvent &) {},
+        }(), PlanCallbackState::Static(),
+        [](const WatchEvent &) { return Status{}; },
         directWatch));
     WatchReadings directReadings;
     ASSERT_TRUE(directWatch->Poll(1, directReadings));
@@ -566,7 +570,8 @@ TEST(BehaviorSessions, StableGraphWatchesDoNotAllocateWhilePolling) {
         std::uintptr_t watch = 0;
         ASSERT_TRUE(sessions.OpenWatch(
             session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
-            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+            PlanCallbackState::Static(),
+            [](const WatchEvent &) { return Status{}; }, watch));
     }
     sessions.ProcessFrame();
 
@@ -610,7 +615,8 @@ TEST(BehaviorSessions, LayoutWatchesShareOneReadingPerNode) {
         std::uintptr_t watch = 0;
         ASSERT_TRUE(sessions.OpenWatch(
             session, nullptr, reinterpret_cast<void *>(2), LayoutWatchSpec(),
-            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+            PlanCallbackState::Static(),
+            [](const WatchEvent &) { return Status{}; }, watch));
     }
     const int baselineReads = graph->LayoutFingerprintCalls;
 
@@ -638,7 +644,10 @@ TEST(BehaviorSessions, WatchCallbackClosesRunAtTheCurrentSafePoint) {
     ASSERT_TRUE(sessions.OpenWatch(
         session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
         PlanCallbackState::Static(),
-        [&](const WatchEvent &) { sessions.CloseRun(run.Id); }, watch));
+        [&](const WatchEvent &) {
+            sessions.CloseRun(run.Id);
+            return Status{};
+        }, watch));
 
     ResetBehaviorSessionRuntimeClosePendingCalls();
     graph->GraphFingerprintValue = 8;
@@ -669,6 +678,7 @@ TEST(BehaviorSessions, QueuedRunCloseCompletesBeforeWatchCallbacks) {
         PlanCallbackState::Static(),
         [&](const WatchEvent &) {
             instancesSeenByCallback = LiveBehaviorSessionInstances();
+            return Status{};
         }, watch));
 
     sessions.CloseRun(run.Id);
@@ -696,6 +706,7 @@ TEST(BehaviorSessions, WatchCallbackCannotReenterFrameProcessing) {
         [&](const WatchEvent &) {
             ++callbacks;
             sessions.ProcessFrame();
+            return Status{};
         }, watch));
     const int baselineReads = graph->GraphFingerprintCalls;
 
@@ -727,6 +738,7 @@ TEST(BehaviorSessions, WatchCallbackCanCloseTheRemainingFrameWatches) {
                 ++callbacks;
                 for (std::uintptr_t current : watches)
                     sessions.CloseWatch(current);
+                return Status{};
             }, watch));
     }
 
@@ -754,7 +766,9 @@ TEST(BehaviorSessions, FailedWatchRemainsReadableAndIsNotPolledAgain) {
         session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
         PlanCallbackState::Retained(
             &references, &WatchReferences::Retain, &WatchReferences::Release),
-        [](const WatchEvent &) { throw std::runtime_error("callback failed"); },
+        [](const WatchEvent &) -> Status {
+            throw std::runtime_error("callback failed");
+        },
         watch));
     EXPECT_EQ(references.Retains, 1);
     WatchInfo info;
@@ -801,7 +815,7 @@ TEST(BehaviorSessions, WatchRetainMayCloseItsSessionWithoutInvalidatingOpen) {
         PlanCallbackState::Retained(
             &references, &ReentrantWatchReferences::Retain,
             &ReentrantWatchReferences::Release),
-        [](const WatchEvent &) {}, watch);
+        [](const WatchEvent &) { return Status{}; }, watch);
 
     EXPECT_EQ(opened.Code, Error::InvalidState);
     EXPECT_EQ(watch, 0u);
@@ -828,13 +842,13 @@ TEST(BehaviorSessions, WatchReleaseMayCloseAnotherWatchDuringCollection) {
         PlanCallbackState::Retained(
             &firstReferences, &ReentrantWatchReferences::Retain,
             &ReentrantWatchReferences::Release),
-        [](const WatchEvent &) {}, first));
+        [](const WatchEvent &) { return Status{}; }, first));
     ASSERT_TRUE(sessions.OpenWatch(
         session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
         PlanCallbackState::Retained(
             &secondReferences, &WatchReferences::Retain,
             &WatchReferences::Release),
-        [](const WatchEvent &) {}, second));
+        [](const WatchEvent &) { return Status{}; }, second));
     firstReferences.WatchToClose = second;
 
     sessions.CloseWatch(first);
@@ -861,7 +875,7 @@ TEST(BehaviorSessions, VanishedGraphFailsWatchUntilWorldReset) {
     ASSERT_TRUE(sessions.OpenWatch(
         session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
         PlanCallbackState::Static(),
-        [&](const WatchEvent &) { ++callbacks; }, watch));
+        [&](const WatchEvent &) { ++callbacks; return Status{}; }, watch));
     graph->GraphFingerprintStatus = {
         Error::InvalidState, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
         "The watched graph vanished."};
@@ -901,7 +915,7 @@ TEST(BehaviorSessions, ClosingWatchTwiceRetiresItsCallbackOnceAtSafePoint) {
         session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
         PlanCallbackState::Retained(
             &references, &WatchReferences::Retain, &WatchReferences::Release),
-        [&](const WatchEvent &) { ++callbacks; }, watch));
+        [&](const WatchEvent &) { ++callbacks; return Status{}; }, watch));
     EXPECT_EQ(references.Retains, 1);
 
     sessions.CloseWatch(watch);

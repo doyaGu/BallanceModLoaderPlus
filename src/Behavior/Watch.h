@@ -105,7 +105,9 @@ private:
 
 class WatchBinding final : public CallbackResource {
 public:
-    using Function = std::function<void(const WatchEvent &)>;
+    // A failed Status is kept as the Watch's failure, as a thrown exception
+    // is.
+    using Function = std::function<Status(const WatchEvent &)>;
 
     WatchBinding(PlanCallbackState state, Function function);
 
