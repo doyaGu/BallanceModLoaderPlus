@@ -449,7 +449,7 @@ Status Selections::Close(std::string_view owner, std::uint64_t ownerGeneration,
     return {};
 }
 
-Status Selections::Retry(SelectionId id) {
+Status Selections::CanRetry(SelectionId id) const {
     Status ready = Ready();
     if (!ready)
         return ready;
@@ -460,6 +460,14 @@ Status Selections::Retry(SelectionId id) {
     if (found->second->CloseRequested || found->second->Value.Retiring())
         return Failure(Error::InvalidState,
                        "A retiring Behavior Plan cannot be reconciled.");
+    return {};
+}
+
+Status Selections::Retry(SelectionId id) {
+    Status status = CanRetry(id);
+    if (!status)
+        return status;
+    const auto found = m_Plans.find(id);
     found->second->Value.m_State = PlanState::Reconciling;
     found->second->Value.m_LastStatus = {};
     found->second->Value.m_ApplyFailure = {};

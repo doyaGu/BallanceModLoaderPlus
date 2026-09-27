@@ -314,6 +314,8 @@ private:
     static void Retire(PlanRecord &plan) { plan.Goal = InstallGoal::Closed; }
     void Settle(PatchRecord &patch);
     static void Settle(PlanRecord &) {}
+    static Status CanRefresh(const PatchRecord &, std::size_t) { return {}; }
+    Status CanRefresh(const PlanRecord &plan, std::size_t prefix) const;
     static Status Refresh(PatchRecord &, std::size_t) { return {}; }
     Status Refresh(PlanRecord &plan, std::size_t prefix);
 

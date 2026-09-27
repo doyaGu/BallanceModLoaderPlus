@@ -536,6 +536,39 @@ TEST(BehaviorSelections, RetriesAConflictedTargetSetOnlyWhenRequested) {
     EXPECT_EQ(info.State, PlanState::Unsatisfied);
 }
 
+TEST(BehaviorSelections, AsksWhetherARetryIsAcceptedWithoutRetrying) {
+    Selections plans;
+    auto world = std::make_shared<FakeWorld>();
+    SelectionId plan = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
+    ASSERT_TRUE(plans.ProcessFrame());
+    const Installation installation = world->Live.begin()->first;
+    world->FailClose.insert(installation);
+
+    plans.Remove(Target(1));
+    EXPECT_EQ(plans.ProcessFrame().Code, Error::RevertConflict);
+    PlanInfo before;
+    ASSERT_TRUE(plans.Read(plan, before));
+    ASSERT_TRUE(plans.CanRetry(plan));
+    PlanInfo after;
+    ASSERT_TRUE(plans.Read(plan, after));
+    EXPECT_EQ(after.State, before.State);
+    EXPECT_EQ(after.LastStatus.Code, before.LastStatus.Code);
+    EXPECT_EQ(plans.CanRetry(plan + 1).Code, Error::InvalidState);
+
+    world->FailClose.clear();
+    world->BusyClose.insert(installation);
+    EXPECT_EQ(plans.Close("mod", 4, plan).Code, Error::Busy);
+    EXPECT_EQ(plans.CanRetry(plan).Code, Error::InvalidState);
+    EXPECT_EQ(plans.Retry(plan).Code, Error::InvalidState);
+
+    world->BusyClose.clear();
+    ASSERT_TRUE(plans.ProcessFrame());
+    EXPECT_EQ(plans.Size(), 0u);
+}
+
 TEST(BehaviorSelections, KeepsItsWorldOnTheGameThread) {
     Selections plans;
     auto world = std::make_shared<FakeWorld>();

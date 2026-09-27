@@ -154,6 +154,8 @@ public:
     Status Close(SelectionId id);
     Status Close(std::string_view owner, std::uint64_t ownerGeneration,
                  SelectionId id);
+    // Reports whether Retry would accept the Plan, without changing it.
+    [[nodiscard]] Status CanRetry(SelectionId id) const;
     Status Retry(SelectionId id);
     Status RetireOwner(std::string_view owner);
 

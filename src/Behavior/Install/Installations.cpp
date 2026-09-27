@@ -506,6 +506,12 @@ Status Installations::SetGoal(R &record, bool active) {
             (!active && current == StateKind::Disabled))
             return {};
     }
+    // A refused Refresh must leave the record as the caller last read it.
+    if (active) {
+        Status refresh = CanRefresh(record, record.Applied.size());
+        if (!refresh)
+            return refresh;
+    }
     record.Goal = goal;
     ++record.Revision;
     record.Recovery = InstallRecovery::None;
@@ -1536,6 +1542,16 @@ Status Installations::Uninstall(PlanRecord &plan, std::size_t rule) {
 }
 
 // Asks each kept rule's Selection to match its Scripts again.
+Status Installations::CanRefresh(const PlanRecord &plan,
+                                 std::size_t prefix) const {
+    for (std::size_t index = 0; index < prefix; ++index) {
+        Status retry = m_Selections.CanRetry(plan.Selections[index]);
+        if (!retry)
+            return retry;
+    }
+    return {};
+}
+
 Status Installations::Refresh(PlanRecord &plan, std::size_t prefix) {
     for (std::size_t index = 0; index < prefix; ++index) {
         Status retry = m_Selections.Retry(plan.Selections[index]);
