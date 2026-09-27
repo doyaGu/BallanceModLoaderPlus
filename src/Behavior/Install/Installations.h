@@ -119,9 +119,10 @@ public:
                  const std::map<std::uint32_t, Node> *handles = nullptr);
 
     // Patches.
-    Status Apply(const SessionOwner &owner, const ObjectRef &graph,
-                 std::string name, Program edit, PatchId &out,
-                 const SymbolMap *authorSymbols = nullptr);
+    // Installs a Script body. It closes without waiting for the Patches built
+    // on it, since the Script root is destroyed right after.
+    Status Define(const SessionOwner &owner, const ObjectRef &graph,
+                  std::string name, Program edit, PatchId &out);
     Status Apply(const SessionOwner &owner, std::string name,
                  std::vector<Target> targets, PatchId &out);
     Status Read(const SessionOwner &owner, PatchId patch,
@@ -259,6 +260,8 @@ private:
 
         CK_ID Graph = 0;
         bool TargetDeleted = false;
+        // A Script body; see Define.
+        bool Defines = false;
         std::vector<Scope> Scopes;
         // Public handle -> resolved symbol in one installed scope.
         std::map<SymbolRef, ResolvedSymbol> Symbols;
@@ -283,7 +286,8 @@ private:
 
     Status Apply(const SessionOwner &owner, std::string name,
                  std::vector<Target> targets, PatchId &out,
-                 std::shared_ptr<const CallbackAdmission> parentAdmission);
+                 std::shared_ptr<const CallbackAdmission> parentAdmission,
+                 bool defines = false);
     Status Install(PatchRecord &patch);
     Status InstallFrom(PatchRecord &patch,
                        const std::vector<Target> &definition,

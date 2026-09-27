@@ -304,6 +304,12 @@ struct Patch::Journal {
     Stamp GraphOwner;
     Stamp GraphParent;
     PatchKey Key;
+    // A Script body. It closes only as its root is destroyed, which also
+    // closes the Patches built on it, so it does not wait for them.
+    bool Defines = false;
+    // The existing objects this Patch edits. While it is active, a Patch that
+    // introduced one of them cannot close.
+    std::vector<Stamp> Named;
     std::vector<std::shared_ptr<CallbackResource>> Callbacks;
     // Plain graph-backed Behaviors created by AddGraph. They do not belong to
     // Runtime and therefore have no native BB lifecycle callbacks.
@@ -347,6 +353,38 @@ struct Patch::Journal {
     std::vector<std::pair<LinkId, std::uint32_t>> Redirects;
     std::vector<RevertConflict> Conflicts;
 };
+
+// Whether match accepts any native object the journal introduced into the
+// graph and destroys again when it closes.
+template <typename Match>
+bool AnyOwned(const Patch::Journal &journal, Match &&match) {
+    const auto owned = [&](Stamp object) {
+        return object.Id != 0 && match(object);
+    };
+    const auto any = [&](const auto &items, const auto &project) {
+        for (const auto &item : items) {
+            if (owned(project(item)))
+                return true;
+        }
+        return false;
+    };
+    const auto self = [](Stamp object) { return object; };
+    return any(journal.Nodes, self) || any(journal.GraphNodes, self) ||
+        any(journal.InfrastructureNodes, self) ||
+        any(journal.InfrastructureLinks, self) ||
+        any(journal.Links,
+            [](const Patch::Journal::Link &link) { return link.Value; }) ||
+        any(journal.Ports,
+            [](const Patch::Journal::Interface &port) { return port.Port; }) ||
+        any(journal.Operations,
+            [](const Patch::Journal::Operation &operation) {
+                return operation.Value;
+            }) ||
+        owned(journal.DetachedSource) || owned(journal.DetachedSink) ||
+        any(journal.Binds, [](const Patch::Journal::Binding &binding) {
+            return binding.Literal;
+        });
+}
 
 struct CKEdit::Links {
     struct Key {

@@ -699,18 +699,16 @@ Status Installations::Apply(const SessionOwner &owner, const Ops &edit,
     return status;
 }
 
-Status Installations::Apply(const SessionOwner &owner, const ObjectRef &graph,
-                            std::string name, Program edit, PatchId &out,
-                            const SymbolMap *authorSymbols) {
+Status Installations::Define(const SessionOwner &owner, const ObjectRef &graph,
+                             std::string name, Program edit, PatchId &out) {
     try {
         Target target;
         target.Graph = graph;
         target.Body = std::make_shared<Program>(std::move(edit));
-        if (authorSymbols)
-            target.Symbols = *authorSymbols;
         std::vector<Target> targets;
         targets.push_back(std::move(target));
-        return Apply(owner, std::move(name), std::move(targets), out);
+        return Apply(owner, std::move(name), std::move(targets), out, {},
+                     true);
     } catch (...) {
         return Failure(Error::CreateFailed,
                        "The Loader could not retain the Behavior Patch definition.");
@@ -725,7 +723,7 @@ Status Installations::Apply(const SessionOwner &owner, std::string name,
 Status Installations::Apply(
     const SessionOwner &owner, std::string name,
     std::vector<Target> targets, PatchId &out,
-    std::shared_ptr<const CallbackAdmission> parentAdmission) {
+    std::shared_ptr<const CallbackAdmission> parentAdmission, bool defines) {
     out = 0;
     Status status = Ready();
     if (!status)
@@ -750,6 +748,7 @@ Status Installations::Apply(
     patch.Id = id;
     patch.Owner = owner;
     patch.Admission = OpenAdmission(owner, std::move(parentAdmission));
+    patch.Defines = defines;
     patch.Name = std::move(name);
     patch.DefinitionBindings = std::move(definitionBindings);
     patch.Requested = std::move(targets);
@@ -942,7 +941,7 @@ Status Installations::PublishScope(const SessionOwner &owner,
     Status status;
 
     Patch value;
-    status = m_Edit.Apply(resolved, value, out.Admission);
+    status = m_Edit.Apply(resolved, value, out.Admission, out.Defines);
     if (!value)
         return status;
     if (value.State() == PatchState::Pending && !edit.NestedGraphs().empty()) {

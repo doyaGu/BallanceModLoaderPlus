@@ -90,8 +90,10 @@ public:
                NodeRole role = NodeRole::Logical);
     Status AddGraph(Ops &edit, std::string name, int priority, Node &out,
                     NodeRole role = NodeRole::Logical);
+    // A defining Patch is a Script body; see Patch::Journal::Defines.
     Status Apply(const Ops &edit, Patch &out,
-                 std::shared_ptr<const CallbackAdmission> admission = {});
+                 std::shared_ptr<const CallbackAdmission> admission = {},
+                 bool defines = false);
     // Reads back the live Node an applied Edit gave this handle. Busy while
     // the Patch is still waiting for its safe point.
     Status ResolveNode(const Patch &patch, Node handle,
@@ -160,6 +162,9 @@ private:
     // exact inverse has restored those Nodes and Links.
     std::set<std::uint64_t> m_StructuralEdits;
     std::unique_ptr<Links> m_Links;
+    // Journals that have published, so an Edit can be refused when it names
+    // an object another active Patch introduced.
+    std::vector<std::weak_ptr<Patch::Journal>> m_Published;
     std::vector<Request> m_Queue;
     [[nodiscard]] bool Deferred() const noexcept;
 

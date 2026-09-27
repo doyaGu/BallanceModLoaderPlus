@@ -24,6 +24,10 @@ CKERROR AddChild(CKBehavior *graph, CKBehavior *node);
 void DestroyConnectedLinks(CKContext *context, CKBehavior *graph,
                            CKBehavior *node);
 
+// Destroys every Link that starts or ends at the IO, in its owner's graph and
+// in the owner's parent. Deleting the IO would only clear the Link's end.
+void DestroyConnectedLinks(CKContext *context, CKBehaviorIO *io);
+
 void MarkOwnedParametersDynamic(CKContext *context, CKBehavior *behavior);
 
 // A dynamic CKBehavior does not pass its dynamic flag to Pin, Pout, Setting,

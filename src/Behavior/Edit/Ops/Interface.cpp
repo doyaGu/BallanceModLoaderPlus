@@ -46,6 +46,10 @@ Status CKEdit::Transaction::AppendInterface() {
             return Failure(Error::CreateFailed,
                            "Virtools failed to append a Behavior port.",
                            CKERR_OUTOFMEMORY);
+        // CK2 creates every parameter static, and a copy of a dynamic Block
+        // would share a static one (see Engine::MarkOwnedParametersDynamic).
+        if (behavior->IsDynamic())
+            m_Context->ChangeObjectDynamic(created, TRUE);
         m_Journal.Ports.push_back(
             {item.Identity, Capture(behavior), Capture(created),
              item.Slot.Kind});

@@ -118,6 +118,25 @@ void DestroyConnectedLinks(CKContext *context, CKBehavior *graph,
     }
 }
 
+void DestroyConnectedLinks(CKContext *context, CKBehaviorIO *io) {
+    CKBehavior *owner = io ? io->GetOwner() : nullptr;
+    if (!context || !owner)
+        return;
+    for (CKBehavior *graph : {owner, owner->GetParent()}) {
+        if (!graph)
+            continue;
+        for (int i = graph->GetSubBehaviorLinkCount() - 1; i >= 0; --i) {
+            CKBehaviorLink *link = graph->GetSubBehaviorLink(i);
+            if (!link || (link->GetInBehaviorIO() != io &&
+                          link->GetOutBehaviorIO() != io))
+                continue;
+            link = graph->RemoveSubBehaviorLink(i);
+            if (link)
+                context->DestroyObject(link);
+        }
+    }
+}
+
 void MarkOwnedParametersDynamic(CKContext *context, CKBehavior *behavior) {
     auto mark = [context](CKObject *object) {
         if (object)

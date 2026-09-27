@@ -25,6 +25,7 @@ private:
     Status Admit();
     Status BorrowNodes();
     Status PinPorts();
+    Status NoteDependencies();
     Status CheckValues();
     Status PrepareBlocks();
     Status CreateNodes();

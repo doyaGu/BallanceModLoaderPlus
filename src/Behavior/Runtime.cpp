@@ -468,6 +468,7 @@ public:
         Status status = m_Runtime.EnsurePrototypeLayout(behavior, prototype, false);
         if (!status)
             return Fail(std::move(status), LifecycleError::LayoutFailed, fault);
+        Engine::MarkOwnedParametersDynamic(m_Runtime.m_Context, behavior);
         layout.Generation = m_Record.LayoutGeneration;
         return true;
     }
@@ -584,6 +585,8 @@ public:
             m_Record, Message(callback), m_Frame);
         if (!status)
             return Fail(std::move(status), LifecycleError::CallbackFailed, fault);
+        // A callback may create parameters of its own.
+        Engine::MarkOwnedParametersDynamic(m_Runtime.m_Context, behavior);
         return true;
     }
 
@@ -632,6 +635,7 @@ public:
         Status status = m_Runtime.EnsurePrototypeLayout(behavior, prototype, true);
         if (!status)
             return Fail(std::move(status), LifecycleError::LayoutFailed, fault);
+        Engine::MarkOwnedParametersDynamic(m_Runtime.m_Context, behavior);
         m_Runtime.m_SharedBindings->Sources.Update(behavior);
         layout.Generation = ++m_Record.LayoutGeneration;
         return true;
@@ -1135,6 +1139,10 @@ Status Runtime::CreateBehavior(const BlockSpec &spec, CKBehavior *&behavior,
                        initError, CKBR_OK, Phase::Initialization,
                        spec.Prototype());
     }
+    // CK2 gives a dynamic Block dynamic IOs but static parameters, and a copy
+    // or delete of a dynamic object leaves its static children out. A copy of
+    // this Block would share its parameters and keep them after it is gone.
+    Engine::MarkOwnedParametersDynamic(m_Context, behavior);
 
     record.PrototypeGuid = spec.Prototype();
     record.Prototype = prototype;
@@ -1220,6 +1228,10 @@ Runtime::Opened Runtime::Open(const BlockSpec &spec,
     result.Detail = CreateBehavior(spec, behavior, record);
     if (!result.Detail)
         return result;
+    for (const std::shared_ptr<CallbackResource> &resource : record.KeepAlive) {
+        if (void *data = resource ? resource->Place(behavior) : nullptr)
+            behavior->SetAppData(data);
+    }
 
     record.Behavior = CaptureObject(behavior);
     result.Detail = placement.Staged

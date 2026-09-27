@@ -19,6 +19,19 @@ using Callback = int (*)(const CKBehaviorContext *context, void *argument);
 constexpr int CallbackFaulted = -2;
 
 class Hook;
+class Binding;
+
+// Resolves a placed Hook Block to its Binding. The Block's AppData points at
+// the table of the module that placed it, and the lookup is virtual so it runs
+// in that module. A copied or loaded Block, or one whose Binding has retired,
+// resolves to nothing.
+class Placements {
+public:
+    [[nodiscard]] virtual Binding *Find(CKBehavior *block) const noexcept = 0;
+
+protected:
+    ~Placements() = default;
+};
 
 class Binding final : public CallbackResource {
 public:
@@ -31,6 +44,7 @@ public:
         m_Lease.AdmitThrough(std::move(admission));
     }
     [[nodiscard]] bool RetireAtSafePoint() noexcept override;
+    [[nodiscard]] void *Place(CKBehavior *block) noexcept override;
     [[nodiscard]] CallbackLeaseState State() const noexcept;
     [[nodiscard]] CallbackFault Diagnostic() const;
     [[nodiscard]] void *Argument() const noexcept { return m_Argument; }
@@ -44,6 +58,7 @@ private:
     Callback m_Callback = nullptr;
     void *m_Argument = nullptr;
     bool m_OwnsState = true;
+    bool m_Placed = false;
     CallbackFault m_Diagnostic;
 
     friend class Hook;

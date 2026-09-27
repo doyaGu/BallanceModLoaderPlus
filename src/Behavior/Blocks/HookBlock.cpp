@@ -10,8 +10,12 @@ int Run(const CKBehaviorContext &context) {
     for (int i = 0; i < behavior->GetInputCount(); ++i)
         behavior->ActivateInput(i, FALSE);
 
-    Binding *binding = nullptr;
-    behavior->GetLocalParameterValue(0, &binding);
+    // Only the Block the Runtime placed resolves to its Binding. A copy
+    // shares the AppData but not the CK_ID, and nothing that was saved or
+    // loaded carries AppData at all.
+    const auto *placements = static_cast<const Placements *>(
+        behavior->GetAppData());
+    Binding *binding = placements ? placements->Find(behavior) : nullptr;
     CallbackCall call;
     if (binding)
         call = binding->Invoke(&context);
@@ -79,11 +83,11 @@ BlockSpec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount
     if (!binding || inputCount < 0 || outputCount < 0)
         return BlockSpec();
     CKBOOL autoActivate = autoActivateOutputs ? TRUE : FALSE;
-    Binding *nativeBinding = binding.get();
     void *argument = binding->Argument();
-    spec.Local(Slot::At(SlotKind::Local, 0, CKPGUID_POINTER),
-               Value::From(CKPGUID_POINTER, nativeBinding))
-        .Local(Slot::At(SlotKind::Local, 1, CKPGUID_POINTER),
+    // Local 0 is kept for the prototype layout only. A pointer there would be
+    // copied with the Block and saved with the file, so the Binding is found
+    // through Placements instead.
+    spec.Local(Slot::At(SlotKind::Local, 1, CKPGUID_POINTER),
                Value::From(CKPGUID_POINTER, argument))
         .Local(Slot::At(SlotKind::Local, 2, CKPGUID_BOOL),
                Value::From(CKPGUID_BOOL, autoActivate))

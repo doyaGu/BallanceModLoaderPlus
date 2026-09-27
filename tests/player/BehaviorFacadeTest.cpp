@@ -2866,6 +2866,215 @@ private:
         return code == BML_ERROR_INVALID_PARAMETER && patch == nullptr;
     }
 
+    // Closing a Patch destroys what it introduced, under the Links a later
+    // Patch made. While that Patch is active the close is refused as a
+    // conflict and changes nothing. A native Link into an Edit-owned graph
+    // Node leaves with the Node instead of keeping a freed sink.
+    bool ProbeDependentPatch(BML::Behavior::Script &script, CKContext *context,
+                             CKBehavior *graph) {
+        auto base = script.Inspect();
+        BML::Behavior::Edit provider;
+        const auto providedNode =
+            provider.Root().AddGraph("__BML_Dependency", 0);
+        auto providedGraph = providedNode.Graph();
+        providedGraph.Flow(providedGraph.AppendIn("Run"),
+                           providedGraph.AppendOut("Done"));
+        auto providerApplied = base && context && graph &&
+                graph->GetInputCount() > 0
+            ? script.Apply("player-dependency-provider", provider)
+            : BML::Behavior::Result<BML::Behavior::Patch>::Failure(
+                  BML_ERROR_FAIL);
+        if (!providerApplied) {
+            GetLogger()->Error("Behavior dependent Patch setup failed: %s",
+                               providerApplied.GetStatus().Message.c_str());
+            return false;
+        }
+        BML::Behavior::Patch providerPatch = providerApplied.Take();
+        auto provided = script.Inspect();
+        auto providedFound = provided
+            ? provided->Find("__BML_Dependency")
+            : BML::Behavior::Result<BML::Behavior::Node>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        CKBehavior *providedNative = providedFound
+            ? CKBehavior::Cast(context->GetObject(
+                  static_cast<CK_ID>(providedFound->Id())))
+            : nullptr;
+        CKBehaviorIO *providedInput = providedNative &&
+                providedNative->GetInputCount() > 0
+            ? providedNative->GetInput(0) : nullptr;
+        CKBehaviorLink *nativeLink = providedInput
+            ? CKBehaviorLink::Cast(context->CreateObject(
+                  CKCID_BEHAVIORLINK, nullptr, CK_OBJECTCREATION_DYNAMIC))
+            : nullptr;
+        const CK_ID nativeLinkId = nativeLink ? nativeLink->GetID() : 0;
+        const bool nativeLinked = nativeLink &&
+            nativeLink->SetInBehaviorIO(graph->GetInput(0)) == CK_OK &&
+            nativeLink->SetOutBehaviorIO(providedInput) == CK_OK &&
+            graph->AddSubBehaviorLink(nativeLink) == CK_OK;
+        if (nativeLink && !nativeLinked) {
+            (void) graph->RemoveSubBehaviorLink(nativeLink);
+            context->DestroyObject(nativeLink);
+        }
+
+        BML::Behavior::Edit consumer;
+        auto consumerRoot = consumer.Root();
+        const auto required = consumerRoot.Require("__BML_Dependency");
+        consumerRoot.Flow(consumerRoot.Root().In("Start"), required.In("Run"));
+        auto consumerApplied = nativeLinked
+            ? script.Apply("player-dependency-consumer", consumer)
+            : BML::Behavior::Result<BML::Behavior::Patch>::Failure(
+                  BML_ERROR_FAIL);
+        if (nativeLinked && !consumerApplied)
+            GetLogger()->Error("Behavior dependent Patch consumer failed: %s",
+                               consumerApplied.GetStatus().Message.c_str());
+        const auto rejectedClose = consumerApplied
+            ? providerPatch.Close()
+            : BML::Behavior::Result<BML::Behavior::CloseState>::Failure(
+                  BML_ERROR_FAIL);
+        const auto conflict = providerPatch.Info();
+        const bool refused = consumerApplied && !rejectedClose && conflict &&
+            conflict->State == PatchState::Conflicted &&
+            conflict->RestoreFailure.Error == Error::RevertConflict;
+        const bool held = consumerApplied &&
+            context->GetObject(static_cast<CK_ID>(providedFound->Id())) ==
+                providedNative;
+        const bool consumerClosed =
+            consumerApplied && static_cast<bool>(consumerApplied->Close());
+        const bool providerClosed = static_cast<bool>(providerPatch.Close());
+
+        // The Link is compared by identity only; its sink may be freed.
+        bool dangling = false;
+        if (nativeLinked && context->GetObject(nativeLinkId) == nativeLink) {
+            for (int index = 0; index < graph->GetSubBehaviorLinkCount();
+                 ++index) {
+                if (graph->GetSubBehaviorLink(index) != nativeLink)
+                    continue;
+                dangling = true;
+                (void) graph->RemoveSubBehaviorLink(index);
+                context->DestroyObject(nativeLink);
+                break;
+            }
+        }
+        auto after = script.Inspect();
+        const bool restored = after && after->Fingerprint() == base->Fingerprint();
+        const bool passed = refused && held && consumerClosed && !dangling &&
+            providerClosed && restored;
+        GetLogger()->Info(
+            "Behavior dependent Patch: status=%s linked=%s applied=%s refused=%s held=%s consumer_closed=%s dangling=%s provider_closed=%s restored=%s",
+            passed ? "pass" : "fail", nativeLinked ? "true" : "false",
+            consumerApplied ? "true" : "false", refused ? "true" : "false",
+            held ? "true" : "false", consumerClosed ? "true" : "false",
+            dangling ? "true" : "false", providerClosed ? "true" : "false",
+            restored ? "true" : "false");
+        return passed;
+    }
+
+    // CK2 copies a Block's AppData with it, as when a Script is copied with
+    // its owner. A copied Hook Block stays transparent instead of reaching the
+    // Binding of the installation it was copied from, which the Patch frees
+    // on close. The copy also needs parameters of its own: a dynamic object
+    // leaves static children out of a copy, and it would keep reading the
+    // Locals of the original after the original is destroyed.
+    bool ProbeCopiedHookBlock(CKContext *context) {
+        BML::Behavior::Edit shape;
+        (void) shape.Root().Add(m_Session.Use(
+            CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
+        auto created = m_Session.CreateScript(
+            m_Owner, "__BML_Copied_Hook", shape);
+        if (!created) {
+            GetLogger()->Error("Behavior copied Hook Block script failed: %s",
+                               created.GetStatus().Message.c_str());
+            return false;
+        }
+        BML::Behavior::Script script = created.Take();
+        auto calls = std::make_shared<int>(0);
+        BML::Behavior::Edit tapped;
+        const auto fixture = tapped.Root().Require(
+            "BML Lifecycle Fixture", CKGUID(BML_LIFECYCLE_FIXTURE_GUID));
+        tapped.Root().Tap(fixture.Out(0), Hook([calls] { ++*calls; }));
+        auto applied = script.Apply("player-copied-hook", tapped);
+        if (!applied) {
+            GetLogger()->Error("Behavior copied Hook Block setup failed: %s",
+                               applied.GetStatus().Message.c_str());
+            (void) script.Close();
+            return false;
+        }
+        BML::Behavior::Patch patch = applied.Take();
+        const auto inspected = script.Inspect();
+        CKBehavior *root = inspected && context
+            ? CKBehavior::Cast(context->GetObject(
+                  static_cast<CK_ID>(inspected->Root().Id())))
+            : nullptr;
+        const auto findHook = [](CKBehavior *graph) -> CKBehavior * {
+            for (int index = 0; graph && index < graph->GetSubBehaviorCount();
+                 ++index) {
+                CKBehavior *node = graph->GetSubBehavior(index);
+                if (node && node->GetPrototypeGuid() == HOOKS_HOOKBLOCK_GUID)
+                    return node;
+            }
+            return nullptr;
+        };
+        CKBehavior *hook = findHook(root);
+        CKDependencies every;
+        every.m_Flags = CK_DEPENDENCIES_FULL;
+        CKBehavior *copiedRoot = hook
+            ? CKBehavior::Cast(context->CopyObject(
+                  root, &every, nullptr, CK_OBJECTCREATION_DYNAMIC))
+            : nullptr;
+        CKBehavior *copy = findHook(copiedRoot);
+        const bool sharedData = copy && copy->GetAppData() &&
+            copy->GetAppData() == hook->GetAppData();
+        // Only a copy with Locals of its own can run once the original is gone.
+        bool independent = copy && copy != hook &&
+            copy->GetLocalParameterCount() == hook->GetLocalParameterCount();
+        for (int index = 0; independent &&
+             index < copy->GetLocalParameterCount(); ++index) {
+            if (copy->GetLocalParameter(index) == hook->GetLocalParameter(index))
+                independent = false;
+        }
+        // A copy that shares the Locals of the original has to go while they
+        // still exist.
+        if (copiedRoot && !independent) {
+            context->DestroyObject(copiedRoot);
+            copiedRoot = nullptr;
+        }
+        const auto run = [copy] {
+            if (copy && copy->GetInputCount() > 0) {
+                copy->ActivateInput(0);
+                (void) copy->Execute(1.0f);
+            }
+        };
+        int copyCalls = -1;
+        bool closed = false;
+        int closedCalls = -1;
+        // A copy that reached the Binding would reach freed memory once the
+        // Patch closes, so the second run happens only after the first
+        // stayed transparent.
+        if (independent) {
+            run();
+            copyCalls = *calls;
+        }
+        if (copyCalls == 0) {
+            closed = static_cast<bool>(patch.Close());
+            run();
+            closedCalls = *calls;
+        }
+        if (copiedRoot)
+            context->DestroyObject(copiedRoot);
+        if (!closed)
+            closed = static_cast<bool>(patch.Close());
+        const bool scriptClosed = static_cast<bool>(script.Close());
+        const bool passed = independent && copyCalls == 0 &&
+            closedCalls == 0 && closed && scriptClosed;
+        GetLogger()->Info(
+            "Behavior copied Hook Block: status=%s copied=%s independent=%s shared_data=%s copy_calls=%d closed_calls=%d closed=%s script_closed=%s",
+            passed ? "pass" : "fail", copy ? "true" : "false",
+            independent ? "true" : "false", sharedData ? "true" : "false",
+            copyCalls, closedCalls, closed ? "true" : "false",
+            scriptClosed ? "true" : "false");
+        return passed;
+    }
+
     bool ProbeComposedPatch() {
         if (!m_Graph || !m_Owner) {
             GetLogger()->Error("Composed Patch fixture graph is unavailable");
@@ -2970,6 +3179,12 @@ private:
             foreignRejected ? "true" : "false",
             afterForeign ? "true" : "false");
         if (!foreignCreated || !foreignRejected || !afterForeign)
+            return false;
+        const bool dependentPassed =
+            ProbeDependentPatch(secondScript, context, secondNative);
+        const bool copiedPassed =
+            ProbeCopiedHookBlock(context);
+        if (!dependentPassed || !copiedPassed)
             return false;
 
         const int originalPriority = m_Source->GetPriority();

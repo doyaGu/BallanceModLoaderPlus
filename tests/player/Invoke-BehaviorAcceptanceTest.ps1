@@ -350,7 +350,9 @@ $checks['BehaviorComposedPatch'] = $composedPatch.Success -and
     $composedPatch.Groups['toggle'].Value -eq 'true' -and
     $composedPatch.Groups['replace'].Value -eq 'true' -and
     $composedPatch.Groups['rollback'].Value -eq 'true' -and
-    $log.Contains('Behavior count-only Pattern: status=pass')
+    $log.Contains('Behavior count-only Pattern: status=pass') -and
+    $log.Contains('Behavior dependent Patch: status=pass') -and
+    $log.Contains('Behavior copied Hook Block: status=pass')
 $checks['BehaviorNodeReplacementFacade'] = $facadeReplacement.Success -and
     $facadeReplacement.Groups['status'].Value -eq 'pass'
 $checks['BehaviorNodeRemovalFacade'] = $facadeRemoval.Success -and

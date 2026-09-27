@@ -358,7 +358,16 @@ Status CKEdit::ApplyNow(const Ops &edit,
         return Failure(Error::InvalidState,
                        "The Patch journal is unavailable.");
     PublishingScope publishing(m_Publishing);
-    return Transaction(*this, *patch).Apply(edit);
+    status = Transaction(*this, *patch).Apply(edit);
+    if (status) {
+        std::erase_if(m_Published,
+                      [&](const std::weak_ptr<Patch::Journal> &entry) {
+                          const auto journal = entry.lock();
+                          return !journal || journal == patch;
+                      });
+        m_Published.push_back(patch);
+    }
+    return status;
 }
 
 void CKEdit::CloseAdmission(Patch &patch) noexcept {
@@ -374,7 +383,8 @@ void CKEdit::CloseAdmission(Patch::Journal &patch) noexcept {
 }
 
 Status CKEdit::Apply(const Ops &edit, Patch &out,
-                     std::shared_ptr<const CallbackAdmission> admission) {
+                     std::shared_ptr<const CallbackAdmission> admission,
+                     bool defines) {
     Status status = Ready();
     if (!status)
         return status;
@@ -385,6 +395,7 @@ Status CKEdit::Apply(const Ops &edit, Patch &out,
     auto patch = std::make_shared<Patch::Journal>();
     patch->Editor = this;
     patch->Key = edit.Key();
+    patch->Defines = defines;
     for (const Ops::EditNode &node : edit.m_Nodes) {
         if (!node.Block)
             continue;
@@ -522,36 +533,9 @@ bool CKEdit::OwnsAny(const Patch &patch,
     const std::shared_ptr<Patch::Journal> journal = patch.m_Journal;
     if (!journal || objects.empty())
         return false;
-    const auto contains = [&](Stamp object) {
-        return object.Id != 0 && objects.contains(object.Id);
-    };
-    if (std::any_of(journal->Nodes.begin(), journal->Nodes.end(), contains) ||
-        std::any_of(journal->GraphNodes.begin(), journal->GraphNodes.end(),
-                    contains) ||
-        std::any_of(journal->InfrastructureNodes.begin(),
-                    journal->InfrastructureNodes.end(), contains) ||
-        std::any_of(journal->InfrastructureLinks.begin(),
-                    journal->InfrastructureLinks.end(), contains) ||
-        std::any_of(journal->Links.begin(), journal->Links.end(),
-                    [&](const Patch::Journal::Link &link) {
-                        return contains(link.Value);
-                    }) ||
-        std::any_of(journal->Ports.begin(), journal->Ports.end(),
-                    [&](const Patch::Journal::Interface &port) {
-                        return contains(port.Port);
-                    }) ||
-        std::any_of(journal->Operations.begin(), journal->Operations.end(),
-                    [&](const Patch::Journal::Operation &operation) {
-                        return contains(operation.Value);
-                    }) ||
-        contains(journal->DetachedSource) || contains(journal->DetachedSink)) {
-        return true;
-    }
-    return std::any_of(
-        journal->Binds.begin(), journal->Binds.end(),
-        [&](const Patch::Journal::Binding &binding) {
-            return contains(binding.Literal);
-        });
+    return AnyOwned(*journal, [&](Stamp object) {
+        return objects.contains(object.Id);
+    });
 }
 
 void CKEdit::InstallationDeleted(Patch &patch) {

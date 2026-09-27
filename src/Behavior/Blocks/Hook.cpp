@@ -1,6 +1,49 @@
 #include "Behavior/Blocks/Hook.h"
 
+#include <unordered_map>
+
 namespace BML::Behavior::Internal::HookBlock {
+namespace {
+
+class Table final : public Placements {
+public:
+    Binding *Find(CKBehavior *block) const noexcept override {
+        if (!block)
+            return nullptr;
+        const auto it = m_Entries.find(block->GetID());
+        // CK_IDs are reused as soon as they are freed, so the address must
+        // match too.
+        return it != m_Entries.end() && it->second.Block == block
+            ? it->second.Owner : nullptr;
+    }
+
+    void Add(CKBehavior *block, Binding *owner) {
+        m_Entries[block->GetID()] = {block, owner};
+    }
+
+    void Remove(const Binding *owner) noexcept {
+        std::erase_if(m_Entries, [owner](const auto &entry) {
+            return entry.second.Owner == owner;
+        });
+    }
+
+private:
+    struct Entry {
+        CKBehavior *Block = nullptr;
+        Binding *Owner = nullptr;
+    };
+
+    std::unordered_map<CK_ID, Entry> m_Entries;
+};
+
+Table &Placed() {
+    // Never destroyed: a Block's AppData may still point here while the
+    // world is torn down at exit.
+    static Table *table = new Table;
+    return *table;
+}
+
+} // namespace
 
 Binding::Binding(PlanCallbackState state, Callback callback, void *argument)
     : Binding(std::move(state), callback, argument, true) {}
@@ -43,11 +86,26 @@ void Binding::CloseAdmission() noexcept {
 
 bool Binding::RetireAtSafePoint() noexcept {
     CloseAdmission();
+    if (std::exchange(m_Placed, false))
+        Placed().Remove(this);
     (void) m_Lease.Close();
     m_Lease = {};
     if (m_OwnsState)
         m_State.Retire();
     return !m_State.Retired() || m_State.Collect();
+}
+
+void *Binding::Place(CKBehavior *block) noexcept {
+    if (!block)
+        return nullptr;
+    try {
+        Placed().Add(block, this);
+    } catch (...) {
+        // Without an entry the Block stays transparent, as if closed.
+        return nullptr;
+    }
+    m_Placed = true;
+    return static_cast<Placements *>(&Placed());
 }
 
 CallbackLeaseState Binding::State() const noexcept {

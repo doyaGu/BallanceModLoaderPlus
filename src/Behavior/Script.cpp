@@ -134,7 +134,7 @@ public:
                   Program body, ScriptBodyId &out) override {
         out = 0;
         PatchId patch = 0;
-        Status status = m_Installations.Apply(
+        Status status = m_Installations.Define(
             owner, script.Root.Reference,
             "Script/" + std::to_string(script.Root.Id),
             std::move(body), patch);

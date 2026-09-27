@@ -141,6 +141,26 @@ Status CKEdit::Transaction::CheckPublished() {
             RevertSubject::Node,
             "This Patch cannot close while the graph contains an active structural edit.");
     }
+    // Closing would destroy the objects a later Patch still edits.
+    if (!m_Journal.Defines) {
+        for (const std::weak_ptr<Patch::Journal> &entry : m_Editor.m_Published) {
+            const std::shared_ptr<Patch::Journal> other = entry.lock();
+            if (!other || other.get() == &m_Journal ||
+                other->State == PatchState::Closed ||
+                other->State == PatchState::Failed)
+                continue;
+            const bool builds = AnyOwned(m_Journal, [&](Stamp owned) {
+                return std::find(other->Named.begin(), other->Named.end(),
+                                 owned) != other->Named.end();
+            });
+            if (builds)
+                return Conflict(
+                    RevertSubject::Node,
+                    "This Patch cannot close while the active Patch '" +
+                        other->Key.Owner + "/" + other->Key.Name +
+                        "' edits an object it introduced.");
+        }
+    }
     if (m_Graph && m_Journal.Published) {
         RevertSubject subject = RevertSubject::Node;
         Status order = ValidateOrder(
@@ -928,15 +948,21 @@ void CKEdit::Transaction::RetirePorts() {
             continue;
         CKObject *removed = nullptr;
         switch (item->Kind) {
+        // A Link something outside the Patch made to the IO would stay in
+        // the graph with a cleared end.
         case SlotKind::Input: {
             auto *io = static_cast<CKBehaviorIO *>(port);
             const int index = behavior->GetInputPosition(io);
+            if (index >= 0)
+                Engine::DestroyConnectedLinks(m_Context, io);
             removed = index >= 0 ? behavior->RemoveInput(index) : nullptr;
             break;
         }
         case SlotKind::Output: {
             auto *io = static_cast<CKBehaviorIO *>(port);
             const int index = behavior->GetOutputPosition(io);
+            if (index >= 0)
+                Engine::DestroyConnectedLinks(m_Context, io);
             removed = index >= 0 ? behavior->RemoveOutput(index) : nullptr;
             break;
         }
@@ -1035,6 +1061,11 @@ void CKEdit::Transaction::RetireGraphNodes() {
             continue;
         }
         CKBehavior *parent = node->GetParent();
+        // A link something outside the Patch made to the Node would keep
+        // pointing at IOs CK2 frees with it, since CKBehaviorIO::PreDelete
+        // leaves links alone when its owner is being deleted.
+        if (parent)
+            Engine::DestroyConnectedLinks(m_Context, parent, node);
         if (parent && parent->RemoveSubBehavior(node) != node) {
             Remember(Failure(
                 Error::RevertConflict,

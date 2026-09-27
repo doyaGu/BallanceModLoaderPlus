@@ -56,6 +56,7 @@ Status CKEdit::Transaction::Apply(const Ops &edit) {
     static constexpr Step kSteps[] = {
         &Transaction::BorrowNodes,
         &Transaction::PinPorts,
+        &Transaction::NoteDependencies,
         &Transaction::CheckValues,
         &Transaction::PrepareBlocks,
         &Transaction::CreateNodes,
@@ -451,6 +452,40 @@ Status CKEdit::Transaction::PinPorts() {
         return {};
     });
     return status;
+}
+
+// An Edit may build only on the host graph and on what it introduces
+// itself. An object another active Patch introduced is destroyed when that
+// Patch closes, and nothing would revert what this Edit attached to it.
+Status CKEdit::Transaction::NoteDependencies() {
+    std::vector<Stamp> named{m_Journal.Graph};
+    for (const auto &entry : m_Handles)
+        named.push_back(entry.second);
+    Status status = VisitPorts([&](ResolvedPort &port) -> Status {
+        if (port.Native)
+            named.push_back(Capture(port.Native));
+        return {};
+    });
+    if (!status)
+        return status;
+    const auto anchor = [&](const LinkBase &target) {
+        const auto link = std::find_if(
+            m_Base.Links.begin(), m_Base.Links.end(),
+            [&](const GraphLink &candidate) {
+                return candidate.Object == target.Anchor;
+            });
+        if (link != m_Base.Links.end())
+            named.push_back(Capture(
+                m_Context->GetObject(static_cast<CK_ID>(link->Id))));
+    };
+    for (const CheckedSplice &splice : m_Checked.Splices)
+        anchor(splice.Target);
+    for (const CheckedRedirect &redirect : m_Checked.Redirects)
+        anchor(redirect.Target);
+    for (const CheckedReconnect &reconnect : m_Checked.Reconnections)
+        anchor(reconnect.Target);
+    m_Journal.Named = std::move(named);
+    return {};
 }
 
 Status CKEdit::Transaction::ParameterBeforeApply(const ResolvedPort &port,

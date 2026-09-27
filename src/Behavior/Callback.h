@@ -7,6 +7,8 @@
 #include <string>
 #include <utility>
 
+class CKBehavior;
+
 namespace BML::Behavior::Internal {
 
 enum class CallbackLeaseState {
@@ -62,6 +64,13 @@ public:
     virtual void CloseAdmission() noexcept = 0;
     virtual void AdmitThrough(std::shared_ptr<const CallbackAdmission> admission) = 0;
     [[nodiscard]] virtual bool RetireAtSafePoint() noexcept = 0;
+    // Called once the Runtime has created the Block that keeps this resource
+    // alive, before any callback of that Block can run. A non-null result
+    // becomes the Block's AppData.
+    [[nodiscard]] virtual void *Place(CKBehavior *block) noexcept {
+        (void) block;
+        return nullptr;
+    }
 };
 
 class CallbackLease;

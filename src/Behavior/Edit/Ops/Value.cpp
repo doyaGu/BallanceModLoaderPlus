@@ -304,6 +304,17 @@ Status CKEdit::Transaction::AddOperations() {
             failed.Details.OperationGuid = item.Operation;
             return failed;
         }
+        // A copy or delete of a dynamic graph leaves static Operations and
+        // their parameters out.
+        if (m_Graph->IsDynamic()) {
+            for (CKObject *object : {static_cast<CKObject *>(operation),
+                                     static_cast<CKObject *>(operation->GetInParameter1()),
+                                     static_cast<CKObject *>(operation->GetInParameter2()),
+                                     static_cast<CKObject *>(operation->GetOutParameter())}) {
+                if (object)
+                    m_Context->ChangeObjectDynamic(object, TRUE);
+            }
+        }
         const Stamp stamp = Capture(operation);
         m_Journal.Operations.push_back({Capture(m_Graph), stamp});
         m_OperationObjects.emplace(item.Handle.Value, stamp);
