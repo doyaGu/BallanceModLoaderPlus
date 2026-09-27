@@ -447,6 +447,29 @@ TEST(BehaviorScript, ClosesItsInitialGraphBeforeDestroyingTheRoot) {
                                         "destroy"}));
 }
 
+TEST(BehaviorScript, DestroysTheRootWhenItsInitialGraphHasAConflict) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    FakeScriptWorld *native = world.get();
+    ScriptSet scripts(std::move(world));
+    const ScriptResult opened = scripts.Create(
+        Owner(), 1, this, "Script", 0, {});
+    ASSERT_TRUE(opened);
+    native->Events.clear();
+    native->CloseBodyResult = Failure(
+        Error::RevertConflict, "a restored value was changed");
+
+    EXPECT_EQ(scripts.Close(Owner(), opened.Id).Code, Error::Busy);
+    scripts.ProcessFrame();
+    EXPECT_EQ(native->Events,
+              (std::vector<std::string>{"close-body", "destroy"}));
+    ScriptInfo info;
+    EXPECT_FALSE(scripts.Read(Owner(), opened.Id, info));
+
+    scripts.ProcessFrame();
+    EXPECT_EQ(native->ClosedBodies.size(), 1u);
+    EXPECT_EQ(native->Destroyed.size(), 1u);
+}
+
 TEST(BehaviorScript, KeepsFailedUnpublishedCleanupOutsideTheHandleTable) {
     auto world = std::make_unique<FakeScriptWorld>();
     FakeScriptWorld *native = world.get();

@@ -486,7 +486,10 @@ void Scripts::Close(Entry &entry) noexcept {
 Status Scripts::Retire(Entry &entry) {
     if (entry.Body) {
         Status status = m_World->CloseBody(entry.Owner, entry.Body);
-        if (!status)
+        // A body that could not be restored exactly goes with its root. CK
+        // deletion of the root drops the body's journal, so only a close that
+        // is still in progress or could not run has to wait.
+        if (!status && status.Code != Error::RevertConflict)
             return status;
         entry.Body = 0;
     }
