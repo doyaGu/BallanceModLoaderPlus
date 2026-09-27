@@ -237,6 +237,22 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter,
     frame.NativeContinuation = m_NativeContinuation;
     frame.QueuedInput = !m_QueuedInputs.empty();
 
+    // A close requested while the Block ran makes this the Run's last Frame.
+    // Settle it as terminal first, so retention decides on its Pouts as the
+    // Frame it will actually store.
+    const bool closing = !fatal && m_CloseRequested;
+    if (closing) {
+        if (!m_Failure) {
+            m_Failure = Fault(
+                ExecutionError::Cancelled,
+                "Behavior execution was closed while native execution was active.");
+        }
+        frame.NativeContinuation = false;
+        frame.QueuedInput = false;
+        if (!frame.Fault)
+            frame.Fault = m_Failure;
+    }
+
     if (!fatal && m_Frames->KeepsPouts(frame)) {
         ExecutionFault poutFault;
         if (!adapter.ReadPouts(frame.Pouts, poutFault)) {
@@ -271,20 +287,11 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter,
         m_State = ExecutionState::Failed;
         frame.NativeContinuation = false;
         frame.QueuedInput = false;
-    } else if (m_CloseRequested) {
-        if (!m_Failure) {
-            m_Failure = Fault(
-                ExecutionError::Cancelled,
-                "Behavior execution was closed while native execution was active.");
-        }
+    } else if (closing) {
         m_Managed = false;
         m_NativeContinuation = false;
         m_QueuedInputs.clear();
         m_State = ExecutionState::Closing;
-        frame.NativeContinuation = false;
-        frame.QueuedInput = false;
-        if (!frame.Fault)
-            frame.Fault = m_Failure;
     } else if (frame.NativeContinuation || frame.QueuedInput) {
         m_State = ExecutionState::Pending;
     } else {

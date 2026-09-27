@@ -614,6 +614,38 @@ TEST(BehaviorExecution, CloseDuringExecuteDefersStateTransition) {
     EXPECT_EQ(execution.State(), ExecutionState::Closed);
 }
 
+TEST(BehaviorExecution, CloseDuringExecuteKeepsPoutsOfTheTerminalFrame) {
+    for (const FrameRetention retention : {
+             FrameRetention::Signals().Pouts(),
+             FrameRetention::Ignore().Pouts()}) {
+        Execution execution(retention);
+        FakeExecutionAdapter adapter;
+        adapter.Native.push_back(FunctionResult(1, true));
+        adapter.Native.push_back(FunctionResult(1, true));
+        Pout value;
+        value.Index = 0;
+        value.Name = "Value";
+        value.Kind = PoutKind::Int32;
+        value.Int32 = 42;
+        adapter.Pouts.push_back(value);
+
+        ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
+        (void) execution.Take();
+        adapter.OnExecute = [&] { execution.RequestClose(); };
+
+        const ExecutionResult closed = execution.Step(2, adapter);
+        ASSERT_TRUE(closed.Frame);
+        EXPECT_EQ(closed.Fault.Code, ExecutionError::Cancelled);
+        EXPECT_EQ(execution.State(), ExecutionState::Closing);
+        const std::vector<RunFrame> frames = execution.Take();
+        ASSERT_EQ(frames.size(), 1u);
+        EXPECT_EQ(frames[0].Sequence, 2u);
+        EXPECT_FALSE(frames[0].NativeContinuation);
+        ASSERT_EQ(frames[0].Pouts.size(), 1u);
+        EXPECT_EQ(frames[0].Pouts[0].Int32, 42);
+    }
+}
+
 TEST(BehaviorExecution, ReadsActiveOutAndPoutBeforeClearingTheOut) {
     Execution execution(FrameRetention::Signals().Pouts());
     FakeExecutionAdapter adapter;
