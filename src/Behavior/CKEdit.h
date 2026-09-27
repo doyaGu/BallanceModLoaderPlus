@@ -137,6 +137,12 @@ private:
     Status ResolvePort(const Patch &patch, Port port,
                        CKBehavior *&behavior, SlotInfo &slot) const;
     Status Materialize(std::uint64_t graphId, CKBehavior *graph);
+    // Drops each Link of the graph that no Patch overlays any more, with its
+    // chain. Their recorded base would otherwise outlive every Patch on the
+    // Link, and a later foreign change to it would fail new Splices and
+    // Redirects of it, and Materialize for every Patch on the graph, with
+    // GraphChanged.
+    void ForgetUnusedLinks(std::uint64_t graphId);
     Status PublishLogicalGraph(std::uint64_t graphId);
     void AdoptGraph(CKBehavior *graph);
     void CloseAdmission(Patch::Journal &journal) noexcept;

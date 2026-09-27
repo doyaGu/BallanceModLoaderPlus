@@ -110,10 +110,32 @@ Status CKEdit::PublishLogicalGraph(std::uint64_t graphId) {
     return {};
 }
 
+void CKEdit::ForgetUnusedLinks(std::uint64_t graphId) {
+    const auto topology = m_Topology.find(graphId);
+    if (topology == m_Topology.end() || !m_Links)
+        return;
+    const auto chains = m_Links->Chains.find(graphId);
+    for (LinkId id : topology->second.Unused()) {
+        Links::Chain *chain = nullptr;
+        if (chains != m_Links->Chains.end()) {
+            const auto found = chains->second.find(id);
+            if (found != chains->second.end())
+                chain = &found->second;
+        }
+        // Splice nodes or a Redirect still on the native Link come off only
+        // through Materialize, which needs the chain for that.
+        if (chain && (!chain->Order.empty() || chain->Redirected))
+            continue;
+        if (topology->second.Forget(id) && chain)
+            chains->second.erase(id);
+    }
+}
+
 Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
     if (!graph || !m_Links)
         return Failure(Error::InvalidGraphLocality,
                        "The graph for Link materialization is unavailable.");
+    ForgetUnusedLinks(graphId);
     const auto topology = m_Topology.find(graphId);
     const auto chains = m_Links->Chains.find(graphId);
     if (topology == m_Topology.end() || chains == m_Links->Chains.end())

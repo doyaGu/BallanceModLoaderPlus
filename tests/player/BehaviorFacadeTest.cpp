@@ -537,10 +537,6 @@ private:
         m_Exit = AddLink(m_Sink->GetOutput(0), m_Graph->GetOutput(0));
         if (!m_Entry || !m_Anchor || !m_Exit)
             return false;
-        // The identity probe redirects the anchor while it runs, so it
-        // needs a delay CK2 counts down. The initial delay is part of the
-        // anchor's identity, so it is set before any Patch records it.
-        m_Anchor->SetInitialActivationDelay(1);
         m_AnchorId = m_Anchor->GetID();
         return m_Graph->GetSubBehaviorCount() == 2 &&
             m_Graph->GetSubBehaviorLinkCount() == 3;
@@ -1862,9 +1858,12 @@ private:
             Finish(false, "identity-reference");
             return;
         }
-        // The anchor keeps running while it is redirected. CK2 counts its
-        // current ActivationDelay from 1 down to 0 when it fires, and Close
-        // must restore it all the same.
+        // The anchor keeps running while it is redirected, so it gets a
+        // delay CK2 counts down: its current ActivationDelay goes from 1 to
+        // 0 when it fires, and Close must restore it all the same. Earlier
+        // Patches spliced this anchor and have closed, so the Loader first
+        // recorded it with no initial delay. That change is not a conflict.
+        m_Anchor->SetInitialActivationDelay(1);
         m_Anchor->SetActivationDelay(1);
         // Inspect takes the Behavior itself, so a Mod editing the graph it
         // built needs no name lookup at all.

@@ -338,6 +338,32 @@ bool Topology::Remove(const PatchKey &patch) {
     return true;
 }
 
+bool Topology::Forget(LinkId link) {
+    const auto found = m_Links.find(link);
+    if (found == m_Links.end() || !found->second.Overlays.empty())
+        return false;
+    LinkMap links = m_Links;
+    links.erase(link);
+    TapMap taps;
+    std::uint64_t fingerprint = 0;
+    if (!Compose(m_Patches, links, taps, fingerprint))
+        return false;
+    m_Anchors.erase(found->second.Base.Anchor);
+    m_Links = std::move(links);
+    m_Taps = std::move(taps);
+    m_Fingerprint = fingerprint;
+    return true;
+}
+
+std::vector<LinkId> Topology::Unused() const {
+    std::vector<LinkId> unused;
+    for (const auto &[id, link] : m_Links) {
+        if (link.Overlays.empty())
+            unused.push_back(id);
+    }
+    return unused;
+}
+
 const LogicalLink *Topology::Find(LinkId link) const noexcept {
     const auto found = m_Links.find(link);
     return found == m_Links.end() ? nullptr : &found->second;

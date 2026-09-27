@@ -143,6 +143,11 @@ public:
     Status Validate(PatchLayer patch) const;
     Status Set(PatchLayer patch);
     bool Remove(const PatchKey &patch);
+    // Drops a logical Link that no Patch overlays, so the next Splice or
+    // Redirect of its anchor records the base afresh. A Link that is still
+    // overlaid is kept.
+    bool Forget(LinkId link);
+    [[nodiscard]] std::vector<LinkId> Unused() const;
 
     [[nodiscard]] const LogicalLink *Find(LinkId link) const noexcept;
     [[nodiscard]] const LogicalLink *Find(const ObjectRef &anchor) const noexcept;

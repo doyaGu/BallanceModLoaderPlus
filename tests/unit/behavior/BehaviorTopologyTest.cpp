@@ -99,6 +99,39 @@ TEST(BehaviorTopology, LogicalIdentityUsesTheAnchorNotEndpointGuessing) {
     EXPECT_EQ(topology.Find(firstId)->Base, first);
 }
 
+TEST(BehaviorTopology, ForgetsALinkOnlyOnceNoPatchOverlaysIt) {
+    Topology topology;
+    const LinkBase first = Base(41, 100, 200);
+    const LinkId firstId = Identify(topology, first);
+    const LinkId otherId = Identify(topology, Base(42, 200, 300));
+    ASSERT_TRUE(topology.Set(
+        OverlayPatch("mod", "splice", 0, firstId, {{OverlayKind::Splice, 1, 101}})));
+    ASSERT_TRUE(topology.Set(
+        OverlayPatch("mod", "other", 0, otherId, {{OverlayKind::Splice, 1, 201}})));
+    const std::uint64_t installed = topology.Fingerprint();
+
+    EXPECT_TRUE(topology.Unused().empty());
+    EXPECT_FALSE(topology.Forget(firstId));
+    EXPECT_EQ(topology.Fingerprint(), installed);
+
+    ASSERT_TRUE(topology.Remove({"mod", "splice"}));
+    EXPECT_EQ(topology.Unused(), std::vector<LinkId>{firstId});
+    ASSERT_TRUE(topology.Forget(firstId));
+    EXPECT_EQ(topology.Find(firstId), nullptr);
+    EXPECT_EQ(topology.Find(first.Anchor), nullptr);
+    EXPECT_EQ(OverlayNames(topology, otherId),
+              std::vector<std::string>{"mod:other#1"});
+
+    // The native Link changed while no Patch was on it.
+    LinkBase changed = first;
+    changed.Delay = 1;
+    LinkId fresh;
+    ASSERT_TRUE(topology.Identify(changed, fresh));
+    EXPECT_NE(fresh, firstId);
+    EXPECT_EQ(topology.Find(fresh)->Base, changed);
+    EXPECT_FALSE(topology.Forget(otherId));
+}
+
 TEST(BehaviorTopology, AcceptsBoundaryLinksAndRejectsInvalidBases) {
     Topology topology;
     LinkBase boundary = Base(1, 10, 20, 1);

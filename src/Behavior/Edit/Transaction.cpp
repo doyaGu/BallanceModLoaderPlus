@@ -134,6 +134,9 @@ Status CKEdit::Transaction::Admit() {
         }
     }
 
+    // A Link no Patch overlays any more is recorded afresh, so a change made
+    // to it since its last Patch closed is not taken for a conflict.
+    m_Editor.ForgetUnusedLinks(m_GraphId);
     m_GraphTopology = &m_Editor.m_Topology[m_GraphId];
     m_GraphRelations = &m_Editor.m_Relations[m_GraphId];
     m_SpliceLayer.Patch = m_Edit->Key();
