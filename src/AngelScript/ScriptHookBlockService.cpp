@@ -417,13 +417,16 @@ public:
             return Behavior::HookResult::Fault;
         }
 
-        if ((args.Result & CKBR_GENERICERROR) == CKBR_GENERICERROR)
-            return Behavior::HookResult::Error;
         // The callback may have changed the setting or retired the entry.
         if (ScriptHookBlockEntry *current = FindHookBlockEntry(state, m_Id, m_Generation))
             activate = current->AutoActivateOutputs;
+        // Script HookBlocks have always activated their Outs after the
+        // callback, even when it returned a CKBR error code. The Block still
+        // returns an error code, which CK2 discards for a sub-behavior.
         if (activate)
             ActivateAllOutputs(block);
+        if ((args.Result & CKBR_GENERICERROR) == CKBR_GENERICERROR)
+            return Behavior::HookResult::Error;
         return (args.Result & CKBR_ACTIVATENEXTFRAME) != 0
             ? Behavior::HookResult::AgainNextFrame
             : Behavior::HookResult::Ok;

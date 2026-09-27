@@ -48,6 +48,11 @@ public:
     [[nodiscard]] CallbackLeaseState State() const noexcept;
     [[nodiscard]] CallbackFault Diagnostic() const;
     [[nodiscard]] void *Argument() const noexcept { return m_Argument; }
+    // Whether a CKBR error code from the callback stops the Hook Block's
+    // chain. The Block ExecuteBB::CreateHookBlock makes keeps its released
+    // contract instead and activates its Outs whatever the callback returned.
+    [[nodiscard]] bool StopsOnError() const noexcept { return m_StopsOnError; }
+    void KeepChainOnError() noexcept { m_StopsOnError = false; }
 
 private:
     Binding(PlanCallbackState state, Callback callback, void *argument,
@@ -59,6 +64,7 @@ private:
     void *m_Argument = nullptr;
     bool m_OwnsState = true;
     bool m_Placed = false;
+    bool m_StopsOnError = true;
     CallbackFault m_Diagnostic;
 
     friend class Hook;

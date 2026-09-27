@@ -342,7 +342,7 @@ CKBehavior *CreateHookBlock(CKBehavior *script, CKBehaviorCallback callback, voi
                             int inCount, int outCount) {
     ModContextLease context;
     auto *adapter = GetAdapter(context);
-    return adapter ? adapter->CreateUnmanaged(script, BML::Behavior::Internal::HookBlock::Make(
+    return adapter ? adapter->CreateUnmanaged(script, BML::Behavior::Internal::HookBlock::MakeLegacy(
         callback, arg, inCount, outCount)) : nullptr;
 }
 

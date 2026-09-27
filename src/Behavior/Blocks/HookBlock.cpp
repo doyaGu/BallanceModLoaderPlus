@@ -28,9 +28,11 @@ int Run(const CKBehaviorContext &context) {
     // error code stops the chain. CK2 discards a sub-behavior's return code
     // (CKBehavior::Execute), so leaving every Out inactive is the only way to
     // stop it. A Block whose Outs belong to its callback is transparent too
-    // when that callback did not complete, since nothing chose an Out.
+    // when that callback did not complete, since nothing chose an Out. The
+    // legacy CreateHookBlock Block never stopped its chain on an error code
+    // and still does not.
     const bool completed = call.Invoked && !call.Fault;
-    const bool reportedError = completed &&
+    const bool reportedError = completed && binding->StopsOnError() &&
         (call.ReturnCode & CKBR_GENERICERROR) == CKBR_GENERICERROR;
     if (reportedError)
         return call.ReturnCode;
@@ -75,23 +77,21 @@ CKObjectDeclaration *Declaration() {
     return declaration;
 }
 
-} // namespace
-
-BlockSpec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount,
-               bool autoActivateOutputs) {
-    BlockSpec spec(HOOKS_HOOKBLOCK_GUID);
-    if (!binding || inputCount < 0 || outputCount < 0)
+BlockSpec Spec(std::shared_ptr<Binding> binding, void *argument,
+               int inputCount, int outputCount, bool autoActivateOutputs) {
+    if (inputCount < 0 || outputCount < 0)
         return BlockSpec();
+    BlockSpec spec(HOOKS_HOOKBLOCK_GUID);
     CKBOOL autoActivate = autoActivateOutputs ? TRUE : FALSE;
-    void *argument = binding->Argument();
     // Local 0 is kept for the prototype layout only. A pointer there would be
     // copied with the Block and saved with the file, so the Binding is found
     // through Placements instead.
     spec.Local(Slot::At(SlotKind::Local, 1, CKPGUID_POINTER),
                Value::From(CKPGUID_POINTER, argument))
         .Local(Slot::At(SlotKind::Local, 2, CKPGUID_BOOL),
-               Value::From(CKPGUID_BOOL, autoActivate))
-        .KeepAlive(std::move(binding));
+               Value::From(CKPGUID_BOOL, autoActivate));
+    if (binding)
+        spec.KeepAlive(std::move(binding));
     for (int i = 0; i < inputCount; ++i)
         spec.AddInput("In " + std::to_string(i));
     for (int i = 0; i < outputCount; ++i)
@@ -99,8 +99,27 @@ BlockSpec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount
     return spec;
 }
 
+} // namespace
+
+BlockSpec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount,
+               bool autoActivateOutputs) {
+    if (!binding)
+        return BlockSpec();
+    void *argument = binding->Argument();
+    return Spec(std::move(binding), argument, inputCount, outputCount,
+                autoActivateOutputs);
+}
+
 BlockSpec Make(Callback callback, void *argument, int inputCount, int outputCount) {
     return Make(Bind(callback, argument), inputCount, outputCount);
+}
+
+BlockSpec MakeLegacy(Callback callback, void *argument, int inputCount,
+                     int outputCount) {
+    std::shared_ptr<Binding> binding = Bind(callback, argument);
+    if (binding)
+        binding->KeepChainOnError();
+    return Spec(std::move(binding), argument, inputCount, outputCount, true);
 }
 
 void Register(XObjectDeclarationArray *registry) {

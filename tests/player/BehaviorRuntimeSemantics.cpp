@@ -1339,7 +1339,34 @@ private:
         m_ErrorExitLink = nullptr;
         m_ErrorSource.Behavior = nullptr;
         m_ErrorDestination.Behavior = nullptr;
+        CheckLegacyErrorCode();
         m_State = State::RecursivePumpStart;
+    }
+
+    // The Block ExecuteBB::CreateHookBlock makes keeps its released contract:
+    // a CKBR error code from the callback is returned, and the Outs activate
+    // as they always did.
+    void CheckLegacyErrorCode() {
+        m_ErrorLegacy.Context = m_Context;
+        m_ErrorLegacy.FirstResult = CKBR_BEHAVIORERROR;
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, HookBlock::MakeLegacy(ProbeExecution, &m_ErrorLegacy, 1, 2));
+        if (!created) {
+            Fail("error-legacy-create");
+            return;
+        }
+        m_ErrorLegacy.Behavior = created.Handle.Get();
+        RunResult first = WithContextCheck("error-legacy-context-restore", [&] {
+            return m_Runtime.StartTask(
+                created.Handle, Slot::At(SlotKind::Input, 0));
+        });
+        const bool chained = first.ReturnCode == CKBR_BEHAVIORERROR &&
+            first.ActiveOutputs.size() == 2 && m_ErrorLegacy.Calls == 1 &&
+            m_ErrorLegacy.ContextMatched;
+        if (!chained)
+            Fail("error-legacy-chained");
+        created.Handle.Reset();
+        m_ErrorLegacy.Behavior = nullptr;
     }
 
     void StartRecursivePump() {
@@ -4186,6 +4213,7 @@ private:
     ExecutionProbe m_ErrorOuter;
     ExecutionProbe m_ErrorSource;
     ExecutionProbe m_ErrorDestination;
+    ExecutionProbe m_ErrorLegacy;
     ExecutionProbe m_MessageProbe;
     Instance m_RetryInstance;
     Instance m_FaultInstance;
