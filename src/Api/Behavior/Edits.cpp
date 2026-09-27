@@ -1,5 +1,6 @@
 #include "Api/Behavior/Codec.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -443,6 +444,16 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         if (status = Use(step.Graph, step.Target, EditHandleKind::Node,
                          target); !status)
             return status;
+        // A second scope for the same Node would hold handles the first
+        // cannot use and give the Node's graph its public ports twice.
+        const std::vector<Program::Nested> &entered = edit.NestedGraphs();
+        if (std::any_of(entered.begin(), entered.end(),
+                        [&](const Program::Nested &nested) {
+                            return nested.Parent == target->NodeValue;
+                        })) {
+            return InvalidValue(
+                "A Behavior edit enters the same nested graph twice.");
+        }
         Program &nested = edit.Enter(target->NodeValue, step.Result);
         m_Graphs.emplace(step.Result, &nested);
         EditHandle nestedRoot;

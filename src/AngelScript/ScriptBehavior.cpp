@@ -2312,12 +2312,12 @@ public:
     }
     int State() const { return Read().first; }
     std::string Error() const { return Read().second; }
-    int Close() noexcept {
+    int Close() {
         if (!m_Watch || !m_Watch->Value)
             return static_cast<int>(Authoring::CloseState::Closed);
         auto result = m_Watch->Value->Close();
-        if (!result)
-            return -1;
+        if (!Accept("Close Behavior Watch", result))
+            return static_cast<int>(Authoring::CloseState::Closing);
         if (result.Value() == Authoring::CloseState::Closed)
             m_Watch->Value.reset();
         return static_cast<int>(result.Value());
@@ -3394,12 +3394,12 @@ public:
         return NewScriptObject<ScriptBehaviorObjectRef>(
             "resolved Behavior ObjectRef", m_State, resolved.Value());
     }
-    int Close() noexcept {
+    int Close() {
         if (!m_Patch || !m_Patch->Value)
             return static_cast<int>(Authoring::CloseState::Closed);
         auto result = m_Patch->Value->Close();
-        if (!result)
-            return -1;
+        if (!Accept("Close Behavior Patch", result))
+            return static_cast<int>(Authoring::CloseState::Closing);
         if (result.Value() == Authoring::CloseState::Closed)
             m_Patch->Value.reset();
         return static_cast<int>(result.Value());
@@ -3415,8 +3415,12 @@ private:
             : std::pair<int, std::string>{-1, info.GetStatus().Message};
     }
     bool Set(bool enabled) {
-        if (!IsValid())
+        if (!IsValid()) {
+            ScriptStringInterop::RaiseActiveException(enabled
+                ? "Enable Behavior Patch requires a live Patch."
+                : "Disable Behavior Patch requires a live Patch.");
             return false;
+        }
         auto result = enabled ? m_Patch->Value->Enable()
                               : m_Patch->Value->Disable();
         return Accept(enabled ? "Enable Behavior Patch"
@@ -3451,12 +3455,12 @@ public:
         auto replaced = m_Plan->Value->Replace(Authoring::On(target, *body));
         return Accept("Replace Behavior Plan", replaced);
     }
-    int Close() noexcept {
+    int Close() {
         if (!m_Plan || !m_Plan->Value)
             return static_cast<int>(Authoring::CloseState::Closed);
         auto result = m_Plan->Value->Close();
-        if (!result)
-            return -1;
+        if (!Accept("Close Behavior Plan", result))
+            return static_cast<int>(Authoring::CloseState::Closing);
         if (result.Value() == Authoring::CloseState::Closed)
             m_Plan->Value.reset();
         return static_cast<int>(result.Value());
@@ -3472,8 +3476,12 @@ private:
             : std::pair<int, std::string>{-1, info.GetStatus().Message};
     }
     bool Set(bool enabled) {
-        if (!IsValid())
+        if (!IsValid()) {
+            ScriptStringInterop::RaiseActiveException(enabled
+                ? "Enable Behavior Plan requires a live Plan."
+                : "Disable Behavior Plan requires a live Plan.");
             return false;
+        }
         auto result = enabled ? m_Plan->Value->Enable()
                               : m_Plan->Value->Disable();
         return Accept(enabled ? "Enable Behavior Plan"
@@ -3497,8 +3505,11 @@ public:
     bool Restart() { return Set(1); }
     bool Deactivate() { return Set(2); }
     ScriptBehaviorGraph *Inspect(bool live) const {
-        if (!IsValid())
+        if (!IsValid()) {
+            ScriptStringInterop::RaiseActiveException(
+                "Inspect authored Behavior Script requires a live Script.");
             return nullptr;
+        }
         auto graph = m_Script->Value->Inspect(
             live ? Authoring::View::Live : Authoring::View::Logical);
         if (!Accept("Inspect authored Behavior Script", graph))
@@ -3524,12 +3535,12 @@ public:
         return NewScriptObject<ScriptBehaviorPatch>(
             "Behavior Patch", m_State, std::move(resource));
     }
-    int Close() noexcept {
+    int Close() {
         if (!m_Script || !m_Script->Value)
             return static_cast<int>(Authoring::CloseState::Closed);
         auto result = m_Script->Value->Close();
-        if (!result)
-            return -1;
+        if (!Accept("Close Behavior Script", result))
+            return static_cast<int>(Authoring::CloseState::Closing);
         if (result.Value() == Authoring::CloseState::Closed)
             m_Script->Value.reset();
         return static_cast<int>(result.Value());
@@ -3545,8 +3556,11 @@ private:
             : std::pair<int, std::string>{-1, info.GetStatus().Message};
     }
     bool Set(int action) {
-        if (!IsValid())
+        if (!IsValid()) {
+            ScriptStringInterop::RaiseActiveException(
+                "Set authored Behavior Script activity requires a live Script.");
             return false;
+        }
         auto result = action == 0 ? m_Script->Value->Activate()
             : action == 1 ? m_Script->Value->Restart()
                           : m_Script->Value->Deactivate();
@@ -3558,8 +3572,11 @@ private:
 
 ScriptBehaviorGraph *ScriptBehaviorGraph::Inspect(
     ScriptBehaviorNode *node) const {
-    if (!IsValid() || !node || !node->IsValid())
+    if (!IsValid() || !node || !node->IsValid()) {
+        ScriptStringInterop::RaiseActiveException(
+            "Inspect nested Behavior Graph requires a live Graph and Node.");
         return nullptr;
+    }
     return Keep(m_Graph->Value->Inspect(node->Value()),
                 "Inspect nested Behavior Graph");
 }
@@ -3574,8 +3591,11 @@ ScriptBehaviorGraph *ScriptBehaviorGraph::Live() const {
 ScriptBehaviorPatch *ScriptBehaviorGraph::Apply(
     const std::string &name, ScriptBehaviorEdit *edit) const {
     Authoring::Edit *body = edit ? edit->Value() : nullptr;
-    if (!IsValid() || !body)
+    if (!IsValid() || !body) {
+        ScriptStringInterop::RaiseActiveException(
+            "Apply Behavior Edit requires a live Graph and Edit.");
         return nullptr;
+    }
     auto applied = m_Graph->Value->Apply(name, *body);
     if (!Accept("Apply Behavior Edit", applied))
         return nullptr;
@@ -3740,13 +3760,22 @@ ScriptBehaviorScript *CurrentCreateScript(CKBeObject *owner,
 
 ScriptBehaviorPlan *ScriptBehaviorEdit::Plan(
     const std::string &name, const std::string &script, bool each) {
-    return IsValid() ? CurrentPlan(name, script, this, each) : nullptr;
+    if (!IsValid()) {
+        ScriptStringInterop::RaiseActiveException(
+            "Create Behavior Plan requires a live Edit.");
+        return nullptr;
+    }
+    return CurrentPlan(name, script, this, each);
 }
 
 ScriptBehaviorScript *ScriptBehaviorEdit::CreateScript(
     CKBeObject *owner, const std::string &name, int priority) {
-    return IsValid()
-        ? CurrentCreateScript(owner, name, this, priority) : nullptr;
+    if (!IsValid()) {
+        ScriptStringInterop::RaiseActiveException(
+            "Create Behavior Script requires a live Edit.");
+        return nullptr;
+    }
+    return CurrentCreateScript(owner, name, this, priority);
 }
 
 ScriptBehaviorService::ScriptBehaviorService()
@@ -3893,9 +3922,9 @@ ScriptBehaviorGraph *ScriptBehaviorService::Inspect(CKBehavior *graph,
                                                      bool live) {
     Authoring::Session *session = m_State ? m_State->GetSession() : nullptr;
     if (!session || !graph) {
-        if (!graph)
-            ScriptStringInterop::RaiseActiveException(
-                "Inspect requires a graph-backed CKBehavior.");
+        ScriptStringInterop::RaiseActiveException(!graph
+            ? "Inspect requires a graph-backed CKBehavior."
+            : "Inspect requires an open Behavior Session.");
         return nullptr;
     }
     auto inspected = session->Inspect(
@@ -3919,8 +3948,12 @@ ScriptBehaviorPlan *ScriptBehaviorService::Plan(
     ScriptBehaviorEdit *edit) {
     Authoring::Session *session = m_State ? m_State->GetSession() : nullptr;
     Authoring::Edit *body = edit ? edit->Value() : nullptr;
-    if (!session || !body)
+    if (!session || !body) {
+        ScriptStringInterop::RaiseActiveException(!body
+            ? "Create Behavior Plan requires a live Edit."
+            : "Create Behavior Plan requires an open Behavior Session.");
         return nullptr;
+    }
     auto planned = session->Plan(
         name, each ? Authoring::Scripts::Each(script)
                    : Authoring::Scripts::One(script), *body);
@@ -3944,9 +3977,10 @@ ScriptBehaviorScript *ScriptBehaviorService::CreateScript(
     Authoring::Session *session = m_State ? m_State->GetSession() : nullptr;
     Authoring::Edit *edit = body ? body->Value() : nullptr;
     if (!session || !owner || !edit) {
-        if (!owner)
-            ScriptStringInterop::RaiseActiveException(
-                "CreateScript requires a live owner.");
+        ScriptStringInterop::RaiseActiveException(
+            !owner ? "CreateScript requires a live owner."
+            : !edit ? "CreateScript requires a live Edit."
+                    : "CreateScript requires an open Behavior Session.");
         return nullptr;
     }
     auto created = session->CreateScript(owner, name, *edit, priority);

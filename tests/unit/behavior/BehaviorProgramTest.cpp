@@ -326,6 +326,38 @@ TEST(BehaviorProgram, ResolvesNodePatternsByObservedPortValue) {
     EXPECT_EQ(resolver.ValueReads, 2);
 }
 
+TEST(BehaviorProgram, MatchesPatternValuesReadThroughADerivedSource) {
+    // CK2 lets an Int Pin read a source of a type derived from Int, and the
+    // value then carries the source's type.
+    const CKGUID derived(0x5555, 5);
+    GraphModel graph = Model();
+    graph.Nodes[1].Ports.push_back(Pin(0, "Message"));
+    graph.Nodes.push_back(NodeOf(
+        103, Ref(103), 100, CKGUID(0x1111, 1), "Wait Message",
+        {In(), Out(), Pin(0, "Message")}));
+    FakeResolver resolver(std::move(graph));
+    resolver.Values[{101, SlotKind::InputParameter, 0}] = {
+        ValueState::Available, ValueRelation::Direct, derived,
+        Parameter::Form::Int32, std::int32_t{7}};
+    resolver.Values[{103, SlotKind::InputParameter, 0}] = {
+        ValueState::Available, ValueRelation::Direct, derived,
+        Parameter::Form::Int32, std::int32_t{11}};
+
+    NodePattern pattern{"Wait Message", CKGUID(0x1111, 1)};
+    pattern.PortValues.push_back({
+        Slot::Named(SlotKind::InputParameter, "Message", CKPGUID_INT),
+        Value::From(CKPGUID_INT, std::int32_t{11})});
+    Program edit;
+    (void) edit.RequireOne(std::move(pattern));
+
+    Ops resolved;
+    const Status status = edit.Resolve(
+        {"mod", "pattern-derived-value"}, resolver.Base.Root, resolver,
+        resolved);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(resolver.UsedNodes, (std::vector<ObjectRef>{Ref(103)}));
+}
+
 TEST(BehaviorProgram, RepeatsActionsForEveryPatternMatchInChildOrder) {
     GraphModel graph = Model();
     graph.Nodes.push_back(NodeOf(

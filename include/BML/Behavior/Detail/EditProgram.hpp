@@ -190,6 +190,12 @@ inline Edit::Graph Edit::EnterGraph(
     std::uint32_t scope, const Node &node) {
     if (!Require(*program, scope, node, "Nested graph"))
         return {};
+    // Every Graph() of one Node names the same scope, so their handles mix.
+    for (const Detail::EditStep &entered : program->Steps) {
+        if (entered.Kind == BML_BEHAVIOR_EDIT_ENTER_GRAPH &&
+            entered.Graph == scope && entered.Target == node.m_Id)
+            return Graph{program, entered.Result};
+    }
     Detail::EditStep &step = Define(
         *program, scope, BML_BEHAVIOR_EDIT_ENTER_GRAPH);
     step.Target = node.m_Id;

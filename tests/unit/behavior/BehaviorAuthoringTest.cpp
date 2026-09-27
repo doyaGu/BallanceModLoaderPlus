@@ -3884,6 +3884,35 @@ TEST(BehaviorAuthoring, EncodesNestedGraphScopesAndGraphNodes) {
     EXPECT_EQ(g_State.PlanSteps[6].Sink.Graph, BML_BEHAVIOR_EDIT_GRAPH);
 }
 
+TEST(BehaviorAuthoring, ReusesTheNestedGraphScopeOfANode) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit edit;
+    auto root = edit.Root();
+    const auto childNode = root.AddGraph("Child");
+    auto first = childNode.Graph();
+    const auto childOut = first.AppendOut("Done");
+    auto second = childNode.Graph();
+    const auto block = second.Add(session.Use(CKGUID(3, 4)));
+    first.Flow(block.Out(), childOut);
+
+    auto submitted = session.Plan(
+        "nested-twice", Scripts::One("Gameplay_Events"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    ASSERT_EQ(g_State.PlanSteps.size(), 5u);
+    const CapturedStep &enter = g_State.PlanSteps[1];
+    EXPECT_EQ(enter.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ENTER_GRAPH));
+    for (std::size_t index = 2; index < 5; ++index) {
+        EXPECT_NE(g_State.PlanSteps[index].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ENTER_GRAPH));
+        EXPECT_EQ(g_State.PlanSteps[index].Graph, enter.Result);
+    }
+}
+
 TEST(BehaviorAuthoring, RejectsGraphScopeUseAfterItsEditDies) {
     Edit::Graph root;
     Edit::Node child;

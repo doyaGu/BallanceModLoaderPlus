@@ -88,9 +88,14 @@ bool RawArrayEquals(const Value &expected,
                     sizeof(actual)) == 0;
 }
 
-bool ValueEquals(const Value &expected, const GraphValue &actual) {
+// The selector has already matched the expected type against the Pin's
+// declared type. CK2 lets a Pin read a source whose type derives from its own
+// or the reverse (CKParameterIn::SetDirectSource), so the value read through
+// the source may carry the source's type instead.
+bool ValueEquals(const Value &expected, CKGUID declared,
+                 const GraphValue &actual) {
     if (actual.State != ValueState::Available ||
-        expected.Type() != actual.Type)
+        (expected.Type() != actual.Type && expected.Type() != declared))
         return false;
     if (expected.Kind() == ValueKind::Text) {
         const auto *text = std::get_if<std::string>(&actual.Data);
@@ -242,7 +247,7 @@ Status ResolveAll(const GraphModel &graph, std::uint64_t parent,
             status = values.ReadPatternValue(candidate, slot, current);
             if (!status)
                 return status;
-            if (!ValueEquals(condition.Expected, current)) {
+            if (!ValueEquals(condition.Expected, port->Type, current)) {
                 matches = false;
                 break;
             }
