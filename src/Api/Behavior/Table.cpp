@@ -120,7 +120,7 @@ int OpenRunEntry(OpenKind kind, BML_BehaviorSession session,
         FrameRetention retention;
         if (!ReadBlock(*block, context, spec, result) ||
             !ReadFrames(*frames, retention, result))
-            return BML_ERROR_INVALID_PARAMETER;
+            return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
         CKBeObject *owner = ReadOwner(ownerReference, context, result);
         if (ownerReference.Domain && !owner)
             return BML_ERROR_OBJECT_INVALID;
@@ -188,7 +188,7 @@ int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession session,
         FrameRetention retention;
         if (!ReadBlock(*block, context, spec, result) ||
             !ReadFrames(*frames, retention, result))
-            return BML_ERROR_INVALID_PARAMETER;
+            return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
         CKBehavior *parent = ReadBehavior(graph, context, result);
         if (!parent)
             return BML_ERROR_OBJECT_INVALID;
@@ -414,7 +414,7 @@ int BML_BEHAVIOR_CALL ValidateBlock(BML_BehaviorSession session,
         }
         BlockSpec spec;
         if (!ReadBlock(*block, context, spec, result))
-            return BML_ERROR_INVALID_PARAMETER;
+            return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
         Layout declared;
         result = context.BehaviorSessions().ReadDeclaredLayout(
             SessionId(session),
@@ -631,7 +631,7 @@ int BML_BEHAVIOR_CALL Set(
         Parameter::Binding binding;
         if (!ReadLiveSlot(*slot, target, result) ||
             !ReadValue(*value, context, binding, result))
-            return ResultCode(result);
+            return ReadFailure(result);
         result = context.BehaviorSessions().Set(
             RunId(run), slot->LayoutGeneration, target, binding,
             *outLayoutGeneration);
@@ -703,7 +703,7 @@ int BML_BEHAVIOR_CALL Configure(
                 settings.NextSettingStage();
             if (!ReadBindings(stage.Settings, stage.SettingCount,
                               SlotKind::Setting, context, settings, result))
-                return ResultCode(result);
+                return ReadFailure(result);
         }
         result = context.BehaviorSessions().Configure(
             RunId(run), settings, *outLayoutGeneration);
@@ -730,7 +730,7 @@ int BML_BEHAVIOR_CALL SubmitPlan(
         std::vector<Installations::Rule> rules;
         result = ReadScriptEdits(spec->Edits, spec->EditCount, context, rules);
         if (!result)
-            return ResultCode(result);
+            return ReadFailure(result);
 
         Installations &installations = context.BehaviorInstallations();
         PlanId id = 0;
@@ -856,13 +856,14 @@ int BML_BEHAVIOR_CALL ReplacePlan(
         Installations &installations = context.BehaviorInstallations();
         std::vector<Installations::Rule> rules;
         result = ReadScriptEdits(edits, editCount, context, rules);
-        if (result)
+        const bool decoded = static_cast<bool>(result);
+        if (decoded)
             result = installations.ReplacePlan(owner, PlanIdOf(plan),
                                                std::move(rules));
         PlanInfo read;
         if (info && installations.ReadPlan(owner, PlanIdOf(plan), read))
             WritePlanInfo(info, read);
-        return ResultCode(result);
+        return decoded ? ResultCode(result) : ReadFailure(result);
     });
 }
 
@@ -886,7 +887,7 @@ int BML_BEHAVIOR_CALL ApplyPatch(
         result = ReadGraphEdits(spec->Edits, spec->EditCount, context,
                                 targets);
         if (!result)
-            return ResultCode(result);
+            return ReadFailure(result);
 
         Installations &installations = context.BehaviorInstallations();
         PatchId id = 0;
@@ -989,13 +990,14 @@ int BML_BEHAVIOR_CALL ReplacePatch(
         Installations &installations = context.BehaviorInstallations();
         std::vector<Installations::Target> targets;
         result = ReadGraphEdits(edits, editCount, context, targets);
-        if (result)
+        const bool decoded = static_cast<bool>(result);
+        if (decoded)
             result = installations.Replace(owner, PatchIdOf(patch),
                                            std::move(targets));
         PatchInfo read;
         if (info && installations.Read(owner, PatchIdOf(patch), read))
             WritePatchInfo(info, read);
-        return ResultCode(result);
+        return decoded ? ResultCode(result) : ReadFailure(result);
     });
 }
 
@@ -1118,7 +1120,7 @@ int BML_BEHAVIOR_CALL WritePatchValue(
         Parameter::Binding binding;
         if (!ReadPortQuery(*port, selected, result) ||
             !ReadValue(*value, context, binding, result))
-            return BML_ERROR_INVALID_PARAMETER;
+            return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
         SessionOwner owner;
         if (!ReadSessionOwner(session, context, owner, result))
             return ResultCode(result);
@@ -1172,7 +1174,7 @@ int BML_BEHAVIOR_CALL WritePlanInstanceValue(
         if (!ReadPlanInstance(*instance, selected, result) ||
             !ReadPortQuery(*port, selectedPort, result) ||
             !ReadValue(*value, context, binding, result))
-            return BML_ERROR_INVALID_PARAMETER;
+            return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
         SessionOwner owner;
         if (!ReadSessionOwner(session, context, owner, result))
             return ResultCode(result);
@@ -1200,7 +1202,7 @@ int BML_BEHAVIOR_CALL CreateScript(
         Program body;
         result = DecodeProgram(spec->Program, context, body);
         if (!result)
-            return ResultCode(result);
+            return ReadFailure(result);
         CKBeObject *nativeOwner = ReadOwner(spec->Owner, context, result);
         if (!nativeOwner)
             return BML_ERROR_OBJECT_INVALID;

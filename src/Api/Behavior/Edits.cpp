@@ -997,6 +997,11 @@ Status ReadGraphEdits(
             if (!HasStructSize(&source) || source.Reserved != 0 ||
                 !source.Binding || !source.Graph.Domain)
                 return InvalidValue("A Graph Edit descriptor is malformed.");
+            CKObject *graph = context.ObjectRefs().Resolve(source.Graph);
+            if (!graph || !CKIsChildClassOf(graph, CKCID_BEHAVIOR)) {
+                return StaleObject(Error::TargetInvalid,
+                                   "A Behavior Patch Graph names no live Behavior.");
+            }
             if (!bindings.insert(source.Binding).second) {
                 return InvalidValue(
                     "Graph Edits in one Behavior Patch require distinct bindings.");

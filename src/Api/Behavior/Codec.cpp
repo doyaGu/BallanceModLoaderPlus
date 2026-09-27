@@ -306,6 +306,24 @@ Status InvalidValue(std::string message) {
             CKBR_PARAMETERERROR, std::move(message)};
 }
 
+Status StaleObject(Error error, std::string message) {
+    return {error, CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+            std::move(message)};
+}
+
+int ReadFailure(const Status &status, int fallback) noexcept {
+    // No other reader pairs a Target or Source error with
+    // CKERR_INVALIDOBJECT.
+    const bool stale = (status.Code == Error::TargetInvalid ||
+                        status.Code == Error::SourceInvalid) &&
+                       status.CkError == CKERR_INVALIDOBJECT;
+    return stale ? BML_ERROR_OBJECT_INVALID : fallback;
+}
+
+int ReadFailure(const Status &status) noexcept {
+    return ReadFailure(status, ResultCode(status));
+}
+
 bool ReadSelector(const BML_BehaviorSelector &from, SlotKind slotKind,
                   CKGUID type, Slot &to, Status &status) {
     if (from.StructSize < sizeof(from)) {
@@ -464,9 +482,8 @@ bool ReadValue(const BML_BehaviorValue &from, ModContext &context,
     case BML_BEHAVIOR_VALUE_OBJECT: {
         CKObject *object = context.ObjectRefs().Resolve(from.Data.Object);
         if (from.Data.Object.Domain && !object) {
-            status = {Error::SourceInvalid, CKERR_INVALIDOBJECT,
-                      CKBR_PARAMETERERROR,
-                      "A Behavior object value is stale."};
+            status = StaleObject(Error::SourceInvalid,
+                                 "A Behavior object value is stale.");
             return false;
         }
         to = Parameter::Binding::Object(type, object);
@@ -530,11 +547,16 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
         to.TargetOwner();
         break;
     case BML_BEHAVIOR_TARGET_OBJECT: {
+        if (!from.Target.Object.Domain) {
+            status = {Error::TargetInvalid, CKERR_INVALIDPARAMETER,
+                      CKBR_PARAMETERERROR,
+                      "An object Target requires an object reference."};
+            return false;
+        }
         CKObject *target = context.ObjectRefs().Resolve(from.Target.Object);
         if (!target) {
-            status = {Error::TargetInvalid, CKERR_INVALIDOBJECT,
-                      CKBR_PARAMETERERROR,
-                      "The Behavior Target is stale or null."};
+            status = StaleObject(Error::TargetInvalid,
+                                 "The Behavior Target is stale.");
             return false;
         }
         to.Target(Guid(from.Target.Type), target);

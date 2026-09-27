@@ -676,7 +676,7 @@ if (made) {
 
 所有 Behavior 操作都要求 game thread，Close 也一样。在其他线程调用会返回 `BML_ERROR_WRONG_THREAD`，不做任何改动。facade 值也应在 game thread 销毁：在其他线程运行的析构函数关不掉它持有的资源，Loader 要等 Mod retire 时才回收。所有 `Result<T>` 都同时包含稳定错误类别和 `Status`；控制流只应判断 error/phase，不应解析 message 文本。
 
-作为 graph、Node 或 owner 传入的 `ObjectRef` 已失效或指向错误种类的对象时，返回 `BML_ERROR_OBJECT_INVALID`。已关闭的 Session、run、Watch、Patch、Plan 或 Script handle 返回 `BML_ERROR_INVALID_HANDLE`。Block 或值写入中失效的 Target 或 object 值通过 `Status` 报告为 `TargetInvalid` 或 `SourceInvalid`。
+作为 graph、Node 或 owner 传入的 `ObjectRef` 已失效或指向错误种类的对象时，返回 `BML_ERROR_OBJECT_INVALID`。Block、值写入或 edit program 中失效的 Target 或 object 值同样返回 `BML_ERROR_OBJECT_INVALID`，`Status` 以 `TargetInvalid` 或 `SourceInvalid` 指出出错的字段。object Target 完全没有给出引用时，Block 格式错误，返回 `BML_ERROR_INVALID_PARAMETER`。已关闭的 Session、run、Watch、Patch、Plan 或 Script handle 返回 `BML_ERROR_INVALID_HANDLE`。
 
 高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`TakeFrames(Frames&)` 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string，两个方向的 LinkRange 都使用 snapshot 自带的索引。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。
 

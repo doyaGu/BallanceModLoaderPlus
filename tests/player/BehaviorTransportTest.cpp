@@ -2451,10 +2451,73 @@ private:
         if (m_ObjectRefPassed) {
             GetLogger()->Info(
                 "Behavior capture-time object: live_before_close=true stale_after_close=true");
-            Finish(true, "complete");
+            if (RejectsStaleReferences())
+                Finish(true, "complete");
+            else
+                Fail("stale-reference");
         } else if (m_LevelFrames >= 30) {
             Fail("object-ref");
         }
+    }
+
+    // The closed object's reference is now stale. Passed as a Target, an
+    // object value or a Patch Graph, it fails as an invalid object, the way a
+    // stale owner does, and the Status still names the rejected field.
+    bool RejectsStaleReferences() {
+        BlockArguments arguments(false, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
+                                 m_Prototype.Generation);
+        arguments.Block.Target.Kind = BML_BEHAVIOR_TARGET_OBJECT;
+        arguments.Block.Target.Type = Guid(CKPGUID_BEOBJECT);
+        arguments.Block.Target.Object = m_CapturedObjectRef;
+        BML_BehaviorSelector input = Named("Read Target");
+        BML_BehaviorRun run = nullptr;
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus targetStatus = Dto<BML_BehaviorStatus>();
+        const int target = m_Behavior->Call(
+            m_Session, {}, &arguments.Block, &arguments.Frames, &input, &run,
+            &info, &targetStatus);
+        if (run)
+            m_Behavior->CloseRun(run);
+        const bool targetOk = target == BML_ERROR_OBJECT_INVALID && !run &&
+            targetStatus.Error == BML_BEHAVIOR_ERROR_TARGET_INVALID;
+
+        BML_BehaviorSlotRef slot = Dto<BML_BehaviorSlotRef>();
+        slot.Kind = BML_BEHAVIOR_SLOT_PIN;
+        slot.Type = Guid(CKPGUID_BEOBJECT);
+        slot.Slot = Named("Object");
+        BML_BehaviorValue value =
+            Literal(Guid(CKPGUID_BEOBJECT), BML_BEHAVIOR_VALUE_OBJECT);
+        value.Data.Object = m_CapturedObjectRef;
+        std::uint64_t generation = 0;
+        BML_BehaviorStatus valueStatus = Dto<BML_BehaviorStatus>();
+        const int set = m_Behavior->Set(m_Call, &slot, &value, &generation,
+                                        &valueStatus);
+        const bool valueOk = set == BML_ERROR_OBJECT_INVALID &&
+            valueStatus.Error == BML_BEHAVIOR_ERROR_SOURCE_INVALID;
+
+        BML_BehaviorGraphEdit edit = Dto<BML_BehaviorGraphEdit>();
+        edit.Graph = m_CapturedObjectRef;
+        edit.Binding = 1;
+        edit.Program = Dto<BML_BehaviorEditProgram>();
+        BML_BehaviorPatchSpec spec = Dto<BML_BehaviorPatchSpec>();
+        spec.Name = Text("Stale Graph");
+        spec.Edits = &edit;
+        spec.EditCount = 1;
+        BML_BehaviorPatch patch = nullptr;
+        BML_BehaviorStatus graphStatus = Dto<BML_BehaviorStatus>();
+        const int graph = m_Behavior->ApplyPatch(m_Session, &spec, &patch,
+                                                 nullptr, &graphStatus);
+        if (patch)
+            m_Behavior->ClosePatch(m_Session, patch);
+        const bool graphOk = graph == BML_ERROR_OBJECT_INVALID && !patch &&
+            graphStatus.Error == BML_BEHAVIOR_ERROR_TARGET_INVALID;
+
+        GetLogger()->Info(
+            "Behavior stale references: target=%s:%d:%u value=%s:%d:%u graph=%s:%d:%u",
+            targetOk ? "true" : "false", target, targetStatus.Error,
+            valueOk ? "true" : "false", set, valueStatus.Error,
+            graphOk ? "true" : "false", graph, graphStatus.Error);
+        return targetOk && valueOk && graphOk;
     }
 
     void CloseRuns() {

@@ -131,6 +131,13 @@ bool ValidOutputs(BML_BehaviorRunInfo *info,
                   BML_BehaviorStatus *status) noexcept;
 int ResultCode(const Status &status) noexcept;
 Status InvalidValue(std::string message);
+// A Target or object value whose ObjectRef names no live object. ReadFailure
+// answers it with BML_ERROR_OBJECT_INVALID, like a stale owner, graph or
+// Node, and any other rejected record with fallback, or ResultCode when no
+// fallback is given.
+Status StaleObject(Error error, std::string message);
+int ReadFailure(const Status &status, int fallback) noexcept;
+int ReadFailure(const Status &status) noexcept;
 
 // Readers. Each one leaves the reason for a rejected record in status.
 bool ReadSelector(const BML_BehaviorSelector &from, SlotKind slotKind,
@@ -152,7 +159,7 @@ bool ReadFrames(const BML_BehaviorFramePolicy &from,
 bool ReadPrototypeQuery(const BML_BehaviorPrototypeQuery &from,
                         PrototypeQuery &to, Status &status);
 // A stale reference, or one that names the wrong kind of object, fails with
-// BML_ERROR_OBJECT_INVALID, as it does everywhere a call takes an ObjectRef.
+// BML_ERROR_OBJECT_INVALID, as a StaleObject does.
 CKBeObject *ReadOwner(BML_ObjectRef owner, ModContext &context,
                       Status &status);
 CKBehavior *ReadBehavior(BML_ObjectRef reference, ModContext &context,
