@@ -13,7 +13,8 @@ enum BML_BehaviorCProbeCheck {
     BML_BEHAVIOR_C_PROBE_FRAME = 1u << 4,
     BML_BEHAVIOR_C_PROBE_OUT = 1u << 5,
     BML_BEHAVIOR_C_PROBE_CLOSED = 1u << 6,
-    BML_BEHAVIOR_C_PROBE_ALL = (1u << 7) - 1u
+    BML_BEHAVIOR_C_PROBE_LOCALITY = 1u << 7,
+    BML_BEHAVIOR_C_PROBE_ALL = (1u << 8) - 1u
 };
 
 typedef struct BML_BehaviorCProbeResult {

@@ -49,6 +49,83 @@ static int HasOut(const BML_BehaviorRunFrame *frame,
     return 0;
 }
 
+// A step of the root scope names the root port of a scope it entered. Each
+// scope numbers its handles from one, so the Loader must reject the port
+// rather than read it as the root scope's own graph port.
+static int RejectsForeignScopePort(const BML_BehaviorInterface *behavior,
+                                   BML_BehaviorSession session) {
+    enum { Nested = 2u, NestedScope = 3u, Leaving = 4u };
+    BML_BehaviorNodePattern pattern;
+    BML_BehaviorPortRef port;
+    BML_BehaviorEditStep steps[3];
+    BML_BehaviorScriptEdit edit;
+    BML_BehaviorPlanSpec spec;
+    BML_BehaviorPlanInfo info;
+    BML_BehaviorStatus status = EmptyStatus();
+    BML_BehaviorPlan plan = NULL;
+    int code;
+
+    memset(&pattern, 0, sizeof(pattern));
+    pattern.StructSize = sizeof(pattern);
+    pattern.Selector.StructSize = sizeof(pattern.Selector);
+    pattern.Selector.Kind = BML_BEHAVIOR_SELECTOR_NAME;
+    pattern.Selector.Name = Text("BML C Probe Nested");
+
+    memset(&port, 0, sizeof(port));
+    port.StructSize = sizeof(port);
+    port.Graph = NestedScope;
+    port.Handle = BML_BEHAVIOR_EDIT_GRAPH;
+    port.Kind = BML_BEHAVIOR_SLOT_IN;
+    port.Slot.StructSize = sizeof(port.Slot);
+    port.Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
+
+    memset(steps, 0, sizeof(steps));
+    steps[0].StructSize = sizeof(steps[0]);
+    steps[0].Kind = BML_BEHAVIOR_EDIT_REQUIRE_NODE;
+    steps[0].Graph = BML_BEHAVIOR_EDIT_GRAPH;
+    steps[0].Result = Nested;
+    steps[0].Operand = 1;
+    steps[1].StructSize = sizeof(steps[1]);
+    steps[1].Kind = BML_BEHAVIOR_EDIT_ENTER_GRAPH;
+    steps[1].Graph = BML_BEHAVIOR_EDIT_GRAPH;
+    steps[1].Result = NestedScope;
+    steps[1].Target = Nested;
+    steps[2].StructSize = sizeof(steps[2]);
+    steps[2].Kind = BML_BEHAVIOR_EDIT_LEAVING_LINK;
+    steps[2].Graph = BML_BEHAVIOR_EDIT_GRAPH;
+    steps[2].Result = Leaving;
+    steps[2].Source = 1;
+
+    memset(&edit, 0, sizeof(edit));
+    edit.StructSize = sizeof(edit);
+    edit.Targets = BML_BEHAVIOR_TARGETS_EACH;
+    edit.Script = Text("BML C Probe Script");
+    edit.Binding = 1;
+    edit.Program.StructSize = sizeof(edit.Program);
+    edit.Program.Steps = steps;
+    edit.Program.StepCount = 3;
+    edit.Program.Ports = &port;
+    edit.Program.PortCount = 1;
+    edit.Program.Patterns = &pattern;
+    edit.Program.PatternCount = 1;
+
+    memset(&spec, 0, sizeof(spec));
+    spec.StructSize = sizeof(spec);
+    spec.Name = Text("BML C Probe Locality");
+    spec.Edits = &edit;
+    spec.EditCount = 1;
+
+    memset(&info, 0, sizeof(info));
+    info.StructSize = sizeof(info);
+    code = behavior->SubmitPlan(session, &spec, &plan, &info, &status);
+    if (plan) {
+        behavior->ClosePlan(session, plan);
+        return 0;
+    }
+    return code != BML_OK &&
+        status.Error == BML_BEHAVIOR_ERROR_GRAPH_LOCALITY_INVALID;
+}
+
 int BML_TestBehaviorFromC(BML_BehaviorGuid prototype,
                           BML_BehaviorCProbeResult *result) {
     const void *found = NULL;
@@ -89,6 +166,9 @@ int BML_TestBehaviorFromC(BML_BehaviorGuid prototype,
     if (code != BML_OK || !session)
         goto done;
     result->Checks |= BML_BEHAVIOR_C_PROBE_SESSION;
+
+    if (RejectsForeignScopePort(behavior, session))
+        result->Checks |= BML_BEHAVIOR_C_PROBE_LOCALITY;
 
     {
         BML_BehaviorPrototypeQuery query;

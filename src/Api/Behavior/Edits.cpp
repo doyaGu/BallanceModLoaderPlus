@@ -121,7 +121,10 @@ private:
     // Pool readers. Every index is one-based and checked against its pool.
     Status PortRefAt(std::uint32_t index,
                      const BML_BehaviorPortRef *&out) const;
-    Status PortAt(std::uint32_t index, Port &out) const;
+    // A port of another graph scope is rejected: each scope numbers its
+    // Nodes from one, so its Node would name an unrelated Node here.
+    Status PortAt(std::uint32_t scope, std::uint32_t index,
+                  Port &out) const;
     Status PatternAt(std::uint32_t index, NodePattern &out) const;
     Status ValueAt(std::uint32_t index, ModContext &context,
                    Parameter::Binding &out) const;
@@ -340,9 +343,9 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_REQUIRE_LINK: {
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
         std::optional<int> delay;
         if (step.Flags & BML_BEHAVIOR_EDIT_HAS_DELAY)
@@ -355,7 +358,8 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
     case BML_BEHAVIOR_EDIT_PREVIOUS_NODE: {
         const bool next = step.Kind == BML_BEHAVIOR_EDIT_NEXT_NODE;
         Port &end = next ? source : sink;
-        if (status = PortAt(next ? step.Source : step.Sink, end); !status)
+        if (status = PortAt(step.Graph, next ? step.Source : step.Sink,
+                           end); !status)
             return status;
         NodePattern expected;
         if (step.Operand) {
@@ -374,19 +378,19 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_LEAVING_LINK:
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
         defined.Kind = EditHandleKind::Link;
         defined.LinkValue = edit.Leaving(source);
         break;
     case BML_BEHAVIOR_EDIT_ENTERING_LINK:
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
         defined.Kind = EditHandleKind::Link;
         defined.LinkValue = edit.Entering(sink);
         break;
     case BML_BEHAVIOR_EDIT_LINK_TO_NODE: {
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
         const EditHandle *target = nullptr;
         if (status = Use(step.Graph, step.Target, EditHandleKind::Node,
@@ -397,7 +401,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_FOLLOW:
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
         defined.Kind = EditHandleKind::Path;
         defined.PathValue = edit.Follow(source);
@@ -509,7 +513,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
             return InvalidValue(
                 "A Node Pattern value must name a port of its target Node.");
         }
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
         if (sink.Owner != target->NodeValue.Value)
             return InvalidValue(
@@ -589,9 +593,9 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_FLOW:
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
         edit.Flow(source, sink, step.Number,
                   (step.Flags & BML_BEHAVIOR_EDIT_CONFIRM_CYCLE)
@@ -599,7 +603,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         break;
     case BML_BEHAVIOR_EDIT_BIND_VALUE:
     case BML_BEHAVIOR_EDIT_SET_VALUE: {
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
         Parameter::Binding binding;
         if (status = ValueAt(step.Operand, context, binding); !status)
@@ -613,9 +617,9 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
     case BML_BEHAVIOR_EDIT_BIND_PORT:
     case BML_BEHAVIOR_EDIT_SHARE:
     case BML_BEHAVIOR_EDIT_PUSH:
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
         if (step.Kind == BML_BEHAVIOR_EDIT_BIND_PORT)
             edit.Bind(sink, source);
@@ -625,7 +629,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
             edit.Push(source, sink);
         break;
     case BML_BEHAVIOR_EDIT_TAP: {
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
         HookBlock::Hook hook;
         if (status = HookAt(step.Operand, hook); !status)
@@ -634,9 +638,9 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_FLOW_HOOK: {
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
         HookBlock::Hook hook;
         if (status = HookAt(step.Operand, hook); !status)
@@ -678,9 +682,9 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
             edit.Splice(link->LinkValue, block->NodeValue, std::move(ordering));
             break;
         }
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
         edit.Splice(link->LinkValue, sink, source, std::move(ordering));
         break;
@@ -692,7 +696,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         std::vector<Order> ordering;
         if (status = OrdersAt(step, ordering); !status)
             return status;
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
         edit.Redirect(link->LinkValue, sink, std::move(ordering));
         break;
@@ -718,9 +722,9 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         if (status = Use(step.Graph, step.Target, EditHandleKind::Link,
                          link); !status)
             return status;
-        if (status = PortAt(step.Source, source); !status)
+        if (status = PortAt(step.Graph, step.Source, source); !status)
             return status;
-        if (status = PortAt(step.Sink, sink); !status)
+        if (status = PortAt(step.Graph, step.Sink, sink); !status)
             return status;
         edit.Reconnect(link->LinkValue, source, sink,
                        (step.Flags & BML_BEHAVIOR_EDIT_CONFIRM_CYCLE)
@@ -760,11 +764,17 @@ Status ProgramDecoder::PortRefAt(std::uint32_t index,
     return {};
 }
 
-Status ProgramDecoder::PortAt(std::uint32_t index, Port &out) const {
+Status ProgramDecoder::PortAt(std::uint32_t scope, std::uint32_t index,
+                              Port &out) const {
     const BML_BehaviorPortRef *from = nullptr;
     Status status = PortRefAt(index, from);
     if (!status)
         return status;
+    if (from->Graph != scope) {
+        return {Error::InvalidGraphLocality, CKERR_INVALIDPARAMETER,
+                CKBR_PARAMETERERROR,
+                "A Behavior edit step names a port of another graph scope."};
+    }
     const EditHandle *handle = nullptr;
     if (from->Kind == 0) {
         if (status = Use(from->Graph, from->Handle, EditHandleKind::Port,
