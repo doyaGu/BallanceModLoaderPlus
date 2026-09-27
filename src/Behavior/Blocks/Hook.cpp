@@ -69,14 +69,17 @@ CallbackCall Binding::Invoke(const CKBehaviorContext *context) noexcept {
         call.Fault = {CallbackError::Exception,
                       "Behavior Hook callback reported a fault."};
     }
-    if (call.Fault && !m_Diagnostic)
-        m_Diagnostic = call.Fault;
     // A callback that ran but did not complete is a bug, not a decision. Keep
     // its first diagnostic and stop invoking this occurrence; the Hook Block
     // treats the faulted call as if no callback ran, the same way CK2 swallows
-    // a native BB's exception instead of stopping the graph.
-    if (call.Invoked && call.Fault)
+    // a native BB's exception instead of stopping the graph. A call refused
+    // because admission closed is how a closing Patch stops its Hooks, and
+    // says nothing about the callback.
+    if (call.Invoked && call.Fault) {
+        if (!m_Diagnostic)
+            m_Diagnostic = call.Fault;
         CloseAdmission();
+    }
     return call;
 }
 

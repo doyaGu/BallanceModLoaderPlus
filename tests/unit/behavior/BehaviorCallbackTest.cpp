@@ -406,6 +406,7 @@ TEST(BehaviorCallback, ParentCloseStopsExistingAndNotYetPublishedInstallations) 
     ASSERT_TRUE(first->Invoke(nullptr).Invoked);
     plan->Close();
     EXPECT_FALSE(first->Invoke(nullptr).Invoked);
+    EXPECT_FALSE(first->Diagnostic());
     // A binding prepared after closure must not reopen admission.
     auto late = hook.Bind();
     late->AdmitThrough(std::make_shared<CallbackAdmission>(plan));
