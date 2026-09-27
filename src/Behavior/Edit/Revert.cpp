@@ -822,8 +822,10 @@ void CKEdit::Transaction::RestoreStructure() {
             if (!restored)
                 continue;
 
-            for (auto change = item->Destinations.rbegin();
-                 change != item->Destinations.rend(); ++change) {
+            // AddDestination appends, so the original destinations return in
+            // their recorded order. DataChanged pushes follow that order.
+            for (auto change = item->Destinations.begin();
+                 change != item->Destinations.end(); ++change) {
                 if (!change->Applied)
                     continue;
                 CKParameterOut *oldOutput = Resolve<CKParameterOut>(

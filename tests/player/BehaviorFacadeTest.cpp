@@ -561,6 +561,7 @@ private:
         m_Anchor = nullptr;
         m_Exit = nullptr;
         m_ReplacementSource = nullptr;
+        m_ReplacementOrder = nullptr;
         m_ReplacementOriginalNode = nullptr;
         m_ReplacementInstalledNode = nullptr;
         m_ReplacementEntry = nullptr;
@@ -2211,6 +2212,15 @@ private:
             Finish(false, "replacement-relations");
             return;
         }
+        // A second destination shows that undoing the Replace keeps the
+        // original destination order.
+        m_ReplacementOrder = m_Graph->CreateLocalParameter(
+            const_cast<CKSTRING>("Replacement Order"), CKPGUID_INT);
+        if (!m_ReplacementOrder ||
+            originalPout->AddDestination(m_ReplacementOrder, TRUE) != CK_OK) {
+            Finish(false, "replacement-order-relation");
+            return;
+        }
         m_ReplacementEntryId = m_ReplacementEntry->GetID();
         m_ReplacementExitId = m_ReplacementExit->GetID();
 
@@ -2390,10 +2400,17 @@ private:
                 m_ReplacementOriginalNode->GetOutput(0) &&
             originalPin &&
             originalPin->GetDirectSource() == m_ReplacementSource &&
-            HasDestination(originalPout, m_ReplacementSource);
+            HasDestination(originalPout, m_ReplacementSource) &&
+            HasDestination(originalPout, m_ReplacementOrder);
         if (!restored) {
             if (m_Frame > m_WaitUntil)
                 Finish(false, "replacement-restore");
+            return;
+        }
+        if (originalPout->GetDestinationCount() != 2 ||
+            originalPout->GetDestination(0) != m_ReplacementSource ||
+            originalPout->GetDestination(1) != m_ReplacementOrder) {
+            Finish(false, "replacement-destination-order");
             return;
         }
         const auto closed = m_ReplacementPatch.Close();
@@ -2409,8 +2426,14 @@ private:
         context->DestroyObject(m_ReplacementExit);
         m_ReplacementEntry = nullptr;
         m_ReplacementExit = nullptr;
-        if (originalPout)
+        if (originalPout) {
             originalPout->RemoveDestination(m_ReplacementSource);
+            originalPout->RemoveDestination(m_ReplacementOrder);
+        }
+        (void) m_Graph->RemoveLocalParameter(
+            m_Graph->GetLocalParameterPosition(m_ReplacementOrder));
+        context->DestroyObject(m_ReplacementOrder);
+        m_ReplacementOrder = nullptr;
         const auto originalClosed = m_ReplacementOriginal->Close();
         if (!originalClosed) {
             Finish(false, "replacement-original-close");
@@ -3903,6 +3926,7 @@ private:
     CKBehaviorLink *m_Anchor = nullptr;
     CKBehaviorLink *m_Exit = nullptr;
     CKParameterLocal *m_ReplacementSource = nullptr;
+    CKParameterLocal *m_ReplacementOrder = nullptr;
     CKBehavior *m_ReplacementOriginalNode = nullptr;
     CKBehavior *m_ReplacementInstalledNode = nullptr;
     CKBehaviorLink *m_ReplacementEntry = nullptr;
