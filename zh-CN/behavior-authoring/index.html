@@ -604,6 +604,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="9. 修改 graph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hook-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        放置 Hook Block
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2097,6 +2114,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="9. 修改 graph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hook-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        放置 Hook Block
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2297,6 +2331,7 @@
 <p>Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 DLL 释放前完成 callback 和 native Behavior 的退役。</p>
 <p><code>Behavior::Result&lt;T&gt;</code> 是共用 <code>BML::Result&lt;T, Behavior::Status&gt;</code> 的别名，只有诊断信息属于 Behavior。对具名 Result 调用 <code>Result&lt;T&gt;::Value()</code> 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 <code>Take()</code>。<code>Take()</code> 会清空结果中的值，但 <code>Code()</code> 和 <code>GetStatus()</code> 仍可用于读取诊断。</p>
 <p>由 Session 创建的对象持有自己所需的 Session lease。移动或对最初的 <code>Session</code> 值调用 <code>Reset()</code>，只会释放这个值持有的 lease，不会使仍存活的 Block、run、Script、Watch、Patch 或 Plan 失效。最后一个 lease 释放时，native Session 才关闭。</p>
+<p><code>Session::Adopt(api, handle)</code> 接管一个通过 C 函数表以其他方式打开的 Session handle，例如宿主替它运行的 Mod 打开的 Session。接管后的 handle 遵守同样的 lease 规则；Adopt 失败时会立即关闭该 handle。</p>
 <h3 id="prototype">查找 Prototype<a class="headerlink" href="#prototype" title="Permanent link">&para;</a></h3>
 <p>已知 GUID 时可以直接 <code>Use(CKGUID)</code>。不知道 GUID，或需要固定当前 provider 时，先查询 catalog：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">PrototypeQuery</span><span class="w"> </span><span class="n">query</span><span class="p">;</span>
@@ -2455,6 +2490,7 @@ Object List 只是一种输出形式，不能作为 Block literal。</p>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">        </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Set</span><span class="p">(</span><span class="o">*</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="mf">20.0f</span><span class="p">);</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">}</span>
 </code></pre></div>
+<p><code>Layout::Find(kind, name, occurrence)</code> 按名称查找 Slot。<code>Layout::Select(kind, selector)</code> 接受与 Block 配置相同的 selector；要求唯一匹配的 selector 命中多个 Slot 时返回 null，并通过可选的 flag 报告歧义。</p>
 <p>lifecycle callback 边界会使旧 Slot 失效，因为 provider 可能重建了相同形状的 interface。普通 Execute 只有在 Target、In/Out、Pin/Pout、Setting 或 Local identity 实际变化时才推进 layout generation。旧 Slot 或 Port 会返回 <code>LayoutChanged</code>，不会按旧 ordinal 写错参数。</p>
 <p><code>Settings({...})</code> 可对 live run 应用新的 Setting stage。Runtime 会重新取得 Layout，并恢复仍然唯一且类型匹配的 Target、Pin、Local 和 source relation。native mutation 一旦开始，任何写入、callback、Layout 或 relation 失败都会让 run 进入 <code>Failed</code>：<code>Info()</code> 保留首个 <code>Status</code>，后续 mutation 和 execution 返回同一 diagnostic，而 native Instance 仍由该 run 持有，直到 <code>Close()</code>。</p>
 <h2 id="7-graph">7. 读取 graph<a class="headerlink" href="#7-graph" title="Permanent link">&para;</a></h2>
@@ -2497,7 +2533,7 @@ snapshot allocation 的轻量 view。<code>Graph::Operations()</code> 列出每�
 <code>CKParameterOperation</code>，包括 operation GUID、精确的 result/input type tuple、
 graph owner 和 object identity。Port 保留所属 Node 的 layout generation；把
 旧 snapshot 的 Port 用于新的 live Layout 会失败。</p>
-<p><code>Logical()</code> 重新读取作者可见的 graph，<code>Live()</code> 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。graph fingerprint 包含 native identity、priority、layout、parameter operation、Link topology、child 调度顺序、graph Link 顺序以及每个 source IO 的 Link 遍历顺序。Patch journal 会精确恢复这些 CK2 顺序。source IO 若能到达属于另一 graph 的 Link，该 native graph 不完整，Runtime 会拒绝发布 snapshot。其他代码若改坏 Patch 声明的 after-image，Apply 返回 <code>GraphChanged</code>；Close 会在修改 graph 前返回 <code>RevertConflict</code>。</p>
+<p><code>Logical()</code> 重新读取作者可见的 graph，<code>Live()</code> 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。graph fingerprint 包含 native identity、priority、layout、parameter operation、Link topology、child 调度顺序以及每个 source IO 的 Link 遍历顺序。graph 自身 Link 集合的顺序只影响 CK2 的激活标记，所以 fingerprint 不包含它。Patch journal 会精确恢复 child 调度顺序和 source IO 遍历顺序。source IO 若能到达属于另一 graph 的 Link，该 native graph 不完整，Runtime 会拒绝发布 snapshot。其他代码若改坏 Patch 声明的 after-image，Apply 返回 <code>GraphChanged</code>；Close 会在修改 graph 前返回 <code>RevertConflict</code>。</p>
 <p><code>Graph::Read</code> 跟随 stored、direct 和 shared source，但不会为了读取而执行 Parameter Operation；operation value 会报告 indeterminate。</p>
 <p>Watch 每个 game frame 采样一次 graph、layout 或 value。callback 或观察失败后，Watch 保留第一条 <code>Status</code>，进入 <code>Failed</code> 并停止后续 callback。</p>
 <h2 id="8-script-graph">8. 创建 Script graph<a class="headerlink" href="#8-script-graph" title="Permanent link">&para;</a></h2>
@@ -2609,11 +2645,10 @@ public interface 不一致，替换会直接失败，不会按位置猜测适配
 与 delay。这样，仍在运行的兄弟 Block 就无法从自己的 output port 遍历一条已经不属于
 graph 的 Link。应用 Remove 时，目标 Node、它的 control port 以及每条关联 Link 的
 source 都必须 idle；
-非目标 sink 已经 active 时不再依赖这条 Link。零售 SDK 不公开 CK2 delayed list 的
-成员关系；在一次执行边界上，不在该 list 中的 Link，其 remaining delay
-只会是 0 或 initial delay，因此其他正数状态一律按 in-flight 处理并拒绝。即使 graph
-通过不带 reset 的方式被 deactivate，这条规则仍成立，因为该操作不会清空 delayed
-list。graph 内无关的工作可以保持 active。</p>
+非目标 sink 已经 active 时不再依赖这条 Link。Remove 还会读取每条关联 Link 的
+delayed list 标记，CK2 仍把它留在 graph delayed list 中时直接拒绝。graph 通过不带
+reset 的方式被 deactivate 时同样适用，因为该操作不会清空 delayed list。graph 内
+无关的工作可以保持 active。</p>
 <p><code>Reconnect</code> 修改所选 native <code>CKBehaviorLink</code> 的 source 与 destination relation。
 它保留 Link identity、initial delay 和 current delay；关闭 Patch 时恢复原 endpoint
 以及 source port 上的原遍历顺序。<code>Redirect</code> 仍然只是 destination-only 的 Link
@@ -2698,30 +2733,54 @@ definition 时的第一个失败，<code>RestoreFailure</code> 表示当前阻�
 <code>Closing</code> 同样会保留 handle；调用方应持有它，并在后续 safe point 查询或重试，
 不能把它当作已恢复完成而直接丢弃。</p>
 <p>Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。</p>
+<h3 id="hook-block">放置 Hook Block<a class="headerlink" href="#hook-block" title="Permanent link">&para;</a></h3>
+<p><code>Tap</code>、<code>Before</code> 和 <code>After</code> 把 Hook 作为某个 Edit 的一部分安装。Block 需要先于连接它的 Patch 存在，或需要比多个这样的 Patch 活得更久时，用 <code>Session::SpawnIn(graph, hook, shape)</code> 直接放置。它返回持有该 Hook Block 的 Instance：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">HookBlock</span><span class="w"> </span><span class="n">shape</span><span class="p">;</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">shape</span><span class="p">.</span><span class="n">Outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="n">shape</span><span class="p">.</span><span class="n">ActivatesOutputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">spawned</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">script</span><span class="p">,</span><span class="w"> </span><span class="n">Hook</span><span class="p">([](</span><span class="k">const</span><span class="w"> </span><span class="n">HookEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">    </span><span class="n">ChooseBranch</span><span class="p">(</span><span class="n">event</span><span class="p">.</span><span class="n">Block</span><span class="p">);</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">HookResult</span><span class="o">::</span><span class="n">Ok</span><span class="p">;</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="p">}),</span><span class="w"> </span><span class="n">shape</span><span class="p">);</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">spawned</span><span class="p">)</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="n">Instance</span><span class="w"> </span><span class="n">hook</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">spawned</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
+</code></pre></div>
+<p><code>HookBlock</code> 设置 In 与 Out 的数量，以及 callback 之后是否激活全部 Out。<code>ActivatesOutputs = false</code> 时，由 callback 在 <code>HookEvent::Block</code> 指向的 Block 上激活它选择的 Out。callback 没有完成时，这次激活仍会传给全部 Out，出错的 hook 不会让 graph 停住。</p>
+<p>Block 创建后没有任何连接。先 Inspect graph，找到 <code>Object()</code> 指向该 Block 的 Node（<code>hook.Inspect(View::Live)</code> 的 snapshot root 就是它），再用 Patch 把它 splice 到一条 Link 上：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">edit</span><span class="p">;</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edit</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">root</span><span class="p">.</span><span class="n">Splice</span><span class="p">(</span><span class="n">root</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">link</span><span class="p">),</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">blockNode</span><span class="p">));</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">placement</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="o">-&gt;</span><span class="n">Apply</span><span class="p">(</span><span class="s">"my hook"</span><span class="p">,</span><span class="w"> </span><span class="n">edit</span><span class="p">);</span>
+</code></pre></div>
+<p>先关闭放置用的 Patch，再关闭 Instance，这样 Block 离开之前 graph 已经恢复。关闭 Instance 会立即停止 callback，并在之后的 safe point 移除 Block。</p>
 <h2 id="10-angelscript">10. AngelScript<a class="headerlink" href="#10-angelscript" title="Permanent link">&para;</a></h2>
 <p>启用 CKAngelScript 时，每个 Script Mod 都会得到同一模型的 owner-scoped
 <code>BML::Behavior</code> 投影。无需手动打开 Session：<code>Use</code>、<code>Find</code>、<code>Describe</code>、
 <code>Inspect</code>、<code>Edit</code> 和 <code>CreateScript</code> 会使用当前 Script Mod 的身份，卸载或热重载前
-统一关闭它创建的 Run、Watch、Patch、Plan、Script 和 callback。</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Find</span><span class="p">(</span><span class="s">"My Building Block"</span><span class="p">,</span><span class="w"> </span><span class="s">"My Category"</span><span class="p">)</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({</span>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Mode"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="p">})</span>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({</span>
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">12.0f</span><span class="p">))</span>
-<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">    </span><span class="p">});</span>
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>
-<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Spawn</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Signals</span><span class="p">(</span><span class="mi">16</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
-<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">Layout</span><span class="p">();</span>
-<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">strength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">layout</span><span class="p">.</span><span class="n">Find</span><span class="p">(</span>
-<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotKind</span><span class="o">::</span><span class="n">Pin</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">));</span>
-<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="n">instance</span><span class="p">.</span><span class="n">Set</span><span class="p">(</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">18.0f</span><span class="p">));</span>
-<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="n">instance</span><span class="p">.</span><span class="n">Pulse</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Run"</span><span class="p">));</span>
-<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>
-<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">frames</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">TakeFrames</span><span class="p">();</span>
-<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="kt">float</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0f</span><span class="p">;</span>
-<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">frames</span><span class="p">.</span><span class="n">Empty</span><span class="p">)</span>
-<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="w">    </span><span class="n">frames</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">Read</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Result"</span><span class="p">),</span><span class="w"> </span><span class="n">result</span><span class="p">);</span>
+统一关闭它创建的 Run、Watch、Patch、Plan、Script 和 callback。这个投影只使用
+C++ facade 和 BML 为该 Script Mod 打开的 Session，脚本 Hook Block 服务共用同一个
+Session。</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Find</span><span class="p">(</span><span class="s">"My Building Block"</span><span class="p">,</span><span class="w"> </span><span class="s">"My Category"</span><span class="p">)</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Mode"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">    </span><span class="p">})</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">12.0f</span><span class="p">))</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">    </span><span class="p">});</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Spawn</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Signals</span><span class="p">(</span><span class="mi">16</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">Layout</span><span class="p">();</span>
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">strength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">layout</span><span class="p">.</span><span class="n">Find</span><span class="p">(</span>
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotKind</span><span class="o">::</span><span class="n">Pin</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">));</span>
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="n">instance</span><span class="p">.</span><span class="n">Set</span><span class="p">(</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">18.0f</span><span class="p">));</span>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="n">instance</span><span class="p">.</span><span class="n">Pulse</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Run"</span><span class="p">));</span>
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>
+<a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">frames</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">TakeFrames</span><span class="p">();</span>
+<a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a><span class="kt">float</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0f</span><span class="p">;</span>
+<a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">frames</span><span class="p">.</span><span class="n">Empty</span><span class="p">)</span>
+<a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="w">    </span><span class="n">frames</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">Read</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Result"</span><span class="p">),</span><span class="w"> </span><span class="n">result</span><span class="p">);</span>
 </code></pre></div>
 <p>Graph 路径同样使用 <code>Graph → Edit → Patch / Plan</code> 这组领域概念，包括嵌套 graph、
 <code>NodePattern</code>/<code>Each</code>、Add/Replace/Remove、Flow、parameter relation、Parameter
@@ -2734,16 +2793,16 @@ CKAngelScript Behavior/Param API 仍可用于低层 CK2 操作，但它不会获
 owner retirement、Patch journal 或跨 world Plan 语义。</p>
 <h2 id="11-retail-bb">11. 已命名的 retail BB<a class="headerlink" href="#11-retail-bb" title="Permanent link">&para;</a></h2>
 <p><code>BML/Behavior/Blocks.hpp</code> 汇总 BML+ 已知的 header-only adapter，例如 Object Load、Physicalize、Physics Force、Physics Impulse、Physics Wake Up、Send Message 和 2D Text。每个 header 只封装该 BB 的 Prototype、Options 和 slot knowledge：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior/Blocks/Text2D.hpp&gt;</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Options</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="n">options</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"score"</span><span class="p">;</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="n">options</span><span class="p">.</span><span class="n">FontIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
-<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
-<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">made</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Make</span><span class="p">(</span><span class="n">m_Behavior</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
-<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">made</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">made</span><span class="p">.</span><span class="n">Take</span><span class="p">().</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
-<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior/Blocks/Text2D.hpp&gt;</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Options</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="n">options</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"score"</span><span class="p">;</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="n">options</span><span class="p">.</span><span class="n">FontIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">made</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Make</span><span class="p">(</span><span class="n">m_Behavior</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">made</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">made</span><span class="p">.</span><span class="n">Take</span><span class="p">().</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="p">}</span>
 </code></pre></div>
 <p>这些 adapter 仍返回普通 <code>Block</code>，不会绕过统一的 lifecycle、execution 或 teardown。新 Native Mod 不应再使用 legacy ExecuteBB interface。</p>
 <h2 id="12">12. 生命周期、错误与性能<a class="headerlink" href="#12" title="Permanent link">&para;</a></h2>
@@ -2785,7 +2844,7 @@ owner retirement、Patch journal 或跨 world Plan 语义。</p>
 </tr>
 </tbody>
 </table>
-<p>除 Close 外，Behavior 操作要求 game thread。所有 <code>Result&lt;T&gt;</code> 都同时包含稳定错误类别和 <code>Status</code>；控制流只应判断 error/phase，不应解析 message 文本。</p>
+<p>所有 Behavior 操作都要求 game thread，Close 也一样。在其他线程调用会返回 <code>BML_ERROR_WRONG_THREAD</code>，不做任何改动。facade 值也应在 game thread 销毁：在其他线程运行的析构函数关不掉它持有的资源，Loader 要等 Mod retire 时才回收。所有 <code>Result&lt;T&gt;</code> 都同时包含稳定错误类别和 <code>Status</code>；控制流只应判断 error/phase，不应解析 message 文本。</p>
 <p>高频路径应复用 <code>Block</code>、<code>Frames</code> 和已有 graph snapshot。Block 会共享已编译的 C descriptor；<code>TakeFrames(Frames&amp;)</code> 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string，两个方向的 LinkRange 都使用 snapshot 自带的索引。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。</p>
 <p>健康状态下，Patch/Plan 的 <code>Info()</code> 不复制保留的 apply/restore 错误对；仅当
 <code>LastStatus</code> 表示调和失败时才读取详细错误。Plan 已稳定且 Script 集合没有变化时，

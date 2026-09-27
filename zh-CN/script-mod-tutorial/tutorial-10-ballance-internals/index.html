@@ -2422,7 +2422,7 @@
 <p>脚本 Mod 检查或修改行为图应使用 <code>BML::Behavior</code>（见第 15 章和
 <a href="../../behavior-authoring/">Behavior 编写</a>）。CKAngelScript 的 <code>Behavior</code> /
 <code>BB</code> / <code>Param</code> 仍可做底层 CK2 操作，但没有 BML 的 owner retirement、Patch
-journal 或跨 world Plan。<code>InsertHookBlock*</code> 只适合插入一次性回调。行为图编辑会
+journal 或跨 world Plan。<code>InsertHookBlock*</code> 只适合在一条 Link 上插入回调。行为图编辑会
 直接影响原版游戏流程，必须明确节点身份、执行顺序、关卡生命周期和卸载清理。
 本教程先从只读观察开始，再在确有需要时使用范围明确、可撤销的编辑。</p>
 <p>如果你在日志里看到某个状态突然变化（比如分数增加、球被弹飞），但你的脚本没有做任何操作，那通常是行为图在工作。</p>

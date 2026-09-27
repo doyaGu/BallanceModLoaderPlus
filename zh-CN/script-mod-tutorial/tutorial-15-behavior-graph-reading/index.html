@@ -2862,13 +2862,13 @@ Graph / Edit / Patch / Plan 模型。本章不走那条路：先从 DataArray、
 </tr>
 <tr>
 <td>插入执行回调</td>
-<td>优先 <code>BML::Behavior</code> 的 Hook / Before / After。<code>InsertHookBlock*</code> 是 legacy splice，卸载时会清，但没有 Patch journal</td>
+<td>优先 <code>BML::Behavior</code> 的 Hook / Before / After。<code>InsertHookBlock*</code> 用一个只含一条 Link 的 Patch 插入，移除或卸载时恢复原 Link，但不能并入更大的 Patch，也不会跟随 Script 进入之后的 world</td>
 </tr>
 </tbody>
 </table>
 <p>优先通过事件、DataArray 和对象状态观察原版流程。能够在公开状态层完成的功能，
 不需要编辑行为图。只有目标行为确实由某段图控制，而且修改范围、回滚方式和冲突
-策略都明确时，才使用 <code>BML::Behavior</code>。不要把 legacy HookBlock 当作完整
+策略都明确时，才使用 <code>BML::Behavior</code>。HookBlock 只负责单点回调，不要把它当作完整
 graph-edit interface。</p>
 <h2 id="_18">用脚本观察行为图的执行效果<a class="headerlink" href="#_18" title="Permanent link">&para;</a></h2>
 <p>下面这段代码不读取行为图，而是观察行为图执行后的状态变化。当玩家经过检查点时，行为图会更新 Checkpoints 表和 IngameParameter 表，脚本能看到变化：</p>
@@ -2958,8 +2958,8 @@ graph-edit interface。</p>
 <p><strong>Q：我的脚本能在行为图之前执行吗？</strong></p>
 <p>脚本层没有 <code>OnPreProcess</code> 固定回调。常规脚本主要在 <code>OnProcess</code> 中观察本帧
 状态，或通过 <code>GameEvent</code> 响应关卡阶段变化。需要改变执行路径时，使用
-<code>BML::Behavior</code> 的 Patch 或 Plan，而不是依赖未定义的回调顺序。<code>InsertHookBlock*</code>
-只适合插入一次性回调，不是可逆的 graph edit。</p>
+<code>BML::Behavior</code> 的 Patch 或 Plan，不要依赖未定义的回调顺序。<code>InsertHookBlock*</code>
+只在一条 Link 上插入回调，world 重置后不会重新安装。</p>
 <p><strong>Q：行为图里的 Send Message 会触发 BML 事件吗？</strong></p>
 <p>不是每个 Virtools 消息都对应一个 BML 事件。BML+ 只为明确的游戏阶段提供
 <code>GameEvent</code>。其他消息可以通过 CK2 消息接口处理，也可以通过 DataArray 或对象

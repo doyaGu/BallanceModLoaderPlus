@@ -1236,10 +1236,12 @@ It does not provide BML owner retirement, Patch journals, or cross-world Plan
 semantics. See <a href="../../behavior-authoring/">Behavior authoring</a> section 10.</p>
 <h2 id="hook-block">Hook Block<a class="headerlink" href="#hook-block" title="Permanent link">&para;</a></h2>
 <p>Hook Block inserts a callback at a known point in an existing Virtools behavior
-graph. Prefer <code>BML::Behavior</code> Hook / Before / After when the change should
-participate in a Patch or Plan. <code>InsertHookBlock*</code> is a legacy splice: BML+
-owns the inserted native block and removes it at unload, but it has no Patch
-journal. CKAngelScript should find the owner script and Building Blocks.</p>
+graph. <code>InsertHookBlock*</code> places the block through the Script Mod's Behavior
+Session and splices it into one Link with a Patch, so removing the hook or
+unloading the Mod restores the original Link. Prefer <code>BML::Behavior</code> Hook /
+Before / After when the change belongs to a larger Patch or must follow a
+Script into later worlds through a Plan. CKAngelScript should find the owner
+script and Building Blocks.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">HookBlockRef</span><span class="err">@</span><span class="w"> </span><span class="n">hook</span><span class="p">;</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="kt">int</span><span class="w"> </span><span class="nf">OnBallHook</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span>
@@ -1263,7 +1265,10 @@ one-output patches. If several links match, find a more specific source or
 target before insertion.</p>
 <p>By default the block activates all outputs after the callback. Set
 <code>AutoActivateOutputs</code> to <code>false</code> when the callback selects a branch through
-<code>event.ActivateOutput(index)</code>.</p>
+<code>event.ActivateOutput(index)</code>. A disabled hook skips the callback and still
+follows <code>AutoActivateOutputs</code>. A callback that raises a script error faults
+the Mod, and its block then passes every activation to all of its outputs, so
+the game graph never stalls on it.</p>
 <p>BML+ removes installed hooks at unload. Store <code>HookBlockRef@</code> only when the mod
 needs to disable or uninstall a hook earlier. Do not store borrowed behavior
 handles from a Hook Block event.</p>

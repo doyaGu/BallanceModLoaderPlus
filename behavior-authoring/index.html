@@ -604,6 +604,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="9. Edit a graph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#place-a-hook-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Place a Hook Block
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1199,6 +1216,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="9. Edit a graph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#place-a-hook-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Place a Hook Block
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1399,6 +1433,7 @@
 <p>The Loader verifies the calling DLL and binds the Session to the current Mod generation. A Session survives world reset; runs, Scripts, Watches, and Patches tied to that world do not. On Mod unload, the Loader stops new admission and retires callbacks and native Behaviors before unloading the DLL.</p>
 <p><code>Behavior::Result&lt;T&gt;</code> is an alias of the shared <code>BML::Result&lt;T, Behavior::Status&gt;</code>; only the diagnostic remains Behavior-specific. <code>Result&lt;T&gt;::Value()</code> borrows from a named Result; a temporary Result may return a copyable value directly. Use <code>Take()</code> when ownership of a move-only domain object leaves a successful Result. <code>Take()</code> clears the stored value, while keeping <code>Code()</code> and <code>GetStatus()</code> available for diagnostics.</p>
 <p>Objects created through a Session retain their own Session lease. Moving or <code>Reset()</code>-ing the original <code>Session</code> value releases that value's lease but does not invalidate a live Block, run, Script, Watch, Patch, or Plan. The native Session closes when its last lease is released.</p>
+<p><code>Session::Adopt(api, handle)</code> takes ownership of a Session handle that was opened through the C table by other means, such as a host that opens Sessions for the Mods it runs. The adopted handle follows the same lease rule; if Adopt fails, it closes the handle at once.</p>
 <h3 id="find-a-prototype">Find a Prototype<a class="headerlink" href="#find-a-prototype" title="Permanent link">&para;</a></h3>
 <p>Use a known <code>CKGUID</code> directly, or query the catalog when the GUID is unknown or the current provider identity must be pinned:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">PrototypeQuery</span><span class="w"> </span><span class="n">query</span><span class="p">;</span>
@@ -1559,6 +1594,7 @@ and diagnostic. Object List is an output form, not a Block literal.</p>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">        </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Set</span><span class="p">(</span><span class="o">*</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="mf">20.0f</span><span class="p">);</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">}</span>
 </code></pre></div>
+<p><code>Layout::Find(kind, name, occurrence)</code> looks a Slot up by name. <code>Layout::Select(kind, selector)</code> accepts the same selectors as Block configuration; when a selector that requires a unique match finds several Slots, it returns null and reports the ambiguity through its optional flag.</p>
 <p>A lifecycle callback boundary invalidates old Slots because the provider may rebuild a same-shaped interface. Ordinary Execute advances the layout generation only when Target, In/Out, Pin/Pout, Setting, or Local identity actually changes. A stale Slot or Port returns <code>LayoutChanged</code> instead of retargeting an old ordinal.</p>
 <p><code>Settings({...})</code> applies another live Setting stage. Runtime then reads the new Layout and restores Target, Pin, Local, and source relations that remain unique and type-compatible. Once native mutation begins, any write, callback, Layout, or relation failure makes the run <code>Failed</code>: <code>Info()</code> preserves the first <code>Status</code>, later mutation and execution are rejected with that same diagnostic, and the native Instance remains owned until <code>Close()</code>.</p>
 <h2 id="7-inspect-a-graph">7. Inspect a graph<a class="headerlink" href="#7-inspect-a-graph" title="Permanent link">&para;</a></h2>
@@ -1605,7 +1641,7 @@ ParameterOperation are lightweight views into one shared snapshot allocation.
 operation GUID, exact result/input type tuple, graph owner, and object identity.
 A Port retains its Node's layout generation, so it cannot be used against a
 later incompatible Layout.</p>
-<p><code>Logical()</code> rereads the author-visible graph; <code>Live()</code> rereads the physical CK graph. Logical view keeps explicit Add and Flow edits, hides the exact infrastructure installed by Tap, Before, After, and Splice, and restores a splice anchor's logical endpoints. A graph fingerprint covers native identities, priorities, layouts, parameter operations, Link topology, child scheduling order, graph-Link order, and each source IO's Link traversal order. Patch journals restore those CK2 orders exactly. A native graph whose source IO reaches a Link owned by another graph is rejected rather than published. If foreign code changes a claimed after-image, Apply reports <code>GraphChanged</code>; Close reports <code>RevertConflict</code> before changing the graph.</p>
+<p><code>Logical()</code> rereads the author-visible graph; <code>Live()</code> rereads the physical CK graph. Logical view keeps explicit Add and Flow edits, hides the exact infrastructure installed by Tap, Before, After, and Splice, and restores a splice anchor's logical endpoints. A graph fingerprint covers native identities, priorities, layouts, parameter operations, Link topology, child scheduling order, and each source IO's Link traversal order. The order of the graph's own Link collection only feeds CK2's activation flags, so the fingerprint leaves it out. Patch journals restore child scheduling order and source IO traversal order exactly. A native graph whose source IO reaches a Link owned by another graph is rejected rather than published. If foreign code changes a claimed after-image, Apply reports <code>GraphChanged</code>; Close reports <code>RevertConflict</code> before changing the graph.</p>
 <p><code>Graph::Read</code> follows stored, direct, and shared sources without evaluating a Parameter Operation. Operation values are reported as indeterminate.</p>
 <p>Watches sample a graph, Layout, or value once per game frame. Observation or callback failure retains the first <code>Status</code>, moves the Watch to <code>Failed</code>, and stops later callbacks.</p>
 <h2 id="8-create-a-script-graph">8. Create a Script graph<a class="headerlink" href="#8-create-a-script-graph" title="Permanent link">&para;</a></h2>
@@ -1733,13 +1769,11 @@ they are parked, and restores their original endpoints and delays when it
 closes. This prevents an active sibling's output port from traversing a Link
 that no longer belongs to the graph. Applying a removal requires the selected
 Node, its control ports, and every incident Link source to be idle;
-an already-active non-target sink no longer depends on that Link. CK2 does not
-expose delayed-list membership through the retail SDK. At an execution
-boundary, a Link outside that list has a remaining delay of zero or its initial
-delay; any other positive remaining delay is therefore treated as in-flight and
-rejected. This remains true when a graph was deactivated without a reset, since
-that operation leaves its delayed list intact. Unrelated graph work may remain
-active.</p>
+an already-active non-target sink no longer depends on that Link. Removal also
+reads each incident Link's delayed-list flag and rejects a Link that CK2 still
+holds in the graph's delayed list. This covers a graph deactivated without a
+reset, since that operation leaves its delayed list intact. Unrelated graph
+work may remain active.</p>
 <p><code>Reconnect</code> changes the source and destination relations of the selected native
 <code>CKBehaviorLink</code>. It preserves that Link's identity, initial delay, and current
 delay, and Patch close restores the exact original endpoints and source-port
@@ -1841,31 +1875,55 @@ readable and Close can be retried after the conflict is repaired. <code>Closing<
 also retains the handle: keep it and poll or retry at later safe points instead
 of discarding it as though restoration had completed.</p>
 <p>Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.</p>
+<h3 id="place-a-hook-block">Place a Hook Block<a class="headerlink" href="#place-a-hook-block" title="Permanent link">&para;</a></h3>
+<p><code>Tap</code>, <code>Before</code>, and <code>After</code> install a Hook as part of one Edit. When the Block must exist before the Patch that links it, or outlive several such Patches, place it directly with <code>Session::SpawnIn(graph, hook, shape)</code>. It returns the Instance that owns the Hook Block:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">HookBlock</span><span class="w"> </span><span class="n">shape</span><span class="p">;</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">shape</span><span class="p">.</span><span class="n">Outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="n">shape</span><span class="p">.</span><span class="n">ActivatesOutputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">spawned</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">script</span><span class="p">,</span><span class="w"> </span><span class="n">Hook</span><span class="p">([](</span><span class="k">const</span><span class="w"> </span><span class="n">HookEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">    </span><span class="n">ChooseBranch</span><span class="p">(</span><span class="n">event</span><span class="p">.</span><span class="n">Block</span><span class="p">);</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">HookResult</span><span class="o">::</span><span class="n">Ok</span><span class="p">;</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="p">}),</span><span class="w"> </span><span class="n">shape</span><span class="p">);</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">spawned</span><span class="p">)</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="n">Instance</span><span class="w"> </span><span class="n">hook</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">spawned</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
+</code></pre></div>
+<p><code>HookBlock</code> sets the number of Ins and Outs and whether the Block activates every Out after the callback. With <code>ActivatesOutputs = false</code>, the callback activates the Outs it chooses on the Block that <code>HookEvent::Block</code> names. A callback that did not complete still passes the activation to every Out, so a faulted hook never stalls the graph.</p>
+<p>The Block starts unlinked. Inspect the graph, find the Node whose <code>Object()</code> names the Block (<code>hook.Inspect(View::Live)</code> returns it as the snapshot root), and splice it into a Link with a Patch:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">edit</span><span class="p">;</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edit</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">root</span><span class="p">.</span><span class="n">Splice</span><span class="p">(</span><span class="n">root</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">link</span><span class="p">),</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">blockNode</span><span class="p">));</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">placement</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="o">-&gt;</span><span class="n">Apply</span><span class="p">(</span><span class="s">"my hook"</span><span class="p">,</span><span class="w"> </span><span class="n">edit</span><span class="p">);</span>
+</code></pre></div>
+<p>Close the placement Patch before the Instance so the graph is restored before the Block leaves it. Closing the Instance stops the callback at once and removes the Block at a later safe point.</p>
 <h2 id="10-angelscript">10. AngelScript<a class="headerlink" href="#10-angelscript" title="Permanent link">&para;</a></h2>
 <p>When CKAngelScript is enabled, each Script Mod receives an owner-scoped
 <code>BML::Behavior</code> projection of the same model. There is no Session to open
 manually: <code>Use</code>, <code>Find</code>, <code>Describe</code>, <code>Inspect</code>, <code>Edit</code>, and <code>CreateScript</code> use
 the current Script Mod's identity. Before unload or hot reload, BML retires the
-Run, Watch, Patch, Plan, Script, and callback objects created through it.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Find</span><span class="p">(</span><span class="s">"My Building Block"</span><span class="p">,</span><span class="w"> </span><span class="s">"My Category"</span><span class="p">)</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({</span>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Mode"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="p">})</span>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({</span>
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">12.0f</span><span class="p">))</span>
-<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">    </span><span class="p">});</span>
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>
-<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Spawn</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Signals</span><span class="p">(</span><span class="mi">16</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
-<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">Layout</span><span class="p">();</span>
-<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">strength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">layout</span><span class="p">.</span><span class="n">Find</span><span class="p">(</span>
-<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotKind</span><span class="o">::</span><span class="n">Pin</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">));</span>
-<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="n">instance</span><span class="p">.</span><span class="n">Set</span><span class="p">(</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">18.0f</span><span class="p">));</span>
-<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="n">instance</span><span class="p">.</span><span class="n">Pulse</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Run"</span><span class="p">));</span>
-<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>
-<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">frames</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">TakeFrames</span><span class="p">();</span>
-<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="kt">float</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0f</span><span class="p">;</span>
-<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">frames</span><span class="p">.</span><span class="n">Empty</span><span class="p">)</span>
-<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="w">    </span><span class="n">frames</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">Read</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Result"</span><span class="p">),</span><span class="w"> </span><span class="n">result</span><span class="p">);</span>
+Run, Watch, Patch, Plan, Script, and callback objects created through it.
+The projection uses only this C++ facade and the Session BML opens for the
+Script Mod, which the script Hook Block service shares.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Find</span><span class="p">(</span><span class="s">"My Building Block"</span><span class="p">,</span><span class="w"> </span><span class="s">"My Category"</span><span class="p">)</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Mode"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">    </span><span class="p">})</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotValue</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">12.0f</span><span class="p">))</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">    </span><span class="p">});</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Spawn</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Signals</span><span class="p">(</span><span class="mi">16</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">Layout</span><span class="p">();</span>
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">strength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">layout</span><span class="p">.</span><span class="n">Find</span><span class="p">(</span>
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">SlotKind</span><span class="o">::</span><span class="n">Pin</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Strength"</span><span class="p">));</span>
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="n">instance</span><span class="p">.</span><span class="n">Set</span><span class="p">(</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Value</span><span class="p">(</span><span class="mf">18.0f</span><span class="p">));</span>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="n">instance</span><span class="p">.</span><span class="n">Pulse</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Run"</span><span class="p">));</span>
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>
+<a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="k">auto</span><span class="err">@</span><span class="w"> </span><span class="n">frames</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="n">TakeFrames</span><span class="p">();</span>
+<a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a><span class="kt">float</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0f</span><span class="p">;</span>
+<a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">frames</span><span class="p">.</span><span class="n">Empty</span><span class="p">)</span>
+<a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="w">    </span><span class="n">frames</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">Read</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Behavior</span><span class="o">::</span><span class="n">Unique</span><span class="p">(</span><span class="s">"Result"</span><span class="p">),</span><span class="w"> </span><span class="n">result</span><span class="p">);</span>
 </code></pre></div>
 <p>The graph path uses the same <code>Graph → Edit → Patch / Plan</code> vocabulary, including
 nested graphs, <code>NodePattern</code>/<code>Each</code>, Add/Replace/Remove, Flow, parameter
@@ -1880,16 +1938,16 @@ Behavior/Param API remains available for low-level CK2 work, but it does not
 provide BML owner retirement, Patch journals, or cross-world Plan semantics.</p>
 <h2 id="11-named-retail-bbs">11. Named retail BBs<a class="headerlink" href="#11-named-retail-bbs" title="Permanent link">&para;</a></h2>
 <p><code>BML/Behavior/Blocks.hpp</code> collects header-only adapters for known retail BBs, including Object Load, Physicalize, Physics Force, Physics Impulse, Physics Wake Up, Send Message, and 2D Text. Each header contains only that BB's Prototype, Options, and slot knowledge:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior/Blocks/Text2D.hpp&gt;</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Options</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="n">options</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"score"</span><span class="p">;</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="n">options</span><span class="p">.</span><span class="n">FontIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
-<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
-<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">made</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Make</span><span class="p">(</span><span class="n">m_Behavior</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
-<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">made</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">made</span><span class="p">.</span><span class="n">Take</span><span class="p">().</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
-<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior/Blocks/Text2D.hpp&gt;</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Options</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="n">options</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"score"</span><span class="p">;</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="n">options</span><span class="p">.</span><span class="n">FontIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">made</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Make</span><span class="p">(</span><span class="n">m_Behavior</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">made</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">made</span><span class="p">.</span><span class="n">Take</span><span class="p">().</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="p">}</span>
 </code></pre></div>
 <p>These adapters return ordinary Blocks and do not bypass lifecycle, execution, or teardown. New Native Mod code should not use the legacy ExecuteBB interface.</p>
 <h2 id="12-lifetime-errors-and-performance">12. Lifetime, errors, and performance<a class="headerlink" href="#12-lifetime-errors-and-performance" title="Permanent link">&para;</a></h2>
@@ -1931,7 +1989,7 @@ provide BML owner retirement, Patch journals, or cross-world Plan semantics.</p>
 </tr>
 </tbody>
 </table>
-<p>Except for Close, Behavior operations require the game thread. Every <code>Result&lt;T&gt;</code> carries both a stable error category and <code>Status</code>; branch on the error and phase, not on message text.</p>
+<p>Every Behavior operation, Close included, requires the game thread. A call from any other thread returns <code>BML_ERROR_WRONG_THREAD</code> and changes nothing, so destroy facade values on the game thread too: a destructor that runs elsewhere cannot close what it owns, and the Loader reclaims it only when the Mod retires. Every <code>Result&lt;T&gt;</code> carries both a stable error category and <code>Status</code>; branch on the error and phase, not on message text.</p>
 <p>Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, <code>TakeFrames(Frames&amp;)</code> avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, LinkRange, and Frame values are views rather than copied records. Both LinkRange directions use snapshot-owned indices. Plans reconcile only Script names reported as changed; disabled definitions and unchanged Replace prefixes do not rebuild native graphs.</p>
 <p>A healthy Patch or Plan <code>Info()</code> reads its state without copying the retained
 apply/restore failure pair. Detailed failures are read only after
