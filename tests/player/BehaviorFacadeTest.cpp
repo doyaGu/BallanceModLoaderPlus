@@ -174,6 +174,7 @@ public:
         case State::SubmitSelfClose: SubmitSelfClose(); break;
         case State::WaitSelfActive: WaitSelfActive(); break;
         case State::WaitSelfRetired: WaitSelfRetired(); break;
+        case State::WaitReleaseClosed: WaitReleaseClosed(); break;
         case State::SubmitSessionClose: SubmitSessionClose(); break;
         case State::WaitSessionActive: WaitSessionActive(); break;
         case State::WaitSessionRetired: WaitSessionRetired(); break;
@@ -231,6 +232,7 @@ private:
         SubmitSelfClose,
         WaitSelfActive,
         WaitSelfRetired,
+        WaitReleaseClosed,
         SubmitSessionClose,
         WaitSessionActive,
         WaitSessionRetired,
@@ -610,6 +612,16 @@ private:
             m_Graph->GetSubBehaviorLinkCount() == 3;
     }
 
+    // The anchor is intact and only the release-close Plan's Tap remains.
+    bool OnlyReleaseCloserInstalled() const {
+        return m_Graph && m_Source && m_Sink && m_Anchor &&
+            m_Anchor->GetID() == m_AnchorId &&
+            m_Anchor->GetInBehaviorIO() == m_Source->GetOutput(0) &&
+            m_Anchor->GetOutBehaviorIO() == m_Sink->GetInput(0) &&
+            m_Graph->GetSubBehaviorCount() == 3 &&
+            m_Graph->GetSubBehaviorLinkCount() == 4;
+    }
+
     bool PatchInstalled() const {
         return m_Graph && m_Source && m_Sink && m_Anchor &&
             m_Anchor->GetID() == m_AnchorId &&
@@ -984,7 +996,9 @@ private:
     }
 
     void WaitSelfRetired() {
-        if (m_SelfClose->Calls != 0 && Restored()) {
+        // The second Plan keeps its Tap until the first Plan's Hook is
+        // dropped, and the Hook goes only when the first handle closes.
+        if (m_SelfClose->Calls != 0 && OnlyReleaseCloserInstalled()) {
             const auto closed = m_SelfPlan.Close();
             if (!m_SelfClose->Closing || m_SelfClose->Calls != 1 ||
                 !closed || closed.Value() != BML::Behavior::CloseState::Closed ||
@@ -1001,12 +1015,22 @@ private:
                 Finish(false, "self-close-downstream");
                 return;
             }
+            m_WaitUntil = m_Frame + 30;
+            m_State = State::WaitReleaseClosed;
+            return;
+        }
+        if (m_Frame > m_WaitUntil)
+            Finish(false, "self-close-retirement");
+    }
+
+    void WaitReleaseClosed() {
+        if (Restored()) {
             m_SelfClosePassed = true;
             m_State = State::SubmitSessionClose;
             return;
         }
         if (m_Frame > m_WaitUntil)
-            Finish(false, "self-close-retirement");
+            Finish(false, "release-close-restore");
     }
 
 
