@@ -249,7 +249,9 @@ graph Edits for Patches and Plans. Sessions survive world reset; world-bound
 objects and callbacks do not. The C, C++, and script layers use one native
 implementation: the C++ facade encodes calls into the C table, and the
 AngelScript layer projects that facade without including a Loader Behavior or
-facade Detail header. The legacy IMod interface still bootstraps Native Mods.
+facade Detail header. Text crosses the table as UTF-8 and is converted to and
+from the engine's code page at that boundary. The legacy IMod interface still
+bootstraps Native Mods.
 
 **Behavior Plan Instance** — A revisioned view of one Plan installation in a
 world. Symbolic Nodes and Ports can be resolved to checked Object References or
@@ -280,7 +282,10 @@ while journaling their inverses, so a rejected step undoes the applied prefix
 in reverse and reports any conflict. A Hook Block is a Block that runs a Mod
 callback on each activation it receives: Session::SpawnIn returns the Instance
 that owns it, and a Patch splices it into the graph. Closing the Instance
-stops the callback at once and removes the Block at a later safe point.
+stops the callback at once and removes the Block at a later safe point. Only
+the placed Block is bound to the callback; a copied or reloaded one passes its
+activations through. A Patch that a later active Patch still builds on cannot
+close before it.
 
 **Graph Pattern** — A serializable structural selector inside an Edit. It
 matches observable Nodes, Ports, Links, and bounded paths without retaining a

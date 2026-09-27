@@ -38,6 +38,8 @@ Initialize `StructSize` in every record that contains it. The layouts of all 1.0
 
 Input strings and arrays are borrowed only for the call. Variable-size Frame, Graph, and Layout reads either write the complete result or report the required buffer size. Use `BML_BEHAVIOR_HAS_1_0` for the full 1.0 API and `BML_IFACE_HAS` for members added later.
 
+All text crosses the table as UTF-8. The Loader converts names and string values bound for Virtools to the engine's active code page, and converts all text it returns, status messages included, back to UTF-8. Text that the code page cannot represent is passed on as its UTF-8 bytes. BML identifiers such as owner, Patch, and Plan names stay UTF-8 throughout.
+
 This does not add a pure C Mod bootstrap: the existing Native Mod host is still defined by `IMod`. A C translation unit or another language adapter linked into the same Native Mod DLL can call this seam directly while following the same Mod ownership, game-thread, world-reset, and `BML_ObjectRef` lifetime rules. It is an independent Behavior seam, not a library independent of the BML Runtime.
 
 ## 1. Object model
@@ -185,7 +187,7 @@ A Frame policy belongs to that run only; the reusable Block has no observation p
 
 When a BB has only one In, `Call(policy)` and `Start(policy)` select it without a placeholder Selector. Use a Selector or string overload when choosing a particular In.
 
-An Instance executes at most once per game frame. Same-frame and reentrant Pulses queue; repeated admissions of the same logical In coalesce, while distinct Ins retain first-admission order. `Ready` means no native continuation and no queued In. It does not mean the BB released Local or manager state.
+An Instance executes at most once per game frame. Same-frame and reentrant Pulses queue; repeated admissions of the same logical In coalesce, while distinct Ins retain first-admission order. A Pulse queued by index keeps the In it named at admission: if the Ins move before it runs, it still activates that In, and the run fails with `LayoutChanged` only when that In has been removed. A Slot from an older layout generation is refused at admission. `Ready` means no native continuation and no queued In. It does not mean the BB released Local or manager state.
 
 All run types provide `Info()`, `TakeFrames()`, `Layout()`, `Inspect()`, `Set()`, `Bind()`, `Settings()`, and `Close()`. Only `Call` provides `Continue()`; `Task` and `Instance` provide `Pulse()`.
 
@@ -247,6 +249,8 @@ discards that incomplete Pout batch but preserves the same Frame's active Outs
 and diagnostic. Object List is an output form, not a Block literal.
 
 A Frame without continuation does not mean its run handle has closed: a `Ready` Instance can still accept another Pulse. Admission stops only on failure, explicit close, or queue overflow.
+
+A `Close()` requested while the Block executes makes that Execute's Frame the run's last. The Frame carries `Cancelled`, reports no continuation, and keeps its Pouts when the policy includes `.Pouts()`.
 
 A bounded store does not discard an old Frame to admit a new one. It stops the run and reports `FrameQueueFull` in a separate failure slot. Taking Frames releases ordinary queue capacity.
 
@@ -323,7 +327,7 @@ later incompatible Layout.
 
 `Graph::Read` follows stored, direct, and shared sources without evaluating a Parameter Operation. Operation values are reported as indeterminate.
 
-Watches sample a graph, Layout, or value once per game frame. Observation or callback failure retains the first `Status`, moves the Watch to `Failed`, and stops later callbacks.
+Watches sample a graph, Layout, or value once per game frame. Observation or callback failure retains the first `Status`, moves the Watch to `Failed`, and stops later callbacks. Deleting the watched graph or Node also fails the Watch; it never follows a later object that reuses the CK_ID. Samples compare by their stored bits, so a NaN value is not reported as a change on every frame.
 
 ## 8. Create a Script graph
 
@@ -386,11 +390,15 @@ Local values. All conditions identify one Node together; an absent or ambiguous
 match leaves a Plan unsatisfied. Patterns contain no native identity and no
 author predicate, so the Plan can resolve the same Edit again when its Script
 appears in another world. Value reads are performed only for candidates that
-already satisfy the cheaper structural conditions.
+already satisfy the cheaper structural conditions. A Pin value condition
+matches against the Pin's declared type as well as its source's type, since
+CK2 lets a Pin read a source whose type derives from its own.
 
 `Require(pattern)` selects exactly one Node. `Each(pattern)` selects a non-empty
 set and repeats operations on its `Ports` in native child-index order; it is not
-an author callback and retains no executable predicate. `Next` and `Previous`
+an author callback and retains no executable predicate. `Splice`, `Redirect`,
+and `Reconnect` rewire exactly one Link, so they refuse a port of an `Each`
+Node with `StateInvalid`. `Next` and `Previous`
 name the Node at the other end of one control Link. Their optional
 `NodePattern` filters the connected Nodes before requiring a unique relation,
 which is useful for outputs that legitimately fan out. `Leaving`, `Entering`,
@@ -526,7 +534,9 @@ Each rule reconciles only when its Script name changes; there is no per-frame
 full graph scan. One rule may match `One` or `Each`, and its root plus nested
 scopes install as one atomic Patch. `Partial` means at least one rule is
 installed while another is unmatched; `Unsatisfied` means none is installed.
-Definitions survive world reset and reconcile against the next world.
+Definitions survive world reset and reconcile against the next world. Each rule
+must name a different Script: every rule installs under the Plan's name, so a
+Plan that pairs `One("A")` with `Each("A")` is refused.
 
 An exact Patch can read or update a parameter Port named by its Edit with
 `Patch::Read` and `Patch::Set`. For a Plan, first snapshot its live
@@ -594,7 +604,14 @@ readable and Close can be retried after the conflict is repaired. `Closing`
 also retains the handle: keep it and poll or retry at later safe points instead
 of discarding it as though restoration had completed.
 
+Patches may build on each other. While an active Patch still edits a Node,
+Link, or port that an earlier Patch introduced, the earlier Patch cannot close:
+Close reports a retryable `RevertConflict` until the later Patch has closed.
+World reset and Mod unload close Patches newest first for the same reason.
+
 Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.
+
+Return `HookResult::Error` to stop the chain: the Hook Block leaves every Out inactive, and the callback runs again on the next activation. A callback that throws returns `HookResult::Fault`; the Loader keeps that first fault as the Hook's diagnostic, stops calling it, and the Block passes the activation through. The state a Hook or Watch callback owns is released at the end of the Behavior call that dropped its last reference, so its destructor may close other Behavior objects.
 
 ### Place a Hook Block
 
@@ -614,7 +631,7 @@ if (!spawned)
 Instance hook = spawned.Take();
 ```
 
-`HookBlock` sets the number of Ins and Outs and whether the Block activates every Out after the callback. With `ActivatesOutputs = false`, the callback activates the Outs it chooses on the Block that `HookEvent::Block` names. A callback that did not complete still passes the activation to every Out, so a faulted hook never stalls the graph.
+`HookBlock` sets the number of Ins and Outs and whether the Block activates every Out after the callback. With `ActivatesOutputs = false`, the callback activates the Outs it chooses on the Block that `HookEvent::Block` names. A callback that did not complete still passes the activation to every Out, so a faulted hook never stalls the graph. Only the placed Block is bound to the callback: a copy of it, or a Block saved and loaded again, passes every activation through.
 
 The Block starts unlinked. Inspect the graph, find the Node whose `Object()` names the Block (`hook.Inspect(View::Live)` returns it as the snapshot root), and splice it into a Link with a Patch:
 
@@ -667,7 +684,11 @@ configurations. A Script Patch currently targets one Graph and a Script Plan
 contains one Script rule; use the Native C++ facade when one handle must compose
 multiple Graphs or multiple Script rules atomically. Captured CK objects are
 returned as `ObjectRef`; call `Borrow()` only for immediate use and expect it to
-return null after the object or world becomes stale. CKAngelScript's raw
+return null after the object or world becomes stale. A failed `Close()` on a
+Watch, Patch, Plan, or Script raises a script exception. So does a call on a
+stale handle or without a Session, such as Graph `Apply` or `Inspect`, Patch or
+Plan `Enable` and `Disable`, or Script activity; none of them returns null or
+false silently. CKAngelScript's raw
 Behavior/Param API remains available for low-level CK2 work, but it does not
 provide BML owner retirement, Patch journals, or cross-world Plan semantics.
 
@@ -699,6 +720,8 @@ These adapters return ordinary Blocks and do not bypass lifecycle, execution, or
 | Mod unload/reload | Owner generation retires | Closes before DLL unload | Leaves its owner and closes before DLL unload | Callback and graph state retire first | Retires before callback code unloads |
 
 Every Behavior operation, Close included, requires the game thread. A call from any other thread returns `BML_ERROR_WRONG_THREAD` and changes nothing, so destroy facade values on the game thread too: a destructor that runs elsewhere cannot close what it owns, and the Loader reclaims it only when the Mod retires. Every `Result<T>` carries both a stable error category and `Status`; branch on the error and phase, not on message text.
+
+A graph, Node, or owner `ObjectRef` that is stale, or names the wrong kind of object, returns `BML_ERROR_OBJECT_INVALID`. A closed Session, run, Watch, Patch, Plan, or Script handle returns `BML_ERROR_INVALID_HANDLE`. A stale Target or object value inside a Block or a value write is reported through its `Status` as `TargetInvalid` or `SourceInvalid`.
 
 Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, `TakeFrames(Frames&)` avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, LinkRange, and Frame values are views rather than copied records. Both LinkRange directions use snapshot-owned indices. Plans reconcile only Script names reported as changed; disabled definitions and unchanged Replace prefixes do not rebuild native graphs.
 
