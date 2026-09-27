@@ -3769,6 +3769,33 @@ private:
         queuedLayout.Handle.Reset();
         m_Runtime.ProcessFrame();
 
+        // Code outside Execute may also rearrange the Ins without a Layout
+        // update. The queued Pulse still names the In it resolved to.
+        CreateResult reordered = m_Runtime.Instantiate(m_Owner, makeSpec());
+        CKBehavior *reorderedBlock = reordered.Handle.Get();
+        const bool secondIn = reorderedBlock &&
+            reorderedBlock->CreateInput("Second") != nullptr;
+        const std::uint64_t reorderedGeneration = secondIn
+            ? reordered.Handle.LayoutGeneration() : 0;
+        resetTrace();
+        RunResult reorderedFirst = secondIn
+            ? m_Runtime.Pulse(reordered.Handle, Slot::At(SlotKind::Input, 1))
+            : RunResult{};
+        RunResult reorderedQueued = secondIn
+            ? m_Runtime.Pulse(reordered.Handle, Slot::At(SlotKind::Input, 1))
+            : RunResult{};
+        const bool firstInDeleted = secondIn &&
+            reorderedBlock->DeleteInput(0) == CK_OK;
+        m_Runtime.ProcessFrame();
+        const BMLLifecycleFixtureTrace reorderedTrace = read();
+        const bool queuedAcrossReorderPassed = reorderedFirst &&
+            reorderedQueued.Admission == AdmissionState::Queued &&
+            firstInDeleted && reorderedTrace.RunCount == 2 &&
+            reordered.Handle.LayoutGeneration() == reorderedGeneration &&
+            m_Runtime.State(reordered.Handle) == ExecutionState::Idle;
+        reordered.Handle.Reset();
+        m_Runtime.ProcessFrame();
+
         FrameRetention retainPouts = FrameRetention::Latest();
         retainPouts.IncludePouts = true;
         CreateResult poutLayout = m_Runtime.Instantiate(
@@ -3833,8 +3860,8 @@ private:
             sessionResetPassed && selfClosePassed && teardownReentryPassed &&
             liveNormalizationPassed && membershipPassed &&
             outputLayoutDriftPassed && queuedAcrossLayoutPassed &&
-            poutLayoutDriftPassed && ownerRetirementPassed &&
-            ownedBehaviorTreePassed;
+            queuedAcrossReorderPassed && poutLayoutDriftPassed &&
+            ownerRetirementPassed && ownedBehaviorTreePassed;
         if (!m_LifecyclePassed) {
             if (!normalPassed)
                 Fail("lifecycle-normal");
@@ -3854,6 +3881,8 @@ private:
                 Fail("lifecycle-output-layout-drift");
             if (!queuedAcrossLayoutPassed)
                 Fail("lifecycle-queued-input-across-layout");
+            if (!queuedAcrossReorderPassed)
+                Fail("lifecycle-queued-input-across-reorder");
             if (!poutLayoutDriftPassed)
                 Fail("lifecycle-pout-layout-drift");
             if (!ownerRetirementPassed)

@@ -34,18 +34,21 @@ public:
         ++ResolveCalls;
         if (input.Selector == InputSelector::Index) {
             int index = input.Index;
-            if (input.LayoutGeneration != LayoutGeneration) {
+            if (input.Identity.Id != 0) {
                 const auto found = std::find_if(
                     Inputs.begin(), Inputs.end(), [&](const Input &candidate) {
-                        return input.Identity.Id != 0 &&
-                            candidate.Id == input.Identity.Id;
+                        return candidate.Id == input.Identity.Id;
                     });
                 if (found == Inputs.end()) {
                     fault = {ExecutionError::LayoutStale, 0,
-                             "The indexed input belongs to an older layout."};
+                             "The queued input's In is gone."};
                     return false;
                 }
                 index = static_cast<int>(found - Inputs.begin());
+            } else if (input.LayoutGeneration != LayoutGeneration) {
+                fault = {ExecutionError::LayoutStale, 0,
+                         "The indexed input belongs to an older layout."};
+                return false;
             }
             if (index < 0 || index >= static_cast<int>(Inputs.size())) {
                 fault = {ExecutionError::SelectorNotFound, 0,
@@ -408,6 +411,28 @@ TEST(BehaviorExecution, IndexedQueuedInputFailsClosedWhenItsInIsGone) {
     EXPECT_EQ(execution.State(), ExecutionState::Failed);
     EXPECT_EQ(execution.NextSequence(), 2u);
     EXPECT_EQ(adapter.Calls, 1);
+}
+
+TEST(BehaviorExecution, IndexedQueuedInputFollowsItsInWhenInsMoveWithoutALayoutUpdate) {
+    Execution execution;
+    FakeExecutionAdapter adapter({"A", "B", "C"});
+    adapter.Native.push_back(FunctionResult(1, true));
+    adapter.Native.push_back(FunctionResult(0));
+
+    ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
+    ASSERT_EQ(execution.Pulse(ExecutionInput::At(1, 1), 1, adapter).State,
+              AdmissionState::Queued);
+    // Code outside Execute removes A; the generation stays, B and C move up.
+    adapter.Inputs.erase(adapter.Inputs.begin());
+    // The same index and generation now name C, which is a new request.
+    ASSERT_EQ(execution.Pulse(ExecutionInput::At(1, 1), 1, adapter).State,
+              AdmissionState::Queued);
+    ASSERT_EQ(execution.Pulse(ExecutionInput::At(1, 1), 1, adapter).State,
+              AdmissionState::Queued);
+
+    ASSERT_TRUE(execution.Step(2, adapter));
+    EXPECT_EQ(adapter.Activated, (std::vector<int>{0, 0, 1}));
+    EXPECT_EQ(execution.State(), ExecutionState::Idle);
 }
 
 TEST(BehaviorExecution, NamedQueuedInputReresolvesAfterLayoutChange) {

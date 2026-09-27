@@ -354,10 +354,13 @@ std::vector<RunFrame> Execution::Take() {
 }
 
 bool Execution::Queue(const ExecutionInput &input, InputIdentity identity) {
-    if (std::find(m_QueuedInputs.begin(), m_QueuedInputs.end(), input) !=
-        m_QueuedInputs.end()) {
+    // Once code outside Execute rearranges the Ins, one index of one
+    // generation can name two Ins, so a duplicate must also name the same In.
+    const auto queued = [&](const ExecutionInput &candidate) {
+        return candidate == input && candidate.Identity == identity;
+    };
+    if (std::any_of(m_QueuedInputs.begin(), m_QueuedInputs.end(), queued))
         return false;
-    }
     m_QueuedInputs.push_back(input);
     m_QueuedInputs.back().Identity = identity;
     return true;

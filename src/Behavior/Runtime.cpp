@@ -116,16 +116,21 @@ public:
 
         if (input.Selector == InputSelector::Index) {
             int index = input.Index;
-            if (input.LayoutGeneration != record->LayoutGeneration) {
-                // The index was checked against the Layout it was admitted
-                // under. A queued input follows the In it named then, so a
-                // Layout change stales it only when that In is gone.
+            if (input.Identity.Id != 0) {
+                // A queued input follows the In it resolved to at admission,
+                // whether its own Run moved the Layout generation or code
+                // outside Execute rearranged the Ins. Only a vanished In
+                // stales it.
                 index = FindInput(behavior, input.Identity);
                 if (index < 0) {
                     fault = {ExecutionError::LayoutStale, CKBR_PARAMETERERROR,
                              "Queued behavior input names an In the live layout no longer has."};
                     return false;
                 }
+            } else if (input.LayoutGeneration != record->LayoutGeneration) {
+                fault = {ExecutionError::LayoutStale, CKBR_PARAMETERERROR,
+                         "Queued behavior input belongs to an older live layout."};
+                return false;
             }
             if (index < 0 || index >= behavior->GetInputCount()) {
                 fault = {ExecutionError::SelectorNotFound, CKBR_PARAMETERERROR,

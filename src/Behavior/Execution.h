@@ -54,19 +54,23 @@ enum class InputSelector {
 };
 
 // The native In an index input resolved to at admission. Execution only
-// carries it; the adapter uses it to find the same In again when a queued
-// input outlives the Layout generation it was admitted under.
+// carries it; the adapter uses it to find the same In again when the queued
+// input runs, wherever the In has moved since.
 struct InputIdentity {
     std::uint32_t Id = 0;
     void *Address = nullptr;
+
+    [[nodiscard]] bool operator==(const InputIdentity &other) const noexcept {
+        return Id == other.Id && Address == other.Address;
+    }
 };
 
 struct ExecutionInput {
     InputSelector Selector = InputSelector::Index;
     int Index = -1;
     std::uint64_t LayoutGeneration = 0;
-    // Set only on a queued index input. It does not take part in equality:
-    // one index of one generation always names the same In.
+    // Set only on a queued index input. Equality compares the selector a
+    // caller wrote and ignores it; Queue compares it on its own.
     InputIdentity Identity;
     std::string Name;
     int Occurrence = 0;
