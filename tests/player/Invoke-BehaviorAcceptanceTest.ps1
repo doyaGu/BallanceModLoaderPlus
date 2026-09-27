@@ -282,7 +282,7 @@ $checks['BehaviorTransportProbe'] = $transport.Success -and
     $transport.Groups['catalog'].Value -eq 'true'
 $checks['BehaviorCInterface'] = $cInterface.Success -and
     $cInterface.Groups['status'].Value -eq 'pass' -and
-    $cInterface.Groups['checks'].Value -eq '127' -and
+    $cInterface.Groups['checks'].Value -eq '511' -and
     [uint64]$cInterface.Groups['sequence'].Value -gt 0 -and
     $cInterface.Groups['code'].Value -eq '0' -and
     $cInterface.Groups['error'].Value -eq '0' -and
