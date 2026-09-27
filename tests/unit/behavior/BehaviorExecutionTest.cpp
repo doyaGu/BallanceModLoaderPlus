@@ -19,11 +19,13 @@ public:
     struct Input {
         std::string Name;
         bool Active = false;
+        std::uint32_t Id = 0;
     };
 
     explicit FakeExecutionAdapter(std::vector<std::string> inputs = {"In"}) {
+        std::uint32_t id = 1;
         for (std::string &name : inputs)
-            Inputs.push_back({std::move(name), false});
+            Inputs.push_back({std::move(name), false, id++});
         Outputs.push_back({"Out", false});
     }
 
@@ -31,17 +33,26 @@ public:
                  ExecutionFault &fault) override {
         ++ResolveCalls;
         if (input.Selector == InputSelector::Index) {
+            int index = input.Index;
             if (input.LayoutGeneration != LayoutGeneration) {
-                fault = {ExecutionError::LayoutStale, 0,
-                         "The indexed input belongs to an older layout."};
-                return false;
+                const auto found = std::find_if(
+                    Inputs.begin(), Inputs.end(), [&](const Input &candidate) {
+                        return input.Identity.Id != 0 &&
+                            candidate.Id == input.Identity.Id;
+                    });
+                if (found == Inputs.end()) {
+                    fault = {ExecutionError::LayoutStale, 0,
+                             "The indexed input belongs to an older layout."};
+                    return false;
+                }
+                index = static_cast<int>(found - Inputs.begin());
             }
-            if (input.Index < 0 || input.Index >= static_cast<int>(Inputs.size())) {
+            if (index < 0 || index >= static_cast<int>(Inputs.size())) {
                 fault = {ExecutionError::SelectorNotFound, 0,
                          "The indexed input does not exist."};
                 return false;
             }
-            resolved = {input.Index};
+            resolved = {index, {Inputs[index].Id, nullptr}};
             return true;
         }
 
@@ -356,7 +367,31 @@ TEST(BehaviorExecution, RetryErrorContinuesButFatalAndBreakClose) {
     EXPECT_FALSE(breakpoint.NeedsFrame());
 }
 
-TEST(BehaviorExecution, IndexedQueuedInputFailsClosedAfterLayoutChange) {
+TEST(BehaviorExecution, IndexedQueuedInputFollowsItsInAcrossLayoutChange) {
+    Execution execution;
+    FakeExecutionAdapter adapter({"A", "B"});
+    adapter.Native.push_back(FunctionResult(1, true));
+    adapter.Native.push_back(FunctionResult(0));
+
+    ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
+    ASSERT_EQ(execution.Pulse(ExecutionInput::At(1, 1), 1, adapter).State,
+              AdmissionState::Queued);
+    adapter.LayoutGeneration = 2;
+    std::swap(adapter.Inputs[0], adapter.Inputs[1]);
+
+    ASSERT_TRUE(execution.Step(2, adapter));
+    ASSERT_EQ(adapter.Activated.size(), 2u);
+    EXPECT_EQ(adapter.Activated.back(), 0);
+    EXPECT_EQ(execution.State(), ExecutionState::Idle);
+
+    // Only a queued input carries the In it was admitted for. A caller that
+    // still holds the older generation is refused at admission.
+    Execution fresh;
+    EXPECT_EQ(fresh.Pulse(ExecutionInput::At(0, 1), 3, adapter).Fault.Code,
+              ExecutionError::LayoutStale);
+}
+
+TEST(BehaviorExecution, IndexedQueuedInputFailsClosedWhenItsInIsGone) {
     Execution execution;
     FakeExecutionAdapter adapter({"A", "B"});
     adapter.Native.push_back(FunctionResult(1, true));
@@ -365,6 +400,7 @@ TEST(BehaviorExecution, IndexedQueuedInputFailsClosedAfterLayoutChange) {
     ASSERT_EQ(execution.Pulse(ExecutionInput::At(1, 1), 1, adapter).State,
               AdmissionState::Queued);
     adapter.LayoutGeneration = 2;
+    adapter.Inputs.pop_back();
 
     ExecutionResult drift = execution.Step(2, adapter);
     EXPECT_EQ(drift.State, AdmissionState::Failed);

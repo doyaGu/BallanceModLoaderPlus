@@ -103,7 +103,7 @@ ExecutionResult Execution::Admit(const ExecutionInput &input, std::uint64_t fram
 
     if (m_State == ExecutionState::Running || m_State == ExecutionState::Pending ||
         m_LastFrame == frame) {
-        Queue(input);
+        Queue(input, resolved.Identity);
         if (m_State != ExecutionState::Running)
             m_State = ExecutionState::Pending;
         return {AdmissionState::Queued, {}, std::nullopt};
@@ -353,12 +353,13 @@ std::vector<RunFrame> Execution::Take() {
     return m_Frames->Take();
 }
 
-bool Execution::Queue(const ExecutionInput &input) {
+bool Execution::Queue(const ExecutionInput &input, InputIdentity identity) {
     if (std::find(m_QueuedInputs.begin(), m_QueuedInputs.end(), input) !=
         m_QueuedInputs.end()) {
         return false;
     }
     m_QueuedInputs.push_back(input);
+    m_QueuedInputs.back().Identity = identity;
     return true;
 }
 

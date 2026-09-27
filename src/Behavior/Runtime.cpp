@@ -115,17 +115,28 @@ public:
         }
 
         if (input.Selector == InputSelector::Index) {
+            int index = input.Index;
             if (input.LayoutGeneration != record->LayoutGeneration) {
-                fault = {ExecutionError::LayoutStale, CKBR_PARAMETERERROR,
-                         "Queued behavior input belongs to an older live layout."};
-                return false;
+                // The index was checked against the Layout it was admitted
+                // under. A queued input follows the In it named then, so a
+                // Layout change stales it only when that In is gone.
+                index = FindInput(behavior, input.Identity);
+                if (index < 0) {
+                    fault = {ExecutionError::LayoutStale, CKBR_PARAMETERERROR,
+                             "Queued behavior input names an In the live layout no longer has."};
+                    return false;
+                }
             }
-            if (input.Index < 0 || input.Index >= behavior->GetInputCount()) {
+            if (index < 0 || index >= behavior->GetInputCount()) {
                 fault = {ExecutionError::SelectorNotFound, CKBR_PARAMETERERROR,
                          "Behavior input index no longer exists."};
                 return false;
             }
-            resolved.Index = input.Index;
+            const ObjectStamp io = m_Runtime.CaptureObject(
+                behavior->GetInput(index));
+            resolved.Index = index;
+            resolved.Identity = {static_cast<std::uint32_t>(io.Id),
+                                 io.Address};
             return true;
         }
 
@@ -313,6 +324,19 @@ public:
     }
 
 private:
+    int FindInput(CKBehavior *behavior, const InputIdentity &identity) const {
+        CKObject *object = m_Runtime.ResolveObject(
+            {static_cast<CK_ID>(identity.Id),
+             static_cast<CKObject *>(identity.Address)});
+        if (!object)
+            return -1;
+        for (int index = 0; index < behavior->GetInputCount(); ++index) {
+            if (behavior->GetInput(index) == object)
+                return index;
+        }
+        return -1;
+    }
+
     bool ReadOutputLayout(Record &record, CKBehavior *behavior,
                           ExecutionFault &fault) {
         if (record.OutputLayoutGeneration == record.LayoutGeneration) {

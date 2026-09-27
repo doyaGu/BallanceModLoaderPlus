@@ -53,10 +53,21 @@ enum class InputSelector {
     Name,
 };
 
+// The native In an index input resolved to at admission. Execution only
+// carries it; the adapter uses it to find the same In again when a queued
+// input outlives the Layout generation it was admitted under.
+struct InputIdentity {
+    std::uint32_t Id = 0;
+    void *Address = nullptr;
+};
+
 struct ExecutionInput {
     InputSelector Selector = InputSelector::Index;
     int Index = -1;
     std::uint64_t LayoutGeneration = 0;
+    // Set only on a queued index input. It does not take part in equality:
+    // one index of one generation always names the same In.
+    InputIdentity Identity;
     std::string Name;
     int Occurrence = 0;
     bool RequireUnique = false;
@@ -70,6 +81,7 @@ struct ExecutionInput {
 
 struct ResolvedInput {
     int Index = -1;
+    InputIdentity Identity;
 };
 
 struct ExecutionOutput {
@@ -249,7 +261,7 @@ private:
                           ExecutionAdapter &adapter, bool managed);
     ExecutionResult Run(std::uint64_t frame, ExecutionAdapter &adapter,
                         const ResolvedInput *admitted = nullptr);
-    bool Queue(const ExecutionInput &input);
+    bool Queue(const ExecutionInput &input, InputIdentity identity);
     void FailBeforeExecute(ExecutionFault fault) noexcept;
     // Stores the Frame. On retention overflow the synchronous result is
     // rewritten to match the terminal Frame kept by the store.

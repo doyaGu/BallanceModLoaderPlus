@@ -3729,6 +3729,46 @@ private:
         outputLayout.Handle.Reset();
         m_Runtime.ProcessFrame();
 
+        // A Pulse queued while the Block runs must survive the Block growing
+        // its own layout in that Run: the queued In still exists.
+        struct QueuedAcrossLayout {
+            Runtime *BehaviorRuntime = nullptr;
+            Instance *Handle = nullptr;
+            int Calls = 0;
+            bool Queued = false;
+            bool Grown = false;
+        } queued{&m_Runtime};
+        CreateResult queuedLayout = m_Runtime.Instantiate(
+            m_Owner, makeSpec());
+        queued.Handle = &queuedLayout.Handle;
+        const std::uint64_t queuedGeneration = queuedLayout
+            ? queuedLayout.Handle.LayoutGeneration() : 0;
+        resetTrace();
+        setRunHook([](CKBehavior *behavior, void *argument) {
+            auto &state = *static_cast<QueuedAcrossLayout *>(argument);
+            if (state.Calls++ != 0)
+                return CK_OK;
+            const RunResult again = state.BehaviorRuntime->Pulse(
+                *state.Handle, Slot::At(SlotKind::Input, 0));
+            state.Queued = again.Admission == AdmissionState::Queued;
+            state.Grown = behavior->CreateInput("Grown") != nullptr;
+            return CK_OK;
+        }, &queued);
+        RunResult queuedFirst = queuedLayout
+            ? m_Runtime.Pulse(
+                  queuedLayout.Handle, Slot::At(SlotKind::Input, 0))
+            : RunResult{};
+        m_Runtime.ProcessFrame();
+        setRunHook(nullptr, nullptr);
+        const BMLLifecycleFixtureTrace queuedTrace = read();
+        const bool queuedAcrossLayoutPassed = queuedLayout && queuedFirst &&
+            queued.Queued && queued.Grown && queued.Calls == 2 &&
+            queuedTrace.RunCount == 2 &&
+            queuedLayout.Handle.LayoutGeneration() != queuedGeneration &&
+            m_Runtime.State(queuedLayout.Handle) == ExecutionState::Idle;
+        queuedLayout.Handle.Reset();
+        m_Runtime.ProcessFrame();
+
         FrameRetention retainPouts = FrameRetention::Latest();
         retainPouts.IncludePouts = true;
         CreateResult poutLayout = m_Runtime.Instantiate(
@@ -3792,8 +3832,9 @@ private:
         m_LifecyclePassed = normalPassed && resetPassed &&
             sessionResetPassed && selfClosePassed && teardownReentryPassed &&
             liveNormalizationPassed && membershipPassed &&
-            outputLayoutDriftPassed && poutLayoutDriftPassed &&
-            ownerRetirementPassed && ownedBehaviorTreePassed;
+            outputLayoutDriftPassed && queuedAcrossLayoutPassed &&
+            poutLayoutDriftPassed && ownerRetirementPassed &&
+            ownedBehaviorTreePassed;
         if (!m_LifecyclePassed) {
             if (!normalPassed)
                 Fail("lifecycle-normal");
@@ -3811,6 +3852,8 @@ private:
                 Fail("lifecycle-parent-membership");
             if (!outputLayoutDriftPassed)
                 Fail("lifecycle-output-layout-drift");
+            if (!queuedAcrossLayoutPassed)
+                Fail("lifecycle-queued-input-across-layout");
             if (!poutLayoutDriftPassed)
                 Fail("lifecycle-pout-layout-drift");
             if (!ownerRetirementPassed)
