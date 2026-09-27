@@ -293,14 +293,16 @@ Status CKEdit::Transaction::CheckPublished() {
                 continue;
             CKBehaviorLink *link = Resolve<CKBehaviorLink>(
                 m_Context, reconnection.Link, CKCID_BEHAVIORLINK);
+            // A reconnected Link stays in the graph and keeps running, so CK2
+            // counts its current ActivationDelay down and resets it on every
+            // activation. Only the initial delay is part of its identity.
             if (!link || !Engine::Contains(m_Graph, link) ||
                 Capture(link->GetInBehaviorIO()) !=
                     reconnection.InstalledSource ||
                 Capture(link->GetOutBehaviorIO()) !=
                     reconnection.InstalledSink ||
                 link->GetInitialActivationDelay() !=
-                    reconnection.InitialDelay ||
-                link->GetActivationDelay() != reconnection.Delay) {
+                    reconnection.InitialDelay) {
                 return Conflict(
                     RevertSubject::Link,
                     "A reconnected Behavior Link changed after the Patch was published.");
@@ -583,8 +585,7 @@ void CKEdit::Transaction::RevertReconnections() {
         const bool restored = error == CK_OK &&
             link->GetInBehaviorIO() == source &&
             link->GetOutBehaviorIO() == sink &&
-            link->GetInitialActivationDelay() == item->InitialDelay &&
-            link->GetActivationDelay() == item->Delay;
+            link->GetInitialActivationDelay() == item->InitialDelay;
         if (!restored) {
             if (link && installedSource && installedSink) {
                 (void) link->SetInBehaviorIO(installedSource);

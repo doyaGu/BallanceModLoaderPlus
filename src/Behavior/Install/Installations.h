@@ -359,6 +359,7 @@ private:
 
     CKEdit m_Edit;
     Selections m_Selections;
+    CKContext *m_Context = nullptr;
     GraphSource &m_Graph;
     ResolveObject m_ResolveObject;
     IssueObject m_IssueObject;

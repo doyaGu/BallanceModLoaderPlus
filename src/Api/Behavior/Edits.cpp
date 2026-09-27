@@ -121,8 +121,7 @@ private:
     Status PortRefAt(std::uint32_t index,
                      const BML_BehaviorPortRef *&out) const;
     Status PortAt(std::uint32_t index, Port &out) const;
-    Status PatternAt(std::uint32_t index, bool required,
-                     NodePattern &out) const;
+    Status PatternAt(std::uint32_t index, NodePattern &out) const;
     Status ValueAt(std::uint32_t index, ModContext &context,
                    Parameter::Binding &out) const;
     Status BlockAt(std::uint32_t index, ModContext &context,
@@ -230,8 +229,10 @@ Installations::SymbolMap ProgramDecoder::Symbols() const {
     return symbols;
 }
 
+// Port-count and port-value conditions arrive as later steps, so an empty
+// pattern is rejected by Program::Validate once every step is decoded.
 Status ReadNodePattern(const BML_BehaviorNodePattern &from,
-                       NodePattern &out, bool required) {
+                       NodePattern &out) {
     out = {};
     if (from.StructSize < sizeof(from))
         return InvalidValue("A Node Pattern has an unsupported StructSize.");
@@ -290,8 +291,6 @@ Status ReadNodePattern(const BML_BehaviorNodePattern &from,
         return InvalidValue("A Node Pattern Behavior kind is unknown.");
     }
     out.PortShape = from.Shape;
-    if (required && !out)
-        return InvalidValue("A Node Pattern has no observable condition.");
     return {};
 }
 
@@ -331,7 +330,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
     case BML_BEHAVIOR_EDIT_REQUIRE_NODE:
     case BML_BEHAVIOR_EDIT_EACH_NODE: {
         NodePattern query;
-        if (status = PatternAt(step.Operand, true, query); !status)
+        if (status = PatternAt(step.Operand, query); !status)
             return status;
         defined.Kind = EditHandleKind::Node;
         defined.NodeValue = step.Kind == BML_BEHAVIOR_EDIT_EACH_NODE
@@ -359,7 +358,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
             return status;
         NodePattern expected;
         if (step.Operand) {
-            if (status = PatternAt(step.Operand, false, expected); !status)
+            if (status = PatternAt(step.Operand, expected); !status)
                 return status;
         }
         defined.Kind = EditHandleKind::Node;
@@ -789,7 +788,7 @@ Status ProgramDecoder::PortAt(std::uint32_t index, Port &out) const {
     return {};
 }
 
-Status ProgramDecoder::PatternAt(std::uint32_t index, bool required,
+Status ProgramDecoder::PatternAt(std::uint32_t index,
                                  NodePattern &out) const {
     const BML_BehaviorNodePattern *from =
         Entry(m_Program->Patterns, m_Program->PatternCount, index);
@@ -797,7 +796,7 @@ Status ProgramDecoder::PatternAt(std::uint32_t index, bool required,
         return InvalidValue(
             "A Behavior edit step names no Node Pattern in its program.");
     }
-    return ReadNodePattern(*from, out, required);
+    return ReadNodePattern(*from, out);
 }
 
 Status ProgramDecoder::ValueAt(std::uint32_t index, ModContext &context,

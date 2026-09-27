@@ -78,8 +78,9 @@ bool GameplayTweaks::OnModifyConfig(const char *category, const char *key,
     }
     if (property == m_Overclock &&
         std::strcmp(key ? key : "", "Overclock") == 0) {
-        if (m_BML && m_BML->IsIngame())
-            (void) ApplyOverclock(property->GetBoolean(), true);
+        // The Plan outlives each world, so a change made in the menu must
+        // reach it too; it applies once the next level's scripts load.
+        (void) ApplyOverclock(property->GetBoolean(), true);
         return true;
     }
     if (property == m_FixLifeBall &&

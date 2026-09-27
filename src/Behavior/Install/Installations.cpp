@@ -204,7 +204,7 @@ Installations::Installations(CKContext *context, Runtime &runtime,
                              PrototypeCatalog *catalog, GraphSource &graph,
                              ResolveObject resolveObject,
                              IssueObject issueObject)
-    : m_Edit(context, runtime, catalog, graph),
+    : m_Edit(context, runtime, catalog, graph), m_Context(context),
       m_Graph(graph), m_ResolveObject(std::move(resolveObject)),
       m_IssueObject(std::move(issueObject)),
       m_Thread(std::this_thread::get_id()) {}
@@ -2061,9 +2061,16 @@ void Installations::ObjectsToBeDeleted(const CK_ID *ids, int count) {
             }) || std::any_of(
                 patch.Requested.begin(), patch.Requested.end(),
                 [&](const Target &target) {
-                    CKObject *object = m_ResolveObject
-                        ? m_ResolveObject(target.Graph) : nullptr;
-                    return object && deleting.contains(object->GetID());
+                    // The Graph already carries TOBEDELETED here, so the
+                    // resolver refuses it. Issue the deleting object's handle
+                    // instead: it equals the Target only while both name the
+                    // same object, never a later one that reused its CK_ID.
+                    if (!deleting.contains(target.Graph.Slot) || !m_Context ||
+                        !m_IssueObject)
+                        return false;
+                    CKObject *object = m_Context->GetObject(
+                        static_cast<CK_ID>(target.Graph.Slot));
+                    return object && m_IssueObject(object) == target.Graph;
                 });
         if (!affected)
             continue;

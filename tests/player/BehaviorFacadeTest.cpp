@@ -535,6 +535,10 @@ private:
         m_Exit = AddLink(m_Sink->GetOutput(0), m_Graph->GetOutput(0));
         if (!m_Entry || !m_Anchor || !m_Exit)
             return false;
+        // The identity probe redirects the anchor while it runs, so it
+        // needs a delay CK2 counts down. The initial delay is part of the
+        // anchor's identity, so it is set before any Patch records it.
+        m_Anchor->SetInitialActivationDelay(1);
         m_AnchorId = m_Anchor->GetID();
         return m_Graph->GetSubBehaviorCount() == 2 &&
             m_Graph->GetSubBehaviorLinkCount() == 3;
@@ -1805,6 +1809,10 @@ private:
             Finish(false, "identity-reference");
             return;
         }
+        // The anchor keeps running while it is redirected. CK2 counts its
+        // current ActivationDelay from 1 down to 0 when it fires, and Close
+        // must restore it all the same.
+        m_Anchor->SetActivationDelay(1);
         // Inspect takes the Behavior itself, so a Mod editing the graph it
         // built needs no name lookup at all.
         const auto opened = m_Session.Inspect(m_Graph);
@@ -2901,6 +2909,30 @@ private:
                 "Composed Patch lifecycle fixture is unavailable");
             return false;
         }
+
+        // Port-count conditions reach the Loader as steps after the Node
+        // query, so a Pattern made only of them must still resolve.
+        std::int32_t fixtureIns = 0;
+        for (const BML::Behavior::Port port : secondFixture->Ports()) {
+            if (port.Kind() == BML::Behavior::SlotKind::In)
+                ++fixtureIns;
+        }
+        BML::Behavior::Edit counted;
+        const auto countedNode = counted.Root().Require(
+            BML::Behavior::NodePattern().Ins(fixtureIns));
+        counted.Root().Set(countedNode.Pin("Source", CKPGUID_INT), 37);
+        auto countApplied = second->Apply("player-count-pattern", counted);
+        const auto countValue = second->Read(secondFixture->Pin("Source"));
+        const bool countMatched = countApplied && countValue &&
+            std::holds_alternative<std::int32_t>(countValue->Data) &&
+            std::get<std::int32_t>(countValue->Data) == 37;
+        const bool countClosed = countApplied && countApplied->Close();
+        GetLogger()->Info(
+            "Behavior count-only Pattern: status=%s detail=%s",
+            countMatched && countClosed ? "pass" : "fail",
+            countApplied ? "none" : countApplied.GetStatus().Message.c_str());
+        if (!countMatched || !countClosed)
+            return false;
 
         // A CK Link can be stored in one graph while its source IO belongs to
         // another. CK2 will still traverse it from that source, so publishing

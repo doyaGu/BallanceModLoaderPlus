@@ -730,11 +730,11 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
             BML_AS_GENERIC_METHOD(&ScriptBehaviorRun::Inspect), asCALL_GENERIC),
             "BML::Behavior Run::Inspect");
         BML_BEHAVIOR_REGISTER(engine->RegisterObjectMethod(
-            type, "bool Set(Slot@ slot, const Value &in value)",
+            type, "bool Set(Slot@+ slot, const Value &in value)",
             BML_AS_GENERIC_METHOD(&ScriptBehaviorRun::Set), asCALL_GENERIC),
             "BML::Behavior Run::Set");
         BML_BEHAVIOR_REGISTER(engine->RegisterObjectMethod(
-            type, "bool Bind(Slot@ slot, Port@ source, "
+            type, "bool Bind(Slot@+ slot, Port@+ source, "
                   "Relation relation = Direct)",
             BML_AS_GENERIC_METHOD(&ScriptBehaviorRun::Bind), asCALL_GENERIC),
             "BML::Behavior Run::Bind");
@@ -1198,74 +1198,74 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
                         "Node@ Find(const Selector &in selector, const CKGUID &in prototype) const",
                         &ScriptBehaviorGraph::Find);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "int IncomingCount(Node@ node) const",
+                        "int IncomingCount(Node@+ node) const",
                         &ScriptBehaviorGraph::IncomingNodeCount);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "int IncomingCount(Port@ port) const",
+                        "int IncomingCount(Port@+ port) const",
                         &ScriptBehaviorGraph::IncomingPortCount);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "int OutgoingCount(Node@ node) const",
+                        "int OutgoingCount(Node@+ node) const",
                         &ScriptBehaviorGraph::OutgoingNodeCount);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "int OutgoingCount(Port@ port) const",
+                        "int OutgoingCount(Port@+ port) const",
                         &ScriptBehaviorGraph::OutgoingPortCount);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Link@ Incoming(Node@ node, int index) const",
+                        "Link@ Incoming(Node@+ node, int index) const",
                         &ScriptBehaviorGraph::IncomingNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Link@ Incoming(Port@ port, int index) const",
+                        "Link@ Incoming(Port@+ port, int index) const",
                         &ScriptBehaviorGraph::IncomingPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Link@ Outgoing(Node@ node, int index) const",
+                        "Link@ Outgoing(Node@+ node, int index) const",
                         &ScriptBehaviorGraph::OutgoingNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Link@ Outgoing(Port@ port, int index) const",
+                        "Link@ Outgoing(Port@+ port, int index) const",
                         &ScriptBehaviorGraph::OutgoingPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Link@ Entering(Node@ node) const",
+                        "Link@ Entering(Node@+ node) const",
                         &ScriptBehaviorGraph::EnteringNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Link@ Entering(Port@ port) const",
+                        "Link@ Entering(Port@+ port) const",
                         &ScriptBehaviorGraph::EnteringPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Link@ Leaving(Node@ node) const",
+                        "Link@ Leaving(Node@+ node) const",
                         &ScriptBehaviorGraph::LeavingNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Link@ Leaving(Port@ port) const",
+                        "Link@ Leaving(Port@+ port) const",
                         &ScriptBehaviorGraph::LeavingPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Node@ Previous(Node@ node) const",
+                        "Node@ Previous(Node@+ node) const",
                         &ScriptBehaviorGraph::PreviousNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Node@ Previous(Port@ port) const",
+                        "Node@ Previous(Port@+ port) const",
                         &ScriptBehaviorGraph::PreviousPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Node@ Next(Node@ node) const",
+                        "Node@ Next(Node@+ node) const",
                         &ScriptBehaviorGraph::NextNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Node@ Next(Port@ port) const",
+                        "Node@ Next(Port@+ port) const",
                         &ScriptBehaviorGraph::NextPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "ObservedValue@ Read(Port@ port) const",
+                        "ObservedValue@ Read(Port@+ port) const",
                         &ScriptBehaviorGraph::Read);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Graph@ Inspect(Node@ node) const",
+                        "Graph@ Inspect(Node@+ node) const",
                         &ScriptBehaviorGraph::Inspect);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph", "Graph@ Logical() const",
                         &ScriptBehaviorGraph::Logical);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph", "Graph@ Live() const",
                         &ScriptBehaviorGraph::Live);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Patch@ Apply(const string &in name, Edit@ edit) const",
+                        "Patch@ Apply(const string &in name, Edit@+ edit) const",
                         &ScriptBehaviorGraph::Apply);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
                         "Watch@ Watch(WatchCallback@+ callback) const",
                         &ScriptBehaviorGraph::WatchGraph);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Watch@ Watch(Node@ node, WatchCallback@+ callback) const",
+                        "Watch@ Watch(Node@+ node, WatchCallback@+ callback) const",
                         &ScriptBehaviorGraph::WatchLayout);
     BML_BEHAVIOR_METHOD(ScriptBehaviorGraph, "Graph",
-                        "Watch@ Watch(Port@ value, WatchCallback@+ callback) const",
+                        "Watch@ Watch(Port@+ value, WatchCallback@+ callback) const",
                         &ScriptBehaviorGraph::WatchValue);
 
     BML_BEHAVIOR_DIRECT_METHOD(ScriptBehaviorEdit, "Edit",
@@ -1340,127 +1340,127 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
                         "EditNodes@ Each(const NodePattern &in pattern) const",
                         &ScriptBehaviorEditGraph::Each);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditNode@ Require(Node@ node) const",
+                        "EditNode@ Require(Node@+ node) const",
                         &ScriptBehaviorEditGraph::RequireNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditLink@ Require(Link@ link) const",
+                        "EditLink@ Require(Link@+ link) const",
                         &ScriptBehaviorEditGraph::RequireLink);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditNode@ Use(Node@ node) const",
+                        "EditNode@ Use(Node@+ node) const",
                         &ScriptBehaviorEditGraph::Use);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditLink@ Use(Link@ link) const",
+                        "EditLink@ Use(Link@+ link) const",
                         &ScriptBehaviorEditGraph::UseLink);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditLink@ Between(EditPort@ source, EditPort@ sink, int delay = 0) const",
+                        "EditLink@ Between(EditPort@+ source, EditPort@+ sink, int delay = 0) const",
                         &ScriptBehaviorEditGraph::Between);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditNode@ Next(EditPort@ source) const",
+                        "EditNode@ Next(EditPort@+ source) const",
                         &ScriptBehaviorEditGraph::NextPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditNode@ Next(EditNode@ source) const",
+                        "EditNode@ Next(EditNode@+ source) const",
                         &ScriptBehaviorEditGraph::NextNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditNode@ Previous(EditPort@ sink) const",
+                        "EditNode@ Previous(EditPort@+ sink) const",
                         &ScriptBehaviorEditGraph::PreviousPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditNode@ Previous(EditNode@ sink) const",
+                        "EditNode@ Previous(EditNode@+ sink) const",
                         &ScriptBehaviorEditGraph::PreviousNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditLink@ Leaving(EditPort@ source) const",
+                        "EditLink@ Leaving(EditPort@+ source) const",
                         &ScriptBehaviorEditGraph::LeavingPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditLink@ Leaving(EditNode@ source) const",
+                        "EditLink@ Leaving(EditNode@+ source) const",
                         &ScriptBehaviorEditGraph::LeavingNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditLink@ Entering(EditPort@ sink) const",
+                        "EditLink@ Entering(EditPort@+ sink) const",
                         &ScriptBehaviorEditGraph::EnteringPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditLink@ Entering(EditNode@ sink) const",
+                        "EditLink@ Entering(EditNode@+ sink) const",
                         &ScriptBehaviorEditGraph::EnteringNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditLink@ To(EditPort@ source, EditNode@ target) const",
+                        "EditLink@ To(EditPort@+ source, EditNode@+ target) const",
                         &ScriptBehaviorEditGraph::To);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditPath@ Follow(EditPort@ source) const",
+                        "EditPath@ Follow(EditPort@+ source) const",
                         &ScriptBehaviorEditGraph::Follow);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditNode@ Add(Block@ block) const",
+                        "EditNode@ Add(Block@+ block) const",
                         &ScriptBehaviorEditGraph::Add);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
                         "EditNode@ AddGraph(const string &in name, int priority = 0) const",
                         &ScriptBehaviorEditGraph::AddGraph);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditNode@ Replace(EditNode@ target, Block@ block) const",
+                        "EditNode@ Replace(EditNode@+ target, Block@+ block) const",
                         &ScriptBehaviorEditGraph::Replace);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Remove(EditNode@ node) const",
+                        "bool Remove(EditNode@+ node) const",
                         &ScriptBehaviorEditGraph::Remove);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Flow(EditPort@ source, EditPort@ sink, int delay = 0) const",
+                        "bool Flow(EditPort@+ source, EditPort@+ sink, int delay = 0) const",
                         &ScriptBehaviorEditGraph::Flow);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool FlowCycle(EditPort@ source, EditPort@ sink, int delay = 0) const",
+                        "bool FlowCycle(EditPort@+ source, EditPort@+ sink, int delay = 0) const",
                         &ScriptBehaviorEditGraph::FlowCycle);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Flow(EditPorts@ sources, EditPort@ sink, int delay = 0) const",
+                        "bool Flow(EditPorts@+ sources, EditPort@+ sink, int delay = 0) const",
                         &ScriptBehaviorEditGraph::FlowFrom);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Flow(EditPort@ source, EditPorts@ sinks, int delay = 0) const",
+                        "bool Flow(EditPort@+ source, EditPorts@+ sinks, int delay = 0) const",
                         &ScriptBehaviorEditGraph::FlowTo);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool FlowCycle(EditPorts@ sources, EditPort@ sink, int delay = 0) const",
+                        "bool FlowCycle(EditPorts@+ sources, EditPort@+ sink, int delay = 0) const",
                         &ScriptBehaviorEditGraph::FlowCycleFrom);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool FlowCycle(EditPort@ source, EditPorts@ sinks, int delay = 0) const",
+                        "bool FlowCycle(EditPort@+ source, EditPorts@+ sinks, int delay = 0) const",
                         &ScriptBehaviorEditGraph::FlowCycleTo);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPort@ sink, EditPort@ source) const",
+                        "bool Bind(EditPort@+ sink, EditPort@+ source) const",
                         &ScriptBehaviorEditGraph::BindPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Share(EditPort@ sink, EditPort@ source) const",
+                        "bool Share(EditPort@+ sink, EditPort@+ source) const",
                         &ScriptBehaviorEditGraph::Share);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPorts@ sinks, EditPort@ source) const",
+                        "bool Bind(EditPorts@+ sinks, EditPort@+ source) const",
                         &ScriptBehaviorEditGraph::BindPorts);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Share(EditPorts@ sinks, EditPort@ source) const",
+                        "bool Share(EditPorts@+ sinks, EditPort@+ source) const",
                         &ScriptBehaviorEditGraph::SharePorts);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Push(EditPort@ source, EditPort@ sink) const",
+                        "bool Push(EditPort@+ source, EditPort@+ sink) const",
                         &ScriptBehaviorEditGraph::Push);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Push(EditPorts@ sources, EditPort@ sink) const",
+                        "bool Push(EditPorts@+ sources, EditPort@+ sink) const",
                         &ScriptBehaviorEditGraph::PushFrom);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Push(EditPort@ source, EditPorts@ sinks) const",
+                        "bool Push(EditPort@+ source, EditPorts@+ sinks) const",
                         &ScriptBehaviorEditGraph::PushTo);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
                         "Operation@ AddOperation(const CKGUID &in operation, const CKGUID &in result, const CKGUID &in input1 = CKGUID(0, 0), const CKGUID &in input2 = CKGUID(0, 0)) const",
                         &ScriptBehaviorEditGraph::AddOperation);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPort@ sink, bool value) const",
+                        "bool Bind(EditPort@+ sink, bool value) const",
                         &ScriptBehaviorEditGraph::BindBool);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPort@ sink, int value) const",
+                        "bool Bind(EditPort@+ sink, int value) const",
                         &ScriptBehaviorEditGraph::BindInt);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPort@ sink, float value) const",
+                        "bool Bind(EditPort@+ sink, float value) const",
                         &ScriptBehaviorEditGraph::BindFloat);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPort@ sink, const string &in value) const",
+                        "bool Bind(EditPort@+ sink, const string &in value) const",
                         &ScriptBehaviorEditGraph::BindString);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPort@ sink, const Vx2DVector &in value) const",
+                        "bool Bind(EditPort@+ sink, const Vx2DVector &in value) const",
                         &ScriptBehaviorEditGraph::BindVec2);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPort@ sink, const VxVector &in value) const",
+                        "bool Bind(EditPort@+ sink, const VxVector &in value) const",
                         &ScriptBehaviorEditGraph::BindVec3);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPort@ sink, const Value &in value) const",
+                        "bool Bind(EditPort@+ sink, const Value &in value) const",
                         &ScriptBehaviorEditGraph::BindAny);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Bind(EditPorts@ sinks, const Value &in value) const",
+                        "bool Bind(EditPorts@+ sinks, const Value &in value) const",
                         &ScriptBehaviorEditGraph::BindMany);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
                         "EditPort@ AppendIn(const string &in name) const",
@@ -1478,52 +1478,52 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
                         "EditPort@ AppendLocal(const string &in name, const CKGUID &in type) const",
                         &ScriptBehaviorEditGraph::AppendLocal);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditPort@ AppendIn(EditNode@ owner, const string &in name) const",
+                        "EditPort@ AppendIn(EditNode@+ owner, const string &in name) const",
                         &ScriptBehaviorEditGraph::AppendInOn);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditPort@ AppendOut(EditNode@ owner, const string &in name) const",
+                        "EditPort@ AppendOut(EditNode@+ owner, const string &in name) const",
                         &ScriptBehaviorEditGraph::AppendOutOn);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditPort@ AppendPin(EditNode@ owner, const string &in name, const CKGUID &in type) const",
+                        "EditPort@ AppendPin(EditNode@+ owner, const string &in name, const CKGUID &in type) const",
                         &ScriptBehaviorEditGraph::AppendPinOn);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditPort@ AppendPout(EditNode@ owner, const string &in name, const CKGUID &in type) const",
+                        "EditPort@ AppendPout(EditNode@+ owner, const string &in name, const CKGUID &in type) const",
                         &ScriptBehaviorEditGraph::AppendPoutOn);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "EditPort@ AppendLocal(EditNode@ owner, const string &in name, const CKGUID &in type) const",
+                        "EditPort@ AppendLocal(EditNode@+ owner, const string &in name, const CKGUID &in type) const",
                         &ScriptBehaviorEditGraph::AppendLocalOn);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Splice(EditLink@ link, EditNode@ through) const",
+                        "bool Splice(EditLink@+ link, EditNode@+ through) const",
                         &ScriptBehaviorEditGraph::SpliceNode);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Splice(EditLink@ link, EditPort@ sink, EditPort@ source) const",
+                        "bool Splice(EditLink@+ link, EditPort@+ sink, EditPort@+ source) const",
                         &ScriptBehaviorEditGraph::SplicePorts);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Redirect(EditLink@ link, EditPort@ sink) const",
+                        "bool Redirect(EditLink@+ link, EditPort@+ sink) const",
                         &ScriptBehaviorEditGraph::RedirectPort);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Redirect(EditLink@ link, EditLink@ destination) const",
+                        "bool Redirect(EditLink@+ link, EditLink@+ destination) const",
                         &ScriptBehaviorEditGraph::RedirectLink);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Reconnect(EditLink@ link, EditPort@ source, EditPort@ sink) const",
+                        "bool Reconnect(EditLink@+ link, EditPort@+ source, EditPort@+ sink) const",
                         &ScriptBehaviorEditGraph::Reconnect);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool ReconnectCycle(EditLink@ link, EditPort@ source, EditPort@ sink) const",
+                        "bool ReconnectCycle(EditLink@+ link, EditPort@+ source, EditPort@+ sink) const",
                         &ScriptBehaviorEditGraph::ReconnectCycle);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Tap(EditPort@ source, HookCallback@+ callback) const",
+                        "bool Tap(EditPort@+ source, HookCallback@+ callback) const",
                         &ScriptBehaviorEditGraph::Tap);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Tap(EditPorts@ sources, HookCallback@+ callback) const",
+                        "bool Tap(EditPorts@+ sources, HookCallback@+ callback) const",
                         &ScriptBehaviorEditGraph::TapMany);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool Before(EditLink@ link, HookCallback@+ callback) const",
+                        "bool Before(EditLink@+ link, HookCallback@+ callback) const",
                         &ScriptBehaviorEditGraph::Before);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool After(EditPath@ path, HookCallback@+ callback) const",
+                        "bool After(EditPath@+ path, HookCallback@+ callback) const",
                         &ScriptBehaviorEditGraph::AfterPath);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEditGraph, "EditGraph",
-                        "bool After(EditPort@ source, HookCallback@+ callback) const",
+                        "bool After(EditPort@+ source, HookCallback@+ callback) const",
                         &ScriptBehaviorEditGraph::AfterPort);
 
 #define BML_REGISTER_OWNED_STATE(type, nativeType, stateType)                     \
@@ -1542,13 +1542,13 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
     BML_REGISTER_OWNED_STATE("Plan", ScriptBehaviorPlan, PlanState);
 #undef BML_REGISTER_OWNED_STATE
     BML_BEHAVIOR_METHOD(ScriptBehaviorPatch, "Patch",
-                        "bool Replace(Graph@ graph, Edit@ edit)",
+                        "bool Replace(Graph@+ graph, Edit@+ edit)",
                         &ScriptBehaviorPatch::Replace);
     BML_BEHAVIOR_METHOD(ScriptBehaviorPatch, "Patch",
-                        "ObjectRef@ Resolve(EditNode@ node) const",
+                        "ObjectRef@ Resolve(EditNode@+ node) const",
                         &ScriptBehaviorPatch::Resolve);
     BML_BEHAVIOR_METHOD(ScriptBehaviorPlan, "Plan",
-                        "bool Replace(const string &in script, Edit@ edit, bool each = false)",
+                        "bool Replace(const string &in script, Edit@+ edit, bool each = false)",
                         &ScriptBehaviorPlan::Replace);
 
     BML_BEHAVIOR_DIRECT_METHOD(ScriptBehaviorScript, "Script",
@@ -1567,7 +1567,7 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
                         "Graph@ Inspect(bool live = false) const",
                         &ScriptBehaviorScript::Inspect);
     BML_BEHAVIOR_METHOD(ScriptBehaviorScript, "Script",
-                        "Patch@ Apply(const string &in name, Edit@ edit) const",
+                        "Patch@ Apply(const string &in name, Edit@+ edit) const",
                         &ScriptBehaviorScript::Apply);
     BML_BEHAVIOR_METHOD(ScriptBehaviorScript, "Script", "CloseState Close()",
                         &ScriptBehaviorScript::Close);
@@ -1621,7 +1621,7 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
         BML_AS_GENERIC_FUNCTION(&CurrentInspect), asCALL_GENERIC),
         "BML::Behavior::Inspect");
     BML_BEHAVIOR_REGISTER(engine->RegisterGlobalFunction(
-        "Script@ CreateScript(CKBeObject@ owner, const string &in name, Edit@ body, int priority = 0)",
+        "Script@ CreateScript(CKBeObject@ owner, const string &in name, Edit@+ body, int priority = 0)",
         BML_AS_GENERIC_FUNCTION(&CurrentCreateScript), asCALL_GENERIC),
         "BML::Behavior::CreateScript");
 
