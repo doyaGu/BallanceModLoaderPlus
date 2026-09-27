@@ -494,6 +494,8 @@ void ModContext::Abandon() noexcept {
 }
 
 void ModContext::ResetVirtoolsWorld() {
+    // Author Releases dropped by the teardown below run once it is done.
+    BML::Behavior::Internal::ReleaseScope releases;
     m_GamePhase = GamePhase::FrontEnd;
     // Runtime owners close native state first. Public object references belong
     // to the API seam and are reset only after internal teardown is complete.
@@ -511,6 +513,7 @@ void ModContext::ResetVirtoolsWorld() {
 }
 
 void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
+    BML::Behavior::Internal::ReleaseScope releases;
     // Runtime owners observe the deletion first; public references are the
     // final observer because they do not participate in native teardown.
     m_PhysicsForce.ObjectsToBeDeleted(ids, count);
@@ -540,6 +543,7 @@ void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
 void ModContext::BehaviorScriptLoaded(CKBehavior *script) {
     if (!script)
         return;
+    BML::Behavior::Internal::ReleaseScope releases;
     const BML_ObjectRef reference = m_ObjectRefs.Issue(script);
     const char *name = script->GetName();
     const BML::Behavior::Internal::Status status =
@@ -552,6 +556,7 @@ void ModContext::BehaviorScriptLoaded(CKBehavior *script) {
 }
 
 void ModContext::ProcessVirtoolsFrame() {
+    BML::Behavior::Internal::ReleaseScope releases;
     m_BehaviorPrototypes.ProcessFrame();
     m_PhysicsForce.ProcessFrame();
     m_Behaviors.ProcessFrame();
@@ -572,6 +577,10 @@ BML::Behavior::Internal::Status ModContext::RetireBehaviorState(
     // Every Behavior owner retires through this one sequence. Graph
     // installations go first because Script bodies are installations too,
     // then the Scripts, then the owner's Sessions with their Runs and Watches.
+    // Unless a Behavior call encloses this one, the owner's author Releases
+    // run before it returns, and the Mod can be unloaded right after. Mod
+    // unloading is refused inside a Mod call.
+    BML::Behavior::Internal::ReleaseScope releases;
     Status first;
     const auto retire = [&](const char *step, auto &&action) noexcept {
         if (!first && mode == BehaviorRetirement::Unload)

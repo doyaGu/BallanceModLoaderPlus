@@ -17,6 +17,7 @@ namespace {
 
 using BML::Behavior::Internal::Phase;
 using BML::Behavior::Internal::PlanCallbackState;
+using BML::Behavior::Internal::ReleaseScope;
 namespace HookBlock = BML::Behavior::Internal::HookBlock;
 
 // Every entry checks its own pointers first. Enter then takes the
@@ -28,12 +29,15 @@ int Enter(BML_BehaviorStatus *status, Body &&body) noexcept {
     int code;
     try {
         ModContextLease context;
-        if (!context)
+        if (!context) {
             code = BML_ERROR_FROZEN;
-        else if (!context->IsMainThread())
+        } else if (!context->IsMainThread()) {
             code = BML_ERROR_WRONG_THREAD;
-        else
+        } else {
+            // Author Releases dropped by this call run once it is done.
+            ReleaseScope releases;
             code = body(*context, result);
+        }
     } catch (const std::bad_alloc &) {
         code = BML_ERROR_OUT_OF_MEMORY;
     } catch (...) {

@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -316,6 +317,67 @@ TEST(BehaviorCallback, CloseDuringInvocationReleasesAfterItEnds) {
     invocation = {};
     EXPECT_TRUE(plan.Collect());
     EXPECT_EQ(counts.Releases, 1);
+}
+
+TEST(BehaviorCallback, ReleaseWaitsForTheOutermostScope) {
+    ReferenceCounts counts;
+    PlanCallbackState plan =
+        PlanCallbackState::Retained(&counts, Retain, Release);
+    {
+        ReleaseScope outer;
+        CallbackLease lease = plan.OpenLease();
+        ASSERT_TRUE(lease);
+        EXPECT_EQ(lease.Close(), CallbackCloseResult::Ready);
+        plan.Retire();
+        {
+            ReleaseScope inner;
+            EXPECT_TRUE(plan.Collect());
+        }
+        EXPECT_TRUE(plan.Collect());
+        EXPECT_EQ(counts.Releases, 0);
+    }
+    EXPECT_EQ(counts.Releases, 1);
+}
+
+// A Release that closes something else drops that reference in turn. It
+// queues behind the running Release instead of nesting inside it.
+struct ChainedReleases {
+    static void ReleaseFirst(void *state) {
+        auto &self = *static_cast<ChainedReleases *>(state);
+        self.Order.push_back(1);
+        self.Second->Retire();
+        (void) self.Second->Collect();
+        self.Order.push_back(2);
+    }
+    static void ReleaseSecond(void *state) {
+        static_cast<ChainedReleases *>(state)->Order.push_back(3);
+    }
+    static void Retain(void *) {}
+
+    PlanCallbackState *Second = nullptr;
+    std::vector<int> Order;
+};
+
+TEST(BehaviorCallback, ReleaseDroppedByAReleaseRunsAfterIt) {
+    ChainedReleases chained;
+    PlanCallbackState first = PlanCallbackState::Retained(
+        &chained, &ChainedReleases::Retain, &ChainedReleases::ReleaseFirst);
+    PlanCallbackState second = PlanCallbackState::Retained(
+        &chained, &ChainedReleases::Retain, &ChainedReleases::ReleaseSecond);
+    chained.Second = &second;
+    CallbackLease firstLease = first.OpenLease();
+    CallbackLease secondLease = second.OpenLease();
+    ASSERT_TRUE(firstLease);
+    ASSERT_TRUE(secondLease);
+    (void) firstLease.Close();
+    (void) secondLease.Close();
+    {
+        ReleaseScope scope;
+        first.Retire();
+        EXPECT_TRUE(first.Collect());
+        EXPECT_TRUE(chained.Order.empty());
+    }
+    EXPECT_EQ(chained.Order, (std::vector<int>{1, 2, 3}));
 }
 
 TEST(BehaviorCallback, ReportsTheCurrentThreadInvocationExtent) {

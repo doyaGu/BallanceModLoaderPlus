@@ -921,7 +921,12 @@ private:
 
     void SubmitSelfClose() {
         auto state = m_SelfClose;
-        Hook hook([this, state]() {
+        // Dropping this Hook destroys closer, which closes a second Plan. The
+        // Loader drops the Hook while it retires the first Plan, and that
+        // Close must not run inside the retirement.
+        auto closer = std::make_shared<ReleaseCloser>();
+        closer->Outcome = m_ReleaseClose;
+        Hook hook([this, state, closer]() {
             ++state->Calls;
             const auto closed = m_SelfPlan.Close();
             state->Closing = closed &&
@@ -940,14 +945,33 @@ private:
             return;
         }
         m_SelfPlan = submitted.Take();
+        BML::Behavior::Edit closed;
+        const auto closedSink = closed.Root().Require(kSinkName);
+        closed.Root().Tap(closedSink.Out(0), Hook([] {}));
+        auto released = m_Session.Plan(
+            "player-public-release-close",
+            BML::Behavior::Scripts::One(kScriptName), closed);
+        if (!released) {
+            Finish(false, "release-close-submit");
+            return;
+        }
+        closer->Plan = released.Take();
+        m_ReleaseCloser = std::move(closer);
         m_WaitUntil = m_Frame + 30;
         m_State = State::WaitSelfActive;
     }
 
     void WaitSelfActive() {
         const auto info = m_SelfPlan.Info();
+        bool closerActive = false;
+        if (m_ReleaseCloser) {
+            const auto closerInfo = m_ReleaseCloser->Plan.Info();
+            closerActive = closerInfo && closerInfo->Active();
+        }
         if (info && info->Active() && info->Matches == 1 &&
-            info->Instances == 1) {
+            info->Instances == 1 && closerActive) {
+            // The Hook now holds the last reference.
+            m_ReleaseCloser.reset();
             if (!RunGraph()) {
                 Finish(false, "script-reset");
                 return;
@@ -966,6 +990,10 @@ private:
                 !closed || closed.Value() != BML::Behavior::CloseState::Closed ||
                 m_SelfPlan || m_SelfClose.use_count() != 1) {
                 Finish(false, "self-close-state");
+                return;
+            }
+            if (!m_ReleaseClose->Ran || !m_ReleaseClose->Closed) {
+                Finish(false, "release-close");
                 return;
             }
             GetLogger()->Info("Behavior plan downstream close: downstream_calls=%d", m_SelfCloseTailCalls);
@@ -3806,9 +3834,10 @@ private:
             m_ReleasePassed ? "true" : "false",
             m_Counters->Taps, m_Counters->Afters, m_Frame);
         GetLogger()->Info(
-            "Behavior self-close: status=%s calls=%u closing=%s",
+            "Behavior self-close: status=%s calls=%u closing=%s release_close=%s",
             m_SelfClosePassed ? "pass" : "fail", m_SelfClose->Calls,
-            m_SelfClose->Closing ? "true" : "false");
+            m_SelfClose->Closing ? "true" : "false",
+            m_ReleaseClose->Ran && m_ReleaseClose->Closed ? "true" : "false");
         GetLogger()->Info(
             "Behavior live settings failure: status=%s terminal=%s diagnostic=%s admission=%s",
             m_SettingsFailurePassed ? "pass" : "fail",
@@ -3916,6 +3945,27 @@ private:
     };
     std::shared_ptr<SelfCloseState> m_SelfClose =
         std::make_shared<SelfCloseState>();
+    struct ReleaseCloseOutcome {
+        bool Ran = false;
+        bool Closed = false;
+    };
+    struct ReleaseCloser {
+        ~ReleaseCloser() {
+            if (!Outcome)
+                return;
+            // Closed, or Closing when the Loader cannot restore the graph at
+            // this point. Restored() then waits for the rest.
+            const auto closed = Plan.Close();
+            Outcome->Ran = true;
+            Outcome->Closed = static_cast<bool>(closed);
+        }
+
+        BML::Behavior::Plan Plan;
+        std::shared_ptr<ReleaseCloseOutcome> Outcome;
+    };
+    std::shared_ptr<ReleaseCloseOutcome> m_ReleaseClose =
+        std::make_shared<ReleaseCloseOutcome>();
+    std::shared_ptr<ReleaseCloser> m_ReleaseCloser;
     CK3dObject *m_Owner = nullptr;
     CKBehavior *m_Graph = nullptr;
     CKBehavior *m_Source = nullptr;

@@ -30,6 +30,7 @@ using BML::Behavior::Internal::PathRef;
 using BML::Behavior::Internal::Phase;
 using BML::Behavior::Internal::PlanCallbackState;
 using BML::Behavior::Internal::Port;
+using BML::Behavior::Internal::ReleaseScope;
 using BML::Behavior::Internal::ScriptSelection;
 using BML::Behavior::Internal::TargetSet;
 namespace HookBlock = BML::Behavior::Internal::HookBlock;
@@ -39,13 +40,10 @@ namespace HookBlock = BML::Behavior::Internal::HookBlock;
 // occurrence, including Bindings a Conflicted Plan can no longer revert.
 struct HookThunk {
     ~HookThunk() noexcept {
-        if (!Retained || !Function.Release)
-            return;
-        try {
-            Function.Release(Function.State);
-        } catch (...) {
-            // A foreign release callback must not cross the Loader boundary.
-        }
+        // The last holder may be dropping this inside Behavior bookkeeping,
+        // so the Release waits for the enclosing ReleaseScope to end.
+        if (Retained && Function.Release)
+            ReleaseScope::Release(Function.Release, Function.State);
     }
 
     BML_BehaviorHookFunction Function{};

@@ -76,6 +76,26 @@ public:
 class CallbackLease;
 class CallbackInvocation;
 
+// An author Release may close a Patch, Plan, Watch, Run or Session, and each
+// of those re-enters the containers and the CK edit that are dropping the
+// reference. While a ReleaseScope is open a Release waits, and it runs when
+// the outermost scope ends, after the bookkeeping of that call is done. A
+// Release that drops another reference queues that one behind itself. Game
+// thread only.
+class ReleaseScope final {
+public:
+    using Reference = void (*)(void *);
+
+    ReleaseScope() noexcept;
+    ~ReleaseScope();
+    ReleaseScope(const ReleaseScope &) = delete;
+    ReleaseScope &operator=(const ReleaseScope &) = delete;
+
+    // Runs release(state) at once when no scope is open. An exception from
+    // release never escapes.
+    static void Release(Reference release, void *state) noexcept;
+};
+
 class PlanCallbackState final {
 public:
     using Reference = void (*)(void *);
@@ -97,8 +117,9 @@ public:
     CallbackLease OpenLease() const;
     void Retire() const noexcept;
 
-    // Collect is the only operation that invokes Release. The owner calls it
-    // at a game-thread safe point after closing every lease.
+    // Collect is the only operation that invokes Release, through
+    // ReleaseScope. The owner calls it at a game-thread safe point after
+    // closing every lease.
     [[nodiscard]] bool Collect() const noexcept;
     [[nodiscard]] bool Retired() const noexcept;
     [[nodiscard]] void *State() const noexcept;

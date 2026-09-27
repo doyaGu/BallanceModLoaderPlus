@@ -202,7 +202,7 @@ $facade = [regex]::Match($log,
     'afters=(?<afters>[0-9]+) frames=(?<frames>[0-9]+)')
 $facadeSelfClose = [regex]::Match($log,
     'Behavior self-close: status=(?<status>pass|fail) calls=(?<calls>[0-9]+) ' +
-    'closing=(?<closing>true|false)')
+    'closing=(?<closing>true|false) release_close=(?<release_close>true|false)')
 $liveSettingsFailure = [regex]::Match($log,
     'Behavior live settings failure: status=(?<status>pass|fail) ' +
     'terminal=(?<terminal>true|false) diagnostic=(?<diagnostic>true|false) ' +
@@ -335,6 +335,8 @@ $checks['BehaviorHookSelfClose'] = $facadeSelfClose.Success -and
     $facadeSelfClose.Groups['status'].Value -eq 'pass' -and
     [int]$facadeSelfClose.Groups['calls'].Value -eq 1 -and
     $facadeSelfClose.Groups['closing'].Value -eq 'true'
+$checks['BehaviorReleaseMayClose'] = $facadeSelfClose.Success -and
+    $facadeSelfClose.Groups['release_close'].Value -eq 'true'
 $checks['BehaviorLiveSettingsFailure'] = $liveSettingsFailure.Success -and
     $liveSettingsFailure.Groups['status'].Value -eq 'pass' -and
     $liveSettingsFailure.Groups['terminal'].Value -eq 'true' -and

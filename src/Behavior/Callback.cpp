@@ -35,6 +35,24 @@ namespace {
 
 std::vector<const void *> g_InvocationStack;
 
+struct PendingRelease {
+    ReleaseScope::Reference Release = nullptr;
+    void *State = nullptr;
+};
+
+std::size_t g_ReleaseDepth = 0;
+std::vector<PendingRelease> g_PendingReleases;
+
+void InvokeRelease(ReleaseScope::Reference release, void *state) noexcept {
+    try {
+        release(state);
+    } catch (...) {
+        // A foreign callback must never escape a Loader safe point. The
+        // reference was already retired from its ledger and is not invoked
+        // twice after an author Release reports failure.
+    }
+}
+
 void RetireLease(const std::shared_ptr<CallbackInvocation::LeaseControl> &lease) {
     if (!lease || !lease->Counted)
         return;
@@ -130,15 +148,8 @@ bool PlanCallbackState::Collect() const noexcept {
     const Reference release =
         m_Control->ReferenceHeld ? m_Control->Release : nullptr;
     m_Control->ReferenceHeld = false;
-    if (release) {
-        try {
-            release(m_Control->Value);
-        } catch (...) {
-            // A foreign callback must never escape a Loader safe point. The
-            // reference was already retired from this ledger and is not
-            // invoked twice after an author Release reports failure.
-        }
-    }
+    if (release)
+        ReleaseScope::Release(release, m_Control->Value);
     return true;
 }
 
@@ -148,6 +159,40 @@ bool PlanCallbackState::Retired() const noexcept {
 
 void *PlanCallbackState::State() const noexcept {
     return m_Control ? m_Control->Value : nullptr;
+}
+
+ReleaseScope::ReleaseScope() noexcept {
+    ++g_ReleaseDepth;
+}
+
+ReleaseScope::~ReleaseScope() {
+    if (g_ReleaseDepth > 1) {
+        --g_ReleaseDepth;
+        return;
+    }
+    // The scope stays open while the queue drains, so a Release that drops
+    // another reference appends it here instead of running inside this one.
+    for (std::size_t index = 0; index < g_PendingReleases.size(); ++index) {
+        const PendingRelease pending = g_PendingReleases[index];
+        InvokeRelease(pending.Release, pending.State);
+    }
+    g_PendingReleases.clear();
+    --g_ReleaseDepth;
+}
+
+void ReleaseScope::Release(Reference release, void *state) noexcept {
+    if (!release)
+        return;
+    if (g_ReleaseDepth != 0) {
+        try {
+            g_PendingReleases.push_back({release, state});
+            return;
+        } catch (...) {
+            // Without room to queue it, releasing now is still better than
+            // leaking the author reference.
+        }
+    }
+    InvokeRelease(release, state);
 }
 
 CallbackInvocation::CallbackInvocation(std::shared_ptr<LeaseControl> lease)
