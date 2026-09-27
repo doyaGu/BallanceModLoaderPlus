@@ -320,6 +320,11 @@ void Sessions::ObjectsToBeDeleted(const CK_ID *ids, int count) {
 }
 
 void Sessions::Reset() {
+    // Reset runs only at CK reset, clear-all and end. The physics manager
+    // destroys its environment right after each of them, before any further
+    // simulation, and that deletes every pending Create callback. A Block
+    // whose callback is still pending can therefore go without the cancelling
+    // Reconfigure that ObjectsToBeDeleted and Clear need.
     auto shutdown = [&](Session &session) {
         if (session.Block.Get()) {
             (void) m_Runtime.Pulse(
