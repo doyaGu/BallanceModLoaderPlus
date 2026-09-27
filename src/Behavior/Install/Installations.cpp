@@ -279,7 +279,10 @@ Status Installations::Validate(const std::vector<Rule> &rules,
             : Failure(Error::OwnerInvalid,
                       "A Behavior Plan requires an owner, name, and Script rule.");
     }
-    std::set<std::pair<std::string, TargetSet>> selections;
+    // Every rule of a Plan installs under the Plan's name, so two rules that
+    // can match one Script would collide on its graph. Each and One of the
+    // same name always can, since name matching is exact.
+    std::set<std::string> selections;
     for (const Rule &rule : rules) {
         if (!rule.Scripts || !rule.Body) {
             return replacing
@@ -298,8 +301,7 @@ Status Installations::Validate(const std::vector<Rule> &rules,
         Status status = rule.Body->Validate();
         if (!status)
             return status;
-        if (!selections.emplace(rule.Scripts.Name,
-                                rule.Scripts.Instances).second) {
+        if (!selections.insert(rule.Scripts.Name).second) {
             return Failure(
                 Error::InvalidGraphLocality,
                 "A Script selection may appear only once in one Behavior Plan.");
