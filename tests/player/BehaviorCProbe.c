@@ -49,6 +49,23 @@ static int HasOut(const BML_BehaviorRunFrame *frame,
     return 0;
 }
 
+// A graph or node reference that names no live object fails the way a stale
+// owner does, with BML_ERROR_OBJECT_INVALID rather than a stale-handle code.
+static int RejectsDeadNodeReference(const BML_BehaviorInterface *behavior,
+                                    BML_BehaviorSession session) {
+    BML_ObjectRef dead;
+    BML_BehaviorLayout layout;
+    BML_BehaviorStatus status = EmptyStatus();
+    uint32_t payloadSize = 0;
+
+    memset(&dead, 0, sizeof(dead));
+    memset(&layout, 0, sizeof(layout));
+    layout.StructSize = sizeof(layout);
+    return behavior->ReadNodeLayout(session, dead, &layout, NULL, 0,
+                                    &payloadSize, &status) ==
+        BML_ERROR_OBJECT_INVALID;
+}
+
 // A step of the root scope names the root port of a scope it entered. Each
 // scope numbers its handles from one, so the Loader must reject the port
 // rather than read it as the root scope's own graph port.
@@ -169,6 +186,8 @@ int BML_TestBehaviorFromC(BML_BehaviorGuid prototype,
 
     if (RejectsForeignScopePort(behavior, session))
         result->Checks |= BML_BEHAVIOR_C_PROBE_LOCALITY;
+    if (RejectsDeadNodeReference(behavior, session))
+        result->Checks |= BML_BEHAVIOR_C_PROBE_REFERENCE;
 
     {
         BML_BehaviorPrototypeQuery query;

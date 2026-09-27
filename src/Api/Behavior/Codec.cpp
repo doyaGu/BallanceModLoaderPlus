@@ -953,11 +953,11 @@ int ReadWatchSpec(const BML_BehaviorWatchSpec &from, ModContext &context,
     if (spec.Kind == WatchKind::GraphChanged) {
         root = ReadBehavior(from.Root, context, status);
         if (!root)
-            return ResultCode(status);
+            return BML_ERROR_OBJECT_INVALID;
     } else {
         node = ReadBehavior(from.Node, context, status);
         if (!node)
-            return ResultCode(status);
+            return BML_ERROR_OBJECT_INVALID;
     }
     if (spec.Kind == WatchKind::SampledValueChanged) {
         spec.LayoutGeneration = from.LayoutGeneration;

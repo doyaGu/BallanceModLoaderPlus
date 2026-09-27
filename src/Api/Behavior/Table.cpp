@@ -187,7 +187,7 @@ int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession session,
             return BML_ERROR_INVALID_PARAMETER;
         CKBehavior *parent = ReadBehavior(graph, context, result);
         if (!parent)
-            return ResultCode(result);
+            return BML_ERROR_OBJECT_INVALID;
         return OpenRunResult(
             context.BehaviorSessions().Attach(
                 SessionId(session), parent, spec, retention),
@@ -222,7 +222,7 @@ int BML_BEHAVIOR_CALL AttachHook(BML_BehaviorSession session,
             return ResultCode(result);
         CKBehavior *parent = ReadBehavior(graph, context, result);
         if (!parent)
-            return ResultCode(result);
+            return BML_ERROR_OBJECT_INVALID;
         HookBlock::Hook callback;
         result = ReadHook(hook, callback);
         if (!result)
@@ -466,7 +466,7 @@ int BML_BEHAVIOR_CALL Inspect(
     return Enter(status, [&](ModContext &context, Status &result) {
         CKBehavior *native = ReadBehavior(root, context, result);
         if (!native)
-            return ResultCode(result);
+            return BML_ERROR_OBJECT_INVALID;
         GraphModel source;
         result = context.BehaviorSessions().ReadGraph(
             SessionId(session), native, graphView, source);
@@ -508,7 +508,7 @@ int BML_BEHAVIOR_CALL ReadNodeLayout(
     return Enter(status, [&](ModContext &context, Status &result) {
         CKBehavior *native = ReadBehavior(node, context, result);
         if (!native)
-            return ResultCode(result);
+            return BML_ERROR_OBJECT_INVALID;
         Layout source;
         result = context.BehaviorSessions().ReadNodeLayout(
             SessionId(session), native, source);
@@ -546,7 +546,7 @@ int BML_BEHAVIOR_CALL ReadGraphValue(
             return BML_ERROR_INVALID_PARAMETER;
         CKBehavior *native = ReadBehavior(node, context, result);
         if (!native)
-            return ResultCode(result);
+            return BML_ERROR_OBJECT_INVALID;
         GraphValue source;
         result = context.BehaviorSessions().ReadGraphValue(
             SessionId(session), native, layoutGeneration, selector,
@@ -669,7 +669,7 @@ int BML_BEHAVIOR_CALL Bind(
         }
         CKBehavior *native = ReadBehavior(source->Node, context, result);
         if (!native)
-            return ResultCode(result);
+            return BML_ERROR_OBJECT_INVALID;
         result = context.BehaviorSessions().Bind(
             RunId(run), slot->LayoutGeneration, targetSlot, native,
             source->LayoutGeneration, sourceSlot, nativeRelation,

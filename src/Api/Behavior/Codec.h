@@ -151,6 +151,8 @@ bool ReadFrames(const BML_BehaviorFramePolicy &from,
                 FrameRetention &retention, Status &status);
 bool ReadPrototypeQuery(const BML_BehaviorPrototypeQuery &from,
                         PrototypeQuery &to, Status &status);
+// A stale reference, or one that names the wrong kind of object, fails with
+// BML_ERROR_OBJECT_INVALID, as it does everywhere a call takes an ObjectRef.
 CKBeObject *ReadOwner(BML_ObjectRef owner, ModContext &context,
                       Status &status);
 CKBehavior *ReadBehavior(BML_ObjectRef reference, ModContext &context,
