@@ -3,19 +3,36 @@
 #include <algorithm>
 #include <string>
 
+#include "Behavior/FrameStore.h"
+
 namespace BML {
 namespace {
 
+using Behavior::Internal::ExecutionOutput;
 using Behavior::Internal::OpenRun;
+using Behavior::Internal::RunFrame;
 using Behavior::Internal::RunResult;
 using Behavior::Internal::RunState;
+using Behavior::Internal::Sessions;
 
 // Start keeps a Run whose Block already executed even when that execution
-// failed, and reports the failure on the Run rather than on the call.
-RunResult ReadResult(const OpenRun &run) {
+// failed, and reports the failure on the Run rather than on the call. The
+// execution itself is the newest frame the Run retained, so it is read before
+// the Run closes.
+RunResult ReadResult(const Sessions &sessions, const OpenRun &run) {
     if (!run)
         return {run.Result, RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    return {run.Info.LastStatus, run.Info.State};
+    RunResult result{run.Info.LastStatus, run.Info.State,
+                     run.Info.LastStatus.BehaviorResult, {}};
+    if (const auto frames = sessions.Frames(run.Id)) {
+        const std::vector<RunFrame> retained = frames->Read();
+        if (!retained.empty()) {
+            result.ReturnCode = retained.back().ReturnCode;
+            for (const ExecutionOutput &output : retained.back().ActiveOutputs)
+                result.ActiveOutputs.push_back(output.Index);
+        }
+    }
+    return result;
 }
 
 } // namespace
@@ -30,11 +47,12 @@ Behavior::Internal::RunResult ExecuteBBAdapter::Run(
     const OpenRun run = m_Sessions.Start(
         m_Session, owner, spec,
         Behavior::Internal::Slot::At(Behavior::Internal::SlotKind::Input, input));
+    RunResult result = ReadResult(m_Sessions, run);
     if (run.Id && run.Info.State == RunState::Pending)
         m_Tasks.push_back(run.Id);
     else
         m_Sessions.CloseRun(run.Id);
-    return ReadResult(run);
+    return result;
 }
 
 Behavior::Internal::RunResult ExecuteBBAdapter::SetPhysicsForce(
