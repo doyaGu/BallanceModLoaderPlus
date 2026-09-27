@@ -238,8 +238,14 @@ public:
                      "Behavior disappeared before its outputs were read."};
             return false;
         }
-        if (!ReadOutputLayout(*record, behavior, fault))
+        if (!ReadOutputLayout(*record, behavior, fault)) {
+            // The Run fails here and cannot name the Outs the Block left
+            // active. Clear them all: a graph-resident Block's parent would
+            // otherwise still fire their Links in CheckIOsActivation.
+            for (int index = 0; index < behavior->GetOutputCount(); ++index)
+                behavior->ActivateOutput(index, FALSE);
             return false;
+        }
         activeOutputs.reserve(activeOutputs.size() + record->Outputs.size());
         for (const OutputLayout &output : record->Outputs) {
             if (!behavior->IsOutputActive(output.Index))

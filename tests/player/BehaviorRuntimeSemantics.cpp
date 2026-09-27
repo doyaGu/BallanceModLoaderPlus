@@ -3719,8 +3719,13 @@ private:
             ? m_Runtime.Pulse(
                   outputLayout.Handle, Slot::At(SlotKind::Input, 0))
             : RunResult{};
+        // The failed Run cannot name the Out the fixture activated, so it
+        // clears every Out rather than leave one for a parent to fire.
+        CKBehavior *failedOutput = outputLayout.Handle.Get();
         outputLayoutDriftPassed = firstOutput && !changedOutput &&
-            changedOutput.Detail.Code == Error::ExecutionFailed;
+            changedOutput.Detail.Code == Error::ExecutionFailed &&
+            failedOutput && failedOutput->GetOutputCount() > 0 &&
+            !failedOutput->IsOutputActive(0);
         outputLayout.Handle.Reset();
         m_Runtime.ProcessFrame();
 
