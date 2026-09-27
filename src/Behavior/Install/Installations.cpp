@@ -2002,10 +2002,12 @@ Status Installations::RetireRecords(const std::string &ownerId) {
         else
             ++plan;
     }
-    for (auto &[id, patch] : m_Patches) {
-        if (patch.Owner.Id != ownerId)
+    // Patches may stack on one graph, so the newest one is restored first
+    // and each restoration sees the graph its own Apply left behind.
+    for (auto entry = m_Patches.rbegin(); entry != m_Patches.rend(); ++entry) {
+        if (entry->second.Owner.Id != ownerId)
             continue;
-        (void) Close(patch);
+        (void) Close(entry->second);
     }
     m_Edit.ProcessFrame();
     Collect();
@@ -2108,8 +2110,9 @@ Status Installations::LeaveWorld() {
 void Installations::ResetWorld() {
     if (std::this_thread::get_id() != m_Thread)
         return;
-    for (auto &[id, patch] : m_Patches)
-        (void) Close(patch);
+    // Newest first, for the same reason as RetireRecords.
+    for (auto entry = m_Patches.rbegin(); entry != m_Patches.rend(); ++entry)
+        (void) Close(entry->second);
     m_Edit.ProcessFrame();
     Collect();
 

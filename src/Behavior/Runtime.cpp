@@ -910,6 +910,12 @@ Status Runtime::Admit(const Instance &instance, Record *&record,
         return Failure(Error::InvalidState, "Behavior instance has expired.");
     if (found->Failure.Code != Error::None)
         return found->Failure;
+    // A lifecycle callback may reach its own Instance while CK2 is still
+    // configuring or closing the Block. Refuse the call without recording
+    // a failure, so the Instance stays usable once the callback returns.
+    if (found->NativeLifecycle.State() != LifecycleState::Ready)
+        return Failure(Error::InvalidState,
+                       "Behavior instance is being configured or closed.");
     if (idle && found->Protocol.State() != ExecutionState::Idle)
         return Failure(Error::InvalidState, idle);
     record = found;
@@ -2750,23 +2756,30 @@ Status Runtime::DrainRecord(Record &record, bool &closed) {
 
 bool Runtime::DrainCloseQueue(bool force) {
     bool lifecycleRan = false;
-    for (auto it = m_Records.begin(); it != m_Records.end();) {
+    // A Block callback run by DrainRecord may open another Record, and the
+    // insertion can rehash m_Records, so walk a copy of the ids instead of
+    // live iterators.
+    std::vector<std::uint64_t> closing;
+    for (const auto &[instanceId, record] : m_Records) {
+        if (record.NativeLifecycle.CloseRequested())
+            closing.push_back(instanceId);
+    }
+    for (const std::uint64_t instanceId : closing) {
+        const auto it = m_Records.find(instanceId);
+        if (it == m_Records.end())
+            continue;
         Record &record = it->second;
         if (!record.NativeLifecycle.CloseRequested() ||
             record.Protocol.State() == ExecutionState::Running ||
             record.NativeLifecycle.State() == LifecycleState::Configuring ||
             record.NativeLifecycle.State() == LifecycleState::Closing) {
-            ++it;
             continue;
         }
         lifecycleRan = true;
         bool closed = false;
         (void) DrainRecord(record, closed);
-        if (!closed) {
-            ++it;
-            continue;
-        }
-        it = m_Records.erase(it);
+        if (closed)
+            m_Records.erase(instanceId);
     }
     if (force)
         DestroyReady(DestroyMode::Reset);
