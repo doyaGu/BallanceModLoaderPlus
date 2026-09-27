@@ -2217,6 +2217,7 @@
 </code></pre></div>
 <p>每个带 <code>StructSize</code> 的结构都应先填写该字段。1.0 的数据结构布局不再改变；后续次版本可以在 <code>BML_BehaviorInterface</code> 末尾追加函数指针，需要更多数据时则新增结构类型，不扩展现有结构。</p>
 <p>输入字符串和数组只在调用期间借用。Frame、Graph 和 Layout 的变长读取要么写入完整结果，要么只报告所需缓冲区大小。完整 1.0 API 使用 <code>BML_BEHAVIOR_HAS_1_0</code> 检查，后续新增成员使用 <code>BML_IFACE_HAS</code>。</p>
+<p>经过函数表的文本一律是 UTF-8。Loader 把要交给 Virtools 的名称和字符串值转换为引擎当前的代码页，并把它返回的全部文本（包括 status message）转换回 UTF-8。代码页无法表示的文本按原 UTF-8 字节传递。owner、Patch、Plan 名称等 BML 标识始终保持 UTF-8。</p>
 <p>这不意味着 BML 提供纯 C 的 Mod 启动协议：现有 Native Mod host 仍由 <code>IMod</code> 定义。链接进同一个 Native Mod DLL 的 C 翻译单元或其他语言适配层可以直接调用 C seam，并仍遵守 Mod ownership、game thread、world reset 和 <code>BML_ObjectRef</code> 生命周期。它是独立的 Behavior seam，不是脱离 BML Runtime 的独立库。</p>
 <h2 id="1">1. 对象模型<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Prototype -&gt; Block -&gt; Call / Task / Instance -&gt; Frames
@@ -2415,7 +2416,7 @@ game Node。</p>
 </code></pre></div>
 <p>Frame policy 只属于本次 run；可复用的 Block 不保存观察策略。<code>Call::Continue()</code> 保留同一个 native Instance；它不是重新激活或重新创建。成功时 Call 被消费并返回对应 Task；失败时 Call 仍可继续使用。</p>
 <p>BB 只有一个 In 时，可直接使用 <code>Call(policy)</code> 和 <code>Start(policy)</code>，无需传入占位 Selector；需要选择特定 In 时再使用 Selector 或字符串重载。</p>
-<p>同一 Instance 每个 game frame 最多 Execute 一次。同 frame 或 callback 重入的 Pulse 会排队；相同 logical In 合并，不同 In 保持首次 admission 顺序。<code>Ready</code> 只表示没有 native continuation 和 queued In，不表示 BB 已经释放 Local、manager 注册或其他持久状态。</p>
+<p>同一 Instance 每个 game frame 最多 Execute 一次。同 frame 或 callback 重入的 Pulse 会排队；相同 logical In 合并，不同 In 保持首次 admission 顺序。按 index 排队的 Pulse 记住 admission 时选中的 In：执行前 In 的位置变了，它仍激活这个 In；只有这个 In 被删除时，run 才以 <code>LayoutChanged</code> 失败。来自旧 layout generation 的 Slot 在 admission 时就会被拒绝。<code>Ready</code> 只表示没有 native continuation 和 queued In，不表示 BB 已经释放 Local、manager 注册或其他持久状态。</p>
 <p>三种 run 都提供 <code>Info()</code>、<code>TakeFrames()</code>、<code>Layout()</code>、<code>Inspect()</code>、<code>Set()</code>、<code>Bind()</code>、<code>Settings()</code> 和 <code>Close()</code>。只有 <code>Call</code> 提供 <code>Continue()</code>；<code>Task</code> 和 <code>Instance</code> 提供 <code>Pulse()</code>。</p>
 <h2 id="5-frames">5. 读取 Frames<a class="headerlink" href="#5-frames" title="Permanent link">&para;</a></h2>
 <p>每次 native Execute 都会在清除本次 active Out 前形成一个 immutable Frame。Frame 记录 sequence、game frame、native result、continuation、active Outs 和 diagnostic。</p>
@@ -2481,6 +2482,7 @@ game Node。</p>
 都会丢弃该次不完整的 Pout batch，但保留同一 Frame 的 active Outs 和 diagnostic。
 Object List 只是一种输出形式，不能作为 Block literal。</p>
 <p>没有 continuation 的 Frame 不等于 run handle 已经关闭：处于 <code>Ready</code> 的 Instance 仍可接受下一次 Pulse。只有失败、显式关闭或队列溢出才会停止 admission。</p>
+<p>Block 执行期间请求的 <code>Close()</code> 会让这次 Execute 的 Frame 成为该 run 的最后一个 Frame。它带有 <code>Cancelled</code>，不报告 continuation；policy 包含 <code>.Pouts()</code> 时，它也保留 Pouts。</p>
 <p>有界队列满时不会丢弃旧 Frame；run 会停止，并在独立 failure slot 中报告 <code>FrameQueueFull</code>。成功 Take 后会释放普通队列容量。</p>
 <h2 id="6-live-layout">6. 使用 live Layout<a class="headerlink" href="#6-live-layout" title="Permanent link">&para;</a></h2>
 <p>run 的 <code>Layout()</code> 返回当前配置后的 native interface。<code>Slot</code> 带有 Instance identity 和 layout generation，可直接交给 <code>Set()</code> 或 <code>Bind()</code>：</p>
@@ -2535,7 +2537,7 @@ graph owner 和 object identity。Port 保留所属 Node 的 layout generation�
 旧 snapshot 的 Port 用于新的 live Layout 会失败。</p>
 <p><code>Logical()</code> 重新读取作者可见的 graph，<code>Live()</code> 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。graph fingerprint 包含 native identity、priority、layout、parameter operation、Link topology、child 调度顺序以及每个 source IO 的 Link 遍历顺序。graph 自身 Link 集合的顺序只影响 CK2 的激活标记，所以 fingerprint 不包含它。Patch journal 会精确恢复 child 调度顺序和 source IO 遍历顺序。source IO 若能到达属于另一 graph 的 Link，该 native graph 不完整，Runtime 会拒绝发布 snapshot。其他代码若改坏 Patch 声明的 after-image，Apply 返回 <code>GraphChanged</code>；Close 会在修改 graph 前返回 <code>RevertConflict</code>。</p>
 <p><code>Graph::Read</code> 跟随 stored、direct 和 shared source，但不会为了读取而执行 Parameter Operation；operation value 会报告 indeterminate。</p>
-<p>Watch 每个 game frame 采样一次 graph、layout 或 value。callback 或观察失败后，Watch 保留第一条 <code>Status</code>，进入 <code>Failed</code> 并停止后续 callback。</p>
+<p>Watch 每个 game frame 采样一次 graph、layout 或 value。callback 或观察失败后，Watch 保留第一条 <code>Status</code>，进入 <code>Failed</code> 并停止后续 callback。被观察的 graph 或 Node 被删除时，Watch 同样失败，不会跟随之后复用该 CK_ID 的对象。采样值按存储的 bit 比较，NaN 不会被每帧报告为变化。</p>
 <h2 id="8-script-graph">8. 创建 Script graph<a class="headerlink" href="#8-script-graph" title="Permanent link">&para;</a></h2>
 <p><code>Session::CreateScript</code> 在当前 Scene 中创建一个由 live <code>CKBeObject</code> 拥有的顶层 Script，并在返回前安装初始 <code>Edit</code>。Script 初始不激活，因此 Virtools 不会调度一个只完成了一半的 graph：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">body</span><span class="p">;</span>
@@ -2583,10 +2585,13 @@ selector、Prototype、Behavior kind、各类 port 的精确数量，以及对 T
 Pout、Setting 或 Local 值的 non-forcing 观察。所有条件共同标识一个 Node；找
 不到或结果不唯一时，Plan 保持 unsatisfied，不会猜测。Pattern 不保存 native
 identity，也不接受作者 predicate，因此 Script 在另一个 world 出现时，Plan
-可以用同一份 Edit 重新解析。只有已经通过廉价结构条件的候选 Node 才会读取值。</p>
+可以用同一份 Edit 重新解析。只有已经通过廉价结构条件的候选 Node 才会读取值。
+Pin 值条件同时按 Pin 声明的类型和其 source 的类型比较，因为 CK2 允许 Pin 读取
+类型派生自它自身类型的 source。</p>
 <p><code>Require(pattern)</code> 必须唯一选中一个 Node。<code>Each(pattern)</code> 选择非空 Node 集合，
 按原生 child index 顺序对其 <code>Ports</code> 重复 operation；它不是作者 callback，也不
-保留可执行 predicate。<code>Next</code>、<code>Previous</code> 取得一条 control Link 另一端的 Node；
+保留可执行 predicate。<code>Splice</code>、<code>Redirect</code> 和 <code>Reconnect</code> 只改接一条 Link，
+所以遇到 <code>Each</code> Node 的 port 会以 <code>StateInvalid</code> 拒绝。<code>Next</code>、<code>Previous</code> 取得一条 control Link 另一端的 Node；
 可选的 <code>NodePattern</code> 会先过滤相连 Node，再要求 relation 唯一，因而可以准确表达
 合法的 fan-out。<code>Leaving</code>、<code>Entering</code> 和 <code>To</code> 按 topology 标识 Link。Plan 每次
 安装时都会从 logical graph 重新解析这些 relation，调用者无需缓存 snapshot 或
@@ -2683,7 +2688,9 @@ Behavior safe point 恢复。<code>Graph::Apply</code> 和 <code>Script::Apply</
 <p>每条 rule 只在对应 Script 名称发生变化时 reconcile，不会逐帧扫描全部 graph。
 rule 可选择 <code>One</code> 或 <code>Each</code>；其 root 与 nested scope 作为一个原子 Patch 安装。
 <code>Partial</code> 表示至少一条 rule 已安装、但仍有 rule 没有匹配；<code>Unsatisfied</code> 表示当前
-没有任何安装。定义会跨 world reset 保留，并在下一 world 重新 reconcile。</p>
+没有任何安装。定义会跨 world reset 保留，并在下一 world 重新 reconcile。每条
+rule 必须指向不同的 Script：所有 rule 都以 Plan 的名称安装，所以同一个 Plan 里
+同时有 <code>One("A")</code> 和 <code>Each("A")</code> 会被拒绝。</p>
 <p>exact Patch 可用 <code>Patch::Read</code> 和 <code>Patch::Set</code> 读写其 Edit 命名的参数 Port。
 Plan 则先取得当前实例快照，再选择对应 rule 与 Script 的 instance：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">levelEdit</span><span class="p">;</span>
@@ -2732,7 +2739,12 @@ definition 时的第一个失败，<code>RestoreFailure</code> 表示当前阻�
 导致 <code>RevertConflict</code> 时，handle 保持可读，作者修复冲突后可以再次 Close。
 <code>Closing</code> 同样会保留 handle；调用方应持有它，并在后续 safe point 查询或重试，
 不能把它当作已恢复完成而直接丢弃。</p>
+<p>Patch 可以叠加在另一个 Patch 之上。后来的 active Patch 仍在修改先前 Patch 引入的
+Node、Link 或 port 时，先前的 Patch 不能先关闭：Close 返回可重试的
+<code>RevertConflict</code>，直到后来的 Patch 关闭。出于同样的原因，world reset 和 Mod
+unload 按从新到旧的顺序关闭 Patch。</p>
 <p>Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。</p>
+<p>返回 <code>HookResult::Error</code> 可以停止这条链：Hook Block 让所有 Out 保持未激活，callback 在下一次激活时照常运行。抛出异常的 callback 返回 <code>HookResult::Fault</code>；Loader 把第一个 fault 保留为该 Hook 的 diagnostic，此后不再调用它，Block 把这次激活原样传下去。Hook 或 Watch callback 持有的状态在释放其最后一个引用的那次 Behavior 调用结束时释放，所以它的析构函数可以关闭其他 Behavior 对象。</p>
 <h3 id="hook-block">放置 Hook Block<a class="headerlink" href="#hook-block" title="Permanent link">&para;</a></h3>
 <p><code>Tap</code>、<code>Before</code> 和 <code>After</code> 把 Hook 作为某个 Edit 的一部分安装。Block 需要先于连接它的 Patch 存在，或需要比多个这样的 Patch 活得更久时，用 <code>Session::SpawnIn(graph, hook, shape)</code> 直接放置。它返回持有该 Hook Block 的 Instance：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">HookBlock</span><span class="w"> </span><span class="n">shape</span><span class="p">;</span>
@@ -2747,7 +2759,7 @@ definition 时的第一个失败，<code>RestoreFailure</code> 表示当前阻�
 <a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
 <a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="n">Instance</span><span class="w"> </span><span class="n">hook</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">spawned</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
 </code></pre></div>
-<p><code>HookBlock</code> 设置 In 与 Out 的数量，以及 callback 之后是否激活全部 Out。<code>ActivatesOutputs = false</code> 时，由 callback 在 <code>HookEvent::Block</code> 指向的 Block 上激活它选择的 Out。callback 没有完成时，这次激活仍会传给全部 Out，出错的 hook 不会让 graph 停住。</p>
+<p><code>HookBlock</code> 设置 In 与 Out 的数量，以及 callback 之后是否激活全部 Out。<code>ActivatesOutputs = false</code> 时，由 callback 在 <code>HookEvent::Block</code> 指向的 Block 上激活它选择的 Out。callback 没有完成时，这次激活仍会传给全部 Out，出错的 hook 不会让 graph 停住。只有放置出来的那个 Block 绑定到 callback：它的副本，或保存后重新载入的 Block，会把每次激活原样传下去。</p>
 <p>Block 创建后没有任何连接。先 Inspect graph，找到 <code>Object()</code> 指向该 Block 的 Node（<code>hook.Inspect(View::Live)</code> 的 snapshot root 就是它），再用 Patch 把它 splice 到一条 Link 上：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">edit</span><span class="p">;</span>
 <a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edit</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
@@ -2788,7 +2800,10 @@ Operation、Hook 和 Watch。AngelScript handle 是引用对象；需要从一�
 派生互不影响的副本时显式调用 <code>Clone()</code>。当前 Script Patch 一次只对应一个 Graph，
 Script Plan 一次只包含一条 Script 规则；需要由一个 handle 原子组合多个 Graph 或
 多条 Script 规则时仍使用 Native C++ facade。捕获到的 CK object 以 <code>ObjectRef</code>
-返回；<code>Borrow()</code> 只用于当前调用，object 或 world 失效后会返回 null。原始
+返回；<code>Borrow()</code> 只用于当前调用，object 或 world 失效后会返回 null。Watch、
+Patch、Plan 或 Script 的 <code>Close()</code> 失败时抛出 script exception；在 stale handle
+上或没有 Session 时调用 Graph <code>Apply</code> 或 <code>Inspect</code>、Patch 或 Plan 的 <code>Enable</code>
+与 <code>Disable</code>、Script activity 等也会抛出，它们都不会静默返回 null 或 false。原始
 CKAngelScript Behavior/Param API 仍可用于低层 CK2 操作，但它不会获得 BML 的
 owner retirement、Patch journal 或跨 world Plan 语义。</p>
 <h2 id="11-retail-bb">11. 已命名的 retail BB<a class="headerlink" href="#11-retail-bb" title="Permanent link">&para;</a></h2>
@@ -2845,6 +2860,7 @@ owner retirement、Patch journal 或跨 world Plan 语义。</p>
 </tbody>
 </table>
 <p>所有 Behavior 操作都要求 game thread，Close 也一样。在其他线程调用会返回 <code>BML_ERROR_WRONG_THREAD</code>，不做任何改动。facade 值也应在 game thread 销毁：在其他线程运行的析构函数关不掉它持有的资源，Loader 要等 Mod retire 时才回收。所有 <code>Result&lt;T&gt;</code> 都同时包含稳定错误类别和 <code>Status</code>；控制流只应判断 error/phase，不应解析 message 文本。</p>
+<p>作为 graph、Node 或 owner 传入的 <code>ObjectRef</code> 已失效或指向错误种类的对象时，返回 <code>BML_ERROR_OBJECT_INVALID</code>。Block、值写入或 edit program 中失效的 Target 或 object 值同样返回 <code>BML_ERROR_OBJECT_INVALID</code>，<code>Status</code> 以 <code>TargetInvalid</code> 或 <code>SourceInvalid</code> 指出出错的字段。object Target 完全没有给出引用时，Block 格式错误，返回 <code>BML_ERROR_INVALID_PARAMETER</code>。已关闭的 Session、run、Watch、Patch、Plan 或 Script handle 返回 <code>BML_ERROR_INVALID_HANDLE</code>。</p>
 <p>高频路径应复用 <code>Block</code>、<code>Frames</code> 和已有 graph snapshot。Block 会共享已编译的 C descriptor；<code>TakeFrames(Frames&amp;)</code> 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string，两个方向的 LinkRange 都使用 snapshot 自带的索引。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。</p>
 <p>健康状态下，Patch/Plan 的 <code>Info()</code> 不复制保留的 apply/restore 错误对；仅当
 <code>LastStatus</code> 表示调和失败时才读取详细错误。Plan 已稳定且 Script 集合没有变化时，

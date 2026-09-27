@@ -1319,6 +1319,7 @@
 </code></pre></div>
 <p>Initialize <code>StructSize</code> in every record that contains it. The layouts of all 1.0 data records are fixed. Later minor versions may append function pointers to <code>BML_BehaviorInterface</code>; new data uses a newly named record instead of extending an existing one.</p>
 <p>Input strings and arrays are borrowed only for the call. Variable-size Frame, Graph, and Layout reads either write the complete result or report the required buffer size. Use <code>BML_BEHAVIOR_HAS_1_0</code> for the full 1.0 API and <code>BML_IFACE_HAS</code> for members added later.</p>
+<p>All text crosses the table as UTF-8. The Loader converts names and string values bound for Virtools to the engine's active code page, and converts all text it returns, status messages included, back to UTF-8. Text that the code page cannot represent is passed on as its UTF-8 bytes. BML identifiers such as owner, Patch, and Plan names stay UTF-8 throughout.</p>
 <p>This does not add a pure C Mod bootstrap: the existing Native Mod host is still defined by <code>IMod</code>. A C translation unit or another language adapter linked into the same Native Mod DLL can call this seam directly while following the same Mod ownership, game-thread, world-reset, and <code>BML_ObjectRef</code> lifetime rules. It is an independent Behavior seam, not a library independent of the BML Runtime.</p>
 <h2 id="1-object-model">1. Object model<a class="headerlink" href="#1-object-model" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Prototype -&gt; Block -&gt; Call / Task / Instance -&gt; Frames
@@ -1518,7 +1519,7 @@ borrowed game Node.</p>
 </code></pre></div>
 <p>A Frame policy belongs to that run only; the reusable Block has no observation policy. <code>Call::Continue()</code> keeps the same native Instance; it does not create or reactivate another one. Success consumes the Call and returns its Task; failure leaves the Call usable.</p>
 <p>When a BB has only one In, <code>Call(policy)</code> and <code>Start(policy)</code> select it without a placeholder Selector. Use a Selector or string overload when choosing a particular In.</p>
-<p>An Instance executes at most once per game frame. Same-frame and reentrant Pulses queue; repeated admissions of the same logical In coalesce, while distinct Ins retain first-admission order. <code>Ready</code> means no native continuation and no queued In. It does not mean the BB released Local or manager state.</p>
+<p>An Instance executes at most once per game frame. Same-frame and reentrant Pulses queue; repeated admissions of the same logical In coalesce, while distinct Ins retain first-admission order. A Pulse queued by index keeps the In it named at admission: if the Ins move before it runs, it still activates that In, and the run fails with <code>LayoutChanged</code> only when that In has been removed. A Slot from an older layout generation is refused at admission. <code>Ready</code> means no native continuation and no queued In. It does not mean the BB released Local or manager state.</p>
 <p>All run types provide <code>Info()</code>, <code>TakeFrames()</code>, <code>Layout()</code>, <code>Inspect()</code>, <code>Set()</code>, <code>Bind()</code>, <code>Settings()</code>, and <code>Close()</code>. Only <code>Call</code> provides <code>Continue()</code>; <code>Task</code> and <code>Instance</code> provide <code>Pulse()</code>.</p>
 <h2 id="5-read-frames">5. Read Frames<a class="headerlink" href="#5-read-frames" title="Permanent link">&para;</a></h2>
 <p>Every native Execute creates one immutable Frame before Runtime clears that execution's active Outs. It records sequence, game frame, native result, continuation, active Outs, and diagnostics.</p>
@@ -1585,6 +1586,7 @@ than a dangling CK pointer. If any Pout cannot be read or encoded, Runtime
 discards that incomplete Pout batch but preserves the same Frame's active Outs
 and diagnostic. Object List is an output form, not a Block literal.</p>
 <p>A Frame without continuation does not mean its run handle has closed: a <code>Ready</code> Instance can still accept another Pulse. Admission stops only on failure, explicit close, or queue overflow.</p>
+<p>A <code>Close()</code> requested while the Block executes makes that Execute's Frame the run's last. The Frame carries <code>Cancelled</code>, reports no continuation, and keeps its Pouts when the policy includes <code>.Pouts()</code>.</p>
 <p>A bounded store does not discard an old Frame to admit a new one. It stops the run and reports <code>FrameQueueFull</code> in a separate failure slot. Taking Frames releases ordinary queue capacity.</p>
 <h2 id="6-use-the-live-layout">6. Use the live Layout<a class="headerlink" href="#6-use-the-live-layout" title="Permanent link">&para;</a></h2>
 <p>A run's <code>Layout()</code> describes its configured native interface. A <code>Slot</code> carries the Instance identity and layout generation and can be passed directly to <code>Set()</code> or <code>Bind()</code>:</p>
@@ -1643,7 +1645,7 @@ A Port retains its Node's layout generation, so it cannot be used against a
 later incompatible Layout.</p>
 <p><code>Logical()</code> rereads the author-visible graph; <code>Live()</code> rereads the physical CK graph. Logical view keeps explicit Add and Flow edits, hides the exact infrastructure installed by Tap, Before, After, and Splice, and restores a splice anchor's logical endpoints. A graph fingerprint covers native identities, priorities, layouts, parameter operations, Link topology, child scheduling order, and each source IO's Link traversal order. The order of the graph's own Link collection only feeds CK2's activation flags, so the fingerprint leaves it out. Patch journals restore child scheduling order and source IO traversal order exactly. A native graph whose source IO reaches a Link owned by another graph is rejected rather than published. If foreign code changes a claimed after-image, Apply reports <code>GraphChanged</code>; Close reports <code>RevertConflict</code> before changing the graph.</p>
 <p><code>Graph::Read</code> follows stored, direct, and shared sources without evaluating a Parameter Operation. Operation values are reported as indeterminate.</p>
-<p>Watches sample a graph, Layout, or value once per game frame. Observation or callback failure retains the first <code>Status</code>, moves the Watch to <code>Failed</code>, and stops later callbacks.</p>
+<p>Watches sample a graph, Layout, or value once per game frame. Observation or callback failure retains the first <code>Status</code>, moves the Watch to <code>Failed</code>, and stops later callbacks. Deleting the watched graph or Node also fails the Watch; it never follows a later object that reuses the CK_ID. Samples compare by their stored bits, so a NaN value is not reported as a change on every frame.</p>
 <h2 id="8-create-a-script-graph">8. Create a Script graph<a class="headerlink" href="#8-create-a-script-graph" title="Permanent link">&para;</a></h2>
 <p><code>Session::CreateScript</code> creates a top-level Script owned by a live <code>CKBeObject</code> in the current Scene and installs its initial <code>Edit</code> before returning. The Script starts inactive, so Virtools cannot schedule a partially defined graph:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">body</span><span class="p">;</span>
@@ -1693,10 +1695,14 @@ Local values. All conditions identify one Node together; an absent or ambiguous
 match leaves a Plan unsatisfied. Patterns contain no native identity and no
 author predicate, so the Plan can resolve the same Edit again when its Script
 appears in another world. Value reads are performed only for candidates that
-already satisfy the cheaper structural conditions.</p>
+already satisfy the cheaper structural conditions. A Pin value condition
+matches against the Pin's declared type as well as its source's type, since
+CK2 lets a Pin read a source whose type derives from its own.</p>
 <p><code>Require(pattern)</code> selects exactly one Node. <code>Each(pattern)</code> selects a non-empty
 set and repeats operations on its <code>Ports</code> in native child-index order; it is not
-an author callback and retains no executable predicate. <code>Next</code> and <code>Previous</code>
+an author callback and retains no executable predicate. <code>Splice</code>, <code>Redirect</code>,
+and <code>Reconnect</code> rewire exactly one Link, so they refuse a port of an <code>Each</code>
+Node with <code>StateInvalid</code>. <code>Next</code> and <code>Previous</code>
 name the Node at the other end of one control Link. Their optional
 <code>NodePattern</code> filters the connected Nodes before requiring a unique relation,
 which is useful for outputs that legitimately fan out. <code>Leaving</code>, <code>Entering</code>,
@@ -1814,7 +1820,9 @@ convenience forms of this operation.</p>
 full graph scan. One rule may match <code>One</code> or <code>Each</code>, and its root plus nested
 scopes install as one atomic Patch. <code>Partial</code> means at least one rule is
 installed while another is unmatched; <code>Unsatisfied</code> means none is installed.
-Definitions survive world reset and reconcile against the next world.</p>
+Definitions survive world reset and reconcile against the next world. Each rule
+must name a different Script: every rule installs under the Plan's name, so a
+Plan that pairs <code>One("A")</code> with <code>Each("A")</code> is refused.</p>
 <p>An exact Patch can read or update a parameter Port named by its Edit with
 <code>Patch::Read</code> and <code>Patch::Set</code>. For a Plan, first snapshot its live
 instances, then use the instance that belongs to the desired rule and
@@ -1874,7 +1882,12 @@ installation. A foreign change produces <code>RevertConflict</code>; the handle 
 readable and Close can be retried after the conflict is repaired. <code>Closing</code>
 also retains the handle: keep it and poll or retry at later safe points instead
 of discarding it as though restoration had completed.</p>
+<p>Patches may build on each other. While an active Patch still edits a Node,
+Link, or port that an earlier Patch introduced, the earlier Patch cannot close:
+Close reports a retryable <code>RevertConflict</code> until the later Patch has closed.
+World reset and Mod unload close Patches newest first for the same reason.</p>
 <p>Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.</p>
+<p>Return <code>HookResult::Error</code> to stop the chain: the Hook Block leaves every Out inactive, and the callback runs again on the next activation. A callback that throws returns <code>HookResult::Fault</code>; the Loader keeps that first fault as the Hook's diagnostic, stops calling it, and the Block passes the activation through. The state a Hook or Watch callback owns is released at the end of the Behavior call that dropped its last reference, so its destructor may close other Behavior objects.</p>
 <h3 id="place-a-hook-block">Place a Hook Block<a class="headerlink" href="#place-a-hook-block" title="Permanent link">&para;</a></h3>
 <p><code>Tap</code>, <code>Before</code>, and <code>After</code> install a Hook as part of one Edit. When the Block must exist before the Patch that links it, or outlive several such Patches, place it directly with <code>Session::SpawnIn(graph, hook, shape)</code>. It returns the Instance that owns the Hook Block:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">HookBlock</span><span class="w"> </span><span class="n">shape</span><span class="p">;</span>
@@ -1889,7 +1902,7 @@ of discarding it as though restoration had completed.</p>
 <a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
 <a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="n">Instance</span><span class="w"> </span><span class="n">hook</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">spawned</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
 </code></pre></div>
-<p><code>HookBlock</code> sets the number of Ins and Outs and whether the Block activates every Out after the callback. With <code>ActivatesOutputs = false</code>, the callback activates the Outs it chooses on the Block that <code>HookEvent::Block</code> names. A callback that did not complete still passes the activation to every Out, so a faulted hook never stalls the graph.</p>
+<p><code>HookBlock</code> sets the number of Ins and Outs and whether the Block activates every Out after the callback. With <code>ActivatesOutputs = false</code>, the callback activates the Outs it chooses on the Block that <code>HookEvent::Block</code> names. A callback that did not complete still passes the activation to every Out, so a faulted hook never stalls the graph. Only the placed Block is bound to the callback: a copy of it, or a Block saved and loaded again, passes every activation through.</p>
 <p>The Block starts unlinked. Inspect the graph, find the Node whose <code>Object()</code> names the Block (<code>hook.Inspect(View::Live)</code> returns it as the snapshot root), and splice it into a Link with a Patch:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">edit</span><span class="p">;</span>
 <a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edit</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
@@ -1933,7 +1946,11 @@ configurations. A Script Patch currently targets one Graph and a Script Plan
 contains one Script rule; use the Native C++ facade when one handle must compose
 multiple Graphs or multiple Script rules atomically. Captured CK objects are
 returned as <code>ObjectRef</code>; call <code>Borrow()</code> only for immediate use and expect it to
-return null after the object or world becomes stale. CKAngelScript's raw
+return null after the object or world becomes stale. A failed <code>Close()</code> on a
+Watch, Patch, Plan, or Script raises a script exception. So does a call on a
+stale handle or without a Session, such as Graph <code>Apply</code> or <code>Inspect</code>, Patch or
+Plan <code>Enable</code> and <code>Disable</code>, or Script activity; none of them returns null or
+false silently. CKAngelScript's raw
 Behavior/Param API remains available for low-level CK2 work, but it does not
 provide BML owner retirement, Patch journals, or cross-world Plan semantics.</p>
 <h2 id="11-named-retail-bbs">11. Named retail BBs<a class="headerlink" href="#11-named-retail-bbs" title="Permanent link">&para;</a></h2>
@@ -1990,6 +2007,7 @@ provide BML owner retirement, Patch journals, or cross-world Plan semantics.</p>
 </tbody>
 </table>
 <p>Every Behavior operation, Close included, requires the game thread. A call from any other thread returns <code>BML_ERROR_WRONG_THREAD</code> and changes nothing, so destroy facade values on the game thread too: a destructor that runs elsewhere cannot close what it owns, and the Loader reclaims it only when the Mod retires. Every <code>Result&lt;T&gt;</code> carries both a stable error category and <code>Status</code>; branch on the error and phase, not on message text.</p>
+<p>A graph, Node, or owner <code>ObjectRef</code> that is stale, or names the wrong kind of object, returns <code>BML_ERROR_OBJECT_INVALID</code>. So does a stale Target or object value inside a Block, a value write, or an edit program, and its <code>Status</code> names the field as <code>TargetInvalid</code> or <code>SourceInvalid</code>. An object Target with no reference at all makes the Block malformed and returns <code>BML_ERROR_INVALID_PARAMETER</code>. A closed Session, run, Watch, Patch, Plan, or Script handle returns <code>BML_ERROR_INVALID_HANDLE</code>.</p>
 <p>Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, <code>TakeFrames(Frames&amp;)</code> avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, LinkRange, and Frame values are views rather than copied records. Both LinkRange directions use snapshot-owned indices. Plans reconcile only Script names reported as changed; disabled definitions and unchanged Replace prefixes do not rebuild native graphs.</p>
 <p>A healthy Patch or Plan <code>Info()</code> reads its state without copying the retained
 apply/restore failure pair. Detailed failures are read only after
