@@ -939,14 +939,35 @@ void CKEdit::Transaction::RetireLinks() {
     }
 }
 
+namespace {
+
+// The class each Port kind is cast to below. A CK_ID reused by an object of
+// another class must not reach that cast.
+CK_CLASSID PortClass(SlotKind kind) noexcept {
+    switch (kind) {
+    case SlotKind::Input:
+    case SlotKind::Output:
+        return CKCID_BEHAVIORIO;
+    case SlotKind::InputParameter:
+        return CKCID_PARAMETERIN;
+    case SlotKind::OutputParameter:
+        return CKCID_PARAMETEROUT;
+    case SlotKind::Local:
+        return CKCID_PARAMETERLOCAL;
+    default:
+        return CKCID_OBJECT;
+    }
+}
+
+} // namespace
+
 void CKEdit::Transaction::RetirePorts() {
     for (auto item = m_Journal.Ports.rbegin(); item != m_Journal.Ports.rend(); ++item) {
         CKBehavior *behavior = Resolve<CKBehavior>(
             m_Context, item->Behavior, CKCID_BEHAVIOR);
-        CKObject *port = item->Port.Id
-            ? m_Context->GetObject(item->Port.Id) : nullptr;
-        if (!behavior || port != item->Port.Address ||
-            port->IsToBeDeleted())
+        CKObject *port = Resolve<CKObject>(
+            m_Context, item->Port, PortClass(item->Kind));
+        if (!behavior || !port)
             continue;
         CKObject *removed = nullptr;
         switch (item->Kind) {

@@ -98,10 +98,7 @@ inline std::uint64_t HashRedirect(const LinkBase &link, std::uint32_t ordinal,
 }
 
 inline CKBehaviorIO *ResolveIo(CKContext *context, Stamp stamp) {
-    CKObject *object = context && stamp.Id ? context->GetObject(stamp.Id) : nullptr;
-    if (object != stamp.Address || !object || object->IsToBeDeleted())
-        return nullptr;
-    return static_cast<CKBehaviorIO *>(object);
+    return Resolve<CKBehaviorIO>(context, stamp, CKCID_BEHAVIORIO);
 }
 
 inline bool Describe(CKBehaviorIO *io, GraphEndpoint &out) {
