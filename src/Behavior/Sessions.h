@@ -213,6 +213,7 @@ private:
     std::vector<std::pair<std::uintptr_t, std::shared_ptr<Watch>>>
         m_FrameWatches;
     WatchReadings m_WatchReadings;
+    bool m_WatchesDeleted = false;
     bool m_ProcessingFrame = false;
     std::uint64_t m_Frame = 0;
 };

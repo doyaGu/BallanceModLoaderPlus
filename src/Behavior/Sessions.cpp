@@ -702,6 +702,13 @@ void Sessions::ProcessFrame() {
         }
     }
     m_FrameWatches.clear();
+    if (m_WatchesDeleted) {
+        m_WatchesDeleted = false;
+        for (auto &[id, watch] : m_Watches) {
+            if (watch.Value && !watch.Value->IsOpen())
+                (void) watch.Value->RetireAtSafePoint();
+        }
+    }
     CollectWatches();
     // Watch callbacks and callback Release functions can close Runs. Their
     // handles stop accepting calls immediately; submit the native close at
@@ -723,8 +730,17 @@ void Sessions::ResetWorld() {
 }
 
 void Sessions::ObjectsToBeDeleted(const CK_ID *ids, int count) {
-    if (std::this_thread::get_id() == m_Thread && m_Graph)
+    if (std::this_thread::get_id() != m_Thread)
+        return;
+    if (m_Graph)
         m_Graph->ObjectsToBeDeleted(ids, count);
+    // Deletion is no safe point for author Release code. A Watch that loses
+    // its target fails now, stays readable through its handle, and retires
+    // its callback at the end of the next Poll.
+    for (auto &[id, watch] : m_Watches) {
+        if (watch.Value && watch.Value->TargetDeleted(ids, count))
+            m_WatchesDeleted = true;
+    }
 }
 
 void Sessions::RetireWorldHandles() {

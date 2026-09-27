@@ -1,7 +1,10 @@
 #include "Behavior/Watch.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <functional>
+#include <type_traits>
 #include <utility>
 
 namespace BML::Behavior::Internal {
@@ -16,6 +19,30 @@ std::size_t Mix(std::size_t seed, std::size_t value) noexcept {
     // identities that are already well distributed pointers and object ids.
     return seed ^ (value + static_cast<std::size_t>(0x9e3779b9u) +
                    (seed << 6u) + (seed >> 2u));
+}
+
+// Samples compare by their stored bits. Floating-point equality would report
+// a NaN sample as changed on every frame.
+bool SameSample(const GraphValue &left, const GraphValue &right) {
+    if (left.State != right.State || left.Relation != right.Relation ||
+        left.Type != right.Type || left.Form != right.Form ||
+        left.Data.index() != right.Data.index()) {
+        return false;
+    }
+    return std::visit([&](const auto &value) {
+        using T = std::decay_t<decltype(value)>;
+        const T &other = std::get<T>(right.Data);
+        if constexpr (std::is_same_v<T, float> ||
+                      std::is_same_v<T, std::array<float, 2>> ||
+                      std::is_same_v<T, std::array<float, 3>> ||
+                      std::is_same_v<T, std::array<float, 4>> ||
+                      std::is_same_v<T, std::array<float, 6>> ||
+                      std::is_same_v<T, std::array<float, 16>>) {
+            return std::memcmp(&value, &other, sizeof(T)) == 0;
+        } else {
+            return value == other;
+        }
+    }, left.Data);
 }
 
 std::size_t HashRef(GraphSource *source, const NativeRef &ref) noexcept {
@@ -228,7 +255,7 @@ Status Watch::Poll(std::uint64_t frame, WatchReadings *readings) {
             m_Spec.Read, current);
         if (!status)
             break;
-        changed = current != m_Value;
+        changed = !SameSample(current, m_Value);
         event.PreviousValue = m_Value;
         event.CurrentValue = current;
         m_Value = std::move(current);
@@ -251,6 +278,23 @@ Status Watch::Poll(std::uint64_t frame, WatchReadings *readings) {
 
 WatchInfo Watch::Read() const {
     return m_Info;
+}
+
+bool Watch::TargetDeleted(const CK_ID *ids, int count) {
+    if (!m_Open || !ids || count <= 0)
+        return false;
+    const bool graph = m_Spec.Kind == WatchKind::GraphChanged;
+    const NativeRef &target = graph ? m_Spec.Root : m_Spec.Node;
+    if (std::find(ids, ids + count, static_cast<CK_ID>(target.Id)) ==
+        ids + count) {
+        return false;
+    }
+    // A later object can reuse both the CK_ID and the address, and the next
+    // Poll would then follow it as if nothing had happened.
+    Fail(Failure(Error::InvalidState,
+                 graph ? "The watched Behavior graph was deleted."
+                       : "The watched Behavior node was deleted."));
+    return true;
 }
 
 void Watch::Fail(Status status) {

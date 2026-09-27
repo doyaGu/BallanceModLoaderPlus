@@ -1,5 +1,6 @@
 #include "Behavior/Watch.h"
 
+#include <limits>
 #include <stdexcept>
 
 #include <gtest/gtest.h>
@@ -138,6 +139,56 @@ TEST(BehaviorWatch, SampledValueWatchDoesNotClaimBetweenSampleWrites) {
     EXPECT_EQ(calls, 1);
     ASSERT_TRUE(watch->Poll(3));
     EXPECT_EQ(calls, 1);
+}
+
+TEST(BehaviorWatch, SampledNaNIsNotAChange) {
+    FakeGraph source;
+    source.Value.Form = Parameter::Form::Float32;
+    source.Value.Data = std::numeric_limits<float>::quiet_NaN();
+    int calls = 0;
+    std::shared_ptr<Watch> watch;
+    ASSERT_TRUE(Watch::Open(
+        source, ValueSpec(), PlanCallbackState::Static(),
+        [&](const WatchEvent &) { ++calls; return Status{}; }, watch));
+
+    ASSERT_TRUE(watch->Poll(1));
+    ASSERT_TRUE(watch->Poll(2));
+    EXPECT_EQ(calls, 0);
+    source.Value.Data = 1.0f;
+    ASSERT_TRUE(watch->Poll(3));
+    EXPECT_EQ(calls, 1);
+}
+
+TEST(BehaviorWatch, FailsWhenItsNodeIsDeleted) {
+    FakeGraph source;
+    References references;
+    int calls = 0;
+    std::shared_ptr<Watch> watch;
+    ASSERT_TRUE(Watch::Open(
+        source, LayoutSpec(0),
+        PlanCallbackState::Retained(
+            &references, &References::Retain, &References::Release),
+        [&](const WatchEvent &) { ++calls; return Status{}; }, watch));
+
+    const CK_ID other = 3;
+    EXPECT_FALSE(watch->TargetDeleted(&other, 1));
+    EXPECT_TRUE(watch->IsOpen());
+
+    // The source still resolves the node, as it would for a new object that
+    // took the same CK_ID and address.
+    const CK_ID node = 2;
+    EXPECT_TRUE(watch->TargetDeleted(&node, 1));
+    EXPECT_FALSE(watch->IsOpen());
+    EXPECT_EQ(watch->Read().State, WatchState::Failed);
+    EXPECT_EQ(watch->Read().Diagnostic.Code, Error::InvalidState);
+    EXPECT_EQ(references.Releases, 0);
+
+    source.LayoutMark = 21;
+    EXPECT_FALSE(watch->Poll(1));
+    EXPECT_EQ(calls, 0);
+    EXPECT_FALSE(watch->TargetDeleted(&node, 1));
+    EXPECT_TRUE(watch->RetireAtSafePoint());
+    EXPECT_EQ(references.Releases, 1);
 }
 
 TEST(BehaviorWatch, RejectsANodeFromAnOlderLayout) {

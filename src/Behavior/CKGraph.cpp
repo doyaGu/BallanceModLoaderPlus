@@ -271,8 +271,19 @@ public:
             return;
         for (int index = 0; index < count; ++index) {
             const CK_ID id = ids[index];
-            m_Generations.erase(id);
-            m_LayoutGenerations.erase(id);
+            // CK2 reuses a freed CK_ID at once and a new object may take the
+            // freed address. The generation is kept without its address, so
+            // the next object under this ID starts one past it and no Layout
+            // read from the deleted object passes as current.
+            if (const auto state = m_Generations.find(id);
+                state != m_Generations.end()) {
+                for (Generation &view : state->second)
+                    view.Address = nullptr;
+            }
+            if (const auto state = m_LayoutGenerations.find(id);
+                state != m_LayoutGenerations.end()) {
+                state->second.Address = nullptr;
+            }
             m_Logical.erase(static_cast<std::uint32_t>(id));
         }
 

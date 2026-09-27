@@ -136,6 +136,10 @@ public:
     Status Poll(std::uint64_t frame);
     Status Poll(std::uint64_t frame, WatchReadings &readings);
     [[nodiscard]] WatchInfo Read() const;
+    // Fails the Watch when its graph or node is among the deleted objects and
+    // returns true. Its callback is not released here; that waits for
+    // RetireAtSafePoint.
+    bool TargetDeleted(const CK_ID *ids, int count);
     void Close() noexcept;
     [[nodiscard]] bool RetireAtSafePoint() noexcept;
     [[nodiscard]] bool IsOpen() const noexcept { return m_Open; }
