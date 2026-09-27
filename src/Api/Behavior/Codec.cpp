@@ -6,6 +6,7 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -46,12 +47,23 @@ std::uint32_t PublicPhase(Phase phase) noexcept {
 }
 
 void WriteMessage(BML_BehaviorStatus &out, const std::string &message) noexcept {
-    out.MessageLength = message.size() > UINT32_MAX
-        ? UINT32_MAX : static_cast<std::uint32_t>(message.size());
-    const std::size_t count = (std::min)(
-        message.size(), static_cast<std::size_t>(BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY - 1));
+    std::string storage;
+    std::string_view text = message;
+    try {
+        text = Utf8Text(message, storage);
+    } catch (...) {
+    }
+    out.MessageLength = text.size() > UINT32_MAX
+        ? UINT32_MAX : static_cast<std::uint32_t>(text.size());
+    std::size_t count = (std::min)(
+        text.size(), static_cast<std::size_t>(BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY - 1));
+    // A truncated message ends on a whole UTF-8 sequence.
+    if (count < text.size()) {
+        while (count && (static_cast<unsigned char>(text[count]) & 0xc0u) == 0x80u)
+            --count;
+    }
     if (count)
-        std::memcpy(out.Message, message.data(), count);
+        std::memcpy(out.Message, text.data(), count);
     out.Message[count] = '\0';
 }
 
@@ -164,48 +176,6 @@ bool FitsStrided(std::size_t count, std::size_t stride,
                 stride);
 }
 
-bool IsUtf8(const char *data, std::size_t size) noexcept {
-    if (!data && size)
-        return false;
-    for (std::size_t index = 0; index < size;) {
-        const unsigned char first = static_cast<unsigned char>(data[index++]);
-        if (first < 0x80)
-            continue;
-        unsigned continuation = 0;
-        std::uint32_t codepoint = 0;
-        if ((first & 0xe0u) == 0xc0u) {
-            continuation = 1;
-            codepoint = first & 0x1fu;
-            if (codepoint < 2)
-                return false;
-        } else if ((first & 0xf0u) == 0xe0u) {
-            continuation = 2;
-            codepoint = first & 0x0fu;
-        } else if ((first & 0xf8u) == 0xf0u) {
-            continuation = 3;
-            codepoint = first & 0x07u;
-            if (codepoint > 4)
-                return false;
-        } else {
-            return false;
-        }
-        if (continuation > size - index)
-            return false;
-        for (unsigned part = 0; part < continuation; ++part) {
-            const unsigned char byte = static_cast<unsigned char>(data[index++]);
-            if ((byte & 0xc0u) != 0x80u)
-                return false;
-            codepoint = (codepoint << 6) | (byte & 0x3fu);
-        }
-        if ((continuation == 2 && codepoint < 0x800u) ||
-            (continuation == 3 && codepoint < 0x10000u) ||
-            codepoint > 0x10ffffu ||
-            (codepoint >= 0xd800u && codepoint <= 0xdfffu))
-            return false;
-    }
-    return true;
-}
-
 bool ReadString(BML_BehaviorString value, std::string &out,
                 bool allowNul) {
     if ((!value.Data && value.Length) ||
@@ -215,6 +185,13 @@ bool ReadString(BML_BehaviorString value, std::string &out,
         std::memchr(value.Data, '\0', value.Length))
         return false;
     out.assign(value.Data ? value.Data : "", value.Length);
+    return true;
+}
+
+bool ReadNativeString(BML_BehaviorString value, std::string &out) {
+    if (!ReadString(value, out))
+        return false;
+    out = NativeText(out);
     return true;
 }
 
@@ -346,7 +323,7 @@ bool ReadSelector(const BML_BehaviorSelector &from, SlotKind slotKind,
     case BML_BEHAVIOR_SELECTOR_NAME:
     case BML_BEHAVIOR_SELECTOR_UNIQUE_NAME: {
         std::string name;
-        if (!ReadString(from.Name, name) || name.empty() || from.Occurrence < 0) {
+        if (!ReadNativeString(from.Name, name) || name.empty() || from.Occurrence < 0) {
             status = InvalidValue("A Behavior slot name or occurrence is invalid.");
             return false;
         }
@@ -439,7 +416,7 @@ bool ReadValue(const BML_BehaviorValue &from, ModContext &context,
         return true;
     case BML_BEHAVIOR_VALUE_UTF8: {
         std::string value;
-        if (!ReadString(from.Data.Utf8, value)) {
+        if (!ReadNativeString(from.Data.Utf8, value)) {
             status = InvalidValue("A Behavior string value is not valid UTF-8 text.");
             return false;
         }
@@ -749,9 +726,9 @@ bool ReadPrototypeQuery(const BML_BehaviorPrototypeQuery &from,
     to.MatchCompatibleClass =
         (from.Match & BML_BEHAVIOR_MATCH_COMPATIBLE_CLASS) != 0;
     to.CompatibleClass = from.CompatibleClass;
-    if ((to.MatchName && !ReadString(from.Name, to.Name)) ||
-        (to.MatchCategory && !ReadString(from.Category, to.Category)) ||
-        (to.MatchProvider && !ReadString(from.Provider, to.Provider)) ||
+    if ((to.MatchName && !ReadNativeString(from.Name, to.Name)) ||
+        (to.MatchCategory && !ReadNativeString(from.Category, to.Category)) ||
+        (to.MatchProvider && !ReadNativeString(from.Provider, to.Provider)) ||
         (to.MatchCompatibleClass && from.CompatibleClass <= 0)) {
         status = InvalidValue("A Behavior Prototype query filter is invalid.");
         return false;

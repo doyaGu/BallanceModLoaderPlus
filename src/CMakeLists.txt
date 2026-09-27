@@ -168,6 +168,7 @@ set(BML_LOADER_SOURCES
 
 set(BML_API_PRIVATE_HEADERS
         Api/Behavior/Codec.h
+        Api/Behavior/Text.h
         Api/BehaviorApi.h
         Api/BuiltinCapabilities.h
         Api/CommandApi.h
@@ -182,6 +183,7 @@ set(BML_API_SOURCES
         Api/Behavior/Frames.cpp
         Api/Behavior/Payload.cpp
         Api/Behavior/Table.cpp
+        Api/Behavior/Text.cpp
         Api/BmlApi.cpp
         Api/BuiltinCapabilities.cpp
         Api/CommandApi.cpp

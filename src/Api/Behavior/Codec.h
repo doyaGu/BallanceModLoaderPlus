@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "Api/Behavior/Text.h"
 #include "BML/Behavior.h"
 #include "Behavior/FrameStore.h"
 #include "Behavior/Install/Installations.h"
@@ -61,9 +62,11 @@ bool HasStructSize(const T *value) noexcept {
 
 bool FitsStrided(std::size_t count, std::size_t stride,
                  std::size_t recordSize) noexcept;
-bool IsUtf8(const char *data, std::size_t size) noexcept;
 bool ReadString(BML_BehaviorString value, std::string &out,
                 bool allowNul = false);
+// Reads text that goes to Virtools, such as a name or a string value, in the
+// engine's code page. BML identifiers are read with ReadString and stay UTF-8.
+bool ReadNativeString(BML_BehaviorString value, std::string &out);
 CKGUID Guid(BML_BehaviorGuid value) noexcept;
 BML_BehaviorGuid Guid(CKGUID value) noexcept;
 

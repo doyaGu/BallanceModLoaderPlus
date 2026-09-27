@@ -1188,7 +1188,7 @@ int BML_BEHAVIOR_CALL CreateScript(
     *outScript = nullptr;
     return Enter(status, [&](ModContext &context, Status &result) {
         std::string name;
-        if (!ReadString(spec->Name, name))
+        if (!ReadNativeString(spec->Name, name))
             return BML_ERROR_INVALID_PARAMETER;
         SessionOwner owner;
         if (!ReadSessionOwner(session, context, owner, result))

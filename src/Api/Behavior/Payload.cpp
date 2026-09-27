@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "BML/ImcWire.hpp"
@@ -43,7 +44,9 @@ public:
                     &record, sizeof(record));
     }
 
-    bool Text(const std::string &value, BML_BehaviorText &text) {
+    bool Text(std::string_view native, BML_BehaviorText &text) {
+        std::string storage;
+        const std::string_view value = Utf8Text(native, storage);
         if (value.size() > UINT32_MAX || m_Bytes.size() > UINT32_MAX ||
             value.size() > UINT32_MAX - m_Bytes.size())
             return false;
@@ -449,11 +452,15 @@ bool AddGraphValue(const GraphValue &source, BehaviorPayload &payload,
         break;
     }
     case Parameter::Form::Utf8: {
-        const std::string *value = std::get_if<std::string>(&source.Data);
-        if (!value || value->size() > UINT32_MAX)
+        const std::string *native = std::get_if<std::string>(&source.Data);
+        if (!native)
             return false;
-        record.ValueSize = static_cast<std::uint32_t>(value->size());
-        return payload.Value(value->data(), value->size(), record.ValueOffset);
+        std::string storage;
+        const std::string_view value = Utf8Text(*native, storage);
+        if (value.size() > UINT32_MAX)
+            return false;
+        record.ValueSize = static_cast<std::uint32_t>(value.size());
+        return payload.Value(value.data(), value.size(), record.ValueOffset);
     }
     case Parameter::Form::Object: {
         const auto *value = std::get_if<BML::Behavior::Internal::ObjectRef>(&source.Data);
@@ -520,8 +527,9 @@ bool AddGraphValue(const GraphValue &source, BehaviorPayload &payload,
     return payload.Value(bytes, size, record.ValueOffset);
 }
 
+// A UTF-8 value points into storage, which must outlive the callback.
 bool WriteWatchValue(const GraphValue &source,
-                     BML_BehaviorWatchValue &out) {
+                     BML_BehaviorWatchValue &out, std::string &storage) {
     out = {};
     out.StructSize = sizeof(out);
     out.State = PublicValueState(source.State);
@@ -548,10 +556,13 @@ bool WriteWatchValue(const GraphValue &source,
         return value != nullptr;
     }
     case Parameter::Form::Utf8: {
-        const auto *value = std::get_if<std::string>(&source.Data);
-        if (value) out.Value.Data.Utf8 = {value->data(),
-            static_cast<std::uint32_t>(value->size())};
-        return value != nullptr && value->size() <= UINT32_MAX;
+        const auto *native = std::get_if<std::string>(&source.Data);
+        if (!native)
+            return false;
+        const std::string_view value = Utf8Text(*native, storage);
+        out.Value.Data.Utf8 = {value.data(),
+            static_cast<std::uint32_t>(value.size())};
+        return value.size() <= UINT32_MAX;
     }
     case Parameter::Form::Object: {
         const auto *value = std::get_if<BML::Behavior::Internal::ObjectRef>(&source.Data);
@@ -719,8 +730,10 @@ BML::Behavior::Internal::WatchBinding::Function WatchThunk(
         wire.Frame = event.Frame;
         wire.Before = event.Before;
         wire.After = event.After;
-        if (!WriteWatchValue(event.PreviousValue, wire.PreviousValue) ||
-            !WriteWatchValue(event.CurrentValue, wire.CurrentValue))
+        std::string previous;
+        std::string current;
+        if (!WriteWatchValue(event.PreviousValue, wire.PreviousValue, previous) ||
+            !WriteWatchValue(event.CurrentValue, wire.CurrentValue, current))
             return failed("A Behavior Watch value could not be represented.");
         auto invocation = owner->LockModInvocation();
         int result = BML_BEHAVIOR_WATCH_ERROR;

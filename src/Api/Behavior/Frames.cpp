@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
+#include <string_view>
 
 #include "BML/ImcWire.hpp"
 
@@ -163,8 +165,10 @@ private:
             record.StructSize = sizeof(record);
             record.Index = out.Index;
             record.Occurrence = out.Occurrence;
-            record.NameLength = static_cast<std::uint32_t>(out.Name.size());
-            if (!Append(out.Name.data(), out.Name.size(), record.NameOffset))
+            std::string storage;
+            const std::string_view name = Utf8Text(out.Name, storage);
+            record.NameLength = static_cast<std::uint32_t>(name.size());
+            if (!Append(name.data(), name.size(), record.NameOffset))
                 return false;
             if (!StoreRecord(header.OutOffset, index, record))
                 return false;
@@ -188,8 +192,10 @@ private:
             record.Occurrence = pout.Occurrence;
             record.Type = {pout.TypeGuid1, pout.TypeGuid2};
             record.Kind = PublicPoutKind(pout.Kind);
-            record.NameLength = static_cast<std::uint32_t>(pout.Name.size());
-            if (!Append(pout.Name.data(), pout.Name.size(), record.NameOffset) ||
+            std::string storage;
+            const std::string_view name = Utf8Text(pout.Name, storage);
+            record.NameLength = static_cast<std::uint32_t>(name.size());
+            if (!Append(name.data(), name.size(), record.NameOffset) ||
                 !AddPoutValue(pout, record))
                 return false;
             if (!StoreRecord(header.PoutOffset, index, record))
@@ -218,9 +224,12 @@ private:
                 bytes, std::bit_cast<std::uint32_t>(pout.Float32));
             size = 4;
             break;
-        case PoutKind::Utf8:
-            record.ValueSize = static_cast<std::uint32_t>(pout.Text.size());
-            return Append(pout.Text.data(), pout.Text.size(), record.ValueOffset);
+        case PoutKind::Utf8: {
+            std::string storage;
+            const std::string_view text = Utf8Text(pout.Text, storage);
+            record.ValueSize = static_cast<std::uint32_t>(text.size());
+            return Append(text.data(), text.size(), record.ValueOffset);
+        }
         case PoutKind::Object:
             BML::Imc::Wire::Detail::Store32(bytes, pout.ObjectDomain);
             BML::Imc::Wire::Detail::Store32(bytes + 4, pout.ObjectSlot);
@@ -273,10 +282,10 @@ private:
         record.Error = PublicError(frame.Fault.Code);
         record.Phase = BML_BEHAVIOR_PHASE_EXECUTION;
         record.NativeResult = frame.Fault.NativeCode;
-        record.MessageLength = static_cast<std::uint32_t>(
-            frame.Fault.Message.size());
-        if (!Append(frame.Fault.Message.data(), frame.Fault.Message.size(),
-                    record.MessageOffset))
+        std::string storage;
+        const std::string_view message = Utf8Text(frame.Fault.Message, storage);
+        record.MessageLength = static_cast<std::uint32_t>(message.size());
+        if (!Append(message.data(), message.size(), record.MessageOffset))
             return false;
         return StoreRecord(header.DiagnosticOffset, 0, record);
     }

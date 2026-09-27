@@ -140,3 +140,9 @@ add_bml_test(BehaviorValueTest
 target_include_directories(BehaviorValueTest PRIVATE
         "${VIRTOOLS_SDK_INCLUDE_DIR}"
 )
+
+add_bml_test(BehaviorTextTest
+        SOURCES
+        BehaviorTextTest.cpp
+        ${BML_SOURCE_DIR}/Api/Behavior/Text.cpp
+)

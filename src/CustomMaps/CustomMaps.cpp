@@ -452,7 +452,10 @@ bool CustomMaps::BeginLoad(const std::wstring &path, LoadOrigin origin,
             return false;
         }
         stagedAttempt = stagedMap.Attempt;
-        std::string filename = std::move(stagedMap.LoadPath);
+        // The staged path is in the active code page, and Behavior values
+        // are UTF-8.
+        std::string filename =
+            utils::Utf16ToUtf8(utils::AnsiToUtf16(stagedMap.LoadPath));
 
         int level = m_LevelNumber->GetInteger();
         if (level < 1 || level > 13) {

@@ -8,6 +8,8 @@
 #include "BML/Behavior/Blocks/ObjectLoad.hpp"
 #include "BML/Behavior/Blocks/Physicalize.hpp"
 
+#include "StringUtils.h"
+
 #include <cstdint>
 #include <string_view>
 #include <utility>
@@ -470,7 +472,9 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
 
     for (BallTypeInfo &info: m_BallTypes) {
         Behavior::Blocks::ObjectLoad::Options options;
-        options.File = path + info.m_File;
+        // Ball files are registered in the active code page, and Behavior
+        // values are UTF-8.
+        options.File = utils::Utf16ToUtf8(utils::AnsiToUtf16(path + info.m_File));
         auto block = Behavior::Blocks::ObjectLoad::Make(m_Behavior, options);
         if (!block) {
             GetLogger()->Error(

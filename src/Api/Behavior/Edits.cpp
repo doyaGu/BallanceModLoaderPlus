@@ -248,7 +248,7 @@ Status ReadNodePattern(const BML_BehaviorNodePattern &from,
     case BML_BEHAVIOR_SELECTOR_NAME:
     case BML_BEHAVIOR_SELECTOR_UNIQUE_NAME:
         if (selector.StructSize < sizeof(selector) ||
-            !ReadString(selector.Name, out.Name) || out.Name.empty() ||
+            !ReadNativeString(selector.Name, out.Name) || out.Name.empty() ||
             selector.Occurrence < 0)
             return InvalidValue("A Node Pattern name is invalid.");
         out.Selector = NodePattern::SelectorKind::Name;
@@ -265,7 +265,7 @@ Status ReadNodePattern(const BML_BehaviorNodePattern &from,
     }
 
     std::string expectedName;
-    if (!ReadString(from.Name, expectedName))
+    if (!ReadNativeString(from.Name, expectedName))
         return InvalidValue("A Node Pattern expected name is invalid.");
     if (!expectedName.empty()) {
         if (out.Selector == NodePattern::SelectorKind::Name &&
@@ -433,7 +433,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
     }
     case BML_BEHAVIOR_EDIT_ADD_GRAPH: {
         std::string name;
-        if (!ReadString(step.Name, name) || name.empty())
+        if (!ReadNativeString(step.Name, name) || name.empty())
             return InvalidValue("An added graph-backed Node needs a name.");
         defined.Kind = EditHandleKind::Node;
         defined.NodeValue = edit.AddGraph(std::move(name), step.Number);
@@ -552,7 +552,7 @@ Status ProgramDecoder::Step(const BML_BehaviorEditStep &step,
         if (status = Use(step.Graph, step.Target, EditHandleKind::Node, owner); !status)
             return status;
         std::string name;
-        if (!ReadString(step.Name, name) || name.empty())
+        if (!ReadNativeString(step.Name, name) || name.empty())
             return InvalidValue("An appended Behavior slot needs a name.");
         const CKGUID type = Guid(step.Type);
         const bool typed = step.SlotKind == BML_BEHAVIOR_SLOT_PIN ||
@@ -951,7 +951,7 @@ Status ReadScriptEdits(
                 return InvalidValue("A Script Edit has an unknown cardinality.");
             }
             std::string script;
-            if (!ReadString(source.Script, script) || script.empty())
+            if (!ReadNativeString(source.Script, script) || script.empty())
                 return InvalidValue("A Script Edit requires an exact name.");
             Program edit;
             Installations::SymbolMap symbols;
