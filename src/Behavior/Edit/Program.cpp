@@ -735,10 +735,18 @@ Status Program::Validate() const {
                 if (!item.Target || !port(item.Input) || !port(item.Output))
                     return Failure(Error::InvalidState,
                                    "A Splice names an unknown Link or Node.");
+                if (manyNode(item.Input.Owner) || manyNode(item.Output.Owner))
+                    return Failure(
+                        Error::InvalidState,
+                        "A Splice rewires one Link and cannot use a port of an Each Node.");
             } else if constexpr (std::is_same_v<T, Steps::Redirect>) {
                 if (!item.Target || !port(item.Sink))
                     return Failure(Error::InvalidState,
                                    "A Redirect names an unknown Link or Node.");
+                if (manyNode(item.Sink.Owner))
+                    return Failure(
+                        Error::InvalidState,
+                        "A Redirect rewires one Link and cannot use a port of an Each Node.");
             } else if constexpr (std::is_same_v<T, Steps::RedirectToLink>) {
                 if (!item.Target || !item.Destination)
                     return Failure(
@@ -749,6 +757,10 @@ Status Program::Validate() const {
                     return Failure(
                         Error::InvalidState,
                         "A Reconnect requires a Link, source, and destination from this Graph Edit.");
+                if (manyNode(item.Source.Owner) || manyNode(item.Sink.Owner))
+                    return Failure(
+                        Error::InvalidState,
+                        "A Reconnect rewires one Link and cannot use a port of an Each Node.");
             } else if constexpr (std::is_same_v<T, Steps::Append>) {
                 if (!knownNode(item.Owner.Value) ||
                     manyNode(item.Owner.Value) || item.Name.empty())

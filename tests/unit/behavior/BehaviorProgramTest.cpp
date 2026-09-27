@@ -1426,6 +1426,38 @@ TEST(BehaviorProgram, RefusesARedirectThatNamesNothing) {
     EXPECT_EQ(status.Code, Error::InvalidState);
 }
 
+TEST(BehaviorProgram, RefusesEachNodePortsWhereOneLinkIsRewired) {
+    const auto refuses = [](const Program &plan) {
+        const Status status = plan.Validate();
+        EXPECT_EQ(status.Code, Error::InvalidState);
+        EXPECT_NE(status.Message.find("Each Node"), std::string::npos)
+            << status.Message;
+    };
+
+    Program splice;
+    const Node spliceWait = splice.RequireOne({"Wait Message"});
+    const Node spliceSink = splice.RequireOne({"set Resetpoint"});
+    splice.Splice(splice.RequireOne(spliceWait.Out(), spliceSink.In()),
+                  splice.Each({"Activate Script"}));
+    refuses(splice);
+
+    Program redirect;
+    const Node redirectWait = redirect.RequireOne({"Wait Message"});
+    const Node redirectSink = redirect.RequireOne({"set Resetpoint"});
+    redirect.Redirect(redirect.RequireOne(redirectWait.Out(), redirectSink.In()),
+                      redirect.Each({"Activate Script"}).In());
+    refuses(redirect);
+
+    Program reconnect;
+    const Node reconnectWait = reconnect.RequireOne({"Wait Message"});
+    const Node reconnectSink = reconnect.RequireOne({"set Resetpoint"});
+    reconnect.Reconnect(
+        reconnect.RequireOne(reconnectWait.Out(), reconnectSink.In()),
+        reconnect.Each({"Activate Script"}).Out(), reconnect.Exit("Done"),
+        Cycle::Confirmed);
+    refuses(reconnect);
+}
+
 TEST(BehaviorProgram, CompilesAPlainGraphNodeWithoutABlockPrototype) {
     FakeResolver resolver(Model());
     Program plan;
