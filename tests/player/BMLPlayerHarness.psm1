@@ -389,11 +389,96 @@ function Reset-BMLTutorialExitKey {
     [BMLPlayerInput]::KeyUp($script:TutorialExitVirtualKey)
 }
 
-# Runs one Player acceptance flow end to end: install into the real game, start
-# the Player, drive the tutorial exit, capture the artifacts, then put the
-# install back the way it was. Every runner shares this, so a runner only has to
-# say which probes to install and which live-log markers deserve a window
-# screenshot.
+function Start-BMLPlayerModsStaging {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ModsDirectory
+    )
+
+    $directory = [System.IO.Path]::GetFullPath($ModsDirectory)
+    $parent = Split-Path -Parent $directory
+    if ((Split-Path -Leaf $directory) -cne 'Mods' -or
+        (Split-Path -Leaf $parent) -cne 'ModLoader') {
+        throw "Player Mods staging requires a ModLoader\\Mods directory: $directory"
+    }
+    Assert-BMLPath -Path $parent -Type Container
+    if ((Test-Path -LiteralPath $directory) -and
+        -not (Test-Path -LiteralPath $directory -PathType Container)) {
+        throw "Player Mods path is not a directory: $directory"
+    }
+
+    $backup = Join-Path $parent `
+        "Mods.test-bak-$([guid]::NewGuid().ToString('N'))"
+    $existed = Test-Path -LiteralPath $directory -PathType Container
+    try {
+        if ($existed) {
+            Move-Item -LiteralPath $directory -Destination $backup
+        }
+        New-Item -ItemType Directory -Path $directory | Out-Null
+    } catch {
+        if ($existed -and
+            (Test-Path -LiteralPath $backup -PathType Container) -and
+            -not (Test-Path -LiteralPath $directory)) {
+            Move-Item -LiteralPath $backup -Destination $directory
+        }
+        throw
+    }
+
+    return [pscustomobject]@{
+        Directory = $directory
+        Backup = $backup
+        Existed = $existed
+        Active = $true
+    }
+}
+
+function Restore-BMLPlayerModsStaging {
+    param(
+        [Parameter(Mandatory = $true)]
+        $State
+    )
+
+    if (-not $State.Active) {
+        return
+    }
+
+    $directory = [System.IO.Path]::GetFullPath($State.Directory)
+    $backup = [System.IO.Path]::GetFullPath($State.Backup)
+    $parent = Split-Path -Parent $directory
+    if ((Split-Path -Leaf $directory) -cne 'Mods' -or
+        (Split-Path -Leaf $parent) -cne 'ModLoader' -or
+        -not [string]::Equals((Split-Path -Parent $backup), $parent,
+            [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not (Split-Path -Leaf $backup).StartsWith(
+            'Mods.test-bak-', [System.StringComparison]::Ordinal)) {
+        throw 'Player Mods staging state contains an invalid path.'
+    }
+    if ($State.Existed -and
+        -not (Test-Path -LiteralPath $backup -PathType Container)) {
+        throw "Player Mods backup is missing: $backup"
+    }
+    if (-not $State.Existed -and (Test-Path -LiteralPath $backup)) {
+        throw "Unexpected Player Mods backup exists: $backup"
+    }
+    if ((Test-Path -LiteralPath $directory) -and
+        -not (Test-Path -LiteralPath $directory -PathType Container)) {
+        throw "Player Mods staging path is not a directory: $directory"
+    }
+
+    if (Test-Path -LiteralPath $directory -PathType Container) {
+        Remove-Item -LiteralPath $directory -Recurse -Force
+    }
+    if ($State.Existed) {
+        Move-Item -LiteralPath $backup -Destination $directory
+    }
+    $State.Active = $false
+}
+
+# Runs one Player acceptance flow end to end: isolate the installed Mods,
+# install the test files, start the Player, drive the tutorial exit, capture the
+# artifacts, then put the install back the way it was. Every runner shares this,
+# so a runner only has to say which probes to install and which live-log markers
+# deserve a window screenshot.
 #
 # Install entries are @{ Source = <built file>; Destination = <path relative to
 # the Ballance root> }. Remove entries are Ballance-relative paths that must not
@@ -436,6 +521,7 @@ function Invoke-BMLPlayerRun {
     $modLoaderLog = Join-Path $ballanceRootFull 'ModLoader\ModLoader.log'
     $playerLog = Join-Path $ballanceRootFull 'Bin\Player.log'
     $playerConfig = Join-Path $ballanceRootFull 'Bin\Player.ini'
+    $modsDirectory = Join-Path $ballanceRootFull 'ModLoader\Mods'
 
     Assert-BMLPath -Path $ballanceRootFull -Type 'Container'
     Assert-BMLPath -Path $playerPath -Type 'Leaf'
@@ -534,12 +620,15 @@ function Invoke-BMLPlayerRun {
     $setupDialogAccepted = $false
     $tutorialExit = New-BMLTutorialExitState
     $windowShell = $null
+    $modsStage = $null
 
     try {
         foreach ($name in $variables.Keys) {
             [Environment]::SetEnvironmentVariable($name, $variables[$name],
                                                  'Process')
         }
+        $modsStage = Start-BMLPlayerModsStaging `
+            -ModsDirectory $modsDirectory
         foreach ($artifact in $artifacts) {
             if (Test-Path -LiteralPath $artifact.Path) {
                 Copy-TestFile -Source $artifact.Path `
@@ -628,13 +717,19 @@ function Invoke-BMLPlayerRun {
             }
         }
 
-        foreach ($artifact in $artifacts) {
-            if (Test-Path -LiteralPath $artifact.Backup) {
-                Copy-TestFile -Source $artifact.Backup `
-                    -Destination $artifact.Path
-                Remove-Item -LiteralPath $artifact.Backup -Force
-            } elseif (Test-Path -LiteralPath $artifact.Path) {
-                Remove-Item -LiteralPath $artifact.Path -Force
+        try {
+            foreach ($artifact in $artifacts) {
+                if (Test-Path -LiteralPath $artifact.Backup) {
+                    Copy-TestFile -Source $artifact.Backup `
+                        -Destination $artifact.Path
+                    Remove-Item -LiteralPath $artifact.Backup -Force
+                } elseif (Test-Path -LiteralPath $artifact.Path) {
+                    Remove-Item -LiteralPath $artifact.Path -Force
+                }
+            }
+        } finally {
+            if ($null -ne $modsStage) {
+                Restore-BMLPlayerModsStaging -State $modsStage
             }
         }
         $restored = $true

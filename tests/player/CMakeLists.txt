@@ -2,6 +2,14 @@ include("${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake")
 set(BML_IMC_CODEGEN "${PROJECT_SOURCE_DIR}/tools/imc_codegen.py")
 include("${PROJECT_SOURCE_DIR}/cmake/BMLImc.cmake")
 
+add_test(
+        NAME PlayerModsStagingTest
+        COMMAND pwsh -NoLogo -NoProfile -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/PlayerModsStagingTest.ps1"
+                -SourceRoot "${PROJECT_SOURCE_DIR}"
+)
+set_tests_properties(PlayerModsStagingTest PROPERTIES LABELS integration)
+
 add_library(BehaviorLifecycleFixture SHARED
         BehaviorLifecycleFixture.cpp
         BehaviorLifecycleFixtureApi.h
