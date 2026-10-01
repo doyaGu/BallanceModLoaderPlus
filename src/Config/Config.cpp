@@ -46,6 +46,44 @@ Config::~Config() {
 }
 
 bool Config::Load(const wchar_t *path) {
+    auto loaded = std::make_unique<Config>(nullptr);
+    if (!loaded->Read(path))
+        return false;
+
+    m_LoadedValues = std::move(loaded);
+    for (Category *category : m_Categories) {
+        for (Property *property : category->m_Properties)
+            RestoreProperty(*property);
+    }
+    return true;
+}
+
+void Config::RestoreProperty(Property &property) {
+    if (!m_LoadedValues)
+        return;
+
+    const auto category = m_LoadedValues->m_CategoryMap.find(property.m_Category);
+    if (category == m_LoadedValues->m_CategoryMap.end())
+        return;
+    const auto stored = category->second->m_PropertyMap.find(property.m_Key);
+    if (stored == category->second->m_PropertyMap.end())
+        return;
+
+    const Property &source = *stored->second;
+    if (property.m_Type != IProperty::NONE && property.m_Type != source.m_Type)
+        return;
+    const bool typeChanged = property.m_Type != source.m_Type;
+    const bool valueChanged = !ConfigValuesEqual(source.m_Type, property.m_Value, source.m_Value);
+    property.m_Value = source.m_Value;
+    property.m_Type = source.m_Type;
+    property.m_Hash = source.m_Hash;
+    if (typeChanged)
+        TouchSchema();
+    else if (valueChanged)
+        TouchValue();
+}
+
+bool Config::Read(const wchar_t *path) {
     if (!path || path[0] == L'\0')
         return false;
 
@@ -195,28 +233,6 @@ bool Config::Save(const wchar_t *path) {
         return false;
 
     std::ostringstream out;
-
-    // Clean up properties without a config
-    bool removedProperty = false;
-    for (auto *category : m_Categories) {
-        if (!category) continue;
-
-        auto &props = category->m_Properties;
-        for (auto it = props.begin(); it != props.end();) {
-            if (!(*it) || !(*it)->m_Config) {
-                if (*it) {
-                    category->m_PropertyMap.erase((*it)->m_Key);
-                    delete *it;
-                }
-                it = props.erase(it);
-                removedProperty = true;
-            } else {
-                ++it;
-            }
-        }
-    }
-    if (removedProperty)
-        TouchSchema();
 
     out << "# Configuration File for Mod: " << m_ModName
         << " - " << m_ModVersion << std::endl << std::endl;
@@ -382,7 +398,8 @@ bool Config::HasCategory(const char *category) {
     if (!category)
         return false;
 
-    return m_CategoryMap.find(category) != m_CategoryMap.end();
+    return m_CategoryMap.find(category) != m_CategoryMap.end() ||
+           (m_LoadedValues && m_LoadedValues->HasCategory(category));
 }
 
 bool Config::HasKey(const char *category, const char *key) {
@@ -390,24 +407,23 @@ bool Config::HasKey(const char *category, const char *key) {
         return false;
 
     auto catIt = m_CategoryMap.find(category);
-    if (catIt == m_CategoryMap.end())
-        return false;
-
-    return catIt->second->HasKey(key);
+    return (catIt != m_CategoryMap.end() && catIt->second->HasKey(key)) ||
+           (m_LoadedValues && m_LoadedValues->HasKey(category, key));
 }
 
 bool Config::RemoveProperty(const char *category, const char *key) {
     if (!category || !key)
         return false;
 
+    const bool removedLoaded = m_LoadedValues && m_LoadedValues->RemoveProperty(category, key);
     const auto categoryIt = m_CategoryMap.find(category);
     if (categoryIt == m_CategoryMap.end() || !categoryIt->second)
-        return false;
+        return removedLoaded;
 
     Category *owner = categoryIt->second;
     const auto propertyIt = owner->m_PropertyMap.find(key);
     if (propertyIt == owner->m_PropertyMap.end() || !propertyIt->second)
-        return false;
+        return removedLoaded;
 
     Property *property = propertyIt->second;
     const auto orderedIt = std::find(owner->m_Properties.begin(), owner->m_Properties.end(), property);
@@ -433,19 +449,7 @@ IProperty *Config::GetProperty(const char *category, const char *key) {
     if (!category || !key)
         return nullptr;
 
-    Category *cate = GetCategory(category);
-    bool exist = cate->HasKey(key);
-    Property *prop = cate->GetProperty(key);
-    prop->m_Config = this;
-
-    if (!exist) {
-        prop->m_Type = IProperty::NONE;
-        prop->m_Value = 0;
-        prop->m_Category = category;
-        prop->m_Key = key;
-    }
-
-    return prop;
+    return GetCategory(category)->GetProperty(key);
 }
 
 Category *Config::GetCategory(std::size_t i) {
@@ -527,6 +531,8 @@ Property *Category::GetProperty(const char *key) {
     }
 
     auto property = std::make_unique<Property>(m_Config, m_Name, k);
+    if (m_Config)
+        m_Config->RestoreProperty(*property);
     m_Properties.reserve(m_Properties.size() + 1);
     const auto inserted = m_PropertyMap.emplace(k, property.get());
     if (!inserted.second)

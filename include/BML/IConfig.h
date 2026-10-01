@@ -15,6 +15,11 @@
 // plain Set functions always write, so using one where a default was meant
 // overwrites what the player chose.
 //
+// Only settings requested by the current Mod become menu entries and are written
+// on save. Reading the file does not register settings: removed keys disappear,
+// and newly declared keys use their defaults. File comments do not override the
+// descriptions declared by the current Mod.
+//
 // A property has one type, and the getters do not convert between them: GetFloat on
 // a property holding an integer returns 0.0f rather than that number. Read with the
 // getter that matches the type the Mod declared.
@@ -137,15 +142,16 @@ BML_END_CDECLS
 
 class BML_EXPORT IConfig {
 public:
-    // Whether the file that was read holds this category, or this key in it. Both
-    // answer false for a null argument. Note that GetProperty creates what it does
-    // not find, so asking these after that call reports what the Mod itself just
-    // created; ask first if the difference matters.
+    // Whether the initially loaded values or the current Mod declarations hold
+    // this category or key. Both answer false for a null argument. These queries
+    // do not create menu entries. GetProperty declares the setting, so ask first
+    // if the difference between a saved value and a new setting matters.
     virtual bool HasCategory(const char *category) = 0;
     virtual bool HasKey(const char *category, const char *key) = 0;
 
     // Never null except for a null category or key: an unknown category and key are
-    // created on the spot, with the type NONE, ready for a SetDefault call. Category
+    // declared on the spot, importing the saved value if present, otherwise using
+    // type NONE ready for a SetDefault call. Category
     // and key names are matched exactly, case included, and they are written into
     // the file as single whitespace-separated words, so keep them free of spaces.
     virtual IProperty *GetProperty(const char *category, const char *key) = 0;

@@ -3,6 +3,7 @@
 
 #include <array>
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 
@@ -134,6 +135,11 @@ public:
 class ConfigTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        std::array<wchar_t, MAX_PATH> directory{};
+        ASSERT_GT(GetTempPathW(static_cast<DWORD>(directory.size()), directory.data()), 0u);
+        std::array<wchar_t, MAX_PATH> path{};
+        ASSERT_NE(GetTempFileNameW(directory.data(), L"BML", 0, path.data()), 0u);
+        configPath = path.data();
         mockMod = new MockMod(nullptr);
         config = new Config(mockMod);
     }
@@ -141,11 +147,204 @@ protected:
     void TearDown() override {
         delete config;
         delete mockMod;
+        DeleteFileW(configPath.c_str());
     }
 
     MockMod *mockMod = nullptr;
     Config *config = nullptr;
+    std::wstring configPath;
 };
+
+TEST_F(ConfigTest, UpdatingModKeepsOnlyDeclaredSettingsAndUsesDefaultsForNewOnes) {
+    config->GetProperty("General", "A")->SetInteger(10);
+    config->GetProperty("General", "B")->SetInteger(20);
+    config->GetProperty("RemovedCategory", "Old")->SetBoolean(true);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+
+    Config updated(mockMod);
+    ASSERT_TRUE(updated.Load(configPath.c_str()));
+    EXPECT_EQ(updated.GetCategoryCount(), 0u);
+    IProperty *retained = updated.GetProperty("General", "A");
+    retained->SetDefaultInteger(1);
+    IProperty *added = updated.GetProperty("General", "C");
+    added->SetDefaultInteger(30);
+
+    EXPECT_EQ(retained->GetInteger(), 10);
+    EXPECT_EQ(added->GetInteger(), 30);
+    ASSERT_EQ(updated.GetCategoryCount(), 1u);
+    Category *category = updated.GetCategory(std::size_t{0});
+    ASSERT_NE(category, nullptr);
+    ASSERT_EQ(category->GetPropertyCount(), 2u);
+    EXPECT_EQ(category->GetProperty(std::size_t{0}), retained);
+    EXPECT_EQ(category->GetProperty(std::size_t{1}), added);
+    EXPECT_FALSE(category->HasKey("B"));
+    EXPECT_TRUE(updated.TakePendingNotifications().empty());
+    const Config::ApplyResult obsoleteEdit = updated.ApplyEdits(
+        mockMod, updated.GetSchemaRevision(), {{"General", "B", IProperty::INTEGER, 20, 21}});
+    EXPECT_EQ(obsoleteEdit.Error, Config::ApplyError::PropertyMissing);
+    EXPECT_FALSE(category->HasKey("B"));
+
+    ASSERT_TRUE(updated.Save(configPath.c_str()));
+    Config reloaded(mockMod);
+    ASSERT_TRUE(reloaded.Load(configPath.c_str()));
+    EXPECT_FALSE(reloaded.HasKey("General", "B"));
+    EXPECT_FALSE(reloaded.HasCategory("RemovedCategory"));
+    EXPECT_EQ(reloaded.GetProperty("General", "A")->GetInteger(), 10);
+    EXPECT_EQ(reloaded.GetProperty("General", "C")->GetInteger(), 30);
+}
+
+TEST_F(ConfigTest, SavedValueQueriesDoNotDeclareSettingsOrChangeSchema) {
+    config->GetProperty("General", "Value")->SetDefaultInteger(42);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+
+    Config loaded(mockMod);
+    const std::uint64_t schema = loaded.GetSchemaRevision();
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    EXPECT_TRUE(loaded.HasCategory("General"));
+    EXPECT_TRUE(loaded.HasKey("General", "Value"));
+    EXPECT_FALSE(loaded.HasKey("General", "Missing"));
+    EXPECT_EQ(loaded.GetCategoryCount(), 0u);
+    EXPECT_EQ(loaded.GetSchemaRevision(), schema);
+    EXPECT_EQ(loaded.GetValueRevision(), 0u);
+    EXPECT_FALSE(loaded.IsDirty());
+    EXPECT_TRUE(loaded.TakePendingNotifications().empty());
+
+    ASSERT_TRUE(loaded.Save(configPath.c_str()));
+    EXPECT_EQ(loaded.GetCategoryCount(), 0u);
+    EXPECT_EQ(loaded.GetSchemaRevision(), schema);
+    // A Mod may declare a setting later, even after an unrelated config save.
+    IProperty *property = loaded.GetProperty("General", "Value");
+    property->SetDefaultInteger(1);
+    EXPECT_EQ(property->GetInteger(), 42);
+}
+
+TEST_F(ConfigTest, SettingsFollowDeclarationOrderAndIgnoreSavedComments) {
+    config->SetCategoryComment("General", "Old category description");
+    IProperty *first = config->GetProperty("General", "First");
+    first->SetComment("Old property description");
+    first->SetDefaultInteger(10);
+    config->GetProperty("General", "Second")->SetDefaultInteger(20);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    loaded.SetCategoryComment("General", "Current category description");
+    IProperty *second = loaded.GetProperty("General", "Second");
+    first = loaded.GetProperty("General", "First");
+    EXPECT_STREQ(static_cast<Property *>(first)->GetComment(), "");
+    first->SetComment("Current property description");
+    Category *category = loaded.GetCategory(std::size_t{0});
+    ASSERT_NE(category, nullptr);
+    EXPECT_EQ(category->GetProperty(std::size_t{0}), second);
+    EXPECT_EQ(category->GetProperty(std::size_t{1}), first);
+
+    const std::uint64_t schema = loaded.GetSchemaRevision();
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    EXPECT_EQ(loaded.GetSchemaRevision(), schema);
+    EXPECT_EQ(loaded.GetProperty("General", "First"), first);
+    EXPECT_STREQ(static_cast<Property *>(first)->GetComment(), "Current property description");
+    EXPECT_STREQ(category->GetComment(), "Current category description");
+}
+
+TEST_F(ConfigTest, DeclaredTypesAndEditorMetadataSurviveReload) {
+    config->GetProperty("Values", "Text")->SetDefaultString("saved text");
+    config->GetProperty("Values", "Flag")->SetDefaultBoolean(true);
+    config->GetProperty("Values", "Count")->SetDefaultInteger(42);
+    config->GetProperty("Values", "Scale")->SetDefaultFloat(2.5f);
+    config->GetProperty("Values", "Key")->SetDefaultKey(CKKEY_A);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+
+    Config loaded(mockMod);
+    IProperty *text = loaded.GetProperty("Values", "Text");
+    text->SetDefaultString("default text");
+    const char *choices[] = {"default text", "saved text"};
+    ASSERT_EQ(BML_SetConfigPropertyChoices(text, choices, std::size(choices)), 1);
+    ASSERT_EQ(BML_SetConfigPropertyEditor(text, BML_CONFIG_EDITOR_CHOICE), 1);
+    IProperty *flag = loaded.GetProperty("Values", "Flag");
+    flag->SetDefaultBoolean(false);
+    IProperty *count = loaded.GetProperty("Values", "Count");
+    count->SetDefaultInteger(1);
+    IProperty *scale = loaded.GetProperty("Values", "Scale");
+    scale->SetDefaultFloat(1.0f);
+    IProperty *key = loaded.GetProperty("Values", "Key");
+    key->SetDefaultKey(CKKEY_B);
+    const std::uint64_t schema = loaded.GetSchemaRevision();
+
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    EXPECT_STREQ(text->GetString(), "saved text");
+    EXPECT_TRUE(flag->GetBoolean());
+    EXPECT_EQ(count->GetInteger(), 42);
+    EXPECT_FLOAT_EQ(scale->GetFloat(), 2.5f);
+    EXPECT_EQ(key->GetKey(), CKKEY_A);
+    EXPECT_EQ(BML_GetConfigPropertyEditor(text), BML_CONFIG_EDITOR_CHOICE);
+    EXPECT_EQ(BML_GetConfigPropertyChoiceCount(text), std::size(choices));
+    EXPECT_EQ(loaded.GetSchemaRevision(), schema);
+    EXPECT_EQ(loaded.GetValueRevision(), 5u);
+    EXPECT_TRUE(loaded.TakePendingNotifications().empty());
+    EXPECT_FALSE(loaded.IsDirty());
+
+    Config changedType(mockMod);
+    ASSERT_TRUE(changedType.Load(configPath.c_str()));
+    IProperty *changed = changedType.GetProperty("Values", "Count");
+    changed->SetDefaultString("new default");
+    EXPECT_STREQ(changed->GetString(), "new default");
+    ASSERT_TRUE(changedType.Load(configPath.c_str()));
+    EXPECT_EQ(changed->GetType(), IProperty::STRING);
+    EXPECT_STREQ(changed->GetString(), "new default");
+    ASSERT_TRUE(changedType.Save(configPath.c_str()));
+    Config reloaded(mockMod);
+    ASSERT_TRUE(reloaded.Load(configPath.c_str()));
+    EXPECT_STREQ(reloaded.GetProperty("Values", "Count")->GetString(), "new default");
+}
+
+TEST_F(ConfigTest, RemovingLoadedSettingPreventsLaterReimport) {
+    config->GetProperty("General", "Old")->SetDefaultInteger(42);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    ASSERT_TRUE(loaded.RemoveProperty("General", "Old"));
+    EXPECT_FALSE(loaded.HasKey("General", "Old"));
+    IProperty *replacement = loaded.GetProperty("General", "Old");
+    replacement->SetDefaultInteger(1);
+    EXPECT_EQ(replacement->GetInteger(), 1);
+    ASSERT_TRUE(loaded.RemoveProperty("General", "Old"));
+    EXPECT_FALSE(loaded.RemoveProperty("General", "Old"));
+    EXPECT_EQ(loaded.GetCategory("General")->GetPropertyCount(), 0u);
+}
+
+TEST_F(ConfigTest, Loaded013FontMigrationDoesNotDeclareObsoleteSettings) {
+    config->GetProperty("GUI", "FontFilename")->SetDefaultString("primary.ttf");
+    config->GetProperty("GUI", "FontSize")->SetDefaultFloat(42.0f);
+    config->GetProperty("GUI", "EnableSecondaryFont")->SetDefaultBoolean(true);
+    config->GetProperty("GUI", "SecondaryFontFilename")->SetDefaultString("secondary.ttf");
+    config->GetProperty("GUI", "SecondaryFontSize")->SetDefaultFloat(26.0f);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+
+    Config updated(mockMod);
+    ASSERT_TRUE(updated.Load(configPath.c_str()));
+    ASSERT_TRUE(MigrateBMLConfig(updated));
+    EXPECT_EQ(updated.GetCategoryCount(), 0u);
+    EXPECT_FALSE(updated.HasKey("GUI", "SecondaryFontFilename"));
+    IProperty *primary = updated.GetProperty("GUI", "FontFilename");
+    primary->SetDefaultString("unifont.otf");
+    IProperty *fallbacks = updated.GetProperty("GUI", "FontFallbacks");
+    fallbacks->SetDefaultString("");
+    IProperty *size = updated.GetProperty("GUI", "FontFallbackSize");
+    size->SetDefaultFloat(32.0f);
+    EXPECT_STREQ(primary->GetString(), "primary.ttf");
+    EXPECT_STREQ(fallbacks->GetString(), "secondary.ttf");
+    EXPECT_FLOAT_EQ(size->GetFloat(), 26.0f);
+    EXPECT_EQ(updated.GetCategory("GUI")->GetPropertyCount(), 3u);
+    EXPECT_TRUE(updated.TakePendingNotifications().empty());
+    ASSERT_TRUE(updated.Save(configPath.c_str()));
+
+    Config reloaded(mockMod);
+    ASSERT_TRUE(reloaded.Load(configPath.c_str()));
+    EXPECT_FALSE(reloaded.HasKey("GUI", "EnableSecondaryFont"));
+    EXPECT_FALSE(reloaded.HasKey("GUI", "SecondaryFontFilename"));
+    EXPECT_FALSE(reloaded.HasKey("GUI", "SecondaryFontSize"));
+    EXPECT_STREQ(reloaded.GetProperty("GUI", "FontFallbacks")->GetString(), "secondary.ttf");
+}
 
 // Basic creation and destruction
 TEST_F(ConfigTest, ConstructionDestruction) {
@@ -844,7 +1043,7 @@ TEST_F(ConfigTest, PropertyCopy) {
 // File I/O
 TEST_F(ConfigTest, FileIO) {
     // Create test config file
-    const wchar_t *filename = L"test_config.cfg";
+    const wchar_t *filename = configPath.c_str();
 
     // Set up some properties
     IProperty *strProp = config->GetProperty("TestCategory", "StringProp");
@@ -872,13 +1071,13 @@ TEST_F(ConfigTest, FileIO) {
     IProperty *loadedStrProp = newConfig->GetProperty("TestCategory", "StringProp");
     EXPECT_EQ(IProperty::STRING, loadedStrProp->GetType());
     EXPECT_STREQ("Test String", loadedStrProp->GetString());
-    EXPECT_STREQ("String Property Comment", static_cast<Property*>(loadedStrProp)->GetComment());
+    EXPECT_STREQ("", static_cast<Property*>(loadedStrProp)->GetComment());
 
     IProperty *loadedBoolProp = newConfig->GetProperty("TestCategory", "BoolProp");
     EXPECT_EQ(IProperty::BOOLEAN, loadedBoolProp->GetType());
     EXPECT_TRUE(loadedBoolProp->GetBoolean());
 
-    EXPECT_STREQ("Test Category Comment", newConfig->GetCategoryComment("TestCategory"));
+    EXPECT_STREQ("", newConfig->GetCategoryComment("TestCategory"));
 
     // Clean up
     delete newConfig;
@@ -895,9 +1094,9 @@ TEST_F(ConfigTest, FileIO) {
 }
 
 TEST_F(ConfigTest, LoadingDuplicateEntriesUpdatesOneStableProperty) {
-    const wchar_t *filename = L"test_config_duplicates.cfg";
+    const wchar_t *filename = configPath.c_str();
     {
-        std::ofstream output("test_config_duplicates.cfg", std::ios::binary);
+        std::ofstream output(std::filesystem::path(configPath), std::ios::binary);
         output << "# First category\n"
                   "General {\n"
                   "# First value\n"
@@ -911,16 +1110,19 @@ TEST_F(ConfigTest, LoadingDuplicateEntriesUpdatesOneStableProperty) {
     }
 
     ASSERT_TRUE(config->Load(filename));
+    ASSERT_EQ(config->GetCategoryCount(), 0U);
+    IProperty *declared = config->GetProperty("General", "Count");
+    declared->SetDefaultInteger(0);
     ASSERT_EQ(config->GetCategoryCount(), 1U);
     Category *category = config->GetCategory(static_cast<std::size_t>(0));
     ASSERT_NE(category, nullptr);
-    EXPECT_STREQ(category->GetComment(), "Updated category");
+    EXPECT_STREQ(category->GetComment(), "");
     ASSERT_EQ(category->GetPropertyCount(), 1U);
     Property *property = category->GetProperty(static_cast<std::size_t>(0));
     ASSERT_NE(property, nullptr);
     EXPECT_EQ(property, category->GetProperty("Count"));
     EXPECT_EQ(property->GetInteger(), 2);
-    EXPECT_STREQ(property->GetComment(), "Updated value");
+    EXPECT_STREQ(property->GetComment(), "");
     EXPECT_TRUE(config->TakePendingNotifications().empty());
     EXPECT_FALSE(config->IsDirty());
 

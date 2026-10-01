@@ -61,6 +61,13 @@ through Bui. The choice editor copies an ordered set of STRING values through
 the additive C interface and presents it through Bui::RadioButton; a stored
 value outside that set remains available until the player chooses another.
 
+**Config Values** — File values are a source for settings declared by the current
+Mod, not a second runtime schema. Only declared categories and properties appear
+in the Mod Menu and are saved; removed settings disappear and new settings use
+their defaults. Compatibility migrations run on the loaded values before setup,
+without registering obsolete keys. Descriptions and editor metadata come from
+the current Mod.
+
 **Mod Menu Page** — A Native or Script Mod page registered with a stable
 owner-local id. Visible pages appear in the Mod details list; hidden pages are
 reachable only through another page of that Mod. Bui::Menu owns the Push,

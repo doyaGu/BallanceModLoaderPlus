@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -173,6 +174,9 @@ public:
 
     bool Load(const wchar_t *path);
     bool Save(const wchar_t *path);
+    // Compatibility migrations operate on the file values before Mod setup,
+    // without declaring obsolete settings in the runtime schema.
+    Config *GetLoadedValues() { return m_LoadedValues.get(); }
 
     bool IsDirty() const { return m_Dirty; }
     // Schema changes invalidate documents built from category, property, or type
@@ -187,6 +191,8 @@ public:
     std::vector<PendingNotification> TakePendingNotifications();
 
 private:
+    bool Read(const wchar_t *path);
+    void RestoreProperty(Property &property);
     void MarkDirty() { m_Dirty = true; }
     void TouchSchema() { ++m_SchemaRevision; }
     void TouchValue() { ++m_ValueRevision; }
@@ -200,6 +206,9 @@ private:
     std::uint64_t m_SchemaRevision = 0;
     std::uint64_t m_ValueRevision = 0;
     std::vector<PendingNotification> m_PendingNotifications;
+    // File values are only imported when a Mod requests the corresponding key.
+    // Enumeration and persistence use m_Categories, never this source document.
+    std::unique_ptr<Config> m_LoadedValues;
 
     std::vector<Category *> m_Categories;
     std::unordered_map<std::string, Category *> m_CategoryMap;

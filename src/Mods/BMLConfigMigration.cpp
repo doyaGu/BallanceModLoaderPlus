@@ -51,6 +51,9 @@ namespace {
 }
 
 bool MigrateBMLConfig(Config &config) {
+    if (Config *loaded = config.GetLoadedValues())
+        return MigrateBMLConfig(*loaded);
+
     bool hasOldFontSettings = false;
     for (const char *key : OldFontKeys)
         hasOldFontSettings |= config.HasKey("GUI", key);
