@@ -1527,6 +1527,31 @@ TEST(BehaviorProgram, MovesOwnedStepsAndNestedScopesTogether) {
     ASSERT_TRUE(status) << status.Message;
 }
 
+TEST(BehaviorProgram, StopsAtTheFirstFailureAcrossSelectedStepKinds) {
+    FakeResolver resolver(Model());
+    Program plan;
+    plan.Add(CKGUID(0x3333, 3));
+    plan.RequireOne(NodePattern{"Missing", CKGUID(0x1111, 1)});
+    plan.UseNode(Ref(999));
+    plan.RequireOne(NodePattern{"Wait Message", CKGUID(0x1111, 1)});
+
+    Ops edit;
+    const Status status = plan.Resolve(
+        {"mod", "first-failure"}, resolver.Base.Root, resolver, edit);
+    EXPECT_EQ(status.Code, Error::QueryNotFound);
+    EXPECT_EQ(resolver.Adds, 0);
+    EXPECT_TRUE(resolver.UsedNodes.empty());
+
+    Program reversed;
+    reversed.UseNode(Ref(999));
+    reversed.RequireOne(NodePattern{"Missing", CKGUID(0x1111, 1)});
+    const Status reversedStatus = reversed.Resolve(
+        {"mod", "reversed-failure"}, resolver.Base.Root, resolver, edit);
+    EXPECT_EQ(reversedStatus.Code, Error::InvalidGraphLocality);
+    EXPECT_EQ(resolver.Adds, 0);
+    EXPECT_TRUE(resolver.UsedNodes.empty());
+}
+
 TEST(BehaviorProgram, PublishesNestedPublicPortsWithTheParentNode) {
     FakeResolver resolver(Model());
     Program plan;

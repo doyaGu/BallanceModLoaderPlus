@@ -57,20 +57,33 @@ Status ResolvePort(const GraphNode &node, const Slot &selector,
     return {};
 }
 
-// Visits the steps of the listed kinds in authored order and stops at the
-// first failure.
+template <class Kind, std::size_t Index = 0>
+constexpr std::size_t StepIndex() {
+    static_assert(Index < std::variant_size_v<Program::Step>);
+    if constexpr (std::is_same_v<Kind, std::variant_alternative_t<Index, Program::Step>>)
+        return Index;
+    else
+        return StepIndex<Kind, Index + 1>();
+}
+
+// Instantiate only the requested kinds, preserving authored order and the
+// first failure rather than expanding every visitor over the whole variant.
+template <class Kind, class Visit>
+bool VisitStep(const Program::Step &step, Visit &visit, Status &status) {
+    const auto *item = std::get_if<Kind>(&step);
+    if (!item)
+        return false;
+    status = visit(*item);
+    return true;
+}
+
 template <class... Kinds, class Visit>
 Status EachStep(const std::vector<Program::Step> &steps, Visit &&visit) {
     for (const Program::Step &step : steps) {
-        Status status = std::visit(
-            [&](const auto &item) -> Status {
-                using T = std::decay_t<decltype(item)>;
-                if constexpr ((std::is_same_v<T, Kinds> || ...))
-                    return visit(item);
-                else
-                    return {};
-            },
-            step);
+        if (step.valueless_by_exception())
+            throw std::bad_variant_access();
+        Status status;
+        (VisitStep<Kinds>(step, visit, status) || ...);
         if (!status)
             return status;
     }
@@ -691,9 +704,10 @@ Status Program::Validate() const {
                                 value.Selector.Index});
     };
     for (const Step &step : m_Steps) {
-        status = std::visit([&](const auto &item) -> Status {
-            using T = std::decay_t<decltype(item)>;
-            if constexpr (std::is_same_v<T, Steps::Flow>) {
+        status = [&]() -> Status {
+            switch (step.index()) {
+            case StepIndex<Steps::Flow>(): {
+                const auto &item = std::get<Steps::Flow>(step);
                 if (item.Delay < 0 || item.Delay >= 32765)
                     return Failure(
                         Error::InvalidDelay,
@@ -701,13 +715,19 @@ Status Program::Validate() const {
                 if (!port(item.Source) || !port(item.Sink))
                     return Failure(Error::InvalidState,
                                    "A Flow names an unknown Node.");
-            } else if constexpr (std::is_same_v<T, Steps::HookFlow>) {
+                break;
+            }
+            case StepIndex<Steps::HookFlow>(): {
+                const auto &item = std::get<Steps::HookFlow>(step);
                 if (!port(item.Source) || !port(item.Sink) || !item.Hook) {
                     return Failure(
                         Error::InvalidState,
                         "A callback Flow requires a source, sink, and callback.");
                 }
-            } else if constexpr (std::is_same_v<T, Steps::Set>) {
+                break;
+            }
+            case StepIndex<Steps::Set>(): {
+                const auto &item = std::get<Steps::Set>(step);
                 if (!port(item.Target))
                     return Failure(Error::InvalidState,
                                    "A Set names an unknown Node.");
@@ -718,7 +738,10 @@ Status Program::Validate() const {
                         Error::TypeMismatch,
                         "A null Value requires a Virtools type GUID.");
                 }
-            } else if constexpr (std::is_same_v<T, Steps::Bind>) {
+                break;
+            }
+            case StepIndex<Steps::Bind>(): {
+                const auto &item = std::get<Steps::Bind>(step);
                 if (!port(item.Target) ||
                     (item.Kind != BindKind::Literal && !port(item.Source))) {
                     return Failure(Error::InvalidState,
@@ -732,11 +755,17 @@ Status Program::Validate() const {
                         Error::TypeMismatch,
                         "A null Value requires a Virtools type GUID.");
                 }
-            } else if constexpr (std::is_same_v<T, Steps::Push>) {
+                break;
+            }
+            case StepIndex<Steps::Push>(): {
+                const auto &item = std::get<Steps::Push>(step);
                 if (!port(item.Source) || !port(item.Destination))
                     return Failure(Error::InvalidState,
                                    "A Push names an unknown Node.");
-            } else if constexpr (std::is_same_v<T, Steps::Splice>) {
+                break;
+            }
+            case StepIndex<Steps::Splice>(): {
+                const auto &item = std::get<Steps::Splice>(step);
                 if (!item.Target || !port(item.Input) || !port(item.Output))
                     return Failure(Error::InvalidState,
                                    "A Splice names an unknown Link or Node.");
@@ -744,7 +773,10 @@ Status Program::Validate() const {
                     return Failure(
                         Error::InvalidState,
                         "A Splice rewires one Link and cannot use a port of an Each Node.");
-            } else if constexpr (std::is_same_v<T, Steps::Redirect>) {
+                break;
+            }
+            case StepIndex<Steps::Redirect>(): {
+                const auto &item = std::get<Steps::Redirect>(step);
                 if (!item.Target || !port(item.Sink))
                     return Failure(Error::InvalidState,
                                    "A Redirect names an unknown Link or Node.");
@@ -752,12 +784,18 @@ Status Program::Validate() const {
                     return Failure(
                         Error::InvalidState,
                         "A Redirect rewires one Link and cannot use a port of an Each Node.");
-            } else if constexpr (std::is_same_v<T, Steps::RedirectToLink>) {
+                break;
+            }
+            case StepIndex<Steps::RedirectToLink>(): {
+                const auto &item = std::get<Steps::RedirectToLink>(step);
                 if (!item.Target || !item.Destination)
                     return Failure(
                         Error::InvalidState,
                         "A Redirect requires source and destination Links.");
-            } else if constexpr (std::is_same_v<T, Steps::Reconnect>) {
+                break;
+            }
+            case StepIndex<Steps::Reconnect>(): {
+                const auto &item = std::get<Steps::Reconnect>(step);
                 if (!item.Target || !port(item.Source) || !port(item.Sink))
                     return Failure(
                         Error::InvalidState,
@@ -766,7 +804,10 @@ Status Program::Validate() const {
                     return Failure(
                         Error::InvalidState,
                         "A Reconnect rewires one Link and cannot use a port of an Each Node.");
-            } else if constexpr (std::is_same_v<T, Steps::Append>) {
+                break;
+            }
+            case StepIndex<Steps::Append>(): {
+                const auto &item = std::get<Steps::Append>(step);
                 if (!knownNode(item.Owner.Value) ||
                     manyNode(item.Owner.Value) || item.Name.empty())
                     return Failure(Error::InvalidState,
@@ -785,7 +826,10 @@ Status Program::Validate() const {
                 interface.emplace(item.Handle.Owner,
                                   item.Handle.Selector.Kind,
                                   item.Handle.Selector.Index);
-            } else if constexpr (std::is_same_v<T, Steps::Tap>) {
+                break;
+            }
+            case StepIndex<Steps::Tap>(): {
+                const auto &item = std::get<Steps::Tap>(step);
                 const bool rootEntry = item.Source.Owner == Graph().Value &&
                     item.Source.Selector.Kind == SlotKind::Input;
                 const bool nodeOut = item.Source.Owner != Graph().Value &&
@@ -796,21 +840,31 @@ Status Program::Validate() const {
                         Error::InvalidState,
                         "Tap requires a graph Entry or node Out and a callback.");
                 }
-            } else if constexpr (std::is_same_v<T, Steps::After>) {
+                break;
+            }
+            case StepIndex<Steps::After>(): {
+                const auto &item = std::get<Steps::After>(step);
                 if (!paths.contains(item.Target.Value) || !item.Hook) {
                     return Failure(
                         Error::InvalidState,
                         "After requires a Path from this Graph Edit and a callback.");
                 }
-            } else if constexpr (std::is_same_v<T, Steps::Before>) {
+                break;
+            }
+            case StepIndex<Steps::Before>(): {
+                const auto &item = std::get<Steps::Before>(step);
                 if (!item.Target || !item.Hook) {
                     return Failure(
                         Error::InvalidState,
                         "Before requires a Link from this Graph Edit and a callback.");
                 }
+                break;
+            }
+            default:
+                break;
             }
             return {};
-        }, step);
+        }();
         if (!status)
             return status;
     }
@@ -1536,9 +1590,10 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
     };
 
     for (const Step &step : m_Steps) {
-        status = std::visit([&](const auto &item) -> Status {
-            using T = std::decay_t<decltype(item)>;
-            if constexpr (std::is_same_v<T, Steps::Flow>) {
+        status = [&]() -> Status {
+            switch (step.index()) {
+            case StepIndex<Steps::Flow>(): {
+                const auto &item = std::get<Steps::Flow>(step);
                 std::vector<Port> sources;
                 std::vector<Port> sinks;
                 Status current = ports(item.Source, sources);
@@ -1551,7 +1606,9 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                         resolved.Flow(std::move(source), std::move(sink),
                                       item.Delay, item.SameFrameCycle);
                     });
-            } else if constexpr (std::is_same_v<T, Steps::HookFlow>) {
+            }
+            case StepIndex<Steps::HookFlow>(): {
+                const auto &item = std::get<Steps::HookFlow>(step);
                 std::vector<Port> sources;
                 std::vector<Port> sinks;
                 Status current = ports(item.Source, sources);
@@ -1568,14 +1625,19 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                         }
                     });
                 return shape ? current : shape;
-            } else if constexpr (std::is_same_v<T, Steps::Set>) {
+            }
+            case StepIndex<Steps::Set>(): {
+                const auto &item = std::get<Steps::Set>(step);
                 std::vector<Port> targets;
                 Status current = ports(item.Target, targets);
                 if (!current)
                     return current;
                 for (Port target : targets)
                     resolved.Set(std::move(target), item.Value);
-            } else if constexpr (std::is_same_v<T, Steps::Bind>) {
+                break;
+            }
+            case StepIndex<Steps::Bind>(): {
+                const auto &item = std::get<Steps::Bind>(step);
                 std::vector<Port> targets;
                 Status current = ports(item.Target, targets);
                 if (!current)
@@ -1599,7 +1661,10 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                             }
                         });
                 }
-            } else if constexpr (std::is_same_v<T, Steps::Push>) {
+                break;
+            }
+            case StepIndex<Steps::Push>(): {
+                const auto &item = std::get<Steps::Push>(step);
                 std::vector<Port> sources;
                 std::vector<Port> destinations;
                 Status current = ports(item.Source, sources);
@@ -1612,7 +1677,9 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                         resolved.Push(std::move(source),
                                       std::move(destination));
                     });
-            } else if constexpr (std::is_same_v<T, Steps::Splice>) {
+            }
+            case StepIndex<Steps::Splice>(): {
+                const auto &item = std::get<Steps::Splice>(step);
                 const auto link = liveLinks.find(item.Target.Value);
                 if (link == liveLinks.end())
                     return Failure(Error::InvalidState,
@@ -1626,7 +1693,10 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                     return current;
                 resolved.Splice(link->second, std::move(input),
                                 std::move(output), item.Ordering);
-            } else if constexpr (std::is_same_v<T, Steps::Redirect>) {
+                break;
+            }
+            case StepIndex<Steps::Redirect>(): {
+                const auto &item = std::get<Steps::Redirect>(step);
                 const auto link = liveLinks.find(item.Target.Value);
                 if (link == liveLinks.end())
                     return Failure(Error::InvalidState,
@@ -1636,7 +1706,10 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                 if (!current)
                     return current;
                 resolved.Redirect(link->second, std::move(sink), item.Ordering);
-            } else if constexpr (std::is_same_v<T, Steps::RedirectToLink>) {
+                break;
+            }
+            case StepIndex<Steps::RedirectToLink>(): {
+                const auto &item = std::get<Steps::RedirectToLink>(step);
                 const auto link = liveLinks.find(item.Target.Value);
                 const auto destination = modelLinks.find(
                     item.Destination.Value);
@@ -1673,7 +1746,10 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                     {destinationNode.Value,
                      Slot::At(endpoint.Kind, endpoint.Index)},
                     item.Ordering);
-            } else if constexpr (std::is_same_v<T, Steps::Reconnect>) {
+                break;
+            }
+            case StepIndex<Steps::Reconnect>(): {
+                const auto &item = std::get<Steps::Reconnect>(step);
                 const auto link = liveLinks.find(item.Target.Value);
                 if (link == liveLinks.end())
                     return Failure(
@@ -1688,7 +1764,10 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                     return current;
                 resolved.Reconnect(link->second, std::move(source),
                                    std::move(sink), item.SameFrameCycle);
-            } else if constexpr (std::is_same_v<T, Steps::Append>) {
+                break;
+            }
+            case StepIndex<Steps::Append>(): {
+                const auto &item = std::get<Steps::Append>(step);
                 if (rootInterfaceExists && item.Owner == Graph() &&
                     item.Kind != SlotKind::Local)
                     return {};
@@ -1724,7 +1803,10 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                     PortKey{item.Handle.Owner, item.Handle.Selector.Kind,
                             item.Handle.Selector.Index},
                     std::move(live));
-            } else if constexpr (std::is_same_v<T, Steps::Tap>) {
+                break;
+            }
+            case StepIndex<Steps::Tap>(): {
+                const auto &item = std::get<Steps::Tap>(step);
                 std::vector<Port> sources;
                 Status current = ports(item.Source, sources);
                 if (!current)
@@ -1736,7 +1818,9 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                         return current;
                 }
                 return {};
-            } else if constexpr (std::is_same_v<T, Steps::After>) {
+            }
+            case StepIndex<Steps::After>(): {
+                const auto &item = std::get<Steps::After>(step);
                 const auto path = livePaths.find(item.Target.Value);
                 if (path == livePaths.end()) {
                     return Failure(Error::InvalidState,
@@ -1751,7 +1835,9 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                                    "A Path reached an Exit without a Link.");
                 return resolver.Interpose(
                     resolved, path->second.Links.back(), item.Hook);
-            } else if constexpr (std::is_same_v<T, Steps::Before>) {
+            }
+            case StepIndex<Steps::Before>(): {
+                const auto &item = std::get<Steps::Before>(step);
                 const auto link = liveLinks.find(item.Target.Value);
                 if (link == liveLinks.end()) {
                     return Failure(Error::InvalidState,
@@ -1760,8 +1846,11 @@ Status Program::Resolve(const PatchKey &patch, const ObjectRef &graph,
                 return resolver.Interpose(
                     resolved, link->second, item.Hook);
             }
+            default:
+                break;
+            }
             return {};
-        }, step);
+        }();
         if (!status)
             return status;
     }
