@@ -1,33 +1,38 @@
 #include "BML/Gui/Text.h"
 
-#include "Loader/ModContext.h"
+#include "CKContext.h"
+#include "CKLevel.h"
+#include "CKRenderContext.h"
+#include "CKSpriteText.h"
+
 #include "UI/Gui/LegacyTextFont.h"
 
 using namespace BGui;
 
 Text::Text(const char *name) : Element(name) {
-    m_Sprite = (CKSpriteText *)m_Context->CreateObject(CKCID_SPRITETEXT, (CKSTRING) name);
+    CKContext *context = m_2dEntity->GetCKContext();
+    m_Sprite = (CKSpriteText *)context->CreateObject(CKCID_SPRITETEXT, (CKSTRING) name);
     m_Sprite->ModifyObjectFlags(CK_OBJECT_NOTTOBELISTEDANDSAVED, 0);
-    m_Context->GetCurrentLevel()->AddObject(m_Sprite);
+    context->GetCurrentLevel()->AddObject(m_Sprite);
     m_Sprite->SetHomogeneousCoordinates();
     m_Sprite->EnableClipToCamera(false);
     m_Sprite->EnableRatioOffset(false);
     m_Sprite->SetZOrder(20);
     m_Sprite->SetTextColor(0xffffffff);
     m_Sprite->SetAlign(CKSPRITETEXT_ALIGNMENT(CKSPRITETEXT_VCENTER | CKSPRITETEXT_LEFT));
-    InitializeLegacyTextFont(m_Sprite, m_Context->GetPlayerRenderContext()->GetHeight());
+    InitializeLegacyTextFont(m_Sprite, context->GetPlayerRenderContext()->GetHeight());
 }
 
 Text::~Text() {
     ForgetLegacyTextFont(m_Sprite);
-    if (m_Context && m_Sprite)
-        m_Context->DestroyObject(CKOBJID(m_Sprite));
+    if (m_Sprite)
+        m_Sprite->GetCKContext()->DestroyObject(CKOBJID(m_Sprite));
 }
 
 void Text::UpdateFont() {
-    if (m_Context && m_Context->GetPlayerRenderContext()) {
-        RefreshLegacyTextFont(m_Sprite, m_Context->GetPlayerRenderContext()->GetHeight());
-    }
+    CKRenderContext *render = m_Sprite ? m_Sprite->GetCKContext()->GetPlayerRenderContext() : nullptr;
+    if (render)
+        RefreshLegacyTextFont(m_Sprite, render->GetHeight());
 }
 
 Vx2DVector Text::GetPosition() {
@@ -48,7 +53,7 @@ Vx2DVector Text::GetSize() {
 
 void Text::SetSize(Vx2DVector size) {
     m_Sprite->ReleaseAllSlots();
-    auto *rc = m_Context->GetPlayerRenderContext();
+    auto *rc = m_Sprite->GetCKContext()->GetPlayerRenderContext();
     m_Sprite->Create((int)(rc->GetWidth() * size.x), (int)(rc->GetHeight() * size.y), 32);
     m_Sprite->SetSize(size, true);
 }

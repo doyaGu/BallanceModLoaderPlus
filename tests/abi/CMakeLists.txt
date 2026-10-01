@@ -38,6 +38,12 @@ add_library(ImGuiAbiConsumerCompile OBJECT ImGuiAbiConsumerCompile.cpp)
 target_link_libraries(ImGuiAbiConsumerCompile PRIVATE BML)
 set_target_properties(ImGuiAbiConsumerCompile PROPERTIES FOLDER "Tests")
 
+add_library(LegacyGuiAbiCompile OBJECT LegacyGuiAbiCompile.cpp)
+target_include_directories(LegacyGuiAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
+target_link_libraries(LegacyGuiAbiCompile PRIVATE
+        VirtoolsSDK::CK2 VirtoolsSDK::VxMath)
+set_target_properties(LegacyGuiAbiCompile PROPERTIES FOLDER "Tests")
+
 # Every public C++ Behavior domain header must compile on its own. The umbrella
 # remains the convenient include, not a hidden ordering requirement.
 set(BML_BEHAVIOR_HEADER_COMPILE_SOURCES)

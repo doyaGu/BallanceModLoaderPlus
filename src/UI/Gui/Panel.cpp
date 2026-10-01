@@ -1,12 +1,18 @@
 #include "BML/Gui/Panel.h"
 
-#include "Loader/ModContext.h"
+#include "CKContext.h"
+#include "CK2dEntity.h"
+#include "CKLevel.h"
+#include "CKMaterial.h"
+
+#include <string>
 
 using namespace BGui;
 
 Panel::Panel(const char *name) : Element(name) {
-    m_Material = (CKMaterial *)m_Context->CreateObject(CKCID_MATERIAL, (CKSTRING) ((std::string(name) + "_Mat").c_str()));
-    m_Context->GetCurrentLevel()->AddObject(m_Material);
+    CKContext *context = m_2dEntity->GetCKContext();
+    m_Material = (CKMaterial *)context->CreateObject(CKCID_MATERIAL, (CKSTRING) ((std::string(name) + "_Mat").c_str()));
+    context->GetCurrentLevel()->AddObject(m_Material);
     m_Material->EnableAlphaBlend();
     m_Material->SetSourceBlend(VXBLEND_SRCALPHA);
     m_Material->SetDestBlend(VXBLEND_INVSRCALPHA);
@@ -15,8 +21,8 @@ Panel::Panel(const char *name) : Element(name) {
 }
 
 Panel::~Panel() {
-    if (m_Context && m_Material)
-        m_Context->DestroyObject(CKOBJID(m_Material));
+    if (m_Material)
+        m_Material->GetCKContext()->DestroyObject(CKOBJID(m_Material));
 }
 
 VxColor Panel::GetColor() {

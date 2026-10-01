@@ -22,8 +22,6 @@
 
 #include "BML/Defines.h"
 
-class CKContext;
-
 namespace BGui {
     class BML_EXPORT Element {
         friend class Gui;
@@ -47,7 +45,8 @@ namespace BGui {
         virtual void Process() {};
 
     protected:
-        CKContext *m_Context = nullptr;
+        // Keep the legacy DLL layout. Context belongs to the CK entity;
+        // adding storage here also shifts every derived Mod's members.
         CK2dEntity *m_2dEntity = nullptr;
     };
 }
