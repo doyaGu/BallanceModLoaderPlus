@@ -72,9 +72,9 @@ Configure and build with a real installation:
     cmake -S . -B build-dev -A Win32 -DBML_BUILD_TESTS=ON -DBML_BUILD_UI_AUTOMATION=ON -DBML_BALLANCE_ROOT=C:/Users/kakut/Games/Ballance
     cmake --build build-dev --config RelWithDebInfo --target BML UiPlayerRunner
 
-`BML_BUILD_UI_AUTOMATION` defaults to `ON` when `BML_BUILD_TESTS` is enabled.
-Set it to `OFF` to build the rest of the test suite without fetching or
-compiling ImGui Test Engine.
+`BML_BUILD_UI_AUTOMATION` defaults to `OFF`, including when `BML_BUILD_TESTS`
+is enabled. Enable it explicitly in a separate UI acceptance build directory.
+Ordinary test and release builds do not fetch or compile ImGui Test Engine.
 
 List available cases without launching Player:
 

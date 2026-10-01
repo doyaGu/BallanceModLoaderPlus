@@ -69,7 +69,7 @@ cmake_dependent_option(
 cmake_dependent_option(
         BML_BUILD_UI_AUTOMATION
         "Build the ImGui UI automation suite"
-        ON
+        OFF
         "BML_BUILD_TESTS"
         OFF
 )
