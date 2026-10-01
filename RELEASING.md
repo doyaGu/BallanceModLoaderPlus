@@ -16,6 +16,13 @@ current build and publication details.
 - Confirm the intended commit is reviewed, tested locally, on the release
   branch, and has a clean worktree. The project version and release tag must
   agree.
+- Check legacy Native Mod compatibility beyond exported symbols: public C++
+  object layouts, member offsets, and virtual tables must remain compatible.
+  For changes at that boundary, test an unchanged binary built with the
+  previous stable SDK; rebuilding the Mod against new headers is not enough.
+- Recheck reported regressions in their original Player scenario. Record any
+  unverified reports separately from passing unit tests or diagnostic probes;
+  do not describe them as fixed without that acceptance.
 - Create and push the tag once. Do not move or reuse a published tag.
 - Prerelease tags can exercise CI, but the stable signing and channel scripts
   accept only final release tags.
