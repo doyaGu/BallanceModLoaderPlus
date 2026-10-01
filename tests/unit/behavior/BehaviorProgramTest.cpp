@@ -4,6 +4,7 @@
 #include <cstring>
 #include <map>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include <gtest/gtest.h>
@@ -11,6 +12,11 @@
 namespace {
 
 using namespace BML::Behavior::Internal;
+
+static_assert(std::is_nothrow_default_constructible_v<Program>);
+static_assert(std::is_nothrow_move_constructible_v<Program>);
+static_assert(std::is_nothrow_move_assignable_v<Program>);
+static_assert(std::is_nothrow_destructible_v<Program>);
 
 ObjectRef Ref(std::uint32_t slot, std::uint32_t generation = 1) {
     return {3, slot, generation};
@@ -1490,6 +1496,35 @@ TEST(BehaviorProgram, KeepsNestedGraphBodiesInTheirOwnScope) {
     EXPECT_EQ(plan.NestedGraphs()[0].Scope, 7u);
     ASSERT_NE(plan.NestedGraphs()[0].Body, nullptr);
     EXPECT_TRUE(plan.NestedGraphs()[0].Body->Validate());
+}
+
+TEST(BehaviorProgram, MovesOwnedStepsAndNestedScopesTogether) {
+    Program plan = SpliceEdit();
+    const Node nestedNode = plan.AddGraph("Nested");
+    Program &nested = plan.Enter(nestedNode, 7);
+    const Node child = nested.Add(CKGUID(0x3333, 3));
+    nested.Flow(nested.Entry(), child.In());
+    Program *body = &nested;
+
+    Program moved(std::move(plan));
+    ASSERT_TRUE(moved.Validate());
+    ASSERT_EQ(moved.NestedGraphs().size(), 1u);
+    EXPECT_EQ(moved.NestedGraphs()[0].Body.get(), body);
+
+    Program assigned;
+    const Node discarded = assigned.AddGraph("Discarded");
+    assigned.Enter(discarded, 12);
+    assigned = std::move(moved);
+    ASSERT_TRUE(assigned.Validate());
+    ASSERT_EQ(assigned.NestedGraphs().size(), 1u);
+    EXPECT_EQ(assigned.NestedGraphs()[0].Body.get(), body);
+    EXPECT_TRUE(body->Validate());
+
+    FakeResolver resolver(Model());
+    Ops edit;
+    const Status status = assigned.Resolve(
+        {"mod", "moved"}, resolver.Base.Root, resolver, edit);
+    ASSERT_TRUE(status) << status.Message;
 }
 
 TEST(BehaviorProgram, PublishesNestedPublicPortsWithTheParentNode) {

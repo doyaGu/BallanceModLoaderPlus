@@ -250,6 +250,13 @@ struct Append {
 // reports that, and a Plan refuses such a Program.
 class Program final {
 public:
+    Program() noexcept;
+    ~Program();
+    Program(const Program &) = delete;
+    Program &operator=(const Program &) = delete;
+    Program(Program &&) noexcept;
+    Program &operator=(Program &&) noexcept;
+
     using Step = std::variant<
         Steps::QueryNode, Steps::UseNode, Steps::AddBlock, Steps::AddGraph,
         Steps::AddOperation, Steps::QueryLink, Steps::UseLink, Steps::Follow,

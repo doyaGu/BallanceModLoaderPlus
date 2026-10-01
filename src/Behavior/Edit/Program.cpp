@@ -79,6 +79,11 @@ Status EachStep(const std::vector<Program::Step> &steps, Visit &&visit) {
 
 } // namespace
 
+Program::Program() noexcept = default;
+Program::~Program() = default;
+Program::Program(Program &&) noexcept = default;
+Program &Program::operator=(Program &&) noexcept = default;
+
 Port Program::Entry(int index) const { return Graph().In(index); }
 
 Port Program::Entry(std::string name) const {
