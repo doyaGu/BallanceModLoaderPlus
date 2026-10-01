@@ -1,6 +1,6 @@
 # Runs the shipped Player flow with every Behavior probe installed. The probes
-# cover the runtime semantics fixture, the transport seam, Patches and the
-# published Plan and Hook facade, plus the script hook a script Mod retires.
+# cover runtime semantics, transport, native deletion, Patches, the published
+# Plan and Hook facade, and script hook retirement.
 [CmdletBinding()]
 param(
     [string]$BallanceRoot = $env:BML_BALLANCE_ROOT,
@@ -12,6 +12,8 @@ param(
     [string]$RuntimeSemanticsMod,
 
     [string]$TransportMod,
+
+    [string]$DeletionMod,
 
     [string]$PatchMod,
 
@@ -67,6 +69,9 @@ if (-not $RuntimeSemanticsMod) {
 if (-not $TransportMod) {
     $TransportMod = Join-Path $releaseBin 'BehaviorTransportTest.bmodp'
 }
+if (-not $DeletionMod) {
+    $DeletionMod = Join-Path $releaseBin 'BehaviorDeletionTest.bmodp'
+}
 if (-not $PatchMod) {
     $PatchMod = Join-Path $releaseBin 'BehaviorPatchTest.bmodp'
 }
@@ -105,6 +110,8 @@ $install = @(
        Destination = 'ModLoader\Mods\BehaviorRuntimeSemanticsTest.bmodp' },
     @{ Source = $TransportMod
        Destination = 'ModLoader\Mods\BehaviorTransportTest.bmodp' },
+    @{ Source = $DeletionMod
+       Destination = 'ModLoader\Mods\BehaviorDeletionTest.bmodp' },
     @{ Source = $PatchMod
        Destination = 'ModLoader\Mods\BehaviorPatchTest.bmodp' },
     @{ Source = $FacadeMod
@@ -162,8 +169,12 @@ $run = Invoke-BMLPlayerRun -BallanceRoot $BallanceRoot -LoaderDll $BuildDll `
 $log = $run.ModLoaderLog
 $flow = Get-BMLPlayerFlowChecks -Run $run -Probes @(
     'BehaviorRuntimeSemanticsTest', 'BehaviorTransportTest',
-    'BehaviorPatchTest', 'BehaviorFacadeTest', 'BehaviorScriptHookTest')
+    'BehaviorDeletionTest', 'BehaviorPatchTest', 'BehaviorFacadeTest', 'BehaviorScriptHookTest')
 $checks = $flow.Checks
+$checks['BehaviorDeletionCompleted'] = $flow.Verdicts.Contains('BehaviorDeletionTest') -and
+    $flow.Verdicts['BehaviorDeletionTest'].State -eq 'pass' -and
+    $flow.Verdicts['BehaviorDeletionTest'].Started -and
+    $flow.Verdicts['BehaviorDeletionTest'].Detail -eq 'complete'
 
 $runtimeSemantics = [regex]::Match($log,
     'Behavior runtime semantics: status=(?<status>pass|fail) ' +
@@ -506,6 +517,7 @@ $result = [pscustomobject]@{
     DriverModHash = Get-BMLOptionalHash $DriverMod
     RuntimeSemanticsModHash = Get-BMLOptionalHash $RuntimeSemanticsMod
     TransportModHash = Get-BMLOptionalHash $TransportMod
+    DeletionModHash = Get-BMLOptionalHash $DeletionMod
     PatchModHash = Get-BMLOptionalHash $PatchMod
     FacadeModHash = Get-BMLOptionalHash $FacadeMod
     ScriptHookModHash = Get-BMLOptionalHash $ScriptHookMod

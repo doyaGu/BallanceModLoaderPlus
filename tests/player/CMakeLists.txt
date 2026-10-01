@@ -210,6 +210,11 @@ bml_add_player_test(BehaviorTransportTest
         ${BML_PLAYER_PROBE_SOURCES}
 )
 
+bml_add_player_test(BehaviorDeletionTest
+        BehaviorDeletionTest.cpp
+        ${BML_PLAYER_PROBE_SOURCES}
+)
+
 if (BML_ENABLE_BEHAVIOR_TEST_INTERFACE)
     bml_add_player_test(BehaviorPatchTest
             BehaviorPatchTest.cpp
