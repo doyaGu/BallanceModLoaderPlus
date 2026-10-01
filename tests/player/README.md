@@ -14,6 +14,7 @@ powershell -ExecutionPolicy Bypass -File tests/player/Invoke-ExecuteBBTest.ps1 `
 ```
 
 Other focused runners are `Invoke-BehaviorAcceptanceTest.ps1`,
+`Invoke-BehaviorDeletionTest.ps1`,
 `Invoke-GameplayRouteTest.ps1`, `Invoke-InterfaceProviderTest.ps1`,
 `Invoke-NewBallTypeTest.ps1`, `Invoke-NativeModProfilesTest.ps1`,
 `Invoke-NoExitModTest.ps1`,
@@ -25,6 +26,18 @@ route is under review; a skipped result is never release evidence.
 The full Behavior acceptance runner requires a dedicated instrumented build
 configured with `-DBML_ENABLE_BEHAVIOR_TEST_INTERFACE=ON`. This private bridge
 is disabled by default and must not be used for release packages.
+
+`Invoke-BehaviorDeletionTest.ps1` needs only `PlayerFlowDriver` and
+`BehaviorDeletionTest`. It accepts an ordinary release loader with or without
+AngelScript; no private bridge or fixture DLL is needed. The probe exercises
+mixed deferred deletion through the shipped BGui and Behavior interfaces,
+including Instance cleanup, nested graphs, root and owner deletion, deletion of
+an edited dynamic graph, orphan Links with surviving source IOs, journal-owned
+value snapshots, parked Nodes and their incident Links, replacement originals,
+and copied port and Link relations. It checks retained CK objects, not just
+stale interface handles, then returns through the
+game's Exit Level message before exiting. The full Behavior acceptance runner
+also includes this probe.
 
 `PlayerFlowDriver` drives the retail menu and level flow. Each installed probe
 Mod reports one result through `BMLPlayerProbeRead`; probes that need gameplay

@@ -269,6 +269,15 @@ lifecycle messages CK2 never sends on its own, return an exact inverse for
 each graph change, and read the delayed-link state directly. Those facts come
 from the Ballanced CK2 source unless retail CK2.dll is observed to differ.
 Private implementation types live in BML::Behavior::Internal.
+BML-created Blocks, Script roots, Nodes, and Links are ordinary CK objects;
+Sessions, Scripts, and installation journals own their lifetimes. CK's dynamic
+flag filters dependencies, not BML ownership: retail dynamic IOs and Links can
+exclude unrelated objects from a mixed dependency batch. Edits to existing
+dynamic game Blocks retain their native policy. Deleting a Script owner or
+Scene retains a surviving root for safe-point retirement; deleting an edited
+graph also retains its journal until surviving owned objects have retired.
+CK2-owned array storage stays in CK2's allocator: use native operations or
+in-place edits, never inline SDK mutators that reallocate it in BML's CRT.
 
 **Behavior Graph Authoring** — Script owns a top-level root; Graph captures an
 immutable snapshot; Edit describes symbolic changes. Patch applies one exact
