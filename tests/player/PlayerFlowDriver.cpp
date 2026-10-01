@@ -54,9 +54,19 @@ public:
     }
     DECLARE_BML_VERSION;
 
-    void OnLoad() override { m_Navigator.Attach(m_BML, GetLogger()); }
+    void OnLoad() override {
+        m_Navigator.Attach(m_BML, GetLogger());
+        const char *returnToMenu = std::getenv("BML_PLAYER_RETURN_TO_MENU");
+        m_ReturnToMenu = returnToMenu && std::strcmp(returnToMenu, "1") == 0;
+    }
 
-    void OnPostStartMenu() override { m_Navigator.OnPostStartMenu(); }
+    void OnPostStartMenu() override {
+        m_Navigator.OnPostStartMenu();
+        if (m_ReturnRequested && !m_Returned) {
+            m_Returned = true;
+            GetLogger()->Info("Player return: completed=true");
+        }
+    }
 
     void OnStartLevel() override { m_Navigator.OnStartLevel(); }
 
@@ -74,7 +84,10 @@ public:
             return;
 
         ++m_TotalFrames;
-        m_Navigator.Observe(m_BML ? m_BML->GetInputManager() : nullptr);
+        // Returning to the menu destroys the observed tutorial graph. The
+        // stopping phase needs only lifecycle callbacks, not cached pointers.
+        if (m_Phase != Phase::Stopping)
+            m_Navigator.Observe(m_BML ? m_BML->GetInputManager() : nullptr);
         if (m_Navigator.TutorialFrameRequested())
             m_TutorialFrameCaptureRequested = true;
 
@@ -317,6 +330,9 @@ private:
                 std::chrono::seconds(kMinimumVisibleLevelSeconds))
             return;
 
+        if (m_ReturnToMenu && m_Passed && !CompleteReturn())
+            return;
+
         int passed = 0;
         int skipped = 0;
         int failed = 0;
@@ -360,6 +376,27 @@ private:
         m_BML->ExitGame();
     }
 
+    bool CompleteReturn() {
+        if (!m_ReturnRequested) {
+            m_ReturnRequested = true;
+            if (m_Navigator.ReturnToMenu() != BML::PlayerTest::PlayerNavigator::Step::Done) {
+                m_Passed = false;
+                m_Reason = m_Navigator.Error();
+                return true;
+            }
+            SetPhase(Phase::Stopping);
+            GetLogger()->Info("Player return: requested=true");
+        }
+        if (!m_Returned) {
+            if (!PhaseDone(std::chrono::seconds(kMenuTimeoutSeconds)))
+                return false;
+            m_Passed = false;
+            m_Reason = "return-menu-timeout";
+            return true;
+        }
+        return std::chrono::steady_clock::now() - m_Navigator.MenuStartedAt() >= kWorldSettleTime;
+    }
+
     void SetPhase(Phase phase) {
         m_Phase = phase;
         m_PhaseStartedAt = std::chrono::steady_clock::now();
@@ -385,6 +422,9 @@ private:
     bool m_TutorialFrameCaptured = false;
     bool m_Passed = false;
     bool m_Done = false;
+    bool m_ReturnToMenu = false;
+    bool m_ReturnRequested = false;
+    bool m_Returned = false;
     std::chrono::steady_clock::time_point m_PhaseStartedAt{};
 };
 

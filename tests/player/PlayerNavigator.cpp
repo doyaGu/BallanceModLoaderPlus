@@ -4,6 +4,7 @@
 #include <BML/ILogger.h>
 #include <BML/InputHook.h>
 
+#include <cstring>
 #include <utility>
 
 namespace BML::PlayerTest {
@@ -221,6 +222,31 @@ PlayerNavigator::Step PlayerNavigator::ChooseLevel() {
     m_Logger->Info(
         "Player menu: level=1 path=Start_Menu/Parameter_Selector.In0");
     return Step::Done;
+}
+
+PlayerNavigator::Step PlayerNavigator::ReturnToMenu() {
+    CKBehavior *script = m_BML->GetScriptByName("Event_handler");
+    LocatedNode dispatch = FindFirst(m_Behavior, script, "Switch On Message", false);
+    CKMessageManager *messages = m_BML->GetMessageManager();
+    if (!dispatch || !messages || !script->GetOwner()) {
+        m_Error = "exit-level-handler-unavailable";
+        return Step::Failed;
+    }
+    for (int index = 0; index < dispatch.Native->GetInputParameterCount(); ++index) {
+        CKMessageType type = -1;
+        if (dispatch.Native->GetInputParameterValue(index, &type) != CK_OK)
+            continue;
+        const char *name = messages->GetMessageTypeName(type);
+        if (!name || std::strcmp(name, "Exit Level") != 0)
+            continue;
+        // Use the shipped listener and its runtime message value. Do not
+        // activate a cleanup subgraph directly or assume a saved message ID.
+        if (messages->SendMessageSingle(type, script->GetOwner()))
+            return Step::Done;
+        break;
+    }
+    m_Error = "exit-level-message-unavailable";
+    return Step::Failed;
 }
 
 void PlayerNavigator::DiscoverTutorialKeys() {

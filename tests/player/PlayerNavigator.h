@@ -14,8 +14,8 @@ class InputHook;
 
 namespace BML::PlayerTest {
 
-// Drives the shipped Ballance menu graph from the main menu into Level 01 and
-// observes the tutorial listener the runner's key injection has to satisfy.
+// Drives the shipped Ballance menu graph into Level 01 and back to the menu,
+// and observes the tutorial listener the runner's key injection must satisfy.
 // Both Player acceptance Mods share this, so the log lines the PowerShell
 // runners match live in one place.
 class PlayerNavigator {
@@ -39,6 +39,7 @@ public:
 
     Step OpenLevelMenu();
     Step ChooseLevel();
+    Step ReturnToMenu();
 
     [[nodiscard]] const char *Error() const { return m_Error; }
     [[nodiscard]] bool MenuReady() const { return m_MenuReady; }
