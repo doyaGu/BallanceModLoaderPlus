@@ -46,10 +46,25 @@ add_bml_test(BehaviorLifecycleTest
         ${BML_SOURCE_DIR}/Behavior/Lifecycle.cpp
 )
 
+set(BML_BEHAVIOR_PROGRAM_TEST_SOURCES
+        BehaviorBlockTestStubs.cpp
+        ${BML_SOURCE_DIR}/Behavior/Block.cpp
+        ${BML_SOURCE_DIR}/Behavior/Callback.cpp
+        ${BML_SOURCE_DIR}/Behavior/Edit/Program.cpp
+        ${BML_SOURCE_DIR}/Behavior/Pattern.cpp
+        ${BML_SOURCE_DIR}/Behavior/Edit/Ops.cpp
+        ${BML_SOURCE_DIR}/Behavior/Execution.cpp
+        ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
+        ${BML_SOURCE_DIR}/Behavior/Topology.cpp
+        ${BML_SOURCE_DIR}/Behavior/Core/Value.cpp
+)
+
 add_bml_test(BehaviorScriptTest
         SOURCES
         BehaviorScriptTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Script.cpp
+        ${BML_BEHAVIOR_PROGRAM_TEST_SOURCES}
+        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 target_compile_definitions(BehaviorScriptTest PRIVATE
         BML_BEHAVIOR_SCRIPT_DOMAIN_ONLY=1)
@@ -119,16 +134,7 @@ add_bml_test(BehaviorOpsTest
 add_bml_test(BehaviorProgramTest
         SOURCES
         BehaviorProgramTest.cpp
-        BehaviorBlockTestStubs.cpp
-        ${BML_SOURCE_DIR}/Behavior/Block.cpp
-        ${BML_SOURCE_DIR}/Behavior/Callback.cpp
-        ${BML_SOURCE_DIR}/Behavior/Edit/Program.cpp
-        ${BML_SOURCE_DIR}/Behavior/Pattern.cpp
-        ${BML_SOURCE_DIR}/Behavior/Edit/Ops.cpp
-        ${BML_SOURCE_DIR}/Behavior/Execution.cpp
-        ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
-        ${BML_SOURCE_DIR}/Behavior/Topology.cpp
-        ${BML_SOURCE_DIR}/Behavior/Core/Value.cpp
+        ${BML_BEHAVIOR_PROGRAM_TEST_SOURCES}
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 

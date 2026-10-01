@@ -79,8 +79,7 @@ public:
         auto *root = CKBehavior::Cast(m_Context->CreateObject(
             CKCID_BEHAVIOR,
             nativeName.empty() ? nullptr
-                               : const_cast<CKSTRING>(nativeName.c_str()),
-            CK_OBJECTCREATION_DYNAMIC));
+                               : const_cast<CKSTRING>(nativeName.c_str())));
         if (!root)
             return Failure(Error::CreateFailed,
                            "Virtools could not create the Script root.",
@@ -556,23 +555,24 @@ void Scripts::ObjectToBeDeleted(std::uint64_t object) {
     if (!object || std::this_thread::get_id() != m_Thread)
         return;
     for (auto script = m_Scripts.begin(); script != m_Scripts.end();) {
-        const ScriptIdentity &identity = script->second->Info.Identity;
-        const bool deleting = object == identity.Root.Id ||
-                              object == identity.Owner.Id ||
-                              object == identity.Scene.Id;
-        if (deleting)
+        Entry &entry = *script->second;
+        const ScriptIdentity &identity = entry.Info.Identity;
+        if (object == identity.Root.Id) {
             script = m_Scripts.erase(script);
-        else
+        } else {
+            // A dynamic owner can exclude this ordinary Script root from CK2
+            // dependency deletion. Keep ownership until a safe point destroys
+            // it; never recurse into CK2 while its deletion walk is active.
+            if (object == identity.Owner.Id || object == identity.Scene.Id)
+                Close(entry);
             ++script;
+        }
     }
     m_Retiring.erase(
         std::remove_if(
             m_Retiring.begin(), m_Retiring.end(),
             [object](const std::shared_ptr<Entry> &entry) {
-                const ScriptIdentity &identity = entry->Info.Identity;
-                return object == identity.Root.Id ||
-                    object == identity.Owner.Id ||
-                    object == identity.Scene.Id;
+                return object == entry->Info.Identity.Root.Id;
             }),
         m_Retiring.end());
 }
@@ -641,7 +641,7 @@ void Scripts::Process(const std::shared_ptr<Entry> &entry) {
 }
 
 void Scripts::ProcessFrame() {
-    if (!Ready() || m_Processing)
+    if (!Ready() || m_Processing || m_World->InDispatch())
         return;
     m_Processing = true;
     m_FrameEntries.clear();

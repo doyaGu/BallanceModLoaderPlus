@@ -3547,7 +3547,7 @@ private:
         CKBehavior *ownedRoot = ownedGraph.Handle.Get();
         CKBehavior *ownedChild = ownedRoot
             ? static_cast<CKBehavior *>(m_Context->CreateObject(
-                  CKCID_BEHAVIOR, nullptr, CK_OBJECTCREATION_DYNAMIC))
+                  CKCID_BEHAVIOR))
             : nullptr;
         CKParameterIn *ownedChildPin = nullptr;
         bool ownedTreeBuilt = false;

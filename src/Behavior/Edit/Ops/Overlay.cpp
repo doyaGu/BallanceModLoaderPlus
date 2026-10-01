@@ -335,8 +335,7 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
                 return Failure(Error::GraphChanged,
                                "A Splice endpoint disappeared before publication.");
             }
-            auto *link = static_cast<CKBehaviorLink *>(m_Context->CreateObject(
-                CKCID_BEHAVIORLINK, nullptr, CK_OBJECTCREATION_DYNAMIC));
+            auto *link = static_cast<CKBehaviorLink *>(m_Context->CreateObject(CKCID_BEHAVIORLINK));
             if (!link) {
                 discard();
                 return Failure(Error::CreateFailed,

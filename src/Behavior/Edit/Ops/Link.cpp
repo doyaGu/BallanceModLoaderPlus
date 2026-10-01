@@ -8,8 +8,7 @@ namespace BML::Behavior::Internal {
 
 Status CKEdit::Transaction::AddLink(CKBehaviorIO *source, CKBehaviorIO *sink,
                                     int delay, Stamp *added) {
-    auto *link = static_cast<CKBehaviorLink *>(m_Context->CreateObject(
-        CKCID_BEHAVIORLINK, nullptr, CK_OBJECTCREATION_DYNAMIC));
+    auto *link = static_cast<CKBehaviorLink *>(m_Context->CreateObject(CKCID_BEHAVIORLINK));
     if (!link)
         return Failure(Error::CreateFailed,
                        "Virtools failed to create a Behavior Link.",

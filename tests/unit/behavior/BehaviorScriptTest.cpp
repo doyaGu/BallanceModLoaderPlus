@@ -286,22 +286,138 @@ TEST(BehaviorScript, SelfCloseNeverWaitsForTheActivityCallback) {
     EXPECT_EQ(native->Destroyed, std::vector<std::uint64_t>{10});
 }
 
-TEST(BehaviorScript, ExternalDeletionInvalidatesWithoutNativeTeardown) {
+TEST(BehaviorScript, RootDeletionInvalidatesWithoutNativeTeardown) {
     auto world = std::make_unique<FakeScriptWorld>();
     FakeScriptWorld *native = world.get();
     ScriptSet scripts(std::move(world));
     const ScriptResult rootDeleted = scripts.Create(
         Owner(), 1, this, "Root", 0, {});
-    const ScriptResult ownerDeleted = scripts.Create(
-        Owner(), 1, this, "Owner", 0, {});
     ASSERT_TRUE(rootDeleted);
-    ASSERT_TRUE(ownerDeleted);
 
     scripts.ObjectToBeDeleted(rootDeleted.Info.Identity.Root.Id);
-    scripts.ObjectToBeDeleted(ownerDeleted.Info.Identity.Owner.Id);
     ScriptInfo info;
     EXPECT_FALSE(scripts.Read(Owner(), rootDeleted.Id, info));
-    EXPECT_FALSE(scripts.Read(Owner(), ownerDeleted.Id, info));
+    EXPECT_TRUE(native->Destroyed.empty());
+}
+
+TEST(BehaviorScript, OwnerAndSceneDeletionRetainTheRootForSafePointCleanup) {
+    for (bool deletingScene : {false, true}) {
+        auto world = std::make_unique<FakeScriptWorld>();
+        FakeScriptWorld *native = world.get();
+        ScriptSet scripts(std::move(world));
+        const ScriptResult opened = scripts.Create(Owner(), 1, this, "Script", 0, {});
+        ASSERT_TRUE(opened);
+
+        const ScriptIdentity &identity = opened.Info.Identity;
+        native->Events.clear();
+        scripts.ObjectToBeDeleted(deletingScene ? identity.Scene.Id : identity.Owner.Id);
+        // Notifications only change ownership state; none may enter CK2.
+        EXPECT_TRUE(native->Events.empty());
+        ScriptInfo info;
+        ASSERT_TRUE(scripts.Read(Owner(), opened.Id, info));
+        EXPECT_EQ(info.State, ScriptState::Closing);
+        EXPECT_TRUE(native->Destroyed.empty());
+
+        scripts.ProcessFrame();
+        EXPECT_EQ(native->ClosedBodies, std::vector<ScriptBodyId>{100});
+        EXPECT_EQ(native->Destroyed, std::vector<std::uint64_t>{identity.Root.Id});
+        EXPECT_FALSE(scripts.Read(Owner(), opened.Id, info));
+        scripts.ObjectToBeDeleted(identity.Owner.Id);
+        scripts.ObjectToBeDeleted(identity.Scene.Id);
+        scripts.ProcessFrame();
+        EXPECT_EQ(native->Destroyed.size(), 1u);
+    }
+}
+
+TEST(BehaviorScript, OwnerDeletionDoesNotCloseUnrelatedScripts) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    FakeScriptWorld *native = world.get();
+    ScriptSet scripts(std::move(world));
+    const ScriptResult retiring = scripts.Create(Owner(), 1, this, "Retiring", 0, {});
+    const ScriptResult surviving = scripts.Create(Owner(), 1, this, "Surviving", 0, {});
+    ASSERT_TRUE(retiring);
+    ASSERT_TRUE(surviving);
+
+    scripts.ObjectToBeDeleted(retiring.Info.Identity.Owner.Id);
+    scripts.ObjectToBeDeleted(retiring.Info.Identity.Scene.Id);
+    scripts.ObjectToBeDeleted(retiring.Info.Identity.Owner.Id);
+    scripts.ProcessFrame();
+    EXPECT_EQ(native->Destroyed, std::vector<std::uint64_t>{retiring.Info.Identity.Root.Id});
+    ScriptInfo info;
+    ASSERT_TRUE(scripts.Read(Owner(), surviving.Id, info));
+    EXPECT_EQ(info.State, ScriptState::Ready);
+}
+
+TEST(BehaviorScript, RootDeletionDuringOwnerCleanupDoesNotDestroyItAgain) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    FakeScriptWorld *native = world.get();
+    ScriptSet scripts(std::move(world));
+    const ScriptResult opened = scripts.Create(Owner(), 1, this, "Script", 0, {});
+    ASSERT_TRUE(opened);
+
+    scripts.ObjectToBeDeleted(opened.Info.Identity.Owner.Id);
+    scripts.ObjectToBeDeleted(opened.Info.Identity.Root.Id);
+    scripts.ProcessFrame();
+    EXPECT_TRUE(native->Destroyed.empty());
+    ScriptInfo info;
+    EXPECT_FALSE(scripts.Read(Owner(), opened.Id, info));
+}
+
+TEST(BehaviorScript, OwnerDeletionWaitsUntilBehaviorDispatchHasFinished) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    FakeScriptWorld *native = world.get();
+    ScriptSet scripts(std::move(world));
+    const ScriptResult opened = scripts.Create(Owner(), 1, this, "Script", 0, {});
+    ASSERT_TRUE(opened);
+    native->Events.clear();
+    native->Dispatching = true;
+
+    scripts.ObjectToBeDeleted(opened.Info.Identity.Owner.Id);
+    scripts.ProcessFrame();
+    EXPECT_TRUE(native->Events.empty());
+
+    native->Dispatching = false;
+    scripts.ProcessFrame();
+    EXPECT_EQ(native->Events, (std::vector<std::string>{"close-body", "destroy"}));
+    EXPECT_EQ(native->Destroyed, std::vector<std::uint64_t>{opened.Info.Identity.Root.Id});
+}
+
+TEST(BehaviorScript, OwnerAndSceneDeletionDoNotAbandonUnpublishedRoots) {
+    for (bool deletingScene : {false, true}) {
+        auto world = std::make_unique<FakeScriptWorld>();
+        FakeScriptWorld *native = world.get();
+        ScriptSet scripts(std::move(world));
+        native->ReadResult = Failure(Error::GraphChanged, "owner relation changed");
+        native->CloseBodyResult = Failure(Error::Busy, "body is still closing");
+        const ScriptResult rejected = scripts.Create(Owner(), 1, this, "Rejected", 0, {});
+        ASSERT_FALSE(rejected);
+        ASSERT_EQ(native->Identities.size(), 1u);
+        const ScriptIdentity identity = native->Identities.back();
+
+        scripts.ObjectToBeDeleted(deletingScene ? identity.Scene.Id : identity.Owner.Id);
+        EXPECT_TRUE(native->Destroyed.empty());
+        native->CloseBodyResult = {};
+        scripts.ProcessFrame();
+        EXPECT_EQ(native->Destroyed, std::vector<std::uint64_t>{identity.Root.Id});
+        scripts.ProcessFrame();
+        EXPECT_EQ(native->Destroyed.size(), 1u);
+    }
+}
+
+TEST(BehaviorScript, RootDeletionCancelsUnpublishedCleanup) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    FakeScriptWorld *native = world.get();
+    ScriptSet scripts(std::move(world));
+    native->ReadResult = Failure(Error::GraphChanged, "owner relation changed");
+    native->CloseBodyResult = Failure(Error::Busy, "body is still closing");
+    ASSERT_FALSE(scripts.Create(Owner(), 1, this, "Rejected", 0, {}));
+    ASSERT_EQ(native->Identities.size(), 1u);
+    native->Events.clear();
+
+    scripts.ObjectToBeDeleted(native->Identities.back().Root.Id);
+    native->CloseBodyResult = {};
+    scripts.ProcessFrame();
+    EXPECT_TRUE(native->Events.empty());
     EXPECT_TRUE(native->Destroyed.empty());
 }
 

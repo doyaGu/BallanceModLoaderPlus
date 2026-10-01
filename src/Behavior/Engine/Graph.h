@@ -28,15 +28,6 @@ void DestroyConnectedLinks(CKContext *context, CKBehavior *graph,
 // in the owner's parent. Deleting the IO would only clear the Link's end.
 void DestroyConnectedLinks(CKContext *context, CKBehaviorIO *io);
 
-void MarkOwnedParametersDynamic(CKContext *context, CKBehavior *behavior);
-
-// A dynamic CKBehavior does not pass its dynamic flag to Pin, Pout, Setting,
-// Local, Target, or Parameter Operation parameters. Retail CK2 consequently
-// excludes those objects from dependency deletion. Include parameters owned
-// by the dynamic Behavior tree, then let CK2 perform its normal dependency
-// walk so native owner/source cleanup remains authoritative.
-void DestroyBlock(CKContext *context, CKBehavior *behavior);
-
 } // namespace BML::Behavior::Internal::Engine
 
 #endif // BML_BEHAVIOR_ENGINE_GRAPH_H

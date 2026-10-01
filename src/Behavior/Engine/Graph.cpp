@@ -137,40 +137,4 @@ void DestroyConnectedLinks(CKContext *context, CKBehaviorIO *io) {
     }
 }
 
-void MarkOwnedParametersDynamic(CKContext *context, CKBehavior *behavior) {
-    auto mark = [context](CKObject *object) {
-        if (object)
-            context->ChangeObjectDynamic(object, TRUE);
-    };
-
-    mark(behavior->GetTargetParameter());
-    for (int index = 0; index < behavior->GetInputParameterCount(); ++index)
-        mark(behavior->GetInputParameter(index));
-    for (int index = 0; index < behavior->GetOutputParameterCount(); ++index)
-        mark(behavior->GetOutputParameter(index));
-    for (int index = 0; index < behavior->GetLocalParameterCount(); ++index)
-        mark(behavior->GetLocalParameter(index));
-
-    for (int index = 0; index < behavior->GetParameterOperationCount(); ++index) {
-        CKParameterOperation *operation = behavior->GetParameterOperation(index);
-        if (!operation || !operation->IsDynamic())
-            continue;
-        mark(operation->GetInParameter1());
-        mark(operation->GetInParameter2());
-        mark(operation->GetOutParameter());
-    }
-    for (int index = 0; index < behavior->GetSubBehaviorCount(); ++index) {
-        CKBehavior *child = behavior->GetSubBehavior(index);
-        if (child && child->IsDynamic())
-            MarkOwnedParametersDynamic(context, child);
-    }
-}
-
-void DestroyBlock(CKContext *context, CKBehavior *behavior) {
-    if (!context || !behavior)
-        return;
-    MarkOwnedParametersDynamic(context, behavior);
-    context->DestroyObject(behavior);
-}
-
 } // namespace BML::Behavior::Internal::Engine

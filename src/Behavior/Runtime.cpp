@@ -503,7 +503,6 @@ public:
         Status status = m_Runtime.EnsurePrototypeLayout(behavior, prototype, false);
         if (!status)
             return Fail(std::move(status), LifecycleError::LayoutFailed, fault);
-        Engine::MarkOwnedParametersDynamic(m_Runtime.m_Context, behavior);
         layout.Generation = m_Record.LayoutGeneration;
         return true;
     }
@@ -620,8 +619,6 @@ public:
             m_Record, Message(callback), m_Frame);
         if (!status)
             return Fail(std::move(status), LifecycleError::CallbackFailed, fault);
-        // A callback may create parameters of its own.
-        Engine::MarkOwnedParametersDynamic(m_Runtime.m_Context, behavior);
         return true;
     }
 
@@ -670,7 +667,6 @@ public:
         Status status = m_Runtime.EnsurePrototypeLayout(behavior, prototype, true);
         if (!status)
             return Fail(std::move(status), LifecycleError::LayoutFailed, fault);
-        Engine::MarkOwnedParametersDynamic(m_Runtime.m_Context, behavior);
         m_Runtime.m_SharedBindings->Sources.Update(behavior);
         layout.Generation = ++m_Record.LayoutGeneration;
         return true;
@@ -1159,26 +1155,24 @@ Status Runtime::CreateBehavior(const BlockSpec &spec, CKBehavior *&behavior,
                        Phase::PrototypeResolution, spec.Prototype());
     }
 
-    behavior = static_cast<CKBehavior *>(
-        m_Context->CreateObject(CKCID_BEHAVIOR, nullptr, CK_OBJECTCREATION_DYNAMIC));
+    // CK dynamic flags control dependency filtering, not Runtime ownership.
+    // Dynamic IOs leave retail CK2's dependency stack unbalanced and can
+    // exclude unrelated static objects from the same copy or deletion batch.
+    // Sessions and graph journals already own our objects' lifetimes.
+    behavior = static_cast<CKBehavior *>(m_Context->CreateObject(CKCID_BEHAVIOR));
     if (!behavior) {
         return Failure(Error::CreateFailed, "Failed to create CKBehavior.",
                        CK_OK, CKBR_OK, Phase::Creation, spec.Prototype());
     }
     const CKERROR initError = behavior->InitFromGuid(spec.Prototype());
     if (initError != CK_OK) {
-        Engine::DestroyBlock(m_Context, behavior);
+        m_Context->DestroyObject(behavior);
         behavior = nullptr;
         return Failure(Error::InitFailed,
                        "Failed to initialize Building Block from Prototype.",
                        initError, CKBR_OK, Phase::Initialization,
                        spec.Prototype());
     }
-    // CK2 gives a dynamic Block dynamic IOs but static parameters, and a copy
-    // or delete of a dynamic object leaves its static children out. A copy of
-    // this Block would share its parameters and keep them after it is gone.
-    Engine::MarkOwnedParametersDynamic(m_Context, behavior);
-
     record.PrototypeGuid = spec.Prototype();
     record.Prototype = prototype;
     record.ProviderGeneration = selected.Generation;
@@ -2921,7 +2915,7 @@ void Runtime::DestroyReady(DestroyMode mode) {
             behavior = resolveBehavior();
             if (behavior) {
                 behavior->SetOwner(nullptr, FALSE);
-                Engine::DestroyBlock(m_Context, behavior);
+                m_Context->DestroyObject(behavior);
             }
         }
         for (ObjectStamp source : sources) {

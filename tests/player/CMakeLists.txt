@@ -164,6 +164,7 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKEdit.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKGraph.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Journal.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Program.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Ops.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Ops/Interface.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Edit/Ops/Link.cpp
@@ -178,6 +179,7 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Core/Layout.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Core/Parameter.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PrototypeCatalog.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Pattern.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Relations.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Sessions.cpp

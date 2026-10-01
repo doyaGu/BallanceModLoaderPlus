@@ -87,8 +87,7 @@ Status CKEdit::Transaction::CreateNodes() {
                 CKCID_BEHAVIOR,
                 node.Subgraph->Name.empty()
                     ? nullptr
-                    : const_cast<CKSTRING>(node.Subgraph->Name.c_str()),
-                CK_OBJECTCREATION_DYNAMIC));
+                    : const_cast<CKSTRING>(node.Subgraph->Name.c_str())));
             if (!added)
                 return Failure(
                     Error::CreateFailed,
@@ -645,10 +644,8 @@ Status CKEdit::Transaction::Remove() {
         }
 
         if (!incidentLinks.empty()) {
-            auto *detachedSource = CKBehaviorIO::Cast(m_Context->CreateObject(
-                CKCID_BEHAVIORIO, nullptr, CK_OBJECTCREATION_DYNAMIC));
-            auto *detachedSink = CKBehaviorIO::Cast(m_Context->CreateObject(
-                CKCID_BEHAVIORIO, nullptr, CK_OBJECTCREATION_DYNAMIC));
+            auto *detachedSource = CKBehaviorIO::Cast(m_Context->CreateObject(CKCID_BEHAVIORIO));
+            auto *detachedSink = CKBehaviorIO::Cast(m_Context->CreateObject(CKCID_BEHAVIORIO));
             if (!detachedSource || !detachedSink) {
                 if (detachedSource)
                     m_Context->DestroyObject(detachedSource);
