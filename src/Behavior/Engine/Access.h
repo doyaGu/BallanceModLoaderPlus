@@ -21,8 +21,16 @@ XObjectPointerArray *Nodes(CKBehavior *graph) noexcept;
 XObjectPointerArray *Links(CKBehavior *graph) noexcept;
 XSObjectPointerArray *Outgoing(CKBehaviorIO *source) noexcept;
 
+// Compact without reallocating: the backing storage belongs to CK2's CRT.
+// SDK XSArray::Remove would free it through the caller's CRT instead.
+void RemoveOutgoingLink(CKBehaviorIO *source, CKBehaviorLink *link) noexcept;
+
 // Writes m_BehParent without SetParent, which retail CK2 ignores for null.
 void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept;
+
+// The native Link setters reject null. Use only after removing the Link from
+// its surviving source IO's outgoing array; neither old endpoint is read.
+void ClearEndpoints(CKBehaviorLink *link) noexcept;
 
 // True while CK2 holds the Link in its graph's delayed-link list. CK2 sets
 // bit 0x1 of m_OldFlags when it pushes a delayed activation and clears it

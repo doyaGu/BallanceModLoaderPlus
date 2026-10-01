@@ -31,8 +31,33 @@ public:
     }
 };
 
+class OutgoingMember final : public XSObjectPointerArray {
+public:
+    static void Remove(XSObjectPointerArray *links, CKBehaviorLink *link) noexcept {
+        if (!links || !link)
+            return;
+        CKObject **begin = links->*(&OutgoingMember::m_Begin);
+        CKObject **&end = links->*(&OutgoingMember::m_End);
+        for (CKObject **item = begin; item != end; ++item) {
+            if (*item != link)
+                continue;
+            for (CKObject **next = item + 1; next != end; ++next)
+                *(next - 1) = *next;
+            *--end = nullptr;
+            return;
+        }
+    }
+};
+
 class LinkMember final : public CKBehaviorLink {
 public:
+    static void Clear(CKBehaviorLink *link) noexcept {
+        if (link) {
+            link->*(&LinkMember::m_InIO) = nullptr;
+            link->*(&LinkMember::m_OutIO) = nullptr;
+        }
+    }
+
     static CKDWORD OldFlags(CKBehaviorLink *link) noexcept {
         return link ? link->*(&LinkMember::m_OldFlags) : 0;
     }
@@ -58,8 +83,16 @@ XSObjectPointerArray *Outgoing(CKBehaviorIO *source) noexcept {
     return IoMember::Links(source);
 }
 
+void RemoveOutgoingLink(CKBehaviorIO *source, CKBehaviorLink *link) noexcept {
+    OutgoingMember::Remove(Outgoing(source), link);
+}
+
 void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept {
     BehaviorMember::Parent(behavior, parent);
+}
+
+void ClearEndpoints(CKBehaviorLink *link) noexcept {
+    LinkMember::Clear(link);
 }
 
 bool IsDelayed(CKBehaviorLink *link) noexcept {

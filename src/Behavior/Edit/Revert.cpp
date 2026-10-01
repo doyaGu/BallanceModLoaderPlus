@@ -86,7 +86,7 @@ void CKEdit::Transaction::RetireParked() {
                 continue;
             if (CKBehaviorLink *link = Resolve<CKBehaviorLink>(
                     m_Context, removed.Value, CKCID_BEHAVIORLINK))
-                m_Context->DestroyObject(link);
+                Engine::DestroyOrphanLink(m_Context, link);
             removed.Removed = false;
             removed.SourceDetached = false;
             removed.SinkDetached = false;
@@ -142,7 +142,7 @@ Status CKEdit::Transaction::CheckPublished() {
             "This Patch cannot close while the graph contains an active structural edit.");
     }
     // Closing would destroy the objects a later Patch still edits.
-    if (!m_Journal.Defines) {
+    if (m_Graph && !m_Journal.Defines) {
         for (const std::weak_ptr<Patch::Journal> &entry : m_Editor.m_Published) {
             const std::shared_ptr<Patch::Journal> other = entry.lock();
             if (!other || other.get() == &m_Journal ||
@@ -933,9 +933,12 @@ void CKEdit::Transaction::RetireLinks() {
             m_Context, item->Value, CKCID_BEHAVIORLINK);
         if (!link)
             continue;
-        if (m_Graph)
+        if (m_Graph) {
             m_Graph->RemoveSubBehaviorLink(link);
-        m_Context->DestroyObject(link);
+            m_Context->DestroyObject(link);
+        } else {
+            Engine::DestroyOrphanLink(m_Context, link);
+        }
     }
 }
 

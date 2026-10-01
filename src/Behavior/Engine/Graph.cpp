@@ -137,4 +137,24 @@ void DestroyConnectedLinks(CKContext *context, CKBehaviorIO *io) {
     }
 }
 
+CKERROR DestroyOrphanLink(CKContext *context, CKBehaviorLink *link) {
+    if (!context || !link)
+        return CKERR_INVALIDPARAMETER;
+    // GetInBehaviorIO is just a pointer read. Checking that pointer against
+    // CK2's live IO list avoids reading an id or owner from freed memory.
+    CKBehaviorIO *source = link->GetInBehaviorIO();
+    if (source) {
+        const int count = context->GetObjectsCountByClassID(CKCID_BEHAVIORIO);
+        const CK_ID *ids = context->GetObjectsListByClassID(CKCID_BEHAVIORIO);
+        for (int index = 0; index < count; ++index) {
+            if (context->GetObject(ids[index]) != source)
+                continue;
+            RemoveOutgoingLink(source, link);
+            break;
+        }
+    }
+    ClearEndpoints(link);
+    return context->DestroyObject(link);
+}
+
 } // namespace BML::Behavior::Internal::Engine

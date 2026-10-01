@@ -28,6 +28,10 @@ void DestroyConnectedLinks(CKContext *context, CKBehavior *graph,
 // in the owner's parent. Deleting the IO would only clear the Link's end.
 void DestroyConnectedLinks(CKContext *context, CKBehaviorIO *io);
 
+// A Link surviving its graph may retain a freed IO or a live IO whose owner
+// is gone. Detach without dereferencing either endpoint before native delete.
+CKERROR DestroyOrphanLink(CKContext *context, CKBehaviorLink *link);
+
 } // namespace BML::Behavior::Internal::Engine
 
 #endif // BML_BEHAVIOR_ENGINE_GRAPH_H
