@@ -9,7 +9,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -41,14 +40,15 @@ std::string FailureText(const char *operation, int code,
     return text;
 }
 
-template <class T>
-bool Accept(const char *operation, const Authoring::Result<T> &result) {
-    if (result)
-        return true;
-    const std::string text = FailureText(operation, result.Code(),
-                                         result.GetStatus());
+bool Reject(const char *operation, int code, const Authoring::Status &status) {
+    const std::string text = FailureText(operation, code, status);
     ScriptStringInterop::RaiseActiveException(text.c_str());
     return false;
+}
+
+template <class T>
+bool Accept(const char *operation, const Authoring::Result<T> &result) {
+    return result || Reject(operation, result.Code(), result.GetStatus());
 }
 
 template <class T, class... Args>
@@ -348,11 +348,12 @@ public:
     ~RunResource() override { Retire(); }
 
     void Retire() noexcept override {
-        std::visit([](auto &run) {
-            using T = std::decay_t<decltype(run)>;
-            if constexpr (!std::is_same_v<T, std::monostate>)
-                (void) run.Close();
-        }, Value);
+        if (auto *call = std::get_if<Authoring::Call>(&Value))
+            (void) call->Close();
+        else if (auto *task = std::get_if<Authoring::Task>(&Value))
+            (void) task->Close();
+        else if (auto *instance = std::get_if<Authoring::Instance>(&Value))
+            (void) instance->Close();
         Value.emplace<std::monostate>();
     }
     [[nodiscard]] bool IsOpen() const noexcept override {
@@ -1521,13 +1522,13 @@ protected:
     Authoring::Result<T> Visit(F &&call) const {
         if (!IsValid())
             return InvalidHandle<T>();
-        return std::visit([&](auto &run) -> Authoring::Result<T> {
-            using R = std::decay_t<decltype(run)>;
-            if constexpr (std::is_same_v<R, std::monostate>)
-                return InvalidHandle<T>();
-            else
-                return call(run);
-        }, m_Run->Value);
+        if (auto *run = std::get_if<Authoring::Call>(&m_Run->Value))
+            return call(*run);
+        if (auto *run = std::get_if<Authoring::Task>(&m_Run->Value))
+            return call(*run);
+        if (auto *run = std::get_if<Authoring::Instance>(&m_Run->Value))
+            return call(*run);
+        return InvalidHandle<T>();
     }
 
     bool SetValue(Authoring::SlotKind kind, const Authoring::Selector &slot,

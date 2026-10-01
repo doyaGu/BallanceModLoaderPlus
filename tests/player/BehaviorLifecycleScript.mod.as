@@ -45,6 +45,8 @@ class LifecyclePlayerTest {
       bool layoutOk = false;
       bool liveSetOk = false;
       bool objectRefOk = false;
+      bool taskOk = false;
+      bool continueOk = false;
       if (useOk) {
         array<BML::Behavior::SlotValue> settings = {
           BML::Behavior::SlotValue("Extended Layout",
@@ -72,6 +74,38 @@ class LifecyclePlayerTest {
                 value == 37;
           }
           call.Close();
+        }
+
+        BML::Behavior::Task@ task = block.Start(
+            BML::Behavior::Unique("Echo Number"),
+            BML::Behavior::Signals(4).Pouts());
+        if (task !is null && task.IsValid) {
+          BML::Behavior::Layout@ taskLayout = task.Layout();
+          BML::Behavior::Frames@ taskFrames = task.TakeFrames();
+          int taskNumber = 0;
+          taskOk = taskLayout !is null && taskLayout.IsValid &&
+              taskFrames !is null && taskFrames.Count == 1 &&
+              taskFrames[0].Read(BML::Behavior::Named("Number", 0), taskNumber) &&
+              taskNumber == 37;
+          taskOk = task.Close() && task.Close() && !task.IsValid && taskOk;
+        }
+
+        array<BML::Behavior::SlotValue> retrySettings = {
+          BML::Behavior::SlotValue("Retry", BML::Behavior::Value(true))
+        };
+        BML::Behavior::Block@ retryBlock = BML::Behavior::Use(
+            CKGUID(0x14c32f0d, 0x56a97b21));
+        @retryBlock = retryBlock.Settings(retrySettings).Pins(pins);
+        BML::Behavior::Call@ pending = retryBlock.Call(
+            BML::Behavior::Unique("Echo Number"), BML::Behavior::Signals(4).Pouts());
+        if (pending !is null && pending.IsValid) {
+          BML::Behavior::Task@ continued = pending.Continue();
+          continueOk = continued !is null && continued.IsValid && !pending.IsValid;
+          if (continued !is null) {
+            BML::Behavior::Layout@ continuedLayout = continued.Layout();
+            continueOk = continuedLayout !is null && continuedLayout.IsValid &&
+                continued.Close() && !continued.IsValid && continueOk;
+          }
         }
 
         BML::Behavior::Call@ objectCall = block.Call(
@@ -119,7 +153,7 @@ class LifecyclePlayerTest {
         }
       }
       const bool passed = useOk && findOk && callOk && poutOk &&
-          layoutOk && liveSetOk && objectRefOk;
+          layoutOk && liveSetOk && objectRefOk && taskOk && continueOk;
       ctx.LogInfo("Behavior script API: status=" +
                   (passed ? "pass" : "fail") +
                   " use=" + (useOk ? "true" : "false") +
@@ -128,7 +162,9 @@ class LifecyclePlayerTest {
                   " pout=" + (poutOk ? "true" : "false") +
                   " layout=" + (layoutOk ? "true" : "false") +
                   " live_set=" + (liveSetOk ? "true" : "false") +
-                  " object_ref=" + (objectRefOk ? "true" : "false"));
+                  " object_ref=" + (objectRefOk ? "true" : "false") +
+                  " task=" + (taskOk ? "true" : "false") +
+                  " continue=" + (continueOk ? "true" : "false"));
     }
 
     int OnHook(const BML::ModContext &in ctx,

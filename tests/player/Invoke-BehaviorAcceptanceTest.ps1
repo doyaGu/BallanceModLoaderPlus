@@ -242,7 +242,10 @@ $scriptHook = [regex]::Match($log,
 $scriptApi = [regex]::Match($log,
     'Behavior script API: status=(?<status>pass|fail) ' +
     'use=(?<use>true|false) find=(?<find>true|false) ' +
-    'call=(?<call>true|false) pout=(?<pout>true|false)')
+    'call=(?<call>true|false) pout=(?<pout>true|false) ' +
+    'layout=(?<layout>true|false) live_set=(?<liveSet>true|false) ' +
+    'object_ref=(?<objectRef>true|false) task=(?<task>true|false) ' +
+    'continue=(?<continue>true|false)')
 $scriptGraphApi = [regex]::Match($log,
     'Behavior script graph API: status=(?<status>pass|fail) ' +
     'inspect=(?<inspect>true|false) topology=(?<topology>true|false) ' +
@@ -441,7 +444,11 @@ $checks['BehaviorScriptApi'] = $(if ($DisableAngelScript) {
         $scriptApi.Groups['find'].Value -eq 'true' -and
         $scriptApi.Groups['call'].Value -eq 'true' -and
         $scriptApi.Groups['pout'].Value -eq 'true' -and
-        $log.Contains('object_ref=true')
+        $scriptApi.Groups['layout'].Value -eq 'true' -and
+        $scriptApi.Groups['liveSet'].Value -eq 'true' -and
+        $scriptApi.Groups['objectRef'].Value -eq 'true' -and
+        $scriptApi.Groups['task'].Value -eq 'true' -and
+        $scriptApi.Groups['continue'].Value -eq 'true'
     })
 $checks['BehaviorScriptObjectRef'] = $(if ($DisableAngelScript) {
         $true
