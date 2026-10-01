@@ -104,10 +104,10 @@ public:
     Status ReadValue(const Patch &patch, Port port, GraphValue &out) const;
     Status WriteValue(const Patch &patch, Port port,
                       const Parameter::Binding &value) const;
-    // Ends ownership for a journal whose graph is being deleted by CK. There
-    // is no graph left to restore; callback admission is still closed before
-    // the native identities are forgotten.
-    void GraphDeleted(Patch &patch);
+    // Invalidates an installation whose graph is being deleted by CK and
+    // closes callback admission immediately. Its journal retains any native
+    // objects CK2 skipped until the next safe point retires them.
+    void GraphDeleted(Patch &patch, const std::set<CK_ID> &deleting);
     [[nodiscard]] bool OwnsAny(const Patch &patch,
                                const std::set<CK_ID> &objects) const;
     // CK can delete a dynamically created Node before its parent graph during
@@ -146,6 +146,8 @@ private:
     Status PublishLogicalGraph(std::uint64_t graphId);
     void AdoptGraph(CKBehavior *graph);
     void CloseAdmission(Patch::Journal &journal) noexcept;
+    [[nodiscard]] bool HasSurvivors(const Patch::Journal &journal,
+                                    const std::set<CK_ID> &deleting) const;
 
     struct Request;
     void Queue(Request request);

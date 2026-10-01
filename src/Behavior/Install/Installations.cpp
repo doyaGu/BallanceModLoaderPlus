@@ -2103,7 +2103,7 @@ void Installations::ObjectsToBeDeleted(const CK_ID *ids, int count) {
         for (auto &scope : patch.Scopes) {
             const PatchState state = scope.Value.State();
             if (deleting.contains(scope.Graph)) {
-                m_Edit.GraphDeleted(scope.Value);
+                m_Edit.GraphDeleted(scope.Value, deleting);
             } else if (state != PatchState::Closing &&
                        state != PatchState::Closed &&
                        state != PatchState::Failed &&

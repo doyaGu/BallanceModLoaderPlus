@@ -23,6 +23,7 @@ struct CKEdit::Request {
     enum class Kind {
         Apply,
         Close,
+        RetireGraph,
     };
 
     Kind Action = Kind::Apply;
@@ -517,14 +518,49 @@ Status CKEdit::Close(Patch &patch) {
     return status;
 }
 
-void CKEdit::GraphDeleted(Patch &patch) {
+bool CKEdit::HasSurvivors(const Patch::Journal &journal,
+                          const std::set<CK_ID> &deleting) const {
+    const auto survives = [this, &deleting](Stamp stamp) {
+        return !deleting.contains(stamp.Id) &&
+            Resolve<CKObject>(m_Context, stamp, CKCID_OBJECT) != nullptr;
+    };
+    if (AnyOwned(journal, survives))
+        return true;
+    // Value snapshots and parked originals belong to the journal rather than
+    // the published graph. Native graph deletion cannot reach them.
+    for (const auto &value : journal.Values) {
+        if (survives(value.Before) || survives(value.Expected))
+            return true;
+    }
+    for (const auto &removal : journal.Removals) {
+        if (!removal.Restored && survives(removal.Node))
+            return true;
+    }
+    for (const auto &link : journal.RemovedLinks) {
+        if (!link.Restored && survives(link.Value))
+            return true;
+    }
+    for (const auto &replacement : journal.Replacements) {
+        if (replacement.OriginalRemoved && survives(replacement.Original))
+            return true;
+    }
+    return false;
+}
+
+void CKEdit::GraphDeleted(Patch &patch, const std::set<CK_ID> &deleting) {
     const std::shared_ptr<Patch::Journal> journal = patch.m_Journal;
     if (!journal)
         return;
     CloseAdmission(*journal);
     journal->State = PatchState::Closed;
-    journal->Queued = false;
     journal->Callbacks.clear();
+    // CK2 may exclude ordinary Nodes from a dynamic graph's deletion. The
+    // public installation is gone, but its journal still owns any survivors.
+    // An existing queued request is converted by ObjectsToBeDeleted below.
+    if (!journal->Queued && HasSurvivors(*journal, deleting)) {
+        Queue({Request::Kind::RetireGraph, {}, journal});
+        journal->Queued = true;
+    }
     patch.m_Journal.reset();
 }
 
@@ -589,9 +625,15 @@ void CKEdit::ObjectsToBeDeleted(const CK_ID *ids, int count) {
         }
         CloseAdmission(*journal);
         journal->State = PatchState::Closed;
-        journal->Queued = false;
         journal->Callbacks.clear();
-        request = m_Queue.erase(request);
+        if (HasSurvivors(*journal, deleting)) {
+            request->Action = Request::Kind::RetireGraph;
+            request->Candidate = {};
+            ++request;
+        } else {
+            journal->Queued = false;
+            request = m_Queue.erase(request);
+        }
     }
 
     for (CK_ID id : deleting) {
@@ -660,6 +702,18 @@ void CKEdit::ProcessFrame() {
             continue;
         patch->Queued = false;
         const PatchState state = patch->State;
+
+        if (request.Action == Request::Kind::RetireGraph) {
+            // Revert already retires parked and authored objects when its
+            // graph is gone. Never run it during CK2's deletion notification.
+            const Status status = CloseNow(patch);
+            if (status.Code == Error::RevertConflict) {
+                patch->State = PatchState::Closed;
+                patch->Queued = true;
+                Queue(std::move(request));
+            }
+            continue;
+        }
 
         if (request.Action == Request::Kind::Apply) {
             if (state == PatchState::Closing || patch.use_count() == 1) {
