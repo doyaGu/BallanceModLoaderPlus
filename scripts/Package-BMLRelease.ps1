@@ -604,7 +604,10 @@ foreach ($path in @(
     (Join-Path $releaseBin 'Updater.exe'),
     (Join-Path $debugBin 'BMLPlus.pdb'),
     (Join-Path $runtimeSource 'ModLoader\Configs\BML.cfg'),
-    (Join-Path $runtimeSource 'ModLoader\Fonts\unifont.otf')
+    (Join-Path $runtimeSource 'ModLoader\Fonts\unifont.otf'),
+    (Join-Path $runtimeSource 'ModLoader\Fonts\BMLMono-dehinted.ttf'),
+    (Join-Path $runtimeSource 'ModLoader\Fonts\BMLSansSC-dehinted.ttf'),
+    (Join-Path $runtimeSource 'ModLoader\Fonts\LICENSE.txt')
 )) {
     Assert-BMLPath -Path $path -Type Leaf
 }

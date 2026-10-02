@@ -14,12 +14,16 @@ namespace BML::UI {
 
 inline constexpr float MinimumFontReferenceSize = 8.0f;
 inline constexpr float MaximumFontReferenceSize = 96.0f;
+inline constexpr char DefaultPrimaryFont[] = "BMLMono-dehinted.ttf";
+inline constexpr char DefaultFallbackFont[] = "BMLSansSC-dehinted.ttf";
+inline constexpr float DefaultFontReferenceSize = 32.0f;
+inline constexpr float DefaultFallbackReferenceSize = 30.0f;
 
 struct FontProfile {
-    std::string PrimaryFace = "unifont.otf";
-    std::vector<std::string> FallbackFaces;
-    float ReferenceSize = 32.0f;
-    float FallbackReferenceSize = 32.0f;
+    std::string PrimaryFace = DefaultPrimaryFont;
+    std::vector<std::string> FallbackFaces{DefaultFallbackFont};
+    float ReferenceSize = DefaultFontReferenceSize;
+    float FallbackReferenceSize = DefaultFallbackReferenceSize;
     bool UseWindowsFallbacks = true;
 
     bool operator==(const FontProfile &) const = default;

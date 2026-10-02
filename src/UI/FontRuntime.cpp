@@ -25,7 +25,6 @@
 
 namespace BML::UI {
 namespace {
-    constexpr float DefaultReferenceSize = 32.0f;
     constexpr float ReferenceViewportHeight = 1200.0f;
 
     struct WindowsFallbackFace {
@@ -196,13 +195,13 @@ FontRuntime::FontRuntime(std::string loaderFontDirectory)
 FontProfile FontRuntime::Normalize(FontProfile profile) {
     utils::TrimString(profile.PrimaryFace);
     if (profile.PrimaryFace.empty())
-        profile.PrimaryFace = "unifont.otf";
+        profile.PrimaryFace = DefaultPrimaryFont;
 
     if (!std::isfinite(profile.ReferenceSize))
-        profile.ReferenceSize = DefaultReferenceSize;
+        profile.ReferenceSize = DefaultFontReferenceSize;
     profile.ReferenceSize = std::clamp(profile.ReferenceSize, MinimumFontReferenceSize, MaximumFontReferenceSize);
     if (!std::isfinite(profile.FallbackReferenceSize))
-        profile.FallbackReferenceSize = DefaultReferenceSize;
+        profile.FallbackReferenceSize = DefaultFallbackReferenceSize;
     profile.FallbackReferenceSize = std::clamp(profile.FallbackReferenceSize, MinimumFontReferenceSize, MaximumFontReferenceSize);
 
     std::vector<std::string> fallbacks;

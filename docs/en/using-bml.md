@@ -62,8 +62,13 @@ found and loaded. Script authors can also use `script status` and
 | `ModLoader/Mods` | Installed native and script mods |
 | `ModLoader/Configs` | BML+ and per-mod configuration |
 | `ModLoader/ModLoader.log` | Loader, dependency, and mod diagnostics |
-| `ModLoader/Fonts` | Optional fonts used by the BML+ interface |
+| `ModLoader/Fonts` | Bundled and optional fonts used by the BML+ interface |
 | `ModLoader/Themes` | ANSI palettes used by console output |
+
+New installations use BML Mono for Latin text and BML Sans SC for Chinese,
+at logical sizes 32 and 30 respectively. Existing font choices are preserved.
+Change them in GUI settings or with the `font` command; `unifont.otf` remains
+available. These fonts affect BML+ text, not the game's own menu font sprites.
 
 ## Command line
 

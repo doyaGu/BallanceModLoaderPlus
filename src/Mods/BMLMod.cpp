@@ -449,18 +449,18 @@ void BMLMod::InitConfigs() {
 
     m_FontFilename->SetComment(
         "Primary UI font. Add TTF/OTF/TTC files to ModLoader\\Fonts; use the font command for explicit paths.");
-    m_FontFilename->SetDefaultString("unifont.otf");
+    m_FontFilename->SetDefaultString(Ui::DefaultPrimaryFont);
 
     m_FontSize->SetComment("Logical UI font size at a 1200-pixel viewport height (8-96).");
-    m_FontSize->SetDefaultFloat(32.0f);
+    m_FontSize->SetDefaultFloat(Ui::DefaultFontReferenceSize);
 
     m_FontFallbacks->SetComment(
         "Optional fallback UI fonts. The menu selects one file; use the font fallback command for an ordered list.");
-    m_FontFallbacks->SetDefaultString("");
+    m_FontFallbacks->SetDefaultString(Ui::DefaultFallbackFont);
     RefreshFontChoices();
 
     m_FontFallbackSize->SetComment("Logical size of fallback UI fonts at a 1200-pixel viewport height (8-96).");
-    m_FontFallbackSize->SetDefaultFloat(32.0f);
+    m_FontFallbackSize->SetDefaultFloat(Ui::DefaultFallbackReferenceSize);
 
     m_UseSystemFontFallbacks->SetComment("Use Windows symbol and emoji fonts after configured fonts.");
     m_UseSystemFontFallbacks->SetDefaultBoolean(true);

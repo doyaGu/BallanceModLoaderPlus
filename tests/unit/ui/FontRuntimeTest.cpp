@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include "imgui.h"
 
 #include "UI/FontRuntime.h"
@@ -90,11 +92,12 @@ TEST_F(ImGuiContextFixture, DisabledWindowsFallbacksDoNotEnterTheAtlas) {
 
 TEST_F(ImGuiContextFixture, PackagedPrimaryPrecedesWindowsFallbacks) {
     BML::UI::FontRuntime runtime(BML_TEST_FONT_DIRECTORY);
-    EXPECT_EQ(runtime.ListLoaderFaces(),
-              std::vector<std::string>({"unifont.otf"}));
+    const auto faces = runtime.ListLoaderFaces();
+    EXPECT_NE(std::find(faces.begin(), faces.end(), "unifont.otf"), faces.end());
 
     BML::UI::FontProfile profile;
     profile.PrimaryFace = "unifont.otf";
+    profile.FallbackFaces.clear();
     profile.UseWindowsFallbacks = true;
 
     runtime.Configure(profile);
@@ -114,6 +117,48 @@ TEST_F(ImGuiContextFixture, PackagedPrimaryPrecedesWindowsFallbacks) {
     ASSERT_NE(font, nullptr);
     EXPECT_TRUE(font->IsGlyphInFont(static_cast<ImWchar>(0x4F60)));
     EXPECT_TRUE(font->IsGlyphInFont(static_cast<ImWchar>(0x1F600)));
+}
+
+TEST_F(ImGuiContextFixture, DefaultProfileLoadsBundledLatinAndChineseWithoutSystemFonts) {
+    BML::UI::FontRuntime runtime(BML_TEST_FONT_DIRECTORY);
+    BML::UI::FontProfile profile;
+    profile.UseWindowsFallbacks = false;
+    runtime.Configure(profile);
+    runtime.Synchronize(*m_Context, ImGui::GetIO().DisplaySize.y);
+
+    const auto &snapshot = runtime.Inspect();
+    ASSERT_GE(snapshot.Sources.size(), 2u);
+    EXPECT_TRUE(snapshot.Sources[0].Loaded);
+    EXPECT_TRUE(snapshot.Sources[1].Loaded);
+    EXPECT_EQ(snapshot.Sources[0].RequestedFace, profile.PrimaryFace);
+    EXPECT_EQ(snapshot.Sources[1].RequestedFace, profile.FallbackFaces.front());
+    EXPECT_FALSE(ContainsSourceOrigin(snapshot, BML::UI::FontSourceOrigin::Embedded));
+    EXPECT_FALSE(ContainsSourceOrigin(snapshot, BML::UI::FontSourceOrigin::WindowsCatalog));
+
+    const auto faces = runtime.ListLoaderFaces();
+    EXPECT_NE(std::find(faces.begin(), faces.end(), profile.PrimaryFace), faces.end());
+    EXPECT_NE(std::find(faces.begin(), faces.end(), profile.FallbackFaces.front()), faces.end());
+
+    const auto coverage = runtime.InspectText("A\xE6\x88\x91\xE7\x9A\x84\xE4\xB8\xAD\xE6\x96\x87");
+    EXPECT_TRUE(coverage.ValidUtf8);
+    EXPECT_TRUE(coverage.MissingCodepoints.empty());
+
+    ImFont *font = ImGui::GetIO().FontDefault;
+    ASSERT_NE(font, nullptr);
+    ASSERT_TRUE(ImGui::GetIO().Fonts->Build());
+    ImFontBaked *baked = font->GetFontBaked(profile.ReferenceSize);
+    ASSERT_NE(baked, nullptr);
+    const ImFontGlyph *latin = baked->FindGlyphNoFallback('A');
+    const ImFontGlyph *chinese = baked->FindGlyphNoFallback(static_cast<ImWchar>(0x4E2D));
+    ASSERT_NE(latin, nullptr);
+    ASSERT_NE(chinese, nullptr);
+    EXPECT_EQ(latin->SourceIdx, 0u);
+    EXPECT_EQ(chinese->SourceIdx, 1u);
+    EXPECT_TRUE(chinese->Visible);
+    EXPECT_GT(chinese->X1, chinese->X0);
+    EXPECT_GT(chinese->Y1, chinese->Y0);
+    EXPECT_FLOAT_EQ(font->Sources[0]->SizePixels, profile.ReferenceSize);
+    EXPECT_FLOAT_EQ(font->Sources[1]->SizePixels, profile.FallbackReferenceSize);
 }
 
 TEST_F(ImGuiContextFixture, SameProfileIsIdempotentAndReplacementDoesNotDuplicateFonts) {

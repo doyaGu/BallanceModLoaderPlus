@@ -55,8 +55,12 @@ id 的开发目录和 zip 包。新增 Mod 或修改依赖后应重启 Player。
 | `ModLoader/Mods` | 已安装的原生 Mod 和脚本 Mod |
 | `ModLoader/Configs` | BML+ 与各 Mod 的配置 |
 | `ModLoader/ModLoader.log` | Loader、依赖和 Mod 诊断信息 |
-| `ModLoader/Fonts` | BML+ 界面使用的可选字体 |
+| `ModLoader/Fonts` | BML+ 界面使用的自带字体和可选字体 |
 | `ModLoader/Themes` | 控制台输出使用的 ANSI 调色板主题 |
+
+新安装默认使用 BML Mono 显示西文、BML Sans SC 显示中文，逻辑字号分别为 32 和
+30。已有字体设置不会被覆盖。可在 GUI 配置或 `font` 命令中调整；`unifont.otf`
+仍可选择。这些字体影响 BML+ 的文本，不替换游戏自身的菜单字体贴图。
 
 ## 命令行
 
