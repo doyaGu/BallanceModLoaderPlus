@@ -6,6 +6,11 @@
 #include <algorithm>
 #include <filesystem>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
 #include "PathUtils.h"
 #include "StringUtils.h"
 
@@ -565,6 +570,87 @@ TEST(PathEncodingTest, HandlesUtf8ActiveCodePageRules) {
     EXPECT_FALSE(utils::TryEncodePathForCodePage(
         std::wstring_view(malformed, sizeof(malformed) / sizeof(malformed[0])), 65001, encoded));
     EXPECT_TRUE(encoded.empty());
+}
+
+TEST_F(PathUtilsTest, AtomicWriteCreatesAndReplacesUnicodeFileWithoutTemporaryResidue) {
+    const std::wstring path = utils::CombinePathW(testDirW, L"\u914D\u7F6E.cfg");
+    std::uint32_t error = ERROR_INVALID_DATA;
+    const char content[] = "one\0two";
+    const std::string bytes(content, std::size(content) - 1);
+    ASSERT_TRUE(utils::WriteFileBytesAtomicW(path, bytes, error));
+    EXPECT_EQ(error, ERROR_SUCCESS);
+    std::string read;
+    ASSERT_TRUE(utils::ReadFileBytesW(path, read, error));
+    EXPECT_EQ(read, bytes);
+    ASSERT_TRUE(utils::WriteFileBytesAtomicW(path, "replacement", error));
+    ASSERT_TRUE(utils::ReadFileBytesW(path, read, error));
+    EXPECT_EQ(read, "replacement");
+    EXPECT_EQ(utils::ListFilesW(testDirW).size(), 1u);
+}
+
+TEST_F(PathUtilsTest, AtomicCreateDoesNotReplaceAnExistingFile) {
+    const std::wstring path = utils::CombinePathW(testDirW, L"settings.cfg");
+    std::uint32_t error;
+    ASSERT_TRUE(utils::WriteFileBytesAtomicW(path, "original", error));
+    EXPECT_FALSE(utils::WriteFileBytesAtomicW(path, "replacement", error, false));
+    EXPECT_NE(error, ERROR_SUCCESS);
+    std::string read;
+    ASSERT_TRUE(utils::ReadFileBytesW(path, read));
+    EXPECT_EQ(read, "original");
+    EXPECT_EQ(utils::ListFilesW(testDirW).size(), 1u);
+}
+
+TEST_F(PathUtilsTest, FailedAtomicReplacementRemovesOnlyItsOwnedTemporaryFile) {
+    const std::wstring path = utils::CombinePathW(testDirW, L"settings.cfg");
+    std::uint32_t error;
+    ASSERT_TRUE(utils::WriteFileBytesAtomicW(path, "original", error));
+    const std::wstring otherTemporaryFile = path + L".tmp-other";
+    ASSERT_TRUE(utils::WriteFileBytesAtomicW(otherTemporaryFile, "unrelated", error));
+    HANDLE file = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(file, INVALID_HANDLE_VALUE);
+    EXPECT_FALSE(utils::WriteFileBytesAtomicW(path, "replacement", error));
+    EXPECT_NE(error, ERROR_SUCCESS);
+    ::CloseHandle(file);
+    std::string read;
+    ASSERT_TRUE(utils::ReadFileBytesW(path, read));
+    EXPECT_EQ(read, "original");
+    ASSERT_TRUE(utils::ReadFileBytesW(otherTemporaryFile, read));
+    EXPECT_EQ(read, "unrelated");
+    EXPECT_EQ(utils::ListFilesW(testDirW).size(), 2u);
+}
+
+TEST_F(PathUtilsTest, AtomicWriteDoesNotReplaceReadOnlyFile) {
+    const std::wstring path = utils::CombinePathW(testDirW, L"settings.cfg");
+    std::uint32_t error;
+    ASSERT_TRUE(utils::WriteFileBytesAtomicW(path, "original", error));
+    ASSERT_TRUE(::SetFileAttributesW(path.c_str(), FILE_ATTRIBUTE_READONLY));
+    EXPECT_FALSE(utils::WriteFileBytesAtomicW(path, "replacement", error));
+    EXPECT_EQ(error, ERROR_ACCESS_DENIED);
+    ::SetFileAttributesW(path.c_str(), FILE_ATTRIBUTE_NORMAL);
+    std::string read;
+    ASSERT_TRUE(utils::ReadFileBytesW(path, read));
+    EXPECT_EQ(read, "original");
+    EXPECT_EQ(utils::ListFilesW(testDirW).size(), 1u);
+}
+
+TEST_F(PathUtilsTest, FileReadReportsMissingAndSharingErrorsSeparately) {
+    const std::wstring path = utils::CombinePathW(testDirW, L"settings.cfg");
+    std::uint32_t error;
+    std::string read = "previous";
+    EXPECT_FALSE(utils::ReadFileBytesW(path, read, error));
+    EXPECT_EQ(error, ERROR_FILE_NOT_FOUND);
+    EXPECT_TRUE(read.empty());
+    ASSERT_TRUE(utils::WriteFileBytesAtomicW(path, "original", error));
+    HANDLE file = ::CreateFileW(path.c_str(), GENERIC_READ, 0, nullptr,
+                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(file, INVALID_HANDLE_VALUE);
+    EXPECT_FALSE(utils::ReadFileBytesW(path, read, error));
+    EXPECT_EQ(error, ERROR_SHARING_VIOLATION);
+    ::CloseHandle(file);
+    ASSERT_TRUE(utils::ReadFileBytesW(path, read, error));
+    EXPECT_EQ(error, ERROR_SUCCESS);
+    EXPECT_EQ(read, "original");
 }
 
 // Main function that runs all the tests

@@ -24,6 +24,37 @@
 
 namespace utils {
     namespace {
+        class ScopedFile {
+        public:
+            explicit ScopedFile(HANDLE handle) : m_Handle(handle) {}
+            ~ScopedFile() { Close(); }
+            ScopedFile(const ScopedFile &) = delete;
+            ScopedFile &operator=(const ScopedFile &) = delete;
+
+            HANDLE Get() const { return m_Handle; }
+            bool Close() {
+                if (m_Handle == INVALID_HANDLE_VALUE)
+                    return true;
+                if (!::CloseHandle(m_Handle))
+                    return false;
+                m_Handle = INVALID_HANDLE_VALUE;
+                return true;
+            }
+
+        private:
+            HANDLE m_Handle;
+        };
+
+        struct PendingReplacement {
+            std::wstring Path;
+            bool Owned = false;
+
+            ~PendingReplacement() {
+                if (Owned)
+                    ::DeleteFileW(Path.c_str());
+            }
+        };
+
         constexpr DWORD kInitialPathBufferSize = MAX_PATH + 1;
         template <typename CharT, typename Api>
         std::basic_string<CharT> CallResizableWin32PathApi(Api api) {
@@ -1082,34 +1113,127 @@ std::wstring GetParentDirectoryW(const std::wstring &path) {
     }
 
     bool ReadFileBytesW(const std::wstring &path, std::string &out) {
+        std::uint32_t error;
+        return ReadFileBytesW(path, out, error);
+    }
+
+    bool ReadFileBytesW(const std::wstring &path, std::string &out, std::uint32_t &error) {
         out.clear();
-        if (!FileExistsW(path))
+        error = ERROR_SUCCESS;
+        if (path.empty() || path.find(L'\0') != std::wstring::npos) {
+            error = ERROR_INVALID_NAME;
             return false;
-
-        FILE *file = nullptr;
-        _wfopen_s(&file, path.c_str(), L"rb");
-        if (!file)
+        }
+        HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                      OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+        if (handle == INVALID_HANDLE_VALUE) {
+            error = ::GetLastError();
             return false;
-
-        std::unique_ptr<FILE, decltype(&fclose)> filePtr(file, &fclose);
-
-        if (fseek(file, 0, SEEK_END) != 0)
+        }
+        ScopedFile file(handle);
+        LARGE_INTEGER size;
+        if (!::GetFileSizeEx(file.Get(), &size)) {
+            error = ::GetLastError();
             return false;
-        const long size = ftell(file);
-        if (size < 0)
+        }
+        std::string bytes;
+        if (size.QuadPart < 0 || static_cast<std::uint64_t>(size.QuadPart) > bytes.max_size()) {
+            error = ERROR_FILE_TOO_LARGE;
             return false;
-        if (fseek(file, 0, SEEK_SET) != 0)
-            return false;
-
-        out.resize(static_cast<size_t>(size));
-        if (size == 0)
-            return true;
-
-        return fread(&out[0], 1, static_cast<size_t>(size), file) == static_cast<size_t>(size);
+        }
+        bytes.resize(static_cast<std::size_t>(size.QuadPart));
+        std::size_t offset = 0;
+        while (offset < bytes.size()) {
+            const DWORD requested = static_cast<DWORD>(std::min<std::size_t>(
+                bytes.size() - offset, std::numeric_limits<DWORD>::max()));
+            DWORD read = 0;
+            if (!::ReadFile(file.Get(), bytes.data() + offset, requested, &read, nullptr)) {
+                error = ::GetLastError();
+                return false;
+            }
+            if (read == 0) {
+                error = ERROR_HANDLE_EOF;
+                return false;
+            }
+            offset += read;
+        }
+        out.swap(bytes);
+        return true;
     }
 
     bool ReadFileBytesUtf8(const std::string &path, std::string &out) {
         return ReadFileBytesW(Utf8ToUtf16(path), out);
+    }
+
+    bool WriteFileBytesAtomicW(const std::wstring &path, std::string_view data,
+                               std::uint32_t &error, bool replaceExisting) {
+        error = ERROR_SUCCESS;
+        if (path.empty() || path.find(L'\0') != std::wstring::npos) {
+            error = ERROR_INVALID_NAME;
+            return false;
+        }
+        const DWORD required = ::GetFullPathNameW(path.c_str(), 0, nullptr, nullptr);
+        if (required == 0) {
+            error = ::GetLastError();
+            return false;
+        }
+        std::wstring destination(required, L'\0');
+        const DWORD copied = ::GetFullPathNameW(path.c_str(), required, destination.data(), nullptr);
+        if (copied == 0 || copied >= required) {
+            error = copied == 0 ? ::GetLastError() : ERROR_INSUFFICIENT_BUFFER;
+            return false;
+        }
+        destination.resize(copied);
+
+        static LONG sequence = 0;
+        PendingReplacement replacement;
+        HANDLE handle = INVALID_HANDLE_VALUE;
+        for (unsigned int attempt = 0; attempt < 64; ++attempt) {
+            replacement.Path = destination + L".tmp-" + std::to_wstring(::GetCurrentProcessId()) + L"-" +
+                               std::to_wstring(static_cast<unsigned long>(::InterlockedIncrement(&sequence)));
+            handle = ::CreateFileW(replacement.Path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (handle != INVALID_HANDLE_VALUE) {
+                replacement.Owned = true;
+                break;
+            }
+            error = ::GetLastError();
+            if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS)
+                return false;
+        }
+        if (handle == INVALID_HANDLE_VALUE)
+            return false;
+        ScopedFile file(handle);
+        std::size_t offset = 0;
+        while (offset < data.size()) {
+            const DWORD requested = static_cast<DWORD>(std::min<std::size_t>(
+                data.size() - offset, std::numeric_limits<DWORD>::max()));
+            DWORD written = 0;
+            if (!::WriteFile(file.Get(), data.data() + offset, requested, &written, nullptr)) {
+                error = ::GetLastError();
+                return false;
+            }
+            if (written == 0) {
+                error = ERROR_WRITE_FAULT;
+                return false;
+            }
+            offset += written;
+        }
+        if (!::FlushFileBuffers(file.Get()) || !file.Close()) {
+            error = ::GetLastError();
+            return false;
+        }
+
+        // Do not copy/delete or move the original aside. The sibling is on the
+        // same volume, so publication is one rename, including replacement.
+        const DWORD flags = MOVEFILE_WRITE_THROUGH | (replaceExisting ? MOVEFILE_REPLACE_EXISTING : 0);
+        if (!::MoveFileExW(replacement.Path.c_str(), destination.c_str(), flags)) {
+            error = ::GetLastError();
+            return false;
+        }
+        replacement.Owned = false;
+        error = ERROR_SUCCESS;
+        return true;
     }
 
     bool WriteBinaryFileA(const std::string &path, const std::vector<uint8_t> &data) {

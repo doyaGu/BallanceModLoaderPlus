@@ -224,7 +224,14 @@ namespace utils {
     std::vector<uint8_t> ReadBinaryFileW(const std::wstring &path);
     std::vector<uint8_t> ReadBinaryFileUtf8(const std::string &path);
     bool ReadFileBytesW(const std::wstring &path, std::string &out);
+    // Returns the Win32 error from the actual open/read, without an existence
+    // precheck that could confuse missing files with access failures.
+    bool ReadFileBytesW(const std::wstring &path, std::string &out, std::uint32_t &error);
     bool ReadFileBytesUtf8(const std::string &path, std::string &out);
+    // Flushes a uniquely created sibling file before publishing it. Failure
+    // leaves the existing destination untouched and removes the owned temp file.
+    bool WriteFileBytesAtomicW(const std::wstring &path, std::string_view data,
+                               std::uint32_t &error, bool replaceExisting = true);
 
     bool WriteBinaryFileA(const std::string &path, const std::vector<uint8_t> &data);
     bool WriteBinaryFileW(const std::wstring &path, const std::vector<uint8_t> &data);
