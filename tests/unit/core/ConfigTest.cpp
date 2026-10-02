@@ -182,6 +182,108 @@ TEST_F(ConfigTest, InvalidValueDoesNotDiscardFollowingSettings) {
     EXPECT_TRUE(config->GetProperty("General", "Flag")->GetBoolean());
 }
 
+TEST_F(ConfigTest, FailedLoadCannotOverwriteExistingDocument) {
+    const std::string document = "General {\nI Count 42\n";
+    WriteConfig(document);
+    EXPECT_FALSE(config->Load(configPath.c_str()));
+    config->GetProperty("General", "Count")->SetDefaultInteger(7);
+    EXPECT_FALSE(config->Save(configPath.c_str()));
+    std::string preserved;
+    ASSERT_TRUE(utils::ReadFileBytesW(configPath, preserved));
+    EXPECT_EQ(preserved, document);
+}
+
+TEST_F(ConfigTest, FailedLoadRemainsProtectedAfterTheFileDisappears) {
+    WriteConfig("General {\n");
+    EXPECT_FALSE(config->Load(configPath.c_str()));
+    ASSERT_TRUE(DeleteFileW(configPath.c_str()));
+    config->GetProperty("General", "Count")->SetInteger(7);
+    EXPECT_FALSE(config->Save(configPath.c_str()));
+    EXPECT_TRUE(config->IsDirty());
+    EXPECT_FALSE(utils::FileExistsW(configPath));
+}
+
+TEST_F(ConfigTest, MissingDocumentCanBeGeneratedFromCodeDefaults) {
+    ASSERT_TRUE(DeleteFileW(configPath.c_str()));
+    EXPECT_FALSE(config->Load(configPath.c_str()));
+    EXPECT_EQ(config->GetLoadStatus(), Config::LoadStatus::Missing);
+    EXPECT_TRUE(config->CanSave());
+    config->GetProperty("General", "Count")->SetDefaultInteger(7);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 7);
+}
+
+TEST_F(ConfigTest, MissingDocumentCreatedAfterLoadIsNotOverwritten) {
+    ASSERT_TRUE(DeleteFileW(configPath.c_str()));
+    EXPECT_FALSE(config->Load(configPath.c_str()));
+    config->GetProperty("General", "Count")->SetInteger(7);
+    const std::string document = "General {\nI Count 42\n}\n";
+    WriteConfig(document);
+    EXPECT_FALSE(config->Save(configPath.c_str()));
+    EXPECT_TRUE(config->IsDirty());
+    std::string preserved;
+    ASSERT_TRUE(utils::ReadFileBytesW(configPath, preserved));
+    EXPECT_EQ(preserved, document);
+}
+
+TEST_F(ConfigTest, ReadFailureCannotBeSavedAfterTheSharingLockIsReleased) {
+    const std::string document = "General {\nI Count 42\n}\n";
+    WriteConfig(document);
+    HANDLE file = CreateFileW(configPath.c_str(), GENERIC_READ, 0, nullptr,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(file, INVALID_HANDLE_VALUE);
+    EXPECT_FALSE(config->Load(configPath.c_str()));
+    EXPECT_EQ(config->GetLoadStatus(), Config::LoadStatus::Failed);
+    EXPECT_EQ(config->GetLoadError(), ERROR_SHARING_VIOLATION);
+    CloseHandle(file);
+    config->GetProperty("General", "Count")->SetInteger(7);
+    EXPECT_FALSE(config->CanSave());
+    EXPECT_FALSE(config->Save(configPath.c_str()));
+    std::string preserved;
+    ASSERT_TRUE(utils::ReadFileBytesW(configPath, preserved));
+    EXPECT_EQ(preserved, document);
+}
+
+TEST_F(ConfigTest, SuccessfulReloadReenablesPersistence) {
+    WriteConfig("General {\n");
+    EXPECT_FALSE(config->Load(configPath.c_str()));
+    EXPECT_FALSE(config->CanSave());
+    WriteConfig("General {\nI Count 42\n}\n");
+    ASSERT_TRUE(config->Load(configPath.c_str()));
+    EXPECT_TRUE(config->CanSave());
+    EXPECT_EQ(config->GetLoadError(), ERROR_SUCCESS);
+    IProperty *count = config->GetProperty("General", "Count");
+    EXPECT_EQ(count->GetInteger(), 42);
+    count->SetInteger(7);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 7);
+}
+
+TEST_F(ConfigTest, FailedReplacementPreservesOriginalAndDirtyState) {
+    config->GetProperty("General", "Count")->SetInteger(7);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    std::string original;
+    ASSERT_TRUE(utils::ReadFileBytesW(configPath, original));
+    config->GetProperty("General", "Count")->SetInteger(42);
+    HANDLE file = CreateFileW(configPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(file, INVALID_HANDLE_VALUE);
+    EXPECT_FALSE(config->Save(configPath.c_str()));
+    EXPECT_TRUE(config->IsDirty());
+    CloseHandle(file);
+    std::string preserved;
+    ASSERT_TRUE(utils::ReadFileBytesW(configPath, preserved));
+    EXPECT_EQ(preserved, original);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 42);
+}
+
 TEST_F(ConfigTest, TruncatedDocumentDoesNotReplaceLoadedOrDeclaredValues) {
     config->GetProperty("General", "Count")->SetDefaultInteger(42);
     ASSERT_TRUE(config->Save(configPath.c_str()));

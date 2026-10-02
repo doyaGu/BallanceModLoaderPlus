@@ -1,7 +1,6 @@
 #include "Config/Config.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <cstring>
 #include <iomanip>
 #include <iterator>
@@ -12,6 +11,11 @@
 #include <string_view>
 #include <unordered_set>
 #include <utility>
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -60,12 +64,16 @@ namespace {
     }
 }
 
-bool ConfigData::Load(const wchar_t *path) {
+bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
+    error = ERROR_INVALID_NAME;
     if (!path || !*path)
         return false;
 
     std::string bytes;
-    if (!utils::ReadFileBytesW(path, bytes) || bytes.empty() ||
+    if (!utils::ReadFileBytesW(path, bytes, error))
+        return false;
+    error = ERROR_INVALID_DATA;
+    if (bytes.empty() ||
         bytes.find('\0') != std::string::npos || !utils::IsValidUtf8(bytes)) {
         return false;
     }
@@ -117,6 +125,7 @@ bool ConfigData::Load(const wchar_t *path) {
     if (insideCategory || !pendingCategory.empty() || input.bad())
         return false;
     m_Categories.swap(parsed.m_Categories);
+    error = ERROR_SUCCESS;
     return true;
 }
 
@@ -178,12 +187,20 @@ Config::~Config() {
 }
 
 bool Config::Load(const wchar_t *path) {
-    if (!m_LoadedValues.Load(path))
+    // Fail closed, including allocation exceptions. Only an actual missing
+    // file or a complete successful load permits subsequent automatic saving.
+    m_LoadStatus = LoadStatus::Failed;
+    m_LoadError = ERROR_INVALID_DATA;
+    if (!m_LoadedValues.Load(path, m_LoadError)) {
+        if (m_LoadError == ERROR_FILE_NOT_FOUND || m_LoadError == ERROR_PATH_NOT_FOUND)
+            m_LoadStatus = LoadStatus::Missing;
         return false;
+    }
     for (Category *category : m_Categories) {
         for (Property *property : category->m_Properties)
             RestoreProperty(*property);
     }
+    m_LoadStatus = LoadStatus::Loaded;
     return true;
 }
 
@@ -206,6 +223,11 @@ void Config::RestoreProperty(Property &property) {
 }
 
 bool Config::Save(const wchar_t *path) {
+    if (!CanSave()) {
+        m_SaveError = m_LoadError;
+        return false;
+    }
+    m_SaveError = ERROR_INVALID_NAME;
     if (!path || path[0] == L'\0')
         return false;
 
@@ -273,16 +295,14 @@ bool Config::Save(const wchar_t *path) {
         out << "}" << std::endl << std::endl;
     }
 
-    // Finish serialization before opening the existing file for replacement.
+    // Publication is a single same-directory rename after the complete write
+    // has been flushed and closed; the live file is never opened for truncation.
     const std::string buf = out.str();
-    FILE *fp = _wfopen(path, L"wb");
-    if (!fp)
-        return false;
-    const bool written = fwrite(buf.data(), sizeof(char), buf.size(), fp) == buf.size();
-    const bool closed = fclose(fp) == 0;
-    const bool success = written && closed;
-    if (success)
+    const bool success = utils::WriteFileBytesAtomicW(path, buf, m_SaveError, m_LoadStatus != LoadStatus::Missing);
+    if (success) {
         m_Dirty = false;
+        m_LoadStatus = LoadStatus::Loaded;
+    }
     return success;
 }
 

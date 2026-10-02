@@ -975,8 +975,9 @@ bool ModContext::RemoveConfig(Config *config) {
         mod->m_Config = nullptr;
 
     try {
-        if (!SaveConfig(removed.get(), !m_Loader.IsShuttingDown()) && m_Logger)
-            m_Logger->Error("Failed to save config for mod %s during removal", modId.c_str());
+        if (removed->CanSave() && !SaveConfig(removed.get(), !m_Loader.IsShuttingDown()) && m_Logger)
+            m_Logger->Error("Failed to save config for mod %s during removal (error %lu)",
+                            modId.c_str(), static_cast<unsigned long>(removed->GetSaveError()));
     } catch (const std::exception &e) {
         if (m_Logger)
             m_Logger->Error("Exception while saving config for mod %s during removal: %s",
@@ -1012,7 +1013,13 @@ bool ModContext::LoadConfig(Config *config) {
 
     std::wstring configPath = m_LoaderDir;
     configPath.append(L"\\Configs\\").append(utils::ToWString(mod->GetID())).append(L".cfg");
-    return config->Load(configPath.c_str());
+    const bool loaded = config->Load(configPath.c_str());
+    if (config->GetLoadStatus() == Config::LoadStatus::Failed && m_Logger) {
+        m_Logger->Error("Could not load config for mod %s (error %lu). Existing values are preserved; "
+                        "missing settings use defaults. Saving is disabled until the file is repaired and reloaded.",
+                        config->GetModID().c_str(), static_cast<unsigned long>(config->GetLoadError()));
+    }
+    return loaded;
 }
 
 bool ModContext::SaveConfig(Config *config, bool snapshotModMetadata) {
@@ -1079,12 +1086,12 @@ void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
             }
         }
 
-        if (saveAll || config->IsDirty()) {
+        if (config->CanSave() && (saveAll || config->IsDirty())) {
             const char *modId = config->GetModID().empty() ? "<unknown>" : config->GetModID().c_str();
             try {
                 if (!SaveConfig(config, dispatchNotifications) && m_Logger) {
-                    m_Logger->Error("Failed to save config for mod %s",
-                                    modId);
+                    m_Logger->Error("Failed to save config for mod %s (error %lu)",
+                                    modId, static_cast<unsigned long>(config->GetSaveError()));
                 }
             } catch (const std::exception &e) {
                 if (m_Logger) {

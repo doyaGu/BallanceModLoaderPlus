@@ -22,7 +22,7 @@ public:
         ConfigValue Value = 0;
     };
 
-    bool Load(const wchar_t *path);
+    bool Load(const wchar_t *path, std::uint32_t &error);
     const Entry *Find(const char *category, const char *key) const;
     bool HasCategory(const char *category) const;
     bool HasKey(const char *category, const char *key) const;
@@ -135,6 +135,13 @@ class Config : public IConfig {
     friend class Property;
 
 public:
+    enum class LoadStatus {
+        NotLoaded,
+        Loaded,
+        Missing,
+        Failed,
+    };
+
     struct Edit {
         std::string Category;
         std::string Key;
@@ -192,6 +199,10 @@ public:
 
     bool Load(const wchar_t *path);
     bool Save(const wchar_t *path);
+    LoadStatus GetLoadStatus() const { return m_LoadStatus; }
+    std::uint32_t GetLoadError() const { return m_LoadError; }
+    std::uint32_t GetSaveError() const { return m_SaveError; }
+    bool CanSave() const { return m_LoadStatus != LoadStatus::Failed; }
     // Compatibility migrations operate on the file values before Mod setup,
     // without declaring obsolete settings in the runtime schema.
     ConfigData &GetLoadedValues() { return m_LoadedValues; }
@@ -220,6 +231,9 @@ private:
     std::string m_ModName = "Unknown";
     std::string m_ModVersion = "Unknown";
     bool m_Dirty = false;
+    LoadStatus m_LoadStatus = LoadStatus::NotLoaded;
+    std::uint32_t m_LoadError = 0;
+    std::uint32_t m_SaveError = 0;
     std::uint64_t m_SchemaRevision = 0;
     std::uint64_t m_ValueRevision = 0;
     std::vector<PendingNotification> m_PendingNotifications;
