@@ -603,7 +603,6 @@ foreach ($path in @(
     (Join-Path $releaseBin 'BMLPlus.dll'),
     (Join-Path $releaseBin 'Updater.exe'),
     (Join-Path $debugBin 'BMLPlus.pdb'),
-    (Join-Path $runtimeSource 'ModLoader\Configs\BML.cfg'),
     (Join-Path $runtimeSource 'ModLoader\Fonts\unifont.otf'),
     (Join-Path $runtimeSource 'ModLoader\Fonts\BMLMono-dehinted.ttf'),
     (Join-Path $runtimeSource 'ModLoader\Fonts\BMLSansSC-dehinted.ttf'),
@@ -627,6 +626,12 @@ $sourceMods = Join-Path $runtimeSource 'ModLoader\Mods'
 if ((Test-Path -LiteralPath $sourceMods) -and
     @(Get-ChildItem -LiteralPath $sourceMods -Recurse -File).Count -gt 0) {
     throw "Runtime source must not contain prebuilt Mods: $sourceMods"
+}
+
+$sourceConfigs = Join-Path $runtimeSource 'ModLoader\Configs'
+if ((Test-Path -LiteralPath $sourceConfigs) -and
+    @(Get-ChildItem -LiteralPath $sourceConfigs -Recurse -File).Count -gt 0) {
+    throw "Runtime source must not contain user configurations: $sourceConfigs"
 }
 
 foreach ($path in @(

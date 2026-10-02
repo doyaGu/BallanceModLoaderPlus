@@ -65,6 +65,14 @@ found and loaded. Script authors can also use `script status` and
 | `ModLoader/Fonts` | Bundled and optional fonts used by the BML+ interface |
 | `ModLoader/Themes` | ANSI palettes used by console output |
 
+Configuration files are generated on first startup, not distributed in the
+release ZIP. When updating, keep your existing `ModLoader/Configs` directory:
+saved values are preserved, new settings use the code defaults, and removed
+settings disappear on the next save. New defaults do not replace saved values.
+If a configuration cannot be read or parsed, BML+ logs the failure and does not
+overwrite it. Repair the file and restart Player; removing it after making a
+backup resets that Mod's settings to their current defaults.
+
 New installations use BML Mono for Latin text and BML Sans SC for Chinese,
 at logical sizes 32 and 30 respectively. Existing font choices are preserved.
 Change them in GUI settings or with the `font` command; `unifont.otf` remains

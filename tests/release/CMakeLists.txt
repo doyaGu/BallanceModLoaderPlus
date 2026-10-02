@@ -6,6 +6,13 @@ add_test(
 )
 
 add_test(
+        NAME RuntimeAssetsTest
+        COMMAND pwsh -NoLogo -NoProfile -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/RuntimeAssetsTest.ps1"
+                -SourceRoot "${PROJECT_SOURCE_DIR}"
+)
+
+add_test(
         NAME DocsDeploymentPreservesUpdaterFilesTest
         COMMAND pwsh -NoLogo -NoProfile -File
                 "${CMAKE_CURRENT_SOURCE_DIR}/DocsDeploymentPreservesUpdaterFilesTest.ps1"

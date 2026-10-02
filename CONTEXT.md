@@ -68,6 +68,11 @@ their defaults. Loaded values contain only typed data, without a Mod owner,
 callbacks, or UI metadata. Compatibility migrations run on those values before setup,
 without registering obsolete keys. Descriptions and editor metadata come from
 the current Mod.
+Code declarations are the only default-value source. Release and update packages
+contain no user Config files; a successful startup generates the complete current
+settings. A missing file permits creation, while a failed read or invalid document
+blocks persistence until a valid reload. Saves flush a unique sibling file before
+atomic publication, keeping failed writes away from the live file.
 
 **Mod Menu Page** — A Native or Script Mod page registered with a stable
 owner-local id. Visible pages appear in the Mod details list; hidden pages are
