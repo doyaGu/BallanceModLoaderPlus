@@ -12,6 +12,7 @@ struct PreparedSet {
     const CheckedSet *Checked = nullptr;
     CKParameter *Parameter = nullptr;
     CKBehavior *Receiver = nullptr;
+    std::vector<CKParameter *> Affected;
 };
 
 using ParameterId = std::uint64_t;
@@ -563,37 +564,68 @@ Status CKEdit::Transaction::Set() {
                 "The Block receiving Set disappeared before Apply.",
                 CKERR_INVALIDOBJECT);
 
-        const Stamp identity = Capture(stored);
-        if (std::find(writtenParameters.begin(), writtenParameters.end(), identity) !=
-            writtenParameters.end()) {
-            return Failure(
-                Error::SourceConflict,
-                "Two value edits resolve to the same stored parameter.");
+        PreparedSet prepared{&set, stored, receiver, {stored}};
+        // CKParameterOut::SetValue and CopyValue propagate recursively. Keep
+        // every affected value, including destinations outside this graph,
+        // and deduplicate converging paths before checking other authored writes.
+        for (std::size_t index = 0; index < prepared.Affected.size(); ++index) {
+            auto *output = CKParameterOut::Cast(prepared.Affected[index]);
+            if (!output)
+                continue;
+            for (int destination = 0; destination < output->GetDestinationCount(); ++destination) {
+                CKParameter *parameter = output->GetDestination(destination);
+                if (parameter && std::find(prepared.Affected.begin(),
+                        prepared.Affected.end(), parameter) == prepared.Affected.end())
+                    prepared.Affected.push_back(parameter);
+            }
         }
-        writtenParameters.push_back(identity);
-        preparedSets.push_back({&set, stored, receiver});
+        for (CKParameter *parameter : prepared.Affected) {
+            const Stamp identity = Capture(parameter);
+            if (std::find(writtenParameters.begin(), writtenParameters.end(), identity) !=
+                writtenParameters.end()) {
+                return Failure(
+                    Error::SourceConflict,
+                    "Two value edits write the same stored parameter, directly or through a Pout.");
+            }
+            writtenParameters.push_back(identity);
+        }
+        preparedSets.push_back(std::move(prepared));
     }
 
     for (const PreparedSet &set : preparedSets) {
-        Patch::Journal::Written change;
-        change.Parameter = Capture(set.Parameter);
-        change.Slot = {
-            static_cast<std::uint32_t>(set.Receiver->GetID()),
-            set.Checked->Target.Slot.Kind, set.Checked->Target.Slot.NativeIndex};
-        CKParameterLocal *before = nullptr;
-        status = Parameter::Clone(m_Context, set.Parameter, before);
-        if (!status)
-            return status;
-        change.Before = Capture(before);
-        m_Journal.Values.push_back(std::move(change));
+        const std::size_t first = m_Journal.Values.size();
+        for (CKParameter *parameter : set.Affected) {
+            Patch::Journal::Written change;
+            change.Parameter = Capture(parameter);
+            change.Slot = {
+                static_cast<std::uint32_t>(set.Receiver->GetID()),
+                set.Checked->Target.Slot.Kind, set.Checked->Target.Slot.NativeIndex};
+            if (auto *local = CKParameterLocal::Cast(parameter)) {
+                if (const GraphEndpoint endpoint = DescribeLocal(local); endpoint.Node)
+                    change.Slot = endpoint;
+            } else if (auto *owner = CKBehavior::Cast(parameter->GetOwner())) {
+                const int index = owner->GetOutputParameterPosition(CKParameterOut::Cast(parameter));
+                if (index >= 0)
+                    change.Slot = {static_cast<std::uint32_t>(owner->GetID()),
+                                   SlotKind::OutputParameter, index};
+            }
+            CKParameterLocal *before = nullptr;
+            status = Parameter::Clone(m_Context, parameter, before);
+            if (!status)
+                return status;
+            change.Before = Capture(before);
+            m_Journal.Values.push_back(std::move(change));
+        }
         status = Parameter::Write(m_Context, set.Parameter, set.Checked->Value);
         if (!status)
             return status;
-        CKParameterLocal *expected = nullptr;
-        status = Parameter::Clone(m_Context, set.Parameter, expected);
-        if (!status)
-            return status;
-        m_Journal.Values.back().Expected = Capture(expected);
+        for (std::size_t index = 0; index < set.Affected.size(); ++index) {
+            CKParameterLocal *expected = nullptr;
+            status = Parameter::Clone(m_Context, set.Affected[index], expected);
+            if (!status)
+                return status;
+            m_Journal.Values[first + index].Expected = Capture(expected);
+        }
     }
     return {};
 }

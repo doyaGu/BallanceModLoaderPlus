@@ -197,6 +197,9 @@ public:
     [[nodiscard]] Status EditInGraph(
         CKBehavior *behavior, const BlockSpec &spec,
         const CKBehaviorContext *frame = nullptr);
+    // Existing Blocks edited by CKEdit share Runtime's Slot and frame caches.
+    // Refresh layout identity across graph EDITED boundaries, including teardown.
+    int NotifyEdited(CKBehavior *behavior);
     [[nodiscard]] CKObject *ResolveSlotObject(CKBehavior *behavior,
                                               const SlotInfo &slot) const;
 
@@ -236,6 +239,7 @@ private:
         std::uint64_t ProviderGeneration = 0;
         std::uint64_t Id = 0;
         std::uint64_t LayoutGeneration = 1;
+        std::uint64_t LayoutFingerprint = 0;
         bool GraphResident = false;
         // A graph-resident Block whose owner holds a Run handle. Its parent
         // graph does not activate it, so Pulse and Step may execute it.  Each

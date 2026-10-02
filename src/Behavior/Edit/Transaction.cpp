@@ -2,7 +2,6 @@
 
 #include "Behavior/Core/Hash.h"
 #include "Behavior/Engine/Graph.h"
-#include "Behavior/Engine/Message.h"
 #include "Behavior/Runtime.h"
 
 #include <algorithm>
@@ -1068,7 +1067,7 @@ Status CKEdit::Transaction::NotifyEdited() {
             return Failure(Error::GraphChanged,
                            "A changed Block disappeared before EDITED.");
         RememberObserved(edited);
-        const int result = Engine::Send(m_Context, behavior, CKM_BEHAVIOREDITED);
+        const int result = m_Runtime.NotifyEdited(behavior);
         if (result != CK_OK)
             return Failure(Error::CallbackFailed,
                            "A Block EDITED callback failed.", result);
@@ -1082,7 +1081,7 @@ Status CKEdit::Transaction::NotifyEdited() {
 
 Status CKEdit::Transaction::NotifyGraph() {
     m_Journal.GraphObserved = true;
-    const int edited = Engine::Send(m_Context, m_Graph, CKM_BEHAVIOREDITED);
+    const int edited = m_Runtime.NotifyEdited(m_Graph);
     if (edited != CK_OK)
         return Failure(Error::CallbackFailed,
                        "The graph EDITED callback failed.", edited);

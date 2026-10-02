@@ -190,8 +190,10 @@ struct Patch::Journal {
         Stamp Target;
     };
 
-    // A value written through a graph port. Before and Expected are ordinary
-    // CKParameterLocal objects so the registered Virtools value semantics own
+    // A value written through a graph port or one of its Pout destinations.
+    // Each destination is compared and restored independently, without replaying
+    // propagation. Before and Expected are ordinary CKParameterLocal objects,
+    // so the registered Virtools value semantics own
     // every non-trivial representation kept by the journal.
     struct Written {
         Stamp Parameter;

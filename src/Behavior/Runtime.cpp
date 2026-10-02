@@ -223,8 +223,13 @@ public:
                             "Building Block destroyed itself during execution."};
             return result;
         }
-        if (dynamicLayout && LayoutIdentity(behavior) != layoutBefore)
-            ++record->LayoutGeneration;
+        if (dynamicLayout) {
+            const std::uint64_t layoutAfter = LayoutIdentity(behavior);
+            if (layoutAfter != layoutBefore) {
+                ++record->LayoutGeneration;
+                record->LayoutFingerprint = layoutAfter;
+            }
+        }
         // Ballanced's ExecuteFunction clears CKBEHAVIOR_ACTIVE unless the
         // Block asks for the next frame, while CheckBehaviorActivity keeps
         // the parent active from delayed links and active/waiting
@@ -669,6 +674,7 @@ public:
             return Fail(std::move(status), LifecycleError::LayoutFailed, fault);
         m_Runtime.m_SharedBindings->Sources.Update(behavior);
         layout.Generation = ++m_Record.LayoutGeneration;
+        m_Record.LayoutFingerprint = LayoutIdentity(behavior);
         return true;
     }
 
@@ -1419,6 +1425,29 @@ Status Runtime::EditInGraph(CKBehavior *behavior, const BlockSpec &spec,
     return {};
 }
 
+int Runtime::NotifyEdited(CKBehavior *behavior) {
+    const auto refresh = [this](Record *record) {
+        CKBehavior *live = record ? ResolveBehavior(*record) : nullptr;
+        if (!live)
+            return;
+        const std::uint64_t identity = LayoutIdentity(live);
+        if (identity != record->LayoutFingerprint) {
+            ++record->LayoutGeneration;
+            record->LayoutFingerprint = identity;
+        }
+    };
+    Record *record = FindRecord(behavior);
+    const std::uint64_t id = record ? record->Id : 0;
+    // Include interface edits already made before the callback, while leaving
+    // value-only edits compatible with existing graph snapshots.
+    refresh(record);
+    const int result = Engine::Send(m_Context, behavior, CKM_BEHAVIOREDITED);
+    // Provider callbacks may close the Run or reset Runtime. Never retain a
+    // Record pointer across them. Account for callback-created interfaces too.
+    refresh(id ? FindRecord(id) : nullptr);
+    return result;
+}
+
 Layout Runtime::Describe(CKBehavior *behavior, std::uint64_t generation) const {
     if (!ReadyStatus() || !behavior)
         return {};
@@ -1981,7 +2010,10 @@ Status Runtime::ApplyParameterTypes(CKBehavior *behavior,
             if (!input)
                 return Failure(Error::TypeMismatch,
                                "The selected Pin is no longer a CKParameterIn.");
-            input->SetType(type, TRUE);
+            // CK's UpdateSource only retypes a Local owned by the parent graph.
+            // Runtime literals deliberately have no graph owner, and foreign
+            // bindings must never be retyped as a side effect of PinType.
+            input->SetType(type, FALSE);
             if (input->GetGUID() != parameter.Type) {
                 Status mismatch = Failure(
                     Error::TypeMismatch,
@@ -1990,6 +2022,39 @@ Status Runtime::ApplyParameterTypes(CKBehavior *behavior,
                     Phase::ParameterBinding, record.PrototypeGuid);
                 mismatch.Details.ActualType = input->GetGUID();
                 return mismatch;
+            }
+            CKParameter *source = input->GetDirectSource();
+            const ObjectStamp sourceRef = CaptureObject(source);
+            const bool owned = source &&
+                std::find(record.OwnedSources.begin(), record.OwnedSources.end(),
+                          sourceRef) != record.OwnedSources.end();
+            if (owned && source->GetGUID() != parameter.Type) {
+                m_SharedBindings->Sources.Update(input);
+                if (m_SharedBindings->Sources.Count(source) == 1) {
+                    source->SetType(type);
+                    if (source->GetGUID() != parameter.Type)
+                        return Failure(Error::TypeMismatch,
+                                       "Virtools did not apply the default Pin source type.");
+                } else {
+                    // Preserve a literal still used by another managed Pin.
+                    // Retype an independent copy, then use normal binding
+                    // ownership to replace this Pin's source.
+                    CKParameterLocal *copy = m_Context->CreateCKParameterLocal(
+                        nullptr, source->GetGUID(), TRUE);
+                    if (!copy)
+                        return Failure(Error::CreateFailed,
+                                       "Failed to copy a shared default Pin source.");
+                    const CKERROR copied = copy->CopyValue(source, FALSE);
+                    if (copied == CK_OK)
+                        copy->SetType(type);
+                    status = copied == CK_OK && copy->GetGUID() == parameter.Type
+                        ? BindInput(behavior, record, slot, Parameter::Binding::Copy(copy))
+                        : Failure(Error::TypeMismatch,
+                                  "Virtools could not retype a shared default Pin source.", copied);
+                    m_Context->DestroyObject(copy);
+                    if (!status)
+                        return status;
+                }
             }
         } else {
             CKParameterOut *output = CKParameterOut::Cast(object);
@@ -2033,6 +2098,15 @@ Status Runtime::ValidateParameterTypes(CKBehavior *behavior,
         selector.ExpectedType = parameter.Type;
         SlotInfo slot;
         Status status = Resolve(behavior, selector, slot);
+        if (status && kind == SlotKind::InputParameter) {
+            CKParameterIn *input = behavior->GetInputParameter(slot.NativeIndex);
+            CKParameter *source = input ? input->GetRealSource() : nullptr;
+            if (source && !Parameter::Compatible(m_Context->GetParameterManager(),
+                                                 parameter.Type, source->GetGUID())) {
+                status = Failure(Error::TypeMismatch,
+                                 "The Pin source is incompatible with its selected type.");
+            }
+        }
         return status
             ? Status{}
             : Annotate(std::move(status), Phase::ParameterBinding,

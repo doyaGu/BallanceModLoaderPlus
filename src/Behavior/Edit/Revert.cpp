@@ -1,12 +1,43 @@
 #include "Behavior/Edit/Transaction.h"
 
 #include "Behavior/Engine/Graph.h"
-#include "Behavior/Engine/Message.h"
 #include "Behavior/Runtime.h"
 
 #include <algorithm>
 
 namespace BML::Behavior::Internal {
+namespace {
+
+CKERROR RestoreStoredValue(CKContext *context, CKParameter *stored,
+                           CKParameter *before) {
+    auto *output = CKParameterOut::Cast(stored);
+    if (!output)
+        return stored->CopyValue(before, FALSE);
+
+    // Even CKParameter::CopyValue can call a type copier that invokes virtual
+    // SetValue. Isolate this Pout for the whole copy: each original destination
+    // has its own journal entry and conflict check, and new destinations must
+    // retain their values. Restore the current relations in their original order.
+    const Stamp source = Capture(output);
+    std::vector<Stamp> destinations;
+    for (int index = 0; index < output->GetDestinationCount(); ++index)
+        destinations.push_back(Capture(output->GetDestination(index)));
+    output->RemoveAllDestinations();
+    CKERROR error = output->CopyValue(before, FALSE);
+    output = Resolve<CKParameterOut>(context, source, CKCID_PARAMETEROUT);
+    if (!output)
+        return CKERR_INVALIDOBJECT;
+    for (Stamp destination : destinations) {
+        auto *parameter = Resolve<CKParameter>(context, destination, CKCID_PARAMETER);
+        const CKERROR restored = parameter
+            ? output->AddDestination(parameter, FALSE) : CKERR_INVALIDOBJECT;
+        if (error == CK_OK)
+            error = restored;
+    }
+    return error;
+}
+
+} // namespace
 
 Status CKEdit::Transaction::Revert() {
     m_Journal.Conflicts.clear();
@@ -473,7 +504,7 @@ void CKEdit::Transaction::RevertValues() {
             Remember(std::move(conflict));
             continue;
         }
-        const CKERROR error = stored->CopyValue(before, FALSE);
+        const CKERROR error = RestoreStoredValue(m_Context, stored, before);
         if (error != CK_OK) {
             Status conflict = Failure(
                 Error::RevertConflict,
@@ -1148,7 +1179,7 @@ void CKEdit::Transaction::NotifyBlocksClosed() {
                 m_Context, edited, CKCID_BEHAVIOR);
             if (!block)
                 continue;
-            const int result = Engine::Send(m_Context, block, CKM_BEHAVIOREDITED);
+            const int result = m_Runtime.NotifyEdited(block);
             if (result != CK_OK) {
                 Remember(Failure(
                     Error::CallbackFailed,
@@ -1179,7 +1210,7 @@ void CKEdit::Transaction::NotifyGraphClosed() {
     m_Graph = Resolve<CKBehavior>(m_Context, m_Journal.Graph, CKCID_BEHAVIOR);
     if (m_Graph && !m_PinsRetained && !m_Journal.RestoredGraph &&
         (m_Journal.Published || m_Journal.GraphObserved)) {
-        const int result = Engine::Send(m_Context, m_Graph, CKM_BEHAVIOREDITED);
+        const int result = m_Runtime.NotifyEdited(m_Graph);
         if (result != CK_OK)
             Remember(Failure(Error::CallbackFailed,
                              "The graph EDITED callback failed while the Patch closed.",

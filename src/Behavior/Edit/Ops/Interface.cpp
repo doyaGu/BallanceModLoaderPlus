@@ -1,6 +1,5 @@
 #include "Behavior/Edit/Transaction.h"
 
-#include "Behavior/Engine/Message.h"
 #include "Behavior/Runtime.h"
 
 #include <algorithm>
@@ -104,7 +103,7 @@ Status CKEdit::Transaction::Reconcile() {
                 "A Block disappeared before reconciling its variable interface.",
                 CKERR_INVALIDOBJECT);
         RememberObserved(edited);
-        const int result = Engine::Send(m_Context, behavior, CKM_BEHAVIOREDITED);
+        const int result = m_Runtime.NotifyEdited(behavior);
         if (result != CK_OK) {
             return Failure(
                 Error::CallbackFailed,

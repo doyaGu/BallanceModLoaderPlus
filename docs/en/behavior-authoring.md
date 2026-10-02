@@ -158,6 +158,11 @@ therefore work identically for `Call`, `Start`, `Spawn`, `SpawnIn`, and
 `Edit::Graph::Add`; they are not graph transformations and cannot change a
 borrowed game Node.
 
+`PinType` also retypes the Runtime-owned default source. If another managed Pin
+uses that source, Runtime gives the changed Pin an independent copy. Foreign
+sources keep their types; the final binding must be compatible with the selected
+Pin type.
+
 `Block::Validate()` is an optional declared-Layout check and does not create a `CKBehavior`. It can check only the Target, selectors, and types present in the Prototype's initial declaration. Slots created by Setting callbacks are checked during real run admission. Admission performs the complete native checks even when `Validate()` was not called.
 
 The first validation or admission that can identify a provider pins its generation. If another provider later registers the same GUID, the old Block becomes stale instead of changing implementation. When provider retirement cannot be tracked, immediate runs may use generation zero, but such a Block cannot be stored in a Plan.
@@ -269,6 +274,10 @@ if (layout) {
 `Layout::Find(kind, name, occurrence)` looks a Slot up by name. `Layout::Select(kind, selector)` accepts the same selectors as Block configuration; when a selector that requires a unique match finds several Slots, it returns null and reports the ambiguity through its optional flag.
 
 A lifecycle callback boundary invalidates old Slots because the provider may rebuild a same-shaped interface. Ordinary Execute advances the layout generation only when Target, In/Out, Pin/Pout, Setting, or Local identity actually changes. A stale Slot or Port returns `LayoutChanged` instead of retargeting an old ordinal.
+
+Graph edits also invalidate Slots when an `EDITED` callback changes the live
+Layout, including during Patch teardown. Read the Run's Layout again after such
+an edit. Value-only edits preserve existing graph snapshots.
 
 `Settings({...})` applies another live Setting stage. Runtime then reads the new Layout and restores Target, Pin, Local, and source relations that remain unique and type-compatible. Once native mutation begins, any write, callback, Layout, or relation failure makes the run `Failed`: `Info()` preserves the first `Status`, later mutation and execution are rejected with that same diagnostic, and the native Instance remains owned until `Close()`.
 
@@ -603,6 +612,12 @@ installation. A foreign change produces `RevertConflict`; the handle remains
 readable and Close can be retried after the conflict is repaired. `Closing`
 also retains the handle: keep it and poll or retry at later safe points instead
 of discarding it as though restoration had completed.
+
+An Edit that sets a Pout journals every value reached through its destinations,
+including chained Pouts. Close checks and restores those values independently,
+so a changed destination produces `RevertConflict` without overwriting its value.
+Destinations added after Apply keep their values. Two value edits in one Edit
+cannot write the same parameter, including through propagation.
 
 Patches may build on each other. While an active Patch still edits a Node,
 Link, or port that an earlier Patch introduced, the earlier Patch cannot close:
