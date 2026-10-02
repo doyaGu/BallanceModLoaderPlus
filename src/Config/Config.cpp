@@ -194,6 +194,7 @@ bool Config::Load(const wchar_t *path) {
     if (!m_LoadedValues.Load(path, m_LoadError)) {
         if (m_LoadError == ERROR_FILE_NOT_FOUND || m_LoadError == ERROR_PATH_NOT_FOUND)
             m_LoadStatus = LoadStatus::Missing;
+        m_SavePending = m_Dirty;
         return false;
     }
     for (Category *category : m_Categories) {
@@ -201,6 +202,7 @@ bool Config::Load(const wchar_t *path) {
             RestoreProperty(*property);
     }
     m_LoadStatus = LoadStatus::Loaded;
+    m_SavePending = m_Dirty;
     return true;
 }
 
@@ -222,7 +224,15 @@ void Config::RestoreProperty(Property &property) {
         TouchValue();
 }
 
+bool Config::TakeSaveRequest(bool force) {
+    if (!CanSave() || (!force && !m_SavePending))
+        return false;
+    m_SavePending = false;
+    return true;
+}
+
 bool Config::Save(const wchar_t *path) {
+    m_SavePending = false;
     if (!CanSave()) {
         m_SaveError = m_LoadError;
         return false;

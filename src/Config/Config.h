@@ -208,6 +208,9 @@ public:
     ConfigData &GetLoadedValues() { return m_LoadedValues; }
 
     bool IsDirty() const { return m_Dirty; }
+    // Consume before invoking Mod metadata or doing I/O. A failed attempt keeps
+    // dirty values, but only a new change or an explicit flush requests a retry.
+    bool TakeSaveRequest(bool force = false);
     // Schema changes invalidate documents built from category, property, or type
     // metadata. Value changes can be reconciled independently by stable key.
     std::uint64_t GetSchemaRevision() const { return m_SchemaRevision; }
@@ -221,7 +224,7 @@ public:
 
 private:
     void RestoreProperty(Property &property);
-    void MarkDirty() { m_Dirty = true; }
+    void MarkDirty() { m_Dirty = true; m_SavePending = true; }
     void TouchSchema() { ++m_SchemaRevision; }
     void TouchValue() { ++m_ValueRevision; }
     void QueueNotification(Property *property, const std::string &category, const std::string &key);
@@ -231,6 +234,7 @@ private:
     std::string m_ModName = "Unknown";
     std::string m_ModVersion = "Unknown";
     bool m_Dirty = false;
+    bool m_SavePending = false;
     LoadStatus m_LoadStatus = LoadStatus::NotLoaded;
     std::uint32_t m_LoadError = 0;
     std::uint32_t m_SaveError = 0;

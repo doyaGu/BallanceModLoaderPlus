@@ -284,6 +284,75 @@ TEST_F(ConfigTest, FailedReplacementPreservesOriginalAndDirtyState) {
     EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 42);
 }
 
+TEST_F(ConfigTest, FailedAutomaticSaveDoesNotRetryWithoutAnotherChange) {
+    IProperty *count = config->GetProperty("General", "Count");
+    count->SetInteger(7);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    count->SetInteger(42);
+    ASSERT_TRUE(config->TakeSaveRequest());
+    HANDLE file = CreateFileW(configPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(file, INVALID_HANDLE_VALUE);
+    EXPECT_FALSE(config->Save(configPath.c_str()));
+    CloseHandle(file);
+
+    EXPECT_TRUE(config->IsDirty());
+    EXPECT_FALSE(config->TakeSaveRequest());
+    count->SetInteger(42);
+    EXPECT_FALSE(config->TakeSaveRequest());
+    count->SetInteger(43);
+    EXPECT_TRUE(config->TakeSaveRequest());
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 43);
+}
+
+TEST_F(ConfigTest, ExplicitSaveCanRetryUnchangedDirtyValues) {
+    config->GetProperty("General", "Count")->SetInteger(42);
+    ASSERT_TRUE(config->TakeSaveRequest());
+    EXPECT_FALSE(config->Save(nullptr));
+    EXPECT_TRUE(config->IsDirty());
+    EXPECT_FALSE(config->TakeSaveRequest());
+    EXPECT_TRUE(config->TakeSaveRequest(true));
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    EXPECT_FALSE(config->IsDirty());
+    EXPECT_FALSE(config->TakeSaveRequest());
+}
+
+TEST_F(ConfigTest, SaveRequestIsConsumedBeforeMetadataOrSerialization) {
+    config->GetProperty("General", "Count")->SetInteger(42);
+    ASSERT_TRUE(config->TakeSaveRequest());
+    // The caller can throw before reaching Save, for example in Mod metadata.
+    EXPECT_TRUE(config->IsDirty());
+    EXPECT_FALSE(config->TakeSaveRequest());
+    ASSERT_TRUE(config->RemoveProperty("General", "Count"));
+    EXPECT_TRUE(config->TakeSaveRequest());
+}
+
+TEST_F(ConfigTest, SaveFailureDoesNotSuppressConfigNotifications) {
+    IProperty *count = config->GetProperty("General", "Count");
+    count->SetInteger(42);
+    ASSERT_TRUE(config->TakeSaveRequest());
+    EXPECT_FALSE(config->Save(nullptr));
+    const auto pending = config->TakePendingNotifications();
+    ASSERT_EQ(pending.size(), 1u);
+    EXPECT_EQ(pending.front().ChangedProperty, count);
+    EXPECT_FALSE(config->TakeSaveRequest());
+}
+
+TEST_F(ConfigTest, ValidReloadRearmsAnUnsuccessfulSave) {
+    config->GetProperty("General", "Count")->SetInteger(42);
+    ASSERT_TRUE(config->TakeSaveRequest());
+    EXPECT_FALSE(config->Save(nullptr));
+    EXPECT_FALSE(config->TakeSaveRequest());
+    WriteConfig("General {\nI Count 7\n}\n");
+    ASSERT_TRUE(config->Load(configPath.c_str()));
+    EXPECT_TRUE(config->TakeSaveRequest());
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    EXPECT_FALSE(config->TakeSaveRequest());
+}
+
 TEST_F(ConfigTest, TruncatedDocumentDoesNotReplaceLoadedOrDeclaredValues) {
     config->GetProperty("General", "Count")->SetDefaultInteger(42);
     ASSERT_TRUE(config->Save(configPath.c_str()));

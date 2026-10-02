@@ -1086,7 +1086,7 @@ void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
             }
         }
 
-        if (config->CanSave() && (saveAll || config->IsDirty())) {
+        if (config->TakeSaveRequest(saveAll)) {
             const char *modId = config->GetModID().empty() ? "<unknown>" : config->GetModID().c_str();
             try {
                 if (!SaveConfig(config, dispatchNotifications) && m_Logger) {

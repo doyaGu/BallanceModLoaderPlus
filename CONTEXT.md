@@ -73,6 +73,9 @@ contain no user Config files; a successful startup generates the complete curren
 settings. A missing file permits creation, while a failed read or invalid document
 blocks persistence until a valid reload. Saves flush a unique sibling file before
 atomic publication, keeping failed writes away from the live file.
+Automatic save requests are consumed before metadata or I/O work. A failed save
+keeps unsaved values but waits for a new change or explicit flush instead of
+retrying every frame.
 
 **Mod Menu Page** — A Native or Script Mod page registered with a stable
 owner-local id. Visible pages appear in the Mod details list; hidden pages are
