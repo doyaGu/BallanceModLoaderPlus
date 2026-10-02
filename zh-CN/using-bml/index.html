@@ -2171,7 +2171,7 @@ id 的开发目录和 zip 包。新增 Mod 或修改依赖后应重启 Player。
 </tr>
 <tr>
 <td><code>ModLoader/Fonts</code></td>
-<td>BML+ 界面使用的可选字体</td>
+<td>BML+ 界面使用的自带字体和可选字体</td>
 </tr>
 <tr>
 <td><code>ModLoader/Themes</code></td>
@@ -2179,6 +2179,13 @@ id 的开发目录和 zip 包。新增 Mod 或修改依赖后应重启 Player。
 </tr>
 </tbody>
 </table>
+<p>配置文件在首次启动时自动生成，不随发布包提供。升级时保留现有
+<code>ModLoader/Configs</code>：已有值保留，新项使用代码默认值，删除的设置在下次保存时移除。
+新版本的默认值不会覆盖已有保存值。配置读取或解析失败时，BML+ 会记录错误并禁止
+覆盖原文件。修复后重启 Player；如需恢复该 Mod 的当前默认值，可先备份再移走它的配置。</p>
+<p>新安装默认使用 BML Mono 显示西文、BML Sans SC 显示中文，逻辑字号分别为 32 和
+30。已有字体设置不会被覆盖。可在 GUI 配置或 <code>font</code> 命令中调整；<code>unifont.otf</code>
+仍可选择。这些字体影响 BML+ 的文本，不替换游戏自身的菜单字体贴图。</p>
 <h2 id="_2">命令行<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>按 <code>/</code> 打开命令栏。它支持下列 shell 风格语法：</p>
 <ul>

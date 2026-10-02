@@ -1280,7 +1280,7 @@ found and loaded. Script authors can also use <code>script status</code> and
 </tr>
 <tr>
 <td><code>ModLoader/Fonts</code></td>
-<td>Optional fonts used by the BML+ interface</td>
+<td>Bundled and optional fonts used by the BML+ interface</td>
 </tr>
 <tr>
 <td><code>ModLoader/Themes</code></td>
@@ -1288,6 +1288,17 @@ found and loaded. Script authors can also use <code>script status</code> and
 </tr>
 </tbody>
 </table>
+<p>Configuration files are generated on first startup, not distributed in the
+release ZIP. When updating, keep your existing <code>ModLoader/Configs</code> directory:
+saved values are preserved, new settings use the code defaults, and removed
+settings disappear on the next save. New defaults do not replace saved values.
+If a configuration cannot be read or parsed, BML+ logs the failure and does not
+overwrite it. Repair the file and restart Player; removing it after making a
+backup resets that Mod's settings to their current defaults.</p>
+<p>New installations use BML Mono for Latin text and BML Sans SC for Chinese,
+at logical sizes 32 and 30 respectively. Existing font choices are preserved.
+Change them in GUI settings or with the <code>font</code> command; <code>unifont.otf</code> remains
+available. These fonts affect BML+ text, not the game's own menu font sprites.</p>
 <h2 id="command-line">Command line<a class="headerlink" href="#command-line" title="Permanent link">&para;</a></h2>
 <p>Press <code>/</code> to open the command bar. It accepts shell-style syntax:</p>
 <ul>

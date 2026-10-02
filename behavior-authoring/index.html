@@ -1474,6 +1474,10 @@ the live Layout, but before Pin binding and the final <code>EDITED</code> callba
 therefore work identically for <code>Call</code>, <code>Start</code>, <code>Spawn</code>, <code>SpawnIn</code>, and
 <code>Edit::Graph::Add</code>; they are not graph transformations and cannot change a
 borrowed game Node.</p>
+<p><code>PinType</code> also retypes the Runtime-owned default source. If another managed Pin
+uses that source, Runtime gives the changed Pin an independent copy. Foreign
+sources keep their types; the final binding must be compatible with the selected
+Pin type.</p>
 <p><code>Block::Validate()</code> is an optional declared-Layout check and does not create a <code>CKBehavior</code>. It can check only the Target, selectors, and types present in the Prototype's initial declaration. Slots created by Setting callbacks are checked during real run admission. Admission performs the complete native checks even when <code>Validate()</code> was not called.</p>
 <p>The first validation or admission that can identify a provider pins its generation. If another provider later registers the same GUID, the old Block becomes stale instead of changing implementation. When provider retirement cannot be tracked, immediate runs may use generation zero, but such a Block cannot be stored in a Plan.</p>
 <h2 id="4-choose-who-owns-execute">4. Choose who owns Execute<a class="headerlink" href="#4-choose-who-owns-execute" title="Permanent link">&para;</a></h2>
@@ -1598,6 +1602,9 @@ and diagnostic. Object List is an output form, not a Block literal.</p>
 </code></pre></div>
 <p><code>Layout::Find(kind, name, occurrence)</code> looks a Slot up by name. <code>Layout::Select(kind, selector)</code> accepts the same selectors as Block configuration; when a selector that requires a unique match finds several Slots, it returns null and reports the ambiguity through its optional flag.</p>
 <p>A lifecycle callback boundary invalidates old Slots because the provider may rebuild a same-shaped interface. Ordinary Execute advances the layout generation only when Target, In/Out, Pin/Pout, Setting, or Local identity actually changes. A stale Slot or Port returns <code>LayoutChanged</code> instead of retargeting an old ordinal.</p>
+<p>Graph edits also invalidate Slots when an <code>EDITED</code> callback changes the live
+Layout, including during Patch teardown. Read the Run's Layout again after such
+an edit. Value-only edits preserve existing graph snapshots.</p>
 <p><code>Settings({...})</code> applies another live Setting stage. Runtime then reads the new Layout and restores Target, Pin, Local, and source relations that remain unique and type-compatible. Once native mutation begins, any write, callback, Layout, or relation failure makes the run <code>Failed</code>: <code>Info()</code> preserves the first <code>Status</code>, later mutation and execution are rejected with that same diagnostic, and the native Instance remains owned until <code>Close()</code>.</p>
 <h2 id="7-inspect-a-graph">7. Inspect a graph<a class="headerlink" href="#7-inspect-a-graph" title="Permanent link">&para;</a></h2>
 <p><code>Session::Inspect</code> and a run's <code>Inspect</code> return immutable <code>Graph</code> snapshots:</p>
@@ -1882,6 +1889,11 @@ installation. A foreign change produces <code>RevertConflict</code>; the handle 
 readable and Close can be retried after the conflict is repaired. <code>Closing</code>
 also retains the handle: keep it and poll or retry at later safe points instead
 of discarding it as though restoration had completed.</p>
+<p>An Edit that sets a Pout journals every value reached through its destinations,
+including chained Pouts. Close checks and restores those values independently,
+so a changed destination produces <code>RevertConflict</code> without overwriting its value.
+Destinations added after Apply keep their values. Two value edits in one Edit
+cannot write the same parameter, including through propagation.</p>
 <p>Patches may build on each other. While an active Patch still edits a Node,
 Link, or port that an earlier Patch introduced, the earlier Patch cannot close:
 Close reports a retryable <code>RevertConflict</code> until the later Patch has closed.
