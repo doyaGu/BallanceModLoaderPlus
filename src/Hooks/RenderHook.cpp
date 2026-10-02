@@ -1,7 +1,11 @@
 #include "Hooks/RenderHook.h"
 
-#include "CKCamera.h"
 #include "CKRenderContext.h"
+#include "CK2dEntity.h"
+#include "Hooks/CKRasterizer.h"
+
+#include <Windows.h>
+#include <MinHook.h>
 
 #include <cmath>
 #include <cstddef>
@@ -13,15 +17,166 @@
 
 using RenderContextVTable = CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>;
 
+class CKRenderedScene;
+
+namespace {
+
+struct VxCallBack {
+    void *callback;
+    void *argument;
+    CKBOOL temp;
+};
+
+class CKCallbacksContainer {
+public:
+    XClassArray<VxCallBack> m_PreCallBacks;
+    VxCallBack *m_OnCallBack;
+    XClassArray<VxCallBack> m_PostCallBacks;
+};
+
+struct CKRenderContextSettings {
+    CKRECT m_Rect;
+    int m_Bpp;
+    int m_Zbpp;
+    int m_StencilBpp;
+};
+
+// Original CK2_3D layout, through the fields used by UpdateProjection.
+class CKRenderContextHook : public CKRenderContext {
+public:
+    CKBOOL UpdateProjection(CKBOOL force, bool widescreen) {
+        if (!force && m_ProjectionUpdated)
+            return TRUE;
+        if (!m_RasterizerContext)
+            return FALSE;
+
+        const float aspect = (float) ((double) m_ViewportData.ViewWidth / (double) m_ViewportData.ViewHeight);
+        if (m_Perspective) {
+            const float fov = widescreen ? atan2f(tanf(m_Fov * 0.5f) * 0.75f * aspect, 1.0f) * 2.0f : m_Fov;
+            m_ProjectionMatrix.Perspective(fov, aspect, m_NearPlane, m_FarPlane);
+        } else {
+            m_ProjectionMatrix.Orthographic(m_Zoom, aspect, m_NearPlane, m_FarPlane);
+        }
+
+        m_RasterizerContext->SetTransformMatrix(VXMATRIX_PROJECTION, m_ProjectionMatrix);
+        m_RasterizerContext->SetViewport(&m_ViewportData);
+        m_ProjectionUpdated = TRUE;
+
+        VxRect rect(0.0f, 0.0f, (float) m_Settings.m_Rect.right, (float) m_Settings.m_Rect.bottom);
+        Get2dRoot(TRUE)->SetRect(rect);
+        Get2dRoot(FALSE)->SetRect(rect);
+        return TRUE;
+    }
+
+    WIN_HANDLE m_WinHandle;
+    WIN_HANDLE m_AppHandle;
+    CKRECT m_WinRect;
+    CK_RENDER_FLAGS m_RenderFlags;
+    CKRenderedScene *m_RenderedScene;
+    CKBOOL m_Fullscreen;
+    CKBOOL m_Active;
+    CKBOOL m_Perspective;
+    CKBOOL m_ProjectionUpdated;
+    CKBOOL m_Start;
+    CKBOOL m_TransparentMode;
+    CKBOOL m_DeviceValid;
+    CKCallbacksContainer m_PreRenderCallBacks;
+    CKCallbacksContainer m_PreRenderTempCallBacks;
+    CKCallbacksContainer m_PostRenderCallBacks;
+    CKRenderManager *m_RenderManager;
+    CKRasterizerContext *m_RasterizerContext;
+    CKRasterizerDriver *m_RasterizerDriver;
+    int m_DriverIndex;
+    CKDWORD m_Shading;
+    CKDWORD m_TextureEnabled;
+    CKDWORD m_DisplayWireframe;
+    VxFrustum m_Frustum;
+    float m_Fov;
+    float m_Zoom;
+    float m_NearPlane;
+    float m_FarPlane;
+    VxMatrix m_ProjectionMatrix;
+    CKViewportData m_ViewportData;
+    CKRenderContextSettings m_Settings;
+};
+
+static_assert(offsetof(CKRenderContextHook, m_ProjectionUpdated) == 0x40);
+static_assert(offsetof(CKRenderContextHook, m_RasterizerContext) == 0xa8);
+static_assert(offsetof(CKRenderContextHook, m_ProjectionMatrix) == 0x17c);
+static_assert(offsetof(CKRenderContextHook, m_Settings) == 0x1d4);
+
+void InvalidateProjection(CKRenderContext *context) {
+    reinterpret_cast<CKRenderContextHook *>(context)->m_ProjectionUpdated = FALSE;
+}
+
+void *FindProjectionUpdate(void **vtable) {
+    HMODULE module = ::GetModuleHandleW(L"CK2_3D.dll");
+    MEMORY_BASIC_INFORMATION memory{};
+    if (!module || !::VirtualQuery(vtable, &memory, sizeof(memory)) || memory.AllocationBase != module)
+        return nullptr;
+    return reinterpret_cast<unsigned char *>(module) + 0x6c68d;
+}
+
+} // namespace
+
 struct RenderHook::Impl {
     VTablePatch Patch;
     CKRenderContext *Context = nullptr;
     void **VTable = nullptr;
     RenderContextVTable::RenderFunc OriginalRender = nullptr;
     bool SkipNextRender = false;
+    void *ProjectionTarget = nullptr;
+    using ProjectionFunction = CKBOOL (__thiscall *)(CKRenderContext *, CKBOOL);
+    ProjectionFunction OriginalProjection = nullptr;
+    bool ProjectionInstalled = false;
 
     static Impl *Active;
     static bool WidescreenFixEnabled;
+
+    static CKBOOL __fastcall UpdateProjection(CKRenderContext *context, void *, CKBOOL force) {
+        Impl *active = Active;
+        if (!active || !active->OriginalProjection)
+            return FALSE;
+        if (context != active->Context)
+            return active->OriginalProjection(context, force);
+        return reinterpret_cast<CKRenderContextHook *>(context)->UpdateProjection(force, WidescreenFixEnabled);
+    }
+
+    void AttachProjection() {
+        if (ProjectionTarget)
+            return;
+        void *target = FindProjectionUpdate(VTable);
+        if (!target)
+            return;
+        const MH_STATUS created = MH_CreateHook(target, reinterpret_cast<void *>(&UpdateProjection),
+                                               reinterpret_cast<void **>(&OriginalProjection));
+        if (created != MH_OK)
+            return;
+        ProjectionTarget = target;
+        if (MH_EnableHook(target) != MH_OK) {
+            DetachProjection();
+            return;
+        }
+        ProjectionInstalled = true;
+        if (WidescreenFixEnabled)
+            InvalidateProjection(Context);
+    }
+
+    bool DetachProjection() {
+        if (!ProjectionTarget)
+            return true;
+        const MH_STATUS disabled = MH_DisableHook(ProjectionTarget);
+        if (disabled != MH_OK && disabled != MH_ERROR_DISABLED && disabled != MH_ERROR_NOT_CREATED)
+            return false;
+        ProjectionInstalled = false;
+        const MH_STATUS removed = MH_RemoveHook(ProjectionTarget);
+        if (removed != MH_OK && removed != MH_ERROR_NOT_CREATED)
+            return false;
+        InvalidateProjection(Context);
+        ProjectionTarget = nullptr;
+        OriginalProjection = nullptr;
+        return true;
+    }
 
     CP_DECLARE_METHOD_HOOK(CKERROR, Render, (CK_RENDER_FLAGS flags)) {
         auto *renderContext = reinterpret_cast<CKRenderContext *>(this);
@@ -56,9 +211,14 @@ bool RenderHook::Attach(CKRenderContext *renderContext) {
     if (m_Impl->Patch.IsInstalled()) {
         if (m_Impl->VTable != vtable)
             return false;
+        if (m_Impl->ProjectionTarget && m_Impl->Context != renderContext) {
+            InvalidateProjection(m_Impl->Context);
+            InvalidateProjection(renderContext);
+        }
         m_Impl->Context = renderContext;
         m_Impl->SkipNextRender = false;
         Impl::Active = m_Impl.get();
+        m_Impl->AttachProjection();
         return true;
     }
 
@@ -80,6 +240,7 @@ bool RenderHook::Attach(CKRenderContext *renderContext) {
     m_Impl->VTable = vtable;
     m_Impl->SkipNextRender = false;
     Impl::Active = m_Impl.get();
+    m_Impl->AttachProjection();
     return true;
 }
 
@@ -88,6 +249,11 @@ bool RenderHook::Detach() {
         return true;
     if (Impl::Active && Impl::Active != m_Impl.get())
         return !m_Impl->Patch.IsInstalled();
+
+    if (!m_Impl->DetachProjection()) {
+        utils::OutputDebugA("BML projection hook could not be removed\n");
+        return false;
+    }
 
     const VTablePatchResult result = m_Impl->Patch.Remove();
     if (!result) {
@@ -120,62 +286,13 @@ void RenderHook::SkipNextRender() {
 }
 
 void RenderHook::EnableWidescreenFix(bool enable) {
+    if (Impl::WidescreenFixEnabled == enable)
+        return;
     Impl::WidescreenFixEnabled = enable;
+    if (IsWidescreenFixAvailable())
+        InvalidateProjection(Impl::Active->Context);
 }
 
-bool RenderHook::CalculateWidescreenFov(float cameraFov, float aspectRatio,
-                                        float *correctedFov) {
-    if (!correctedFov || !std::isfinite(cameraFov) || !std::isfinite(aspectRatio) ||
-        cameraFov <= 0.0f || cameraFov >= 3.14159265358979323846f || aspectRatio <= 0.0f) {
-        return false;
-    }
-
-    constexpr float referenceAspect = 4.0f / 3.0f;
-    if (aspectRatio <= referenceAspect) {
-        *correctedFov = cameraFov;
-        return true;
-    }
-
-    const float tangent = std::tan(cameraFov * 0.5f);
-    const float result = 2.0f * std::atan(tangent * aspectRatio / referenceAspect);
-    if (!std::isfinite(result) || result <= 0.0f || result >= 3.14159265358979323846f)
-        return false;
-
-    *correctedFov = result;
-    return true;
-}
-
-void RenderHook::ApplyWidescreenProjection(CKRenderContext *renderContext) {
-    if (!Impl::WidescreenFixEnabled || !renderContext)
-        return;
-
-    CKCamera *camera = renderContext->GetAttachedCamera();
-    if (!camera || camera->GetProjectionType() != CK_PERSPECTIVEPROJECTION)
-        return;
-
-    VxRect viewRect;
-    renderContext->GetViewRect(viewRect);
-    const float width = viewRect.GetWidth();
-    const float height = viewRect.GetHeight();
-    if (!std::isfinite(width) || !std::isfinite(height) || width <= 0.0f || height <= 0.0f)
-        return;
-
-    const float aspectRatio = width / height;
-    constexpr float referenceAspect = 4.0f / 3.0f;
-    if (!std::isfinite(aspectRatio) || aspectRatio <= referenceAspect)
-        return;
-
-    const float frontPlane = camera->GetFrontPlane();
-    const float backPlane = camera->GetBackPlane();
-    if (!std::isfinite(frontPlane) || !std::isfinite(backPlane) || frontPlane <= 0.0f ||
-        backPlane <= frontPlane)
-        return;
-
-    float correctedFov = 0.0f;
-    if (!CalculateWidescreenFov(camera->GetFov(), aspectRatio, &correctedFov))
-        return;
-
-    VxMatrix projection;
-    projection.Perspective(correctedFov, aspectRatio, frontPlane, backPlane);
-    renderContext->SetProjectionTransformationMatrix(projection);
+bool RenderHook::IsWidescreenFixAvailable() {
+    return Impl::Active && Impl::Active->ProjectionInstalled;
 }

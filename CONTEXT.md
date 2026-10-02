@@ -177,6 +177,9 @@ Optional render and physics scheduling features degrade independently; failed
 teardown retains the Runtime Context rather than releasing code behind a live
 callback. Process bootstrap installs the CK behavior-prototype interception
 outside `DllMain`'s loader-lock initialization path.
+Widescreen correction hooks `UpdateProjection` and updates the native matrix
+cache, device projection, viewport, and 2D roots together. Option changes
+invalidate the owned Context's projection; no per-frame device override is used.
 
 **Runtime Diagnostics** — `Updater.exe doctor` reports installation and process
 requirements before BML+ loads. The private `bml system` command reports live

@@ -27,7 +27,6 @@ public:
     CKERROR PreProcess() override;
     CKERROR PostProcess() override;
 
-    CKERROR OnPreRender(CKRenderContext *dev) override;
     CKERROR OnPostRender(CKRenderContext *dev) override;
     CKERROR OnPostSpriteRender(CKRenderContext *dev) override;
 
@@ -40,7 +39,6 @@ public:
                CKMANAGER_FUNC_OnSequenceToBeDeleted |
                CKMANAGER_FUNC_PreProcess |
                CKMANAGER_FUNC_PostProcess |
-               CKMANAGER_FUNC_OnPreRender |
                CKMANAGER_FUNC_OnPostRender |
                CKMANAGER_FUNC_OnPostSpriteRender;
     }
@@ -50,8 +48,6 @@ public:
             return -10000; // Low Priority
         else if (Function == CKMANAGER_FUNC_PostProcess)
             return 10000; // High Priority
-        else if (Function == CKMANAGER_FUNC_OnPreRender)
-            return 10000; // Apply projection before other manager drawing.
         else
             return 0;
     }

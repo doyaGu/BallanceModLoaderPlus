@@ -14,6 +14,7 @@ if (WIN32)
             ${BML_SOURCE_DIR}/Hooks/VTablePatch.cpp
             ${BML_SOURCE_DIR}/Hooks/VTablePatch.h
             DEPENDENCIES
+            minhook
             BML_HookUtils
             VirtoolsSDK::CK2
             VirtoolsSDK::VxMath

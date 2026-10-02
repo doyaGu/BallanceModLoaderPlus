@@ -122,6 +122,8 @@ bool ModManager::StartRuntime() {
         }
         m_ModContext->GetLogger()->Warn("Render skip is unavailable for this render context");
     }
+    if (!RenderHook::IsWidescreenFixAvailable())
+        m_ModContext->GetLogger()->Warn("Widescreen projection correction is unavailable for this CK2_3D implementation");
 
     if (!Overlay::ImGuiInitRenderer(m_Context)) {
         m_ModContext->DetachRenderHook();
@@ -198,11 +200,6 @@ CKERROR ModManager::PostProcess() {
     // after the final per-frame pointer use, never from inside ImGuiRender().
     UiAutomation::AdvanceFrame();
 #endif
-    return CK_OK;
-}
-
-CKERROR ModManager::OnPreRender(CKRenderContext *dev) {
-    RenderHook::ApplyWidescreenProjection(dev);
     return CK_OK;
 }
 

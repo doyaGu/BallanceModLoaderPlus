@@ -21,8 +21,7 @@ public:
     static void SkipNextRender();
 
     static void EnableWidescreenFix(bool enable);
-    static void ApplyWidescreenProjection(CKRenderContext *renderContext);
-    static bool CalculateWidescreenFov(float cameraFov, float aspectRatio, float *correctedFov);
+    static bool IsWidescreenFixAvailable();
 
 private:
     struct Impl;
