@@ -64,7 +64,8 @@ value outside that set remains available until the player chooses another.
 **Config Values** — File values are a source for settings declared by the current
 Mod, not a second runtime schema. Only declared categories and properties appear
 in the Mod Menu and are saved; removed settings disappear and new settings use
-their defaults. Compatibility migrations run on the loaded values before setup,
+their defaults. Loaded values contain only typed data, without a Mod owner,
+callbacks, or UI metadata. Compatibility migrations run on those values before setup,
 without registering obsolete keys. Descriptions and editor metadata come from
 the current Mod.
 

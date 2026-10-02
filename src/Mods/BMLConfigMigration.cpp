@@ -15,21 +15,17 @@ namespace {
         "SecondaryFontSize", "SecondaryFontRanges",
     };
 
-    bool HasString(Config &config, const char *category, const char *key) {
-        return config.HasKey(category, key) &&
-               config.GetProperty(category, key)->GetType() == IProperty::STRING;
+    const std::string *FindString(const ConfigData &values, const char *category, const char *key) {
+        const ConfigData::Entry *entry = values.Find(category, key);
+        return entry && entry->Type == IProperty::STRING ? &std::get<std::string>(entry->Value) : nullptr;
     }
 
-    bool ReadFloat(Config &config, const char *category, const char *key, float &value) {
-        if (!config.HasKey(category, key))
+    bool ReadFloat(const ConfigData &values, const char *category, const char *key, float &value) {
+        const ConfigData::Entry *entry = values.Find(category, key);
+        if (!entry || entry->Type != IProperty::FLOAT)
             return false;
-
-        IProperty *property = config.GetProperty(category, key);
-        if (property->GetType() != IProperty::FLOAT || !std::isfinite(property->GetFloat()))
-            return false;
-
-        value = property->GetFloat();
-        return true;
+        value = std::get<float>(entry->Value);
+        return std::isfinite(value);
     }
 
     bool ResolveOldFontPath(const std::string &requested, std::string &resolved) {
@@ -50,30 +46,26 @@ namespace {
     }
 }
 
-bool MigrateBMLConfig(Config &config) {
-    if (Config *loaded = config.GetLoadedValues())
-        return MigrateBMLConfig(*loaded);
-
+bool MigrateBMLConfig(ConfigData &values) {
     bool hasOldFontSettings = false;
     for (const char *key : OldFontKeys)
-        hasOldFontSettings |= config.HasKey("GUI", key);
+        hasOldFontSettings |= values.HasKey("GUI", key);
 
-    const bool hasFallbacks = HasString(config, "GUI", "FontFallbacks");
-    const bool hasFallbackSize = config.HasKey("GUI", "FontFallbackSize") &&
-        config.GetProperty("GUI", "FontFallbackSize")->GetType() == IProperty::FLOAT;
+    const bool hasFallbacks = FindString(values, "GUI", "FontFallbacks") != nullptr;
+    float fallbackSize = 0.0f;
+    const bool hasFallbackSize = ReadFloat(values, "GUI", "FontFallbackSize", fallbackSize);
     bool needsManualSelection = false;
     bool keepOldSecondarySettings = false;
 
     std::string primaryFace = BML::UI::FontProfile{}.PrimaryFace;
-    if (HasString(config, "GUI", "FontFilename")) {
-        IProperty *primary = config.GetProperty("GUI", "FontFilename");
-        primaryFace = primary->GetString();
+    if (const std::string *primary = FindString(values, "GUI", "FontFilename")) {
+        primaryFace = *primary;
         if (hasOldFontSettings && !hasFallbacks) {
             std::string resolved;
             if (!ResolveOldFontPath(primaryFace, resolved)) {
                 needsManualSelection = true;
             } else if (resolved != primaryFace) {
-                primary->SetString(resolved.c_str());
+                values.Set("GUI", "FontFilename", IProperty::STRING, resolved);
                 primaryFace = resolved;
             }
         }
@@ -81,14 +73,15 @@ bool MigrateBMLConfig(Config &config) {
 
     if (hasOldFontSettings && !hasFallbacks) {
         float oldPrimarySize = 0.0f;
-        if (ReadFloat(config, "GUI", "FontSize", oldPrimarySize) && oldPrimarySize <= 0.0f)
-            config.GetProperty("GUI", "FontSize")->SetFloat(BML::UI::FontProfile{}.ReferenceSize);
+        if (ReadFloat(values, "GUI", "FontSize", oldPrimarySize) && oldPrimarySize <= 0.0f)
+            values.Set("GUI", "FontSize", IProperty::FLOAT, BML::UI::FontProfile{}.ReferenceSize);
     }
 
-    const bool secondaryEnabled = config.HasKey("GUI", "EnableSecondaryFont") &&
-        config.GetProperty("GUI", "EnableSecondaryFont")->GetBoolean();
-    if (!hasFallbacks && secondaryEnabled && HasString(config, "GUI", "SecondaryFontFilename")) {
-        const std::string requested = config.GetProperty("GUI", "SecondaryFontFilename")->GetString();
+    const ConfigData::Entry *secondary = values.Find("GUI", "EnableSecondaryFont");
+    const bool secondaryEnabled = secondary && secondary->Type == IProperty::BOOLEAN && std::get<bool>(secondary->Value);
+    const std::string *secondaryFace = FindString(values, "GUI", "SecondaryFontFilename");
+    if (!hasFallbacks && secondaryEnabled && secondaryFace) {
+        const std::string requested = *secondaryFace;
         std::string resolved;
         // 0.3.13 could load one face twice with different glyph ranges. Dynamic fonts
         // no longer need a second copy of the same face.
@@ -96,21 +89,19 @@ bool MigrateBMLConfig(Config &config) {
             needsManualSelection = true;
             keepOldSecondarySettings = true;
         } else if (!resolved.empty() && utils::CompareString(resolved, primaryFace) != 0) {
-            IProperty *fallbacks = config.GetProperty("GUI", "FontFallbacks");
-            fallbacks->SetDefaultString("");
-            fallbacks->SetString(resolved.c_str());
+            values.Set("GUI", "FontFallbacks", IProperty::STRING, resolved);
         }
     }
 
     if (hasOldFontSettings && !hasFallbackSize) {
         float size = BML::UI::FontProfile{}.ReferenceSize;
-        if (!ReadFloat(config, "GUI", "SecondaryFontSize", size))
-            ReadFloat(config, "GUI", "FontSize", size);
+        if (!ReadFloat(values, "GUI", "SecondaryFontSize", size))
+            ReadFloat(values, "GUI", "FontSize", size);
         if (size <= 0.0f)
             size = BML::UI::FontProfile{}.ReferenceSize;
         size = std::clamp(size, BML::UI::MinimumFontReferenceSize,
                           BML::UI::MaximumFontReferenceSize);
-        config.GetProperty("GUI", "FontFallbackSize")->SetDefaultFloat(size);
+        values.Set("GUI", "FontFallbackSize", IProperty::FLOAT, size);
     }
 
     for (const char *key : OldFontKeys) {
@@ -120,8 +111,8 @@ bool MigrateBMLConfig(Config &config) {
              utils::CompareString(key, "SecondaryFontSize") == 0)) {
             continue;
         }
-        config.RemoveProperty("GUI", key);
+        values.Remove("GUI", key);
     }
-    config.RemoveProperty("CommandBar", "WindowBackgroundAlpha");
+    values.Remove("CommandBar", "WindowBackgroundAlpha");
     return !needsManualSelection;
 }

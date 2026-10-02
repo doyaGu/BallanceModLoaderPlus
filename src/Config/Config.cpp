@@ -3,13 +3,17 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <iomanip>
 #include <iterator>
+#include <limits>
+#include <locale>
 #include <memory>
 #include <sstream>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
 
+#include "PathUtils.h"
 #include "StringUtils.h"
 
 namespace {
@@ -18,6 +22,134 @@ namespace {
         Property::Value value = 0;
         std::size_t hash = 0;
     };
+
+    bool ReadConfigEntry(const std::string &type, std::istringstream &line, ConfigData::Entry &entry) {
+        if (type == "S") {
+            std::string value;
+            std::getline(line, value);
+            utils::TrimString(value);
+            entry = {IProperty::STRING, std::move(value)};
+            return true;
+        }
+
+        std::string token;
+        if (!(line >> token))
+            return false;
+        std::istringstream number(token);
+        number.imbue(std::locale::classic());
+        if (type == "B") {
+            bool value;
+            if (!(number >> value))
+                return false;
+            entry = {IProperty::BOOLEAN, value};
+        } else if (type == "I" || type == "K") {
+            int value;
+            if (!(number >> value))
+                return false;
+            entry = {type == "I" ? IProperty::INTEGER : IProperty::KEY, value};
+        } else if (type == "F") {
+            float value;
+            if (!(number >> value) || !std::isfinite(value))
+                return false;
+            entry = {IProperty::FLOAT, value};
+        } else {
+            return false;
+        }
+        number >> std::ws;
+        return number.eof();
+    }
+}
+
+bool ConfigData::Load(const wchar_t *path) {
+    if (!path || !*path)
+        return false;
+
+    std::string bytes;
+    if (!utils::ReadFileBytesW(path, bytes) || bytes.empty() ||
+        bytes.find('\0') != std::string::npos || !utils::IsValidUtf8(bytes)) {
+        return false;
+    }
+    if (bytes.compare(0, 3, "\xEF\xBB\xBF") == 0)
+        bytes.erase(0, 3);
+
+    ConfigData parsed;
+    std::istringstream input(bytes);
+    input.imbue(std::locale::classic());
+    std::string text, category, pendingCategory;
+    bool insideCategory = false;
+    while (std::getline(input, text)) {
+        std::istringstream line(text);
+        line.imbue(std::locale::classic());
+        std::string token;
+        while (line >> token) {
+            if (token[0] == '#')
+                break;
+            if (token == "{") {
+                if (insideCategory || pendingCategory.empty())
+                    return false;
+                category = std::move(pendingCategory);
+                pendingCategory.clear();
+                parsed.m_Categories.try_emplace(category);
+                insideCategory = true;
+            } else if (token == "}") {
+                if (!insideCategory)
+                    return false;
+                insideCategory = false;
+                category.clear();
+            } else if (!insideCategory) {
+                if (!pendingCategory.empty())
+                    return false;
+                pendingCategory = token;
+            } else {
+                std::string key;
+                if (!(line >> key))
+                    break;
+                if (key == "{" || key == "}")
+                    return false;
+                Entry entry;
+                // An invalid or unknown entry only discards its own line.
+                if (!ReadConfigEntry(token, line, entry))
+                    break;
+                parsed.m_Categories[category].insert_or_assign(key, std::move(entry));
+            }
+        }
+    }
+    if (insideCategory || !pendingCategory.empty() || input.bad())
+        return false;
+    m_Categories.swap(parsed.m_Categories);
+    return true;
+}
+
+const ConfigData::Entry *ConfigData::Find(const char *category, const char *key) const {
+    if (!category || !key)
+        return nullptr;
+    const auto group = m_Categories.find(category);
+    if (group == m_Categories.end())
+        return nullptr;
+    const auto entry = group->second.find(key);
+    return entry == group->second.end() ? nullptr : &entry->second;
+}
+
+bool ConfigData::HasCategory(const char *category) const {
+    return category && m_Categories.find(category) != m_Categories.end();
+}
+
+bool ConfigData::HasKey(const char *category, const char *key) const {
+    return Find(category, key) != nullptr;
+}
+
+bool ConfigData::Set(const char *category, const char *key, IProperty::PropertyType type, ConfigValue value) {
+    if (!category || !key || !ConfigValueMatchesType(type, value))
+        return false;
+    m_Categories[category].insert_or_assign(key, Entry{type, std::move(value)});
+    return true;
+}
+
+bool ConfigData::Remove(const char *category, const char *key) {
+    if (!category || !key)
+        return false;
+    const auto group = m_Categories.find(category);
+    return group != m_Categories.end() && group->second.erase(key) != 0;
 }
 
 Config::Config(IMod *mod) : m_Mod(mod) {
@@ -46,11 +178,8 @@ Config::~Config() {
 }
 
 bool Config::Load(const wchar_t *path) {
-    auto loaded = std::make_unique<Config>(nullptr);
-    if (!loaded->Read(path))
+    if (!m_LoadedValues.Load(path))
         return false;
-
-    m_LoadedValues = std::move(loaded);
     for (Category *category : m_Categories) {
         for (Property *property : category->m_Properties)
             RestoreProperty(*property);
@@ -59,180 +188,30 @@ bool Config::Load(const wchar_t *path) {
 }
 
 void Config::RestoreProperty(Property &property) {
-    if (!m_LoadedValues)
+    const ConfigData::Entry *source = m_LoadedValues.Find(property.m_Category.c_str(), property.m_Key.c_str());
+    if (!source || (property.m_Type != IProperty::NONE && property.m_Type != source->Type))
         return;
-
-    const auto category = m_LoadedValues->m_CategoryMap.find(property.m_Category);
-    if (category == m_LoadedValues->m_CategoryMap.end())
+    const bool typeChanged = property.m_Type != source->Type;
+    const bool valueChanged = !ConfigValuesEqual(source->Type, property.m_Value, source->Value);
+    if (!typeChanged && !valueChanged)
         return;
-    const auto stored = category->second->m_PropertyMap.find(property.m_Key);
-    if (stored == category->second->m_PropertyMap.end())
-        return;
-
-    const Property &source = *stored->second;
-    if (property.m_Type != IProperty::NONE && property.m_Type != source.m_Type)
-        return;
-    const bool typeChanged = property.m_Type != source.m_Type;
-    const bool valueChanged = !ConfigValuesEqual(source.m_Type, property.m_Value, source.m_Value);
-    property.m_Value = source.m_Value;
-    property.m_Type = source.m_Type;
-    property.m_Hash = source.m_Hash;
+    property.m_Value = source->Value;
+    property.m_Type = source->Type;
+    if (source->Type == IProperty::STRING)
+        property.m_Hash = utils::HashString(std::get<std::string>(source->Value).c_str());
     if (typeChanged)
         TouchSchema();
     else if (valueChanged)
         TouchValue();
 }
 
-bool Config::Read(const wchar_t *path) {
-    if (!path || path[0] == L'\0')
-        return false;
-
-    FILE *fp = _wfopen(path, L"rb");
-    if (!fp)
-        return false;
-
-    fseek(fp, 0, SEEK_END);
-    long rawSize = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    if (rawSize <= 0) {
-        fclose(fp);
-        return false;
-    }
-
-    const std::size_t size = static_cast<std::size_t>(rawSize);
-    std::vector<char> buffer(size + 1);
-    const std::size_t read = fread(buffer.data(), sizeof(char), size, fp);
-    fclose(fp);
-
-    if (read != size)
-        return false;
-
-    buffer[size] = '\0';
-    std::wstring wBuf = utils::Utf8ToUtf16(buffer.data());
-
-    std::wistringstream in(wBuf);
-    std::wstring wToken, wComment, wCategory;
-    std::string comment, category;
-    bool inCate = false;
-
-    while (in >> wToken) {
-        if (wToken == L"#") {
-            std::getline(in, wComment);
-            utils::TrimString(wComment);
-            comment = utils::Utf16ToUtf8(wComment);
-        } else if (wToken == L"{") {
-            inCate = true;
-        } else if (wToken == L"}") {
-            inCate = false;
-        } else if (inCate) {
-            std::wstring wPropName;
-            if (!(in >> wPropName)) break;
-
-            std::string propName = utils::Utf16ToUtf8(wPropName);
-            auto prop = std::make_unique<Property>(nullptr, category, propName);
-
-            bool parseSuccess = false;
-
-            switch (wToken[0]) {
-            case L'S': {
-                std::wstring wValue;
-                std::getline(in, wValue);
-                utils::TrimString(wValue);
-                std::string value = utils::Utf16ToUtf8(wValue);
-                prop->SetDefaultString(value.c_str());
-                parseSuccess = true;
-                break;
-            }
-            case L'B': {
-                bool value;
-                if (in >> value) {
-                    prop->SetDefaultBoolean(value);
-                    parseSuccess = true;
-                }
-                break;
-            }
-            case L'K': {
-                int value;
-                if (in >> value) {
-                    prop->SetDefaultKey(static_cast<CKKEYBOARD>(value));
-                    parseSuccess = true;
-                }
-                break;
-            }
-            case L'I': {
-                int value;
-                if (in >> value) {
-                    prop->SetDefaultInteger(value);
-                    parseSuccess = true;
-                }
-                break;
-            }
-            case L'F': {
-                float value;
-                if (in >> value) {
-                    prop->SetDefaultFloat(value);
-                    parseSuccess = true;
-                }
-                break;
-            }
-            default:
-                break;
-            }
-
-            if (!parseSuccess) {
-                continue;
-            }
-
-            prop->SetComment(comment.c_str());
-            comment.clear();
-
-            Category *cate = GetCategory(category.c_str());
-            if (cate) {
-                Property *target = nullptr;
-                const auto existing = cate->m_PropertyMap.find(propName);
-                if (existing == cate->m_PropertyMap.end() || !existing->second) {
-                    target = cate->GetProperty(propName.c_str());
-                } else {
-                    target = existing->second;
-                    const bool schemaChanged = target->m_Type != prop->m_Type ||
-                                               target->m_Comment != prop->m_Comment;
-                    const bool valueChanged = !ConfigValuesEqual(
-                        prop->m_Type, target->m_Value, prop->m_Value);
-                    if (schemaChanged)
-                        TouchSchema();
-                    else if (valueChanged)
-                        TouchValue();
-                }
-
-                target->m_Type = prop->m_Type;
-                target->m_Value = std::move(prop->m_Value);
-                target->m_Hash = prop->m_Hash;
-                target->m_Comment = std::move(prop->m_Comment);
-            }
-        } else {
-            wCategory = wToken;
-            category = utils::Utf16ToUtf8(wCategory);
-
-            Category *cate = GetCategory(category.c_str());
-            if (cate)
-                cate->SetComment(comment.c_str());
-            comment.clear();
-        }
-    }
-
-    return true;
-}
-
 bool Config::Save(const wchar_t *path) {
     if (!path || path[0] == L'\0')
         return false;
 
-    FILE *fp = _wfopen(path, L"wb");
-    if (!fp)
-        return false;
-
     std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out << std::setprecision(std::numeric_limits<float>::max_digits10);
 
     out << "# Configuration File for Mod: " << m_ModName
         << " - " << m_ModVersion << std::endl << std::endl;
@@ -294,9 +273,14 @@ bool Config::Save(const wchar_t *path) {
         out << "}" << std::endl << std::endl;
     }
 
-    std::string buf = out.str();
-    bool success = (fwrite(buf.c_str(), sizeof(char), buf.size(), fp) == buf.size());
-    fclose(fp);
+    // Finish serialization before opening the existing file for replacement.
+    const std::string buf = out.str();
+    FILE *fp = _wfopen(path, L"wb");
+    if (!fp)
+        return false;
+    const bool written = fwrite(buf.data(), sizeof(char), buf.size(), fp) == buf.size();
+    const bool closed = fclose(fp) == 0;
+    const bool success = written && closed;
     if (success)
         m_Dirty = false;
     return success;
@@ -399,7 +383,7 @@ bool Config::HasCategory(const char *category) {
         return false;
 
     return m_CategoryMap.find(category) != m_CategoryMap.end() ||
-           (m_LoadedValues && m_LoadedValues->HasCategory(category));
+           m_LoadedValues.HasCategory(category);
 }
 
 bool Config::HasKey(const char *category, const char *key) {
@@ -408,14 +392,14 @@ bool Config::HasKey(const char *category, const char *key) {
 
     auto catIt = m_CategoryMap.find(category);
     return (catIt != m_CategoryMap.end() && catIt->second->HasKey(key)) ||
-           (m_LoadedValues && m_LoadedValues->HasKey(category, key));
+           m_LoadedValues.HasKey(category, key);
 }
 
 bool Config::RemoveProperty(const char *category, const char *key) {
     if (!category || !key)
         return false;
 
-    const bool removedLoaded = m_LoadedValues && m_LoadedValues->RemoveProperty(category, key);
+    const bool removedLoaded = m_LoadedValues.Remove(category, key);
     const auto categoryIt = m_CategoryMap.find(category);
     if (categoryIt == m_CategoryMap.end() || !categoryIt->second)
         return removedLoaded;

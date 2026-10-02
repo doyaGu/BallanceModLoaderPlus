@@ -3,7 +3,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -14,6 +13,25 @@
 #include "Config/ConfigValue.h"
 
 class Config;
+
+// Persisted values have no Mod owner, callbacks, revisions, or editor metadata.
+class ConfigData {
+public:
+    struct Entry {
+        IProperty::PropertyType Type = IProperty::NONE;
+        ConfigValue Value = 0;
+    };
+
+    bool Load(const wchar_t *path);
+    const Entry *Find(const char *category, const char *key) const;
+    bool HasCategory(const char *category) const;
+    bool HasKey(const char *category, const char *key) const;
+    bool Set(const char *category, const char *key, IProperty::PropertyType type, ConfigValue value);
+    bool Remove(const char *category, const char *key);
+
+private:
+    std::unordered_map<std::string, std::unordered_map<std::string, Entry>> m_Categories;
+};
 
 class Property : public IProperty {
     friend class Config;
@@ -176,7 +194,7 @@ public:
     bool Save(const wchar_t *path);
     // Compatibility migrations operate on the file values before Mod setup,
     // without declaring obsolete settings in the runtime schema.
-    Config *GetLoadedValues() { return m_LoadedValues.get(); }
+    ConfigData &GetLoadedValues() { return m_LoadedValues; }
 
     bool IsDirty() const { return m_Dirty; }
     // Schema changes invalidate documents built from category, property, or type
@@ -191,7 +209,6 @@ public:
     std::vector<PendingNotification> TakePendingNotifications();
 
 private:
-    bool Read(const wchar_t *path);
     void RestoreProperty(Property &property);
     void MarkDirty() { m_Dirty = true; }
     void TouchSchema() { ++m_SchemaRevision; }
@@ -208,7 +225,7 @@ private:
     std::vector<PendingNotification> m_PendingNotifications;
     // File values are only imported when a Mod requests the corresponding key.
     // Enumeration and persistence use m_Categories, never this source document.
-    std::unique_ptr<Config> m_LoadedValues;
+    ConfigData m_LoadedValues;
 
     std::vector<Category *> m_Categories;
     std::unordered_map<std::string, Category *> m_CategoryMap;

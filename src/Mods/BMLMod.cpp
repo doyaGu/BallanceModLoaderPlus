@@ -436,7 +436,7 @@ void BMLMod::SetHUD(int mode) {
 
 void BMLMod::InitConfigs() {
     auto *config = dynamic_cast<Config *>(GetConfig());
-    if (config && !MigrateBMLConfig(*config))
+    if (config && !MigrateBMLConfig(config->GetLoadedValues()))
         GetLogger()->Warn("Some 0.3.13 font paths need manual selection; use the font command to choose fonts.");
 
     BindSettings();

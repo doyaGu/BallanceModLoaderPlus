@@ -3,9 +3,12 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <locale>
+#include <memory>
 
 #include <windows.h>
 
@@ -153,7 +156,135 @@ protected:
     MockMod *mockMod = nullptr;
     Config *config = nullptr;
     std::wstring configPath;
+
+    void WriteConfig(const std::string &text) {
+        std::ofstream output(std::filesystem::path(configPath), std::ios::binary);
+        ASSERT_TRUE(output);
+        output << text;
+        ASSERT_TRUE(output);
+    }
+
+    void ReloadConfig() {
+        ASSERT_TRUE(config->Save(configPath.c_str()));
+        auto reloaded = std::make_unique<Config>(mockMod);
+        ASSERT_TRUE(reloaded->Load(configPath.c_str()));
+        delete config;
+        config = reloaded.release();
+    }
 };
+
+TEST_F(ConfigTest, InvalidValueDoesNotDiscardFollowingSettings) {
+    WriteConfig("General {\nI Invalid not-a-number\nI\nI MissingValue\nI Count 42\nB Flag 1\n}\n");
+    ASSERT_TRUE(config->Load(configPath.c_str()));
+    EXPECT_FALSE(config->HasKey("General", "Invalid"));
+    EXPECT_FALSE(config->HasKey("General", "MissingValue"));
+    EXPECT_EQ(config->GetProperty("General", "Count")->GetInteger(), 42);
+    EXPECT_TRUE(config->GetProperty("General", "Flag")->GetBoolean());
+}
+
+TEST_F(ConfigTest, TruncatedDocumentDoesNotReplaceLoadedOrDeclaredValues) {
+    config->GetProperty("General", "Count")->SetDefaultInteger(42);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    IProperty *count = loaded.GetProperty("General", "Count");
+    count->SetDefaultInteger(1);
+    const std::uint64_t revision = loaded.GetValueRevision();
+
+    WriteConfig("General {\nI Count 99\nI Other 10\n");
+    EXPECT_FALSE(loaded.Load(configPath.c_str()));
+    EXPECT_EQ(count->GetInteger(), 42);
+    EXPECT_FALSE(loaded.HasKey("General", "Other"));
+    EXPECT_EQ(loaded.GetValueRevision(), revision);
+}
+
+TEST_F(ConfigTest, Utf8BomDoesNotBecomePartOfCategoryName) {
+    WriteConfig("\xEF\xBB\xBFGeneral {\r\nS Text 中文 value\r\n}\r\n");
+    ASSERT_TRUE(config->Load(configPath.c_str()));
+    EXPECT_TRUE(config->HasCategory("General"));
+    EXPECT_STREQ(config->GetProperty("General", "Text")->GetString(), "中文 value");
+}
+
+TEST_F(ConfigTest, InvalidUtf8DoesNotReplaceLoadedValues) {
+    config->GetProperty("General", "Count")->SetDefaultInteger(42);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    WriteConfig("General {\nS Text \xFF\n}\n");
+    EXPECT_FALSE(loaded.Load(configPath.c_str()));
+    EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 42);
+}
+
+TEST_F(ConfigTest, NumericEntriesRequireCompleteFiniteValues) {
+    WriteConfig("General {\nI Prefix 12junk\nB Flag 2\nF Huge 1e999\nF Scale 2.5\nK Key 30\nI Count -42\n}\n");
+    ASSERT_TRUE(config->Load(configPath.c_str()));
+    EXPECT_FALSE(config->HasKey("General", "Prefix"));
+    EXPECT_FALSE(config->HasKey("General", "Flag"));
+    EXPECT_FALSE(config->HasKey("General", "Huge"));
+    EXPECT_FLOAT_EQ(config->GetProperty("General", "Scale")->GetFloat(), 2.5f);
+    EXPECT_EQ(config->GetProperty("General", "Key")->GetType(), IProperty::KEY);
+    EXPECT_EQ(config->GetProperty("General", "Count")->GetInteger(), -42);
+}
+
+TEST_F(ConfigTest, UnknownEntryDoesNotConsumeFollowingKnownEntries) {
+    WriteConfig("General\n{\n# Comment\nFutureType Old value\nS Text braces { } # remain text\nI Count 42\n}\n");
+    ASSERT_TRUE(config->Load(configPath.c_str()));
+    EXPECT_FALSE(config->HasKey("General", "Old"));
+    EXPECT_STREQ(config->GetProperty("General", "Text")->GetString(), "braces { } # remain text");
+    EXPECT_EQ(config->GetProperty("General", "Count")->GetInteger(), 42);
+}
+
+TEST_F(ConfigTest, SavingPreservesFloatPrecision) {
+    const float value = std::nextafter(1.0f, 2.0f);
+    config->GetProperty("General", "Scale")->SetDefaultFloat(value);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    Config reloaded(mockMod);
+    ASSERT_TRUE(reloaded.Load(configPath.c_str()));
+    EXPECT_EQ(reloaded.GetProperty("General", "Scale")->GetFloat(), value);
+}
+
+TEST_F(ConfigTest, NumericPersistenceDoesNotDependOnGlobalLocale) {
+    class DecimalComma : public std::numpunct<char> {
+    protected:
+        char do_decimal_point() const override { return ','; }
+    };
+    class ScopedLocale {
+    public:
+        ScopedLocale() : previous(std::locale::global(std::locale(std::locale::classic(), new DecimalComma))) {}
+        ~ScopedLocale() { std::locale::global(previous); }
+    private:
+        std::locale previous;
+    };
+
+    config->GetProperty("General", "Scale")->SetDefaultFloat(2.5f);
+    {
+        ScopedLocale locale;
+        ASSERT_TRUE(config->Save(configPath.c_str()));
+        Config loaded(mockMod);
+        ASSERT_TRUE(loaded.Load(configPath.c_str()));
+        EXPECT_FLOAT_EQ(loaded.GetProperty("General", "Scale")->GetFloat(), 2.5f);
+    }
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    EXPECT_FLOAT_EQ(loaded.GetProperty("General", "Scale")->GetFloat(), 2.5f);
+}
+
+TEST_F(ConfigTest, InvalidStructureLeavesLoadedValuesUnchanged) {
+    config->GetProperty("General", "Count")->SetDefaultInteger(42);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    Config loaded(mockMod);
+    ASSERT_TRUE(loaded.Load(configPath.c_str()));
+    const char embeddedNull[] = "General {\nS Text abc\0def\n}\n";
+    const std::string invalidDocuments[] = {
+        "}\n", "General {\nNested {\n}\n}\n", "General\n", "{\n}\n",
+        std::string(embeddedNull, std::size(embeddedNull) - 1),
+    };
+    for (const std::string &document : invalidDocuments) {
+        WriteConfig(document);
+        EXPECT_FALSE(loaded.Load(configPath.c_str()));
+        EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 42);
+    }
+}
 
 TEST_F(ConfigTest, UpdatingModKeepsOnlyDeclaredSettingsAndUsesDefaultsForNewOnes) {
     config->GetProperty("General", "A")->SetInteger(10);
@@ -322,7 +453,7 @@ TEST_F(ConfigTest, Loaded013FontMigrationDoesNotDeclareObsoleteSettings) {
 
     Config updated(mockMod);
     ASSERT_TRUE(updated.Load(configPath.c_str()));
-    ASSERT_TRUE(MigrateBMLConfig(updated));
+    ASSERT_TRUE(MigrateBMLConfig(updated.GetLoadedValues()));
     EXPECT_EQ(updated.GetCategoryCount(), 0u);
     EXPECT_FALSE(updated.HasKey("GUI", "SecondaryFontFilename"));
     IProperty *primary = updated.GetProperty("GUI", "FontFilename");
@@ -478,7 +609,8 @@ TEST_F(ConfigTest, Migrates013FontSettingsAndPersistsOnlyCurrentKeys) {
     config->GetProperty("CommandBar", "WindowBackgroundAlpha")->SetFloat(0.8f);
     config->GetProperty("HUD", "ShowFPS")->SetBoolean(false);
 
-    MigrateBMLConfig(*config);
+    ReloadConfig();
+    MigrateBMLConfig(config->GetLoadedValues());
 
     EXPECT_STREQ(config->GetProperty("GUI", "FontFilename")->GetString(), "primary.ttf");
     EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontSize")->GetFloat(), 42.0f);
@@ -492,20 +624,15 @@ TEST_F(ConfigTest, Migrates013FontSettingsAndPersistsOnlyCurrentKeys) {
     EXPECT_FALSE(config->HasKey("CommandBar", "WindowBackgroundAlpha"));
     EXPECT_FALSE(config->GetProperty("HUD", "ShowFPS")->GetBoolean());
 
-    std::array<wchar_t, MAX_PATH> tempDirectory{};
-    ASSERT_GT(GetTempPathW(static_cast<DWORD>(tempDirectory.size()), tempDirectory.data()), 0u);
-    std::array<wchar_t, MAX_PATH> path{};
-    ASSERT_NE(GetTempFileNameW(tempDirectory.data(), L"BML", 0, path.data()), 0u);
-    ASSERT_TRUE(config->Save(path.data()));
+    ASSERT_TRUE(config->Save(configPath.c_str()));
     Config reloaded(mockMod);
-    ASSERT_TRUE(reloaded.Load(path.data()));
-    EXPECT_TRUE(DeleteFileW(path.data()));
+    ASSERT_TRUE(reloaded.Load(configPath.c_str()));
 
     EXPECT_FALSE(reloaded.HasKey("GUI", "SecondaryFontFilename"));
     EXPECT_STREQ(reloaded.GetProperty("GUI", "FontFallbacks")->GetString(), "secondary.ttf");
     EXPECT_FLOAT_EQ(reloaded.GetProperty("GUI", "FontFallbackSize")->GetFloat(), 26.0f);
     const std::uint64_t revision = reloaded.GetSchemaRevision();
-    MigrateBMLConfig(reloaded);
+    MigrateBMLConfig(reloaded.GetLoadedValues());
     EXPECT_EQ(reloaded.GetSchemaRevision(), revision);
     EXPECT_FALSE(reloaded.IsDirty());
 }
@@ -517,7 +644,8 @@ TEST_F(ConfigTest, CurrentFontSettingsTakePrecedenceOver013Settings) {
     config->GetProperty("GUI", "SecondaryFontFilename")->SetString("obsolete.ttf");
     config->GetProperty("GUI", "SecondaryFontSize")->SetFloat(45.0f);
 
-    MigrateBMLConfig(*config);
+    ReloadConfig();
+    MigrateBMLConfig(config->GetLoadedValues());
 
     EXPECT_STREQ(config->GetProperty("GUI", "FontFallbacks")->GetString(), "");
     EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontFallbackSize")->GetFloat(), 20.0f);
@@ -529,7 +657,8 @@ TEST_F(ConfigTest, Disabled013SecondaryFontLeavesFallbackListEmpty) {
     config->GetProperty("GUI", "EnableSecondaryFont")->SetBoolean(false);
     config->GetProperty("GUI", "SecondaryFontFilename")->SetString("secondary.ttf");
 
-    MigrateBMLConfig(*config);
+    ReloadConfig();
+    MigrateBMLConfig(config->GetLoadedValues());
 
     EXPECT_FALSE(config->HasKey("GUI", "FontFallbacks"));
     EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontFallbackSize")->GetFloat(), 40.0f);
@@ -538,7 +667,8 @@ TEST_F(ConfigTest, Disabled013SecondaryFontLeavesFallbackListEmpty) {
 TEST_F(ConfigTest, CurrentConfigDoesNotInheritPrimarySizeForFallbacks) {
     config->GetProperty("GUI", "FontSize")->SetFloat(40.0f);
 
-    MigrateBMLConfig(*config);
+    ReloadConfig();
+    MigrateBMLConfig(config->GetLoadedValues());
 
     EXPECT_FALSE(config->HasKey("GUI", "FontFallbackSize"));
 }
@@ -548,7 +678,8 @@ TEST_F(ConfigTest, OldNonPositiveFontSizesRetainThe013Default) {
     config->GetProperty("GUI", "FontSize")->SetFloat(0.0f);
     config->GetProperty("GUI", "SecondaryFontSize")->SetFloat(-1.0f);
 
-    MigrateBMLConfig(*config);
+    ReloadConfig();
+    MigrateBMLConfig(config->GetLoadedValues());
 
     EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontSize")->GetFloat(), 32.0f);
     EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontFallbackSize")->GetFloat(), 32.0f);
@@ -564,7 +695,8 @@ TEST_F(ConfigTest, Migrates013RelativeFontPathToAbsolutePath) {
 
     config->GetProperty("GUI", "FontFilename")->SetString(relative.c_str());
     config->GetProperty("GUI", "FontRanges")->SetString("ChineseFull");
-    MigrateBMLConfig(*config);
+    ReloadConfig();
+    MigrateBMLConfig(config->GetLoadedValues());
 
     const std::string resolved = config->GetProperty("GUI", "FontFilename")->GetString();
     EXPECT_TRUE(utils::IsAbsolutePathUtf8(resolved));
@@ -579,20 +711,22 @@ TEST_F(ConfigTest, Unsupported013FontsSubpathIsKeptForManualSelection) {
     config->GetProperty("GUI", "SecondaryFontFilename")->SetString(oldPath.c_str());
     config->GetProperty("GUI", "SecondaryFontSize")->SetFloat(24.0f);
 
-    EXPECT_FALSE(MigrateBMLConfig(*config));
+    ReloadConfig();
+    EXPECT_FALSE(MigrateBMLConfig(config->GetLoadedValues()));
 
     EXPECT_FALSE(config->HasKey("GUI", "FontFallbacks"));
     EXPECT_STREQ(config->GetProperty("GUI", "SecondaryFontFilename")->GetString(), oldPath.c_str());
     EXPECT_FLOAT_EQ(config->GetProperty("GUI", "SecondaryFontSize")->GetFloat(), 24.0f);
     EXPECT_FLOAT_EQ(config->GetProperty("GUI", "FontFallbackSize")->GetFloat(), 24.0f);
-    EXPECT_FALSE(MigrateBMLConfig(*config));
+    EXPECT_FALSE(MigrateBMLConfig(config->GetLoadedValues()));
 }
 
 TEST_F(ConfigTest, Unrepresentable013FallbackNameIsNotDeleted) {
     config->GetProperty("GUI", "EnableSecondaryFont")->SetBoolean(true);
     config->GetProperty("GUI", "SecondaryFontFilename")->SetString("old;face.ttf");
 
-    EXPECT_FALSE(MigrateBMLConfig(*config));
+    ReloadConfig();
+    EXPECT_FALSE(MigrateBMLConfig(config->GetLoadedValues()));
 
     EXPECT_FALSE(config->HasKey("GUI", "FontFallbacks"));
     EXPECT_STREQ(config->GetProperty("GUI", "SecondaryFontFilename")->GetString(), "old;face.ttf");
@@ -1130,7 +1264,7 @@ TEST_F(ConfigTest, LoadingDuplicateEntriesUpdatesOneStableProperty) {
 }
 
 TEST_F(ConfigTest, SaveUsesSnapshottedModMetadata) {
-    const wchar_t *filename = L"test_config_metadata.cfg";
+    const wchar_t *filename = configPath.c_str();
     mockMod->nameReadCount = 0;
     mockMod->versionReadCount = 0;
     config->SnapshotModMetadata();
