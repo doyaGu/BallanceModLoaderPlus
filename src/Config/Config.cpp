@@ -73,12 +73,29 @@ bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
     if (!utils::ReadFileBytesW(path, bytes, error))
         return false;
     error = ERROR_INVALID_DATA;
-    if (bytes.empty() ||
-        bytes.find('\0') != std::string::npos || !utils::IsValidUtf8(bytes)) {
+    if (bytes.empty() || bytes.find('\0') != std::string::npos)
         return false;
-    }
-    if (bytes.compare(0, 3, "\xEF\xBB\xBF") == 0)
+
+    const bool hasUtf8Bom = bytes.compare(0, 3, "\xEF\xBB\xBF") == 0;
+    if (hasUtf8Bom)
         bytes.erase(0, 3);
+    if (bytes.empty())
+        return false;
+
+    if (!utils::IsValidUtf8(bytes)) {
+        if (hasUtf8Bom)
+            return false;
+        // BML 0.3.13 accepted configuration files written in the active ANSI
+        // code page. Convert those documents once so the next save publishes
+        // canonical UTF-8. CP_UTF8 has no distinct legacy encoding to recover.
+        if (GetACP() == CP_UTF8 ||
+            bytes.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
+            return false;
+        }
+        bytes = utils::Utf16ToUtf8(utils::AnsiToUtf16(bytes));
+        if (bytes.empty() || !utils::IsValidUtf8(bytes))
+            return false;
+    }
 
     ConfigData parsed;
     std::istringstream input(bytes);

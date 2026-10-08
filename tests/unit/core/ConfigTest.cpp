@@ -20,6 +20,7 @@
 #include "Mods/BMLConfigMigration.h"
 
 #include "PathUtils.h"
+#include "StringUtils.h"
 
 Logger *Logger::m_DefaultLogger = nullptr;
 
@@ -180,6 +181,41 @@ TEST_F(ConfigTest, InvalidValueDoesNotDiscardFollowingSettings) {
     EXPECT_FALSE(config->HasKey("General", "MissingValue"));
     EXPECT_EQ(config->GetProperty("General", "Count")->GetInteger(), 42);
     EXPECT_TRUE(config->GetProperty("General", "Flag")->GetBoolean());
+}
+
+TEST_F(ConfigTest, LoadsLegacyAnsiDocumentsAndRewritesThemAsUtf8) {
+    std::wstring legacyCharacter;
+    std::string legacyBytes;
+    for (wchar_t character = 0x00a0; character < 0xfffe; ++character) {
+        const std::wstring candidate(1, character);
+        const std::string encoded = utils::Utf16ToAnsi(candidate);
+        if (encoded.empty() || utils::IsValidUtf8(encoded) ||
+            utils::AnsiToUtf16(encoded) != candidate) {
+            continue;
+        }
+        legacyCharacter = candidate;
+        legacyBytes = encoded;
+        break;
+    }
+    if (legacyBytes.empty())
+        GTEST_SKIP() << "The active Windows code page has no non-UTF-8 round-trip character";
+
+    WriteConfig("General {\nS Text " + legacyBytes + "\n}\n");
+    ASSERT_TRUE(config->Load(configPath.c_str()));
+
+    IProperty *text = config->GetProperty("General", "Text");
+    text->SetDefaultString("default");
+    EXPECT_STREQ(text->GetString(), utils::Utf16ToUtf8(legacyCharacter).c_str());
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+
+    std::string saved;
+    ASSERT_TRUE(utils::ReadFileBytesW(configPath, saved));
+    EXPECT_TRUE(utils::IsValidUtf8(saved));
+
+    Config reloaded(mockMod);
+    ASSERT_TRUE(reloaded.Load(configPath.c_str()));
+    EXPECT_STREQ(reloaded.GetProperty("General", "Text")->GetString(),
+                 utils::Utf16ToUtf8(legacyCharacter).c_str());
 }
 
 TEST_F(ConfigTest, FailedLoadCannotOverwriteExistingDocument) {
@@ -376,12 +412,13 @@ TEST_F(ConfigTest, Utf8BomDoesNotBecomePartOfCategoryName) {
     EXPECT_STREQ(config->GetProperty("General", "Text")->GetString(), "中文 value");
 }
 
-TEST_F(ConfigTest, InvalidUtf8DoesNotReplaceLoadedValues) {
+TEST_F(ConfigTest, EmbeddedNullDoesNotReplaceLoadedValues) {
     config->GetProperty("General", "Count")->SetDefaultInteger(42);
     ASSERT_TRUE(config->Save(configPath.c_str()));
     Config loaded(mockMod);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
-    WriteConfig("General {\nS Text \xFF\n}\n");
+    const char invalid[] = "General {\nS Text before\0after\n}\n";
+    WriteConfig(std::string(invalid, sizeof(invalid) - 1));
     EXPECT_FALSE(loaded.Load(configPath.c_str()));
     EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 42);
 }
@@ -597,6 +634,51 @@ TEST_F(ConfigTest, DeclaredTypesAndEditorMetadataSurviveReload) {
     Config reloaded(mockMod);
     ASSERT_TRUE(reloaded.Load(configPath.c_str()));
     EXPECT_STREQ(reloaded.GetProperty("Values", "Count")->GetString(), "new default");
+}
+
+TEST_F(ConfigTest, AppliedSettingsSurviveShutdownAndStartupSaves) {
+    config->GetProperty("Values", "Text")->SetDefaultString("default text");
+    config->GetProperty("Values", "Flag")->SetDefaultBoolean(false);
+    config->GetProperty("Values", "Count")->SetDefaultInteger(1);
+    config->GetProperty("Values", "Scale")->SetDefaultFloat(1.0f);
+    config->GetProperty("Values", "Key")->SetDefaultKey(CKKEY_A);
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+
+    const std::vector<Config::Edit> edits = {
+        {"Values", "Text", IProperty::STRING, std::string("default text"), std::string("edited text")},
+        {"Values", "Flag", IProperty::BOOLEAN, false, true},
+        {"Values", "Count", IProperty::INTEGER, 1, 42},
+        {"Values", "Scale", IProperty::FLOAT, 1.0f, 2.5f},
+        {"Values", "Key", IProperty::KEY, static_cast<int>(CKKEY_A), static_cast<int>(CKKEY_B)},
+    };
+    const Config::ApplyResult result = config->ApplyEdits(
+        mockMod, config->GetSchemaRevision(), edits);
+    ASSERT_TRUE(result.Succeeded());
+    ASSERT_EQ(result.ChangedCount, edits.size());
+    EXPECT_TRUE(config->IsDirty());
+    ASSERT_TRUE(config->TakeSaveRequest());
+    ASSERT_TRUE(config->Save(configPath.c_str()));
+    delete config;
+    config = nullptr;
+    delete mockMod;
+    mockMod = nullptr;
+
+    for (int restart = 0; restart < 2; ++restart) {
+        MockMod owner(nullptr);
+        Config reloaded(&owner);
+        ASSERT_TRUE(reloaded.Load(configPath.c_str()));
+        reloaded.GetProperty("Values", "Text")->SetDefaultString("default text");
+        reloaded.GetProperty("Values", "Flag")->SetDefaultBoolean(false);
+        reloaded.GetProperty("Values", "Count")->SetDefaultInteger(1);
+        reloaded.GetProperty("Values", "Scale")->SetDefaultFloat(1.0f);
+        reloaded.GetProperty("Values", "Key")->SetDefaultKey(CKKEY_A);
+        ASSERT_TRUE(reloaded.TakeSaveRequest(true));
+        ASSERT_TRUE(reloaded.Save(configPath.c_str()));
+        for (const Config::Edit &edit : edits) {
+            auto *property = static_cast<Property *>(reloaded.GetProperty(edit.Category.c_str(), edit.Key.c_str()));
+            EXPECT_TRUE(ConfigValuesEqual(edit.ExpectedType, property->GetValue(), edit.NewValue)) << edit.Key;
+        }
+    }
 }
 
 TEST_F(ConfigTest, RemovingLoadedSettingPreventsLaterReimport) {

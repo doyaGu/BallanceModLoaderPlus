@@ -73,6 +73,8 @@ contain no user Config files; a successful startup generates the complete curren
 settings. A missing file permits creation, while a failed read or invalid document
 blocks persistence until a valid reload. Saves flush a unique sibling file before
 atomic publication, keeping failed writes away from the live file.
+Legacy files in the active Windows ANSI code page are imported once and rewritten
+as UTF-8.
 Automatic save requests are consumed before metadata or I/O work. A failed save
 keeps unsaved values but waits for a new change or explicit flush instead of
 retrying every frame.
