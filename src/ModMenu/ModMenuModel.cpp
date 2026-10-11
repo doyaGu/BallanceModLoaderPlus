@@ -263,9 +263,20 @@ void ModMenuModel::RequestRevert() {
 void ModMenuModel::ProcessPendingCommand() {
     const Command command = std::exchange(m_PendingCommand, Command::None);
     if (command == Command::Apply)
-        Apply();
+        (void) Apply();
     else if (command == Command::Revert)
         Revert();
+}
+
+bool ModMenuModel::ResolveEditsForShutdown() {
+    const Command command = std::exchange(m_PendingCommand, Command::None);
+    if (command == Command::Revert) {
+        Revert();
+        return true;
+    }
+    if (command == Command::Apply)
+        return Apply();
+    return !m_Session.IsDirty() || Apply();
 }
 
 const ModMenuSession &ModMenuModel::GetSession() const {
@@ -408,11 +419,11 @@ void ModMenuModel::RefreshMods() {
     m_ObservedModRegistryRevision = registryRevision;
 }
 
-void ModMenuModel::Apply() {
+bool ModMenuModel::Apply() {
     std::optional<ModMenuSession::PreparedEdits> prepared = m_Session.PrepareEdits();
     if (!prepared) {
         m_Error.clear();
-        return;
+        return !m_Session.IsDirty();
     }
     const ModMenuEditBatch &batch = prepared->GetBatch();
 
@@ -420,14 +431,14 @@ void ModMenuModel::Apply() {
     if (!mod || MakeOwner(mod) != batch.owner) {
         m_Error = "The Mod changed before its settings could be applied.";
         SynchronizeSelected(true);
-        return;
+        return false;
     }
 
     Config *config = m_Context.GetConfig(mod);
     if (!config) {
         m_Error = "The Mod no longer owns a configuration.";
         SynchronizeSelected(true);
-        return;
+        return false;
     }
 
     std::vector<Config::Edit> edits;
@@ -445,7 +456,7 @@ void ModMenuModel::Apply() {
     if (!result) {
         m_Error = ApplyErrorText(result.Error);
         SynchronizeSelected(true);
-        return;
+        return false;
     }
 
     const std::uint64_t valueRevision = config->GetValueRevision();
@@ -454,6 +465,7 @@ void ModMenuModel::Apply() {
     if (m_SelectedStamp)
         m_SelectedStamp->valueRevision = valueRevision;
     m_Error.clear();
+    return true;
 }
 
 void ModMenuModel::Revert() {

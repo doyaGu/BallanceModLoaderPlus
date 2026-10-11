@@ -364,6 +364,9 @@ struct ModMenu::State {
     }
 
     bool Close(CloseDestination destination) {
+        if (!openPending && !routes.IsOpen())
+            return true;
+
         if (openPending) {
             openPending = false;
             openRequestFrame = -1;
@@ -375,6 +378,32 @@ struct ModMenu::State {
         if (routes.Close())
             return true;
         closeDestination = CloseDestination::Options;
+        return false;
+    }
+
+    bool CloseForShutdown() noexcept {
+        bool editsResolved = true;
+        try {
+            if (routes.IsOpen())
+                editsResolved = model.ResolveEditsForShutdown();
+        } catch (...) {
+            editsResolved = false;
+        }
+
+        try {
+            if (Close(CloseDestination::Shutdown))
+                return editsResolved;
+        } catch (...) {
+        }
+
+        // Input release is owner-based and idempotent. Keep the shutdown
+        // destination so a later route destructor cannot reactivate the
+        // native Options script while the game is tearing down.
+        closeDestination = CloseDestination::Shutdown;
+        try {
+            ReleaseInput(CloseDestination::Shutdown);
+        } catch (...) {
+        }
         return false;
     }
 
@@ -411,8 +440,8 @@ bool ModMenu::Close() {
     return m_State && m_State->Close(State::CloseDestination::Options);
 }
 
-bool ModMenu::CloseForShutdown() {
-    return m_State && m_State->Close(State::CloseDestination::Shutdown);
+bool ModMenu::CloseForShutdown() noexcept {
+    return m_State && m_State->CloseForShutdown();
 }
 
 bool ModMenu::IsOpen() const {

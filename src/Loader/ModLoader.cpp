@@ -521,8 +521,14 @@ void ModLoader::ShutdownMods() {
     // End loader-owned UI sessions while every contributed callback and owner
     // DLL is still alive. The shutdown close releases input without returning
     // to Menu_Options, whose script is itself about to be deactivated.
-    if (m_BMLMod)
-        m_BMLMod->CloseModsMenuForShutdown();
+    {
+        auto invocationLock = LockModInvocation();
+        if (m_BMLMod && !m_BMLMod->CloseModsMenuForShutdown() &&
+            m_Context.GetLogger()) {
+            m_Context.GetLogger()->Error(
+                "Could not finish Mod Menu shutdown; pending settings may not have been saved.");
+        }
+    }
 
     m_ShuttingDown = true;
 

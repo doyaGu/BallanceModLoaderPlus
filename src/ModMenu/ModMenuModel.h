@@ -49,6 +49,7 @@ public:
     void RequestApply();
     void RequestRevert();
     void ProcessPendingCommand();
+    bool ResolveEditsForShutdown();
 
     const ModMenuSession &GetSession() const;
     const std::string &GetError() const;
@@ -80,7 +81,7 @@ private:
     ModMenuOwner MakeOwner(IMod *mod) const;
     ModMenuDocument BuildDocument(IMod *mod, const ModMenuOwner &owner) const;
     void RefreshMods();
-    void Apply();
+    bool Apply();
     void Revert();
 
     ModContext &m_Context;

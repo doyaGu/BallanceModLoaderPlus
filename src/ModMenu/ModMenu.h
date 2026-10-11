@@ -15,7 +15,7 @@ public:
 
     bool Open();
     bool Close();
-    bool CloseForShutdown();
+    bool CloseForShutdown() noexcept;
     bool IsOpen() const;
     void OnProcess();
 

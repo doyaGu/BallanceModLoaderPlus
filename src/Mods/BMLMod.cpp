@@ -382,8 +382,8 @@ void BMLMod::CloseModsMenu() {
     m_ModMenu.Close();
 }
 
-void BMLMod::CloseModsMenuForShutdown() {
-    m_ModMenu.CloseForShutdown();
+bool BMLMod::CloseModsMenuForShutdown() noexcept {
+    return m_ModMenu.CloseForShutdown();
 }
 
 void BMLMod::OpenMapMenu() {
