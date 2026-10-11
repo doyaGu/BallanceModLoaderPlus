@@ -105,11 +105,14 @@ int main(int argc, char **argv) {
         Require(run.SessionFailures.empty(), "session-acknowledgements", failures);
         Require(HasContinuousCheckpointSequence(run), "session-checkpoint-sequence", failures);
         Require(run.HandledCheckpoints.size() >=
-                    static_cast<std::size_t>(run.ExpectedInputSequences + 3),
+                    static_cast<std::size_t>(run.ExpectedInputSequences +
+                                             (selected->ReturnToNative ? 3 : 2)),
                 "session-checkpoint-count", failures);
 
-        for (const std::string name :
-             {std::string("GameMenu"), std::string("NativeOptions"), selected->CaptureName}) {
+        std::vector<std::string> captureNames = {"GameMenu", selected->CaptureName};
+        if (selected->ReturnToNative)
+            captureNames.insert(captureNames.begin() + 1, "NativeOptions");
+        for (const std::string &name : captureNames) {
             const auto capture = run.Captures.find(name);
             Require(capture != run.Captures.end() && capture->second.Captured, "capture-" + name,
                     failures);
@@ -119,13 +122,18 @@ int main(int argc, char **argv) {
             }
         }
 
-        Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
-                              "input-main-to-options", true) &&
-                    HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
-                                  "input-options-to-imgui", true) &&
-                    HasCheckpoint(run, UiAutomationSession::CheckpointKind::Capture,
-                                  "capture-native-options"),
-                "native-imgui-round-trip", failures);
+        const bool enteredImGui =
+            HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
+                          "input-main-to-options", true) &&
+            HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
+                          "input-options-to-imgui", true);
+        Require(enteredImGui &&
+                    (!selected->ReturnToNative ||
+                     HasCheckpoint(run, UiAutomationSession::CheckpointKind::Capture,
+                                   "capture-native-options")),
+                selected->ReturnToNative ? "native-imgui-round-trip"
+                                         : "native-imgui-entry",
+                failures);
         if (selected->Input != UiTest::InputProfile::ModList) {
             Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
                                   "input-options-to-main", true) &&

@@ -202,6 +202,10 @@ class InstallTransaction {
             fs::copy_file(request.PublicAuthoringMod,
                           m_Mods / "PublicAuthoringTest.bmodp",
                           fs::copy_options::overwrite_existing);
+            const fs::path config =
+                m_ModLoader / "Configs" / "PublicAuthoringTest.cfg";
+            Snapshot(config);
+            fs::remove(config);
         }
 
         if (std::find(request.SelectedScenario.Fixtures.begin(),
@@ -804,12 +808,15 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
             std::string CheckpointName;
             std::string ArtifactName;
         };
-        const std::vector<CapturePlan> capturePlans = {
+        std::vector<CapturePlan> plannedCaptures = {
             {"capture-game-menu", "GameMenu"},
-            {"capture-native-options", "NativeOptions"},
             {"capture-" + request.SelectedScenario.Surface, request.SelectedScenario.CaptureName},
         };
-        for (const auto &capturePlan : capturePlans) {
+        if (request.SelectedScenario.ReturnToNative) {
+            plannedCaptures.insert(plannedCaptures.begin() + 1,
+                                   {"capture-native-options", "NativeOptions"});
+        }
+        for (const auto &capturePlan : plannedCaptures) {
             result.Captures[capturePlan.ArtifactName].Path =
                 artifacts / (capturePlan.ArtifactName + ".bmp");
         }
@@ -894,11 +901,11 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
                     }
                 } else {
                     const auto capturePlan =
-                        std::find_if(capturePlans.begin(), capturePlans.end(),
+                        std::find_if(plannedCaptures.begin(), plannedCaptures.end(),
                                      [&](const CapturePlan &candidate) {
                                          return candidate.CheckpointName == checkpoint->Name;
                                      });
-                    if (capturePlan != capturePlans.end()) {
+                    if (capturePlan != plannedCaptures.end()) {
                         recognized = true;
                         auto &capture = result.Captures[capturePlan->ArtifactName];
                         if (capture.Captured) {

@@ -56,6 +56,19 @@ std::string RequireOne(const Properties &properties, const std::string &key, con
     return found->second.front();
 }
 
+bool ReadOptionalBoolean(const Properties &properties, const std::string &key,
+                         bool defaultValue, const fs::path &path) {
+    const auto found = properties.find(key);
+    if (found == properties.end())
+        return defaultValue;
+    if (found->second.size() != 1 ||
+        (found->second.front() != "true" && found->second.front() != "false")) {
+        throw std::runtime_error(path.string() + ": expected '" + key +
+                                 "' to be true or false");
+    }
+    return found->second.front() == "true";
+}
+
 void RejectUnknownKeys(const Properties &properties, const std::set<std::string> &allowed,
                        const fs::path &path) {
     for (const auto &property : properties) {
@@ -129,7 +142,7 @@ Scenario LoadScenario(const fs::path &definitionPath, const fs::path &sourceRoot
     const Properties properties = ReadProperties(absoluteDefinition);
     RejectUnknownKeys(properties,
                       {"name", "test", "surface", "capture", "input", "fixture", "required_log",
-                       "requires", "source"},
+                       "requires", "return_to_native", "source"},
                       absoluteDefinition);
 
     Scenario scenario;
@@ -152,6 +165,8 @@ Scenario LoadScenario(const fs::path &definitionPath, const fs::path &sourceRoot
     else
         throw std::runtime_error(absoluteDefinition.string() + ": unsupported input profile '" +
                                  input + "'");
+    scenario.ReturnToNative = ReadOptionalBoolean(
+        properties, "return_to_native", true, absoluteDefinition);
 
     scenario.Fixtures = ReadKnownList(properties, "fixture",
                                       {"custom-map", "public-authoring", "mod-menu-reload"},

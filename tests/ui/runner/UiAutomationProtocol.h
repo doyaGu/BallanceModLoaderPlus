@@ -19,6 +19,7 @@ struct Scenario {
     std::string Surface;
     std::string CaptureName;
     InputProfile Input = InputProfile::ModList;
+    bool ReturnToNative = true;
     std::vector<std::string> Fixtures;
     std::vector<std::string> Requirements;
     std::vector<std::string> RequiredLogs;
