@@ -1,0 +1,10 @@
+name=mod-menu-shutdown-persistence
+test=mod_menu_shutdown_persistence
+surface=mod-menu
+capture=ModMenuShutdownPersistence
+input=mod-list
+return_to_native=false
+fixture=public-authoring
+source=player/journeys/mod-menu/ModMenuShutdownPersistenceScenario.cpp
+required_log=Public authoring config: enabled=true
+required_log=Public authoring unload: status=pass command=0 page=0

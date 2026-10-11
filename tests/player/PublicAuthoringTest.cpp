@@ -2,6 +2,7 @@
 #include <BML/Bui.h>
 #include <BML/DataShare.hpp>
 #include <BML/IBML.h>
+#include <BML/IConfig.h>
 #include <BML/ILogger.h>
 #include <BML/IMod.h>
 #include <BML/ModMenu.hpp>
@@ -112,6 +113,11 @@ public:
         using BML::PlayerTest::ProbeReport;
         ProbeReport::Reset();
 
+        m_PersistedSetting = GetConfig()->GetProperty("Persistence", "Enabled");
+        m_PersistedSetting->SetComment(
+            "Verifies that pending Mod Menu changes survive a normal shutdown.");
+        m_PersistedSetting->SetDefaultBoolean(false);
+
         m_Page.Attach(GetLogger());
         const bool command = TestCommand();
         const bool dataShare = TestDataShare();
@@ -145,6 +151,17 @@ public:
         GetLogger()->Info(
             "Public authoring unload: status=%s command=%d page=%d child=%d",
             passed ? "pass" : "fail", commandStatus, pageStatus, childStatus);
+    }
+
+    void OnModifyConfig(const char *category, const char *key,
+                        IProperty *property) override {
+        if (property != m_PersistedSetting || !category || !key ||
+            std::strcmp(category, "Persistence") != 0 ||
+            std::strcmp(key, "Enabled") != 0) {
+            return;
+        }
+        GetLogger()->Info("Public authoring config: enabled=%s",
+                          property->GetBoolean() ? "true" : "false");
     }
 
 private:
@@ -236,6 +253,7 @@ private:
     BML::DataShare m_DataShare;
     BML::DataShareRequest m_DataRequest;
     DataShareState m_DataState;
+    IProperty *m_PersistedSetting = nullptr;
     PublicAuthoringPage m_Page;
     PublicAuthoringChildPage m_ChildPage;
 };

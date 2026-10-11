@@ -71,8 +71,16 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
         IM_CHECK(OpenConfigCategory(ctx, "Graphics", "**/UnlockFrameRate"));
         IM_CHECK(MenuPagesContain(ctx,
                                   {"UnlockFrameRate", "SetMaxFrameRate", "WidescreenFix"}));
+        const bool unlockFrameRate = ctx->ItemIsChecked("**/UnlockFrameRate");
         IM_CHECK(ToggleConfigBoolean(ctx, "**/UnlockFrameRate"));
+        IM_CHECK(!ctx->ItemExists("**/Back"));
+        IM_CHECK(ctx->ItemIsChecked("**/UnlockFrameRate") != unlockFrameRate);
+        ctx->ItemClick("**/Save");
+        IM_CHECK(WaitForItem(ctx, "**/Back"));
         IM_CHECK(ToggleConfigBoolean(ctx, "**/UnlockFrameRate"));
+        ctx->ItemClick("**/Save");
+        ctx->Yield();
+        IM_CHECK_EQ(ctx->ItemIsChecked("**/UnlockFrameRate"), unlockFrameRate);
         IM_CHECK(CaptureSurface(ctx, SurfaceCapture::ModMenu));
         ctx->ItemClick("**/Back");
 

@@ -83,6 +83,13 @@ int main(int argc, char **argv) {
                     customMaps->Fixtures == std::vector<std::string>{"custom-map"} &&
                     customMaps->Input == UiTest::InputProfile::CustomMap,
                 "Custom maps must declare its fixture and UI-driven level entry");
+        const auto shutdownPersistence =
+            std::find_if(scenarios.begin(), scenarios.end(), [](const auto &scenario) {
+                return scenario.Name == "mod-menu-shutdown-persistence";
+            });
+        Require(shutdownPersistence != scenarios.end() &&
+                    !shutdownPersistence->ReturnToNative,
+                "Shutdown persistence must leave the Mod Menu open for process exit");
 
         for (const auto &entry : fs::recursive_directory_iterator(uiTestDirectory)) {
             if (!entry.is_regular_file())
