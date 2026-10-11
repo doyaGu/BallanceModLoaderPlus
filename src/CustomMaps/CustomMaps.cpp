@@ -137,7 +137,7 @@ void CustomMaps::InitConfig(IConfig &config) {
     m_LevelNumber->SetDefaultInteger(0);
 
     m_ShowTooltip->SetComment("Show custom map's full name in tooltip");
-    m_ShowTooltip->SetDefaultBoolean(false);
+    m_ShowTooltip->SetDefaultBoolean(true);
 
     m_MaxDepth->SetComment("The max depth of the nested subdirectories.");
     m_MaxDepth->SetDefaultInteger(8);

@@ -47,7 +47,7 @@ private:
 
     MapLoader m_LoadMap;
     LoadState m_LoadState = LoadState::Idle;
-    bool m_ShowTooltip = false;
+    bool m_ShowTooltip = true;
     int m_MaxDepth = 8;
     std::wstring m_MapsDirectory;
     ILogger *m_Logger = nullptr;

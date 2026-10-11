@@ -474,7 +474,7 @@ void BMLMod::InitConfigs() {
     m_UnlockFPS->SetDefaultBoolean(false);
 
     m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync");
-    m_FPSLimit->SetDefaultInteger(0);
+    m_FPSLimit->SetDefaultInteger(240);
 
     m_WidescreenFix->SetComment("Improve widescreen resolutions support");
     m_WidescreenFix->SetDefaultBoolean(false);

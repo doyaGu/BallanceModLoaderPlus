@@ -44,10 +44,10 @@ void HUDRuntime::InitConfig(IConfig &config) {
     m_ShowTitle->SetDefaultBoolean(true);
 
     m_ShowFPS->SetComment("Show FPS at top-left corner");
-    m_ShowFPS->SetDefaultBoolean(true);
+    m_ShowFPS->SetDefaultBoolean(false);
 
     m_ShowSRTimer->SetComment("Show SR Timer above Time Score");
-    m_ShowSRTimer->SetDefaultBoolean(true);
+    m_ShowSRTimer->SetDefaultBoolean(false);
 
     m_FPSUpdateFrequency->SetComment(
         "FPS counter update frequency in frames (higher values = less frequent updates, better performance)");
