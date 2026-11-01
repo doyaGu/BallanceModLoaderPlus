@@ -699,8 +699,14 @@ function Invoke-BMLPlayerRun {
     } finally {
         Reset-BMLTutorialExitKey
         foreach ($name in $variables.Keys) {
-            [Environment]::SetEnvironmentVariable(
-                $name, $previousVariables[$name], 'Process')
+            if ($null -eq $previousVariables[$name]) {
+                # PowerShell coerces $null to an empty string for this .NET
+                # overload. Preserve absence, including on runtimes where an
+                # empty environment value is distinct from a missing variable.
+                [Environment]::SetEnvironmentVariable($name, [NullString]::Value, 'Process')
+            } else {
+                [Environment]::SetEnvironmentVariable($name, $previousVariables[$name], 'Process')
+            }
         }
         if ($null -ne $windowShell) {
             [Runtime.InteropServices.Marshal]::ReleaseComObject($windowShell) |
