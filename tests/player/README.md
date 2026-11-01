@@ -60,3 +60,5 @@ Add `-Scenario mixed-reload` to put both Mods in one ZIP and reload the script
 twice through the public `script reload` command. `-Scenario wrapped-reload`
 places the script in a subdirectory. In both layouts the native and script
 resources must stay readable across both reloads and through native unload.
+`-Scenario nested` places different `Shared.zip` archives in two outer ZIPs;
+neither may overwrite the other's native Mod or resource.

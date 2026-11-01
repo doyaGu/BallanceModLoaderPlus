@@ -158,7 +158,7 @@ private:
 
     using ModPackageDirectories = std::unordered_map<std::wstring, std::wstring>;
     std::size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods,
-                            ModPackageDirectories &packages);
+                            ModPackageDirectories &packages, std::size_t &nextPackage);
 #if BML_ENABLE_ANGELSCRIPT
     struct ModDependencySnapshot {
         std::string Id;

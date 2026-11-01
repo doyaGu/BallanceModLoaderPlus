@@ -75,20 +75,9 @@ namespace {
         return ModuleDirectory(ModuleFromAddress(address));
     }
 
-    bool PrepareFreshDirectory(const std::wstring &directory) {
-        if (directory.empty())
-            return false;
-
-        if (utils::FileExistsW(directory) && !utils::DeleteFileW(directory))
-            return false;
-
-        if (utils::DirectoryExistsW(directory) && !utils::DeleteDirectoryW(directory))
-            return false;
-
-        return utils::CreateFileTreeW(directory);
-    }
-
-    std::wstring BuildZipExtractionDirectory(const std::wstring &tempDirectory, const std::wstring &archivePath) {
+    std::wstring BuildZipExtractionDirectory(const std::wstring &tempDirectory,
+                                             const std::wstring &archivePath,
+                                             std::size_t &nextPackage) {
         if (tempDirectory.empty() || archivePath.empty())
             return {};
 
@@ -100,7 +89,12 @@ namespace {
         if (archiveName.empty())
             return {};
 
-        return utils::CombinePathW(utils::CombinePathW(tempDirectory, PACKAGES_DIRECTORY_NAME), archiveName);
+        const std::wstring packages = utils::CombinePathW(tempDirectory, PACKAGES_DIRECTORY_NAME);
+        for (;;) {
+            const std::wstring slot = utils::CombinePathW(packages, std::to_wstring(++nextPackage));
+            if (!utils::PathExistsW(slot))
+                return utils::CombinePathW(slot, archiveName);
+        }
     }
 
 }
@@ -271,7 +265,8 @@ bool ModLoader::LoadMods() {
 #endif
             std::vector<std::wstring> modPaths;
             ModPackageDirectories packages;
-            ExploreMods(path, modPaths, packages);
+            std::size_t nextPackage = 0;
+            ExploreMods(path, modPaths, packages, nextPackage);
 
             for (auto &modPath : modPaths) {
                 IMod *mod = LoadMod(modPath);
@@ -906,7 +901,7 @@ int ModLoader::ClearDependencies(IMod *mod) {
 }
 
 size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods,
-                             ModPackageDirectories &packages) {
+                             ModPackageDirectories &packages, std::size_t &nextPackage) {
     if (path.empty() || !utils::DirectoryExistsW(path))
         return 0;
 
@@ -923,16 +918,18 @@ size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring
             const std::wstring ext = utils::GetExtensionW(fullPath);
 
             if (_wcsicmp(ext.c_str(), L".zip") == 0) {
-                const std::wstring dest = BuildZipExtractionDirectory(m_Context.GetDirectory(BML_DIR_TEMP), fullPath);
+                // Each archive owns a fresh slot, even when nested archives
+                // have the same filename. Never clear another package's files.
+                const std::wstring dest = BuildZipExtractionDirectory(m_Context.GetDirectory(BML_DIR_TEMP), fullPath, nextPackage);
 
-                if (dest.empty() || !PrepareFreshDirectory(dest)) {
+                if (dest.empty() || !utils::CreateFileTreeW(dest)) {
                     m_Context.GetLogger()->Error("Failed to create temp extraction directory: %s", utils::Utf16ToAnsi(dest).c_str());
                     continue;
                 }
 
                 if (utils::ExtractZipW(fullPath, dest)) {
                     packages.emplace(fullPath, dest);
-                    ExploreMods(dest, mods, packages);
+                    ExploreMods(dest, mods, packages, nextPackage);
                 } else {
                     m_Context.GetLogger()->Error("Failed to extract zip file: %s", utils::Utf16ToAnsi(fullPath).c_str());
                 }

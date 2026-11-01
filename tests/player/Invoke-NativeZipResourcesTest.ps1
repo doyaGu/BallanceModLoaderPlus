@@ -7,7 +7,7 @@ param(
     [string]$BuildDll,
     [string]$DriverMod,
     [string]$TestMod,
-    [ValidateSet('separate', 'mixed-reload', 'wrapped-reload')]
+    [ValidateSet('separate', 'mixed-reload', 'wrapped-reload', 'nested')]
     [string]$Scenario = 'separate',
     [string]$ArtifactsDirectory
 )
@@ -43,6 +43,7 @@ Copy-Item -LiteralPath (Join-Path $scriptSource 'Resources\probe.txt') `
     -Destination (Join-Path $nativeSource 'Resources\probe.txt')
 $nativeZip = Join-Path $ArtifactsDirectory 'NativeZipResourcesTest.zip'
 $scriptZip = Join-Path $ArtifactsDirectory 'ScriptResourcesTest.zip'
+$reload = $Scenario -in @('mixed-reload', 'wrapped-reload')
 if ($Scenario -eq 'wrapped-reload') {
     Copy-Item -LiteralPath $scriptSource -Destination (Join-Path $nativeSource 'Script') -Recurse
 } elseif ($Scenario -eq 'mixed-reload') {
@@ -57,8 +58,29 @@ $install = @(
         @{ Source = (Join-Path $PSScriptRoot 'BehaviorAcceptance.cfg')
            Destination = 'ModLoader\Configs\BML.cfg' }
 )
+if ($Scenario -eq 'nested') {
+    # Unrelated containers can legitimately ship inner ZIPs with the same name.
+    $outerA = Join-Path $nativeSource 'outer-a'
+    $outerB = Join-Path $nativeSource 'outer-b'
+    $other = Join-Path $nativeSource 'other'
+    foreach ($directory in @($outerA, $outerB, (Join-Path $other 'Resources'))) {
+        New-Item -ItemType Directory -Force $directory | Out-Null
+    }
+    Copy-Item -LiteralPath $nativeZip -Destination (Join-Path $outerA 'Shared.zip')
+    Set-Content -LiteralPath (Join-Path $other 'Resources\probe.txt') -Value 'unrelated-resource'
+    New-BMLZipFromDirectory -SourceDir $other -ZipPath (Join-Path $outerB 'Shared.zip')
+    $zipA = Join-Path $ArtifactsDirectory 'A.zip'
+    $zipB = Join-Path $ArtifactsDirectory 'B.zip'
+    New-BMLZipFromDirectory -SourceDir $outerA -ZipPath $zipA
+    New-BMLZipFromDirectory -SourceDir $outerB -ZipPath $zipB
+    $install = @($install | Where-Object { $_.Source -ne $nativeZip })
+    $install += @(
+        @{ Source = $zipA; Destination = 'ModLoader\Mods\A.zip' },
+        @{ Source = $zipB; Destination = 'ModLoader\Mods\B.zip' }
+    )
+}
 $environment = @{}
-if ($Scenario -ne 'separate') {
+if ($reload) {
     $environment['BML_TEST_NATIVE_ZIP_RELOAD'] = '1'
 } else {
     New-BMLZipFromDirectory -SourceDir $scriptSource -ZipPath $scriptZip
@@ -73,7 +95,7 @@ $checks = $flow.Checks
 $checks['NativeResourceOnLoad'] = $run.ModLoaderLog.Contains('Native ZIP resource: phase=load readable=true')
 $checks['NativeResourceOnUnload'] = $run.ModLoaderLog.Contains('Native ZIP resource: phase=unload readable=true')
 $checks['ScriptResourceOnLoad'] = $run.ModLoaderLog.Contains('BML zip script smoke loaded resource=true')
-if ($Scenario -ne 'separate') {
+if ($reload) {
     $checks['NativeResourceAfterTwoReloads'] = $run.ModLoaderLog.Contains('Native ZIP reload: round=2 readable=true')
     $checks['ScriptResourceAfterTwoReloads'] =
         [regex]::Matches($run.ModLoaderLog, 'BML zip script smoke loaded resource=true').Count -eq 3
