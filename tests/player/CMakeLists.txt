@@ -78,6 +78,12 @@ bml_add_player_test(PlayerFlowDriver
         PlayerProbeApi.h
 )
 
+# An ordinary packaged Mod reads its own resource through the public SDK.
+bml_add_player_test(NativeZipResourcesTest
+        NativeZipResourcesTest.cpp
+        ${BML_PLAYER_PROBE_SOURCES}
+)
+
 # The ExecuteBB physics operations, on a body the probe owns itself.
 bml_add_player_test(ExecuteBBTest
         ExecuteBBTest.cpp

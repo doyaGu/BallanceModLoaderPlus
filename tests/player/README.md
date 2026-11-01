@@ -47,3 +47,11 @@ logs, starts Player, and collects the probe results. Close an existing Player
 process before a runner replaces its DLL.
 
 For visible ImGui journeys, use the separate [UI automation guide](../ui/README.md).
+
+`Invoke-NativeZipResourcesTest.ps1` checks the package contract with ordinary
+native and script ZIPs. Configure with `-DBML_ENABLE_ANGELSCRIPT=ON`, build `BML`,
+`PlayerFlowDriver`, and `NativeZipResourcesTest`, then pass the loader DLL with
+`-BuildDll`. The native Mod reads its bundled file using `BML_GetModRootW`; the
+script Mod uses `ReadModTextFileUtf8`. Both resources must remain readable after
+startup, and the native resource must still be readable during unload. This
+test does not inspect loader state or game Behavior graphs.
