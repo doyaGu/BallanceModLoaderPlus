@@ -29,12 +29,15 @@ public:
         BML::PlayerTest::ProbeReport::Reset();
         GetLogger()->Info("Native ZIP resource: phase=load readable=%s", OwnResource() ? "true" : "false");
         m_Rollback = std::getenv("BML_TEST_ZIP_ROLLBACK") != nullptr;
+        const char *layout = std::getenv("BML_TEST_ZIP_LAYOUT");
+        m_Adding = layout && std::string(layout) == "Add";
+        m_Removing = layout && std::string(layout) == "Remove";
         BML::Command::Definition command;
         command.Name = "zip_paths_phase";
         command.Hidden = true;
         const int status = m_Phase.Register(command, [this](const BML::Command::Invocation &call) {
             if (call.Argument(0) == "candidate") {
-                m_CandidateReadable = ReadResources("zip-after.dat", "zip-after");
+                m_CandidateReadable = ReadResources("zip-after.dat", "zip-after", m_Removing);
                 GetLogger()->Info("ZIP search paths: candidate_readable=%s", m_CandidateReadable ? "true" : "false");
             } else if (call.Argument(0) == "rollback") {
                 m_RolledBack = true;
@@ -51,10 +54,14 @@ public:
             return;
         if (!m_Requested) {
             m_PreviousRoot = Root("bml.zip.paths");
-            m_Counts = PathCounts();
+            if (m_Rounds == 0)
+                m_Counts = PathCounts();
             const wchar_t *replacement = _wgetenv(L"BML_TEST_ZIP_REPLACEMENT");
             const wchar_t *loader = BML_GetLoaderPathW(BML_DIR_LOADER);
-            if (!replacement || !loader || !ReadResources("zip-before.dat", "zip-before")) {
+            const bool oldVersion = m_Rounds == 0 || m_Rollback;
+            if (!replacement || !loader || m_PreviousRoot.empty() ||
+                !ReadResources(oldVersion ? "zip-before.dat" : "zip-after.dat",
+                               oldVersion ? "zip-before" : "zip-after", oldVersion ? m_Adding : m_Removing)) {
                 ProbeReport::Fail("initial-resources-unavailable");
                 return;
             }
@@ -74,15 +81,25 @@ public:
         const std::wstring root = Root("bml.zip.paths");
         if (m_Rollback ? m_RolledBack : root != m_PreviousRoot) {
             const bool resources = m_Rollback
-                ? root == m_PreviousRoot && ReadResources("zip-before.dat", "zip-before") && !AnyResource("zip-after.dat")
-                : ReadResources("zip-after.dat", "zip-after") && !AnyResource("zip-before.dat");
-            const bool stable = PathCounts() == m_Counts;
-            GetLogger()->Info("ZIP search paths: mode=%s resources=%s stable_count=%s",
-                m_Rollback ? "rollback" : "reload", resources ? "true" : "false", stable ? "true" : "false");
-            if (resources && stable && m_CandidateReadable)
-                ProbeReport::Pass("search-paths-correct");
-            else
+                ? root == m_PreviousRoot && ReadResources("zip-before.dat", "zip-before", m_Adding) && !AnyResource("zip-after.dat")
+                : ReadResources("zip-after.dat", "zip-after", m_Removing) && !AnyResource("zip-before.dat");
+            auto expectedCounts = m_Counts;
+            if (!m_Rollback) {
+                const int delta = m_Adding ? 1 : m_Removing ? -1 : 0;
+                expectedCounts[0] += 2 * delta;
+                expectedCounts[1] += delta;
+                expectedCounts[2] += delta;
+            }
+            const bool correctCount = PathCounts() == expectedCounts;
+            GetLogger()->Info("ZIP search paths: mode=%s resources=%s expected_count=%s",
+                m_Rollback ? "rollback" : "reload", resources ? "true" : "false", correctCount ? "true" : "false");
+            if (!resources || !correctCount || !m_CandidateReadable) {
                 ProbeReport::Fail("search-paths-incorrect");
+            } else if (++m_Rounds == 3) {
+                ProbeReport::Pass("search-paths-correct-after-three-reloads");
+            } else {
+                m_Requested = m_RolledBack = m_CandidateReadable = false;
+            }
         } else if (std::chrono::steady_clock::now() - m_RequestedAt > std::chrono::seconds(10)) {
             ProbeReport::Fail("reload-timeout");
         }
@@ -106,10 +123,16 @@ private:
         std::string value;
         return static_cast<bool>(file >> value) && value == "zip-resource";
     }
-    bool ReadResources(const char *name, const char *expected) const {
+    bool ReadResources(const char *name, const char *expected, bool dataOnly) const {
         for (int category : Categories) {
             XString file = name;
-            if (m_BML->GetPathManager()->ResolveFileName(file, category) != CK_OK)
+            const int status = m_BML->GetPathManager()->ResolveFileName(file, category);
+            if (dataOnly && category != DATA_PATH_IDX) {
+                if (status == CK_OK)
+                    return false;
+                continue;
+            }
+            if (status != CK_OK)
                 return false;
             std::ifstream resource(file.CStr());
             std::string value;
@@ -133,6 +156,8 @@ private:
     }
     BML::Command::Registration m_Phase;
     bool m_Rollback = false, m_Requested = false, m_RolledBack = false, m_CandidateReadable = false;
+    bool m_Adding = false, m_Removing = false;
+    int m_Rounds = 0;
     std::wstring m_PreviousRoot;
     std::array<int, 3> m_Counts{};
     std::chrono::steady_clock::time_point m_RequestedAt;

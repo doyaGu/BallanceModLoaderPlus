@@ -71,6 +71,10 @@ new data, bitmap and sound files through the public CKPathManager API, including
 inside the new script's OnLoad callback. A rejected OnLoad must restore the old
 resources, and neither case may leak search-path entries. The lifecycle signal
 uses a normal public command registration.
+Each scenario repeats three times. Add `-ResourceLayout Add` or `Remove` to
+introduce or remove the data, texture and sound subdirectories during reload.
+Counts must change by the exact number of directories, and rollback must
+restore the original layout and counts on every attempt.
 
 Pass `-ScriptSupport Disabled` with a loader built using
 `-DBML_ENABLE_ANGELSCRIPT=OFF` to check native startup and unload for `separate`,

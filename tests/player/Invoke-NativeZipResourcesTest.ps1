@@ -11,6 +11,8 @@ param(
     [string]$Scenario = 'separate',
     [ValidateSet('Enabled', 'Disabled')]
     [string]$ScriptSupport = 'Enabled',
+    [ValidateSet('Same', 'Add', 'Remove')]
+    [string]$ResourceLayout = 'Same',
     [string]$ArtifactsDirectory
 )
 
@@ -26,6 +28,9 @@ $releaseBin = Split-Path -Parent ([IO.Path]::GetFullPath($BuildDll))
 $search = $Scenario -in @('search-reload', 'search-rollback')
 if ($search -and $ScriptSupport -eq 'Disabled') {
     throw 'Search-path reload scenarios require -ScriptSupport Enabled.'
+}
+if (-not $search -and $ResourceLayout -ne 'Same') {
+    throw '-ResourceLayout applies only to search-path reload scenarios.'
 }
 $probe = $(if ($search) { 'ScriptZipSearchPathsTest' } else { 'NativeZipResourcesTest' })
 if (-not $DriverMod) {
@@ -103,24 +108,29 @@ if ($mixed) {
         New-Item -ItemType Directory -Force $pathsSource | Out-Null
         $script = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'ScriptZipSearchPaths.mod.as')
         Set-Content -LiteralPath (Join-Path $pathsSource 'Paths.mod.as') -Value $script -Encoding utf8
-        foreach ($directory in @('3D Entities\PH', 'Textures', 'Sounds')) {
+        $beforeDirectories = if ($ResourceLayout -eq 'Add') { @('') } else { @('3D Entities\PH', 'Textures', 'Sounds') }
+        foreach ($directory in $beforeDirectories) {
             $target = Join-Path $pathsSource $directory
             New-Item -ItemType Directory -Force $target | Out-Null
             Set-Content -LiteralPath (Join-Path $target 'zip-before.dat') -Value 'zip-before'
         }
         New-BMLZipFromDirectory -SourceDir $pathsSource -ZipPath $scriptZip
-        foreach ($directory in @('3D Entities\PH', 'Textures', 'Sounds')) {
-            $target = Join-Path $pathsSource $directory
-            Remove-Item -LiteralPath (Join-Path $target 'zip-before.dat')
+        $replacementSource = Join-Path $nativeSource 'replacement-script'
+        New-Item -ItemType Directory -Force $replacementSource | Out-Null
+        $afterDirectories = if ($ResourceLayout -eq 'Remove') { @('') } else { @('3D Entities\PH', 'Textures', 'Sounds') }
+        foreach ($directory in $afterDirectories) {
+            $target = Join-Path $replacementSource $directory
+            New-Item -ItemType Directory -Force $target | Out-Null
             Set-Content -LiteralPath (Join-Path $target 'zip-after.dat') -Value 'zip-after'
         }
         if ($Scenario -eq 'search-rollback') {
-            Set-Content -LiteralPath (Join-Path $pathsSource 'Paths.mod.as') `
-                -Value $script.Replace('RejectReload = false', 'RejectReload = true') -Encoding utf8
+            $script = $script.Replace('RejectReload = false', 'RejectReload = true')
             $environment['BML_TEST_ZIP_ROLLBACK'] = '1'
         }
+        Set-Content -LiteralPath (Join-Path $replacementSource 'Paths.mod.as') -Value $script -Encoding utf8
+        $environment['BML_TEST_ZIP_LAYOUT'] = $ResourceLayout
         $replacement = Join-Path $ArtifactsDirectory 'ScriptResourcesReplacement.zip'
-        New-BMLZipFromDirectory -SourceDir $pathsSource -ZipPath $replacement
+        New-BMLZipFromDirectory -SourceDir $replacementSource -ZipPath $replacement
         $environment['BML_TEST_ZIP_REPLACEMENT'] = [IO.Path]::GetFullPath($replacement)
     } else {
         New-BMLZipFromDirectory -SourceDir $scriptSource -ZipPath $scriptZip
@@ -157,7 +167,8 @@ if ($ScriptSupport -eq 'Disabled') {
 } elseif ($search) {
     $mode = $(if ($Scenario -eq 'search-rollback') { 'rollback' } else { 'reload' })
     $checks['CandidateSearchPaths'] = $run.ModLoaderLog.Contains('ZIP search paths: candidate_readable=true')
-    $checks['FinalSearchPaths'] = $run.ModLoaderLog.Contains("ZIP search paths: mode=$mode resources=true stable_count=true")
+    $checks['FinalSearchPaths'] = [regex]::Matches($run.ModLoaderLog,
+        "ZIP search paths: mode=$mode resources=true expected_count=true").Count -eq 3
 } else {
     $checks['ScriptResourceOnLoad'] = $run.ModLoaderLog.Contains('BML zip script smoke loaded resource=true')
 }
