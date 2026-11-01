@@ -153,11 +153,10 @@ ScriptModReloadCandidate::~ScriptModReloadCandidate() {
 
         if (m_State->Committed && m_State->OldRuntimeRetained) {
             owner->ReleaseRuntimeOnly(m_State->OldRuntime);
-            if (m_State->OldEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
-                !m_State->OldEntry.RootDirectory.empty() &&
-                m_State->OldEntry.RootDirectory != owner->m_Entry.RootDirectory) {
-                if (!utils::DeleteDirectoryW(m_State->OldEntry.RootDirectory)) {
-                    const std::string oldRoot = utils::Utf16ToUtf8(m_State->OldEntry.RootDirectory);
+            if (!m_State->OldEntry.ReloadStagingRoot.empty() &&
+                m_State->OldEntry.ReloadStagingRoot != owner->m_Entry.ReloadStagingRoot) {
+                if (!utils::DeleteDirectoryW(m_State->OldEntry.ReloadStagingRoot)) {
+                    const std::string oldRoot = utils::Utf16ToUtf8(m_State->OldEntry.ReloadStagingRoot);
                     owner->Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
                                                        "Failed to remove previous script package reload staging directory: " + oldRoot));
                     if (owner->m_Context && owner->m_Context->GetLogger()) {

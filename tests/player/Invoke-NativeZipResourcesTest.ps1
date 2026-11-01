@@ -7,6 +7,8 @@ param(
     [string]$BuildDll,
     [string]$DriverMod,
     [string]$TestMod,
+    [ValidateSet('separate', 'mixed-reload', 'wrapped-reload')]
+    [string]$Scenario = 'separate',
     [string]$ArtifactsDirectory
 )
 
@@ -41,23 +43,41 @@ Copy-Item -LiteralPath (Join-Path $scriptSource 'Resources\probe.txt') `
     -Destination (Join-Path $nativeSource 'Resources\probe.txt')
 $nativeZip = Join-Path $ArtifactsDirectory 'NativeZipResourcesTest.zip'
 $scriptZip = Join-Path $ArtifactsDirectory 'ScriptResourcesTest.zip'
+if ($Scenario -eq 'wrapped-reload') {
+    Copy-Item -LiteralPath $scriptSource -Destination (Join-Path $nativeSource 'Script') -Recurse
+} elseif ($Scenario -eq 'mixed-reload') {
+    foreach ($entry in Get-ChildItem -LiteralPath $scriptSource) {
+        Copy-Item -LiteralPath $entry.FullName -Destination $nativeSource -Recurse -Force
+    }
+}
 New-BMLZipFromDirectory -SourceDir $nativeSource -ZipPath $nativeZip
-New-BMLZipFromDirectory -SourceDir $scriptSource -ZipPath $scriptZip
-
-$run = Invoke-BMLPlayerRun -BallanceRoot $BallanceRoot -LoaderDll $BuildDll `
-    -Install @(
+$install = @(
         @{ Source = $DriverMod; Destination = 'ModLoader\Mods\PlayerFlowDriver.bmodp' },
         @{ Source = $nativeZip; Destination = 'ModLoader\Mods\NativeZipResourcesTest.zip' },
-        @{ Source = $scriptZip; Destination = 'ModLoader\Mods\ScriptResourcesTest.zip' },
         @{ Source = (Join-Path $PSScriptRoot 'BehaviorAcceptance.cfg')
            Destination = 'ModLoader\Configs\BML.cfg' }
-    ) -ArtifactsDirectory $ArtifactsDirectory -PlayerWidth 800 -PlayerHeight 600 -TimeoutSeconds 60
+)
+$environment = @{}
+if ($Scenario -ne 'separate') {
+    $environment['BML_TEST_NATIVE_ZIP_RELOAD'] = '1'
+} else {
+    New-BMLZipFromDirectory -SourceDir $scriptSource -ZipPath $scriptZip
+    $install += @{ Source = $scriptZip; Destination = 'ModLoader\Mods\ScriptResourcesTest.zip' }
+}
+$run = Invoke-BMLPlayerRun -BallanceRoot $BallanceRoot -LoaderDll $BuildDll `
+    -Install $install -Environment $environment `
+    -ArtifactsDirectory $ArtifactsDirectory -PlayerWidth 800 -PlayerHeight 600 -TimeoutSeconds 60
 
 $flow = Get-BMLPlayerFlowChecks -Run $run -Probes @('NativeZipResourcesTest')
 $checks = $flow.Checks
 $checks['NativeResourceOnLoad'] = $run.ModLoaderLog.Contains('Native ZIP resource: phase=load readable=true')
 $checks['NativeResourceOnUnload'] = $run.ModLoaderLog.Contains('Native ZIP resource: phase=unload readable=true')
 $checks['ScriptResourceOnLoad'] = $run.ModLoaderLog.Contains('BML zip script smoke loaded resource=true')
+if ($Scenario -ne 'separate') {
+    $checks['NativeResourceAfterTwoReloads'] = $run.ModLoaderLog.Contains('Native ZIP reload: round=2 readable=true')
+    $checks['ScriptResourceAfterTwoReloads'] =
+        [regex]::Matches($run.ModLoaderLog, 'BML zip script smoke loaded resource=true').Count -eq 3
+}
 $failed = @($checks.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object Key)
 [pscustomobject]@{
     Status = $(if ($failed.Count -eq 0) { 'pass' } else { 'fail' })

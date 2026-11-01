@@ -20,6 +20,9 @@ struct ScriptModEntry {
     std::wstring ResourceRootDirectory;
     std::string EntryFilename;
     std::string SyntheticId;
+    // Empty for startup packages, whose extraction may also hold native DLLs.
+    // A reload owns this whole staging directory, including any wrapper folder.
+    std::wstring ReloadStagingRoot;
 };
 
 struct ScriptModLoadCandidate {

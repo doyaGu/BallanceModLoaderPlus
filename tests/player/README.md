@@ -55,3 +55,8 @@ native and script ZIPs. Configure with `-DBML_ENABLE_ANGELSCRIPT=ON`, build `BML
 script Mod uses `ReadModTextFileUtf8`. Both resources must remain readable after
 startup, and the native resource must still be readable during unload. This
 test does not inspect loader state or game Behavior graphs.
+
+Add `-Scenario mixed-reload` to put both Mods in one ZIP and reload the script
+twice through the public `script reload` command. `-Scenario wrapped-reload`
+places the script in a subdirectory. In both layouts the native and script
+resources must stay readable across both reloads and through native unload.

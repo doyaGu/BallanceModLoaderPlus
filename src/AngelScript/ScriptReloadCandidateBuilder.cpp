@@ -122,7 +122,9 @@ static std::wstring MakeReloadSnapshotRoot(const ScriptModEntry &entry) {
 
 static std::wstring MakeZipReloadStagingRoot(const ScriptModEntry &entry) {
     static std::atomic<unsigned long> s_ZipReloadSerial{1};
-    const std::wstring parent = utils::GetDirectoryW(entry.RootDirectory.empty() ? entry.SourcePath : entry.RootDirectory);
+    const std::wstring &currentRoot = entry.ReloadStagingRoot.empty()
+        ? entry.RootDirectory : entry.ReloadStagingRoot;
+    const std::wstring parent = utils::GetDirectoryW(currentRoot.empty() ? entry.SourcePath : currentRoot);
     std::wstring baseName = utils::RemoveExtensionW(utils::GetFileNameW(entry.SourcePath));
     if (baseName.empty())
         baseName = L"script-package";
@@ -369,6 +371,7 @@ static bool CaptureReloadSourceSnapshot(ModContext *context,
 
     if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage) {
         snapshot.CommitEntry = snapshot.CompileEntry;
+        snapshot.CommitEntry.ReloadStagingRoot = snapshot.StagedRoot;
     } else {
         snapshot.CommitEntry = MakeFilesystemCommitEntry(entry,
                                                          snapshot.CompileCandidate,

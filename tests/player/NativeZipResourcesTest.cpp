@@ -5,6 +5,8 @@
 
 #include "PlayerProbe.h"
 
+#include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -26,10 +28,41 @@ public:
         BML::PlayerTest::ProbeReport::Reset();
         const bool readable = ReadResource();
         GetLogger()->Info("Native ZIP resource: phase=load readable=%s", readable ? "true" : "false");
-        if (readable)
+        m_Reload = std::getenv("BML_TEST_NATIVE_ZIP_RELOAD") != nullptr;
+        if (readable && !m_Reload)
             BML::PlayerTest::ProbeReport::Pass("resource-readable");
-        else
+        else if (!readable)
             BML::PlayerTest::ProbeReport::Fail("resource-unreadable");
+    }
+
+    void OnProcess() override {
+        using BML::PlayerTest::ProbeReport;
+        if (!m_Reload || !ProbeReport::Started() || ProbeReport::Reported())
+            return;
+        if (!m_Requested) {
+            wchar_t *root = BML_GetModRootW("bml.zip.smoke");
+            m_PreviousRoot = root ? root : L"";
+            BML_FreeWString(root);
+            m_Requested = true;
+            m_RequestedAt = std::chrono::steady_clock::now();
+            m_BML->ExecuteCommand("script reload bml.zip.smoke");
+            return;
+        }
+        wchar_t *root = BML_GetModRootW("bml.zip.smoke");
+        const bool changed = root && !m_PreviousRoot.empty() && root != m_PreviousRoot;
+        BML_FreeWString(root);
+        if (changed) {
+            const bool readable = ReadResource();
+            GetLogger()->Info("Native ZIP reload: round=%d readable=%s", ++m_Rounds, readable ? "true" : "false");
+            if (!readable)
+                ProbeReport::Fail("resource-lost-after-script-reload");
+            else if (m_Rounds == 2)
+                ProbeReport::Pass("resource-readable-after-two-reloads");
+            else
+                m_Requested = false;
+        } else if (std::chrono::steady_clock::now() - m_RequestedAt > std::chrono::seconds(10)) {
+            ProbeReport::Fail("script-reload-timeout");
+        }
     }
 
     void OnUnload() override {
@@ -37,6 +70,12 @@ public:
     }
 
 private:
+    bool m_Reload = false;
+    bool m_Requested = false;
+    int m_Rounds = 0;
+    std::wstring m_PreviousRoot;
+    std::chrono::steady_clock::time_point m_RequestedAt;
+
     bool ReadResource() const {
         wchar_t *root = BML_GetModRootW("NativeZipResourcesTest");
         if (!root)

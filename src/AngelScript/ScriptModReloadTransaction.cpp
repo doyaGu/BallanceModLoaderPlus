@@ -214,14 +214,13 @@ bool ScriptModReloadTransaction::LoadRuntimeForPhase(ScriptModReloadPhase phase,
 }
 
 void ScriptModReloadTransaction::RemoveCommittedStaging(const ScriptModEntry &committedEntry) {
-    if (committedEntry.SourceKind != ScriptModEntrySourceKind::ZipPackage ||
-        committedEntry.RootDirectory.empty() ||
-        committedEntry.RootDirectory == m_State.OldEntry.RootDirectory) {
+    if (committedEntry.ReloadStagingRoot.empty() ||
+        committedEntry.ReloadStagingRoot == m_State.OldEntry.ReloadStagingRoot) {
         return;
     }
 
-    if (!utils::DeleteDirectoryW(committedEntry.RootDirectory)) {
-        const std::string committedRoot = utils::Utf16ToUtf8(committedEntry.RootDirectory);
+    if (!utils::DeleteDirectoryW(committedEntry.ReloadStagingRoot)) {
+        const std::string committedRoot = utils::Utf16ToUtf8(committedEntry.ReloadStagingRoot);
         m_Mod.Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
                                           "Failed to remove rolled-back script package reload staging directory: " + committedRoot));
         if (m_Mod.m_Context && m_Mod.m_Context->GetLogger()) {
