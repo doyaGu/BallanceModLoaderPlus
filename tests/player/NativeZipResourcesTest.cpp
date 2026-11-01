@@ -80,9 +80,16 @@ private:
         wchar_t *root = BML_GetModRootW("NativeZipResourcesTest");
         if (!root)
             return false;
-        const auto path = std::filesystem::path(root) / "Resources" / "probe.txt";
+        const auto directory = std::filesystem::path(root);
         BML_FreeWString(root);
-        std::ifstream resource(path);
+        XString data = "zip-native-only.dat";
+        if (m_BML->GetPathManager()->ResolveFileName(data, DATA_PATH_IDX) != CK_OK)
+            return false;
+        std::error_code error;
+        if (!std::filesystem::equivalent(data.CStr(),
+                directory / "3D Entities" / "PH" / "zip-native-only.dat", error))
+            return false;
+        std::ifstream resource(directory / "Resources" / "probe.txt");
         std::string value;
         return static_cast<bool>(resource >> value) && value == "zip-resource";
     }

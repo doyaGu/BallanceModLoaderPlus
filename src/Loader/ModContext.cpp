@@ -1910,47 +1910,95 @@ void ModContext::ClearLegacyCommands() {
     m_CommandContext.ClearCommands();
 }
 
-void ModContext::AddDataPath(const char *path) {
-    if (!path || path[0] == '\0')
+void ModContext::SetModDataPath(const IMod *mod, const std::wstring &root) {
+    if (!mod || !m_PathManager)
         return;
 
-    XString dataPath = path;
-    if (!m_PathManager->PathIsAbsolute(dataPath)) {
-        char buf[MAX_PATH];
-        VxGetCurrentDirectory(buf);
-        dataPath.Format("%s\\%s", buf, dataPath.CStr());
-    }
-    if (dataPath[dataPath.Length() - 1] != '\\')
-        dataPath << '\\';
-
-    if (utils::DirectoryExistsA(dataPath.CStr()) &&
-        m_PathManager->GetPathIndex(DATA_PATH_IDX, dataPath) == -1) {
-        m_PathManager->AddPath(DATA_PATH_IDX, dataPath);
-
-        XString subDataPath1 = dataPath + "3D Entities\\";
-        if (utils::DirectoryExistsA(subDataPath1.CStr()) &&
-            m_PathManager->GetPathIndex(DATA_PATH_IDX, subDataPath1) == -1) {
-            m_PathManager->AddPath(DATA_PATH_IDX, subDataPath1);
-        }
-
-        XString subDataPath2 = dataPath + "3D Entities\\PH\\";
-        if (utils::DirectoryExistsA(subDataPath2.CStr()) &&
-            m_PathManager->GetPathIndex(DATA_PATH_IDX, subDataPath2) == -1) {
-            m_PathManager->AddPath(DATA_PATH_IDX, subDataPath2);
+    constexpr std::array<int, 5> categories{
+        DATA_PATH_IDX, DATA_PATH_IDX, DATA_PATH_IDX, BITMAP_PATH_IDX, SOUND_PATH_IDX};
+    constexpr std::array<const char *, 5> suffixes{
+        "", "3D Entities\\", "3D Entities\\PH\\", "Textures\\", "Sounds\\"};
+    std::string base = root.empty() ? std::string() : utils::Utf16ToAnsi(utils::ResolvePathW(root));
+    if (!base.empty() && base.back() != '\\')
+        base += '\\';
+    std::array<ModDataPathKey, 5> desired;
+    for (std::size_t i = 0; i < desired.size(); ++i) {
+        desired[i].first = categories[i];
+        const std::string path = base + suffixes[i];
+        if (!base.empty() && utils::DirectoryExistsA(path)) {
+            desired[i].second = path;
+            // Use the engine's spelling for an existing path so aliases share
+            // the same registration and cannot remove each other's entry.
+            XString name = path.c_str();
+            const int index = m_PathManager->GetPathIndex(categories[i], name);
+            if (index >= 0 && m_PathManager->GetPathName(categories[i], index, name) == CK_OK)
+                desired[i].second = name.CStr();
         }
     }
-
-    XString texturePath = dataPath + "Textures\\";
-    if (utils::DirectoryExistsA(texturePath.CStr()) &&
-        m_PathManager->GetPathIndex(BITMAP_PATH_IDX, texturePath) == -1) {
-        m_PathManager->AddPath(BITMAP_PATH_IDX, texturePath);
+    auto &current = m_ModDataPaths[mod];
+    for (std::size_t i = 0; i < desired.size(); ++i) {
+        if (current[i] == desired[i])
+            continue;
+        if (desired[i].second.empty()) {
+            ReleaseModDataPath(current[i]);
+            current[i] = std::move(desired[i]);
+            continue;
+        }
+        XString next = desired[i].second.c_str();
+        const auto old = m_ModDataPathRegistrations.find(current[i]);
+        // Preserve search priority when an exclusively owned path moves. Shared
+        // or pre-existing engine paths stay in place for their other users.
+        if (old != m_ModDataPathRegistrations.end() && old->second.Added &&
+            old->second.Owners == 1 && !m_ModDataPathRegistrations.contains(desired[i]) &&
+            m_PathManager->GetPathIndex(desired[i].first, next) < 0) {
+            XString previous = current[i].second.c_str();
+            const int index = m_PathManager->GetPathIndex(current[i].first, previous);
+            if (index >= 0) {
+                m_ModDataPathRegistrations.emplace(desired[i], old->second);
+                if (m_PathManager->RenamePath(desired[i].first, index, next) == CK_OK) {
+                    m_ModDataPathRegistrations.erase(old);
+                    current[i] = std::move(desired[i]);
+                    continue;
+                }
+                m_ModDataPathRegistrations.erase(desired[i]);
+            }
+        }
+        auto [registration, inserted] = m_ModDataPathRegistrations.try_emplace(desired[i]);
+        if (inserted && m_PathManager->GetPathIndex(desired[i].first, next) < 0) {
+            if (m_PathManager->AddPath(desired[i].first, next) < 0) {
+                m_ModDataPathRegistrations.erase(registration);
+                if (m_Logger)
+                    m_Logger->Error("Could not register Mod resource path: %s", next.CStr());
+                continue;
+            }
+            registration->second.Added = true;
+        }
+        ++registration->second.Owners;
+        ReleaseModDataPath(current[i]);
+        current[i] = std::move(desired[i]);
     }
+}
 
-    XString soundPath = dataPath + "Sounds\\";
-    if (utils::DirectoryExistsA(soundPath.CStr()) &&
-        m_PathManager->GetPathIndex(SOUND_PATH_IDX, soundPath) == -1) {
-        m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
+void ModContext::ReleaseModDataPath(const ModDataPathKey &path) {
+    const auto registration = m_ModDataPathRegistrations.find(path);
+    if (registration == m_ModDataPathRegistrations.end() || --registration->second.Owners != 0)
+        return;
+    if (registration->second.Added && m_PathManager) {
+        XString name = path.second.c_str();
+        const int index = m_PathManager->GetPathIndex(path.first, name);
+        if (index >= 0)
+            (void) m_PathManager->RemovePath(path.first, index);
     }
+    m_ModDataPathRegistrations.erase(registration);
+}
+
+void ModContext::RemoveModDataPath(const IMod *mod) {
+    const auto owner = m_ModDataPaths.find(mod);
+    if (owner == m_ModDataPaths.end())
+        return;
+    for (const ModDataPathKey &path : owner->second)
+        ReleaseModDataPath(path);
+    m_ModDataPaths.erase(owner);
 }
 
 bool ModContext::CanScheduleTimer() const {

@@ -1,15 +1,18 @@
 #ifndef BML_MODCONTEXT_H
 #define BML_MODCONTEXT_H
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <thread>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -119,7 +122,8 @@ public:
     void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
     bool UnregisterNativeCommands(const void *module) noexcept;
     void ClearLegacyCommands();
-    void AddDataPath(const char *path);
+    void SetModDataPath(const IMod *mod, const std::wstring &root);
+    void RemoveModDataPath(const IMod *mod);
 
     ModLoader &GetModLoader() { return m_Loader; }
     const ModLoader &GetModLoader() const { return m_Loader; }
@@ -490,6 +494,14 @@ private:
         const std::string &ownerId, BehaviorRetirement mode) noexcept;
     bool CleanupModRegistrations(const std::string &ownerId) noexcept;
     bool CanScheduleTimer() const;
+    using ModDataPathKey = std::pair<int, std::string>;
+    struct ModDataPathRegistration {
+        std::size_t Owners = 0;
+        bool Added = false;
+    };
+    void ReleaseModDataPath(const ModDataPathKey &path);
+    std::map<ModDataPathKey, ModDataPathRegistration> m_ModDataPathRegistrations;
+    std::unordered_map<const IMod *, std::array<ModDataPathKey, 5>> m_ModDataPaths;
     bool m_Inited = false;
     enum class GamePhase { FrontEnd, Transitioning, ActiveLevel, PausedLevel };
     GamePhase m_GamePhase = GamePhase::FrontEnd;

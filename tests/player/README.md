@@ -60,5 +60,14 @@ Add `-Scenario mixed-reload` to put both Mods in one ZIP and reload the script
 twice through the public `script reload` command. `-Scenario wrapped-reload`
 places the script in a subdirectory. In both layouts the native and script
 resources must stay readable across both reloads and through native unload.
+The engine must also keep resolving native data from the native Mod's own root,
+even when the script moves away from their initially shared search paths.
 `-Scenario nested` places different `Shared.zip` archives in two outer ZIPs;
 neither may overwrite the other's native Mod or resource.
+
+Build `ScriptZipSearchPathsTest` for `-Scenario search-reload` and
+`-Scenario search-rollback`. These update an actual script ZIP, then resolve
+new data, bitmap and sound files through the public CKPathManager API, including
+inside the new script's OnLoad callback. A rejected OnLoad must restore the old
+resources, and neither case may leak search-path entries. The lifecycle signal
+uses a normal public command registration.

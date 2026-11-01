@@ -279,10 +279,7 @@ bool ModLoader::LoadMods() {
                     }
                     modSet.emplace(id);
 
-                    auto [drive, dir] = utils::GetDriveAndDirectoryW(modPath);
-                    std::wstring drivePath = drive + dir;
-                    std::string ansiPath = utils::Utf16ToAnsi(drivePath);
-                    m_Context.AddDataPath(ansiPath.c_str());
+                    m_Context.SetModDataPath(mod, utils::GetParentDirectoryW(modPath));
                 }
             }
 
@@ -301,8 +298,8 @@ bool ModLoader::LoadMods() {
                         }
                         modSet.emplace(id);
 
-                        std::string ansiPath = utils::Utf16ToAnsi(scriptCandidate.RootDirectory);
-                        m_Context.AddDataPath(ansiPath.c_str());
+                        m_Context.SetModDataPath(mod, scriptCandidate.ResourceRootDirectory.empty()
+                            ? scriptCandidate.RootDirectory : scriptCandidate.ResourceRootDirectory);
                     }
                 }
             }
@@ -1873,6 +1870,7 @@ bool ModLoader::UnregisterMod(IMod *mod) {
 
         invocationLock.unlock();
         DestroyNativeMod(rawDllHandle, mod, modIdCopy.c_str());
+        m_Context.RemoveModDataPath(mod);
 
         return true;
     } catch (...) {

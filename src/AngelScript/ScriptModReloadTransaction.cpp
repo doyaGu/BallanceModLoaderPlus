@@ -159,6 +159,9 @@ void ScriptModReloadTransaction::RetainCurrentRuntime() {
 void ScriptModReloadTransaction::InstallPreparedRuntime() {
     m_Mod.m_Definition = std::move(m_State.CandidateDefinition);
     m_Mod.m_Entry = m_State.Snapshot.CommitEntry;
+    if (m_Mod.m_Context)
+        m_Mod.m_Context->SetModDataPath(&m_Mod, m_Mod.m_Entry.ResourceRootDirectory.empty()
+            ? m_Mod.m_Entry.RootDirectory : m_Mod.m_Entry.ResourceRootDirectory);
     m_Mod.m_Runtime = std::move(m_State.CandidateRuntime);
     m_Mod.m_Runtime.SetOwner(&m_Mod);
     m_Mod.SetRuntimeDiagnosticPathRewrite(m_State.Snapshot.DiagnosticStagedRootUtf8,
@@ -169,6 +172,9 @@ void ScriptModReloadTransaction::InstallPreparedRuntime() {
 void ScriptModReloadTransaction::RestoreRetainedRuntime() {
     m_Mod.m_Definition = std::move(m_State.OldDefinition);
     m_Mod.m_Entry = std::move(m_State.OldEntry);
+    if (m_Mod.m_Context)
+        m_Mod.m_Context->SetModDataPath(&m_Mod, m_Mod.m_Entry.ResourceRootDirectory.empty()
+            ? m_Mod.m_Entry.RootDirectory : m_Mod.m_Entry.ResourceRootDirectory);
     m_Mod.m_Runtime = std::move(m_State.OldRuntime);
     m_Mod.m_Runtime.SetOwner(&m_Mod);
     m_State.OldRuntimeRetained = false;
