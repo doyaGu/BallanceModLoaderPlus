@@ -156,7 +156,9 @@ private:
     void LogImGuiRecovery(IMod *mod) const;
     void LogMessage(const char *message) const;
 
-    std::size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods);
+    using ModPackageDirectories = std::unordered_map<std::wstring, std::wstring>;
+    std::size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods,
+                            ModPackageDirectories &packages);
 #if BML_ENABLE_ANGELSCRIPT
     struct ModDependencySnapshot {
         std::string Id;
@@ -171,7 +173,9 @@ private:
         std::vector<ModDependencySnapshot> Dependencies;
     };
     std::vector<RegisteredModSnapshot> SnapshotModRegistry() const;
-    std::size_t ExploreScriptMods(const std::wstring &path, std::vector<BML::ScriptModLoadCandidate> &candidates);
+    std::size_t ExploreScriptMods(const std::wstring &path,
+                                  std::vector<BML::ScriptModLoadCandidate> &candidates,
+                                  const ModPackageDirectories &packages);
     IMod *LoadScriptMod(const BML::ScriptModLoadCandidate &candidate);
     void RegisterScriptModDependencies(IMod *mod, const BML::ScriptModDefinition &definition);
     void ProcessScriptModQueuedCallbacks();

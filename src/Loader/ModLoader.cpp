@@ -270,7 +270,8 @@ bool ModLoader::LoadMods() {
             CleanupStaleScriptReloadArtifacts(path, m_Context.GetLogger());
 #endif
             std::vector<std::wstring> modPaths;
-            ExploreMods(path, modPaths);
+            ModPackageDirectories packages;
+            ExploreMods(path, modPaths, packages);
 
             for (auto &modPath : modPaths) {
                 IMod *mod = LoadMod(modPath);
@@ -293,7 +294,7 @@ bool ModLoader::LoadMods() {
 #if BML_ENABLE_ANGELSCRIPT
             std::vector<BML::ScriptModLoadCandidate> scriptModCandidates;
             if (m_Context.AreAngelScriptBindingsRegistered()) {
-                ExploreScriptMods(path, scriptModCandidates);
+                ExploreScriptMods(path, scriptModCandidates, packages);
                 for (auto &scriptCandidate : scriptModCandidates) {
                     IMod *mod = LoadScriptMod(scriptCandidate);
                     if (mod) {
@@ -904,7 +905,8 @@ int ModLoader::ClearDependencies(IMod *mod) {
     }
 }
 
-size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods) {
+size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods,
+                             ModPackageDirectories &packages) {
     if (path.empty() || !utils::DirectoryExistsW(path))
         return 0;
 
@@ -929,7 +931,8 @@ size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring
                 }
 
                 if (utils::ExtractZipW(fullPath, dest)) {
-                    ExploreMods(dest, mods);
+                    packages.emplace(fullPath, dest);
+                    ExploreMods(dest, mods, packages);
                 } else {
                     m_Context.GetLogger()->Error("Failed to extract zip file: %s", utils::Utf16ToAnsi(fullPath).c_str());
                 }
@@ -945,7 +948,9 @@ size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring
 }
 
 #if BML_ENABLE_ANGELSCRIPT
-size_t ModLoader::ExploreScriptMods(const std::wstring &path, std::vector<BML::ScriptModLoadCandidate> &candidates) {
+size_t ModLoader::ExploreScriptMods(const std::wstring &path,
+                                   std::vector<BML::ScriptModLoadCandidate> &candidates,
+                                   const ModPackageDirectories &packages) {
     const size_t before = candidates.size();
     BML::FindScriptModCandidates(path, candidates);
 
@@ -963,16 +968,13 @@ size_t ModLoader::ExploreScriptMods(const std::wstring &path, std::vector<BML::S
             continue;
 
         const std::wstring zipPath = path + L"\\" + fileinfo.name;
-        const std::wstring dest = BuildZipExtractionDirectory(m_Context.GetDirectory(BML_DIR_TEMP), zipPath);
-        if (dest.empty() || !PrepareFreshDirectory(dest)) {
-            m_Context.GetLogger()->Error("Failed to create script package extraction directory: %s", utils::Utf16ToAnsi(dest).c_str());
+        const auto extracted = packages.find(zipPath);
+        if (extracted == packages.end())
             continue;
-        }
-
-        if (!utils::ExtractZipW(zipPath, dest)) {
-            m_Context.GetLogger()->Error("Failed to extract script package zip: %s", utils::Utf16ToAnsi(zipPath).c_str());
-            continue;
-        }
+        // Native DLLs may already be loaded from this directory. Reuse the
+        // successful discovery extraction: cleaning it again can delete all
+        // resources even though Windows refuses to remove the loaded DLL.
+        const std::wstring &dest = extracted->second;
 
         std::vector<BML::ScriptModLoadCandidate> packageCandidates;
         std::vector<std::wstring> rootEntries = BML::FindScriptModEntryPaths(dest);
@@ -991,6 +993,10 @@ size_t ModLoader::ExploreScriptMods(const std::wstring &path, std::vector<BML::S
             if (candidate.SourceKind == BML::ScriptModEntrySourceKind::Directory)
                 packageCandidates.push_back(std::move(candidate));
         }
+
+        // Native-only and resource ZIPs are not failed Script Mods.
+        if (packageCandidates.empty())
+            continue;
 
         if (packageCandidates.size() != 1 || packageCandidates.front().EntryPaths.size() != 1) {
             BML::ScriptModLoadCandidate candidate = BML::MakeDirectoryScriptModCandidate(
