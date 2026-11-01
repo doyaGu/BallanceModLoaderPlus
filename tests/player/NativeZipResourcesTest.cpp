@@ -30,7 +30,9 @@ public:
         const bool readable = ReadResource();
         GetLogger()->Info("Native ZIP resource: phase=load readable=%s", readable ? "true" : "false");
         m_Reload = std::getenv("BML_TEST_NATIVE_ZIP_RELOAD") != nullptr;
-        m_Disabled = std::getenv("BML_TEST_SCRIPT_DISABLED") != nullptr;
+        const char *disabled = std::getenv("BML_TEST_SCRIPT_DISABLED");
+        m_Disabled = disabled != nullptr;
+        m_HostMissing = disabled && std::string(disabled) == "host";
         if (readable && !m_Reload && !m_Disabled)
             BML::PlayerTest::ProbeReport::Pass("resource-readable");
         else if (!readable)
@@ -45,8 +47,8 @@ public:
             wchar_t *root = BML_GetModRootW("bml.zip.smoke");
             int commandStatus = BML_COMMAND_STATUS_SUCCESS;
             const bool disabled = !root &&
-                BML::Command::ExecuteLine("script status", commandStatus) == BML_OK &&
-                commandStatus == BML_COMMAND_STATUS_FAILURE;
+                (m_HostMissing || (BML::Command::ExecuteLine("script status", commandStatus) == BML_OK &&
+                                   commandStatus == BML_COMMAND_STATUS_FAILURE));
             BML_FreeWString(root);
             GetLogger()->Info("Native ZIP script support: disabled=%s", disabled ? "true" : "false");
             if (disabled)
@@ -88,6 +90,7 @@ public:
 private:
     bool m_Reload = false;
     bool m_Disabled = false;
+    bool m_HostMissing = false;
     bool m_Requested = false;
     int m_Rounds = 0;
     std::wstring m_PreviousRoot;

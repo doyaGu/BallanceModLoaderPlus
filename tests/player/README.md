@@ -87,3 +87,9 @@ scenarios require enabled support.
 extensions. `-Scenario malformed` includes an invalid archive beside the valid
 packages; its extraction must fail without hiding the valid Mods or creating a
 failed Script Mod. Both scenarios support either script build mode.
+
+Add `-WithoutScriptHost` to temporarily remove `AngelScript.dll` through the
+Player harness's backup/restore flow. Both loader builds must keep native
+resources readable and leave scripts unregistered; an enabled build must also
+report the missing host. The mixed package cases exercise startup/unload only
+when the host is absent.

@@ -13,6 +13,7 @@ param(
     [string]$ScriptSupport = 'Enabled',
     [ValidateSet('Same', 'Add', 'Remove')]
     [string]$ResourceLayout = 'Same',
+    [switch]$WithoutScriptHost,
     [string]$ArtifactsDirectory
 )
 
@@ -26,8 +27,9 @@ if (-not $BallanceRoot) {
 }
 $releaseBin = Split-Path -Parent ([IO.Path]::GetFullPath($BuildDll))
 $search = $Scenario -in @('search-reload', 'search-rollback')
-if ($search -and $ScriptSupport -eq 'Disabled') {
-    throw 'Search-path reload scenarios require -ScriptSupport Enabled.'
+$scriptsAvailable = $ScriptSupport -eq 'Enabled' -and -not $WithoutScriptHost
+if ($search -and -not $scriptsAvailable) {
+    throw 'Search-path reload scenarios require enabled support and a script host.'
 }
 if (-not $search -and $ResourceLayout -ne 'Same') {
     throw '-ResourceLayout applies only to search-path reload scenarios.'
@@ -58,7 +60,7 @@ Copy-Item -LiteralPath (Join-Path $scriptSource 'Resources\probe.txt') `
 $nativeZip = Join-Path $ArtifactsDirectory 'NativeZipResourcesTest.zip'
 $scriptZip = Join-Path $ArtifactsDirectory 'ScriptResourcesTest.zip'
 $mixed = $Scenario -in @('mixed-reload', 'wrapped-reload')
-$reload = $mixed -and $ScriptSupport -eq 'Enabled'
+$reload = $mixed -and $scriptsAvailable
 if ($Scenario -eq 'wrapped-reload') {
     Copy-Item -LiteralPath $scriptSource -Destination (Join-Path $nativeSource 'Script') -Recurse
 } elseif ($Scenario -eq 'mixed-reload') {
@@ -97,6 +99,8 @@ if ($Scenario -eq 'nested') {
 $environment = @{}
 if ($ScriptSupport -eq 'Disabled') {
     $environment['BML_TEST_SCRIPT_DISABLED'] = '1'
+} elseif ($WithoutScriptHost) {
+    $environment['BML_TEST_SCRIPT_DISABLED'] = 'host'
 }
 if ($mixed) {
     if ($reload) {
@@ -150,8 +154,12 @@ $previousEnvironment = @{}
 foreach ($name in $environment.Keys) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
+$remove = @()
+if ($WithoutScriptHost) {
+    $remove += 'BuildingBlocks\AngelScript.dll'
+}
 $run = Invoke-BMLPlayerRun -BallanceRoot $BallanceRoot -LoaderDll $BuildDll `
-    -Install $install -Environment $environment `
+    -Install $install -Environment $environment -Remove $remove `
     -ArtifactsDirectory $ArtifactsDirectory -PlayerWidth 800 -PlayerHeight 600 -TimeoutSeconds 60
 
 $flow = Get-BMLPlayerFlowChecks -Run $run -Probes @($probe)
@@ -161,7 +169,7 @@ $checks['EnvironmentRestored'] = @($environment.Keys | Where-Object {
 }).Count -eq 0
 $checks['NativeResourceOnLoad'] = $run.ModLoaderLog.Contains('Native ZIP resource: phase=load readable=true')
 $checks['NativeResourceOnUnload'] = $run.ModLoaderLog.Contains('Native ZIP resource: phase=unload readable=true')
-if ($ScriptSupport -eq 'Disabled') {
+if (-not $scriptsAvailable) {
     $checks['ScriptSupportDisabled'] = $run.ModLoaderLog.Contains('Native ZIP script support: disabled=true')
     $checks['ScriptNotLoaded'] = -not $run.ModLoaderLog.Contains('BML zip script smoke loaded')
 } elseif ($search) {
@@ -171,6 +179,9 @@ if ($ScriptSupport -eq 'Disabled') {
         "ZIP search paths: mode=$mode resources=true expected_count=true").Count -eq 3
 } else {
     $checks['ScriptResourceOnLoad'] = $run.ModLoaderLog.Contains('BML zip script smoke loaded resource=true')
+}
+if ($WithoutScriptHost -and $ScriptSupport -eq 'Enabled') {
+    $checks['MissingScriptHostReported'] = $run.ModLoaderLog.Contains('AngelScript.dll is not loaded; script mods are unavailable.')
 }
 if ($Scenario -eq 'malformed') {
     $checks['MalformedPackageRejected'] = $run.ModLoaderLog -match 'Failed to extract zip file: [^\r\n]*Broken.zip'
