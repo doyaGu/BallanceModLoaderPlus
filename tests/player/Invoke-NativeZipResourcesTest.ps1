@@ -7,8 +7,10 @@ param(
     [string]$BuildDll,
     [string]$DriverMod,
     [string]$TestMod,
-    [ValidateSet('separate', 'mixed-reload', 'wrapped-reload', 'nested', 'search-reload', 'search-rollback')]
+    [ValidateSet('separate', 'mixed-reload', 'wrapped-reload', 'nested', 'named', 'malformed', 'search-reload', 'search-rollback')]
     [string]$Scenario = 'separate',
+    [ValidateSet('Enabled', 'Disabled')]
+    [string]$ScriptSupport = 'Enabled',
     [string]$ArtifactsDirectory
 )
 
@@ -22,6 +24,9 @@ if (-not $BallanceRoot) {
 }
 $releaseBin = Split-Path -Parent ([IO.Path]::GetFullPath($BuildDll))
 $search = $Scenario -in @('search-reload', 'search-rollback')
+if ($search -and $ScriptSupport -eq 'Disabled') {
+    throw 'Search-path reload scenarios require -ScriptSupport Enabled.'
+}
 $probe = $(if ($search) { 'ScriptZipSearchPathsTest' } else { 'NativeZipResourcesTest' })
 if (-not $DriverMod) {
     $DriverMod = Join-Path $releaseBin 'PlayerFlowDriver.bmodp'
@@ -47,7 +52,8 @@ Copy-Item -LiteralPath (Join-Path $scriptSource 'Resources\probe.txt') `
     -Destination (Join-Path $nativeSource 'Resources\probe.txt')
 $nativeZip = Join-Path $ArtifactsDirectory 'NativeZipResourcesTest.zip'
 $scriptZip = Join-Path $ArtifactsDirectory 'ScriptResourcesTest.zip'
-$reload = $Scenario -in @('mixed-reload', 'wrapped-reload')
+$mixed = $Scenario -in @('mixed-reload', 'wrapped-reload')
+$reload = $mixed -and $ScriptSupport -eq 'Enabled'
 if ($Scenario -eq 'wrapped-reload') {
     Copy-Item -LiteralPath $scriptSource -Destination (Join-Path $nativeSource 'Script') -Recurse
 } elseif ($Scenario -eq 'mixed-reload') {
@@ -84,8 +90,13 @@ if ($Scenario -eq 'nested') {
     )
 }
 $environment = @{}
-if ($reload) {
-    $environment['BML_TEST_NATIVE_ZIP_RELOAD'] = '1'
+if ($ScriptSupport -eq 'Disabled') {
+    $environment['BML_TEST_SCRIPT_DISABLED'] = '1'
+}
+if ($mixed) {
+    if ($reload) {
+        $environment['BML_TEST_NATIVE_ZIP_RELOAD'] = '1'
+    }
 } else {
     if ($search) {
         $pathsSource = Join-Path $nativeSource 'paths-script'
@@ -116,20 +127,43 @@ if ($reload) {
     }
     $install += @{ Source = $scriptZip; Destination = 'ModLoader\Mods\ScriptResourcesTest.zip' }
 }
+if ($Scenario -eq 'named') {
+    ($install | Where-Object Source -eq $nativeZip).Destination = 'ModLoader\Mods\Native Package.ZIP'
+    ($install | Where-Object Source -eq $scriptZip).Destination = 'ModLoader\Mods\Script Package.ZIP'
+}
+if ($Scenario -eq 'malformed') {
+    $broken = Join-Path $ArtifactsDirectory 'Broken.zip'
+    Set-Content -LiteralPath $broken -Value 'not a ZIP archive'
+    $install += @{ Source = $broken; Destination = 'ModLoader\Mods\Broken.zip' }
+}
+$previousEnvironment = @{}
+foreach ($name in $environment.Keys) {
+    $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+}
 $run = Invoke-BMLPlayerRun -BallanceRoot $BallanceRoot -LoaderDll $BuildDll `
     -Install $install -Environment $environment `
     -ArtifactsDirectory $ArtifactsDirectory -PlayerWidth 800 -PlayerHeight 600 -TimeoutSeconds 60
 
 $flow = Get-BMLPlayerFlowChecks -Run $run -Probes @($probe)
 $checks = $flow.Checks
+$checks['EnvironmentRestored'] = @($environment.Keys | Where-Object {
+    -not [object]::Equals([Environment]::GetEnvironmentVariable($_, 'Process'), $previousEnvironment[$_])
+}).Count -eq 0
 $checks['NativeResourceOnLoad'] = $run.ModLoaderLog.Contains('Native ZIP resource: phase=load readable=true')
 $checks['NativeResourceOnUnload'] = $run.ModLoaderLog.Contains('Native ZIP resource: phase=unload readable=true')
-if ($search) {
+if ($ScriptSupport -eq 'Disabled') {
+    $checks['ScriptSupportDisabled'] = $run.ModLoaderLog.Contains('Native ZIP script support: disabled=true')
+    $checks['ScriptNotLoaded'] = -not $run.ModLoaderLog.Contains('BML zip script smoke loaded')
+} elseif ($search) {
     $mode = $(if ($Scenario -eq 'search-rollback') { 'rollback' } else { 'reload' })
     $checks['CandidateSearchPaths'] = $run.ModLoaderLog.Contains('ZIP search paths: candidate_readable=true')
     $checks['FinalSearchPaths'] = $run.ModLoaderLog.Contains("ZIP search paths: mode=$mode resources=true stable_count=true")
 } else {
     $checks['ScriptResourceOnLoad'] = $run.ModLoaderLog.Contains('BML zip script smoke loaded resource=true')
+}
+if ($Scenario -eq 'malformed') {
+    $checks['MalformedPackageRejected'] = $run.ModLoaderLog -match 'Failed to extract zip file: [^\r\n]*Broken.zip'
+    $checks['NoScriptPlaceholder'] = -not $run.ModLoaderLog.Contains('Script mod script:Broken failed')
 }
 if ($reload) {
     $checks['NativeResourceAfterTwoReloads'] = $run.ModLoaderLog.Contains('Native ZIP reload: round=2 readable=true')

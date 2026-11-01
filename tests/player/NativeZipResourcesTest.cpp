@@ -1,4 +1,5 @@
 #include <BML/BML.h>
+#include <BML/Command.hpp>
 #include <BML/IBML.h>
 #include <BML/ILogger.h>
 #include <BML/IMod.h>
@@ -29,7 +30,8 @@ public:
         const bool readable = ReadResource();
         GetLogger()->Info("Native ZIP resource: phase=load readable=%s", readable ? "true" : "false");
         m_Reload = std::getenv("BML_TEST_NATIVE_ZIP_RELOAD") != nullptr;
-        if (readable && !m_Reload)
+        m_Disabled = std::getenv("BML_TEST_SCRIPT_DISABLED") != nullptr;
+        if (readable && !m_Reload && !m_Disabled)
             BML::PlayerTest::ProbeReport::Pass("resource-readable");
         else if (!readable)
             BML::PlayerTest::ProbeReport::Fail("resource-unreadable");
@@ -37,8 +39,22 @@ public:
 
     void OnProcess() override {
         using BML::PlayerTest::ProbeReport;
-        if (!m_Reload || !ProbeReport::Started() || ProbeReport::Reported())
+        if ((!m_Reload && !m_Disabled) || !ProbeReport::Started() || ProbeReport::Reported())
             return;
+        if (m_Disabled) {
+            wchar_t *root = BML_GetModRootW("bml.zip.smoke");
+            int commandStatus = BML_COMMAND_STATUS_SUCCESS;
+            const bool disabled = !root &&
+                BML::Command::ExecuteLine("script status", commandStatus) == BML_OK &&
+                commandStatus == BML_COMMAND_STATUS_FAILURE;
+            BML_FreeWString(root);
+            GetLogger()->Info("Native ZIP script support: disabled=%s", disabled ? "true" : "false");
+            if (disabled)
+                ProbeReport::Pass("native-resources-without-script-support");
+            else
+                ProbeReport::Fail("script-support-not-disabled");
+            return;
+        }
         if (!m_Requested) {
             wchar_t *root = BML_GetModRootW("bml.zip.smoke");
             m_PreviousRoot = root ? root : L"";
@@ -71,6 +87,7 @@ public:
 
 private:
     bool m_Reload = false;
+    bool m_Disabled = false;
     bool m_Requested = false;
     int m_Rounds = 0;
     std::wstring m_PreviousRoot;

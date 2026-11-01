@@ -71,3 +71,15 @@ new data, bitmap and sound files through the public CKPathManager API, including
 inside the new script's OnLoad callback. A rejected OnLoad must restore the old
 resources, and neither case may leak search-path entries. The lifecycle signal
 uses a normal public command registration.
+
+Pass `-ScriptSupport Disabled` with a loader built using
+`-DBML_ENABLE_ANGELSCRIPT=OFF` to check native startup and unload for `separate`,
+`mixed-reload`, `wrapped-reload`, and `nested`. Mixed packages still contain
+their scripts, but no reload is requested: the public Mod lookup must find no
+script and the public `script status` command must report failure. Reload
+scenarios require enabled support.
+
+`-Scenario named` checks spaces in archive names and uppercase `.ZIP`
+extensions. `-Scenario malformed` includes an invalid archive beside the valid
+packages; its extraction must fail without hiding the valid Mods or creating a
+failed Script Mod. Both scenarios support either script build mode.
