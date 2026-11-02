@@ -1,14 +1,10 @@
 #include "CKAngelScriptAdapter.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
+#include "ScriptRuntimeModule.h"
 
 #include <cstring>
 #include <sstream>
 
-static constexpr const char *kModuleName = "AngelScript.dll";
 static CKAngelScriptAdapter::GetStatusNameFn g_GetStatusName = nullptr;
 
 // BML's required public surface (module fingerprint/graph/bytecode, source
@@ -43,8 +39,8 @@ static constexpr CKAS_FEATURE kRequiredFeatures[] = {
 };
 
 template <typename T>
-static bool Resolve(HMODULE module, const char *name, T &out, std::string &missingExport) {
-    out = reinterpret_cast<T>(::GetProcAddress(module, name));
+static bool Resolve(void *module, const char *name, T &out, std::string &missingExport) {
+    out = reinterpret_cast<T>(BML::ScriptRuntimeSymbol(module, name));
     if (out)
         return true;
 
@@ -86,7 +82,7 @@ bool CKAngelScriptAdapter::Refresh(CKContext *context) {
     m_Context = context;
     m_AngelScript = nullptr;
 
-    HMODULE module = ::GetModuleHandleA(kModuleName);
+    void *module = BML::FindScriptRuntimeModule();
     if (!module) {
         m_Module = nullptr;
         m_Api = Api();
@@ -94,7 +90,7 @@ bool CKAngelScriptAdapter::Refresh(CKContext *context) {
         g_GetStatusName = nullptr;
         for (bool &feature : m_Features)
             feature = false;
-        SetUnavailable(State::MissingModule, "AngelScript.dll is not loaded; script mods are unavailable.");
+        SetUnavailable(State::MissingModule, "A unique CKAngelScript plugin is not loaded; script mods are unavailable.");
         return false;
     }
 
@@ -280,7 +276,7 @@ std::string CKAngelScriptAdapter::FormatResult(CKAS_STATUS status, const CKAngel
 }
 
 bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
-    HMODULE module = static_cast<HMODULE>(moduleHandle);
+    void *module = moduleHandle;
     std::string missing;
 
     const bool ok =
