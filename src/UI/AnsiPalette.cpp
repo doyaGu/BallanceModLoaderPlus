@@ -635,23 +635,12 @@ void AnsiPalette::EnsureInitialized() {
     // Load theme chain + overrides if file exists (chain supports nested base references)
     std::wstring path = GetFilePathW();
     if (utils::FileExistsW(path)) {
-        FILE *fp = _wfopen(path.c_str(), L"rb");
-        if (fp) {
-            fseek(fp, 0, SEEK_END);
-            long len = ftell(fp);
-            rewind(fp);
-            if (len > 0) {
-                std::string buf;
-                buf.resize((size_t) len);
-                if (fread(buf.data(), 1, (size_t) len, fp) != (size_t) len) buf.clear();
-                if (!buf.empty()) {
-                    const std::string old = m_ParseOrigin;
-                    m_ParseOrigin = utils::Utf16ToUtf8(path);
-                    ApplyThemeChainAndBuffer(buf);
-                    m_ParseOrigin = old;
-                }
-            }
-            fclose(fp);
+        std::string buf;
+        if (utils::ReadFileBytesW(path, buf) && !buf.empty()) {
+            const std::string old = m_ParseOrigin;
+            m_ParseOrigin = utils::Utf16ToUtf8(path);
+            ApplyThemeChainAndBuffer(buf);
+            m_ParseOrigin = old;
         }
     }
     // Else: no config file -> keep default xterm-like palette (no implicit theme)
@@ -666,27 +655,14 @@ bool AnsiPalette::ReloadFromFile() {
         m_Initialized = true; // still initialized, only defaults
         return false;
     }
-    FILE *fp = _wfopen(path.c_str(), L"rb");
-    if (!fp) {
-        m_Initialized = true;
-        return false;
+    std::string buf;
+    const bool ok = utils::ReadFileBytesW(path, buf) && !buf.empty();
+    if (ok) {
+        const std::string old = m_ParseOrigin;
+        m_ParseOrigin = utils::Utf16ToUtf8(path);
+        ApplyThemeChainAndBuffer(buf);
+        m_ParseOrigin = old;
     }
-    fseek(fp, 0, SEEK_END);
-    long len = ftell(fp);
-    rewind(fp);
-    bool ok = false;
-    if (len > 0) {
-        std::string buf;
-        buf.resize((size_t) len);
-        if (fread(buf.data(), 1, (size_t) len, fp) == (size_t) len) {
-            std::string old = m_ParseOrigin;
-            m_ParseOrigin = utils::Utf16ToUtf8(path);
-            ApplyThemeChainAndBuffer(buf);
-            m_ParseOrigin = old;
-            ok = true;
-        }
-    }
-    fclose(fp);
     RebuildCubeAndGray();
     m_Initialized = true;
     return ok;
@@ -699,8 +675,6 @@ bool AnsiPalette::SaveSampleIfMissing() {
     std::wstring dir = GetLoaderDirW();
     if (!utils::DirectoryExistsW(dir)) utils::CreateDirectoryW(dir);
     if (!utils::FileExistsW(path)) {
-        FILE *fp = _wfopen(path.c_str(), L"wb");
-        if (!fp) return false;
         const char *sample =
             "# palette.ini\n"
             "# Sections: [theme], [standard], [bright], [cube], [gray], [overrides]\n"
@@ -732,9 +706,9 @@ bool AnsiPalette::SaveSampleIfMissing() {
             "[overrides] # override any index or range (0..255)\n"
             "# 196 = #FF0000\n"
             "# 232-239 = 180,180,180,128\n";
-        fwrite(sample, 1, strlen(sample), fp);
-        fclose(fp);
-        wrote = true;
+        std::uint32_t error = 0;
+        wrote = utils::WriteFileBytesAtomicW(path, sample, error, false);
+        if (!wrote) return false;
     }
 
     // Ensure a couple of sample themes exist
@@ -745,10 +719,8 @@ bool AnsiPalette::SaveSampleIfMissing() {
         p.append(L"\\");
         p.append(name).append(L".ini");
         if (!utils::FileExistsW(p)) {
-            FILE *f = _wfopen(p.c_str(), L"wb");
-            if (!f) return;
-            fwrite(content, 1, strlen(content), f);
-            fclose(f);
+            std::uint32_t error = 0;
+            utils::WriteFileBytesAtomicW(p, content, error, false);
         }
     };
 
@@ -907,26 +879,14 @@ void AnsiPalette::ApplyThemeChainAndBuffer(const std::string &buf) {
                 return;
             }
             visited.insert(themePath);
-            FILE *ft = _wfopen(themePath.c_str(), L"rb");
-            if (!ft) return;
-            fseek(ft, 0, SEEK_END);
-            long tlen = ftell(ft);
-            rewind(ft);
-            if (tlen > 0) {
-                std::string tbuf;
-                tbuf.resize((size_t) tlen);
-                if (fread(tbuf.data(), 1, (size_t) tlen, ft) == (size_t) tlen) {
-                    std::string parent = ExtractThemeName(tbuf);
-                    if (!parent.empty() && parent != "none") {
-                        self(self, toW(parent));
-                    }
-                    std::string old = m_ParseOrigin;
-                    m_ParseOrigin = utils::Utf16ToUtf8(themePath);
-                    ParseBuffer(tbuf);
-                    m_ParseOrigin = old;
-                }
-            }
-            fclose(ft);
+            std::string tbuf;
+            if (!utils::ReadFileBytesW(themePath, tbuf) || tbuf.empty()) return;
+            std::string parent = ExtractThemeName(tbuf);
+            if (!parent.empty() && parent != "none") self(self, toW(parent));
+            const std::string old = m_ParseOrigin;
+            m_ParseOrigin = utils::Utf16ToUtf8(themePath);
+            ParseBuffer(tbuf);
+            m_ParseOrigin = old;
         };
         applyThemeRecursive(applyThemeRecursive, toW(topTheme));
     }

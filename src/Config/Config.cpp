@@ -15,7 +15,10 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#if !BML_RUNTIME_SDL
 #include <Windows.h>
+#endif
+#include "Platform/FileError.h"
 
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -65,14 +68,14 @@ namespace {
 }
 
 bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
-    error = ERROR_INVALID_NAME;
+    error = BML::Platform::FileError::InvalidName;
     if (!path || !*path)
         return false;
 
     std::string bytes;
     if (!utils::ReadFileBytesW(path, bytes, error))
         return false;
-    error = ERROR_INVALID_DATA;
+    error = BML::Platform::FileError::InvalidData;
     if (bytes.empty() || bytes.find('\0') != std::string::npos)
         return false;
 
@@ -88,6 +91,9 @@ bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
         // BML 0.3.13 accepted configuration files written in the active ANSI
         // code page. Convert those documents once so the next save publishes
         // canonical UTF-8. CP_UTF8 has no distinct legacy encoding to recover.
+#if BML_RUNTIME_SDL
+        return false;
+#else
         if (GetACP() == CP_UTF8 ||
             bytes.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
             return false;
@@ -95,6 +101,7 @@ bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
         bytes = utils::Utf16ToUtf8(utils::AnsiToUtf16(bytes));
         if (bytes.empty() || !utils::IsValidUtf8(bytes))
             return false;
+#endif
     }
 
     ConfigData parsed;
@@ -142,7 +149,7 @@ bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
     if (insideCategory || !pendingCategory.empty() || input.bad())
         return false;
     m_Categories.swap(parsed.m_Categories);
-    error = ERROR_SUCCESS;
+    error = BML::Platform::FileError::Success;
     return true;
 }
 
@@ -207,9 +214,9 @@ bool Config::Load(const wchar_t *path) {
     // Fail closed, including allocation exceptions. Only an actual missing
     // file or a complete successful load permits subsequent automatic saving.
     m_LoadStatus = LoadStatus::Failed;
-    m_LoadError = ERROR_INVALID_DATA;
+    m_LoadError = BML::Platform::FileError::InvalidData;
     if (!m_LoadedValues.Load(path, m_LoadError)) {
-        if (m_LoadError == ERROR_FILE_NOT_FOUND || m_LoadError == ERROR_PATH_NOT_FOUND)
+        if (m_LoadError == BML::Platform::FileError::NotFound || m_LoadError == BML::Platform::FileError::PathNotFound)
             m_LoadStatus = LoadStatus::Missing;
         m_SavePending = m_Dirty;
         return false;
@@ -254,7 +261,7 @@ bool Config::Save(const wchar_t *path) {
         m_SaveError = m_LoadError;
         return false;
     }
-    m_SaveError = ERROR_INVALID_NAME;
+    m_SaveError = BML::Platform::FileError::InvalidName;
     if (!path || path[0] == L'\0')
         return false;
 
