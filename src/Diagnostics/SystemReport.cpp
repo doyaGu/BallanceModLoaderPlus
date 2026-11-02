@@ -6,8 +6,13 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#if !BML_RUNTIME_SDL
 #include <Windows.h>
 #include <winternl.h>
+#else
+#include <SDL3/SDL.h>
+#include "Platform/Module.h"
+#endif
 
 #include <cstdint>
 #include <iomanip>
@@ -33,7 +38,9 @@
 
 namespace BML::Diagnostics {
     namespace {
+#if !BML_RUNTIME_SDL
         using RtlGetVersionFunction = LONG(WINAPI *)(PRTL_OSVERSIONINFOW);
+#endif
 
         const char *YesNo(bool value) {
             return value ? "yes" : "no";
@@ -61,6 +68,9 @@ namespace BML::Diagnostics {
         }
 
         std::string WindowsVersion() {
+#if BML_RUNTIME_SDL
+            return std::string(SDL_GetPlatform()) + " / SDL " + std::to_string(SDL_GetVersion());
+#else
             RTL_OSVERSIONINFOW version{};
             version.dwOSVersionInfoSize = sizeof(version);
             const HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
@@ -74,6 +84,7 @@ namespace BML::Diagnostics {
             output << version.dwMajorVersion << '.' << version.dwMinorVersion
                    << " build " << version.dwBuildNumber;
             return output.str();
+#endif
         }
 
         std::string ShortHash(const std::wstring &path) {
@@ -98,10 +109,16 @@ namespace BML::Diagnostics {
                 fingerprint.ShortPathAvailable = !shortPath.empty() && shortPath != gameRoot &&
                     utils::TryEncodePathForActiveCodePage(shortPath, encodedPath);
             }
+#if BML_RUNTIME_SDL
+            fingerprint.PlayerHash = ShortHash(utils::GetExecutablePathW());
+            fingerprint.Ck2Hash = ShortHash(utils::Utf8ToUtf16(Platform::ModulePath(reinterpret_cast<const void *>(&CKGetPluginManager))));
+            fingerprint.RendererHash = "pending renderer identification";
+#else
             fingerprint.PlayerHash = ShortHash(utils::CombinePathW(gameRoot, L"Bin\\Player.exe"));
             fingerprint.Ck2Hash = ShortHash(utils::CombinePathW(gameRoot, L"Bin\\CK2.dll"));
             fingerprint.RendererHash = ShortHash(
                 utils::CombinePathW(gameRoot, L"RenderEngines\\CK2_3D.dll"));
+#endif
             return fingerprint;
         }
 
@@ -119,16 +136,32 @@ namespace BML::Diagnostics {
         }
 
         std::string LocaleName() {
+#if BML_RUNTIME_SDL
+            int count = 0;
+            SDL_Locale **locales = SDL_GetPreferredLocales(&count);
+            std::string result = "unknown";
+            if (locales && count > 0) {
+                result = locales[0]->language;
+                if (locales[0]->country) result += std::string("-") + locales[0]->country;
+            }
+            SDL_free(locales);
+            return result;
+#else
             wchar_t name[LOCALE_NAME_MAX_LENGTH]{};
             if (::GetUserDefaultLocaleName(name, LOCALE_NAME_MAX_LENGTH) <= 0)
                 return "unknown";
             return utils::Utf16ToUtf8(name);
+#endif
         }
 
         std::string DriverText(const char *text) {
             if (!text || !*text)
                 return "unknown";
+#if BML_RUNTIME_SDL
+            const std::string converted = text;
+#else
             const std::string converted = utils::Utf16ToUtf8(utils::AnsiToUtf16(text));
+#endif
             return converted.empty() ? "unknown" : converted;
         }
 
@@ -215,8 +248,12 @@ namespace BML::Diagnostics {
             SystemReportData data;
             data.Runtime.Windows = WindowsVersion();
             data.Locale.Name = LocaleName();
+#if BML_RUNTIME_SDL
+            data.Locale.AnsiCodePage = 65001;
+#else
             data.Locale.AnsiCodePage = ::GetACP();
             data.Locale.KeyboardLayout = reinterpret_cast<std::uintptr_t>(::GetKeyboardLayout(0));
+#endif
             data.Install = GetInstallFingerprint(context.GetDirectory(BML_DIR_GAME));
 
             CKRenderContext *renderContext = context.GetRenderContext();
@@ -237,12 +274,20 @@ namespace BML::Diagnostics {
                 data.Renderer.TextureMaxHeight = driver->Caps3D.MaxTextureHeight;
             }
             if (renderContext) {
+#if BML_RUNTIME_SDL
+                auto *window = static_cast<SDL_Window *>(renderContext->GetWindowHandle());
+#else
                 const HWND window = static_cast<HWND>(renderContext->GetWindowHandle());
+#endif
                 data.Renderer.DisplayAvailable = true;
                 data.Renderer.Width = renderContext->GetWidth();
                 data.Renderer.Height = renderContext->GetHeight();
                 data.Renderer.Fullscreen = renderContext->IsFullScreen() != FALSE;
+#if BML_RUNTIME_SDL
+                data.Renderer.Dpi = window ? static_cast<unsigned>(96.0f * SDL_GetWindowDisplayScale(window)) : 0;
+#else
                 data.Renderer.Dpi = window ? ::GetDpiForWindow(window) : 0;
+#endif
             }
 
             if (const UI::FontRuntime *fonts = context.GetUiFontRuntime()) {
@@ -307,13 +352,17 @@ namespace BML::Diagnostics {
         private:
             void AddRuntime() {
                 std::ostringstream line;
+#if BML_RUNTIME_SDL
+                line << "BML+ " BML_VERSION " (sdl, "
+#else
                 line << "BML+ " BML_VERSION " (Win32, "
+#endif
 #ifdef _DEBUG
                      << "Debug";
 #else
                      << "Release";
 #endif
-                line << "), Windows " << m_Data.Runtime.Windows;
+                line << "), " << m_Data.Runtime.Windows;
                 m_Lines.push_back(line.str());
             }
 
