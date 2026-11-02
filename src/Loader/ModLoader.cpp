@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <cstring>
 #include <exception>
+#if !BML_RUNTIME_SDL
 #include <io.h>
+#endif
 #include <queue>
 #include <stdexcept>
 #include <system_error>
@@ -13,7 +15,13 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#if !BML_RUNTIME_SDL
 #include <Windows.h>
+#else
+#include <SDL3/SDL_stdinc.h>
+#endif
+#include "Platform/Module.h"
+#include "Platform/ModAbi.h"
 
 #include "BML/Timer.h"
 #include "Logging/Logger.h"
@@ -37,6 +45,15 @@ using namespace BML;
 namespace {
     constexpr wchar_t PACKAGES_DIRECTORY_NAME[] = L"Packages";
 
+#if BML_RUNTIME_SDL
+    using HMODULE = void *;
+    HMODULE ModuleFromAddress(const void *address) {
+        return const_cast<void *>(BML::Platform::ModuleFromAddress(address));
+    }
+    std::wstring ModuleDirectory(HMODULE module) {
+        return utils::GetParentDirectoryW(utils::Utf8ToUtf16(BML::Platform::ModulePath(module)));
+    }
+#else
     HMODULE ModuleFromAddress(const void *address) {
         if (!address)
             return nullptr;
@@ -70,6 +87,8 @@ namespace {
             path.resize(path.size() * 2);
         }
     }
+
+#endif
 
     std::wstring ModuleDirectoryFromAddress(const void *address) {
         return ModuleDirectory(ModuleFromAddress(address));
@@ -902,6 +921,23 @@ size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring
     if (path.empty() || !utils::DirectoryExistsW(path))
         return 0;
 
+#if BML_RUNTIME_SDL
+    for (const auto &name : utils::ListFilesW(path)) {
+        const auto fullPath = utils::CombinePathW(path, name);
+        const auto ext = utils::Utf16ToUtf8(utils::GetExtensionW(fullPath));
+        if (SDL_strcasecmp(ext.c_str(), ".zip") == 0) {
+            const auto dest = BuildZipExtractionDirectory(m_Context.GetDirectory(BML_DIR_TEMP), fullPath, nextPackage);
+            if (!dest.empty() && utils::CreateFileTreeW(dest) && utils::ExtractZipW(fullPath, dest)) {
+                packages.emplace(fullPath, dest);
+                ExploreMods(dest, mods, packages, nextPackage);
+            } else {
+                m_Context.GetLogger()->Error("Failed to extract Mod package: %s", utils::Utf16ToUtf8(fullPath).c_str());
+            }
+        } else if (SDL_strcasecmp(ext.c_str(), ".bmodp") == 0) {
+            mods.push_back(fullPath);
+        }
+    }
+#else
     std::wstring p = path + L"\\*";
 
     _wfinddata_t fileinfo = {};
@@ -938,6 +974,8 @@ size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring
 
     _findclose(handle);
 
+#endif
+
     return mods.size();
 }
 
@@ -951,6 +989,12 @@ size_t ModLoader::ExploreScriptMods(const std::wstring &path,
     if (path.empty() || !utils::DirectoryExistsW(path))
         return candidates.size() - before;
 
+#if BML_RUNTIME_SDL
+    for (const auto &name : utils::ListFilesW(path)) {
+        const auto zipPath = utils::CombinePathW(path, name);
+        if (SDL_strcasecmp(utils::Utf16ToUtf8(utils::GetExtensionW(zipPath)).c_str(), ".zip") != 0)
+            continue;
+#else
     const std::wstring pattern = path + L"\\*.zip";
     _wfinddata_t fileinfo = {};
     auto handle = _wfindfirst(pattern.c_str(), &fileinfo);
@@ -962,6 +1006,7 @@ size_t ModLoader::ExploreScriptMods(const std::wstring &path,
             continue;
 
         const std::wstring zipPath = path + L"\\" + fileinfo.name;
+#endif
         const auto extracted = packages.find(zipPath);
         if (extracted == packages.end())
             continue;
@@ -1009,9 +1054,13 @@ size_t ModLoader::ExploreScriptMods(const std::wstring &path,
             packageCandidates.front().SourcePath = zipPath;
             candidates.push_back(std::move(packageCandidates.front()));
         }
+#if BML_RUNTIME_SDL
+    }
+#else
     } while (_wfindnext(handle, &fileinfo) == 0);
 
     _findclose(handle);
+#endif
     return candidates.size() - before;
 }
 #endif
@@ -1020,6 +1069,19 @@ std::shared_ptr<void> ModLoader::LoadLib(const wchar_t *path) {
     if (!path || path[0] == '\0')
         return nullptr;
 
+#if BML_RUNTIME_SDL
+    std::string error;
+    if (!BML::Platform::ValidateModAbi(path, error)) {
+        m_Context.GetLogger()->Error("Cannot load native Mod %s: %s", utils::Utf16ToUtf8(path).c_str(), error.c_str());
+        return {};
+    }
+    auto module = BML::Platform::Module::Open(utils::Utf16ToUtf8(path), error);
+    if (!module || !module->Identity()) {
+        m_Context.GetLogger()->Error("Failed to load native Mod %s: %s", utils::Utf16ToUtf8(path).c_str(), error.c_str());
+        return {};
+    }
+    return BML::Platform::RetainModule(module);
+#else
     HMODULE dllHandle = ::LoadLibraryExW(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!dllHandle) {
         const DWORD error = ::GetLastError();
@@ -1034,6 +1096,7 @@ std::shared_ptr<void> ModLoader::LoadLib(const wchar_t *path) {
     return std::shared_ptr<void>(dllHandle, [](void *ptr) {
         ::FreeLibrary(static_cast<HMODULE>(ptr));
     });
+#endif
 }
 
 bool ModLoader::UnloadLib(void *dllHandle) {
@@ -1051,7 +1114,7 @@ bool ModLoader::UnloadLib(void *dllHandle) {
     return success;
 }
 
-void ModLoader::DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabel) noexcept {
+void ModLoader::DestroyNativeMod(const std::shared_ptr<void> &dllHandle, IMod *mod, const char *modLabel) noexcept {
     if (!dllHandle || !mod)
         return;
 
@@ -1060,7 +1123,13 @@ void ModLoader::DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabe
 
     try {
         auto func = reinterpret_cast<BMLExitFunc>(
-            ::GetProcAddress(static_cast<HMODULE>(dllHandle), EXIT_SYMBOL));
+
+#if BML_RUNTIME_SDL
+            BML::Platform::ModuleSymbol(dllHandle, EXIT_SYMBOL)
+#else
+            ::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), EXIT_SYMBOL)
+#endif
+);
         if (!func) {
             if (m_Context.GetLogger()) {
                 m_Context.GetLogger()->Warn(
@@ -1108,7 +1177,13 @@ IMod *ModLoader::LoadMod(const std::wstring &path) {
     constexpr const char *ENTRY_SYMBOL = "BMLEntry";
     typedef IMod *(BML_CDECL *BMLEntryFunc)(IBML *);
 
-    auto func = reinterpret_cast<BMLEntryFunc>(::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), ENTRY_SYMBOL));
+    auto func = reinterpret_cast<BMLEntryFunc>(
+#if BML_RUNTIME_SDL
+        BML::Platform::ModuleSymbol(dllHandle, ENTRY_SYMBOL)
+#else
+        ::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), ENTRY_SYMBOL)
+#endif
+);
     if (!func) {
         m_Context.GetLogger()->Error("Native Mod DLL %s does not export the required symbol: %s.",
                         modPath.c_str(), ENTRY_SYMBOL);
@@ -1154,7 +1229,7 @@ IMod *ModLoader::LoadMod(const std::wstring &path) {
         CleanupRejectedNativeEntry(dllHandle);
         if (Config *config = m_Context.GetConfig(mod))
             m_Context.RemoveConfig(config);
-        DestroyNativeMod(dllHandle.get(), mod, modPath.c_str());
+        DestroyNativeMod(dllHandle, mod, modPath.c_str());
         return nullptr;
     }
 
@@ -1729,7 +1804,7 @@ std::string ModLoader::GetNativeModOwnerId(
 
     std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
 
-    HMODULE const bmlModule = ModuleFromAddress(&BML_GetModContext);
+    HMODULE const bmlModule = ModuleFromAddress(reinterpret_cast<const void *>(&BML_GetModContext));
     if (bmlModule && callerModule == bmlModule) {
         if (!requestedOwnerId || !*requestedOwnerId)
             return {};
@@ -1869,7 +1944,7 @@ bool ModLoader::UnregisterMod(IMod *mod) {
         }
 
         invocationLock.unlock();
-        DestroyNativeMod(rawDllHandle, mod, modIdCopy.c_str());
+        DestroyNativeMod(ownedDllHandle, mod, modIdCopy.c_str());
         m_Context.RemoveModDataPath(mod);
 
         return true;
@@ -2037,6 +2112,7 @@ bool ModLoader::ResolveDependencies() {
 void ModLoader::FillCallbackMap(IMod *mod) {
     std::lock_guard<std::mutex> lock(m_StateMutex);
 
+#if !BML_RUNTIME_SDL
     class BlankMod : IMod {
     public:
         explicit BlankMod(IBML *bml) : IMod(bml) {}
@@ -2054,7 +2130,13 @@ void ModLoader::FillCallbackMap(IMod *mod) {
         *reinterpret_cast<void ***>(mod)
     };
 
+#endif
     int index = 0;
+#if BML_RUNTIME_SDL
+    // The frozen facade has no subscription API. Register its defaults too;
+    // decoding C++ vtables would couple the SDL backend to a compiler ABI.
+#define CHECK_V_FUNC(IDX, FUNC) m_CallbackMap[utils::TypeErase(FUNC)].push_back(mod)
+#else
 #define CHECK_V_FUNC(IDX, FUNC)                             \
     do {                                                    \
         auto idx = IDX;                                     \
@@ -2062,6 +2144,7 @@ void ModLoader::FillCallbackMap(IMod *mod) {
             m_CallbackMap[utils::TypeErase(FUNC)].push_back(mod);  \
     } while(0)
 
+#endif
     CHECK_V_FUNC(index++, &IMessageReceiver::OnPreStartMenu);
     CHECK_V_FUNC(index++, &IMessageReceiver::OnPostStartMenu);
     CHECK_V_FUNC(index++, &IMessageReceiver::OnExitGame);

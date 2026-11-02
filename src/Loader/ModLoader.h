@@ -183,7 +183,7 @@ private:
 #endif
     std::shared_ptr<void> LoadLib(const wchar_t *path);
     bool UnloadLib(void *dllHandle);
-    void DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabel) noexcept;
+    void DestroyNativeMod(const std::shared_ptr<void> &dllHandle, IMod *mod, const char *modLabel) noexcept;
     IMod *LoadMod(const std::wstring &path);
     bool UnloadMod(const std::string &id);
     bool RegisterBuiltinMods();
