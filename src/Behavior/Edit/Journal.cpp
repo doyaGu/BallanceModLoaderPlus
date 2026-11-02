@@ -18,21 +18,71 @@ Status OrderFailure(bool restoring, std::string message) {
     return status;
 }
 
-template <typename T, typename Array>
-std::vector<T *> ReadOrder(Array *array) {
-    std::vector<T *> out;
-    if (!array)
-        return out;
-    out.reserve(static_cast<std::size_t>(array->Size()));
-    for (int index = 0; index < array->Size(); ++index)
-        out.push_back(static_cast<T *>((*array)[index]));
-    return out;
+bool HasGraph(CKBehavior *graph) {
+#if BML_RUNTIME_SDL
+    return graph && graph->GetType() != CKBEHAVIORTYPE_BASE;
+#else
+    return Engine::Nodes(graph) && Engine::Links(graph);
+#endif
 }
 
-template <typename T, typename Array>
-void WriteOrder(Array *array, const std::vector<T *> &order) {
-    for (int index = 0; index < array->Size(); ++index)
-        (*array)[index] = order[static_cast<std::size_t>(index)];
+std::vector<CKBehavior *> ReadNodes(CKBehavior *graph) {
+    std::vector<CKBehavior *> result;
+    if (graph) {
+        result.reserve(static_cast<std::size_t>(graph->GetSubBehaviorCount()));
+        for (int i = 0; i < graph->GetSubBehaviorCount(); ++i)
+            result.push_back(graph->GetSubBehavior(i));
+    }
+    return result;
+}
+
+std::vector<CKBehaviorLink *> ReadSource(CKBehaviorIO *source) {
+    std::vector<CKBehaviorLink *> result;
+#if BML_RUNTIME_SDL
+    for (int i = 0; source && i < source->GetLinkCount(); ++i)
+        result.push_back(source->GetLink(i));
+#else
+    XSObjectPointerArray *array = Engine::Outgoing(source);
+    for (int i = 0; array && i < array->Size(); ++i)
+        result.push_back(static_cast<CKBehaviorLink *>((*array)[i]));
+#endif
+    return result;
+}
+
+CKERROR WriteNodes(CKBehavior *graph, const std::vector<CKBehavior *> &order) {
+#if BML_RUNTIME_SDL
+    for (int dst = 0; dst < static_cast<int>(order.size()); ++dst) {
+        int src = dst;
+        while (src < graph->GetSubBehaviorCount() && graph->GetSubBehavior(src) != order[dst])
+            ++src;
+        const CKERROR error = graph->MoveSubBehavior(src, dst);
+        if (error != CK_OK)
+            return error;
+    }
+#else
+    XObjectPointerArray *array = Engine::Nodes(graph);
+    for (int i = 0; i < array->Size(); ++i)
+        (*array)[i] = order[static_cast<std::size_t>(i)];
+#endif
+    return CK_OK;
+}
+
+CKERROR WriteSource(CKBehaviorIO *source, const std::vector<CKBehaviorLink *> &order) {
+#if BML_RUNTIME_SDL
+    for (int dst = 0; dst < static_cast<int>(order.size()); ++dst) {
+        int src = dst;
+        while (src < source->GetLinkCount() && source->GetLink(src) != order[dst])
+            ++src;
+        const CKERROR error = source->MoveLink(src, dst);
+        if (error != CK_OK)
+            return error;
+    }
+#else
+    XSObjectPointerArray *array = Engine::Outgoing(source);
+    for (int i = 0; i < array->Size(); ++i)
+        (*array)[i] = order[static_cast<std::size_t>(i)];
+#endif
+    return CK_OK;
 }
 
 template <typename T>
@@ -43,10 +93,10 @@ T *ResolveOrderObject(CKContext *context, Stamp original,
                       type);
 }
 
-void ArrangeNodes(CKContext *context, XObjectPointerArray *array,
-                  const std::vector<Stamp> &before,
-                  const OrderAliases &aliases) {
-    std::vector<CKBehavior *> current = ReadOrder<CKBehavior>(array);
+CKERROR ArrangeNodes(CKContext *context, CKBehavior *graph,
+                     const std::vector<Stamp> &before,
+                     const OrderAliases &aliases) {
+    std::vector<CKBehavior *> current = ReadNodes(graph);
     std::vector<CKBehavior *> expected;
     expected.reserve(before.size());
     for (Stamp stamp : before) {
@@ -78,7 +128,7 @@ void ArrangeNodes(CKContext *context, XObjectPointerArray *array,
                 return leftRank != rank.end();
             return false;
         });
-    WriteOrder(array, current);
+    return WriteNodes(graph, current);
 }
 
 Status ArrangeSource(CKContext *context,
@@ -92,9 +142,7 @@ Status ArrangeSource(CKContext *context,
             ? Status{}
             : OrderFailure(false,
                            "A source Behavior IO disappeared while the Edit was applied.");
-    XSObjectPointerArray *array = Engine::Outgoing(source);
-    std::vector<CKBehaviorLink *> current =
-        ReadOrder<CKBehaviorLink>(array);
+    std::vector<CKBehaviorLink *> current = ReadSource(source);
     std::vector<CKBehaviorLink *> expected;
     expected.reserve(before.Links.size());
     for (Stamp stamp : before.Links) {
@@ -118,17 +166,15 @@ Status ArrangeSource(CKContext *context,
                 : "A source Behavior IO changed Link identity while the Edit was applied.");
     for (std::size_t index = 0; index < positions.size(); ++index)
         current[positions[index]] = expected[index];
-    WriteOrder(array, current);
+    if (WriteSource(source, current) != CK_OK)
+        return OrderFailure(restoring, "The source Link order could not be restored.");
     return {};
 }
 
-template <typename T, typename Array>
-bool KeepsRelativeOrder(CKContext *context, Array *array,
+template <typename T>
+bool KeepsRelativeOrder(CKContext *context, const std::vector<T *> &current,
                         const std::vector<Stamp> &expected,
                         CK_CLASSID type) {
-    if (!array)
-        return false;
-    const std::vector<T *> current = ReadOrder<T>(array);
     std::size_t position = 0;
     for (Stamp stamp : expected) {
         T *item = Resolve<T>(context, stamp, type);
@@ -148,12 +194,12 @@ bool KeepsRelativeOrder(CKContext *context, Array *array,
     return true;
 }
 
-bool KeepsNodeOrder(CKContext *context, XObjectPointerArray *array,
+bool KeepsNodeOrder(CKContext *context, CKBehavior *graph,
                     const std::vector<Stamp> &expected,
                     const std::vector<int> &priorities) {
-    if (!array || priorities.size() != expected.size())
+    if (!HasGraph(graph) || priorities.size() != expected.size())
         return false;
-    const std::vector<CKBehavior *> current = ReadOrder<CKBehavior>(array);
+    const std::vector<CKBehavior *> current = ReadNodes(graph);
     std::unordered_map<CKBehavior *, std::size_t> rank;
     rank.reserve(expected.size());
     bool reprioritized = false;
@@ -195,50 +241,39 @@ bool KeepsNodeOrder(CKContext *context, XObjectPointerArray *array,
 
 Status CaptureOrder(CKBehavior *graph, NativeGraphOrder &out) {
     out = {};
-    XObjectPointerArray *nodes = Engine::Nodes(graph);
-    XObjectPointerArray *links = Engine::Links(graph);
-    if (!nodes || !links)
+    if (!HasGraph(graph))
         return OrderFailure(false, "The target is not a live Behavior graph.");
 
-    out.Nodes.reserve(static_cast<std::size_t>(nodes->Size()));
-    for (int index = 0; index < nodes->Size(); ++index) {
-        auto *node = CKBehavior::Cast((*nodes)[index]);
-        if (!node)
-            return OrderFailure(false,
-                                "A graph child is not a Behavior Node.");
+    const std::vector<CKBehavior *> nodes = ReadNodes(graph);
+    out.Nodes.reserve(nodes.size());
+    for (CKBehavior *node : nodes) {
+        if (!CKBehavior::Cast(node))
+            return OrderFailure(false, "A graph child is not a Behavior Node.");
         out.Nodes.push_back(Capture(node));
         out.NodePriorities.push_back(node->GetPriority());
     }
 
     std::unordered_set<CKBehaviorLink *> graphLinks;
-    graphLinks.reserve(static_cast<std::size_t>(links->Size()));
-    for (int index = 0; index < links->Size(); ++index) {
-        auto *link = CKBehaviorLink::Cast((*links)[index]);
-        if (!link || !graphLinks.insert(link).second)
-            return OrderFailure(false,
-                                "A graph contains an invalid or repeated Link.");
+    for (int i = 0; i < graph->GetSubBehaviorLinkCount(); ++i) {
+        CKBehaviorLink *link = graph->GetSubBehaviorLink(i);
+        if (!CKBehaviorLink::Cast(link) || !graphLinks.insert(link).second)
+            return OrderFailure(false, "A graph contains an invalid or repeated Link.");
     }
     std::unordered_set<CKBehaviorIO *> sources;
-    for (int index = 0; index < links->Size(); ++index) {
-        auto *link = CKBehaviorLink::Cast((*links)[index]);
-        CKBehaviorIO *source = link ? link->GetInBehaviorIO() : nullptr;
-        if (!link || !source)
-            return OrderFailure(false,
-                                "A graph Link has no source Behavior IO.");
+    for (int i = 0; i < graph->GetSubBehaviorLinkCount(); ++i) {
+        CKBehaviorLink *link = graph->GetSubBehaviorLink(i);
+        CKBehaviorIO *source = link->GetInBehaviorIO();
+        if (!source)
+            return OrderFailure(false, "A graph Link has no source Behavior IO.");
         if (!sources.insert(source).second)
             continue;
-        XSObjectPointerArray *outgoing = Engine::Outgoing(source);
-        if (!outgoing)
-            return OrderFailure(false,
-                                "A source Behavior IO has no Link order.");
         NativeGraphOrder::Source record;
         record.Port = Capture(source);
-        record.Links.reserve(static_cast<std::size_t>(outgoing->Size()));
-        for (int linkIndex = 0; linkIndex < outgoing->Size(); ++linkIndex) {
-            auto *outgoingLink = CKBehaviorLink::Cast((*outgoing)[linkIndex]);
+        const std::vector<CKBehaviorLink *> outgoing = ReadSource(source);
+        record.Links.reserve(outgoing.size());
+        for (CKBehaviorLink *outgoingLink : outgoing) {
             if (!outgoingLink || !graphLinks.contains(outgoingLink))
-                return OrderFailure(false,
-                                    "A source Behavior IO reaches a Link owned by another graph.");
+                return OrderFailure(false, "A source Behavior IO reaches a Link owned by another graph.");
             record.Links.push_back(Capture(outgoingLink));
         }
         out.Sources.push_back(std::move(record));
@@ -252,7 +287,8 @@ Status ArrangeOrder(CKContext *context, CKBehavior *graph,
                     const OrderAliases &portAliases, bool restoring) {
     if (!graph)
         return OrderFailure(restoring, "The ordered Behavior graph disappeared.");
-    ArrangeNodes(context, Engine::Nodes(graph), before.Nodes, nodeAliases);
+    if (ArrangeNodes(context, graph, before.Nodes, nodeAliases) != CK_OK)
+        return OrderFailure(restoring, "The Behavior Node order could not be restored.");
     for (const NativeGraphOrder::Source &source : before.Sources) {
         Status status = ArrangeSource(context, source, portAliases, restoring);
         if (!status)
@@ -266,7 +302,7 @@ Status ValidateOrder(CKContext *context, CKBehavior *graph,
                      RevertSubject &subject) {
     subject = RevertSubject::Node;
     if (!graph || !KeepsNodeOrder(
-            context, Engine::Nodes(graph), expected.Nodes,
+            context, graph, expected.Nodes,
             expected.NodePriorities)) {
         return OrderFailure(
             true,
@@ -279,7 +315,7 @@ Status ValidateOrder(CKContext *context, CKBehavior *graph,
         if (!source)
             continue;
         if (!KeepsRelativeOrder<CKBehaviorLink>(
-                context, Engine::Outgoing(source), sourceOrder.Links,
+                context, ReadSource(source), sourceOrder.Links,
                 CKCID_BEHAVIORLINK)) {
             return OrderFailure(
                 true,

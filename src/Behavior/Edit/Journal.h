@@ -355,8 +355,8 @@ struct Patch::Journal {
 
 // Whether match accepts any native object the journal introduced into the
 // graph and destroys again when it closes.
-template <typename Match>
-bool AnyOwned(const Patch::Journal &journal, Match &&match) {
+template <typename Journal, typename Match>
+bool AnyOwned(const Journal &journal, Match &&match) {
     const auto owned = [&](Stamp object) {
         return object.Id != 0 && match(object);
     };
@@ -372,15 +372,15 @@ bool AnyOwned(const Patch::Journal &journal, Match &&match) {
         any(journal.InfrastructureNodes, self) ||
         any(journal.InfrastructureLinks, self) ||
         any(journal.Links,
-            [](const Patch::Journal::Link &link) { return link.Value; }) ||
+            [](const auto &link) { return link.Value; }) ||
         any(journal.Ports,
-            [](const Patch::Journal::Interface &port) { return port.Port; }) ||
+            [](const auto &port) { return port.Port; }) ||
         any(journal.Operations,
-            [](const Patch::Journal::Operation &operation) {
+            [](const auto &operation) {
                 return operation.Value;
             }) ||
         owned(journal.DetachedSource) || owned(journal.DetachedSink) ||
-        any(journal.Binds, [](const Patch::Journal::Binding &binding) {
+        any(journal.Binds, [](const auto &binding) {
             return binding.Literal;
         });
 }

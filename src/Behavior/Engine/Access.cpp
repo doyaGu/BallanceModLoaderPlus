@@ -96,7 +96,11 @@ void ClearEndpoints(CKBehaviorLink *link) noexcept {
 }
 
 bool IsDelayed(CKBehaviorLink *link) noexcept {
+#if BML_RUNTIME_SDL
+    return link && link->IsActivationPending();
+#else
     return (LinkMember::OldFlags(link) & InDelayedList) != 0;
+#endif
 }
 
 } // namespace BML::Behavior::Internal::Engine
