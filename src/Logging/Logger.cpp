@@ -11,7 +11,11 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#if BML_RUNTIME_SDL
+#include <SDL3/SDL_time.h>
+#else
 #include <Windows.h>
+#endif
 
 #include "Loader/ModContext.h"
 
@@ -49,28 +53,40 @@ void Logger::Error(const char *fmt, ...) {
 }
 
 void Logger::Log(const char *level, const char *fmt, va_list args) {
+    auto *ctx = BML_GetModContext();
+#if BML_RUNTIME_SDL
+    SDL_DateTime sys{};
+    SDL_Time now{};
+    SDL_GetCurrentTime(&now);
+    SDL_TimeToDateTime(now, &sys, true);
+#else
     SYSTEMTIME sys;
     GetLocalTime(&sys);
-
-    auto *ctx = BML_GetModContext();
     FILE *logFile = ctx ? ctx->GetLogFile() : nullptr;
+#endif
 
     std::string message;
     if (fmt) {
         va_list sizeArgs;
         va_copy(sizeArgs, args);
-        const int length = _vscprintf(fmt, sizeArgs);
+        const int length = std::vsnprintf(nullptr, 0, fmt, sizeArgs);
         va_end(sizeArgs);
         if (length >= 0) {
             std::vector<char> buffer(static_cast<size_t>(length) + 1);
             va_list formatArgs;
             va_copy(formatArgs, args);
-            vsnprintf_s(buffer.data(), buffer.size(), _TRUNCATE, fmt, formatArgs);
+            std::vsnprintf(buffer.data(), buffer.size(), fmt, formatArgs);
             va_end(formatArgs);
             message.assign(buffer.data());
         }
     }
 
+#if BML_RUNTIME_SDL
+    char timestamp[64];
+    std::snprintf(timestamp, sizeof(timestamp), "[%02d/%02d/%d %02d:%02d:%02d.%03d] ",
+                  sys.month, sys.day, sys.year, sys.hour, sys.minute, sys.second, sys.nanosecond / 1000000);
+    if (ctx) ctx->WriteLogLine(std::string(timestamp) + "[" + m_ModName + "/" + level + "]: " + message);
+#else
     FILE *outFiles[] = {
 #ifdef _DEBUG
         stdout,
@@ -88,6 +104,8 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
         fputc('\n', file);
         fflush(file);
     }
+
+#endif
 
 #if BML_ENABLE_ANGELSCRIPT
     if (ctx) {

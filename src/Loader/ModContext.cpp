@@ -3,12 +3,17 @@
 #include <exception>
 #include <stdexcept>
 
-#include <intrin.h>
+#include "Platform/Module.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#if !BML_RUNTIME_SDL
 #include <Windows.h>
+#else
+#include <SDL3/SDL.h>
+#include "Platform/FileSystemNative.h"
+#endif
 
 #include <oniguruma.h>
 
@@ -41,6 +46,12 @@ namespace {
     constexpr wchar_t kInstanceDirectoryName[] = L"Instance";
     constexpr wchar_t kShellStateFileName[] = L"CommandBar.shell.json";
 
+#if BML_RUNTIME_SDL
+    using HMODULE = void *;
+    HMODULE ModuleFromAddress(const void *address) {
+        return const_cast<void *>(BML::Platform::ModuleFromAddress(address));
+    }
+#else
     HMODULE ModuleFromAddress(const void *address) {
         if (!address)
             return nullptr;
@@ -55,10 +66,16 @@ namespace {
         return module;
     }
 
+#endif
     std::wstring ResolveGameDirectoryFromExecutable(const std::wstring &executablePath) {
         if (executablePath.empty())
             return {};
 
+#if BML_RUNTIME_SDL
+        const auto executableDirectory = utils::GetParentDirectoryW(executablePath);
+        if (utils::FileExistsW(utils::CombinePathW(executableDirectory, L"base.cmo")))
+            return executableDirectory;
+#endif
         return utils::GetParentDirectoryW(utils::GetParentDirectoryW(executablePath));
     }
 
@@ -71,7 +88,7 @@ namespace {
 
     std::wstring BuildFallbackTempDirectory(const std::wstring &baseTempDirectory, unsigned long processId) {
         wchar_t suffix[64] = {};
-        _snwprintf(suffix, sizeof(suffix) / sizeof(suffix[0]), L"BML-%lu", processId);
+        std::swprintf(suffix, sizeof(suffix) / sizeof(suffix[0]), L"BML-%lu", processId);
         suffix[(sizeof(suffix) / sizeof(suffix[0])) - 1] = L'\0';
         return utils::CombinePathW(baseTempDirectory, suffix);
     }
@@ -336,9 +353,13 @@ bool ModContext::Init() {
     LoadShellEnvironment();
 
 #ifdef _DEBUG
+#if BML_RUNTIME_SDL
+    m_Logger->Info("Runtime: sdl; loader image: %p", ModuleFromAddress(reinterpret_cast<const void *>(&BML_GetModContext)));
+#else
     m_Logger->Info("Player.exe Address: 0x%08x", ::GetModuleHandleA("Player.exe"));
     m_Logger->Info("CK2.dll Address: 0x%08x", ::GetModuleHandleA("CK2.dll"));
     m_Logger->Info("VxMath.dll Address: 0x%08x", ::GetModuleHandleA("VxMath.dll"));
+#endif
 #endif
 
     OnigEncoding encodings[3] = {ONIG_ENCODING_ASCII, ONIG_ENCODING_UTF8, ONIG_ENCODING_UTF16_LE};
@@ -633,7 +654,7 @@ BML::Behavior::Internal::Status ModContext::RetireBehaviorOwner(
 void ModContext::RegisterCommand(ICommand *cmd) {
     // Taken before the lock: this is a virtual the Mod calls across the DLL
     // boundary, so the return address is in whichever module is registering.
-    void *const registrar = ModuleFromAddress(_ReturnAddress());
+    void *const registrar = ModuleFromAddress(BML_CALLER_ADDRESS());
 
     if (!IsMainThread()) {
         if (m_Logger)
@@ -1296,8 +1317,14 @@ void ModContext::AddTimerLoop(float delay, std::function<bool()> callback) {
 
 void ModContext::ExitGame() {
     OnExitGame();
-    AddTimer(1ul, [this]() {
+    AddTimer(CKDWORD{1}, [this]() {
+#if BML_RUNTIME_SDL
+        SDL_Event event{};
+        event.type = SDL_EVENT_QUIT;
+        SDL_PushEvent(&event);
+#else
         ::PostMessage((HWND) m_CKContext->GetMainWindow(), 0x5FA, 0, 0);
+#endif
     });
 }
 
@@ -1612,6 +1639,12 @@ void ModContext::OnPostLifeUp() {
 }
 
 void ModContext::InitDirectories() {
+#if BML_RUNTIME_SDL
+    m_WorkingDir = utils::GetCurrentDirectoryW();
+    m_WorkingDirUtf8 = utils::Utf16ToUtf8(m_WorkingDir);
+    m_GameDir = ResolveGameDirectoryFromExecutable(utils::GetExecutablePathW());
+    m_GameDirUtf8 = utils::Utf16ToUtf8(m_GameDir);
+#else
     wchar_t path[MAX_PATH];
 
     // Set up working directory
@@ -1626,6 +1659,8 @@ void ModContext::InitDirectories() {
     m_GameDir = ResolveGameDirectoryFromExecutable(path);
     m_GameDirUtf8 = utils::ToString(m_GameDir);
 
+#endif
+
     // Set up loader directory
     m_LoaderDir = ResolveLoaderDirectory(m_GameDir);
     utils::CreateFileTreeW(m_LoaderDir);
@@ -1634,18 +1669,26 @@ void ModContext::InitDirectories() {
     // Set up temp directory
     m_TempDir = CreateInstanceTempDirectory(
         m_LoaderDir,
+#if BML_RUNTIME_SDL
+        static_cast<unsigned long>(BML::Platform::ProcessId()));
+#else
         static_cast<unsigned long>(::GetCurrentProcessId()));
+#endif
     m_TempDirUtf8 = utils::ToString(m_TempDir);
 
     // Set up config directory
-    m_ConfigDir = m_LoaderDir + L"\\Configs";
+    m_ConfigDir = utils::CombinePathW(m_LoaderDir, L"Configs");
     utils::CreateFileTreeW(m_ConfigDir);
     m_ConfigDirUtf8 = utils::ToString(m_ConfigDir);
 }
 
 void ModContext::InitLogger() {
-    std::wstring logfilePath = m_LoaderDir + L"\\ModLoader.log";
+    std::wstring logfilePath = utils::CombinePathW(m_LoaderDir, L"ModLoader.log");
+#if BML_RUNTIME_SDL
+    m_LogStream = SDL_IOFromFile(utils::Utf16ToUtf8(logfilePath).c_str(), "wb");
+#else
     m_Logfile = _wfopen(logfilePath.c_str(), L"w");
+#endif
     auto *logger = new Logger("ModLoader");
     Logger::SetDefault(logger);
     m_Logger = logger;
@@ -1664,10 +1707,14 @@ void ModContext::ShutdownLogger() {
     Logger::SetDefault(nullptr);
     delete m_Logger;
     m_Logger = nullptr;
+#if BML_RUNTIME_SDL
+    if (m_LogStream) { SDL_CloseIO(m_LogStream); m_LogStream = nullptr; }
+#else
     if (m_Logfile) {
         fclose(m_Logfile);
         m_Logfile = nullptr;
     }
+#endif
 }
 
 bool ModContext::InitHooks() {
@@ -1712,7 +1759,7 @@ bool ModContext::DetachRenderHook() {
 bool ModContext::GetManagers() {
     m_AttributeManager = m_CKContext->GetAttributeManager();
     if (m_AttributeManager) {
-        m_Logger->Info("Get Attribute Manager pointer 0x%08x", m_AttributeManager);
+        m_Logger->Info("Get Attribute Manager pointer %p", static_cast<void *>(m_AttributeManager));
     } else {
         m_Logger->Info("Failed to get Attribute Manager");
         return false;
@@ -1720,7 +1767,7 @@ bool ModContext::GetManagers() {
 
     m_BehaviorManager = m_CKContext->GetBehaviorManager();
     if (m_BehaviorManager) {
-        m_Logger->Info("Get Behavior Manager pointer 0x%08x", m_BehaviorManager);
+        m_Logger->Info("Get Behavior Manager pointer %p", static_cast<void *>(m_BehaviorManager));
     } else {
         m_Logger->Info("Failed to get Behavior Manager");
         return false;
@@ -1728,7 +1775,7 @@ bool ModContext::GetManagers() {
 
     m_CollisionManager = (CKCollisionManager *) m_CKContext->GetManagerByGuid(COLLISION_MANAGER_GUID);
     if (m_CollisionManager) {
-        m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
+        m_Logger->Info("Get Collision Manager pointer %p", static_cast<void *>(m_CollisionManager));
     } else {
         m_Logger->Info("Failed to get Collision Manager");
         return false;
@@ -1736,7 +1783,7 @@ bool ModContext::GetManagers() {
 
     m_InputManager = (CKInputManager *) m_CKContext->GetManagerByGuid(INPUT_MANAGER_GUID);
     if (m_InputManager) {
-        m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputManager);
+        m_Logger->Info("Get Input Manager pointer %p", static_cast<void *>(m_InputManager));
     } else {
         m_Logger->Info("Failed to get Input Manager");
         return false;
@@ -1744,7 +1791,7 @@ bool ModContext::GetManagers() {
 
     m_MessageManager = m_CKContext->GetMessageManager();
     if (m_MessageManager) {
-        m_Logger->Info("Get Message Manager pointer 0x%08x", m_MessageManager);
+        m_Logger->Info("Get Message Manager pointer %p", static_cast<void *>(m_MessageManager));
     } else {
         m_Logger->Info("Failed to get Message Manager");
         return false;
@@ -1752,7 +1799,7 @@ bool ModContext::GetManagers() {
 
     m_PathManager = m_CKContext->GetPathManager();
     if (m_PathManager) {
-        m_Logger->Info("Get Path Manager pointer 0x%08x", m_PathManager);
+        m_Logger->Info("Get Path Manager pointer %p", static_cast<void *>(m_PathManager));
     } else {
         m_Logger->Info("Failed to get Path Manager");
         return false;
@@ -1760,7 +1807,7 @@ bool ModContext::GetManagers() {
 
     m_ParameterManager = m_CKContext->GetParameterManager();
     if (m_ParameterManager) {
-        m_Logger->Info("Get Parameter Manager pointer 0x%08x", m_ParameterManager);
+        m_Logger->Info("Get Parameter Manager pointer %p", static_cast<void *>(m_ParameterManager));
     } else {
         m_Logger->Info("Failed to get Parameter Manager");
         return false;
@@ -1768,7 +1815,7 @@ bool ModContext::GetManagers() {
 
     m_RenderManager = m_CKContext->GetRenderManager();
     if (m_RenderManager) {
-        m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
+        m_Logger->Info("Get Render Manager pointer %p", static_cast<void *>(m_RenderManager));
     } else {
         m_Logger->Info("Failed to get Render Manager");
         return false;
@@ -1776,7 +1823,7 @@ bool ModContext::GetManagers() {
 
     m_SoundManager = (CKSoundManager *) m_CKContext->GetManagerByGuid(SOUND_MANAGER_GUID);
     if (m_SoundManager) {
-        m_Logger->Info("Get Sound Manager pointer 0x%08x", m_SoundManager);
+        m_Logger->Info("Get Sound Manager pointer %p", static_cast<void *>(m_SoundManager));
     } else {
         m_Logger->Info("Failed to get Sound Manager");
         return false;
@@ -1784,7 +1831,7 @@ bool ModContext::GetManagers() {
 
     m_TimeManager = m_CKContext->GetTimeManager();
     if (m_TimeManager) {
-        m_Logger->Info("Get Time Manager pointer 0x%08x", m_TimeManager);
+        m_Logger->Info("Get Time Manager pointer %p", static_cast<void *>(m_TimeManager));
     } else {
         m_Logger->Info("Failed to get Time Manager");
         return false;
@@ -2004,3 +2051,16 @@ void ModContext::RemoveModDataPath(const IMod *mod) {
 bool ModContext::CanScheduleTimer() const {
     return IsInited() && m_TimeManager != nullptr && !m_Loader.IsShuttingDown();
 }
+
+#if BML_RUNTIME_SDL
+void ModContext::WriteLogLine(const std::string &line) {
+    if (m_LogStream) {
+        SDL_WriteIO(m_LogStream, line.data(), line.size());
+        SDL_WriteIO(m_LogStream, "\n", 1);
+        SDL_FlushIO(m_LogStream);
+    }
+#ifdef _DEBUG
+    std::fprintf(stdout, "%s\n", line.c_str());
+#endif
+}
+#endif

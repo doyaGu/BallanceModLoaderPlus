@@ -1,6 +1,8 @@
 #ifndef BML_MODCONTEXT_H
 #define BML_MODCONTEXT_H
 
+struct SDL_IOStream;
+
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -234,7 +236,11 @@ public:
     bool SaveConfig(Config *config, bool snapshotModMetadata = true);
 
     ILogger *GetLogger() const {return m_Logger; }
+#if BML_RUNTIME_SDL
+    void WriteLogLine(const std::string &line);
+#else
     FILE *GetLogFile() const { return m_Logfile; }
+#endif
 
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);
@@ -541,7 +547,11 @@ private:
     std::vector<BML::Shell::OutputSink *> m_OutputSinks;
     BML::DataShareStore *m_DataShare = nullptr;
 
+#if BML_RUNTIME_SDL
+    struct SDL_IOStream *m_LogStream = nullptr;
+#else
     FILE *m_Logfile = nullptr;
+#endif
     ILogger *m_Logger = nullptr;
 
     CKContext *m_CKContext = nullptr;
