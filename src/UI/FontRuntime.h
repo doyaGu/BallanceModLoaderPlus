@@ -41,6 +41,7 @@ enum class FontSourceOrigin {
     LoaderCatalog,
     WindowsCatalog,
     Embedded,
+    SystemCatalog,
 };
 
 struct FontSourceStatus {
