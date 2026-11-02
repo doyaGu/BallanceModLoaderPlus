@@ -4,12 +4,18 @@
 #include <cerrno>
 #include <cstring>
 #include <cwchar>
+#if !BML_RUNTIME_SDL
 #include <filesystem>
 #include <io.h>
 #include <new>
 #include <windows.h>
 
 #undef CompareString
+#else
+#include <SDL3/SDL_filesystem.h>
+#include "Platform/FileSystemNative.h"
+#include "Platform/FileError.h"
+#endif
 
 #include "BML/ILogger.h"
 #include "PathUtils.h"
@@ -58,6 +64,22 @@ bool MapCatalog::ResolveFile(const std::wstring &mapsDirectory, std::string_view
         return false;
     }
 
+#if BML_RUNTIME_SDL
+    std::replace(widePath.begin(), widePath.end(), L'\\', L'/');
+    if (utils::IsPathRootedW(widePath) || widePath.find(L':') != std::wstring::npos) {
+        error = "use a path relative to ModLoader/Maps";
+        return false;
+    }
+    for (std::size_t begin = 0; begin < widePath.size();) {
+        auto end = widePath.find(L'/', begin);
+        if (end == std::wstring::npos) end = widePath.size();
+        if (widePath.substr(begin, end - begin) == L"..") {
+            error = "parent-directory paths are not allowed";
+            return false;
+        }
+        begin = end + 1;
+    }
+#else
     const std::filesystem::path requested(widePath);
     if (requested.has_root_path()) {
         error = "use a path relative to ModLoader/Maps";
@@ -69,12 +91,17 @@ bool MapCatalog::ResolveFile(const std::wstring &mapsDirectory, std::string_view
             return false;
         }
     }
+#endif
     if (!IsSupportedFileType(widePath)) {
         error = "only .nmo and .cmo maps can be loaded";
         return false;
     }
 
+#if BML_RUNTIME_SDL
+    const std::wstring candidate = utils::CombinePathW(mapsDirectory, widePath);
+#else
     const std::wstring candidate = (std::filesystem::path(mapsDirectory) / requested).wstring();
+#endif
     return ValidateFile(mapsDirectory, candidate, path, error);
 }
 
@@ -86,6 +113,12 @@ bool MapCatalog::ValidateFile(const std::wstring &mapsDirectory, const std::wstr
         error = "only .nmo and .cmo maps can be loaded";
         return false;
     }
+#if BML_RUNTIME_SDL
+    if (!utils::FileExistsW(candidate)) {
+        error = "map file was not found";
+        return false;
+    }
+#else
     if (candidate.size() >= MAX_PATH) {
         error = "the map path is too long";
         return false;
@@ -97,12 +130,17 @@ bool MapCatalog::ValidateFile(const std::wstring &mapsDirectory, const std::wstr
         return false;
     }
 
+#endif
     std::wstring filePath;
     if (!utils::TryGetFinalPathInsideRootW(candidate, mapsDirectory, filePath)) {
         error = "the map could not be resolved inside ModLoader/Maps";
         return false;
     }
-    if (filePath.size() >= MAX_PATH || !IsSupportedFileType(filePath)) {
+    if (!IsSupportedFileType(filePath)
+#if !BML_RUNTIME_SDL
+        || filePath.size() >= MAX_PATH
+#endif
+    ) {
         error = "the resolved map path is not a supported file";
         return false;
     }
@@ -122,6 +160,23 @@ bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, ILogger *logger
     newRoot->name = "Maps";
     newRoot->path = path;
 
+#if BML_RUNTIME_SDL
+    SDL_PathInfo info{};
+    const auto nativePath = utils::Utf16ToUtf8(path);
+    if (!SDL_GetPathInfo(nativePath.c_str(), &info)) {
+        const auto error = BML::Platform::LastFileError();
+        if (error != BML::Platform::FileError::NotFound &&
+            error != BML::Platform::FileError::PathNotFound) return false;
+    } else if (info.type != SDL_PATHTYPE_DIRECTORY) {
+        if (logger) logger->Error("Maps path is not a directory: %s", nativePath.c_str());
+        return false;
+    } else {
+        std::wstring rootPath;
+        if (!utils::TryGetFinalPathW(path, rootPath) ||
+            ExploreMaps(newRoot.get(), maxDepth, logger, rootPath) == ScanResult::Failure)
+            return false;
+    }
+#else
     const DWORD attributes = GetFileAttributesW(path.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES) {
         const DWORD error = GetLastError();
@@ -144,6 +199,7 @@ bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, ILogger *logger
             return false;
     }
 
+#endif
     m_Root = std::move(newRoot);
     return true;
 }
@@ -185,6 +241,36 @@ MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogge
     if (depth <= 0)
         return ScanResult::Success;
 
+#if BML_RUNTIME_SDL
+    struct Scan {
+        MapEntry *Maps;
+        int Depth;
+        ILogger *Logger;
+        const std::wstring &Root;
+    } scan{maps, depth, logger, rootPath};
+    const auto directory = utils::Utf16ToUtf8(maps->path);
+    const bool ok = SDL_EnumerateDirectory(directory.c_str(), [](void *data, const char *, const char *name) {
+        auto &scan = *static_cast<Scan *>(data);
+        try {
+            auto path = utils::CombinePathW(scan.Maps->path, utils::Utf8ToUtf16(name));
+            std::wstring finalPath;
+            if (!utils::TryGetFinalPathInsideRootW(path, scan.Root, finalPath)) return SDL_ENUM_CONTINUE;
+            const bool dir = utils::DirectoryExistsW(path);
+            if (!dir && (!IsSupportedFileType(path) || !IsSupportedFileType(finalPath))) return SDL_ENUM_CONTINUE;
+            // Do not recurse through directory links (cycles and repeated subtrees).
+            if (dir && BML::Platform::IsLink(utils::Utf16ToUtf8(path))) return SDL_ENUM_CONTINUE;
+            auto entry = std::make_unique<MapEntry>(scan.Maps, dir ? MAP_ENTRY_DIR : MAP_ENTRY_FILE);
+            entry->name = dir ? name : utils::RemoveExtensionUtf8(name);
+            entry->path = std::move(path);
+            scan.Maps->children.push_back(entry.get());
+            auto *child = entry.release();
+            if (dir && ExploreMaps(child, scan.Depth - 1, scan.Logger, scan.Root) == ScanResult::Failure)
+                return SDL_ENUM_FAILURE;
+            return SDL_ENUM_CONTINUE;
+        } catch (...) { return SDL_ENUM_FAILURE; }
+    }, &scan);
+    if (!ok) return ScanResult::Failure;
+#else
     std::wstring searchPath = maps->path;
     if (searchPath.length() > MAX_PATH) {
         if (logger)
@@ -287,6 +373,7 @@ MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogge
         return ScanResult::Failure;
     }
 
+#endif
     if (!maps->children.empty()) {
         try {
             std::sort(maps->children.begin(), maps->children.end(),

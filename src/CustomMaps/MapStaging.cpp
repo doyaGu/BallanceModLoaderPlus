@@ -3,7 +3,14 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#if BML_RUNTIME_SDL
+#include <SDL3/SDL.h>
+#include "Platform/FileSystemNative.h"
+#include "Platform/FileError.h"
+#include "StringUtils.h"
+#else
 #include <Windows.h>
+#endif
 
 #include <utility>
 
@@ -19,9 +26,15 @@ constexpr wchar_t StagingRootName[] = L"BMLPlus.Staging";
 
 std::wstring MakeSessionName() {
     wchar_t name[48]{};
+#if BML_RUNTIME_SDL
+    std::swprintf(name, sizeof(name) / sizeof(name[0]), L"%08lX-%016llX",
+                  static_cast<unsigned long>(BML::Platform::ProcessId()),
+                  static_cast<unsigned long long>(SDL_GetTicksNS()));
+#else
     _snwprintf(name, sizeof(name) / sizeof(name[0]), L"%08lX-%016llX",
                static_cast<unsigned long>(::GetCurrentProcessId()),
                static_cast<unsigned long long>(::GetTickCount64()));
+#endif
     name[(sizeof(name) / sizeof(name[0])) - 1] = L'\0';
     return name;
 }
@@ -29,10 +42,14 @@ std::wstring MakeSessionName() {
 bool DeleteOwnedFile(const std::wstring &path) {
     if (path.empty())
         return true;
+#if BML_RUNTIME_SDL
+    return utils::DeleteFileW(path) || !utils::PathExistsW(path);
+#else
     if (::DeleteFileW(path.c_str()) == TRUE)
         return true;
     const DWORD error = ::GetLastError();
     return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+#endif
 }
 
 }
@@ -45,7 +62,11 @@ void MapStaging::Initialize(const std::wstring &gameDirectory,
                             const std::wstring &tempDirectory) {
     Shutdown();
 
+#if BML_RUNTIME_SDL
+    const std::wstring binDirectory = utils::GetDirectoryW(utils::GetExecutablePathW());
+#else
     const std::wstring binDirectory = utils::CombinePathW(gameDirectory, L"Bin");
+#endif
     m_TempDirectory = tempDirectory;
     m_RootDirectory = utils::CombinePathW(binDirectory, StagingRootName);
     m_RelativeDirectory = utils::CombinePathW(StagingRootName, MakeSessionName());
@@ -62,10 +83,15 @@ void MapStaging::Shutdown() {
     for (const std::wstring &file : m_RetainedFiles)
         DeleteOwnedFile(file);
     m_RetainedFiles.clear();
+#if BML_RUNTIME_SDL
+    if (!m_SessionDirectory.empty()) SDL_RemovePath(utils::Utf16ToUtf8(m_SessionDirectory).c_str());
+    if (!m_RootDirectory.empty()) SDL_RemovePath(utils::Utf16ToUtf8(m_RootDirectory).c_str());
+#else
     if (!m_SessionDirectory.empty())
         ::RemoveDirectoryW(m_SessionDirectory.c_str());
     if (!m_RootDirectory.empty())
         ::RemoveDirectoryW(m_RootDirectory.c_str());
+#endif
 
     m_TempDirectory.clear();
     m_RootDirectory.clear();
@@ -92,8 +118,8 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
     }
 
     const std::wstring extension = utils::GetExtensionW(sourcePath);
-    if (_wcsicmp(extension.c_str(), L".nmo") != 0 &&
-        _wcsicmp(extension.c_str(), L".cmo") != 0) {
+    if (utils::CompareString(utils::Utf16ToUtf8(extension), ".nmo") != 0 &&
+        utils::CompareString(utils::Utf16ToUtf8(extension), ".cmo") != 0) {
         error = "only .nmo and .cmo maps can be staged";
         return false;
     }
@@ -107,6 +133,9 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
     if (!m_SessionDirectory.empty() && !m_RelativeDirectory.empty()) {
         const std::wstring destination = utils::CombinePathW(m_SessionDirectory, fileName);
         const std::wstring relativePath = utils::CombinePathW(m_RelativeDirectory, fileName);
+#if BML_RUNTIME_SDL
+        utils::CreateFileTreeW(m_SessionDirectory);
+#endif
         if (utils::CopyFileW(sourcePath, destination) &&
             utils::TryEncodePathForCodePage(relativePath, 20127, staged.LoadPath) &&
             CanResolve(pathManager, staged.LoadPath)) {
@@ -126,6 +155,9 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
 
     const std::wstring fallback = utils::CombinePathW(
         utils::CombinePathW(m_TempDirectory, L"Maps"), fileName);
+#if BML_RUNTIME_SDL
+    utils::CreateFileTreeW(utils::GetDirectoryW(fallback));
+#endif
     if (!utils::CopyFileW(sourcePath, fallback)) {
         DiscardFile(fallback);
         error = "neither the game staging directory nor the fallback temp directory is writable";
