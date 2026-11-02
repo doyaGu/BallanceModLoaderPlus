@@ -3,7 +3,11 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#if !BML_RUNTIME_SDL
 #include <Windows.h>
+#else
+#include "PathUtils.h"
+#endif
 
 #include <cstdlib>
 #include <utility>
@@ -75,6 +79,13 @@ namespace utils {
 
     JsonDocument JsonDocument::ParseFile(const std::wstring &path, std::string &error) {
         error.clear();
+#if BML_RUNTIME_SDL
+        std::string content;
+        if (!ReadFileBytesW(path, content)) {
+            error = "Unable to read JSON file";
+            return {};
+        }
+#else
         HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file == INVALID_HANDLE_VALUE) {
             error = "Unable to open JSON file";
@@ -95,6 +106,7 @@ namespace utils {
             error = "Unable to read JSON file";
             return {};
         }
+#endif
         return Parse(content, error);
     }
 
