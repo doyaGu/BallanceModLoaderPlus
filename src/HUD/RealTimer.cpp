@@ -68,6 +68,6 @@ void RealTimer::UpdateFormattedTime() const {
     int ms = (int)(totalUs / 1000LL);
     int us = (int)(totalUs % 1000LL);
 
-    sprintf_s(m_FormattedTime, sizeof(m_FormattedTime), "  %02d:%02d:%02d.%03d%03d", h, m, s, ms, us);
+    std::snprintf(m_FormattedTime, sizeof(m_FormattedTime), "  %02d:%02d:%02d.%03d%03d", h, m, s, ms, us);
     m_Dirty = false;
 }

@@ -259,11 +259,19 @@ private:
     static bool ReadString(CKDataArray *array, int row, int column, std::string &outValue) {
         if (!HasCell(array, row, column))
             return false;
+        #if BML_RUNTIME_SDL
+        const int required = array->GetElementStringValue(row, column, nullptr, 0);
+#else
         const int required = array->GetElementStringValue(row, column, nullptr);
+#endif
         if (required <= 0)
             return false;
         std::vector<char> buffer(static_cast<size_t>(required), '\0');
+        #if BML_RUNTIME_SDL
+        if (array->GetElementStringValue(row, column, buffer.data(), required) <= 0)
+#else
         if (array->GetElementStringValue(row, column, buffer.data()) <= 0)
+#endif
             return false;
         outValue = buffer.data();
         return true;

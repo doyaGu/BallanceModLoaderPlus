@@ -48,6 +48,6 @@ void SRTimer::UpdateFormattedTime() const {
     int s = (int)(totalMs / 1000);
     int ms = (int)(totalMs % 1000);
 
-    sprintf_s(m_FormattedTime, sizeof(m_FormattedTime), "  %02d:%02d:%02d.%03d", h, m, s, ms);
+    std::snprintf(m_FormattedTime, sizeof(m_FormattedTime), "  %02d:%02d:%02d.%03d", h, m, s, ms);
     m_Dirty = false;
 }

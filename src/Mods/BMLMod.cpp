@@ -557,7 +557,7 @@ void BMLMod::InitGUI() {
 
 void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {
     (void) script;
-    m_BML->AddTimer(GameFontAcquireDelay, [this]() { AcquireGameFonts(); });
+    m_BML->AddTimer(static_cast<CKDWORD>(GameFontAcquireDelay), [this]() { AcquireGameFonts(); });
 }
 
 void BMLMod::AcquireGameFonts() {

@@ -42,7 +42,7 @@ const char *FpsCounter::GetFormattedFps() const {
     int currentFps = (int) m_CurrentAverageFps;
     if (currentFps != m_LastFpsInt) {
         const_cast<int &>(m_LastFpsInt) = currentFps;
-        sprintf_s(m_FormattedFps, sizeof(m_FormattedFps), "FPS: %d", currentFps);
+        std::snprintf(m_FormattedFps, sizeof(m_FormattedFps), "FPS: %d", currentFps);
     }
     return m_FormattedFps;
 }

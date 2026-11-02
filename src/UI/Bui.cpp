@@ -219,7 +219,7 @@ namespace Bui {
 
         const std::uint64_t generation = NewNavigationLockGeneration();
         state.navigationLockGeneration = generation;
-        context->AddTimerLoop(1ul, [ckContext, generation] {
+        context->AddTimerLoop(CKDWORD{1}, [ckContext, generation] {
             const auto entry = KeyboardInputBlocks.find(ckContext);
             if (entry == KeyboardInputBlocks.end() ||
                 entry->second.navigationLockGeneration != generation)
@@ -261,7 +261,7 @@ namespace Bui {
             return;
 
         it->second.pendingReleases.insert(token);
-        context->AddTimerLoop(1ul, [ckContext, context, token] {
+        context->AddTimerLoop(CKDWORD{1}, [ckContext, context, token] {
             const auto state = KeyboardInputBlocks.find(ckContext);
             if (state == KeyboardInputBlocks.end() || !state->second.pendingReleases.contains(token))
                 return false;
