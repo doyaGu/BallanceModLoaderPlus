@@ -1,6 +1,8 @@
 #ifndef BML_HOOKUTILS_H
 #define BML_HOOKUTILS_H
 
+#include <cstddef>
+
 namespace utils {
     void OutputDebugA(const char *format, ...);
     void OutputDebugW(const wchar_t *format, ...);
