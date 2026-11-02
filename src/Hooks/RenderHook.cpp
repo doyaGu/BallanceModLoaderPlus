@@ -1,5 +1,82 @@
 #include "Hooks/RenderHook.h"
 
+#if BML_RUNTIME_SDL
+#include "CKAll.h"
+
+struct RenderHook::Impl {
+    CKContext *Owner = nullptr;
+    CKObjectHandle ContextHandle{};
+    bool SavedAdjustFov = false;
+    static Impl *Active;
+    static bool WidescreenFixEnabled;
+
+    CKRenderContext *Context() const {
+        return Owner ? CKRenderContext::Cast(Owner->GetObjectByHandle(ContextHandle)) : nullptr;
+    }
+};
+
+RenderHook::Impl *RenderHook::Impl::Active = nullptr;
+bool RenderHook::Impl::WidescreenFixEnabled = false;
+
+RenderHook::RenderHook() : m_Impl(std::make_unique<Impl>()) {}
+RenderHook::~RenderHook() { Detach(); }
+
+bool RenderHook::Attach(CKRenderContext *context) {
+    if (!context || !m_Impl || (Impl::Active && Impl::Active != m_Impl.get()))
+        return false;
+    if (m_Impl->Context() == context)
+        return true;
+    Detach();
+    m_Impl->Owner = context->GetCKContext();
+    m_Impl->ContextHandle = m_Impl->Owner->GetObjectHandle(context->GetID());
+    m_Impl->SavedAdjustFov = (context->GetCurrentRenderOptions() & CK_RENDER_ADJUSTFOV) != 0;
+    Impl::Active = m_Impl.get();
+    context->ChangeCurrentRenderOptions(
+        Impl::WidescreenFixEnabled ? CK_RENDER_ADJUSTFOV : 0,
+        Impl::WidescreenFixEnabled ? 0 : CK_RENDER_ADJUSTFOV);
+    return true;
+}
+
+bool RenderHook::Detach() {
+    if (!m_Impl)
+        return true;
+    if (CKRenderContext *context = m_Impl->Context()) {
+        context->ChangeCurrentRenderOptions(
+            m_Impl->SavedAdjustFov ? CK_RENDER_ADJUSTFOV : 0,
+            m_Impl->SavedAdjustFov ? 0 : CK_RENDER_ADJUSTFOV);
+    }
+    if (Impl::Active == m_Impl.get())
+        Impl::Active = nullptr;
+    m_Impl->Owner = nullptr;
+    m_Impl->ContextHandle = {};
+    return true;
+}
+
+bool RenderHook::IsAttached() const {
+    return m_Impl && Impl::Active == m_Impl.get() && m_Impl->Context();
+}
+
+bool RenderHook::IsSkipRenderAvailable() {
+    return false;
+}
+
+void RenderHook::SkipNextRender() {
+    // The SDL one-shot integration has been withdrawn pending review.
+}
+
+void RenderHook::EnableWidescreenFix(bool enable) {
+    Impl::WidescreenFixEnabled = enable;
+    if (IsWidescreenFixAvailable()) {
+        Impl::Active->Context()->ChangeCurrentRenderOptions(
+            enable ? CK_RENDER_ADJUSTFOV : 0, enable ? 0 : CK_RENDER_ADJUSTFOV);
+    }
+}
+
+bool RenderHook::IsWidescreenFixAvailable() {
+    return Impl::Active && Impl::Active->Context();
+}
+#else
+
 #include "CKRenderContext.h"
 #include "CK2dEntity.h"
 #include "Hooks/CKRasterizer.h"
@@ -296,3 +373,5 @@ void RenderHook::EnableWidescreenFix(bool enable) {
 bool RenderHook::IsWidescreenFixAvailable() {
     return Impl::Active && Impl::Active->ProjectionInstalled;
 }
+
+#endif
