@@ -1,3 +1,4 @@
+#include "ScriptPathUtils.h"
 #include "ScriptModHotReloadPathFilter.h"
 
 #include <cwchar>
@@ -14,7 +15,7 @@ bool EndsWithInsensitive(const std::wstring &value, const wchar_t *suffix) {
     const size_t suffixLength = std::wcslen(suffix);
     if (value.size() < suffixLength)
         return false;
-    return _wcsicmp(value.c_str() + value.size() - suffixLength, suffix) == 0;
+    return ScriptPathCaseCompare(value.c_str() + value.size() - suffixLength, suffix) == 0;
 }
 
 bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
@@ -22,14 +23,18 @@ bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
         return false;
     const std::wstring resolvedLeft = utils::ResolvePathW(left);
     const std::wstring resolvedRight = utils::ResolvePathW(right);
-    return _wcsicmp(resolvedLeft.c_str(), resolvedRight.c_str()) == 0;
+#if BML_RUNTIME_SDL
+    return resolvedLeft == resolvedRight;
+#else
+    return ScriptPathCaseCompare(resolvedLeft.c_str(), resolvedRight.c_str()) == 0;
+#endif
 }
 
 bool IsPathInsideOrSameRoot(const std::wstring &path, const std::wstring &root) {
     return SamePathInsensitive(path, root) || utils::IsPathInsideRootW(path, root);
 }
 
-bool IsPathUnderWatchedRoot(const ScriptFileWatcherWin32::Event &event,
+bool IsPathUnderWatchedRoot(const ScriptFileWatcher::Event &event,
                             const std::wstring &path) {
     if (path.empty())
         return false;
@@ -40,7 +45,7 @@ bool IsPathUnderWatchedRoot(const ScriptFileWatcherWin32::Event &event,
     return SamePathInsensitive(utils::GetDirectoryW(path), event.Root);
 }
 
-bool IsDirectoryAffectedByWatchedRoot(const ScriptFileWatcherWin32::Event &event,
+bool IsDirectoryAffectedByWatchedRoot(const ScriptFileWatcher::Event &event,
                                       const std::wstring &directory) {
     if (directory.empty())
         return false;
@@ -52,14 +57,14 @@ bool IsDirectoryAffectedByWatchedRoot(const ScriptFileWatcherWin32::Event &event
            SamePathInsensitive(utils::GetDirectoryW(directory), event.Root);
 }
 
-bool IsRootLifecycleAction(DWORD action) {
-    return action == FILE_ACTION_ADDED ||
-           action == FILE_ACTION_REMOVED ||
-           action == FILE_ACTION_RENAMED_OLD_NAME ||
-           action == FILE_ACTION_RENAMED_NEW_NAME;
+bool IsRootLifecycleAction(uint32_t action) {
+    return action == ScriptFileAdded ||
+           action == ScriptFileRemoved ||
+           action == ScriptFileRenamedOld ||
+           action == ScriptFileRenamedNew;
 }
 
-bool IsSourceRootLifecycleEvent(const ScriptFileWatcherWin32::Event &event,
+bool IsSourceRootLifecycleEvent(const ScriptFileWatcher::Event &event,
                                 const ScriptModEntry &entry) {
     if (!IsRootLifecycleAction(event.Action))
         return false;
@@ -76,7 +81,7 @@ bool IsSourceRootLifecycleEvent(const ScriptFileWatcherWin32::Event &event,
 
 } // namespace
 
-bool ScriptHotReloadOverflowCanAffectEntry(const ScriptFileWatcherWin32::Event &event,
+bool ScriptHotReloadOverflowCanAffectEntry(const ScriptFileWatcher::Event &event,
                                            const ScriptModEntry &entry) {
     if (event.Root.empty())
         return true;
@@ -113,7 +118,7 @@ bool ScriptHotReloadEventBelongsToEntry(const std::wstring &path,
     return !entry.RootDirectory.empty() && IsPathInsideOrSameRoot(path, entry.RootDirectory);
 }
 
-bool ScriptHotReloadEventLooksRelevant(const ScriptFileWatcherWin32::Event &event,
+bool ScriptHotReloadEventLooksRelevant(const ScriptFileWatcher::Event &event,
                                        const ScriptModEntry &entry) {
     if (event.Overflow)
         return ScriptHotReloadOverflowCanAffectEntry(event, entry);
@@ -129,7 +134,7 @@ bool ScriptHotReloadEventLooksRelevant(const ScriptFileWatcherWin32::Event &even
     return EndsWithInsensitive(event.Path, L".as");
 }
 
-bool ScriptHotReloadEventLooksRelevantToLibraryUse(const ScriptFileWatcherWin32::Event &event,
+bool ScriptHotReloadEventLooksRelevantToLibraryUse(const ScriptFileWatcher::Event &event,
                                                    const ScriptLibraryUse &library) {
     if (library.RootDirectory.empty())
         return false;
