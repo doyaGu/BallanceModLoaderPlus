@@ -1,0 +1,289 @@
+#include <gtest/gtest.h>
+#include "CKAll.h"
+#include "TextureTestObserver.h"
+#include "CKRecordingRasterizer.h"
+#include "RCK2dEntity.h"
+#include "RCKMaterial.h"
+#include "RCKCamera.h"
+#include "Hooks/RenderHook.h"
+#include "Behavior/Edit/Journal.h"
+#include "Behavior/PrototypeCatalog.h"
+#include "UI/imgui_impl_ck2.h"
+#include "imgui_internal.h"
+
+using namespace BML::Behavior::Internal;
+
+namespace {
+class DrawObserver : public TextureTestObserver {
+public:
+    int Draws = 0;
+    CKBOOL DrawPrimitive(VXPRIMITIVETYPE, CKWORD *, int, VxDrawPrimitiveData *) override {
+        ++Draws;
+        return TRUE;
+    }
+};
+class TestRenderContext : public RCKRenderContext {
+public:
+    bool FailGeometry = false;
+    explicit TestRenderContext(CKContext *context) : RCKRenderContext(context) {}
+    VxDrawPrimitiveData *GetDrawPrimitiveStructure(CKRST_DPFLAGS flags, int count) override {
+        return FailGeometry ? nullptr : RCKRenderContext::GetDrawPrimitiveStructure(flags, count);
+    }
+};
+class SdlEngineTest : public ::testing::Test {
+protected:
+    CKContext *Context = nullptr;
+    RCKRenderManager *Manager = nullptr;
+    TestRenderContext *Device = nullptr;
+    DrawObserver State;
+    CKRasterizerDriver Driver;
+    void SetUp() override {
+        SetProcessorSpecific_FunctionsPtr();
+        ASSERT_EQ(CK_OK, CKStartUp());
+        CKCLASSREGISTERCID(RCKRenderObject, CKCID_BEOBJECT);
+        CKCLASSREGISTERCID(RCK3dEntity, CKCID_RENDEROBJECT);
+        CKCLASSREGISTERCID(RCK2dEntity, CKCID_RENDEROBJECT);
+        CKCLASSREGISTERCID(RCKMaterial, CKCID_BEOBJECT);
+        CKCLASSREGISTERCID(RCKTexture, CKCID_BEOBJECT);
+        CKCLASSREGISTERCID(RCKCamera, CKCID_3DENTITY);
+        CKCLASSREGISTERCID(RCKRenderContext, CKCID_OBJECT);
+        CKBuildClassHierarchyTable();
+        ASSERT_EQ(CK_OK, CKCreateContext(&Context, nullptr, 0, 0));
+        Manager = new RCKRenderManager(Context);
+        Manager->m_Drivers[0].CapsUpToDate = TRUE;
+        Manager->m_Drivers[0].RasterizerDriver = &Driver;
+        Manager->m_Drivers[0].Caps3D.MaxTextureWidth = 1024;
+        Manager->m_Drivers[0].Caps3D.MaxTextureHeight = 1024;
+        VxImageDescEx format; VxPixelFormat2ImageDesc(_32_ARGB8888, format);
+        Manager->m_Drivers[0].TextureFormats.PushBack(format);
+        ASSERT_TRUE(Manager->RegisterRasterizerContext(&State, 0));
+        Device = new TestRenderContext(Context);
+        Device->m_RasterizerContext = &State;
+        Device->m_RasterizerDriver = &Driver;
+        Device->m_DriverIndex = 0;
+        Device->m_Settings.m_Rect = CKRECT{0, 0, 640, 360};
+        VxRect rect(0, 0, 640, 360); Device->SetViewRect(rect);
+        Context->m_BehaviorContext.CurrentRenderContext = Device;
+    }
+    void TearDown() override {
+        if (ImGui::GetCurrentContext()) {
+            if (ImGui::GetIO().BackendRendererUserData) ImGui_ImplCK2_Shutdown();
+            ImGui::DestroyContext();
+        }
+        if (Device) {
+            Device->m_RasterizerContext = nullptr;
+            Device->m_RasterizerDriver = nullptr;
+            delete Device;
+        }
+        if (Manager) Manager->ForgetRasterizerContext(&State);
+        if (Context) CKCloseContext(Context);
+        CKShutdown();
+    }
+    CKTexture *Texture() {
+        auto *texture = static_cast<CKTexture *>(Context->CreateObject(CKCID_TEXTURE));
+        EXPECT_TRUE(texture->Create(2, 2, 32));
+        return texture;
+    }
+    void RenderUi(CKTexture *texture) {
+        ImDrawList list(ImGui::GetDrawListSharedData());
+        list._ResetForNewFrame();
+        list.PushClipRect(ImVec2(0, 0), ImVec2(640, 360));
+        list.PushTexture(ImTextureRef(reinterpret_cast<ImTextureID>(texture)));
+        list.AddRectFilled(ImVec2(10, 10), ImVec2(80, 80), IM_COL32_WHITE);
+        ImDrawData data;
+        data.Valid = true;
+        data.DisplaySize = ImVec2(640, 360);
+        data.FramebufferScale = ImVec2(1, 1);
+        ASSERT_GT(list.VtxBuffer.Size, 0);
+        ASSERT_GT(list.IdxBuffer.Size, 0);
+        data.AddDrawList(&list);
+        data.CmdListsCount = data.CmdLists.Size;
+        ASSERT_EQ(1, data.CmdListsCount);
+        ImGui_ImplCK2_RenderDrawData(&data);
+    }
+};
+
+TEST_F(SdlEngineTest, RenderAdapterRestoresOnlyItsProjectionOption) {
+    Device->SetCurrentRenderOptions(CK_RENDER_CLEARZ | CK_RENDER_ADJUSTFOV);
+    RenderHook::EnableWidescreenFix(false);
+    RenderHook first, second;
+    ASSERT_TRUE(first.Attach(Device));
+    EXPECT_TRUE(first.IsAttached());
+    EXPECT_FALSE(second.Attach(Device));
+    EXPECT_FALSE(Device->GetCurrentRenderOptions() & CK_RENDER_ADJUSTFOV);
+    RenderHook::EnableWidescreenFix(true);
+    EXPECT_TRUE(Device->GetCurrentRenderOptions() & CK_RENDER_ADJUSTFOV);
+    EXPECT_FALSE(RenderHook::IsSkipRenderAvailable());
+    const CKDWORD options = Device->GetCurrentRenderOptions();
+    RenderHook::SkipNextRender();
+    EXPECT_EQ(options, Device->GetCurrentRenderOptions());
+    Device->ChangeCurrentRenderOptions(CK_RENDER_CLEARBACK, 0);
+    ASSERT_TRUE(first.Detach());
+    EXPECT_EQ(CKDWORD(CK_RENDER_CLEARZ | CK_RENDER_CLEARBACK | CK_RENDER_ADJUSTFOV),
+              Device->GetCurrentRenderOptions());
+    EXPECT_FALSE(RenderHook::IsSkipRenderAvailable());
+    RenderHook::EnableWidescreenFix(false);
+}
+
+TEST_F(SdlEngineTest, JournalRestoresNodeAndSourceOrderThroughPublicMoves) {
+    auto *graph = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+    graph->UseGraph();
+    for (int i = 0; i < 3; ++i) {
+        auto *node = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+        ASSERT_EQ(CK_OK, graph->AddSubBehavior(node));
+    }
+    CKBehaviorIO *source = graph->CreateInput("source");
+    CKBehaviorIO *sink = graph->GetSubBehavior(0)->CreateInput("sink");
+    for (int i = 0; i < 3; ++i) {
+        auto *link = static_cast<CKBehaviorLink *>(Context->CreateObject(CKCID_BEHAVIORLINK));
+        ASSERT_EQ(CK_OK, link->SetInBehaviorIO(source));
+        ASSERT_EQ(CK_OK, link->SetOutBehaviorIO(sink));
+        ASSERT_EQ(CK_OK, graph->AddSubBehaviorLink(link));
+    }
+    NativeGraphOrder before;
+    ASSERT_TRUE(CaptureOrder(graph, before));
+    ASSERT_EQ(CK_OK, graph->MoveSubBehavior(0, 2));
+    ASSERT_EQ(CK_OK, source->MoveLink(0, 2));
+    RevertSubject subject;
+    EXPECT_FALSE(ValidateOrder(Context, graph, before, subject));
+    ASSERT_TRUE(ArrangeOrder(Context, graph, before, {}, {}, true));
+    EXPECT_TRUE(ValidateOrder(Context, graph, before, subject));
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_EQ(before.Nodes[i].Address, graph->GetSubBehavior(i));
+        EXPECT_EQ(before.Sources[0].Links[i].Address, source->GetLink(i));
+    }
+}
+
+const CKGUID prototypeGuid(0x41df192a, 0x584a81ab);
+void RegisterDeclarations(XObjectDeclarationArray *declarations) {
+    auto *declaration = CreateCKObjectDeclaration("SDL provider test");
+    declaration->SetGuid(prototypeGuid);
+    declaration->SetVersion(1);
+    CKStoreDeclaration(declarations, declaration);
+}
+class DeclarationManager : public CKPluginManager {
+public:
+    using CKPluginManager::InitializeBehaviors;
+};
+TEST_F(SdlEngineTest, CatalogDetectsSameVersionReloadWithoutACountChange) {
+    DeclarationManager manager;
+    CKPluginEntry entry;
+    entry.m_IndexInCategory = -1;
+    entry.m_BehaviorsInfo = new CKPluginEntryBehaviorsData;
+    manager.InitializeBehaviors(RegisterDeclarations, entry);
+    PrototypeCatalog catalog(MakeCKPrototypeSource(Context));
+    ASSERT_TRUE(catalog.TracksRetirement());
+    PrototypeRef before;
+    ASSERT_TRUE(catalog.Resolve({prototypeGuid, 0}, before));
+    const int count = CKGetPrototypeDeclarationCount();
+    ASSERT_EQ(CK_OK, CKRemovePrototypeDeclaration(CKGetObjectDeclarationFromGuid(prototypeGuid)));
+    manager.InitializeBehaviors(RegisterDeclarations, entry);
+    ASSERT_EQ(count, CKGetPrototypeDeclarationCount());
+    EXPECT_FALSE(catalog.Validate(before));
+    PrototypeRef after;
+    ASSERT_TRUE(catalog.Resolve({prototypeGuid, 0}, after));
+    EXPECT_NE(before.Generation, after.Generation);
+    ASSERT_EQ(CK_OK, CKRemovePrototypeDeclaration(CKGetObjectDeclarationFromGuid(prototypeGuid)));
+    EXPECT_FALSE(catalog.Validate(after));
+}
+
+TEST_F(SdlEngineTest, UiRestoresTextureStagesTransformsAndAlphaOnSuccessAndFailure) {
+    CKTexture *background = Texture(), *ui = Texture();
+    ASSERT_TRUE(Device->SetTexture(background));
+    VxMatrix matrix = VxMatrix::Identity(); matrix[3][0] = .375f;
+    Device->SetTextureMatrix(matrix);
+    Device->SetTextureStageState(CKRST_TSS_MINFILTER, VXTEXTUREFILTER_NEAREST);
+    Device->SetTextureStageState(CKRST_TSS_ADDRESS, VXTEXTURE_ADDRESSWRAP);
+    Device->SetTextureStageState(CKRST_TSS_OP, CKRST_TOP_ADD);
+    Device->SetTextureStageState(CKRST_TSS_ARG1, CKRST_TA_CURRENT);
+    Device->SetState(VXRENDERSTATE_ALPHATESTENABLE, TRUE);
+    Device->SetState(VXRENDERSTATE_ALPHAFUNC, VXCMP_LESS);
+    Device->SetState(VXRENDERSTATE_ALPHAREF, 73);
+    Device->SetState(VXRENDERSTATE_BLENDOP, VXBLENDOP_ADD);
+    ImGui::CreateContext();
+    ASSERT_TRUE(ImGui_ImplCK2_Init(Context));
+    const auto check = [&] {
+        EXPECT_EQ(background, Device->GetTexture());
+        EXPECT_FLOAT_EQ(.375f, Device->GetTextureMatrix()[3][0]);
+        EXPECT_EQ(CKDWORD(VXTEXTUREFILTER_NEAREST), Device->GetTextureStageState(CKRST_TSS_MINFILTER));
+        EXPECT_EQ(CKDWORD(VXTEXTURE_ADDRESSWRAP), Device->GetTextureStageState(CKRST_TSS_ADDRESS));
+        EXPECT_EQ(CKDWORD(CKRST_TOP_ADD), Device->GetTextureStageState(CKRST_TSS_OP));
+        EXPECT_EQ(CKDWORD(CKRST_TA_CURRENT), Device->GetTextureStageState(CKRST_TSS_ARG1));
+        EXPECT_EQ(CKDWORD(TRUE), Device->GetState(VXRENDERSTATE_ALPHATESTENABLE));
+        EXPECT_EQ(CKDWORD(VXCMP_LESS), Device->GetState(VXRENDERSTATE_ALPHAFUNC));
+        EXPECT_EQ(73u, Device->GetState(VXRENDERSTATE_ALPHAREF));
+    };
+    RenderUi(ui);
+    ImGui_ImplCK2_Diagnostics diagnostics{};
+    ASSERT_TRUE(ImGui_ImplCK2_GetDiagnostics(&diagnostics));
+    EXPECT_GT(State.Draws, 0) << "lists=" << diagnostics.DrawListCount
+        << " commands=" << diagnostics.DrawCommandCount
+        << " uploads=" << diagnostics.GeometryUploadCount
+        << " failures=" << diagnostics.GeometryUploadFailureCount
+        << " binds=" << diagnostics.TextureBindCallCount;
+    check();
+    Device->FailGeometry = true;
+    RenderUi(ui);
+    check();
+    Device->FailGeometry = false;
+    CKTexture *invalid = Texture();
+    State.CreateResult = FALSE;
+    RenderUi(invalid); // Failed texture bind resets the whole stage inside CK2.
+    check();
+    State.CreateResult = TRUE;
+}
+
+TEST_F(SdlEngineTest, UiRestoresTheProductionFixedFunctionStateThroughPublicCk2Queries) {
+    // The recorder runs the production fixed-function pipeline without a GPU.
+    // Test code observes its device interface; the BML backend sees CK2 only.
+    CKRecordingRasterizer rasterizer;
+    ASSERT_TRUE(rasterizer.Start(nullptr));
+    auto *driver = static_cast<CKRecordingRasterizerDriver *>(rasterizer.GetDriver(0));
+    ASSERT_NE(nullptr, driver);
+    CKTextureDesc format; VxPixelFormat2ImageDesc(_32_ARGB8888, format.Format);
+    driver->AddTextureFormat(format);
+    CKRasterizerContext *recording = driver->CreateContext();
+    ASSERT_NE(nullptr, recording);
+    ASSERT_TRUE(recording->Create(nullptr, 0, 0, 640, 360, 32, FALSE, 60, 24, 8));
+    ASSERT_TRUE(Manager->RegisterRasterizerContext(recording, 0));
+    struct RestoreContext {
+        RCKRenderManager *Manager;
+        TestRenderContext *Device;
+        CKRasterizerContext *PreviousContext;
+        CKRasterizerDriver *PreviousDriver;
+        ~RestoreContext() {
+            Manager->ForgetRasterizerContext(Device->m_RasterizerContext);
+            Device->m_RasterizerContext = PreviousContext;
+            Device->m_RasterizerDriver = PreviousDriver;
+        }
+    } restore{Manager, Device, &State, &Driver};
+    Device->m_RasterizerContext = recording;
+    Device->m_RasterizerDriver = driver;
+    CKTexture *background = Texture(), *ui = Texture();
+    ASSERT_TRUE(Device->SetTexture(background));
+    ASSERT_TRUE(Device->SetTexture(background, FALSE, 1));
+    Device->SetTextureStageState(CKRST_TSS_OP, CKRST_TOP_ADD, 1);
+    VxMatrix matrix = VxMatrix::Identity(); matrix[3][0] = .25f;
+    Device->SetTextureMatrix(matrix, 1);
+    const CKDWORD operation = Device->GetTextureStageState(CKRST_TSS_OP, 1);
+    const CKDWORD blend = Device->GetState(VXRENDERSTATE_BLENDOP);
+    const CKDWORD alpha = Device->GetState(VXRENDERSTATE_ALPHATESTENABLE);
+    ImGui::CreateContext();
+    ASSERT_TRUE(ImGui_ImplCK2_Init(Context));
+    ASSERT_TRUE(recording->BeginScene());
+    RenderUi(ui);
+    ImGui_ImplCK2_Diagnostics diagnostics{};
+    ASSERT_TRUE(ImGui_ImplCK2_GetDiagnostics(&diagnostics));
+    EXPECT_GT(diagnostics.DrawCallCount, 0u);
+    EXPECT_EQ(background, Device->GetTexture());
+    EXPECT_EQ(background, Device->GetTexture(1));
+    EXPECT_EQ(operation, Device->GetTextureStageState(CKRST_TSS_OP, 1));
+    EXPECT_FLOAT_EQ(.25f, Device->GetTextureMatrix(1)[3][0]);
+    EXPECT_EQ(blend, Device->GetState(VXRENDERSTATE_BLENDOP));
+    EXPECT_EQ(alpha, Device->GetState(VXRENDERSTATE_ALPHATESTENABLE));
+    EXPECT_TRUE(recording->EndScene());
+    ImGui_ImplCK2_Shutdown();
+    ImGui::DestroyContext();
+}
+
+} // namespace
