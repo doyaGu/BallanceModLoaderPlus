@@ -84,7 +84,11 @@ uint64_t NowMs() {
 std::string FormatTimestamp(uint64_t timestampMs) {
     const std::time_t seconds = static_cast<std::time_t>(timestampMs / 1000);
     std::tm localTime{};
+#if defined(_WIN32)
     localtime_s(&localTime, &seconds);
+#else
+    localtime_r(&seconds, &localTime);
+#endif
     std::ostringstream stream;
     stream << std::put_time(&localTime, "%H:%M:%S") << '.'
            << std::setw(3) << std::setfill('0') << (timestampMs % 1000);

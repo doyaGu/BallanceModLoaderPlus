@@ -1,10 +1,13 @@
+#include "ScriptPathUtils.h"
 #include "ScriptSourceSnapshotBuilder.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cwchar>
 #include <cwctype>
+#if !BML_RUNTIME_SDL
 #include <io.h>
+#endif
 #include <set>
 #include <sstream>
 #include <unordered_set>
@@ -24,23 +27,27 @@ bool EndsWithInsensitiveW(const std::wstring &value, const wchar_t *suffix) {
         return false;
     const size_t suffixLength = std::wcslen(suffix);
     return value.size() >= suffixLength &&
-           _wcsicmp(value.c_str() + value.size() - suffixLength, suffix) == 0;
+           ScriptPathCaseCompare(value.c_str() + value.size() - suffixLength, suffix) == 0;
 }
 
 std::wstring FoldPathKeyW(std::wstring path) {
     path = utils::ResolvePathW(path);
+#if !BML_RUNTIME_SDL
     std::replace(path.begin(), path.end(), L'/', L'\\');
     std::transform(path.begin(), path.end(), path.begin(), [](wchar_t ch) {
         return static_cast<wchar_t>(std::towlower(ch));
     });
+#endif
     return path;
 }
 
 std::string FoldSectionKey(std::string value) {
     std::replace(value.begin(), value.end(), '\\', '/');
+#if !BML_RUNTIME_SDL
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
     });
+#endif
     return value;
 }
 

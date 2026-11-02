@@ -1,3 +1,4 @@
+#include "ScriptPathUtils.h"
 #include "ScriptReloadCandidateBuilder.h"
 
 #include <algorithm>
@@ -47,7 +48,7 @@ static bool EndsWithInsensitiveW(const std::wstring &value, const wchar_t *suffi
     const size_t suffixLength = std::wcslen(suffix);
     if (value.size() < suffixLength)
         return false;
-    return _wcsicmp(value.c_str() + value.size() - suffixLength, suffix) == 0;
+    return ScriptPathCaseCompare(value.c_str() + value.size() - suffixLength, suffix) == 0;
 }
 
 static ScriptModEntry MakeFilesystemCommitEntry(const ScriptModEntry &currentEntry,
