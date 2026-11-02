@@ -1,9 +1,11 @@
-﻿#ifndef WIN32_LEAN_AND_MEAN
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#if !BML_RUNTIME_SDL
 #include <Windows.h>
 
 #include <MinHook.h>
+#endif
 
 #include "CKContext.h"
 
@@ -65,6 +67,12 @@ void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
     BML::Behavior::Internal::HookBlock::Register(reg);
 }
 
+#if BML_RUNTIME_SDL
+// CK2's SDL runtime already creates complete Behavior prototypes.
+static bool EnsureProcessHooks() { return true; }
+static CKERROR RetainProcessHooks(CKContext *) { return CK_OK; }
+static CKERROR ReleaseProcessHooks(CKContext *) { return CK_OK; }
+#else
 static LPVOID g_CreateCKBehaviorPrototypeRunTimeTarget = nullptr;
 static bool g_CreateCKBehaviorPrototypeRunTimeEnabled = false;
 static bool g_MinHookOwned = false;
@@ -189,3 +197,5 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID) {
 
     return TRUE;
 }
+
+#endif

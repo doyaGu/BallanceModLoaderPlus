@@ -1,7 +1,7 @@
 #include "Api/BehaviorApi.h"
 
 #include <cstdint>
-#include <intrin.h>
+#include "Platform/Module.h"
 #include <memory>
 #include <new>
 #include <string>
@@ -67,7 +67,7 @@ int OpenRunResult(const BML::Behavior::Internal::OpenRun &opened,
 int BML_BEHAVIOR_CALL OpenSession(BML_BehaviorString requestedOwner,
                                   BML_BehaviorSession *outSession,
                                   BML_BehaviorStatus *status) {
-    const void *caller = _ReturnAddress();
+    const void *caller = BML_CALLER_ADDRESS();
     if (!PrepareStatus(status) || !outSession)
         return BML_ERROR_INVALID_PARAMETER;
     *outSession = nullptr;

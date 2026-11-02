@@ -5,9 +5,13 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#if !BML_RUNTIME_SDL
 #include <Windows.h>
+#else
+#include <SDL3/SDL_stdinc.h>
+#endif
 
-#include <intrin.h>
+#include "Platform/Module.h"
 #include <limits>
 
 #include "BML/BML.h"
@@ -152,7 +156,7 @@ wchar_t *BML_CDECL BML_GetModRootW(const char *modId) {
         if (!context)
             return nullptr;
 
-        const std::wstring root = context->GetModRootDirectory(_ReturnAddress(), modId);
+        const std::wstring root = context->GetModRootDirectory(BML_CALLER_ADDRESS(), modId);
         return root.empty() ? nullptr : CopyWString(root);
     } catch (...) {
         return nullptr;
@@ -165,7 +169,7 @@ char *BML_CDECL BML_GetModRootUtf8(const char *modId) {
         if (!context)
             return nullptr;
 
-        const std::wstring root = context->GetModRootDirectory(_ReturnAddress(), modId);
+        const std::wstring root = context->GetModRootDirectory(BML_CALLER_ADDRESS(), modId);
         return root.empty() ? nullptr : BML_Strdup(utils::Utf16ToUtf8(root).c_str());
     } catch (...) {
         return nullptr;
@@ -177,7 +181,7 @@ int BML_CDECL BML_UnregisterCommand(const char *name) {
     if (!context)
         return BML_ERROR_FAIL;
 
-    return context->UnregisterCommand(_ReturnAddress(), name);
+    return context->UnregisterCommand(BML_CALLER_ADDRESS(), name);
 }
 
 int BML_CDECL BML_SetCommandStatus(int status) {
@@ -617,7 +621,11 @@ int BML_CDECL BML_EndsWith(const char *str, const char *suffix, int caseSensitiv
     if (caseSensitive) {
         return strcmp(strEnd, suffix) == 0 ? 1 : 0;
     } else {
+#if BML_RUNTIME_SDL
+        return SDL_strcasecmp(strEnd, suffix) == 0 ? 1 : 0;
+#else
         return _stricmp(strEnd, suffix) == 0 ? 1 : 0;
+#endif
     }
 }
 

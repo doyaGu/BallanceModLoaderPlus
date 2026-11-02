@@ -8,7 +8,7 @@
 #include <string_view>
 #include <utility>
 
-#include <intrin.h>
+#include "Platform/Module.h"
 
 #include "Loader/ModInvocationGate.h"
 
@@ -745,7 +745,7 @@ BML_EXPORT std::size_t BML_CDECL BML_DataShare_SizeOf(
 BML_EXPORT BML_DataShareRequest BML_CDECL BML_DataShare_Request(
     BML_DataShare *handle, const char *key, BML_DataShareCallback callback,
     void *userdata, BML_DataShareCleanupCallback cleanup) {
-    return RequestDataShare(handle, _ReturnAddress(), nullptr, false, key,
+    return RequestDataShare(handle, BML_CALLER_ADDRESS(), nullptr, false, key,
                             callback, userdata, cleanup);
 }
 
@@ -753,13 +753,13 @@ BML_EXPORT BML_DataShareRequest BML_CDECL BML_DataShare_RequestForOwner(
     BML_DataShare *handle, const char *ownerId, const char *key,
     BML_DataShareCallback callback, void *userdata,
     BML_DataShareCleanupCallback cleanup) {
-    return RequestDataShare(handle, _ReturnAddress(), ownerId, true, key,
+    return RequestDataShare(handle, BML_CALLER_ADDRESS(), ownerId, true, key,
                             callback, userdata, cleanup);
 }
 
 BML_EXPORT int BML_CDECL BML_DataShare_CancelRequest(
     BML_DataShare *handle, BML_DataShareRequest request) {
-    const void *const callerAddress = _ReturnAddress();
+    const void *const callerAddress = BML_CALLER_ADDRESS();
     try {
         if (!handle)
             return 0;
@@ -780,7 +780,7 @@ BML_EXPORT int BML_CDECL BML_DataShare_CancelRequest(
 BML_EXPORT int BML_CDECL BML_DataShare_CancelRequestForOwner(
     BML_DataShare *handle, const char *ownerId,
     BML_DataShareRequest request) {
-    const void *const callerAddress = _ReturnAddress();
+    const void *const callerAddress = BML_CALLER_ADDRESS();
     try {
         if (!handle || !ownerId || !*ownerId)
             return 0;
