@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.25)
 
 project(BallanceModLoaderPlus
         VERSION 0.3.14
@@ -21,9 +21,7 @@ include(CMakePackageConfigHelpers)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMakeTargets")
 
-if (NOT WIN32)
-    message(FATAL_ERROR "Only support Windows.")
-endif ()
+include(BMLRuntime)
 
 # Use relative paths
 if (WIN32)
@@ -58,6 +56,7 @@ add_compile_options(
 include(CMakeDependentOption)
 
 option(BML_BUILD_TESTS "Build the BML test suite" OFF)
+option(BML_BUILD_PLATFORM_TESTS "Build filesystem, crypto and module contract tests" OFF)
 option(BML_BUILD_BENCHMARKS "Build standalone BML microbenchmarks" OFF)
 cmake_dependent_option(
         BML_ENABLE_BEHAVIOR_TEST_INTERFACE
@@ -75,8 +74,9 @@ cmake_dependent_option(
 )
 option(BML_BUILD_UPDATER "Build the standalone BML updater" ON)
 option(BML_BUILD_MODS "Build the in-tree native Mods" OFF)
-option(BML_ENABLE_ANGELSCRIPT "Build optional AngelScript script support when CKAngelScript headers are available" OFF)
+option(BML_ENABLE_ANGELSCRIPT "Build AngelScript support (disable for the script-free build)" ON)
 set(CKANGELSCRIPT_ROOT "${PROJECT_SOURCE_DIR}/../CKAngelScript" CACHE PATH "Optional CKAngelScript source or install root")
+option(BML_BUILD_SCRIPT_RUNTIME "Build the matching SDL CKAngelScript plugin from CKANGELSCRIPT_ROOT" ${BML_RUNTIME_SDL})
 
 set(BML_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
 set(BML_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
@@ -85,9 +85,24 @@ set(BML_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
 # installed-consumer tests in every subdirectory.
 include("${PROJECT_SOURCE_DIR}/cmake/BMLBehaviorBlocksPublicSurface.cmake")
 
-find_package(VirtoolsSDK REQUIRED)
+bml_find_engine()
 
 if (BML_ENABLE_ANGELSCRIPT)
+    if(BML_RUNTIME_SDL AND BML_BUILD_SCRIPT_RUNTIME AND NOT TARGET CKAngelScript)
+        if(NOT EXISTS "${CKANGELSCRIPT_ROOT}/CMakeLists.txt")
+            message(FATAL_ERROR "BML_BUILD_SCRIPT_RUNTIME requires the CKAngelScript source tree; set CKANGELSCRIPT_ROOT")
+        endif()
+        # Keep the child's install/test settings scoped. All runtime plugins
+        # share these exact CK2/VxMath targets and the same SDL library.
+        function(bml_build_script_runtime)
+            set(CKAS_RUNTIME sdl)
+            set(CKAS_BUILD_CORE_TESTS OFF)
+            set(CKAS_INSTALL_DOCS OFF)
+            set(SKIP_INSTALL_ALL ON)
+            add_subdirectory("${CKANGELSCRIPT_ROOT}" "script-runtime" EXCLUDE_FROM_ALL)
+        endfunction()
+        bml_build_script_runtime()
+    endif()
     find_path(CKANGELSCRIPT_INCLUDE_DIR
             NAMES CKAngelScript.h
             HINTS
@@ -144,7 +159,7 @@ else ()
     message(STATUS "BML AngelScript script support disabled")
 endif ()
 
-if (BML_BUILD_TESTS OR BML_BUILD_MODS)
+if (BML_BUILD_TESTS OR BML_BUILD_MODS OR BML_BUILD_PLATFORM_TESTS)
     enable_testing()
 endif ()
 
@@ -152,7 +167,12 @@ add_subdirectory(deps)
 if (BML_BUILD_UI_AUTOMATION)
     include("${PROJECT_SOURCE_DIR}/cmake/ImGuiTestEngine.cmake")
 endif ()
+include(BMLAbi)
 add_subdirectory(src)
+include(BMLRuntimePackage)
+if (BML_BUILD_PLATFORM_TESTS OR BML_BUILD_TESTS)
+    add_subdirectory(tests/platform)
+endif ()
 if (BML_BUILD_MODS)
     add_library(BML::BML ALIAS BML)
     include("${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake")

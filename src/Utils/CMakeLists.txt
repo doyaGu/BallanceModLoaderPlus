@@ -55,84 +55,40 @@ set_target_properties(BML_StringUtils PROPERTIES
     FOLDER "Utils"
 )
 
-# ============================================================================
-# Windows-only utilities
-# ============================================================================
-if (WIN32)
-    # -- BML_CryptoUtils - HMAC-SHA256, HKDF-SHA256, KeyToSeed --------------
-    add_library(BML_CryptoUtils STATIC
-        CryptoUtils.h
-        CryptoUtils.cpp
-    )
-
-    target_include_directories(BML_CryptoUtils PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-
+# Platform implementations preserve the original Win32 filesystem backend.
+if(WIN32)
+    add_library(BML_CryptoUtils STATIC CryptoUtils.cpp)
     target_link_libraries(BML_CryptoUtils PUBLIC bcrypt)
+    add_library(BML_HookUtils STATIC HookUtils.cpp)
+else()
+    find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
+    add_library(BML_CryptoUtils STATIC CryptoUtilsOpenSSL.cpp)
+    target_link_libraries(BML_CryptoUtils PUBLIC OpenSSL::Crypto BML_StringUtils SDL3::SDL3)
+    add_library(BML_HookUtils STATIC ../Platform/DebugOutput.cpp)
+    target_link_libraries(BML_HookUtils PUBLIC BML_StringUtils)
+endif()
 
-    set_target_properties(BML_CryptoUtils PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-        FOLDER "Utils"
-    )
+if(BML_RUNTIME_SDL)
+    add_library(BML_PathUtils STATIC PathUtilsSdl.cpp ../Platform/FileSystemNative.cpp)
+    target_link_libraries(BML_PathUtils PUBLIC SDL3::SDL3)
+else()
+    add_library(BML_PathUtils STATIC PathUtils.cpp)
+endif()
+target_link_libraries(BML_PathUtils PUBLIC BML_StringUtils zip)
+if(BML_RUNTIME_SDL)
+    target_link_libraries(BML_JsonUtils PUBLIC BML_PathUtils)
+endif()
+add_library(BML_IniFile STATIC IniFile.cpp)
+target_link_libraries(BML_IniFile PUBLIC BML_PathUtils BML_StringUtils utf8)
+foreach(_target BML_CryptoUtils BML_HookUtils BML_IniFile BML_PathUtils)
+    target_include_directories(${_target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${BML_SOURCE_DIR})
+    set_target_properties(${_target} PROPERTIES POSITION_INDEPENDENT_CODE ON FOLDER Utils)
+endforeach()
 
-    # -- BML_HookUtils - Memory manipulation and virtual table hooking -------
-    add_library(BML_HookUtils STATIC
-        HookUtils.h
-        HookUtils.cpp
-    )
-
-    target_include_directories(BML_HookUtils PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-
-    set_target_properties(BML_HookUtils PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-        FOLDER "Utils"
-    )
-
-    # -- BML_IniFile - INI file parsing with UTF-8 and comment preservation --
-    add_library(BML_IniFile STATIC
-        IniFile.h
-        IniFile.cpp
-    )
-
-    target_include_directories(BML_IniFile PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-
-    target_link_libraries(BML_IniFile PUBLIC
-        BML_PathUtils
-        BML_StringUtils
-        utf8
-    )
-
-    set_target_properties(BML_IniFile PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-        FOLDER "Utils"
-    )
-
-    # -- BML_PathUtils - Windows file system operations and runtime layout ---
-    add_library(BML_PathUtils STATIC
-        PathUtils.h
-        PathUtilsDetail.h
-        PathUtils.cpp
-    )
-
-    target_include_directories(BML_PathUtils PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-
-    target_link_libraries(BML_PathUtils PUBLIC
-        BML_StringUtils
-        zip
-    )
-
-    set_target_properties(BML_PathUtils PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-        FOLDER "Utils"
-    )
-endif ()
+add_library(BML_Platform STATIC ../Platform/Module.cpp)
+target_include_directories(BML_Platform PUBLIC ${BML_SOURCE_DIR})
+target_link_libraries(BML_Platform PUBLIC BML_PathUtils ${CMAKE_DL_LIBS})
+set_target_properties(BML_Platform PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ============================================================================
 # BML_Utils - Umbrella target
@@ -147,13 +103,12 @@ target_link_libraries(BML_Utils INTERFACE
     BML_JsonUtils
     BML_StringUtils
 )
-if (WIN32)
     target_link_libraries(BML_Utils INTERFACE
         BML_CryptoUtils
         BML_HookUtils
         BML_IniFile
         BML_PathUtils
+        BML_Platform
     )
-endif ()
 
 add_library(BMLUtils ALIAS BML_Utils)

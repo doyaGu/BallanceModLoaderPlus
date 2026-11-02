@@ -636,6 +636,11 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptTimerService.h
             AngelScript/generated/BMLImGuiAngelScriptBindings.h
     )
+    if(BML_RUNTIME_SDL)
+        list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherSdl.cpp)
+    else()
+        list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherWin32.cpp)
+    endif()
     list(APPEND BML_ANGELSCRIPT_SOURCES
             AngelScript/AngelScriptBindings.cpp
             AngelScript/CKAngelScriptAdapter.cpp
@@ -648,7 +653,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptDevEvents.cpp
             AngelScript/ScriptDevToolsService.cpp
             AngelScript/ScriptDiagnostic.cpp
-            AngelScript/ScriptFileWatcherWin32.cpp
             AngelScript/ScriptFunctionSupport.cpp
             AngelScript/ScriptHookBlockService.cpp
             AngelScript/ScriptImcRecord.cpp
@@ -729,7 +733,23 @@ set(IMGUI_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.cpp
 )
 
+if(BML_RUNTIME_SDL)
+    list(REMOVE_ITEM BML_SOURCES
+        Hooks/RenderHook.cpp Hooks/VTablePatch.cpp
+        UI/OverlayPlatformInput.cpp UI/Ime/Runtime.cpp
+        UI/Ime/NativePresentation.cpp UI/Ime/Tsf.cpp)
+    list(APPEND BML_SOURCES
+        UI/OverlayPlatformInputSdl.cpp UI/Ime/RuntimeSdl.cpp UI/ImGuiFileSdl.cpp)
+    list(REMOVE_ITEM IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
+    list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
+endif()
+
+if(NOT WIN32)
+    list(REMOVE_ITEM BML_SOURCES BML.rc)
+endif()
+
 add_library(BML SHARED
+        Platform/ModAbi.cpp
         ${BML_SOURCES} ${BML_PUBLIC_HEADERS} ${BML_PRIVATE_HEADERS}
         ${BML_ANGELSCRIPT_PRIVATE_HEADERS}
         ${BML_ANGELSCRIPT_SOURCES}
@@ -750,6 +770,7 @@ target_compile_options(BML PRIVATE
 target_include_directories(BML
         PUBLIC
         $<BUILD_INTERFACE:${BML_INCLUDE_DIR}>
+        $<BUILD_INTERFACE:${BML_ABI_INCLUDE_DIR}>
         $<BUILD_INTERFACE:${IMGUI_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         PRIVATE
@@ -770,16 +791,29 @@ target_link_libraries(BML
         VirtoolsSDK::CK2 VirtoolsSDK::VxMath
         PRIVATE
         BMLUtils
-        minhook onig imm32 comctl32 ole32 oleaut32 uuid
+        onig
 )
+
+if(BML_RUNTIME_SDL)
+    target_link_libraries(BML PRIVATE SDL3::SDL3)
+    if(APPLE)
+        set_target_properties(BML PROPERTIES INSTALL_RPATH "@loader_path;@loader_path/../Bin")
+    elseif(UNIX)
+        set_target_properties(BML PROPERTIES INSTALL_RPATH "$ORIGIN;$ORIGIN/../Bin")
+    endif()
+else()
+    target_link_libraries(BML PRIVATE minhook imm32 comctl32 ole32 oleaut32 uuid)
+endif()
 
 add_dependencies(BML BML_BuildVersionHeader)
 
 target_compile_definitions(BML
         PUBLIC
+        BML_RUNTIME_SDL=${BML_RUNTIME_SDL}
         "$<BUILD_INTERFACE:IMGUI_USER_CONFIG=\"${CMAKE_CURRENT_SOURCE_DIR}/BMLImGuiConfig.h\">"
         "$<INSTALL_INTERFACE:IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\">"
         PRIVATE
+        BML_BUILD_CONFIGURATION="$<CONFIG>"
         BML_EXPORTS IMGUI_EXPORT
         _WIN32_WINNT=0x0A00 WINVER=0x0A00
         BML_ENABLE_ANGELSCRIPT=$<BOOL:${BML_WITH_ANGELSCRIPT}>
@@ -793,6 +827,9 @@ set_target_properties(BML PROPERTIES
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
+
+install(FILES "${BML_ABI_INCLUDE_DIR}/BML/Abi.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/BML")
+install(FILES "${PROJECT_BINARY_DIR}/abi/$<CONFIG>/BML.abi.json" DESTINATION "${CMAKE_INSTALL_DATADIR}/BML")
 
 install(TARGETS BML
         EXPORT BMLTargets
