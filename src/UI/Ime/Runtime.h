@@ -6,7 +6,12 @@
 
 #include <cstdint>
 
+union SDL_Event;
+
 namespace Overlay::Ime::Runtime {
+#if BML_RUNTIME_SDL
+    void ObserveEvent(const SDL_Event &event);
+#endif
     // Overlay Platform Input owns these calls and invokes them only on the
     // Player UI thread. The root window bounds message observation; the
     // presentation window is the exact HWND used by the ImGui backend.
