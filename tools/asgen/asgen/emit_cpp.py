@@ -31,6 +31,8 @@ def safe_cpp_suffix(text: str) -> str:
 
 
 def default_cpp_value(cpp_type: str) -> str:
+    if cpp_type == "unsigned int":
+        return "0u"
     if cpp_type in {"ImVec2", "ImVec4"}:
         return f"{cpp_type}()"
     if cpp_type == "bool":

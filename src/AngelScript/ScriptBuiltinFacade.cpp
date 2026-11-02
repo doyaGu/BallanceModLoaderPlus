@@ -98,7 +98,7 @@ BML_AS_DEFINE_IMC_VALUE(Resetpoint, Resetpoint)
 struct ValueTypeRegistration {
     const char *Name;
     int Size;
-    asDWORD Flags;
+    asQWORD Flags;
     asSFuncPtr Construct;
     asSFuncPtr CopyConstruct;
     asSFuncPtr Destruct;
