@@ -106,6 +106,8 @@ protected:
 TEST_F(SdlInputTest, KeyboardBlockPreservesRawStateStampsAndBuffer) {
     CKInputManager *sdk = Input;
     sdk->Block(TRUE, CK_INPUT_DEVICE_KEYBOARD);
+    EXPECT_TRUE(sdk->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
+    EXPECT_FALSE(sdk->IsBlocked(CK_INPUT_DEVICE_MOUSE));
     Key(true, 1000);
     Frame();
     CKDWORD stamp = 77, key = 99;
@@ -126,12 +128,19 @@ TEST_F(SdlInputTest, KeyboardBlockPreservesRawStateStampsAndBuffer) {
     EXPECT_EQ(KEY_PRESSED, sdk->GetKeyFromBuffer(0, key, &stamp, TRUE));
     EXPECT_EQ(CKKEY_A, key);
     EXPECT_EQ(1000u, stamp);
+    EXPECT_TRUE(sdk->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
     sdk->Block(FALSE, CK_INPUT_DEVICE_KEYBOARD);
+    EXPECT_FALSE(sdk->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
     EXPECT_TRUE(sdk->IsKeyDown(CKKEY_A));
     EXPECT_EQ(1, sdk->GetNumberOfKeyInBuffer());
 }
 
 TEST_F(SdlInputTest, BlockingIsIdempotentAndIndependentForEachDevice) {
+    CKInputManager *sdk = Input;
+    for (int device = 0; device < CK_INPUT_DEVICE_COUNT; ++device)
+        EXPECT_FALSE(sdk->IsBlocked(static_cast<CK_INPUT_DEVICE>(device)));
+    EXPECT_FALSE(sdk->IsBlocked(static_cast<CK_INPUT_DEVICE>(-1)));
+    EXPECT_FALSE(sdk->IsBlocked(CK_INPUT_DEVICE_COUNT));
     Input->Block(TRUE, CK_INPUT_DEVICE_KEYBOARD);
     Input->Block(TRUE, CK_INPUT_DEVICE_KEYBOARD);
     Input->Block(TRUE, static_cast<CK_INPUT_DEVICE>(-1));
@@ -139,11 +148,15 @@ TEST_F(SdlInputTest, BlockingIsIdempotentAndIndependentForEachDevice) {
     Key(true);
     Button(true);
     Frame();
+    EXPECT_TRUE(sdk->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
+    EXPECT_FALSE(sdk->IsBlocked(CK_INPUT_DEVICE_MOUSE));
     EXPECT_FALSE(Input->IsKeyDown(CKKEY_A));
     EXPECT_TRUE(Input->IsMouseButtonDown(CK_MOUSEBUTTON_LEFT));
     Input->Block(FALSE, CK_INPUT_DEVICE_KEYBOARD);
+    EXPECT_FALSE(sdk->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
     EXPECT_TRUE(Input->IsKeyDown(CKKEY_A));
     Input->Block(TRUE, CK_INPUT_DEVICE_MOUSE);
+    EXPECT_TRUE(sdk->IsBlocked(CK_INPUT_DEVICE_MOUSE));
     EXPECT_TRUE(Input->IsKeyDown(CKKEY_A));
     EXPECT_FALSE(Input->IsMouseButtonDown(CK_MOUSEBUTTON_LEFT));
     EXPECT_TRUE(Input->IsKeyboardAttached());
@@ -224,6 +237,7 @@ TEST_F(SdlInputTest, RawReadsStillRespectPauseAndFocusLoss) {
     Frame();
     ASSERT_TRUE(Input->IsKeyDown(CKKEY_A, nullptr, TRUE));
     Input->Pause(TRUE);
+    EXPECT_TRUE(Input->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
     EXPECT_FALSE(Input->IsKeyDown(CKKEY_A, nullptr, TRUE));
     EXPECT_EQ(0, Input->GetNumberOfKeyInBuffer(TRUE));
     Key(true, 2000);
@@ -240,6 +254,7 @@ TEST_F(SdlInputTest, RawReadsStillRespectPauseAndFocusLoss) {
     Frame();
     EXPECT_FALSE(Input->IsKeyDown(CKKEY_A, nullptr, TRUE));
     EXPECT_EQ(0, Input->GetNumberOfKeyInBuffer(TRUE));
+    EXPECT_TRUE(Input->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
     EXPECT_FALSE(Input->IsKeyUp(CKKEY_A)); // The device is still blocked.
 }
 
@@ -248,6 +263,7 @@ TEST_F(SdlInputTest, ResetClearsInputWithoutCancellingTheBlock) {
     Key(true);
     Frame();
     ASSERT_EQ(CK_OK, Input->OnCKReset());
+    EXPECT_TRUE(Input->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
     EXPECT_EQ(KS_IDLE, Input->GetKeyboardState(TRUE)[CKKEY_A]);
     Key(true, 2000);
     Frame();
@@ -327,6 +343,7 @@ TEST_F(SdlInputTest, BmlTokensCountRequestsAndOriginalReadersUseRawQueries) {
     ASSERT_NE(0u, first); ASSERT_NE(0u, second);
     Key(true, 1234); Button(true); Frame();
     EXPECT_EQ(2, hook.IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
+    EXPECT_EQ(TRUE, Input->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
     EXPECT_FALSE(hook.IsKeyDown(CKKEY_A));
     CKDWORD stamp = 0, key = 0;
     EXPECT_TRUE(hook.oIsKeyDown(CKKEY_A, &stamp));
@@ -346,7 +363,9 @@ TEST_F(SdlInputTest, BmlTokensCountRequestsAndOriginalReadersUseRawQueries) {
     EXPECT_TRUE(hook.IsMouseButtonDown(CK_MOUSEBUTTON_LEFT));
     hook.ReleaseBlock(first);
     EXPECT_EQ(1, hook.IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
+    EXPECT_TRUE(Input->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
     hook.ReleaseBlock(second);
+    EXPECT_FALSE(Input->IsBlocked(CK_INPUT_DEVICE_KEYBOARD));
     EXPECT_TRUE(hook.IsKeyDown(CKKEY_A));
     EXPECT_EQ(0u, hook.AcquireBlock(0x80000000u));
 }
@@ -384,6 +403,8 @@ TEST_F(SdlInputTest, DetachReleasesManualAndTokenBlocksAndAllowsReattachment) {
         Key(true); Button(true); Frame();
         EXPECT_FALSE(Input->IsKeyDown(CKKEY_A));
         EXPECT_TRUE(DetachInputHook(hook));
+        for (int device = 0; device < CK_INPUT_DEVICE_COUNT; ++device)
+            EXPECT_FALSE(Input->IsBlocked(static_cast<CK_INPUT_DEVICE>(device)));
         EXPECT_FALSE(InputHookOwnsActive(hook));
         EXPECT_TRUE(Input->IsKeyDown(CKKEY_A));
         EXPECT_TRUE(Input->IsMouseButtonDown(CK_MOUSEBUTTON_LEFT));
