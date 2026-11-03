@@ -16,11 +16,12 @@ namespace BML::Behavior::Internal::Engine {
 BehaviorBlockData *BlockData(CKBehavior *behavior) noexcept;
 #endif
 
-// CK2 schedules equal-priority children in m_SubBehaviors order and traverses
-// each source IO's m_Links in order. The SDK exposes the backing arrays but no
-// positional edit API, so graph edits that must restore an order use these.
+// Retail graph order access. SDL uses the public graph queries and moves.
+#if !BML_RUNTIME_SDL
 XObjectPointerArray *Nodes(CKBehavior *graph) noexcept;
 XObjectPointerArray *Links(CKBehavior *graph) noexcept;
+#endif
+// Orphan Link cleanup still needs the surviving source IO's outgoing list.
 XSObjectPointerArray *Outgoing(CKBehaviorIO *source) noexcept;
 
 // Compact without reallocating: the backing storage belongs to CK2's CRT.

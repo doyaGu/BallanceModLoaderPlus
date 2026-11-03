@@ -7,26 +7,24 @@ constexpr CKDWORD InDelayedList = 0x00000001;
 
 // A derived-class member pointer names a protected base field without
 // constructing or casting to the derived type.
+#if !BML_RUNTIME_SDL
 class BehaviorMember final : public CKBehavior {
 public:
-#if !BML_RUNTIME_SDL
     static BehaviorBlockData *Block(CKBehavior *behavior) noexcept {
         return behavior ? behavior->*(&BehaviorMember::m_BlockData) : nullptr;
     }
-#endif
 
     static BehaviorGraphData *Graph(CKBehavior *behavior) noexcept {
         return behavior ? behavior->*(&BehaviorMember::m_GraphData) : nullptr;
     }
 
-#if !BML_RUNTIME_SDL
     static void Parent(CKBehavior *behavior, CKBehavior *parent) noexcept {
         if (behavior)
             behavior->*(&BehaviorMember::m_BehParent) =
                 parent ? parent->GetID() : 0;
     }
-#endif
 };
+#endif
 
 class IoMember final : public CKBehaviorIO {
 public:
@@ -73,7 +71,6 @@ public:
 BehaviorBlockData *BlockData(CKBehavior *behavior) noexcept {
     return BehaviorMember::Block(behavior);
 }
-#endif
 
 XObjectPointerArray *Nodes(CKBehavior *graph) noexcept {
     BehaviorGraphData *data = BehaviorMember::Graph(graph);
@@ -84,6 +81,7 @@ XObjectPointerArray *Links(CKBehavior *graph) noexcept {
     BehaviorGraphData *data = BehaviorMember::Graph(graph);
     return data ? &data->m_SubBehaviorLinks : nullptr;
 }
+#endif
 
 XSObjectPointerArray *Outgoing(CKBehaviorIO *source) noexcept {
     return IoMember::Links(source);

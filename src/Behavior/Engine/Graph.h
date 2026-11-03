@@ -17,6 +17,7 @@ bool Contains(CKBehavior *graph, CKBehaviorLink *link);
 // this graph as its parent even though it is no longer a member.
 // Working storage is prepared before CK mutates the graph; priorities are
 // read after ATTACH callbacks complete.
+// SDL reads and arranges children through the public CK2 graph methods.
 CKERROR AddChild(CKBehavior *graph, CKBehavior *node);
 
 // Destroys every Link of the graph that starts or ends at the Node's IOs.

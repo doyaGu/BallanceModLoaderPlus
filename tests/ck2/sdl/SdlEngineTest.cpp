@@ -9,6 +9,7 @@
 #include "Hooks/RenderHook.h"
 #include "Behavior/Edit/Journal.h"
 #include "Behavior/Engine/Access.h"
+#include "Behavior/Engine/Graph.h"
 #include "Behavior/Engine/Message.h"
 #include "Behavior/PrototypeCatalog.h"
 #include "UI/imgui_impl_ck2.h"
@@ -240,6 +241,171 @@ TEST_F(SdlEngineTest, BehaviorMessagesHandleMissingTargetsAndGraphsWithoutCallba
     EXPECT_EQ(CKERR_INVALIDOBJECT, Engine::Send(Context, nullptr, CKM_BEHAVIORCREATE));
     EXPECT_EQ(CK_OK, Engine::Send(Context, graph, CKM_BEHAVIORCREATE));
     EXPECT_EQ(CK_OK, Engine::Send(Context, graph, CKM_MAX_BEHAVIOR_CALLBACKS));
+}
+
+struct ChildAttachState {
+    CKBehavior *RedirectParent = nullptr;
+    CKBehavior *ChangePriority = nullptr;
+    int Priority = 0;
+    int Calls = 0;
+    CKERROR Result = CK_OK;
+};
+
+int MutateChildOnAttach(const CKBehaviorContext &frame) {
+    auto &state = *static_cast<ChildAttachState *>(frame.CallbackArg);
+    ++state.Calls;
+    if (state.ChangePriority)
+        state.ChangePriority->SetPriority(state.Priority);
+    if (state.RedirectParent)
+        frame.Behavior->SetParent(state.RedirectParent);
+    return state.Result;
+}
+
+CKBehavior *CreateGraph(CKContext *context) {
+    auto *graph = static_cast<CKBehavior *>(context->CreateObject(CKCID_BEHAVIOR));
+    graph->UseGraph();
+    return graph;
+}
+
+CKBehavior *CreateChild(CKContext *context, int priority = 0) {
+    auto *child = static_cast<CKBehavior *>(context->CreateObject(CKCID_BEHAVIOR));
+    child->SetPriority(priority);
+    return child;
+}
+
+TEST_F(SdlEngineTest, ChildAttachKeepsExistingEqualPriorityOrder) {
+    CKBehavior *graph = CreateGraph(Context);
+    for (int i = 0; i < 3; ++i)
+        ASSERT_EQ(CK_OK, graph->AddSubBehavior(CreateChild(Context, 5)));
+    ASSERT_EQ(CK_OK, graph->MoveSubBehavior(0, 2));
+    CKBehavior *before[] = {graph->GetSubBehavior(0), graph->GetSubBehavior(1),
+                            graph->GetSubBehavior(2)};
+    CKBehavior *child = CreateChild(Context, 5);
+    ASSERT_EQ(CK_OK, Engine::AddChild(graph, child));
+    ASSERT_EQ(4, graph->GetSubBehaviorCount());
+    for (int i = 0; i < 3; ++i)
+        EXPECT_EQ(before[i], graph->GetSubBehavior(i));
+    EXPECT_EQ(child, graph->GetSubBehavior(3));
+    EXPECT_EQ(graph, child->GetParent());
+}
+
+TEST_F(SdlEngineTest, ChildAttachUsesFinalCallbackPriorityAndKeepsTiesStable) {
+    CKBehavior *graph = CreateGraph(Context);
+    auto *owner = static_cast<CKBeObject *>(Context->CreateObject(CKCID_BEOBJECT));
+    ASSERT_NE(nullptr, owner);
+    ASSERT_EQ(CK_OK, graph->SetOwner(owner, FALSE));
+    CKBehavior *high = CreateChild(Context, 10), *low = CreateChild(Context, 0);
+    ASSERT_EQ(CK_OK, graph->AddSubBehavior(high));
+    ASSERT_EQ(CK_OK, graph->AddSubBehavior(CreateChild(Context, 5)));
+    ASSERT_EQ(CK_OK, graph->AddSubBehavior(CreateChild(Context, 5)));
+    ASSERT_EQ(CK_OK, graph->AddSubBehavior(low));
+    ASSERT_EQ(CK_OK, graph->MoveSubBehavior(1, 2));
+    CKBehavior *first = graph->GetSubBehavior(1), *second = graph->GetSubBehavior(2);
+    ChildAttachState state;
+    std::unique_ptr<CKBehaviorPrototype> prototype(CreateCKBehaviorPrototype("SDL attach priority"));
+    prototype->SetApplyToClassID(CKCID_BEOBJECT);
+    prototype->SetBehaviorCallbackFct(MutateChildOnAttach, CKCB_BEHAVIORATTACH, &state);
+    CKBehavior *child = CreateChild(Context, -10);
+    ASSERT_EQ(CK_OK, child->InitFromPrototype(prototype.get()));
+    state.ChangePriority = child;
+    state.Priority = 5;
+    ASSERT_EQ(CK_OK, Engine::AddChild(graph, child));
+    EXPECT_EQ(1, state.Calls);
+    CKBehavior *expected[] = {high, first, second, child, low};
+    ASSERT_EQ(5, graph->GetSubBehaviorCount());
+    for (int i = 0; i < 5; ++i)
+        EXPECT_EQ(expected[i], graph->GetSubBehavior(i));
+    EXPECT_EQ(owner, child->GetOwner());
+}
+
+TEST_F(SdlEngineTest, RejectedChildAttachRetainsOriginalRelations) {
+    CKBehavior *graph = CreateGraph(Context);
+    auto *owner = static_cast<CKBeObject *>(Context->CreateObject(CKCID_BEOBJECT));
+    ASSERT_EQ(CK_OK, graph->SetOwner(owner, FALSE));
+    ChildAttachState state;
+    state.Result = CKERR_INVALIDPARAMETER;
+    std::unique_ptr<CKBehaviorPrototype> prototype(CreateCKBehaviorPrototype("SDL rejected attach"));
+    prototype->SetApplyToClassID(CKCID_BEOBJECT);
+    prototype->SetBehaviorCallbackFct(MutateChildOnAttach, CKCB_BEHAVIORATTACH, &state);
+    CKBehavior *child = CreateChild(Context);
+    ASSERT_EQ(CK_OK, child->InitFromPrototype(prototype.get()));
+    const auto flags = child->GetFlags();
+    const auto compatible = graph->GetCompatibleClassID();
+    EXPECT_EQ(CKERR_INVALIDPARAMETER, Engine::AddChild(graph, child));
+    EXPECT_EQ(1, state.Calls);
+    EXPECT_EQ(nullptr, child->GetParent());
+    EXPECT_EQ(nullptr, child->GetOwner());
+    EXPECT_EQ(flags, child->GetFlags());
+    EXPECT_EQ(0, graph->GetSubBehaviorCount());
+    EXPECT_EQ(compatible, graph->GetCompatibleClassID());
+}
+
+TEST_F(SdlEngineTest, InconsistentChildAttachRollsBackThroughPublicRelations) {
+    CKBehavior *graph = CreateGraph(Context), *other = CreateGraph(Context);
+    auto *owner = static_cast<CKBeObject *>(Context->CreateObject(CKCID_BEOBJECT));
+    ASSERT_EQ(CK_OK, graph->SetOwner(owner, FALSE));
+    for (int i = 0; i < 2; ++i)
+        ASSERT_EQ(CK_OK, graph->AddSubBehavior(CreateChild(Context, 5)));
+    CKBehavior *first = graph->GetSubBehavior(0), *second = graph->GetSubBehavior(1);
+    ChildAttachState state;
+    state.RedirectParent = other;
+    std::unique_ptr<CKBehaviorPrototype> prototype(CreateCKBehaviorPrototype("SDL inconsistent attach"));
+    prototype->SetApplyToClassID(CKCID_BEOBJECT);
+    prototype->SetBehaviorCallbackFct(MutateChildOnAttach, CKCB_BEHAVIORATTACH, &state);
+    CKBehavior *child = CreateChild(Context, 5);
+    ASSERT_EQ(CK_OK, child->InitFromPrototype(prototype.get()));
+    const auto flags = child->GetFlags();
+    EXPECT_EQ(CKERR_INVALIDOBJECT, Engine::AddChild(graph, child));
+    EXPECT_EQ(nullptr, child->GetParent());
+    EXPECT_EQ(nullptr, child->GetOwner());
+    EXPECT_EQ(flags, child->GetFlags());
+    ASSERT_EQ(2, graph->GetSubBehaviorCount());
+    EXPECT_EQ(first, graph->GetSubBehavior(0));
+    EXPECT_EQ(second, graph->GetSubBehavior(1));
+    EXPECT_EQ(0, other->GetSubBehaviorCount());
+}
+
+TEST_F(SdlEngineTest, FailedChildAttachPreservesCallbackPriorityChanges) {
+    CKBehavior *graph = CreateGraph(Context), *other = CreateGraph(Context);
+    auto *owner = static_cast<CKBeObject *>(Context->CreateObject(CKCID_BEOBJECT));
+    ASSERT_EQ(CK_OK, graph->SetOwner(owner, FALSE));
+    for (int i = 0; i < 2; ++i)
+        ASSERT_EQ(CK_OK, graph->AddSubBehavior(CreateChild(Context, 5)));
+    CKBehavior *first = graph->GetSubBehavior(0), *second = graph->GetSubBehavior(1);
+    ChildAttachState state;
+    state.RedirectParent = other;
+    state.ChangePriority = second;
+    state.Priority = 8;
+    std::unique_ptr<CKBehaviorPrototype> prototype(CreateCKBehaviorPrototype("SDL rollback priority"));
+    prototype->SetApplyToClassID(CKCID_BEOBJECT);
+    prototype->SetBehaviorCallbackFct(MutateChildOnAttach, CKCB_BEHAVIORATTACH, &state);
+    CKBehavior *child = CreateChild(Context, 5);
+    ASSERT_EQ(CK_OK, child->InitFromPrototype(prototype.get()));
+    EXPECT_EQ(CKERR_INVALIDOBJECT, Engine::AddChild(graph, child));
+    EXPECT_EQ(nullptr, child->GetParent());
+    ASSERT_EQ(2, graph->GetSubBehaviorCount());
+    EXPECT_EQ(second, graph->GetSubBehavior(0));
+    EXPECT_EQ(first, graph->GetSubBehavior(1));
+    EXPECT_EQ(8, second->GetPriority());
+}
+
+TEST_F(SdlEngineTest, ChildAttachRejectsInvalidMembershipAndSupportsReattachment) {
+    CKBehavior *graph = CreateGraph(Context), *other = CreateGraph(Context);
+    CKBehavior *child = CreateChild(Context), *block = CreateChild(Context);
+    block->UseFunction();
+    EXPECT_EQ(CKERR_INVALIDPARAMETER, Engine::AddChild(nullptr, child));
+    EXPECT_EQ(CKERR_INVALIDPARAMETER, Engine::AddChild(graph, nullptr));
+    EXPECT_EQ(CKERR_INVALIDPARAMETER, Engine::AddChild(graph, graph));
+    EXPECT_EQ(CKERR_INVALIDPARAMETER, Engine::AddChild(block, child));
+    ASSERT_EQ(CK_OK, Engine::AddChild(graph, child));
+    EXPECT_EQ(CKERR_INVALIDPARAMETER, Engine::AddChild(graph, child));
+    EXPECT_EQ(CKERR_INVALIDPARAMETER, Engine::AddChild(other, child));
+    ASSERT_EQ(child, graph->RemoveSubBehavior(child));
+    ASSERT_EQ(nullptr, child->GetParent());
+    ASSERT_EQ(CK_OK, Engine::AddChild(other, child));
+    EXPECT_EQ(other, child->GetParent());
+    EXPECT_EQ(0, graph->GetSubBehaviorCount());
+    EXPECT_EQ(1, other->GetSubBehaviorCount());
 }
 
 TEST_F(SdlEngineTest, RenderAdapterRestoresOnlyItsProjectionOption) {
