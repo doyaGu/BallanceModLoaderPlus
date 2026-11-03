@@ -9,9 +9,11 @@ constexpr CKDWORD InDelayedList = 0x00000001;
 // constructing or casting to the derived type.
 class BehaviorMember final : public CKBehavior {
 public:
+#if !BML_RUNTIME_SDL
     static BehaviorBlockData *Block(CKBehavior *behavior) noexcept {
         return behavior ? behavior->*(&BehaviorMember::m_BlockData) : nullptr;
     }
+#endif
 
     static BehaviorGraphData *Graph(CKBehavior *behavior) noexcept {
         return behavior ? behavior->*(&BehaviorMember::m_GraphData) : nullptr;
@@ -65,9 +67,11 @@ public:
 
 } // namespace
 
+#if !BML_RUNTIME_SDL
 BehaviorBlockData *BlockData(CKBehavior *behavior) noexcept {
     return BehaviorMember::Block(behavior);
 }
+#endif
 
 XObjectPointerArray *Nodes(CKBehavior *graph) noexcept {
     BehaviorGraphData *data = BehaviorMember::Graph(graph);

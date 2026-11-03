@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <memory>
 #include "CKAll.h"
 #include "TextureTestObserver.h"
 #include "CKRecordingRasterizer.h"
@@ -7,6 +8,7 @@
 #include "RCKCamera.h"
 #include "Hooks/RenderHook.h"
 #include "Behavior/Edit/Journal.h"
+#include "Behavior/Engine/Message.h"
 #include "Behavior/PrototypeCatalog.h"
 #include "UI/imgui_impl_ck2.h"
 #include "imgui_internal.h"
@@ -113,6 +115,96 @@ protected:
         ImGui_ImplCK2_RenderDrawData(&data);
     }
 };
+
+struct BehaviorCallbackTrace {
+    int Calls = 0;
+    int Provider = 0;
+    CKBehaviorContext Frame{};
+    CKBehavior *Current = nullptr;
+};
+
+int RecordBehaviorCallback(const CKBehaviorContext &frame) {
+    auto *trace = static_cast<BehaviorCallbackTrace *>(frame.CallbackArg);
+    ++trace->Calls;
+    trace->Provider = 1;
+    trace->Frame = frame;
+    trace->Current = frame.Context->GetBehaviorManager()->m_CurrentBehavior;
+    return 37;
+}
+
+int ReplacementBehaviorCallback(const CKBehaviorContext &frame) {
+    auto *trace = static_cast<BehaviorCallbackTrace *>(frame.CallbackArg);
+    ++trace->Calls;
+    trace->Provider = 2;
+    trace->Frame = frame;
+    return 53;
+}
+
+TEST_F(SdlEngineTest, BehaviorCreateUsesPublicCallbackAndRestoresDispatchContext) {
+    BehaviorCallbackTrace trace;
+    std::unique_ptr<CKBehaviorPrototype> prototype(CreateCKBehaviorPrototype("SDL callback test"));
+    prototype->SetBehaviorCallbackFct(RecordBehaviorCallback, CKCB_BEHAVIORCREATE, &trace);
+    auto *behavior = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+    auto *outer = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+    ASSERT_EQ(CK_OK, behavior->InitFromPrototype(prototype.get()));
+    EXPECT_EQ(0, trace.Calls);
+
+    int outerArgument = 0;
+    Context->m_BehaviorContext.Behavior = outer;
+    Context->m_BehaviorContext.CallbackArg = &outerArgument;
+    Context->m_BehaviorContext.CallbackMessage = CKM_BEHAVIORRESET;
+    Context->m_BehaviorContext.CurrentRenderContext = nullptr;
+    Context->GetBehaviorManager()->m_CurrentBehavior = outer;
+    CKBehaviorContext frame = Context->m_BehaviorContext;
+    frame.CurrentRenderContext = Device;
+
+    EXPECT_EQ(37, Engine::Send(Context, behavior, CKM_BEHAVIORCREATE, &frame));
+    EXPECT_EQ(1, trace.Calls);
+    EXPECT_EQ(Context, trace.Frame.Context);
+    EXPECT_EQ(behavior, trace.Frame.Behavior);
+    EXPECT_EQ(&trace, trace.Frame.CallbackArg);
+    EXPECT_EQ(CKM_BEHAVIORCREATE, trace.Frame.CallbackMessage);
+    EXPECT_EQ(Device, trace.Frame.CurrentRenderContext);
+    EXPECT_EQ(behavior, trace.Current);
+    EXPECT_EQ(outer, Context->m_BehaviorContext.Behavior);
+    EXPECT_EQ(&outerArgument, Context->m_BehaviorContext.CallbackArg);
+    EXPECT_EQ(CKM_BEHAVIORRESET, Context->m_BehaviorContext.CallbackMessage);
+    EXPECT_EQ(nullptr, Context->m_BehaviorContext.CurrentRenderContext);
+    EXPECT_EQ(outer, Context->GetBehaviorManager()->m_CurrentBehavior);
+}
+
+TEST_F(SdlEngineTest, BehaviorMessagesRespectMasksAndLiveCallbackReplacement) {
+    BehaviorCallbackTrace first, second;
+    std::unique_ptr<CKBehaviorPrototype> prototype(CreateCKBehaviorPrototype("SDL callback mask test"));
+    prototype->SetBehaviorCallbackFct(RecordBehaviorCallback, CKCB_BEHAVIORCREATE, &first);
+    auto *behavior = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+    ASSERT_EQ(CK_OK, behavior->InitFromPrototype(prototype.get()));
+    EXPECT_EQ(CK_OK, Engine::Send(Context, behavior, CKM_BEHAVIORRESET));
+    EXPECT_EQ(0, first.Calls);
+    EXPECT_EQ(37, Engine::Send(Context, behavior, CKM_BEHAVIORCREATE));
+
+    behavior->SetCallbackFunction(ReplacementBehaviorCallback);
+    EXPECT_EQ(53, Engine::Send(Context, behavior, CKM_BEHAVIORCREATE));
+    EXPECT_EQ(2, first.Calls);
+    EXPECT_EQ(2, first.Provider);
+
+    prototype->SetBehaviorCallbackFct(RecordBehaviorCallback, CKCB_BEHAVIOREDITED, &second);
+    ASSERT_EQ(CK_OK, behavior->InitFctPtrFromPrototype(prototype.get()));
+    EXPECT_EQ(CK_OK, Engine::Send(Context, behavior, CKM_BEHAVIORCREATE));
+    EXPECT_EQ(0, second.Calls);
+    EXPECT_EQ(37, Engine::Send(Context, behavior, CKM_BEHAVIOREDITED));
+    EXPECT_EQ(1, second.Calls);
+    EXPECT_EQ(&second, second.Frame.CallbackArg);
+}
+
+TEST_F(SdlEngineTest, BehaviorMessagesHandleMissingTargetsAndGraphsWithoutCallbacks) {
+    auto *graph = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+    graph->UseGraph();
+    EXPECT_EQ(CKERR_INVALIDOBJECT, Engine::Send(nullptr, graph, CKM_BEHAVIORCREATE));
+    EXPECT_EQ(CKERR_INVALIDOBJECT, Engine::Send(Context, nullptr, CKM_BEHAVIORCREATE));
+    EXPECT_EQ(CK_OK, Engine::Send(Context, graph, CKM_BEHAVIORCREATE));
+    EXPECT_EQ(CK_OK, Engine::Send(Context, graph, CKM_MAX_BEHAVIOR_CALLBACKS));
+}
 
 TEST_F(SdlEngineTest, RenderAdapterRestoresOnlyItsProjectionOption) {
     Device->SetCurrentRenderOptions(CK_RENDER_CLEARZ | CK_RENDER_ADJUSTFOV);

@@ -1,6 +1,8 @@
 #include "Behavior/Engine/Message.h"
 
+#if !BML_RUNTIME_SDL
 #include "Behavior/Engine/Access.h"
+#endif
 #include "Behavior/Engine/Scope.h"
 
 namespace BML::Behavior::Internal::Engine {
@@ -9,6 +11,10 @@ int Send(CKContext *context, CKBehavior *behavior, CKDWORD message,
          const CKBehaviorContext *frame) {
     if (!context || !behavior)
         return CKERR_INVALIDOBJECT;
+#if BML_RUNTIME_SDL
+    Scope scope(context, behavior, frame);
+    return behavior->CallCallbackFunction(message);
+#else
     if (message != CKM_BEHAVIORCREATE) {
         Scope scope(context, behavior, frame);
         return behavior->CallCallbackFunction(message);
@@ -25,6 +31,7 @@ int Send(CKContext *context, CKBehavior *behavior, CKDWORD message,
     context->m_BehaviorContext.CallbackMessage = message;
     context->m_BehaviorContext.CallbackArg = block->m_CallbackArg;
     return block->m_Callback(context->m_BehaviorContext);
+#endif
 }
 
 } // namespace BML::Behavior::Internal::Engine

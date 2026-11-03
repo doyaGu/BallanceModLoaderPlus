@@ -10,9 +10,11 @@ namespace BML::Behavior::Internal::Engine {
 // The retail SDK declares these CK2 fields protected and exposes no public
 // accessor for them. This is the one place that reads or writes them.
 
-// The prototype's callback, mask, and argument that the Block was created
-// with. Null for a graph.
+// Retail CREATE callback workaround. SDL uses CallCallbackFunction instead.
+// The live Block callback, mask, and argument; null for a graph.
+#if !BML_RUNTIME_SDL
 BehaviorBlockData *BlockData(CKBehavior *behavior) noexcept;
+#endif
 
 // CK2 schedules equal-priority children in m_SubBehaviors order and traverses
 // each source IO's m_Links in order. The SDK exposes the backing arrays but no

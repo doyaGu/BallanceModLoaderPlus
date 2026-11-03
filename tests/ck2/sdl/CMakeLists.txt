@@ -33,6 +33,7 @@ add_executable(BMLSdlEngineTest
     SdlEngineTest.cpp
     "${BML_ROOT}/src/Hooks/RenderHook.cpp"
     "${BML_ROOT}/src/Behavior/Edit/Journal.cpp"
+    "${BML_ROOT}/src/Behavior/Engine/Message.cpp"
     "${BML_ROOT}/src/Behavior/PrototypeCatalog.cpp"
     "${BML_ROOT}/src/Behavior/CKPrototypeSource.cpp"
     "${BML_ROOT}/src/Behavior/Core/Parameter.cpp"
