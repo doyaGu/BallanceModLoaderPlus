@@ -27,7 +27,8 @@ XSObjectPointerArray *Outgoing(CKBehaviorIO *source) noexcept;
 // SDK XSArray::Remove would free it through the caller's CRT instead.
 void RemoveOutgoingLink(CKBehaviorIO *source, CKBehaviorLink *link) noexcept;
 
-// Writes m_BehParent without SetParent, which retail CK2 ignores for null.
+// Restores the parent reference through SetParent on SDL. Retail CK2 ignores
+// SetParent(null), so win32 retains its direct-field workaround.
 void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept;
 
 // The native Link setters reject null. Use only after removing the Link from

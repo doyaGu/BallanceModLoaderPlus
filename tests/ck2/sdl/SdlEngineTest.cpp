@@ -8,6 +8,7 @@
 #include "RCKCamera.h"
 #include "Hooks/RenderHook.h"
 #include "Behavior/Edit/Journal.h"
+#include "Behavior/Engine/Access.h"
 #include "Behavior/Engine/Message.h"
 #include "Behavior/PrototypeCatalog.h"
 #include "UI/imgui_impl_ck2.h"
@@ -138,6 +139,41 @@ int ReplacementBehaviorCallback(const CKBehaviorContext &frame) {
     trace->Provider = 2;
     trace->Frame = frame;
     return 53;
+}
+
+TEST_F(SdlEngineTest, PublicSetParentRestoresReferencesWithoutChangingGraphMembership) {
+    BehaviorCallbackTrace trace;
+    std::unique_ptr<CKBehaviorPrototype> prototype(CreateCKBehaviorPrototype("SDL parent test"));
+    prototype->SetBehaviorCallbackFct(RecordBehaviorCallback,
+                                    CKCB_BEHAVIORATTACH | CKCB_BEHAVIORDETACH, &trace);
+    auto *parent = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+    auto *child = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+    parent->UseGraph();
+    ASSERT_EQ(CK_OK, child->InitFromPrototype(prototype.get()));
+    const auto flags = child->GetFlags();
+    CKBeObject *const owner = child->GetOwner();
+
+    child->SetParent(parent);
+    EXPECT_EQ(parent, child->GetParent());
+    EXPECT_EQ(0, parent->GetSubBehaviorCount());
+    EXPECT_EQ(owner, child->GetOwner());
+    EXPECT_EQ(flags, child->GetFlags());
+    EXPECT_EQ(0, trace.Calls);
+
+    Engine::SetParentId(child, nullptr);
+    EXPECT_EQ(nullptr, child->GetParent());
+    Engine::SetParentId(child, parent);
+    EXPECT_EQ(parent, child->GetParent());
+    child->SetParent(nullptr);
+    EXPECT_EQ(nullptr, child->GetParent());
+    EXPECT_EQ(0, trace.Calls);
+    Engine::SetParentId(nullptr, parent);
+
+    child->SetCallbackFunction(nullptr);
+    ASSERT_EQ(CK_OK, parent->AddSubBehavior(child));
+    EXPECT_EQ(1, parent->GetSubBehaviorCount());
+    EXPECT_EQ(child, parent->RemoveSubBehavior(child));
+    EXPECT_EQ(nullptr, child->GetParent());
 }
 
 TEST_F(SdlEngineTest, BehaviorCreateUsesPublicCallbackAndRestoresDispatchContext) {

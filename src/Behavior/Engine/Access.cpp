@@ -19,11 +19,13 @@ public:
         return behavior ? behavior->*(&BehaviorMember::m_GraphData) : nullptr;
     }
 
+#if !BML_RUNTIME_SDL
     static void Parent(CKBehavior *behavior, CKBehavior *parent) noexcept {
         if (behavior)
             behavior->*(&BehaviorMember::m_BehParent) =
                 parent ? parent->GetID() : 0;
     }
+#endif
 };
 
 class IoMember final : public CKBehaviorIO {
@@ -92,7 +94,12 @@ void RemoveOutgoingLink(CKBehaviorIO *source, CKBehaviorLink *link) noexcept {
 }
 
 void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept {
+#if BML_RUNTIME_SDL
+    if (behavior)
+        behavior->SetParent(parent);
+#else
     BehaviorMember::Parent(behavior, parent);
+#endif
 }
 
 void ClearEndpoints(CKBehaviorLink *link) noexcept {
