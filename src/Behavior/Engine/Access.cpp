@@ -3,11 +3,11 @@
 namespace BML::Behavior::Internal::Engine {
 namespace {
 
+#if !BML_RUNTIME_SDL
 constexpr CKDWORD InDelayedList = 0x00000001;
 
 // A derived-class member pointer names a protected base field without
 // constructing or casting to the derived type.
-#if !BML_RUNTIME_SDL
 class BehaviorMember final : public CKBehavior {
 public:
     static BehaviorBlockData *Block(CKBehavior *behavior) noexcept {
@@ -24,7 +24,6 @@ public:
                 parent ? parent->GetID() : 0;
     }
 };
-#endif
 
 class IoMember final : public CKBehaviorIO {
 public:
@@ -64,6 +63,7 @@ public:
         return link ? link->*(&LinkMember::m_OldFlags) : 0;
     }
 };
+#endif
 
 } // namespace
 
@@ -81,7 +81,6 @@ XObjectPointerArray *Links(CKBehavior *graph) noexcept {
     BehaviorGraphData *data = BehaviorMember::Graph(graph);
     return data ? &data->m_SubBehaviorLinks : nullptr;
 }
-#endif
 
 XSObjectPointerArray *Outgoing(CKBehaviorIO *source) noexcept {
     return IoMember::Links(source);
@@ -90,6 +89,7 @@ XSObjectPointerArray *Outgoing(CKBehaviorIO *source) noexcept {
 void RemoveOutgoingLink(CKBehaviorIO *source, CKBehaviorLink *link) noexcept {
     OutgoingMember::Remove(Outgoing(source), link);
 }
+#endif
 
 void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept {
 #if BML_RUNTIME_SDL
@@ -100,9 +100,11 @@ void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept {
 #endif
 }
 
+#if !BML_RUNTIME_SDL
 void ClearEndpoints(CKBehaviorLink *link) noexcept {
     LinkMember::Clear(link);
 }
+#endif
 
 bool IsDelayed(CKBehaviorLink *link) noexcept {
 #if BML_RUNTIME_SDL

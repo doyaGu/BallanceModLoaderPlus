@@ -20,13 +20,13 @@ BehaviorBlockData *BlockData(CKBehavior *behavior) noexcept;
 #if !BML_RUNTIME_SDL
 XObjectPointerArray *Nodes(CKBehavior *graph) noexcept;
 XObjectPointerArray *Links(CKBehavior *graph) noexcept;
-#endif
 // Orphan Link cleanup still needs the surviving source IO's outgoing list.
 XSObjectPointerArray *Outgoing(CKBehaviorIO *source) noexcept;
 
 // Compact without reallocating: the backing storage belongs to CK2's CRT.
 // SDK XSArray::Remove would free it through the caller's CRT instead.
 void RemoveOutgoingLink(CKBehaviorIO *source, CKBehaviorLink *link) noexcept;
+#endif
 
 // Restores the parent reference through SetParent on SDL. Retail CK2 ignores
 // SetParent(null), so win32 retains its direct-field workaround.
@@ -34,7 +34,9 @@ void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept;
 
 // The native Link setters reject null. Use only after removing the Link from
 // its surviving source IO's outgoing array; neither old endpoint is read.
+#if !BML_RUNTIME_SDL
 void ClearEndpoints(CKBehaviorLink *link) noexcept;
+#endif
 
 // True while CK2 holds the Link in its graph's delayed-link list. CK2 sets
 // bit 0x1 of m_OldFlags when it pushes a delayed activation and clears it

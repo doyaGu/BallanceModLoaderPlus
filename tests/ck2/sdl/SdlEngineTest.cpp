@@ -125,6 +125,79 @@ struct BehaviorCallbackTrace {
     CKBehavior *Current = nullptr;
 };
 
+TEST_F(SdlEngineTest, OrphanLinkRetirementUsesNativeCleanupForSurvivingChild) {
+    auto *graph = static_cast<CKBehavior *>(Context->CreateObject(
+        CKCID_BEHAVIOR, "deleted graph", CK_OBJECTCREATION_DYNAMIC));
+    auto *child = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+    ASSERT_NE(nullptr, graph);
+    ASSERT_NE(nullptr, child);
+    graph->UseGraph();
+    child->UseGraph();
+    ASSERT_EQ(CK_OK, graph->AddSubBehavior(child));
+    CKBehaviorIO *source = child->CreateOutput("surviving source");
+    CKBehaviorIO *destination = graph->CreateOutput("deleted destination");
+    CKBehaviorIO *replacementDestination = child->CreateInput("surviving destination");
+    ASSERT_NE(nullptr, source);
+    ASSERT_NE(nullptr, destination);
+    ASSERT_NE(nullptr, replacementDestination);
+    auto *link = static_cast<CKBehaviorLink *>(Context->CreateObject(CKCID_BEHAVIORLINK));
+    ASSERT_NE(nullptr, link);
+    ASSERT_EQ(CK_OK, link->SetInBehaviorIO(source));
+    ASSERT_EQ(CK_OK, link->SetOutBehaviorIO(destination));
+    ASSERT_EQ(CK_OK, graph->AddSubBehaviorLink(link));
+    ASSERT_EQ(link, graph->RemoveSubBehaviorLink(link));
+    const CK_ID graphID = graph->GetID(), childID = child->GetID(),
+                destinationID = destination->GetID(), linkID = link->GetID();
+
+    ASSERT_EQ(CK_OK, Context->DestroyObject(graph));
+    ASSERT_EQ(nullptr, Context->GetObject(graphID));
+    ASSERT_EQ(child, Context->GetObject(childID));
+    ASSERT_EQ(nullptr, Context->GetObject(destinationID));
+    ASSERT_EQ(nullptr, link->GetOutBehaviorIO());
+    ASSERT_EQ(1, source->GetLinkCount());
+    ASSERT_EQ(CK_OK, Engine::DestroyOrphanLink(Context, link));
+    EXPECT_EQ(nullptr, Context->GetObject(linkID));
+    EXPECT_EQ(0, source->GetLinkCount());
+
+    // The source array remains owned and reusable by CK2 after retirement.
+    auto *replacement = static_cast<CKBehaviorLink *>(Context->CreateObject(CKCID_BEHAVIORLINK));
+    ASSERT_NE(nullptr, replacement);
+    ASSERT_EQ(CK_OK, replacement->SetInBehaviorIO(source));
+    ASSERT_EQ(CK_OK, replacement->SetOutBehaviorIO(replacementDestination));
+    ASSERT_EQ(1, source->GetLinkCount());
+    EXPECT_EQ(replacement, source->GetLink(0));
+    ASSERT_EQ(CK_OK, Context->DestroyObject(replacement));
+    EXPECT_EQ(0, source->GetLinkCount());
+}
+
+TEST_F(SdlEngineTest, OrphanLinkRetirementFollowsNativeDeferredDeletionTiming) {
+    auto *graph = static_cast<CKBehavior *>(Context->CreateObject(CKCID_BEHAVIOR));
+    ASSERT_NE(nullptr, graph);
+    graph->UseGraph();
+    CKBehaviorIO *source = graph->CreateInput("source");
+    CKBehaviorIO *destination = graph->CreateOutput("destination");
+    ASSERT_NE(nullptr, source);
+    ASSERT_NE(nullptr, destination);
+    auto *link = static_cast<CKBehaviorLink *>(Context->CreateObject(CKCID_BEHAVIORLINK));
+    ASSERT_NE(nullptr, link);
+    ASSERT_EQ(CK_OK, link->SetInBehaviorIO(source));
+    ASSERT_EQ(CK_OK, link->SetOutBehaviorIO(destination));
+    ASSERT_EQ(CK_OK, graph->AddSubBehaviorLink(link));
+    ASSERT_EQ(link, graph->RemoveSubBehaviorLink(link));
+    const CK_ID linkID = link->GetID();
+
+    Context->m_DeferDestroyObjects = TRUE;
+    EXPECT_EQ(CK_OK, Engine::DestroyOrphanLink(Context, link));
+    EXPECT_EQ(link, Context->GetObject(linkID));
+    EXPECT_EQ(source, link->GetInBehaviorIO());
+    EXPECT_EQ(destination, link->GetOutBehaviorIO());
+    EXPECT_EQ(1, source->GetLinkCount());
+    Context->m_DeferDestroyObjects = FALSE;
+    ASSERT_EQ(CK_OK, Context->m_ObjectManager->PostProcess());
+    EXPECT_EQ(nullptr, Context->GetObject(linkID));
+    EXPECT_EQ(0, source->GetLinkCount());
+}
+
 int RecordBehaviorCallback(const CKBehaviorContext &frame) {
     auto *trace = static_cast<BehaviorCallbackTrace *>(frame.CallbackArg);
     ++trace->Calls;
