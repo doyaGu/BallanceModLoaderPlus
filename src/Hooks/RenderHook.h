@@ -3,6 +3,7 @@
 
 #include <memory>
 
+class CKContext;
 class CKRenderContext;
 
 class RenderHook {
@@ -19,6 +20,10 @@ public:
 
     static bool IsSkipRenderAvailable();
     static void SkipNextRender();
+#if BML_RUNTIME_SDL
+    // Cancel a request when this CK world is reset, without detaching its context.
+    static void ResetPendingSkip(CKContext *context);
+#endif
 
     static void EnableWidescreenFix(bool enable);
     static bool IsWidescreenFixAvailable();

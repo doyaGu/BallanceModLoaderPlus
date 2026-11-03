@@ -735,7 +735,7 @@ set(IMGUI_SOURCES
 
 if(BML_RUNTIME_SDL)
     list(REMOVE_ITEM BML_SOURCES
-        Hooks/RenderHook.cpp Hooks/VTablePatch.cpp
+        Hooks/VTablePatch.cpp
         UI/OverlayPlatformInput.cpp UI/Ime/Runtime.cpp
         UI/Ime/NativePresentation.cpp UI/Ime/Tsf.cpp)
     list(APPEND BML_SOURCES

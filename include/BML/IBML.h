@@ -174,10 +174,10 @@ public:
     virtual float GetSRScore() = 0;
     virtual int GetHSScore() = 0;
 
-    // Drops the next frame's rendering and turns it back on one frame later, which
-    // is what to call before work that would otherwise be seen half-finished. It is
-    // not a counter: two Mods calling it in the same frame still get exactly one
-    // frame skipped.
+    // Skips the next Render invocation on the attached Player render context.
+    // Process calls do not consume the request; repeated requests before that
+    // Render coalesce. A request from inside Render affects the next invocation,
+    // including a nested Render. Reset, detach and context changes cancel it.
     virtual void SkipRenderForNextTick() = 0;
 
     // The loader's command table, which holds the commands of every Mod, not just

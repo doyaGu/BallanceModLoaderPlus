@@ -515,6 +515,9 @@ void ModContext::Abandon() noexcept {
 }
 
 void ModContext::ResetVirtoolsWorld() {
+#if BML_RUNTIME_SDL
+    RenderHook::ResetPendingSkip(m_CKContext);
+#endif
     // Author Releases dropped by the teardown below run once it is done.
     BML::Behavior::Internal::ReleaseScope releases;
     m_GamePhase = GamePhase::FrontEnd;

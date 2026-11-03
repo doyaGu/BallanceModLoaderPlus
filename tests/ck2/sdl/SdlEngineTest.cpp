@@ -16,7 +16,13 @@ using namespace BML::Behavior::Internal;
 namespace {
 class DrawObserver : public TextureTestObserver {
 public:
-    int Draws = 0;
+    int Draws = 0, Clears = 0;
+    CKBOOL Clear(CKDWORD, CKDWORD, float, CKDWORD, int, CKRECT *) override { ++Clears; return TRUE; }
+    CKBOOL BeginScene() override { return TRUE; }
+    CKBOOL EndScene() override { return TRUE; }
+    CKBOOL BeginOverlayPhase() override { return TRUE; }
+    void InitDefaultRenderStatesValue() override {}
+    CKBOOL EnableLight(CKDWORD, CKBOOL) override { return TRUE; }
     CKBOOL DrawPrimitive(VXPRIMITIVETYPE, CKWORD *, int, VxDrawPrimitiveData *) override {
         ++Draws;
         return TRUE;
@@ -25,6 +31,10 @@ public:
 class TestRenderContext : public RCKRenderContext {
 public:
     bool FailGeometry = false;
+    bool RejectOptionsRemoval = false;
+    CKBOOL RemoveRenderOptionsCallBack(CK_RENDEROPTIONSCALLBACK function, void *argument) override {
+        return RejectOptionsRemoval ? FALSE : RCKRenderContext::RemoveRenderOptionsCallBack(function, argument);
+    }
     explicit TestRenderContext(CKContext *context) : RCKRenderContext(context) {}
     VxDrawPrimitiveData *GetDrawPrimitiveStructure(CKRST_DPFLAGS flags, int count) override {
         return FailGeometry ? nullptr : RCKRenderContext::GetDrawPrimitiveStructure(flags, count);
@@ -61,6 +71,7 @@ protected:
         Device->m_RasterizerContext = &State;
         Device->m_RasterizerDriver = &Driver;
         Device->m_DriverIndex = 0;
+        Device->m_Active = TRUE;
         Device->m_Settings.m_Rect = CKRECT{0, 0, 640, 360};
         VxRect rect(0, 0, 640, 360); Device->SetViewRect(rect);
         Context->m_BehaviorContext.CurrentRenderContext = Device;
@@ -113,7 +124,7 @@ TEST_F(SdlEngineTest, RenderAdapterRestoresOnlyItsProjectionOption) {
     EXPECT_FALSE(Device->GetCurrentRenderOptions() & CK_RENDER_ADJUSTFOV);
     RenderHook::EnableWidescreenFix(true);
     EXPECT_TRUE(Device->GetCurrentRenderOptions() & CK_RENDER_ADJUSTFOV);
-    EXPECT_FALSE(RenderHook::IsSkipRenderAvailable());
+    EXPECT_TRUE(RenderHook::IsSkipRenderAvailable());
     const CKDWORD options = Device->GetCurrentRenderOptions();
     RenderHook::SkipNextRender();
     EXPECT_EQ(options, Device->GetCurrentRenderOptions());
@@ -287,3 +298,137 @@ TEST_F(SdlEngineTest, UiRestoresTheProductionFixedFunctionStateThroughPublicCk2Q
 }
 
 } // namespace
+
+
+void ForeignRenderOptions(CKRenderContext *, CK_RENDER_FLAGS *, void *argument) {
+    ++*static_cast<int *>(argument);
+}
+struct RequestDuringRender { int Calls = 0; bool Nested = false; CKERROR NestedResult = CKERR_INVALIDOPERATION; };
+void RequestRenderSkip(CKRenderContext *context, void *argument) {
+    auto &state = *static_cast<RequestDuringRender *>(argument);
+    if (++state.Calls != 1) return;
+    RenderHook::SkipNextRender();
+    if (state.Nested)
+        state.NestedResult = context->Render(static_cast<CK_RENDER_FLAGS>(CK_RENDER_SKIP3D | CK_RENDER_DOBACKTOFRONT));
+}
+
+TEST_F(SdlEngineTest, SkipRequestSurvivesProcessAndPauseButOnlySkipsOneRender) {
+    auto *level = static_cast<CKLevel *>(Context->CreateObject(CKCID_LEVEL));
+    ASSERT_NE(nullptr, level);
+    Context->SetCurrentLevel(level);
+    ASSERT_EQ(CK_OK, Context->Play());
+    Device->SetCurrentRenderOptions(CK_RENDER_SKIPDRAWSCENE | CK_RENDER_DOBACKTOFRONT | CK_RENDER_CLEARBACK);
+    const CKDWORD options = Device->GetCurrentRenderOptions();
+    RenderHook hook; ASSERT_TRUE(hook.Attach(Device));
+    RenderHook::SkipNextRender(); RenderHook::SkipNextRender();
+    ASSERT_TRUE(hook.Attach(Device)); // An idempotent attach preserves the request.
+    for (int i = 0; i < 3; ++i) EXPECT_EQ(CK_OK, Context->Process());
+    EXPECT_EQ(CK_OK, Context->Pause());
+    EXPECT_EQ(options, Device->GetCurrentRenderOptions());
+    EXPECT_EQ(CK_OK, Device->Render());
+    EXPECT_EQ(0, State.Clears); EXPECT_EQ(0, State.PresentCount);
+    EXPECT_EQ(options, Device->GetCurrentRenderOptions());
+    EXPECT_EQ(CK_OK, Device->Render());
+    EXPECT_EQ(1, State.Clears); EXPECT_EQ(1, State.PresentCount);
+    EXPECT_EQ(CK_OK, Device->Render());
+    EXPECT_EQ(2, State.Clears); EXPECT_EQ(2, State.PresentCount);
+    EXPECT_EQ(options, Device->GetCurrentRenderOptions());
+}
+
+TEST_F(SdlEngineTest, SkipRequestCoversExplicitOptionsAndIgnoresOtherContexts) {
+    Device->SetCurrentRenderOptions(CK_RENDER_CLEARZ);
+    RenderHook hook; ASSERT_TRUE(hook.Attach(Device));
+    const CKDWORD options = Device->GetCurrentRenderOptions();
+    RenderHook::SkipNextRender();
+    TestRenderContext other(Context);
+    EXPECT_EQ(CKERR_RENDERCONTEXTINACTIVE, other.Render());
+    const auto flags = static_cast<CK_RENDER_FLAGS>(CK_RENDER_SKIPDRAWSCENE | CK_RENDER_DOBACKTOFRONT);
+    EXPECT_EQ(CK_OK, Device->Render(flags)); EXPECT_EQ(0, State.PresentCount);
+    EXPECT_EQ(CK_OK, Device->Render(flags)); EXPECT_EQ(1, State.PresentCount);
+    EXPECT_EQ(options, Device->GetCurrentRenderOptions());
+    // Direct helpers neither consume the request nor receive its local flag.
+    RenderHook::SkipNextRender();
+    EXPECT_EQ(CK_OK, Device->BackToFront(CK_RENDER_DOBACKTOFRONT)); EXPECT_EQ(2, State.PresentCount);
+    EXPECT_EQ(CK_OK, Device->Render(flags)); EXPECT_EQ(2, State.PresentCount);
+    EXPECT_EQ(CK_OK, Device->Render(flags)); EXPECT_EQ(3, State.PresentCount);
+}
+
+TEST_F(SdlEngineTest, RequestInsideRenderAffectsTheNextRenderIncludingNestedCalls) {
+    const auto flags = static_cast<CK_RENDER_FLAGS>(CK_RENDER_SKIP3D | CK_RENDER_DOBACKTOFRONT);
+    Device->SetCurrentRenderOptions(flags);
+    RenderHook hook; ASSERT_TRUE(hook.Attach(Device));
+    RequestDuringRender state;
+    Device->AddPostSpriteRenderCallBack(RequestRenderSkip, &state);
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(1, State.PresentCount);
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(1, State.PresentCount);
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(2, State.PresentCount);
+    EXPECT_EQ(2, state.Calls);
+    Device->RemovePostSpriteRenderCallBack(RequestRenderSkip, &state);
+    state = {}; state.Nested = true;
+    Device->AddPostSpriteRenderCallBack(RequestRenderSkip, &state);
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(CK_OK, state.NestedResult);
+    EXPECT_EQ(3, State.PresentCount); EXPECT_EQ(1, state.Calls);
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(4, State.PresentCount);
+    EXPECT_EQ(2, state.Calls);
+    EXPECT_EQ(CKDWORD(flags), Device->GetCurrentRenderOptions());
+    Device->RemovePostSpriteRenderCallBack(RequestRenderSkip, &state);
+}
+
+TEST_F(SdlEngineTest, RenderHookRefusesAnOccupiedSlotWithoutChangingItsOwnerOrOptions) {
+    int calls = 0;
+    const CKDWORD options = CK_RENDER_SKIPDRAWSCENE | CK_RENDER_DOBACKTOFRONT | CK_RENDER_ADJUSTFOV;
+    Device->SetCurrentRenderOptions(options);
+    ASSERT_TRUE(Device->SetRenderOptionsCallBack(ForeignRenderOptions, &calls));
+    RenderHook hook;
+    EXPECT_FALSE(hook.Attach(Device)); EXPECT_FALSE(hook.IsAttached());
+    EXPECT_FALSE(RenderHook::IsSkipRenderAvailable());
+    EXPECT_EQ(options, Device->GetCurrentRenderOptions());
+    EXPECT_TRUE(hook.Detach());
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(1, calls);
+    ASSERT_TRUE(Device->RemoveRenderOptionsCallBack(ForeignRenderOptions, &calls));
+    ASSERT_TRUE(hook.Attach(Device));
+    EXPECT_TRUE(hook.Detach());
+    EXPECT_TRUE(Device->SetRenderOptionsCallBack(ForeignRenderOptions, &calls));
+    EXPECT_TRUE(Device->RemoveRenderOptionsCallBack(ForeignRenderOptions, &calls));
+}
+
+TEST_F(SdlEngineTest, ResetDetachAndContextChangesDiscardPendingRequests) {
+    Device->SetCurrentRenderOptions(CK_RENDER_SKIPDRAWSCENE | CK_RENDER_DOBACKTOFRONT);
+    RenderHook hook; ASSERT_TRUE(hook.Attach(Device));
+    RenderHook::SkipNextRender(); RenderHook::ResetPendingSkip(nullptr);
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(0, State.PresentCount);
+    RenderHook::SkipNextRender(); RenderHook::ResetPendingSkip(Context);
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(1, State.PresentCount);
+    RenderHook::SkipNextRender(); ASSERT_TRUE(hook.Detach()); ASSERT_TRUE(hook.Attach(Device));
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(2, State.PresentCount);
+    RenderHook::SkipNextRender();
+    TestRenderContext other(Context);
+    ASSERT_TRUE(hook.Attach(&other));
+    EXPECT_EQ(CKERR_RENDERCONTEXTINACTIVE, other.Render());
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(3, State.PresentCount);
+    ASSERT_TRUE(hook.Detach()); // other is destroyed before hook.
+}
+
+TEST_F(SdlEngineTest, FailedRenderHookRemovalRetainsOwnershipUntilRetry) {
+    Device->SetCurrentRenderOptions(CK_RENDER_SKIPDRAWSCENE | CK_RENDER_DOBACKTOFRONT);
+    RenderHook hook; ASSERT_TRUE(hook.Attach(Device));
+    RenderHook::SkipNextRender(); Device->RejectOptionsRemoval = true;
+    EXPECT_FALSE(hook.Detach()); EXPECT_TRUE(hook.IsAttached());
+    EXPECT_TRUE(RenderHook::IsSkipRenderAvailable());
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(0, State.PresentCount);
+    Device->RejectOptionsRemoval = false;
+    EXPECT_TRUE(hook.Detach()); EXPECT_FALSE(hook.IsAttached());
+    EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(1, State.PresentCount);
+}
+
+TEST_F(SdlEngineTest, RepeatedRenderHookLifetimesReleaseTheSlotAndPendingRequest) {
+    Device->SetCurrentRenderOptions(CK_RENDER_SKIPDRAWSCENE | CK_RENDER_DOBACKTOFRONT);
+    for (int i = 0; i < 5; ++i) {
+        {
+            RenderHook hook; ASSERT_TRUE(hook.Attach(Device));
+            RenderHook::SkipNextRender();
+        }
+        EXPECT_FALSE(RenderHook::IsSkipRenderAvailable());
+        EXPECT_EQ(CK_OK, Device->Render()); EXPECT_EQ(i + 1, State.PresentCount);
+    }
+}
