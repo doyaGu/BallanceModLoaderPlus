@@ -70,3 +70,21 @@ target_link_libraries(BMLSdlBehaviorCompile PRIVATE CK2_3DStatic)
 
 enable_testing()
 add_test(NAME BMLSdlEngineTest COMMAND BMLSdlEngineTest)
+
+# Input tests exercise the real manager and BML's SDL adapter without a Player.
+set(SDLINPUT_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(SDLINPUT_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(SDLINPUT_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory("${BALLANCED_ROOT}/Source/Managers/SdlInputManager" input)
+add_executable(BMLSdlInputTest
+    SdlInputTest.cpp
+    "${BML_ROOT}/src/Hooks/InputHookSdl.cpp")
+target_compile_features(BMLSdlInputTest PRIVATE cxx_std_20)
+target_include_directories(BMLSdlInputTest PRIVATE
+    "${BML_ROOT}/include" "${BML_ROOT}/src"
+    "${BALLANCED_ROOT}/Source/Managers/SdlInputManager")
+target_compile_definitions(BMLSdlInputTest PRIVATE BML_RUNTIME_SDL=1 BML_EXPORTS)
+target_link_libraries(BMLSdlInputTest PRIVATE SdlInputManagerStatic CK2Static gtest_main SDL3::SDL3)
+add_test(NAME BMLSdlInputTest COMMAND BMLSdlInputTest)
+set_tests_properties(BMLSdlInputTest PROPERTIES
+    ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")

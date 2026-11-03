@@ -735,10 +735,11 @@ set(IMGUI_SOURCES
 
 if(BML_RUNTIME_SDL)
     list(REMOVE_ITEM BML_SOURCES
-        Hooks/VTablePatch.cpp
+        Hooks/InputHook.cpp Hooks/VTablePatch.cpp
         UI/OverlayPlatformInput.cpp UI/Ime/Runtime.cpp
         UI/Ime/NativePresentation.cpp UI/Ime/Tsf.cpp)
     list(APPEND BML_SOURCES
+        Hooks/InputHookSdl.cpp
         UI/OverlayPlatformInputSdl.cpp UI/Ime/RuntimeSdl.cpp UI/ImGuiFileSdl.cpp)
     list(REMOVE_ITEM IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
     list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)

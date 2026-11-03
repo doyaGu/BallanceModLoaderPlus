@@ -1,17 +1,16 @@
 // Reads input for a Mod, and blocks the game from reading it. Get the single
 // instance from IBML::GetInputManager; do not construct one.
 //
-// Most functions here just forward to the game's CKInputManager, but the loader
-// has replaced several slots of that manager's vtable, so a forwarded call also
-// runs the loader's blocking check. That check is what lets a Mod take the
-// keyboard while a text field is focused: the game's own scripts read through the
-// same patched slots and see nothing.
+// Most functions forward to the game's CKInputManager. The win32 backend
+// intercepts its vtable, while the SDL backend uses CKInputManager::Block and
+// explicit iRaw queries. A Mod can take the keyboard while a text field is
+// focused and the game's ordinary input queries see nothing.
 //
 // Three groups of functions behave differently while a device is blocked:
 //   - the plain readers below return an empty result, because they go through the
-//     patched slots;
-//   - the o-prefixed readers further down call the original slots and so keep
-//     reading the real device;
+//     ordinary query path;
+//   - the o-prefixed readers further down use the original/raw query path and keep
+//     reading the captured device input;
 //   - the functions that are not device reads, meaning GetKeyName,
 //     GetKeyFromName, the repetition and attachment queries, the cursor
 //     functions, and Pause, are not affected by the block at all.
@@ -34,12 +33,15 @@
 
 #include "BML/Defines.h"
 
+#ifndef CK_INPUT_DEVICE_DEFINED
+#define CK_INPUT_DEVICE_DEFINED
 typedef enum CK_INPUT_DEVICE {
     CK_INPUT_DEVICE_KEYBOARD = 0,
     CK_INPUT_DEVICE_MOUSE    = 1,
     CK_INPUT_DEVICE_JOYSTICK = 2,
     CK_INPUT_DEVICE_COUNT    = 3,
 } CK_INPUT_DEVICE;
+#endif
 
 class BML_EXPORT InputHook {
 public:
@@ -136,8 +138,8 @@ public:
     VXCURSOR_POINTER GetSystemCursor();
     void SetSystemCursor(VXCURSOR_POINTER cursor);
 
-    // The o prefix stands for original: these call the input manager slots the
-    // loader replaced, so they report the real device even while it is blocked.
+    // The o prefix stands for original: these bypass the device block, using
+    // the saved slots on win32 and iRaw TRUE on SDL.
     // They exist for the code that puts a block up, which still has to read the
     // input it took: the command bar reads the keyboard this way while everything
     // else sees nothing. Do not use them to work around another Mod's block.
@@ -196,8 +198,8 @@ public:
     uint64_t AcquireBlock(uint32_t deviceMask);
     void ReleaseBlock(uint64_t token);
 
-    // Loader-internal. It runs the input manager's own per-frame work and then
-    // takes the keyboard and mouse-position snapshots that IsKeyPressed,
+    // Loader-internal. On win32 it runs the manager's deferred per-frame work;
+    // on SDL the engine schedules that work. It takes the snapshots that IsKeyPressed,
     // IsKeyReleased, and GetLastMousePosition compare against. The loader calls
     // it once per frame, at the very end of the frame, after every Mod callback
     // has run. A Mod that calls it advances those snapshots early and makes the
