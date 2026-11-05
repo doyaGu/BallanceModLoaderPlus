@@ -39,6 +39,7 @@ def main() -> int:
         scripts.mkdir(parents=True)
         shutil.copy2(source_root / "scripts/bml.py", scripts / "bml.py")
         shutil.copy2(source_root / "scripts/bml.cmd", scripts / "bml.cmd")
+        shutil.copy2(source_root / "scripts/bml", scripts / "bml")
         shutil.copytree(
             source_root / "templates/native-mod-template",
             sdk / "templates/native-mod-template",
@@ -88,6 +89,7 @@ def main() -> int:
         assert (generated / "src/FirstMod.cpp").is_file()
         assert (generated / "bml.py").is_file()
         assert (generated / "bml.cmd").is_file()
+        assert (generated / "bml").is_file()
         assert not (generated / "bml.ps1").exists()
         native_manifest = json.loads((generated / "bml.mod.json").read_text(encoding="utf-8"))
         assert native_manifest["kind"] == "native"
@@ -184,6 +186,7 @@ bml_install_mod(ExistingTarget)
         assert "README.md" in entries
         assert "bml.py" not in entries
         assert "bml.cmd" not in entries
+        assert "bml" not in entries
         assert "bml.mod.json" not in entries
         assert "as.predefined" not in entries
         assert ".vscode/settings.json" not in entries

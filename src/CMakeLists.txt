@@ -807,6 +807,9 @@ else()
 endif()
 
 add_dependencies(BML BML_BuildVersionHeader)
+if(BML_RUNTIME_SDL AND BML_WITH_ANGELSCRIPT AND BML_BUILD_SCRIPT_RUNTIME AND TARGET CKAngelScript)
+    add_dependencies(BML CKAngelScript)
+endif()
 
 target_compile_definitions(BML
         PUBLIC
@@ -885,6 +888,10 @@ install(FILES
         "${PROJECT_SOURCE_DIR}/cmake/FindVirtoolsSDK.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
 )
+if(BML_RUNTIME STREQUAL "sdl" AND APPLE)
+    install(FILES "${PROJECT_SOURCE_DIR}/cmake/FinalizeSdlMod.cmake"
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML")
+endif()
 
 install(FILES
         "${PROJECT_SOURCE_DIR}/tools/imc_codegen.py"
@@ -929,6 +936,7 @@ install(FILES
         "${PROJECT_SOURCE_DIR}/scripts/bml.py"
         DESTINATION "scripts"
 )
+install(PROGRAMS "${PROJECT_SOURCE_DIR}/scripts/bml" DESTINATION "scripts")
 
 install(FILES
         "${PROJECT_SOURCE_DIR}/scripts/lib/BMLProject.psm1"

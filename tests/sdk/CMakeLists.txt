@@ -6,6 +6,38 @@ add_test(
 set_tests_properties(BmlCliTest PROPERTIES LABELS "sdk;workflow")
 
 add_test(
+        NAME BmlSdlCliTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/BmlSdlCliTest.py"
+                --source-root "${PROJECT_SOURCE_DIR}"
+)
+set_tests_properties(BmlSdlCliTest PROPERTIES LABELS "sdk;workflow;sdl")
+
+if(BML_RUNTIME_SDL AND CK2_INSTALL AND VXMATH_INSTALL)
+    add_test(
+            NAME SdlSdkConsumerTest
+            COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/SdlSdkConsumerTest.py"
+                    --main-build-dir "${PROJECT_BINARY_DIR}"
+                    --work-root "${PROJECT_BINARY_DIR}/tests/sdl-sdk-consumer"
+                    --cmake "${CMAKE_COMMAND}"
+                    --configuration "$<CONFIG>"
+    )
+    set_tests_properties(SdlSdkConsumerTest PROPERTIES LABELS "sdk;workflow;sdl;integration"
+            RUN_SERIAL TRUE TIMEOUT 240)
+endif()
+
+add_test(
+        NAME NativeModResourcePackageTest
+        COMMAND "${CMAKE_COMMAND}"
+                "-DWORK_ROOT=${PROJECT_BINARY_DIR}/tests/native-mod-resource-package"
+                "-DGENERATOR=${CMAKE_GENERATOR}"
+                "-DGENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/NativeModResourcePackageTest.cmake"
+)
+set_tests_properties(NativeModResourcePackageTest PROPERTIES
+        LABELS "sdk;packaging;integration"
+        TIMEOUT 120)
+
+add_test(
         NAME ExecuteBBDepsTest
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ExecuteBBDepsTest.py"
                 --source-root "${PROJECT_SOURCE_DIR}"
@@ -33,6 +65,17 @@ add_test(
 set_tests_properties(BmlModArchitectureCmakeTest PROPERTIES
         LABELS "legacy-native;cmake"
         PASS_REGULAR_EXPRESSION "bml_add_mod requires a 32-bit target")
+
+add_test(
+        NAME BmlModSdlArchitectureCmakeTest
+        COMMAND "${CMAKE_COMMAND}"
+                "-DBML_MOD_CMAKE=${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
+                -DTEST_CASE=sdl-architecture
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/BmlModCmakeTest.cmake"
+)
+set_tests_properties(BmlModSdlArchitectureCmakeTest PROPERTIES
+        LABELS "sdk;sdl;cmake;abi"
+        PASS_REGULAR_EXPRESSION "The Mod architecture x64 does not match this BML SDK")
 
 add_test(
         NAME BmlModRuntimeLibraryCmakeTest

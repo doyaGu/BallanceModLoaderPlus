@@ -181,6 +181,13 @@ endif ()
 if (BML_BUILD_UPDATER)
     add_subdirectory(tools/updater)
 endif ()
+
+# Relocate and sign installed copies after all runtime targets, including the
+# standalone Updater, have been installed.
+if(BML_RUNTIME_SDL AND APPLE)
+    install(SCRIPT "${PROJECT_SOURCE_DIR}/cmake/RelocateBMLRuntime.cmake"
+        COMPONENT BMLRuntime EXCLUDE_FROM_ALL)
+endif()
 if (BML_BUILD_BENCHMARKS)
     add_subdirectory(tools/benchmarks)
 endif ()
