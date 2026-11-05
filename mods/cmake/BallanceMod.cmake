@@ -56,6 +56,12 @@ function(ballance_add_mod TARGET_NAME)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "$<TARGET_FILE:${TARGET_NAME}>" "${PACKAGE_DIRECTORY}")
     set(PACKAGE_ENTRIES "$<TARGET_FILE_NAME:${TARGET_NAME}>")
+    if(BML_RUNTIME STREQUAL "sdl")
+        list(APPEND PACKAGE_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "$<TARGET_FILE:${TARGET_NAME}>.abi.json" "${PACKAGE_DIRECTORY}")
+        list(APPEND PACKAGE_ENTRIES "$<TARGET_FILE_NAME:${TARGET_NAME}>.abi.json")
+    endif()
 
     foreach(RESOURCE IN LISTS BALLANCE_MOD_RESOURCES)
         if(IS_ABSOLUTE "${RESOURCE}")

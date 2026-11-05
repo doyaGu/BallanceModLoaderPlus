@@ -55,8 +55,12 @@ void DualBallControl::OnLoadObject(const char *filename, CKBOOL isMap, const cha
     if (!strcmp(filename, "3D Entities\\Balls.nmo")) {
         CKDataArray *physBall = m_BML->GetArrayByName("Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
-            std::string ballName(physBall->GetElementStringValue(i, 0, nullptr), '\0');
-            physBall->GetElementStringValue(i, 0, (CKSTRING) ballName.c_str());
+            const int nameSize = physBall->GetElementStringValue(i, 0, nullptr, 0);
+            if (nameSize <= 1)
+                continue;
+            std::string ballName(nameSize, '\0');
+            physBall->GetElementStringValue(i, 0, ballName.data(), nameSize);
+            ballName.pop_back();
             CK3dObject *ballObj = m_BML->Get3dObjectByName(ballName.c_str());
             m_Balls.push_back(ballObj);
 
@@ -135,14 +139,14 @@ void DualBallControl::OnProcess() {
             mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Gameplay"));
             mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Sound"));
 
-            m_BML->AddTimer(2ul, [this]() {
+            m_BML->AddTimer(CKDWORD{2}, [this]() {
                 auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
                 ExecuteBB::Unphysicalize(curBall);
 
                 m_DynamicPos->ActivateInput(1);
                 m_DynamicPos->Activate();
 
-                m_BML->AddTimer(1ul, [this, curBall]() {
+                m_BML->AddTimer(CKDWORD{1}, [this, curBall]() {
                     ReleaseDualBall();
 
                     CK3dEntity *dualBall = m_DualBalls[m_DualBallType];
@@ -165,7 +169,7 @@ void DualBallControl::OnProcess() {
                     PhysicalizeDualBall();
                     m_SwitchProgress = 1.0f;
 
-                    m_BML->AddTimerLoop(1ul, [this, position, dualPosition, camPosition]() {
+                    m_BML->AddTimerLoop(CKDWORD{1}, [this, position, dualPosition, camPosition]() {
                         if (m_SwitchProgress < 0) {
                             m_CamTarget->SetPosition(&position);
                             m_InGameCam->SetPosition(&camPosition, m_CamPos);

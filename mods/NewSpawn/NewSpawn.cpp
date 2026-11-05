@@ -99,9 +99,12 @@ void NewSpawn::OnLoadObject(const char *filename, CKBOOL isMap, const char *mast
     if (!strcmp(filename, "3D Entities\\Balls.nmo")) {
         CKDataArray *physBall = m_BML->GetArrayByName("Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
+            const int nameSize = physBall->GetElementStringValue(i, 0, nullptr, 0);
+            if (nameSize <= 1)
+                continue;
             SpiritBall ball;
-            ball.name.resize(physBall->GetElementStringValue(i, 0, nullptr), '\0');
-            physBall->GetElementStringValue(i, 0, &ball.name[0]);
+            ball.name.resize(nameSize, '\0');
+            physBall->GetElementStringValue(i, 0, ball.name.data(), nameSize);
             ball.name.pop_back();
             ball.obj = m_BML->Get3dObjectByName(ball.name.c_str());
 
@@ -242,11 +245,11 @@ void NewSpawn::OnProcess() {
                 CKBehavior *sectorMgr = m_BML->GetScriptByName("Gameplay_SectorManager");
                 ctx->GetCurrentScene()->Activate(sectorMgr, true);
 
-                m_BML->AddTimerLoop(1ul, [this, set_sector, sectorMgr, ctx]() {
+                m_BML->AddTimerLoop(CKDWORD{1}, [this, set_sector, sectorMgr, ctx]() {
                     if (sectorMgr->IsActive())
                         return true;
 
-                    m_BML->AddTimer(2ul, [this, set_sector, ctx]() {
+                    m_BML->AddTimer(CKDWORD{2}, [this, set_sector, ctx]() {
                         CKBOOL active = false;
                         m_curLevel->SetElementValue(0, 4, &active);
 
@@ -264,7 +267,7 @@ void NewSpawn::OnProcess() {
                             CKMessageType msg = mm->AddMessageType("last Checkpoint reached");
                             mm->SendMessageSingle(msg, m_BML->GetGroupByName("All_Sound"));
                         } else {
-                            m_BML->AddTimer(2ul, [this, set_sector, ctx, flame]() {
+                            m_BML->AddTimer(CKDWORD{2}, [this, set_sector, ctx, flame]() {
                                 VxMatrix matrix;
                                 m_checkpoints->GetElementValue(set_sector - 1, 0, &matrix);
                                 flame->SetWorldMatrix(matrix);
@@ -285,8 +288,8 @@ void NewSpawn::OnProcess() {
         CKDataArray *ph = m_BML->GetArrayByName("PH");
         for (int i = 0; i < ph->GetRowCount(); i++) {
             CKBOOL set = true;
-            char name[100];
-            ph->GetElementStringValue(i, 1, name);
+            char name[100] = {};
+            ph->GetElementStringValue(i, 1, name, sizeof(name));
             if (!strcmp(name, "P_Extra_Point"))
                 ph->SetElementValue(i, 4, &set);
         }
@@ -308,7 +311,7 @@ void NewSpawn::OnProcess() {
         m_dynamicPos->Activate();
         auto current_ball = get_curBall();
 
-        m_BML->AddTimer(2ul, [this, current_ball, mm, ballDeact]() {
+        m_BML->AddTimer(CKDWORD{2}, [this, current_ball, mm, ballDeact]() {
             ExecuteBB::Unphysicalize(current_ball);
 
             auto matrix = cmdspawnp_ptr->get_matrix();

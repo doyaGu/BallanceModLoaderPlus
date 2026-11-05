@@ -24,7 +24,7 @@ public:
     void OnProcess() override;
     void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
 
-    void SetInactive() { m_BML->AddTimer(1ul, [this]() { m_IsActive = false; }); }
+    void SetInactive() { m_BML->AddTimer(CKDWORD{1}, [this]() { m_IsActive = false; }); }
 
 private:
     CKCamera *m_InGameCam = nullptr;

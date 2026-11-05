@@ -277,8 +277,11 @@ void DebugUtilities::ChangeBallSpeed(float times) {
             m_Force = ScriptHelper::FindFirstBB(ingame, "Ball Navigation")->GetInputParameter(0)->GetRealSource();
 
             for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                std::string ballName(m_PhysicsBall->GetElementStringValue(i, 0, nullptr), '\0');
-                m_PhysicsBall->GetElementStringValue(i, 0, &ballName[0]);
+                const int nameSize = m_PhysicsBall->GetElementStringValue(i, 0, nullptr, 0);
+                if (nameSize <= 1)
+                    continue;
+                std::string ballName(nameSize, '\0');
+                m_PhysicsBall->GetElementStringValue(i, 0, ballName.data(), nameSize);
                 ballName.pop_back();
                 float force;
                 m_PhysicsBall->GetElementValue(i, 7, &force);
@@ -300,8 +303,11 @@ void DebugUtilities::ChangeBallSpeed(float times) {
             }
 
             for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                std::string ballName(m_PhysicsBall->GetElementStringValue(i, 0, nullptr), '\0');
-                m_PhysicsBall->GetElementStringValue(i, 0, &ballName[0]);
+                const int nameSize = m_PhysicsBall->GetElementStringValue(i, 0, nullptr, 0);
+                if (nameSize <= 1)
+                    continue;
+                std::string ballName(nameSize, '\0');
+                m_PhysicsBall->GetElementStringValue(i, 0, ballName.data(), nameSize);
                 ballName.pop_back();
                 auto iter = m_Forces.find(ballName);
                 if (iter != m_Forces.end()) {
@@ -326,7 +332,7 @@ void DebugUtilities::ResetBall() {
     mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Gameplay"));
     mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Sound"));
 
-    m_BML->AddTimer(2ul, [this]() {
+    m_BML->AddTimer(CKDWORD{2}, [this]() {
         auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
         if (curBall) {
             ExecuteBB::Unphysicalize(curBall);
@@ -334,7 +340,7 @@ void DebugUtilities::ResetBall() {
             m_DynamicPos->ActivateInput(1);
             m_DynamicPos->Activate();
 
-            m_BML->AddTimer(1ul, [this, curBall]() {
+            m_BML->AddTimer(CKDWORD{1}, [this, curBall]() {
                 VxMatrix matrix;
                 m_CurLevel->GetElementValue(0, 3, &matrix);
                 curBall->SetWorldMatrix(matrix);
@@ -343,7 +349,7 @@ void DebugUtilities::ResetBall() {
                 m_BML->RestoreIC(camMF, true);
                 camMF->SetWorldMatrix(matrix);
 
-                m_BML->AddTimer(1ul, [this]() {
+                m_BML->AddTimer(CKDWORD{1}, [this]() {
                     m_DynamicPos->ActivateInput(0);
                     m_DynamicPos->Activate();
                     m_PhysicsNewBall->ActivateInput(0);
@@ -386,11 +392,11 @@ void DebugUtilities::SetSector(int sector) {
             CKBehavior *sectorMgr = m_BML->GetScriptByName("Gameplay_SectorManager");
             m_CKContext->GetCurrentScene()->Activate(sectorMgr, true);
 
-            m_BML->AddTimerLoop(1ul, [this, sector, checkPoints, sectorMgr]() {
+            m_BML->AddTimerLoop(CKDWORD{1}, [this, sector, checkPoints, sectorMgr]() {
                 if (sectorMgr->IsActive())
                     return true;
 
-                m_BML->AddTimer(2ul, [this, checkPoints, sector]() {
+                m_BML->AddTimer(CKDWORD{2}, [this, checkPoints, sector]() {
                     CKBOOL active = false;
                     m_CurLevel->SetElementValue(0, 4, &active);
 
@@ -410,7 +416,7 @@ void DebugUtilities::SetSector(int sector) {
 
                         ResetBall();
                     } else {
-                        m_BML->AddTimer(2ul, [this, sector, checkPoints, flame]() {
+                        m_BML->AddTimer(CKDWORD{2}, [this, sector, checkPoints, flame]() {
                             VxMatrix matrix;
                             checkPoints->GetElementValue(sector - 1, 0, &matrix);
                             flame->SetWorldMatrix(matrix);
@@ -535,7 +541,7 @@ void DebugUtilities::OnProcess_ResetBall() {
         mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Gameplay"));
         mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Sound"));
 
-        m_BML->AddTimer(2ul, [this]() {
+        m_BML->AddTimer(CKDWORD{2}, [this]() {
             auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
             if (curBall) {
                 ExecuteBB::Unphysicalize(curBall);
@@ -543,8 +549,8 @@ void DebugUtilities::OnProcess_ResetBall() {
                 CKDataArray *ph = m_BML->GetArrayByName("PH");
                 for (int i = 0; i < ph->GetRowCount(); i++) {
                     CKBOOL set = true;
-                    char name[100];
-                    ph->GetElementStringValue(i, 1, name);
+                    char name[100] = {};
+                    ph->GetElementStringValue(i, 1, name, sizeof(name));
                     if (!strcmp(name, "P_Extra_Point"))
                         ph->SetElementValue(i, 4, &set);
                 }
@@ -554,14 +560,14 @@ void DebugUtilities::OnProcess_ResetBall() {
                 CKBehavior *sectorMgr = m_BML->GetScriptByName("Gameplay_SectorManager");
                 m_BML->GetCKContext()->GetCurrentScene()->Activate(sectorMgr, true);
 
-                m_BML->AddTimerLoop(1ul, [this, curBall, sectorMgr]() {
+                m_BML->AddTimerLoop(CKDWORD{1}, [this, curBall, sectorMgr]() {
                     if (sectorMgr->IsActive())
                         return true;
 
                     m_DynamicPos->ActivateInput(1);
                     m_DynamicPos->Activate();
 
-                    m_BML->AddTimer(1ul, [this, curBall]() {
+                    m_BML->AddTimer(CKDWORD{1}, [this, curBall]() {
                         VxMatrix matrix;
                         m_CurLevel->GetElementValue(0, 3, &matrix);
                         curBall->SetWorldMatrix(matrix);
@@ -570,7 +576,7 @@ void DebugUtilities::OnProcess_ResetBall() {
                         m_BML->RestoreIC(camMF, true);
                         camMF->SetWorldMatrix(matrix);
 
-                        m_BML->AddTimer(1ul, [this]() {
+                        m_BML->AddTimer(CKDWORD{1}, [this]() {
                             m_DynamicPos->ActivateInput(0);
                             m_DynamicPos->Activate();
 

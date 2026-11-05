@@ -123,9 +123,12 @@ void SpiritTrail::OnLoadObject(const char *filename, CKBOOL isMap, const char *m
     if (!strcmp(filename, "3D Entities\\Balls.nmo")) {
         CKDataArray *physBall = m_BML->GetArrayByName("Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
+            const int nameSize = physBall->GetElementStringValue(i, 0, nullptr, 0);
+            if (nameSize <= 1)
+                continue;
             SpiritBall ball;
-            ball.name.resize(physBall->GetElementStringValue(i, 0, nullptr), '\0');
-            physBall->GetElementStringValue(i, 0, &ball.name[0]);
+            ball.name.resize(nameSize, '\0');
+            physBall->GetElementStringValue(i, 0, ball.name.data(), nameSize);
             ball.name.pop_back();
             ball.obj = m_BML->Get3dObjectByName(ball.name.c_str());
 

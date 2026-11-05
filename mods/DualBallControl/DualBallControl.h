@@ -29,7 +29,7 @@ public:
     void OnPostLoadLevel() override;
     void OnStartLevel() override {
         if (m_DualActive) {
-            m_BML->AddTimer(1ul, [this]() {
+            m_BML->AddTimer(CKDWORD{1}, [this]() {
                 ResetDualBallMatrix();
                 PhysicalizeDualBall();
             });
