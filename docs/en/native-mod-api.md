@@ -82,6 +82,19 @@ and deploy the Mod under `ModLoader/Mods`.
 | `ScriptHelper.h` | Find, connect, insert, and remove behaviour nodes and parameters |
 | `Guids.h`, `Guids/*.h` | Virtools and Ballance Building Block GUIDs |
 
+On `sdl`, BML's `InputHook` intercepts the existing input manager's query slots.
+Game Building Blocks and ordinary BML readers respect the counted device blocks;
+the `o`-prefixed readers call saved original methods. The engine owns input
+acquisition and physics scheduling. BML's `PostProcess` runs after the current
+built-in managers, then processes its Behavior safe point and Mod callbacks.
+While the loader is running, InputHook defers the scheduled input cleanup until
+those callbacks finish, preserving release edges, and then updates BML's input
+snapshots. Stopping the loader flushes pending cleanup and restores normal input
+scheduling. This runs inside `CKContext::Process()`, before it returns. No CK2,
+Building Block, or Player API changes are needed. If another hook takes over a
+slot, BML defers removal and keeps its saved functions alive until the later
+owner releases it.
+
 `BML::Result<T>` combines a BML status code with an optional value. Modules that
 need structured diagnostics can use `BML::Result<T, ModuleStatus>`; for example,
 `Behavior::Result<T>` supplies `Behavior::Status` without changing the shared
