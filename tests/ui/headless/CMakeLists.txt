@@ -17,7 +17,6 @@ target_include_directories(BuiAutomationTest PRIVATE
         ${BML_SOURCE_DIR}
         ${BML_SOURCE_DIR}/Utils
         ${IMGUI_SOURCE_DIR}
-        ${VIRTOOLS_SDK_INCLUDE_DIR}
         ${imgui_test_engine_SOURCE_DIR}
         ${IMGUI_TEST_ENGINE_DIR}
 )

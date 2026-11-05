@@ -16,17 +16,11 @@ add_bml_test(CommandBarThemeTest
         ${BML_SOURCE_DIR}/Console/CommandBarTheme.cpp
         ${BML_SOURCE_DIR}/UI/ColorCodec.cpp
 )
-target_include_directories(CommandBarThemeTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
-)
 
 add_bml_test(ModMenuSessionTest
         SOURCES
         ModMenuSessionTest.cpp
         ${BML_SOURCE_DIR}/ModMenu/ModMenuSession.cpp
-)
-target_include_directories(ModMenuSessionTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
 )
 
 add_bml_test(ModMenuPagesTest
@@ -46,19 +40,21 @@ add_bml_test(HUDAnimationTest
         HUDAnimationTest.cpp
         ${BML_SOURCE_DIR}/HUD/HUDAnimation.cpp
         DEPENDENCIES
-        VirtoolsSDK::CK2
-        VirtoolsSDK::VxMath
+        CK2
+        VxMath
 )
 target_include_directories(HUDAnimationTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
 
-add_bml_test(MapCatalogTest
-        SOURCES
-        MapCatalogTest.cpp
-        ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
-        ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
-        DEPENDENCIES
-        BMLUtils
-)
+if(WIN32)
+    add_bml_test(MapCatalogTest
+            SOURCES
+            MapCatalogTest.cpp
+            ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
+            ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
+            DEPENDENCIES
+            BMLUtils
+    )
+endif()
 
 add_bml_test(MapMenuStateTest
         SOURCES
@@ -72,7 +68,6 @@ add_bml_test(MapMenuStateTest
 )
 target_include_directories(MapMenuStateTest BEFORE PRIVATE
         ${IMGUI_SOURCE_DIR}
-        ${VIRTOOLS_SDK_INCLUDE_DIR}
 )
 
 add_bml_test(SRTimerTest
@@ -170,9 +165,6 @@ add_bml_test(FilterCommandsTest
         DEPENDENCIES
         BMLUtils
         onig
-)
-target_include_directories(FilterCommandsTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
 )
 
 add_bml_test(ShellHistoryTest

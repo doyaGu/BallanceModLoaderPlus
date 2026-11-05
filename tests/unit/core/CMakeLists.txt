@@ -2,23 +2,26 @@ add_bml_test(ResultTest
         SOURCES ResultTest.cpp
 )
 
-add_bml_test(ConfigTest
-        SOURCES
-        ConfigTest.cpp
-        ${BML_SOURCE_DIR}/Config/Config.cpp
-        ${BML_SOURCE_DIR}/Config/Config.h
-        ${BML_SOURCE_DIR}/Config/ConfigStore.cpp
-        ${BML_SOURCE_DIR}/Config/ConfigStore.h
-        ${BML_SOURCE_DIR}/Mods/BMLConfigMigration.cpp
-        ${BML_SOURCE_DIR}/Mods/BMLConfigMigration.h
-        DEPENDENCIES
-        BMLUtils
-        VirtoolsSDK::CK2
-        VirtoolsSDK::VxMath
-)
-target_compile_definitions(ConfigTest PRIVATE
-        BML_TEST_FONT_DIRECTORY="${PROJECT_SOURCE_DIR}/packaging/runtime/ModLoader/Fonts"
-)
+if(WIN32)
+    add_bml_test(ConfigTest
+            SOURCES
+            ConfigTest.cpp
+            ${BML_SOURCE_DIR}/Config/Config.cpp
+            ${BML_SOURCE_DIR}/Config/Config.h
+            ${BML_SOURCE_DIR}/Config/ConfigStore.cpp
+            ${BML_SOURCE_DIR}/Config/ConfigStore.h
+            ${BML_SOURCE_DIR}/Mods/BMLConfigMigration.cpp
+            ${BML_SOURCE_DIR}/Mods/BMLConfigMigration.h
+            DEPENDENCIES
+            BMLUtils
+            CK2
+            VxMath
+    )
+    target_compile_definitions(ConfigTest PRIVATE
+            BML_TEST_FONT_DIRECTORY="${PROJECT_SOURCE_DIR}/packaging/runtime/ModLoader/Fonts"
+    )
+
+endif()
 
 add_bml_test(NativeModRegistryTest
         SOURCES
@@ -32,7 +35,6 @@ add_bml_test(ObjectRefsTest
         ObjectRefsTest.cpp
         ${BML_SOURCE_DIR}/Api/ObjectRefs.cpp
 )
-target_include_directories(ObjectRefsTest PRIVATE "${VIRTOOLS_SDK_INCLUDE_DIR}")
 
 add_bml_test(DataShareTest
         SOURCES

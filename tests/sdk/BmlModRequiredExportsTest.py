@@ -83,6 +83,13 @@ def main() -> int:
             "cmake_minimum_required(VERSION 3.15)\n"
             "project(BmlModRequiredExports LANGUAGES CXX)\n"
             "add_library(BML::BML INTERFACE IMPORTED)\n"
+            'set(BML_SDK_COMPILER_ID "${CMAKE_CXX_COMPILER_ID}")\n'
+            'set(BML_SDK_COMPILER_VERSION "${CMAKE_CXX_COMPILER_VERSION}")\n'
+            'set(BML_SDK_POINTER_SIZE "${CMAKE_SIZEOF_VOID_P}")\n'
+            'set(BML_SDK_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")\n'
+            'set(BML_TARGET_ARCH "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}")\n'
+            'string(TOLOWER "${BML_TARGET_ARCH}" BML_TARGET_ARCH)\n'
+
             'set(BML_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")\n'
             f'include("{quote_cmake(source_root / "cmake" / "BMLMod.cmake")}")\n'
             "bml_add_mod(MissingEntry missing_entry.cpp)\n"

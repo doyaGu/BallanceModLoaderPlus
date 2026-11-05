@@ -9,12 +9,14 @@ add_bml_test(StringUtilsTest
         BMLUtils
 )
 
-add_bml_test(PathUtilsTest
-        SOURCES
-        PathUtilsTest.cpp
-        DEPENDENCIES
-        BMLUtils
-)
+if(WIN32)
+    add_bml_test(PathUtilsTest
+            SOURCES
+            PathUtilsTest.cpp
+            DEPENDENCIES
+            BMLUtils
+    )
+endif()
 
 add_bml_test(IniFileTest
         SOURCES
@@ -36,5 +38,5 @@ endif ()
 
 add_bml_test(TypeConvertTest
         SOURCES TypeConvertTest.cpp
-        DEPENDENCIES VirtoolsSDK::VxMath
+        DEPENDENCIES VxMath
 )

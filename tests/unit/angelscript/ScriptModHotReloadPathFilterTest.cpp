@@ -7,11 +7,11 @@ namespace Test {
 
 namespace {
 
-ScriptFileWatcherWin32::Event MakeEvent(const wchar_t *root,
+ScriptFileWatcher::Event MakeEvent(const wchar_t *root,
                                         const wchar_t *path,
-                                        DWORD action,
+                                        uint32_t action,
                                         bool recursive = true) {
-    ScriptFileWatcherWin32::Event event;
+    ScriptFileWatcher::Event event;
     event.Root = root ? root : L"";
     event.Path = path ? path : L"";
     event.Action = action;
@@ -19,8 +19,8 @@ ScriptFileWatcherWin32::Event MakeEvent(const wchar_t *root,
     return event;
 }
 
-ScriptFileWatcherWin32::Event MakeOverflow(const wchar_t *root, bool recursive = true) {
-    ScriptFileWatcherWin32::Event event;
+ScriptFileWatcher::Event MakeOverflow(const wchar_t *root, bool recursive = true) {
+    ScriptFileWatcher::Event event;
     event.Root = root ? root : L"";
     event.Path = event.Root;
     event.Overflow = true;
@@ -69,16 +69,16 @@ TEST(ScriptModHotReloadPathFilterTest, DirectoryRootLifecycleEventsAreRelevant) 
     const ScriptModEntry entry = MakeDirectoryEntry();
 
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", FILE_ACTION_REMOVED, false),
+        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", ScriptFileRemoved, false),
         entry));
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", FILE_ACTION_RENAMED_OLD_NAME, false),
+        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", ScriptFileRenamedOld, false),
         entry));
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", FILE_ACTION_RENAMED_NEW_NAME, false),
+        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", ScriptFileRenamedNew, false),
         entry));
     EXPECT_FALSE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", FILE_ACTION_MODIFIED, false),
+        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", ScriptFileModified, false),
         entry));
 }
 
@@ -86,13 +86,13 @@ TEST(ScriptModHotReloadPathFilterTest, DirectoryEntriesAndHelpersAreRelevant) {
     const ScriptModEntry entry = MakeDirectoryEntry();
 
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\Hello.mod.as", FILE_ACTION_MODIFIED),
+        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\Hello.mod.as", ScriptFileModified),
         entry));
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\scripts\\helper.as", FILE_ACTION_MODIFIED),
+        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\scripts\\helper.as", ScriptFileModified),
         entry));
     EXPECT_FALSE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\readme.txt", FILE_ACTION_MODIFIED),
+        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\readme.txt", ScriptFileModified),
         entry));
 }
 
@@ -100,16 +100,16 @@ TEST(ScriptModHotReloadPathFilterTest, SingleFileResourceRootLifecycleEventsAreR
     const ScriptModEntry entry = MakeSingleFileEntry();
 
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", FILE_ACTION_REMOVED, false),
+        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello", ScriptFileRemoved, false),
         entry));
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\helper.as", FILE_ACTION_MODIFIED),
+        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\helper.as", ScriptFileModified),
         entry));
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello.mod.as", FILE_ACTION_REMOVED, false),
+        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello.mod.as", ScriptFileRemoved, false),
         entry));
     EXPECT_FALSE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\asset.png", FILE_ACTION_MODIFIED),
+        MakeEvent(L"C:\\Mods\\Hello", L"C:\\Mods\\Hello\\asset.png", ScriptFileModified),
         entry));
 }
 
@@ -117,10 +117,10 @@ TEST(ScriptModHotReloadPathFilterTest, ZipPackagesOnlyReactToTheirArchive) {
     const ScriptModEntry entry = MakeZipEntry();
 
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello.zip", FILE_ACTION_MODIFIED, false),
+        MakeEvent(L"C:\\Mods", L"C:\\Mods\\Hello.zip", ScriptFileModified, false),
         entry));
     EXPECT_FALSE(ScriptHotReloadEventLooksRelevant(
-        MakeEvent(L"C:\\Mods\\Hello.reload.1", L"C:\\Mods\\Hello.reload.1\\helper.as", FILE_ACTION_MODIFIED),
+        MakeEvent(L"C:\\Mods\\Hello.reload.1", L"C:\\Mods\\Hello.reload.1\\helper.as", ScriptFileModified),
         entry));
 }
 
@@ -136,16 +136,16 @@ TEST(ScriptModHotReloadPathFilterTest, LibraryUseSourceFilesAreRelevant) {
     const ScriptLibraryUse library = MakeLibraryUse();
 
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevantToLibraryUse(
-        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0\\api.as", FILE_ACTION_MODIFIED),
+        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0\\api.as", ScriptFileModified),
         library));
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevantToLibraryUse(
-        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0", FILE_ACTION_REMOVED),
+        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0", ScriptFileRemoved),
         library));
     EXPECT_FALSE(ScriptHotReloadEventLooksRelevantToLibraryUse(
-        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0\\readme.md", FILE_ACTION_MODIFIED),
+        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0\\readme.md", ScriptFileModified),
         library));
     EXPECT_FALSE(ScriptHotReloadEventLooksRelevantToLibraryUse(
-        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.other\\1.2.0\\api.as", FILE_ACTION_MODIFIED),
+        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.other\\1.2.0\\api.as", ScriptFileModified),
         library));
 }
 

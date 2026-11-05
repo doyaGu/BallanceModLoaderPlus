@@ -26,5 +26,5 @@ add_bml_test(LegacyModVersionTest
         SOURCES
         LegacyModVersionTest.cpp
         DEPENDENCIES
-        VirtoolsSDK::CK2
+        CK2
 )

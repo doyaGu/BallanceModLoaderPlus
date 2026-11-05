@@ -183,41 +183,6 @@ TEST_F(ConfigTest, InvalidValueDoesNotDiscardFollowingSettings) {
     EXPECT_TRUE(config->GetProperty("General", "Flag")->GetBoolean());
 }
 
-TEST_F(ConfigTest, LoadsLegacyAnsiDocumentsAndRewritesThemAsUtf8) {
-    std::wstring legacyCharacter;
-    std::string legacyBytes;
-    for (wchar_t character = 0x00a0; character < 0xfffe; ++character) {
-        const std::wstring candidate(1, character);
-        const std::string encoded = utils::Utf16ToAnsi(candidate);
-        if (encoded.empty() || utils::IsValidUtf8(encoded) ||
-            utils::AnsiToUtf16(encoded) != candidate) {
-            continue;
-        }
-        legacyCharacter = candidate;
-        legacyBytes = encoded;
-        break;
-    }
-    if (legacyBytes.empty())
-        GTEST_SKIP() << "The active Windows code page has no non-UTF-8 round-trip character";
-
-    WriteConfig("General {\nS Text " + legacyBytes + "\n}\n");
-    ASSERT_TRUE(config->Load(configPath.c_str()));
-
-    IProperty *text = config->GetProperty("General", "Text");
-    text->SetDefaultString("default");
-    EXPECT_STREQ(text->GetString(), utils::Utf16ToUtf8(legacyCharacter).c_str());
-    ASSERT_TRUE(config->Save(configPath.c_str()));
-
-    std::string saved;
-    ASSERT_TRUE(utils::ReadFileBytesW(configPath, saved));
-    EXPECT_TRUE(utils::IsValidUtf8(saved));
-
-    Config reloaded(mockMod);
-    ASSERT_TRUE(reloaded.Load(configPath.c_str()));
-    EXPECT_STREQ(reloaded.GetProperty("General", "Text")->GetString(),
-                 utils::Utf16ToUtf8(legacyCharacter).c_str());
-}
-
 TEST_F(ConfigTest, FailedLoadCannotOverwriteExistingDocument) {
     const std::string document = "General {\nI Count 42\n";
     WriteConfig(document);

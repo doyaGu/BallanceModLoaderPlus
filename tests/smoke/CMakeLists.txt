@@ -1,4 +1,4 @@
-# Runtime smoke assets are installed by Validate-BMLBallance.ps1.
+# Build native smoke assets against the same SDL SDK as the Loader.
 
 include("${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake")
 

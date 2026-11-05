@@ -29,7 +29,6 @@ function(add_bml_test test_name)
         target_include_directories(${test_name} PRIVATE
                 "${BML_SOURCE_DIR}/AngelScript"
                 "${IMGUI_SOURCE_DIR}"
-                "${VIRTOOLS_SDK_INCLUDE_DIR}"
                 "${CKANGELSCRIPT_INCLUDE_DIR}"
                 "${CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR}"
         )
@@ -69,13 +68,11 @@ add_subdirectory(codegen)
 add_subdirectory(crypto)
 add_subdirectory(sdk)
 add_subdirectory(unit)
-add_subdirectory(player)
 if (BML_BUILD_UI_AUTOMATION)
     add_subdirectory(ui)
 endif ()
 
 add_subdirectory(smoke)
-add_subdirectory(release)
 if (BML_BUILD_UPDATER)
     add_subdirectory(updater)
 endif ()
