@@ -12,6 +12,10 @@
 
 #include "CryptoUtils.h"
 #include "UpdaterPaths.h"
+#include "UpdaterTarget.h"
+#include "UpdaterSdl.h"
+
+#define BML_UPDATER_PATH_KEY(value) ArchivePathKey(value)
 
 namespace bmlupdater {
     namespace {
@@ -40,15 +44,15 @@ namespace bmlupdater {
         std::unordered_set<std::string> ManagedFileSet(const UpdaterManifest &manifest) {
             std::unordered_set<std::string> set;
             for (const ManagedFile &file : manifest.managedFiles) {
-                set.insert(ToLowerAscii(file.path));
+                set.insert(BML_UPDATER_PATH_KEY(file.path));
             }
             return set;
         }
 
         const ManagedFile *FindManagedFile(const UpdaterManifest &manifest, std::string_view path) {
-            const std::string lower = ToLowerAscii(std::string(path));
+            const std::string lower = BML_UPDATER_PATH_KEY(std::string(path));
             for (const ManagedFile &file : manifest.managedFiles) {
-                if (ToLowerAscii(file.path) == lower) {
+                if (BML_UPDATER_PATH_KEY(file.path) == lower) {
                     return &file;
                 }
             }
@@ -79,12 +83,15 @@ namespace bmlupdater {
             const bool isDirectory = zip_entry_isdir(handle.zip) == 1;
             const uint64_t size = zip_entry_uncomp_size(handle.zip);
             std::string error;
-            auto normalized = NormalizeArchivePath(name ? name : "", error);
+            if (zip_entry_issymlink(handle.zip) == 1) { zip_entry_close(handle.zip); return Result::Failure("Symlinks are not allowed in update ZIPs"); }
+            std::string entryName = name ? name : "";
+            if (isDirectory && entryName.ends_with('/')) entryName.pop_back();
+            auto normalized = NormalizeArchivePath(entryName, error);
             zip_entry_close(handle.zip);
             if (!normalized) {
                 return Result::Failure("Invalid zip entry path: " + error);
             }
-            const std::string lower = ToLowerAscii(normalized->normalized);
+            const std::string lower = BML_UPDATER_PATH_KEY(normalized->normalized);
             if (!seen.insert(lower).second) {
                 return Result::Failure("Duplicate zip entry after normalization: " + normalized->normalized);
             }
@@ -105,15 +112,17 @@ namespace bmlupdater {
             if (IsDisallowedUpdaterPackagePath(entry.path)) {
                 return Result::Failure("Updater package contains forbidden path: " + entry.path);
             }
-            const std::string lower = ToLowerAscii(entry.path);
+            const std::string lower = BML_UPDATER_PATH_KEY(entry.path);
             if (!managed.contains(lower)) {
                 return Result::Failure("Zip entry is not listed in managedFiles: " + entry.path);
             }
+            const auto *file = FindManagedFile(manifest, entry.path);
+            if (!file || file->size != entry.size) return Result::Failure("ZIP size does not match manifest: " + entry.path);
             packageFiles.insert(lower);
         }
 
         for (const ManagedFile &file : manifest.managedFiles) {
-            if (!packageFiles.contains(ToLowerAscii(file.path))) {
+            if (!packageFiles.contains(BML_UPDATER_PATH_KEY(file.path))) {
                 return Result::Failure("managedFiles entry is missing from package: " + file.path);
             }
         }
@@ -156,7 +165,10 @@ namespace bmlupdater {
             const char *name = zip_entry_name(handle.zip);
             const bool isDirectory = zip_entry_isdir(handle.zip) == 1;
             std::string error;
-            auto normalized = NormalizeArchivePath(name ? name : "", error);
+            if (zip_entry_issymlink(handle.zip) == 1) { zip_entry_close(handle.zip); return Result::Failure("Symlinks are not allowed in update ZIPs"); }
+            std::string entryName = name ? name : "";
+            if (isDirectory && entryName.ends_with('/')) entryName.pop_back();
+            auto normalized = NormalizeArchivePath(entryName, error);
             if (!normalized) {
                 zip_entry_close(handle.zip);
                 return Result::Failure("Invalid zip entry path: " + error);
@@ -182,11 +194,12 @@ namespace bmlupdater {
             size_t bufferSize = 0;
             const ssize_t read = zip_entry_read(handle.zip, &buffer, &bufferSize);
             zip_entry_close(handle.zip);
-            if (read < 0 || !buffer) {
+            if (read < 0 || (!buffer && bufferSize != 0)) {
                 return Result::Failure("Unable to extract zip entry: " + normalized->normalized);
             }
 
             const auto freeBuffer = std::unique_ptr<void, decltype(&std::free)>(buffer, &std::free);
+            if (PathExists(outPath)) return Result::Failure("ZIP paths alias on this filesystem: " + normalized->normalized);
             if (!WriteBinaryFile(outPath, buffer, bufferSize, error)) {
                 return Result::Failure(error);
             }
@@ -204,6 +217,7 @@ namespace bmlupdater {
                 return Result::Failure("Staged file size does not match manifest: " + normalized->normalized);
             }
 
+            if (fileSize != manifestFile->size || !SetFileMode(outPath, manifestFile->mode, error)) return Result::Failure(error.empty() ? "Staged size mismatch" : error);
             stagedFiles.push_back({normalized->normalized, outPath, hash, fileSize});
             if (progress) {
                 progress("staged " + normalized->normalized);

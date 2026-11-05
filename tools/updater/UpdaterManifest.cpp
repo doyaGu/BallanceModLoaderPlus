@@ -6,6 +6,8 @@
 #include "CryptoUtils.h"
 #include "JsonUtils.h"
 #include "UpdaterPaths.h"
+#include "UpdaterTarget.h"
+#include <set>
 
 namespace bmlupdater {
     namespace {
@@ -28,7 +30,7 @@ namespace bmlupdater {
                 error = std::string("Missing or invalid string member: ") + name;
                 return false;
             }
-            out = yyjson_get_str(value);
+            out.assign(yyjson_get_str(value), yyjson_get_len(value));
             return true;
         }
 
@@ -83,6 +85,18 @@ namespace bmlupdater {
                 if (sizeValue && yyjson_is_uint(sizeValue)) {
                     file.size = yyjson_get_uint(sizeValue);
                 }
+                auto *mode = yyjson_obj_get(item, "mode");
+                if (!yyjson_is_uint(sizeValue) || !yyjson_is_uint(mode) ||
+                    (yyjson_get_uint(mode) != 0644 && yyjson_get_uint(mode) != 0755)) {
+                    error = "SDL managedFiles require size and mode (0644 or 0755)";
+                    return false;
+                }
+                file.mode = static_cast<uint32_t>(yyjson_get_uint(mode));
+                for (const auto &existing : manifest.managedFiles) {
+                    if (ArchivePathKey(existing.path) == ArchivePathKey(file.path)) {
+                        error = "Duplicate managed path: " + file.path; return false;
+                    }
+                }
                 manifest.managedFiles.push_back(std::move(file));
             }
             if (manifest.managedFiles.empty()) {
@@ -109,10 +123,10 @@ namespace bmlupdater {
                     error = std::string(name) + " entries must be strings";
                     return false;
                 }
-                std::string path = yyjson_get_str(item);
-                if (!ValidateManagedPath(path, error)) {
-                    return false;
-                }
+                std::string path(yyjson_get_str(item), yyjson_get_len(item));
+                auto normalized = NormalizeArchivePath(path, error);
+                if (!normalized) return false;
+                path = normalized->normalized;
                 out.push_back(std::move(path));
             }
             return true;
@@ -133,7 +147,7 @@ namespace bmlupdater {
             yyjson_arr_foreach(array, idx, max, item) {
                 RemoveFile file;
                 if (yyjson_is_str(item)) {
-                    file.path = yyjson_get_str(item);
+                    file.path.assign(yyjson_get_str(item), yyjson_get_len(item));
                 } else if (yyjson_is_obj(item)) {
                     if (!ReadStringMember(item, "path", file.path, error)) {
                         return false;
@@ -174,13 +188,20 @@ namespace bmlupdater {
         }
 
         manifest.schemaVersion = static_cast<int>(utils::JsonGetInt(root, "schemaVersion", 0));
-        if (manifest.schemaVersion != 1) {
+        if (manifest.schemaVersion != 2)
+        {
             return Result::Failure("Unsupported manifest schemaVersion");
         }
         if (!ReadStringMember(root, "version", manifest.version, error)) {
             return Result::Failure(error);
         }
 
+        if (!IsValidUpdateVersion(manifest.version)) return Result::Failure("Invalid update version");
+        auto targetResult = ReadUpdateTarget(yyjson_obj_get(root, "target"), manifest.target);
+        if (!targetResult.ok) return targetResult;
+        if (!ReadStringMember(root, "packageType", manifest.packageType, error) ||
+            manifest.packageType != (manifest.target.hostLinkage == "static" ? "player-runtime" : "bml-runtime"))
+            return Result::Failure("Package type does not match host linkage");
         yyjson_val *package = yyjson_obj_get(root, "package");
         if (!yyjson_is_obj(package)) {
             return Result::Failure("Missing package object");
@@ -190,6 +211,8 @@ namespace bmlupdater {
             return Result::Failure(error);
         }
 
+        if (!NormalizeArchivePath(manifest.packageFileName, error) || manifest.packageFileName.find('/') != std::string::npos)
+            return Result::Failure("Invalid package file name");
         const std::string lowerName = ToLowerAscii(manifest.packageFileName);
         if (!lowerName.starts_with(ToLowerAscii(std::string(kPackageNamePrefix))) ||
             !lowerName.ends_with(ToLowerAscii(std::string(kPackageNameSuffix)))) {
@@ -200,6 +223,33 @@ namespace bmlupdater {
             !ParseStringArray(root, "preserve", manifest.preserve, error) ||
             !ParseRemoveFiles(root, manifest, error)) {
             return Result::Failure(error);
+        }
+        std::set<std::string> managed;
+        bool hasAbi = false, hasRuntime = false;
+        const std::string prefix = manifest.target.platform == "windows" ? "" : "lib";
+        const std::string suffix = manifest.target.platform == "windows" ? ".dll" : manifest.target.platform == "macos" ? ".dylib" : ".so";
+        const std::string player = manifest.target.platform == "windows" ? "Player.exe" : "Player";
+        auto preserved = [&](const std::string &path) {
+            for (const auto &entry : manifest.preserve) {
+                const auto value = ArchivePathKey(entry), name = ArchivePathKey(path);
+                if (name == value || name.starts_with(value + "/")) return true;
+            }
+            return false;
+        };
+        for (const auto &file : manifest.managedFiles) {
+            if (!IsAllowedUpdatePath(file.path, manifest.target) || preserved(file.path))
+                return Result::Failure("Managed path is outside this package's ownership or is preserved: " + file.path);
+            managed.insert(ArchivePathKey(file.path));
+            hasAbi |= file.path == "ModLoader/BML.abi.json";
+            hasRuntime |= manifest.target.hostLinkage == "static" ? (file.path == player || file.path == "Bin/" + player) :
+                file.path == "Managers/" + prefix + "BMLPlus" + suffix;
+        }
+        if (!hasAbi || !hasRuntime) return Result::Failure("Update must include its ABI descriptor and matching Loader/Player");
+        std::set<std::string> removed;
+        for (const auto &file : manifest.removeFiles) {
+            if (!IsAllowedUpdatePath(file.path, manifest.target) || preserved(file.path) ||
+                managed.contains(ArchivePathKey(file.path)) || !removed.insert(ArchivePathKey(file.path)).second)
+                return Result::Failure("Conflicting, preserved or unowned removeFiles path: " + file.path);
         }
         return Result::Success();
     }
@@ -253,6 +303,8 @@ namespace bmlupdater {
         doc.SetRoot(root);
         IgnoreJsonResult(doc.AddInt(root, "schemaVersion", manifest.schemaVersion));
         IgnoreJsonResult(doc.AddString(root, "version", manifest.version));
+        WriteUpdateTarget(doc, root, manifest.target);
+        IgnoreJsonResult(doc.AddString(root, "packageType", manifest.packageType));
 
         yyjson_mut_val *package = doc.CreateObject();
         IgnoreJsonResult(doc.AddString(package, "fileName", manifest.packageFileName));
@@ -265,6 +317,7 @@ namespace bmlupdater {
             IgnoreJsonResult(doc.AddString(item, "path", file.path));
             IgnoreJsonResult(doc.AddString(item, "sha256", file.sha256));
             IgnoreJsonResult(doc.AddInt(item, "size", static_cast<int64_t>(file.size)));
+            IgnoreJsonResult(doc.AddInt(item, "mode", file.mode));
             IgnoreJsonResult(doc.AddValue(managed, item));
         }
         IgnoreJsonResult(doc.AddValue(root, "managedFiles", managed));
