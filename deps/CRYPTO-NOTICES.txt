@@ -1,0 +1,19 @@
+BML+ cryptographic primitives
+
+p256-m, by Manuel Pegourie-Gonnard, Apache-2.0.
+https://github.com/mpg/p256-m
+Revision: 44af59e0cff5d3b1d653bc333814077ef830e1bd
+Only p256-m.c and p256-m.h are compiled. The ARM assembly selector is restricted
+to 32-bit ARM; 64-bit hosts use upstream portable C. OS entropy is supplied by
+BCryptGenRandom, SecRandomCopyBytes, or getrandom. See p256-m/UPSTREAM.json.
+
+RHash SHA-256, copyright 2010 Aleksey Kravchenko, permissive license.
+https://github.com/rhash/RHash
+Revision: 7b2801dfcae0a2afd970d69e822edd49132538b5
+Only the SHA-256 implementation and required byte-order helpers are compiled.
+No full RHash library, other hash algorithms, plugin loader, or TLS backend is
+built. See rhash-sha256/UPSTREAM.json and the license shipped alongside this file.
+
+Windows uses system BCrypt for runtime hashing and verification. macOS uses
+system CommonCrypto and Security. Linux uses the static primitives above.
+Private-key signing is confined to publisher tooling and test executables.

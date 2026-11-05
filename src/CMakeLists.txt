@@ -898,6 +898,13 @@ install(FILES
         DESTINATION "."
 )
 
+install(FILES "${PROJECT_SOURCE_DIR}/deps/p256-m/apache-2.0.txt"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/licenses" RENAME p256-m.txt)
+install(FILES "${PROJECT_SOURCE_DIR}/deps/rhash-sha256/COPYING"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/licenses" RENAME rhash-sha256.txt)
+install(FILES "${PROJECT_SOURCE_DIR}/deps/CRYPTO-NOTICES.txt"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/licenses")
+
 install(FILES
         "${PROJECT_SOURCE_DIR}/templates/README.md"
         DESTINATION "templates"

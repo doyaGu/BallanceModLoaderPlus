@@ -1,0 +1,17 @@
+{
+  "upstream": "https://github.com/mpg/p256-m",
+  "revision": "44af59e0cff5d3b1d653bc333814077ef830e1bd",
+  "files": {
+    "p256-m.c": "eb6d2e9f970d584ea91c5cd9a38afd287f1488eb280dc01f8e3ebeab4c3a94c9",
+    "p256-m.h": "63b619b90fe87e063d11a97983768a1eea671d102859a9f4ca5dd591186e3b9b",
+    "LICENSE": "bfcfd64ca6b14f1e253bfeeee44d6e203d6bdf4736b89e5b2cc015f79e2a11b6",
+    "apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  "patches": [
+    {
+      "file": "p256-m.c",
+      "purpose": "Restrict ARM32 inline assembly to __arm__; ARM64 uses the portable C implementation",
+      "patched_sha256": "aa1ab78cb9418cc5a4b1aca861b9b3b8591dce674d4b00b9edc3d012dd844a4d"
+    }
+  ]
+}

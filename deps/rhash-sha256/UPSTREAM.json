@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/rhash/RHash",
+  "revision": "7b2801dfcae0a2afd970d69e822edd49132538b5",
+  "files": {
+    "sha256.c": "84cd28e0321a1ba75bc9f1ca51d9fd315c38ab4a41b62648e1119f09483ba7fe",
+    "sha256.h": "de4aa89cdcbc9c183bb60985721c556693c9b67bd7036a706704633e48e724ef",
+    "byte_order.c": "a5d54007ca9d74340764ae9ce102c50f475f74ff497fcbe4091d802d56f3df38",
+    "byte_order.h": "b2288db86155bbbc9c8853188c1eea2ea417ebeb50fef25927ffc709dcb84887",
+    "ustd.h": "d0499fb04b23eb2f449621db0df09bd4b3d35299960b0f701bc4ccff623a24ac",
+    "COPYING": "953e55838353335148c90b5a38a4894292680b1d4c37228ffddddbf18ce54bf5"
+  }
+}
