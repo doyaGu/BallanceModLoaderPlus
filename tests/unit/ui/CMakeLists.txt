@@ -28,9 +28,12 @@ add_bml_test(ColorCodecTest
 add_bml_test(ImeStateTest
         SOURCES
         ImeStateTest.cpp
-        ${BML_SOURCE_DIR}/UI/Ime/NativePresentation.cpp
         ${BML_SOURCE_DIR}/UI/Ime/State.cpp
 )
+
+if(WIN32)
+    target_sources(ImeStateTest PRIVATE ${BML_SOURCE_DIR}/UI/Ime/NativePresentation.cpp)
+endif()
 
 add_bml_test(ImePresentationTest
         SOURCES
@@ -70,7 +73,6 @@ add_bml_test(BuiMenuTest
 )
 target_include_directories(BuiMenuTest BEFORE PRIVATE
         ${IMGUI_SOURCE_DIR}
-        ${VIRTOOLS_SDK_INCLUDE_DIR}
 )
 target_compile_definitions(BuiMenuTest PRIVATE IMGUI_EXPORT)
 
@@ -95,7 +97,7 @@ add_bml_test(LegacyTextFontTest
         LegacyTextFontTest.cpp
         ${BML_SOURCE_DIR}/UI/Gui/LegacyTextFont.cpp
         DEPENDENCIES
-        VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        CK2 VxMath
 )
 
 add_bml_test(AnsiTextTest
