@@ -30,7 +30,7 @@ The Loader requests owner and registration cleanup through Context operations;
 it does not access Context-owned registries or locks directly.
 
 **In-tree Native Mods** — Optional Mod Projects under `mods/`. They build against
-the BML target in the same Win32 workspace but remain separate runtime DLLs;
+the BML target in the SDL workspace but remain separate runtime modules;
 building the loader alone does not build or install them.
 
 **Developer Workflow** — The SDK Python interface for creating or adopting a
@@ -73,8 +73,7 @@ contain no user Config files; a successful startup generates the complete curren
 settings. A missing file permits creation, while a failed read or invalid document
 blocks persistence until a valid reload. Saves flush a unique sibling file before
 atomic publication, keeping failed writes away from the live file.
-Legacy files in the active Windows ANSI code page are imported once and rewritten
-as UTF-8.
+Configuration files use UTF-8 across supported platforms.
 Automatic save requests are consumed before metadata or I/O work. A failed save
 keeps unsaved values but waits for a new change or explicit flush instead of
 retrying every frame.
@@ -153,12 +152,8 @@ orchestration. Menu selection stays separate from loading, file staging, and
 Behavior edits.
 
 **Custom Map Staging** — The private Custom Maps Module that owns prepared map
-files and their directories. It first stages under the game `Bin` directory and
-passes CK an ASCII relative path, falling back to an exactly representable ACP
-or 8.3 path only when necessary. It tracks pending, loaded, and retained files;
-the load orchestrator reports the outcome without receiving cleanup ownership.
-A successful map remains staged until that level ends, while failed deletion is
-kept for a later cleanup attempt.
+files and their directories. It stages files using SDL filesystem operations and
+passes UTF-8 paths to CK2. It retains failed cleanup for a later attempt.
 
 **Custom Map Level Loader** — The private Custom Maps Module that reads the
 values to be changed, installs a Behavior Plan, and restores the previous values
@@ -170,18 +165,13 @@ script bindings.
 **Built-in Game Event Hooks** — Adapters from retail script and menu transitions
 to Mod lifecycle and gameplay callbacks. They do not own tweak state.
 
-**Engine Hook Lifecycle** — Private transactional ownership of Input, Physics,
-Object Load, and render interception for one Runtime Context. Process-wide
-patches record that Context as their owner, reject a second owner, and route
-callbacks through the recorded Context. Virtual-table changes validate the
-whole batch before installation and restore only slots still owned by BML+.
-Optional render and physics scheduling features degrade independently; failed
-teardown retains the Runtime Context rather than releasing code behind a live
-callback. Process bootstrap installs the CK behavior-prototype interception
-outside `DllMain`'s loader-lock initialization path.
-Widescreen correction hooks `UpdateProjection` and updates the native matrix
-cache, device projection, viewport, and 2D roots together. Option changes
-invalidate the owned Context's projection; no per-frame device override is used.
+**Engine Hook Lifecycle** — Private transactional ownership of SDL input,
+Object Load, Physicalize, and render interception for one Runtime Context.
+Input virtual-table changes preserve original methods and restore only slots
+still owned by BML+. Object Load and Physicalize use CK Behavior prototypes.
+Physics keeps the engine's default scheduling; Mod callbacks follow the built-in
+managers. Render skipping and widescreen adjustment use CK2 render options.
+Failed teardown retains the Runtime Context while callbacks still refer to it.
 
 **Runtime Diagnostics** — `Updater.exe doctor` reports installation and process
 requirements before BML+ loads. The private `bml system` command reports live
@@ -212,11 +202,9 @@ tests/ui/player/journeys/. Its descriptor selects the same source for the build
 and runner. The user-facing action must pass through visible UI or native input;
 fixtures may prepare data but cannot perform the action being tested.
 
-**Overlay Platform Input** — The Win32 window adapter for ImGui's platform
-backend. It observes the Player window tree and IME messages, but submits
-ordinary input only from the backend window. Its narrow queue hook recovers
-IME-consumed Tab navigation without rewriting or consuming the original
-message. The ImGui Win32 backend alone submits committed characters.
+**Overlay Platform Input** — The SDL event observer for ImGui's platform
+backend. It copies deferred text payloads and submits them on the game thread.
+Player owns event polling; observing input preserves the game's event stream.
 
 **Script ImGui Ownership** — Tracks ImGui interaction created by each Script
 Mod call. Script window ids include the owning Mod identity while preserving
@@ -230,10 +218,11 @@ before the next Mod runs. Native and Script callbacks share the same recovery
 mechanism; recovery contains a failed Mod without replacing normal balanced
 window lifecycle.
 
-**IME Runtime** — Mirrors composition through IMM32 and obtains modern
-candidate state and control through a UI-less TSF sink. It publishes immutable,
-revisioned frames and clears stale state on composition, focus, or lifecycle
-changes. It never draws ImGui or submits text.
+**IME Runtime** — Mirrors platform composition state and publishes immutable,
+revisioned frames. The Windows implementation retains IMM32 composition and a
+UI-less TSF candidate sink; the SDL implementation mirrors text-editing events.
+Composition clears on commit, cancellation, focus loss, or detachment. Native
+IME state remains separate from presentation and character submission.
 
 **IME Presentation** — Draws one in-game composition and candidate rail in
 windowed and true exclusive full-screen modes. Console may reserve the row
@@ -263,7 +252,7 @@ fonts. See [font domain decision](docs/adr/0001-separate-font-domains.md).
 
 ## Behavior and engine access
 
-**Behavior Authoring** — The public Win32 C function table and its C++ and
+**Behavior Authoring** — The public C function table and its C++ and
 AngelScript authoring layers. An owner-scoped Session configures Blocks from
 registered Prototypes, runs them as Calls, Tasks, or Instances, and builds
 graph Edits for Patches and Plans. Sessions survive world reset; world-bound

@@ -5,14 +5,10 @@
 This is a standalone provider project. It builds a native Mod and publishes its
 shared header as the CMake package `BMLExampleValue`.
 
-```powershell
-$generator = "Visual Studio 17 2022"
-cmake -S . -B build -G $generator -A Win32 `
-  -DBML_DIR="<BML-SDK>/lib/cmake/BML" `
-  -DVIRTOOLS_SDK_PATH="<Virtools-SDK-2.1>" `
-  -DCMAKE_INSTALL_PREFIX="<Provider-Package>"
-cmake --build build --config RelWithDebInfo
-cmake --install build --config RelWithDebInfo
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/sdk -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+cmake --install build --config Release --prefix /path/to/game/ModLoader
 ```
 
 The installed package contains:

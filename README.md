@@ -4,7 +4,7 @@ English | [简体中文](README_zh-CN.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue.svg)]()
 
 BML+ is a mod loader for [BallancePlayer](https://github.com/doyaGu/BallancePlayer).
 It loads native and AngelScript mods and supplies the lifecycle, configuration,
@@ -27,26 +27,12 @@ only when changing BML+ or its in-tree mods.
 
 ## Install and verify
 
-1. Download `BMLPlus-<version>.zip` from
-   [Releases](https://github.com/doyaGu/BallanceModLoaderPlus/releases).
-2. Extract the complete archive into the Ballance installation directory.
-3. Confirm that `BuildingBlocks/BMLPlus.dll` exists. A script-capable release
-   also contains `BuildingBlocks/AngelScript.dll`.
-4. Start `Bin/Player.exe`.
-5. Confirm that the BML+ version appears at the top of the game window, then
-   check `ModLoader/ModLoader.log` for load errors.
+Use the matching Ballanced SDL runtime package and BML+ runtime/SDK for your
+platform, architecture, compiler ABI and build configuration. Install the Loader
+in `Managers`; keep Player's CK2, VxMath and SDL libraries. See the
+[installation guide](docs/en/using-bml.md). The original Windows engine backend
+is maintained outside this `sdl` branch. Static-host integration remains pending.
 
-`BMLPlus-Update-<version>.zip` is an updater payload, not a manual installation
-package. Use the full `BMLPlus-<version>.zip` archive for manual installation
-and recovery.
-
-`BMLPlus-Mods-<version>.zip` is optional. Extract it into the Ballance root to
-install all in-tree Mods, or take individual packages from its
-`ModLoader/Mods/` directory. The main installer includes only the three
-default utility Mods.
-
-Press `/` in game to open the command bar. The `bml` command prints the loader
-version and loaded mods.
 
 ## Project links
 

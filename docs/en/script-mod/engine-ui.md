@@ -102,7 +102,7 @@ Definitions are value objects. Keep asset paths mod-relative.
 
 ## Behavior authoring
 
-`BML::Behavior` is the Script Mod projection of the same Win32 authoring model
+`BML::Behavior` is the Script Mod projection of the same Behavior authoring model
 used by Native Mods. There is no Session to open: `Use`, `Find`, `Describe`,
 `Inspect`, `Edit`, and `CreateScript` bind to the current Script Mod and retire
 before unload or hot reload. A Script Patch currently targets one Graph and a

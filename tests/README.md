@@ -1,23 +1,15 @@
-# Tests
+# SDL tests
 
-`tests/CMakeLists.txt` only sets up the shared GoogleTest target helper and
-connects the suites. Keep a test's source, fixtures, and target declaration in
-the suite that owns it:
+- `tests/sdk`: standalone SDK/CLI contracts; installed SDK consumer when engine
+  development packages are available.
+- `tests/ck2/sdl`: real CK2 and input component tests with SDL dummy video.
+- `tests/platform`: filesystem, module identity, ABI and script watching tests.
+- `tests/updater/sdl`: updater/doctor unit and signed transaction tests.
+- `tests/player/sdl`: installed-SDK Mod in disposable real Player runtimes.
+- `tests/ui`: shared headless ImGui and automation-session infrastructure.
 
-- `unit/<domain>/`: in-process C++ tests of one implementation domain.
-- `abi/`: C and C++ compile checks, public-header checks, and DLL
-  export baselines.
-- `codegen/`: generated-interface fixtures and code generator checks.
-- `sdk/`: CMake, installed-package, and Native Mod consumer checks.
-- `player/`: probe Mods and scripts for real Player acceptance runs; see
-  [Player tests](player/README.md).
-- `ui/`: headless ImGui checks and visible Player UI automation; see
-  [UI automation](ui/README.md).
-- `smoke/`: installed-game and script smoke assets.
-- `updater/`: updater tests.
-
-Keep existing CTest names when moving tests. The Player acceptance scripts also
-rely on selected artifact directories under `build-dev/tests/`; preserve those
-paths explicitly when changing a suite's CMake directory. The `player/` probe
-flow and `ui/` checkpoint Session have different interfaces and remain
-separate.
+`cmake -S tests/sdk -B build/sdk-tests` followed by
+`ctest --test-dir build/sdk-tests --output-on-failure` runs without an engine.
+Native Player tests require a desktop and matching game data. Record unexecuted
+platforms as unverified. The retail Windows backend tests belong to the other
+release branch.

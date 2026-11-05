@@ -32,94 +32,37 @@ the loader does not publish a generated IMC interface.
 
 ## Development environment
 
-BML+ is a 32-bit Windows plugin for Virtools CK2. A core development build
-requires:
+This branch targets Ballanced's SDL CK2 and VxMath, using C++20, CMake 3.25+
+and Python 3.10+. Initialize the BML+ submodules. Use the matching Ballanced
+`sdl` sources or installed CK2/VxMath and SDL3 development packages. AngelScript
+support additionally uses the matching CKAngelScript source tree or SDK.
 
-- Visual Studio 2019 or newer with the C++ toolchain;
-- CMake 3.14 or newer;
-- Python 3.10 or newer;
-- Virtools SDK 2.1;
-- CKAngelScript API 6 or newer when script support is enabled; and
-- all Git submodules from this repository.
-
-Clone the repository with its submodules:
-
-```powershell
-git clone --recursive https://github.com/doyaGu/BallanceModLoaderPlus.git
-cd BallanceModLoaderPlus
-```
-
-If the repository was cloned without `--recursive`, initialize the submodules
-before configuring:
-
-```powershell
+```sh
 git submodule update --init --recursive
+cmake -S . -B build-sdl -DBML_RUNTIME=sdl -DBML_BUILD_MODS=ON \
+  -DBALLANCED_ROOT=/path/to/Ballanced
+cmake --build build-sdl --config Release
+cmake --install build-sdl --config Release --prefix /path/to/sdk
 ```
 
-## Configure, build, and test
-
-Use an x86/Win32 build. A 64-bit binary cannot be loaded by Ballance Player and
-cannot link against the Virtools SDK libraries.
-
-The command below targets a multi-configuration Visual Studio generator. If
-Visual Studio is not the default, pass `-G` with the installed generator name.
-For Ninja, enter an x86 Native Tools environment, omit `-A Win32`, add
-`-DCMAKE_BUILD_TYPE=Debug`, and use a separate build directory configured with
-`-DCMAKE_BUILD_TYPE=Release` for the release build.
-
-```powershell
-cmake -S . -B build-dev `
-  -A Win32 `
-  -DVIRTOOLS_SDK_PATH="<path-to-Virtools-SDK-2.1>" `
-  -DCKANGELSCRIPT_ROOT="<path-to-CKAngelScript>" `
-  -DBML_ENABLE_ANGELSCRIPT=ON `
-  -DBML_BUILD_TESTS=ON `
-  -DCMAKE_INSTALL_PREFIX="<absolute-path-to-install-dev>"
-
-cmake --build build-dev --config Debug --target BML BehaviorExecutionTest
-ctest --test-dir build-dev -C Debug -R '^BehaviorExecutionTest$' --output-on-failure
-```
-
-The Debug DLL is written to `build-dev/bin/Debug/BMLPlus.dll` with Visual
-Studio. A single-configuration generator writes it to
-`build-dev/bin/BMLPlus.dll`. Build Release before packaging:
-
-```powershell
-cmake --build build-dev --config Release --target BML
-```
-
-To verify the installed SDK layout and its consumer helpers:
-
-```powershell
-cmake --build build-dev --config Release --target install
-```
-
-The CMake install contains `BMLConfig.cmake`, public headers, mod CMake helpers,
-the IMC generator, and public Mod-author documentation. The release packager
-adds the native/script templates and editor API files to that installed tree.
+Use a separate build directory for each compiler, architecture and configuration.
+`BML_ENABLE_ANGELSCRIPT=OFF` builds the script-free variant. Dynamic hosts are
+implemented; static-host integration is pending.
 
 ## Runtime validation
 
-Choose the smallest test that observes the changed behavior:
-
-| Change | Validation |
-| --- | --- |
-| Pure logic, parsing, or public headers | Build and run the affected unit or ABI test |
-| Loader startup, installation, or native/script loading | Run the focused smoke script under `tests/smoke/` |
-| CK lifecycle, Behavior execution, physics, or gameplay | Run the affected real-Player runner under `tests/player/` |
-| Visible ImGui, input, or menu navigation | Run the affected scenario described in `tests/ui/README.md` |
-
-Real-Player tests modify a game installation during the run and restore it
-afterward. Close Player before starting one. Do not run every visible UI case
-for an unrelated change; the runner commands and probe ownership are in
-`tests/player/README.md` and `tests/ui/README.md`.
+Run the SDL component tests in `tests/ck2/sdl`,
+installed-SDK Player regression in `tests/player/sdl`, and the focused
+SDK tests in `tests/sdk`. Updater tests live in `tests/updater/sdl`.
+Component tests use SDL dummy video; native Player tests require a working
+desktop and matching game assets. Unexecuted targets remain unverified.
 
 ## Find the owner of a change
 
 | Change | Owner | Minimum focused validation |
 | --- | --- | --- |
-| Plugin entry, Hook Block registration, or engine interception | `src/BML.cpp`, `src/Behavior/Blocks/HookBlock.*`, `src/Hooks/` | Win32 build plus the affected real Player scenario |
-| Building Block configuration, execution, or graph insertion | `src/Behavior/Block.*`, `src/Behavior/Runtime.*`, `include/BML/Behavior/Blocks/`, `src/Api/ExecuteBB.cpp` | Focused Behavior and ABI tests, Win32 build, and affected Player test |
+| Plugin entry, Hook Block registration, or engine interception | `src/BML.cpp`, `src/Behavior/Blocks/HookBlock.*`, `src/Hooks/` | SDL build plus the affected real Player scenario |
+| Building Block configuration, execution, or graph insertion | `src/Behavior/Block.*`, `src/Behavior/Runtime.*`, `include/BML/Behavior/Blocks/`, `src/Api/ExecuteBB.cpp` | Focused Behavior and ABI tests, SDL build, and affected Player test |
 | CK lifecycle and callback timing | `src/Loader/ModManager.*` | Focused lifecycle tests and Player smoke test |
 | Mod discovery, dependency order, callback dispatch, or Mod shutdown | `src/Loader/ModLoader.*` | Relevant loader/dependency tests and native/script smoke coverage |
 | IBML services or CK runtime state | `src/Loader/ModContext.*` | Relevant service tests and native/script smoke coverage |
@@ -130,7 +73,7 @@ for an unrelated change; the runner commands and probe ownership are in
 | Opaque CK object references at the C/script seam | `include/BML/Types.h`, `src/Api/ObjectRefs.*` | `ObjectRefsTest`, C ABI/IMC compile tests, and a Player lifecycle test when deletion timing changes |
 | IMC code generator or its sample interface | `tools/imc_codegen.py`, `tests/codegen/imc/` | Generator check, compatibility test, and review of interface, lock, and header together |
 | Script discovery, binding, execution, or reload | `src/AngelScript/`, `docs/api/` | Focused script tests, API stub check, and script-capable Player smoke test |
-| Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/Package-BMLRelease.ps1` | Both strict MkDocs builds, CMake install, and SDK stage validation |
+| Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/package_sdl_update.py` | Both strict MkDocs builds, CMake install, and SDK stage validation |
 
 Start with `ModManager.cpp`, then read the declarations in `IMod.h`,
 `IMessageReceiver.h`, `IBML.h`, `ModLoader.h`, and `ModContext.h`. Follow
@@ -212,7 +155,7 @@ in separate commits when they can be reviewed independently.
 
 ## Before submitting a change
 
-- Build Debug and Release as Win32.
+- Build Debug and Release for the selected SDL platform.
 - Run the relevant focused tests and the full test suite.
 - Run the appropriate real Player validation for runtime-facing changes. A
   smoke run is sufficient only when process integration is the behavior under

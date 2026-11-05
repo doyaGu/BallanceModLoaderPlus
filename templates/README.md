@@ -8,8 +8,12 @@ use the default template and ignore the specialized templates.
 - `native-mod-template`: basic CMake-based native `.bmodp` Mod template.
 
 Create it with `scripts/bml.py new native yourname.my-mod`. Generated projects contain
-`bml.mod.json`; their own `bml run` configures Win32, builds, deploys, starts
+`bml.mod.json`; their own `bml run` configures the SDK's runtime, builds, deploys, starts
 Player, and selects that Mod's log lines.
+
+Use `./bml` on Linux/macOS and `bml.cmd` on Windows. Projects need matching
+SDK/compiler and CK2/VxMath/SDL3 packages. `pack` puts the `.bmodp` and ABI
+descriptor together in a ZIP.
 
 ## Specialized native Mods
 

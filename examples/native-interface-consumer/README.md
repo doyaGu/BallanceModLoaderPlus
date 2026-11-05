@@ -5,14 +5,10 @@
 This project is intentionally independent from the provider source tree. Build
 it against the installed BML SDK and the provider's installed interface package:
 
-```powershell
-$generator = "Visual Studio 17 2022"
-cmake -S . -B build -G $generator -A Win32 `
-  -DBML_DIR="<BML-SDK>/lib/cmake/BML" `
-  -DBMLExampleValue_DIR="<Provider-Package>/lib/cmake/BMLExampleValue" `
-  -DVIRTOOLS_SDK_PATH="<Virtools-SDK-2.1>" `
-  -DCMAKE_INSTALL_PREFIX="<Ballance>/ModLoader"
-cmake --build build --config RelWithDebInfo --target install
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/sdk -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+cmake --install build --config Release --prefix /path/to/game/ModLoader
 ```
 
 `BMLExampleValue::Interface` contains headers and a dependency on the BML SDK.

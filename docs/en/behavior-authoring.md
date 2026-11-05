@@ -1,6 +1,6 @@
 # Behavior authoring
 
-`BML/Behavior.hpp` is the stable C++ interface for Native Mods that use Virtools Behaviors. It can create and execute registered Building Blocks whose parameters use supported value domains, create a top-level Script graph, and inspect or edit Behavior graphs. `BML/Behavior.h` exposes the stable `bml.behavior 1.0` C seam; C++ authors normally do not need its wire DTOs. This interface supports Win32 Native C++ Mods only and does not support Win64.
+`BML/Behavior.hpp` is the stable C++ interface for Native Mods that use Virtools Behaviors. It can create and execute registered Building Blocks whose parameters use supported value domains, create a top-level Script graph, and inspect or edit Behavior graphs. `BML/Behavior.h` exposes the stable `bml.behavior 1.0` C seam; C++ authors normally do not need its wire DTOs. Native Mods must use the SDL SDK matching the host platform and ABI.
 
 The domain types in `BML::Behavior` and the 1.0 C function table in `BML/Behavior.h` are public APIs. `BML::Behavior::Detail` contains the header-only implementation; Mods must not name it directly, and it carries no source-compatibility guarantee.
 

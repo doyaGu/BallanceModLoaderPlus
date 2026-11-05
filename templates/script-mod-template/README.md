@@ -57,3 +57,6 @@ This mod proves discovery, compilation, lifecycle entry, logging, and
 in-game output. After it works, use the SDK's `examples/script-mod` directory
 for focused command/config, input/UI, and game-state examples. Copy only the
 example you want to run.
+On Linux/macOS use `./bml` for the same workflow commands; Windows uses `bml.cmd`.
+SDL game installations must include the matching BML and CKAngelScript shared
+plugins and `ModLoader/BML.abi.json`. Pass the game root with `--ballance-root`.
