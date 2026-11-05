@@ -14,7 +14,11 @@ HookLifecycle::~HookLifecycle() {
 }
 
 bool HookLifecycle::Attach(CKInputManager *inputManager) {
-    if (m_Input || OwnsObjectLoad() || OwnsPhysicsPostProcess() || OwnsPhysicalize())
+    if (m_Input || OwnsObjectLoad()
+#if !BML_RUNTIME_SDL
+        || OwnsPhysicsPostProcess()
+#endif
+        || OwnsPhysicalize())
         return m_Input && InputHookOwnsActive(*m_Input) && OwnsObjectLoad() && OwnsPhysicalize();
 
     auto input = std::make_unique<InputHook>(inputManager);
@@ -61,7 +65,9 @@ HookSnapshot HookLifecycle::Inspect() const {
     HookSnapshot snapshot;
     snapshot.Input = m_Input && InputHookOwnsActive(*m_Input);
     snapshot.ObjectLoad = OwnsObjectLoad();
+#if !BML_RUNTIME_SDL
     snapshot.PhysicsPostProcess = OwnsPhysicsPostProcess();
+#endif
     snapshot.Physicalize = OwnsPhysicalize();
     snapshot.RenderSkip = m_Render && m_Render->IsAttached();
     return snapshot;

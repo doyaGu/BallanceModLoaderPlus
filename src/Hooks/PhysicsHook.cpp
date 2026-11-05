@@ -2,13 +2,16 @@
 
 #include "Hooks/BehaviorFunctionPatch.h"
 #include "Hooks/HookLifecycle.h"
+#if !BML_RUNTIME_SDL
 #include "Hooks/VTablePatch.h"
 #include "Hooks/VTables.h"
+#endif
 #include "HookUtils.h"
 #include "Loader/ModContext.h"
 
 namespace {
 
+#if !BML_RUNTIME_SDL
 class CKIpionManager : public CKBaseManager {
 public:
     virtual void Reset() = 0;
@@ -84,6 +87,7 @@ struct PhysicsHook {
 CKIpionManager *PhysicsHook::s_IpionManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKIpionManager) PhysicsHook::s_VTable = {};
 VTablePatch PhysicsHook::s_Patch;
+#endif
 
 #define FIXED 0
 #define FRICTION 1
@@ -204,29 +208,39 @@ int HookLifecycle::Physicalize(const CKBehaviorContext &behcontext) {
     return original(behcontext);
 }
 
+#if !BML_RUNTIME_SDL
 void HookLifecycle::RunPhysicsPostProcess() {
     if (s_PhysicsOwner != this || !PhysicsHook::IsInstalled())
         return;
     PhysicsHook::PostProcessOriginal();
 }
+#endif
 
 bool HookLifecycle::AttachPhysicalize() {
     if (s_PhysicsOwner)
         return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
-    if (g_PhysicalizePatch.IsInstalled() || PhysicsHook::IsInstalled())
+    if (g_PhysicalizePatch.IsInstalled()
+#if !BML_RUNTIME_SDL
+        || PhysicsHook::IsInstalled()
+#endif
+    )
         return false;
 
     s_PhysicsOwner = this;
+#if !BML_RUNTIME_SDL
     auto *im = (CKIpionManager *) m_Context.GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
     if (!PhysicsHook::Hook(im))
         utils::OutputDebugA("BML physics scheduling redirection is unavailable; CK2 will keep its normal order\n");
+#endif
 
     const BehaviorFunctionPatchResult result = g_PhysicalizePatch.Install(
         PHYSICS_RT_PHYSICALIZE, &HookLifecycle::Physicalize);
     if (!result) {
         utils::OutputDebugA("BML Physicalize hook installation failed: %s\n",
                             BehaviorFunctionPatch::GetErrorName(result.Code));
+#if !BML_RUNTIME_SDL
         if (PhysicsHook::Unhook())
+#endif
             s_PhysicsOwner = nullptr;
         return false;
     }
@@ -244,15 +258,23 @@ bool HookLifecycle::DetachPhysicalize() {
         behaviorRemoved = true;
     }
 
+#if BML_RUNTIME_SDL
+    if (behaviorRemoved)
+        s_PhysicsOwner = nullptr;
+    return behaviorRemoved;
+#else
     const bool physicsRemoved = PhysicsHook::Unhook();
     if (physicsRemoved && behaviorRemoved)
         s_PhysicsOwner = nullptr;
     return physicsRemoved && behaviorRemoved;
+#endif
 }
 
+#if !BML_RUNTIME_SDL
 bool HookLifecycle::OwnsPhysicsPostProcess() const {
     return s_PhysicsOwner == this && PhysicsHook::IsInstalled();
 }
+#endif
 
 bool HookLifecycle::OwnsPhysicalize() const {
     return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();

@@ -1,10 +1,10 @@
 // Reads input for a Mod, and blocks the game from reading it. Get the single
 // instance from IBML::GetInputManager; do not construct one.
 //
-// Most functions forward to the game's CKInputManager. The win32 backend
-// intercepts its vtable, while the SDL backend uses CKInputManager::Block and
-// explicit iRaw queries. A Mod can take the keyboard while a text field is
-// focused and the game's ordinary input queries see nothing.
+// Most functions forward to the game's CKInputManager. Both backends intercept
+// its input-query vtable entries so game Building Blocks respect device blocks.
+// SDL acquisition remains scheduled by the engine. While the loader is running,
+// its InputHook defers scheduled PostProcess cleanup until after Mod callbacks.
 //
 // Three groups of functions behave differently while a device is blocked:
 //   - the plain readers below return an empty result, because they go through the
@@ -33,15 +33,12 @@
 
 #include "BML/Defines.h"
 
-#ifndef CK_INPUT_DEVICE_DEFINED
-#define CK_INPUT_DEVICE_DEFINED
 typedef enum CK_INPUT_DEVICE {
     CK_INPUT_DEVICE_KEYBOARD = 0,
     CK_INPUT_DEVICE_MOUSE    = 1,
     CK_INPUT_DEVICE_JOYSTICK = 2,
     CK_INPUT_DEVICE_COUNT    = 3,
 } CK_INPUT_DEVICE;
-#endif
 
 class BML_EXPORT InputHook {
 public:
@@ -107,7 +104,7 @@ public:
 
     // The window-relative position as of the end of the previous frame, which is
     // what to subtract from GetMousePosition to get this frame's movement. The
-    // loader takes that snapshot through the patched slots, so while the mouse is
+    // loader takes that snapshot through the filtered reader, so while the mouse is
     // blocked it stops being refreshed and keeps reporting where the cursor was
     // when the block went up.
     void GetLastMousePosition(Vx2DVector &position);
@@ -139,7 +136,7 @@ public:
     void SetSystemCursor(VXCURSOR_POINTER cursor);
 
     // The o prefix stands for original: these bypass the device block, using
-    // the saved slots on win32 and iRaw TRUE on SDL.
+    // the saved slots on win32 and the native input manager on SDL.
     // They exist for the code that puts a block up, which still has to read the
     // input it took: the command bar reads the keyboard this way while everything
     // else sees nothing. Do not use them to work around another Mod's block.
@@ -198,8 +195,8 @@ public:
     uint64_t AcquireBlock(uint32_t deviceMask);
     void ReleaseBlock(uint64_t token);
 
-    // Loader-internal. On win32 it runs the manager's deferred per-frame work;
-    // on SDL the engine schedules that work. It takes the snapshots that IsKeyPressed,
+    // Loader-internal. Completes the manager's deferred per-frame work and takes
+    // the snapshots that IsKeyPressed,
     // IsKeyReleased, and GetLastMousePosition compare against. The loader calls
     // it once per frame, at the very end of the frame, after every Mod callback
     // has run. A Mod that calls it advances those snapshots early and makes the
@@ -212,6 +209,9 @@ private:
     friend void SetOverlayCursorVisible(bool visible);
     friend bool InputHookOwnsActive(const InputHook &hook);
     friend bool DetachInputHook(InputHook &hook);
+#if BML_RUNTIME_SDL
+    friend void DeferInputPostProcess(InputHook &hook, bool defer);
+#endif
     static bool IsValid();
     struct Impl;
     Impl *m_Impl;

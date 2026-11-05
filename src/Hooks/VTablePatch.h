@@ -63,6 +63,9 @@ private:
     void **m_VTable = nullptr;
     void *m_Region = nullptr;
     std::size_t m_RegionSize = 0;
+#if BML_RUNTIME_SDL
+    int m_OriginalProtection = 0;
+#endif
     std::vector<Entry> m_Entries;
 };
 

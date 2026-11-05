@@ -107,7 +107,9 @@ public:
 
     bool IsInited() const { return m_Inited; }
     HookSnapshot InspectHooks() const;
+#if !BML_RUNTIME_SDL
     void RunPhysicsPostProcess();
+#endif
     bool AttachRenderHook(CKRenderContext *renderContext);
     bool DetachRenderHook();
     bool Init();

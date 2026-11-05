@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
 project(BMLSdlEngineTests LANGUAGES C CXX)
 
-# These component tests can run while the complete SDL Loader is gated on
-# integration work. They do not load BML or modify a Player installation.
+# These component tests exercise the SDL adapters without loading BML or
+# modifying a Player installation.
 get_filename_component(BML_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 set(BALLANCED_ROOT "${BML_ROOT}/../Ballanced" CACHE PATH "Ballanced source tree")
 set(CKRE_BUILD_TESTS ON CACHE BOOL "" FORCE)
@@ -81,7 +81,11 @@ set(SDLINPUT_INSTALL OFF CACHE BOOL "" FORCE)
 add_subdirectory("${BALLANCED_ROOT}/Source/Managers/SdlInputManager" input)
 add_executable(BMLSdlInputTest
     SdlInputTest.cpp
-    "${BML_ROOT}/src/Hooks/InputHookSdl.cpp")
+    SdlVTablePatchTest.cpp
+    "${BML_ROOT}/src/Hooks/InputHookSdl.cpp"
+    "${BML_ROOT}/src/Hooks/VTablePatchSdl.cpp"
+    "${BALLANCED_ROOT}/Source/BuildingBlocks/Controllers/Behaviors/KeyEvent.cpp"
+    "${BALLANCED_ROOT}/Source/BuildingBlocks/Controllers/Behaviors/GetMouseRelativePosition.cpp")
 target_compile_features(BMLSdlInputTest PRIVATE cxx_std_20)
 target_include_directories(BMLSdlInputTest PRIVATE
     "${BML_ROOT}/include" "${BML_ROOT}/src"

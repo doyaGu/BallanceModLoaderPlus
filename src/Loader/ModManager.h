@@ -47,7 +47,12 @@ public:
         if (Function == CKMANAGER_FUNC_PreProcess)
             return -10000; // Low Priority
         else if (Function == CKMANAGER_FUNC_PostProcess)
+#if BML_RUNTIME_SDL
+            // The engine's built-in managers, including physics, use priority 0.
+            return DEFAULT_MANAGERFUNC_PRIORITY - 1;
+#else
             return 10000; // High Priority
+#endif
         else
             return 0;
     }

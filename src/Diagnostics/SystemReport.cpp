@@ -501,7 +501,11 @@ namespace BML::Diagnostics {
                 std::ostringstream line;
                 line << "Hooks: input=" << YesNo(hooks.Input)
                      << ", object-load=" << YesNo(hooks.ObjectLoad)
+#if BML_RUNTIME_SDL
+                     << ", physics-order=default"
+#else
                      << ", physics-order=" << YesNo(hooks.PhysicsPostProcess)
+#endif
                      << ", physicalize=" << YesNo(hooks.Physicalize)
                      << ", render-skip=" << YesNo(hooks.RenderSkip);
                 m_Lines.push_back(line.str());

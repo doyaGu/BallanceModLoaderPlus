@@ -2,26 +2,66 @@
 
 #include <cassert>
 #include <cstring>
+#include <cstdio>
 #include <unordered_map>
 
 #include <SDL3/SDL_mouse.h>
 
 #include "Hooks/HookLifecycle.h"
 #include "Hooks/InputCursor.h"
+#include "Hooks/InputVTable.h"
+#include "Hooks/VTablePatch.h"
 
-// The engine owns acquisition and filtering. BML owns the counted requests and
-// the previous-frame snapshots used by its existing public edge queries.
+// The engine owns acquisition and schedules PostProcess. While BML is running,
+// defer input cleanup until its later PostProcess has finished Mod callbacks.
 struct InputHook::Impl {
     bool OwnsHook = false;
+
+    struct OriginalMethods {
+        decltype(&CKInputManager::PostProcess) PostProcess{};
+        decltype(&CKInputManager::IsKeyDown) IsKeyDown{};
+        decltype(&CKInputManager::IsKeyUp) IsKeyUp{};
+        decltype(&CKInputManager::IsKeyToggled) IsKeyToggled{};
+        decltype(&CKInputManager::GetKeyboardState) GetKeyboardState{};
+        decltype(&CKInputManager::GetNumberOfKeyInBuffer) GetNumberOfKeyInBuffer{};
+        decltype(&CKInputManager::GetKeyFromBuffer) GetKeyFromBuffer{};
+        decltype(&CKInputManager::IsMouseButtonDown) IsMouseButtonDown{};
+        decltype(&CKInputManager::IsMouseClicked) IsMouseClicked{};
+        decltype(&CKInputManager::IsMouseToggled) IsMouseToggled{};
+        decltype(&CKInputManager::GetMouseButtonsState) GetMouseButtonsState{};
+        decltype(&CKInputManager::GetMousePosition) GetMousePosition{};
+        decltype(&CKInputManager::GetMouseRelativePosition) GetMouseRelativePosition{};
+        decltype(&CKInputManager::GetJoystickPosition) GetJoystickPosition{};
+        decltype(&CKInputManager::GetJoystickRotation) GetJoystickRotation{};
+        decltype(&CKInputManager::GetJoystickSliders) GetJoystickSliders{};
+        decltype(&CKInputManager::GetJoystickPointOfViewAngle) GetJoystickPointOfViewAngle{};
+        decltype(&CKInputManager::GetJoystickButtonsState) GetJoystickButtonsState{};
+        decltype(&CKInputManager::IsJoystickButtonDown) IsJoystickButtonDown{};
+        decltype(&CKInputManager::ShowCursor) ShowCursor{};
+        decltype(&CKInputManager::OnCKEnd) OnCKEnd{};
+    };
+    static OriginalMethods s_Original;
+    static inline VTablePatch s_Patch;
+
 
     static inline CKInputManager *s_InputManager = nullptr;
     static inline Impl *s_Owner = nullptr;
     static inline unsigned char s_LastKeyboardState[256] = {};
+    static inline unsigned char s_EmptyKeyboardState[256] = {};
     static inline Vx2DVector s_LastMousePosition;
     static inline int s_BlockedDevice[CK_INPUT_DEVICE_COUNT] = {};
     static inline uint64_t s_NextBlockToken = 1;
     static inline std::unordered_map<uint64_t, uint32_t> s_BlockTokens;
     static inline bool s_OverlayVisible = false;
+    static inline bool s_DeferPostProcess = false;
+    static inline bool s_PostProcessPending = false;
+
+    static void CompletePostProcess() {
+        if (!s_PostProcessPending)
+            return;
+        s_PostProcessPending = false;
+        (s_InputManager->*s_Original.PostProcess)();
+    }
 
     static int IsBlocked(CK_INPUT_DEVICE device) {
         return device >= 0 && device < CK_INPUT_DEVICE_COUNT ? s_BlockedDevice[device] : 0;
@@ -30,21 +70,21 @@ struct InputHook::Impl {
     static void Block(CK_INPUT_DEVICE device) {
         if (!s_InputManager || device < 0 || device >= CK_INPUT_DEVICE_COUNT)
             return;
-        if (s_BlockedDevice[device]++ == 0)
-            s_InputManager->Block(TRUE, device);
+        ++s_BlockedDevice[device];
     }
 
     static void Unblock(CK_INPUT_DEVICE device) {
         if (!s_InputManager || device < 0 || device >= CK_INPUT_DEVICE_COUNT ||
             s_BlockedDevice[device] == 0)
             return;
-        if (--s_BlockedDevice[device] == 0)
-            s_InputManager->Block(FALSE, device);
+        --s_BlockedDevice[device];
     }
 
     static void ApplyCursorVisibility() {
         // Keep the engine's latest game request intact. SDL's platform backend
         // and this overlay request affect only the displayed system cursor.
+        if (!s_InputManager)
+            return;
         if (s_OverlayVisible || s_InputManager->GetCursorVisibility())
             SDL_ShowCursor();
         else
@@ -121,78 +161,352 @@ struct InputHook::Impl {
     }
 
     static void ResetSessionState() {
+        s_DeferPostProcess = false;
+        s_PostProcessPending = false;
         ReleaseAllBlocks();
-        for (int device = 0; device < CK_INPUT_DEVICE_COUNT; ++device) {
-            if (s_BlockedDevice[device] && s_InputManager)
-                s_InputManager->Block(FALSE, static_cast<CK_INPUT_DEVICE>(device));
-        }
         memset(s_BlockedDevice, 0, sizeof(s_BlockedDevice));
         memset(s_LastKeyboardState, 0, sizeof(s_LastKeyboardState));
         s_LastMousePosition = {};
     }
 
     static CKBOOL IsKeyDownOriginal(CKDWORD iKey, CKDWORD *oStamp) {
-        return s_InputManager->IsKeyDown(iKey, oStamp, TRUE);
+        return (s_InputManager->*s_Original.IsKeyDown)(iKey, oStamp);
     }
 
     static CKBOOL IsKeyUpOriginal(CKDWORD iKey) {
-        return s_InputManager->IsKeyUp(iKey, TRUE);
+        return (s_InputManager->*s_Original.IsKeyUp)(iKey);
     }
 
     static CKBOOL IsKeyToggledOriginal(CKDWORD iKey, CKDWORD *oStamp) {
-        return s_InputManager->IsKeyToggled(iKey, oStamp, TRUE);
+        return (s_InputManager->*s_Original.IsKeyToggled)(iKey, oStamp);
     }
 
     static unsigned char * GetKeyboardStateOriginal() {
-        return s_InputManager->GetKeyboardState(TRUE);
+        return (s_InputManager->*s_Original.GetKeyboardState)();
     }
 
     static int GetNumberOfKeyInBufferOriginal() {
-        return s_InputManager->GetNumberOfKeyInBuffer(TRUE);
+        return (s_InputManager->*s_Original.GetNumberOfKeyInBuffer)();
     }
 
     static int GetKeyFromBufferOriginal(int i, CKDWORD &oKey, CKDWORD *oTimeStamp) {
-        return s_InputManager->GetKeyFromBuffer(i, oKey, oTimeStamp, TRUE);
+        return (s_InputManager->*s_Original.GetKeyFromBuffer)(i, oKey, oTimeStamp);
     }
 
     static CKBOOL IsMouseButtonDownOriginal(CK_MOUSEBUTTON iButton) {
-        return s_InputManager->IsMouseButtonDown(iButton, TRUE);
+        return (s_InputManager->*s_Original.IsMouseButtonDown)(iButton);
     }
 
     static CKBOOL IsMouseClickedOriginal(CK_MOUSEBUTTON iButton) {
-        return s_InputManager->IsMouseClicked(iButton, TRUE);
+        return (s_InputManager->*s_Original.IsMouseClicked)(iButton);
     }
 
     static CKBOOL IsMouseToggledOriginal(CK_MOUSEBUTTON iButton) {
-        return s_InputManager->IsMouseToggled(iButton, TRUE);
+        return (s_InputManager->*s_Original.IsMouseToggled)(iButton);
     }
 
     static void GetMouseButtonsStateOriginal(CKBYTE oStates[4]) {
-        s_InputManager->GetMouseButtonsState(oStates, TRUE);
+        (s_InputManager->*s_Original.GetMouseButtonsState)(oStates);
+    }
+
+    static bool IsOwnedTarget(CKInputManager *manager) {
+        return s_Owner && manager == s_InputManager;
+    }
+
+    CKERROR PostProcessHook() {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && s_DeferPostProcess) {
+            s_PostProcessPending = true;
+            return CK_OK;
+        }
+        return (manager->*s_Original.PostProcess)();
+    }
+
+    CKBOOL IsKeyDownHook(CKDWORD key, CKDWORD *stamp) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD)) {
+            return FALSE;
+        }
+        return (manager->*s_Original.IsKeyDown)(key, stamp);
+    }
+
+    CKBOOL IsKeyUpHook(CKDWORD key) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD)) {
+            return FALSE;
+        }
+        return (manager->*s_Original.IsKeyUp)(key);
+    }
+
+    CKBOOL IsKeyToggledHook(CKDWORD key, CKDWORD *stamp) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD)) {
+            return FALSE;
+        }
+        return (manager->*s_Original.IsKeyToggled)(key, stamp);
+    }
+
+    unsigned char * GetKeyboardStateHook() {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD)) {
+            memset(s_EmptyKeyboardState, KS_IDLE, sizeof(s_EmptyKeyboardState));
+            return s_EmptyKeyboardState;
+        }
+        return (manager->*s_Original.GetKeyboardState)();
+    }
+
+    int GetNumberOfKeyInBufferHook() {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD)) {
+            return 0;
+        }
+        return (manager->*s_Original.GetNumberOfKeyInBuffer)();
+    }
+
+    int GetKeyFromBufferHook(int index, CKDWORD &key, CKDWORD *stamp) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_KEYBOARD)) {
+            return NO_KEY;
+        }
+        return (manager->*s_Original.GetKeyFromBuffer)(index, key, stamp);
+    }
+
+    CKBOOL IsMouseButtonDownHook(CK_MOUSEBUTTON button) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE)) {
+            return FALSE;
+        }
+        return (manager->*s_Original.IsMouseButtonDown)(button);
+    }
+
+    CKBOOL IsMouseClickedHook(CK_MOUSEBUTTON button) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE)) {
+            return FALSE;
+        }
+        return (manager->*s_Original.IsMouseClicked)(button);
+    }
+
+    CKBOOL IsMouseToggledHook(CK_MOUSEBUTTON button) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE)) {
+            return FALSE;
+        }
+        return (manager->*s_Original.IsMouseToggled)(button);
+    }
+
+    void GetMouseButtonsStateHook(CKBYTE states[4]) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE)) {
+            memset(states, KS_IDLE, 4);
+            return;
+        }
+        return (manager->*s_Original.GetMouseButtonsState)(states);
+    }
+
+    void GetMousePositionHook(Vx2DVector &position, CKBOOL absolute) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE)) {
+            return;
+        }
+        return (manager->*s_Original.GetMousePosition)(position, absolute);
+    }
+
+    void GetMouseRelativePositionHook(VxVector &position) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_MOUSE)) {
+            return;
+        }
+        return (manager->*s_Original.GetMouseRelativePosition)(position);
+    }
+
+    void GetJoystickPositionHook(int joystick, VxVector *position) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK)) {
+            return;
+        }
+        return (manager->*s_Original.GetJoystickPosition)(joystick, position);
+    }
+
+    void GetJoystickRotationHook(int joystick, VxVector *rotation) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK)) {
+            return;
+        }
+        return (manager->*s_Original.GetJoystickRotation)(joystick, rotation);
+    }
+
+    void GetJoystickSlidersHook(int joystick, Vx2DVector *position) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK)) {
+            return;
+        }
+        return (manager->*s_Original.GetJoystickSliders)(joystick, position);
+    }
+
+    void GetJoystickPointOfViewAngleHook(int joystick, float *angle) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK)) {
+            return;
+        }
+        return (manager->*s_Original.GetJoystickPointOfViewAngle)(joystick, angle);
+    }
+
+    CKDWORD GetJoystickButtonsStateHook(int joystick) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK)) {
+            return 0;
+        }
+        return (manager->*s_Original.GetJoystickButtonsState)(joystick);
+    }
+
+    CKBOOL IsJoystickButtonDownHook(int joystick, int button) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        if (IsOwnedTarget(manager) && IsBlocked(CK_INPUT_DEVICE_JOYSTICK)) {
+            return FALSE;
+        }
+        return (manager->*s_Original.IsJoystickButtonDown)(joystick, button);
+    }
+
+    void ShowCursorHook(CKBOOL show) {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        (manager->*s_Original.ShowCursor)(show);
+        if (IsOwnedTarget(manager) && s_OverlayVisible)
+            ApplyCursorVisibility();
+    }
+
+    CKERROR OnCKEndHook() {
+        auto *manager = reinterpret_cast<CKInputManager *>(this);
+        const auto original = s_Original.OnCKEnd;
+        const bool detached = !IsOwnedTarget(manager) || Unhook(s_Owner);
+        if (!detached) {
+            // Context destruction proceeds even if a manager reports an error.
+            // Keep callable originals/ownership for a later detach retry, but
+            // never retain the soon-to-be-deleted input instance as a target.
+            ResetSessionState();
+            SetOverlayCursorVisible(false);
+            s_InputManager = nullptr;
+        }
+        const CKERROR result = (manager->*original)();
+        return detached ? result : CKERR_INVALIDOPERATION;
+    }
+
+    static bool Hook(CKInputManager *input, Impl *owner) {
+        if (!input || s_Owner || s_Patch.IsInstalled())
+            return false;
+#define INPUT_PATCH(Name) {BML_INPUT_SLOT(Name), InputVTable::Address(&Impl::Name##Hook)}
+        const VTablePatch::Request requests[] = {
+            INPUT_PATCH(PostProcess),
+            INPUT_PATCH(IsKeyDown),
+            INPUT_PATCH(IsKeyUp),
+            INPUT_PATCH(IsKeyToggled),
+            INPUT_PATCH(GetKeyboardState),
+            INPUT_PATCH(GetNumberOfKeyInBuffer),
+            INPUT_PATCH(GetKeyFromBuffer),
+            INPUT_PATCH(IsMouseButtonDown),
+            INPUT_PATCH(IsMouseClicked),
+            INPUT_PATCH(IsMouseToggled),
+            INPUT_PATCH(GetMouseButtonsState),
+            INPUT_PATCH(GetMousePosition),
+            INPUT_PATCH(GetMouseRelativePosition),
+            INPUT_PATCH(GetJoystickPosition),
+            INPUT_PATCH(GetJoystickRotation),
+            INPUT_PATCH(GetJoystickSliders),
+            INPUT_PATCH(GetJoystickPointOfViewAngle),
+            INPUT_PATCH(GetJoystickButtonsState),
+            INPUT_PATCH(IsJoystickButtonDown),
+            INPUT_PATCH(ShowCursor),
+            INPUT_PATCH(OnCKEnd),
+        };
+#undef INPUT_PATCH
+        const auto result = s_Patch.Install(input, requests, sizeof(requests) / sizeof(requests[0]));
+        if (!result) {
+            std::fprintf(stderr, "BML SDL InputHook install failed: %s (entry %zu)\n",
+                         VTablePatch::GetErrorName(result.Code), result.EntryIndex);
+            return false;
+        }
+#define INPUT_ORIGINAL(Name) \
+        s_Original.Name = InputVTable::Direct<decltype(s_Original.Name)>(s_Patch.GetOriginal(BML_INPUT_SLOT(Name)))
+        INPUT_ORIGINAL(PostProcess);
+        INPUT_ORIGINAL(IsKeyDown);
+        INPUT_ORIGINAL(IsKeyUp);
+        INPUT_ORIGINAL(IsKeyToggled);
+        INPUT_ORIGINAL(GetKeyboardState);
+        INPUT_ORIGINAL(GetNumberOfKeyInBuffer);
+        INPUT_ORIGINAL(GetKeyFromBuffer);
+        INPUT_ORIGINAL(IsMouseButtonDown);
+        INPUT_ORIGINAL(IsMouseClicked);
+        INPUT_ORIGINAL(IsMouseToggled);
+        INPUT_ORIGINAL(GetMouseButtonsState);
+        INPUT_ORIGINAL(GetMousePosition);
+        INPUT_ORIGINAL(GetMouseRelativePosition);
+        INPUT_ORIGINAL(GetJoystickPosition);
+        INPUT_ORIGINAL(GetJoystickRotation);
+        INPUT_ORIGINAL(GetJoystickSliders);
+        INPUT_ORIGINAL(GetJoystickPointOfViewAngle);
+        INPUT_ORIGINAL(GetJoystickButtonsState);
+        INPUT_ORIGINAL(IsJoystickButtonDown);
+        INPUT_ORIGINAL(ShowCursor);
+        INPUT_ORIGINAL(OnCKEnd);
+#undef INPUT_ORIGINAL
+        s_InputManager = input;
+        s_Owner = owner;
+        return true;
+    }
+
+    static bool Unhook(Impl *owner) {
+        if (owner != s_Owner)
+            return false;
+        // Hand back an input manager with all scheduled cleanup completed, even
+        // when another hook requires a later retry of the vtable restoration.
+        CompletePostProcess();
+        const auto result = s_Patch.Remove();
+        if (!result) {
+            std::fprintf(stderr, "BML SDL InputHook removal deferred: %s (entry %zu)\n",
+                         VTablePatch::GetErrorName(result.Code), result.EntryIndex);
+            return false;
+        }
+        ResetSessionState();
+        SetOverlayCursorVisible(false);
+        owner->OwnsHook = false;
+        s_InputManager = nullptr;
+        s_Owner = nullptr;
+        s_Original = {};
+        return true;
     }
 
 };
 
+InputHook::Impl::OriginalMethods InputHook::Impl::s_Original{};
+
 InputHook::InputHook(CKInputManager *input) : m_Impl(new Impl) {
     assert(input != nullptr);
-    if (input && !Impl::s_Owner) {
-        Impl::s_InputManager = input;
-        Impl::s_Owner = m_Impl;
-        m_Impl->OwnsHook = true;
-    }
+    m_Impl->OwnsHook = Impl::Hook(input, m_Impl);
 }
 
 InputHook::~InputHook() {
-    DetachInputHook(*this);
+    if (!DetachInputHook(*this)) {
+        // Keep saved functions alive while another owner still chains this hook.
+        m_Impl = nullptr;
+        return;
+    }
     delete m_Impl;
 }
 
 bool InputHook::IsValid() {
-    return Impl::s_Owner && Impl::s_Owner->OwnsHook && Impl::s_InputManager;
+    return Impl::s_Owner && Impl::s_Owner->OwnsHook && Impl::s_InputManager && Impl::s_Patch.IsInstalled();
 }
 
 bool InputHookOwnsActive(const InputHook &hook) {
     return hook.m_Impl && hook.m_Impl == InputHook::Impl::s_Owner && InputHook::IsValid();
+}
+
+void DeferInputPostProcess(InputHook &hook, bool defer) {
+    if (!InputHookOwnsActive(hook))
+        return;
+    InputHook::Impl::s_DeferPostProcess = defer;
+    if (!defer)
+        InputHook::Impl::CompletePostProcess();
 }
 
 bool DetachInputHook(InputHook &hook) {
@@ -200,12 +514,7 @@ bool DetachInputHook(InputHook &hook) {
         return true;
     if (hook.m_Impl != InputHook::Impl::s_Owner)
         return false;
-    InputHook::Impl::ResetSessionState();
-    InputHook::Impl::SetOverlayCursorVisible(false);
-    InputHook::Impl::s_InputManager = nullptr;
-    InputHook::Impl::s_Owner = nullptr;
-    hook.m_Impl->OwnsHook = false;
-    return true;
+    return InputHook::Impl::Unhook(hook.m_Impl);
 }
 
 void InputHook::EnableKeyboardRepetition(CKBOOL iEnable) {
@@ -345,8 +654,6 @@ void InputHook::Pause(CKBOOL pause) {
 void InputHook::ShowCursor(CKBOOL iShow) {
     if (!IsValid()) return;
     Impl::s_InputManager->ShowCursor(iShow);
-    if (Impl::s_OverlayVisible)
-        Impl::ApplyCursorVisibility();
 }
 
 void SetOverlayCursorVisible(bool visible) {
@@ -475,10 +782,10 @@ void InputHook::ReleaseBlock(uint64_t token) {
 
 void InputHook::Process() {
     if (!IsValid()) return;
+    Impl::CompletePostProcess();
     const unsigned char *state = Impl::GetKeyboardStateOriginal();
     for (int key = 0; key < 256; ++key)
         Impl::s_LastKeyboardState[key] = (state[key] & KS_RELEASED) ? KS_IDLE : state[key];
-    // The engine schedules PostProcess once. Only normalize BML's own snapshot;
-    // never clear or advance the manager's input from here.
-    Impl::s_InputManager->GetMousePosition(Impl::s_LastMousePosition, false);
+    // A snapshot taken without a scheduled cleanup must not retain release bits.
+    GetMousePosition(Impl::s_LastMousePosition, false);
 }

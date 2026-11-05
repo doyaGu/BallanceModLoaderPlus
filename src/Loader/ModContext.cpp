@@ -1746,10 +1746,12 @@ HookSnapshot ModContext::InspectHooks() const {
     return m_Hooks ? m_Hooks->Inspect() : HookSnapshot{};
 }
 
+#if !BML_RUNTIME_SDL
 void ModContext::RunPhysicsPostProcess() {
     if (m_Hooks)
         m_Hooks->RunPhysicsPostProcess();
 }
+#endif
 
 bool ModContext::AttachRenderHook(CKRenderContext *renderContext) {
     return m_Hooks && m_Hooks->AttachRender(renderContext);
