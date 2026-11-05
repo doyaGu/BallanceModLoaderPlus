@@ -7,10 +7,8 @@ namespace Overlay::PlatformInput {
     // for the same window.
     bool Attach(void *window);
     bool Detach();
-#if BML_RUNTIME_SDL
     // Submit copied event payloads on the game thread, once per frame.
     void ProcessEvents();
-#endif
 }
 
 #endif // BML_OVERLAY_PLATFORM_INPUT_H

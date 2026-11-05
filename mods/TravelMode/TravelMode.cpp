@@ -1,12 +1,6 @@
 #include "TravelMode.h"
 #include "TravelCommand.h"
 
-#if !BML_RUNTIME_SDL
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-#endif
 
 IMod *BMLEntry(IBML *bml) {
     return new TravelMode(bml);
@@ -88,7 +82,6 @@ void TravelMode::OnProcess() {
         VxVector delta;
         m_InputHook->GetMouseRelativePosition(delta);
         const float factor = (180.0f / PI) * m_RotateSpeed * m_DeltaTime;
-#if BML_RUNTIME_SDL
         const int width = m_RenderContext->GetWidth();
         const int height = m_RenderContext->GetHeight();
         if (delta.x != 0 && width > 0) {
@@ -99,16 +92,6 @@ void TravelMode::OnProcess() {
             vect = VxVector(1, 0, 0);
             m_TravelCam->Rotate(&vect, (-delta.y / static_cast<float>(height)) * factor, m_TravelCam);
         }
-#else
-        if (delta.x != 0) {
-            vect = VxVector(0, 1, 0);
-            m_TravelCam->Rotate(&vect, (-delta.x / (float)::GetSystemMetrics(SM_CXSCREEN)) * factor);
-        }
-        if (delta.y != 0) {
-            vect = VxVector(1, 0, 0);
-            m_TravelCam->Rotate(&vect, (-delta.y / (float)::GetSystemMetrics(SM_CYSCREEN)) * factor, m_TravelCam);
-        }
-#endif
     }
 }
 

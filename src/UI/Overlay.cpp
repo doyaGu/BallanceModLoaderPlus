@@ -5,23 +5,12 @@
 
 #include "CKContext.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#if !BML_RUNTIME_SDL
-#include <Windows.h>
-#endif
 #include "HookUtils.h"
 
 #include "imgui_internal.h"
 #include "UI/imgui_impl_ck2.h"
-#if BML_RUNTIME_SDL
 #include <SDL3/SDL.h>
 #include "backends/imgui_impl_sdl3.h"
-#else
-#define IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
-#include "backends/imgui_impl_win32.h"
-#endif
 
 namespace Overlay {
     ImGuiContext *g_ImGuiContext = nullptr;
@@ -80,23 +69,12 @@ namespace Overlay {
     bool ImGuiInitPlatform(CKContext *context) {
         ImGuiContextScope scope;
 
-#if BML_RUNTIME_SDL
         auto *window = context ? static_cast<SDL_Window *>(context->GetMainWindow()) : nullptr;
         if (!window || !ImGui_ImplSDL3_InitForOther(window)) return false;
         if (!PlatformInput::Attach(window)) {
             ImGui_ImplSDL3_Shutdown();
             return false;
         }
-#else
-        HWND window = context ? static_cast<HWND>(context->GetMainWindow()) : nullptr;
-        if (!window || !ImGui_ImplWin32_Init(window))
-            return false;
-        if (!PlatformInput::Attach(window)) {
-            ImGui_ImplWin32_Shutdown();
-            return false;
-        }
-
-#endif
 
         g_PlatformInitialized = true;
         return true;
@@ -126,11 +104,7 @@ namespace Overlay {
 
         if (!PlatformInput::Detach())
             utils::OutputDebugA("BML: Unable to detach Overlay platform input.\n");
-#if BML_RUNTIME_SDL
         ImGui_ImplSDL3_Shutdown();
-#else
-        ImGui_ImplWin32_Shutdown();
-#endif
         g_PlatformInitialized = false;
     }
 
@@ -161,12 +135,8 @@ namespace Overlay {
                 ImGui::EndFrame();
             }
 
-#if BML_RUNTIME_SDL
             PlatformInput::ProcessEvents();
             ImGui_ImplSDL3_NewFrame();
-#else
-            ImGui_ImplWin32_NewFrame();
-#endif
             ImGui_ImplCK2_NewFrame();
             ImGui::NewFrame();
 

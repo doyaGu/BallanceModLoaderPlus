@@ -88,7 +88,7 @@ include("${PROJECT_SOURCE_DIR}/cmake/BMLBehaviorBlocksPublicSurface.cmake")
 bml_find_engine()
 
 if (BML_ENABLE_ANGELSCRIPT)
-    if(BML_RUNTIME_SDL AND BML_BUILD_SCRIPT_RUNTIME AND NOT TARGET CKAngelScript)
+    if(BML_BUILD_SCRIPT_RUNTIME AND NOT TARGET CKAngelScript)
         if(NOT EXISTS "${CKANGELSCRIPT_ROOT}/CMakeLists.txt")
             message(FATAL_ERROR "BML_BUILD_SCRIPT_RUNTIME requires the CKAngelScript source tree; set CKANGELSCRIPT_ROOT")
         endif()
@@ -184,7 +184,7 @@ endif ()
 
 # Relocate and sign installed copies after all runtime targets, including the
 # standalone Updater, have been installed.
-if(BML_RUNTIME_SDL AND APPLE)
+if(APPLE)
     install(SCRIPT "${PROJECT_SOURCE_DIR}/cmake/RelocateBMLRuntime.cmake"
         COMPONENT BMLRuntime EXCLUDE_FROM_ALL)
 endif()

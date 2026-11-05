@@ -18,10 +18,6 @@
 #include "BML/Interface.h"
 #include "BML/Types.h"
 
-#if defined(_WIN64)
-#error "bml.behavior is a Win32 Virtools 2.1 interface"
-#endif
-
 #define BML_BEHAVIOR_CALL BML_CDECL
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"

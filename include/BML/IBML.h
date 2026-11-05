@@ -61,7 +61,7 @@ public:
 
     // The CKDWORD overloads count frames; the float overloads count
     // milliseconds. The two units share a name, so an unsuffixed integer
-    // literal is ambiguous. Write AddTimer(1ul, ...) for frames and
+    // literal is ambiguous. Write AddTimer(CKDWORD{1}, ...) for frames and
     // AddTimer(1.0f, ...) for milliseconds.
     // The loop callbacks keep running while they return true.
     //

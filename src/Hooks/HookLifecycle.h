@@ -12,14 +12,11 @@ struct CKBehaviorContext;
 
 bool InputHookOwnsActive(const InputHook &hook);
 bool DetachInputHook(InputHook &hook);
-#if BML_RUNTIME_SDL
 void DeferInputPostProcess(InputHook &hook, bool defer);
-#endif
 
 struct HookSnapshot {
     bool Input = false;
     bool ObjectLoad = false;
-    bool PhysicsPostProcess = false;
     bool Physicalize = false;
     bool RenderSkip = false;
 };
@@ -38,9 +35,6 @@ public:
     bool DetachRender();
 
     InputHook *GetInput() const { return m_Input.get(); }
-#if !BML_RUNTIME_SDL
-    void RunPhysicsPostProcess();
-#endif
     HookSnapshot Inspect() const;
 
 private:
@@ -50,9 +44,6 @@ private:
 
     bool AttachPhysicalize();
     bool DetachPhysicalize();
-#if !BML_RUNTIME_SDL
-    bool OwnsPhysicsPostProcess() const;
-#endif
     bool OwnsPhysicalize() const;
 
     static int ObjectLoad(const CKBehaviorContext &context);

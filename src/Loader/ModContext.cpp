@@ -5,15 +5,8 @@
 
 #include "Platform/Module.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#if !BML_RUNTIME_SDL
-#include <Windows.h>
-#else
 #include <SDL3/SDL.h>
 #include "Platform/FileSystemNative.h"
-#endif
 
 #include <oniguruma.h>
 
@@ -46,36 +39,17 @@ namespace {
     constexpr wchar_t kInstanceDirectoryName[] = L"Instance";
     constexpr wchar_t kShellStateFileName[] = L"CommandBar.shell.json";
 
-#if BML_RUNTIME_SDL
     using HMODULE = void *;
     HMODULE ModuleFromAddress(const void *address) {
         return const_cast<void *>(BML::Platform::ModuleFromAddress(address));
     }
-#else
-    HMODULE ModuleFromAddress(const void *address) {
-        if (!address)
-            return nullptr;
-
-        HMODULE module = nullptr;
-        if (!::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                                      GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                  reinterpret_cast<LPCSTR>(address),
-                                  &module)) {
-            return nullptr;
-        }
-        return module;
-    }
-
-#endif
     std::wstring ResolveGameDirectoryFromExecutable(const std::wstring &executablePath) {
         if (executablePath.empty())
             return {};
 
-#if BML_RUNTIME_SDL
         const auto executableDirectory = utils::GetParentDirectoryW(executablePath);
         if (utils::FileExistsW(utils::CombinePathW(executableDirectory, L"base.cmo")))
             return executableDirectory;
-#endif
         return utils::GetParentDirectoryW(utils::GetParentDirectoryW(executablePath));
     }
 
@@ -353,13 +327,7 @@ bool ModContext::Init() {
     LoadShellEnvironment();
 
 #ifdef _DEBUG
-#if BML_RUNTIME_SDL
     m_Logger->Info("Runtime: sdl; loader image: %p", ModuleFromAddress(reinterpret_cast<const void *>(&BML_GetModContext)));
-#else
-    m_Logger->Info("Player.exe Address: 0x%08x", ::GetModuleHandleA("Player.exe"));
-    m_Logger->Info("CK2.dll Address: 0x%08x", ::GetModuleHandleA("CK2.dll"));
-    m_Logger->Info("VxMath.dll Address: 0x%08x", ::GetModuleHandleA("VxMath.dll"));
-#endif
 #endif
 
     OnigEncoding encodings[3] = {ONIG_ENCODING_ASCII, ONIG_ENCODING_UTF8, ONIG_ENCODING_UTF16_LE};
@@ -393,7 +361,7 @@ bool ModContext::Init() {
     }
 
     if (!Overlay::ImGuiInitPlatform(m_CKContext)) {
-        m_Logger->Error("Failed to initialize Win32 platform backend for ImGui");
+        m_Logger->Error("Failed to initialize SDL platform backend for ImGui");
         Overlay::ImGuiDestroyContext();
         ShutdownHooks();
         onig_end();
@@ -515,9 +483,7 @@ void ModContext::Abandon() noexcept {
 }
 
 void ModContext::ResetVirtoolsWorld() {
-#if BML_RUNTIME_SDL
     RenderHook::ResetPendingSkip(m_CKContext);
-#endif
     // Author Releases dropped by the teardown below run once it is done.
     BML::Behavior::Internal::ReleaseScope releases;
     m_GamePhase = GamePhase::FrontEnd;
@@ -1321,13 +1287,9 @@ void ModContext::AddTimerLoop(float delay, std::function<bool()> callback) {
 void ModContext::ExitGame() {
     OnExitGame();
     AddTimer(CKDWORD{1}, [this]() {
-#if BML_RUNTIME_SDL
         SDL_Event event{};
         event.type = SDL_EVENT_QUIT;
         SDL_PushEvent(&event);
-#else
-        ::PostMessage((HWND) m_CKContext->GetMainWindow(), 0x5FA, 0, 0);
-#endif
     });
 }
 
@@ -1642,27 +1604,10 @@ void ModContext::OnPostLifeUp() {
 }
 
 void ModContext::InitDirectories() {
-#if BML_RUNTIME_SDL
     m_WorkingDir = utils::GetCurrentDirectoryW();
     m_WorkingDirUtf8 = utils::Utf16ToUtf8(m_WorkingDir);
     m_GameDir = ResolveGameDirectoryFromExecutable(utils::GetExecutablePathW());
     m_GameDirUtf8 = utils::Utf16ToUtf8(m_GameDir);
-#else
-    wchar_t path[MAX_PATH];
-
-    // Set up working directory
-    _wgetcwd(path, MAX_PATH);
-    path[MAX_PATH - 1] = '\0';
-    m_WorkingDir = path;
-    m_WorkingDirUtf8 = utils::ToString(m_WorkingDir);
-
-    // Set up game directory
-    ::GetModuleFileNameW(nullptr, path, MAX_PATH);
-    path[MAX_PATH - 1] = '\0';
-    m_GameDir = ResolveGameDirectoryFromExecutable(path);
-    m_GameDirUtf8 = utils::ToString(m_GameDir);
-
-#endif
 
     // Set up loader directory
     m_LoaderDir = ResolveLoaderDirectory(m_GameDir);
@@ -1672,11 +1617,7 @@ void ModContext::InitDirectories() {
     // Set up temp directory
     m_TempDir = CreateInstanceTempDirectory(
         m_LoaderDir,
-#if BML_RUNTIME_SDL
         static_cast<unsigned long>(BML::Platform::ProcessId()));
-#else
-        static_cast<unsigned long>(::GetCurrentProcessId()));
-#endif
     m_TempDirUtf8 = utils::ToString(m_TempDir);
 
     // Set up config directory
@@ -1687,11 +1628,7 @@ void ModContext::InitDirectories() {
 
 void ModContext::InitLogger() {
     std::wstring logfilePath = utils::CombinePathW(m_LoaderDir, L"ModLoader.log");
-#if BML_RUNTIME_SDL
     m_LogStream = SDL_IOFromFile(utils::Utf16ToUtf8(logfilePath).c_str(), "wb");
-#else
-    m_Logfile = _wfopen(logfilePath.c_str(), L"w");
-#endif
     auto *logger = new Logger("ModLoader");
     Logger::SetDefault(logger);
     m_Logger = logger;
@@ -1710,14 +1647,7 @@ void ModContext::ShutdownLogger() {
     Logger::SetDefault(nullptr);
     delete m_Logger;
     m_Logger = nullptr;
-#if BML_RUNTIME_SDL
     if (m_LogStream) { SDL_CloseIO(m_LogStream); m_LogStream = nullptr; }
-#else
-    if (m_Logfile) {
-        fclose(m_Logfile);
-        m_Logfile = nullptr;
-    }
-#endif
 }
 
 bool ModContext::InitHooks() {
@@ -1746,12 +1676,6 @@ HookSnapshot ModContext::InspectHooks() const {
     return m_Hooks ? m_Hooks->Inspect() : HookSnapshot{};
 }
 
-#if !BML_RUNTIME_SDL
-void ModContext::RunPhysicsPostProcess() {
-    if (m_Hooks)
-        m_Hooks->RunPhysicsPostProcess();
-}
-#endif
 
 bool ModContext::AttachRenderHook(CKRenderContext *renderContext) {
     return m_Hooks && m_Hooks->AttachRender(renderContext);
@@ -2057,7 +1981,6 @@ bool ModContext::CanScheduleTimer() const {
     return IsInited() && m_TimeManager != nullptr && !m_Loader.IsShuttingDown();
 }
 
-#if BML_RUNTIME_SDL
 void ModContext::WriteLogLine(const std::string &line) {
     if (m_LogStream) {
         SDL_WriteIO(m_LogStream, line.data(), line.size());
@@ -2068,4 +1991,3 @@ void ModContext::WriteLogLine(const std::string &line) {
     std::fprintf(stdout, "%s\n", line.c_str());
 #endif
 }
-#endif

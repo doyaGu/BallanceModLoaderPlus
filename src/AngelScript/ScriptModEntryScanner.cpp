@@ -3,9 +3,6 @@
 
 #include <cctype>
 #include <cwchar>
-#if !BML_RUNTIME_SDL
-#include <io.h>
-#endif
 
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
@@ -56,24 +53,9 @@ std::vector<std::wstring> FindScriptModEntryPaths(const std::wstring &directory)
     if (directory.empty() || !utils::DirectoryExistsW(directory))
         return entries;
 
-#if BML_RUNTIME_SDL
     for (const auto &name : utils::ListFilesW(directory))
         if (IsScriptModEntryName(name.c_str()))
             entries.push_back(utils::CombinePathW(directory, name));
-#else
-    const std::wstring pattern = directory + L"\\*.mod.as";
-    _wfinddata_t fileinfo = {};
-    auto handle = _wfindfirst(pattern.c_str(), &fileinfo);
-    if (handle == -1)
-        return entries;
-
-    do {
-        if ((fileinfo.attrib & _A_SUBDIR) == 0 && IsScriptModEntryName(fileinfo.name))
-            entries.push_back(directory + L"\\" + fileinfo.name);
-    } while (_wfindnext(handle, &fileinfo) == 0);
-
-    _findclose(handle);
-#endif
     return entries;
 }
 
@@ -81,7 +63,6 @@ size_t FindScriptModCandidates(const std::wstring &path, std::vector<ScriptModLo
     if (path.empty() || !utils::DirectoryExistsW(path))
         return 0;
 
-#if BML_RUNTIME_SDL
     for (const auto &name : utils::ListFilesW(path))
         if (IsScriptModEntryName(name.c_str()))
             candidates.push_back(MakeSingleFileCandidate(utils::CombinePathW(path, name)));
@@ -93,36 +74,6 @@ size_t FindScriptModCandidates(const std::wstring &path, std::vector<ScriptModLo
         candidate.EntryPaths = std::move(entries);
         candidates.push_back(std::move(candidate));
     }
-#else
-    const std::wstring pattern = path + L"\\*";
-    _wfinddata_t fileinfo = {};
-    auto handle = _wfindfirst(pattern.c_str(), &fileinfo);
-    if (handle == -1)
-        return candidates.size();
-
-    do {
-        if ((fileinfo.attrib & _A_SUBDIR) == 0) {
-            if (IsScriptModEntryName(fileinfo.name))
-                candidates.push_back(MakeSingleFileCandidate(path + L"\\" + fileinfo.name));
-            continue;
-        }
-        if (wcscmp(fileinfo.name, L".") == 0 || wcscmp(fileinfo.name, L"..") == 0)
-            continue;
-
-        const std::wstring child = path + L"\\" + fileinfo.name;
-        std::vector<std::wstring> entries = FindScriptModEntryPaths(child);
-        if (!entries.empty()) {
-            ScriptModLoadCandidate candidate = MakeDirectoryScriptModCandidate(
-                child,
-                ScriptModEntrySourceKind::Directory,
-                child);
-            candidate.EntryPaths = std::move(entries);
-            candidates.push_back(std::move(candidate));
-        }
-    } while (_wfindnext(handle, &fileinfo) == 0);
-
-    _findclose(handle);
-#endif
     return candidates.size();
 }
 

@@ -15,7 +15,6 @@
 namespace {
 class ImGuiFrameCompletion {
 public:
-#if BML_RUNTIME_SDL
     explicit ImGuiFrameCompletion(ModContext &context) : m_Context(&context) {}
 
     void FinishInput() {
@@ -26,17 +25,12 @@ public:
                 input->Process();
         }
     }
-#endif
     ~ImGuiFrameCompletion() {
-#if BML_RUNTIME_SDL
         FinishInput();
-#endif
         Overlay::ImGuiEndFrame();
     }
-#if BML_RUNTIME_SDL
 private:
     ModContext *m_Context;
-#endif
 };
 } // namespace
 
@@ -159,10 +153,8 @@ bool ModManager::StartRuntime() {
         return false;
     }
 
-#if BML_RUNTIME_SDL
     if (auto *input = m_ModContext->GetInputManager())
         DeferInputPostProcess(*input, true);
-#endif
 
     SynchronizeUiFonts();
     Overlay::ImGuiNewFrame();
@@ -173,10 +165,8 @@ bool ModManager::StopRuntime() {
     if (!m_ModContext)
         return true;
 
-#if BML_RUNTIME_SDL
     if (auto *input = m_ModContext->GetInputManager())
         DeferInputPostProcess(*input, false);
-#endif
 
     bool stopped = true;
     if (m_RenderContext) {
@@ -204,15 +194,8 @@ CKERROR ModManager::PostProcess() {
     // context, but the physics, mod, and input work below is not drawing and still has to
     // run on a frame that has no context to draw into.
     Overlay::ImGuiContextScope scope;
-#if BML_RUNTIME_SDL
     ImGuiFrameCompletion frameCompletion(*m_ModContext);
-#else
-    ImGuiFrameCompletion frameCompletion;
-#endif
 
-#if !BML_RUNTIME_SDL
-    m_ModContext->RunPhysicsPostProcess();
-#endif
 
     m_ModContext->ProcessVirtoolsFrame();
 
@@ -229,11 +212,7 @@ CKERROR ModManager::PostProcess() {
         SetOverlayCursorVisible(false);
     }
 
-#if BML_RUNTIME_SDL
     frameCompletion.FinishInput();
-#else
-    inputHook->Process();
-#endif
 #if BML_ENABLE_UI_AUTOMATION
     // Test actions can reset or exit Virtools. Run them only after Render and
     // after the final per-frame pointer use, never from inside ImGuiRender().

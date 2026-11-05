@@ -28,11 +28,7 @@ bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
         return false;
     const std::wstring resolvedLeft = utils::ResolvePathW(left);
     const std::wstring resolvedRight = utils::ResolvePathW(right);
-#if BML_RUNTIME_SDL
     return resolvedLeft == resolvedRight;
-#else
-    return ScriptPathCaseCompare(resolvedLeft.c_str(), resolvedRight.c_str()) == 0;
-#endif
 }
 
 std::wstring ScriptEntryStem(const std::wstring &entryPath) {

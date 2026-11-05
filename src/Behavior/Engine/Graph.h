@@ -29,9 +29,8 @@ void DestroyConnectedLinks(CKContext *context, CKBehavior *graph,
 // in the owner's parent. Deleting the IO would only clear the Link's end.
 void DestroyConnectedLinks(CKContext *context, CKBehaviorIO *io);
 
-// Retires a Link that has already left its graph. SDL delegates reference
-// cleanup to CK2's deletion lifecycle. Retail CK2 can retain freed endpoints
-// or owners, so win32 detaches the Link before native deletion.
+// Retires a Link that has already left its graph. CK2's deletion lifecycle
+// detaches surviving endpoints and owners.
 CKERROR DestroyOrphanLink(CKContext *context, CKBehaviorLink *link);
 
 } // namespace BML::Behavior::Internal::Engine

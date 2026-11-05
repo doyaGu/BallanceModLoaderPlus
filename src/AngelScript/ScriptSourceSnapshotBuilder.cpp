@@ -5,9 +5,6 @@
 #include <cctype>
 #include <cwchar>
 #include <cwctype>
-#if !BML_RUNTIME_SDL
-#include <io.h>
-#endif
 #include <set>
 #include <sstream>
 #include <unordered_set>
@@ -32,22 +29,11 @@ bool EndsWithInsensitiveW(const std::wstring &value, const wchar_t *suffix) {
 
 std::wstring FoldPathKeyW(std::wstring path) {
     path = utils::ResolvePathW(path);
-#if !BML_RUNTIME_SDL
-    std::replace(path.begin(), path.end(), L'/', L'\\');
-    std::transform(path.begin(), path.end(), path.begin(), [](wchar_t ch) {
-        return static_cast<wchar_t>(std::towlower(ch));
-    });
-#endif
     return path;
 }
 
 std::string FoldSectionKey(std::string value) {
     std::replace(value.begin(), value.end(), '\\', '/');
-#if !BML_RUNTIME_SDL
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-#endif
     return value;
 }
 

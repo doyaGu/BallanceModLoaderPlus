@@ -12,12 +12,6 @@
 #include <unordered_set>
 #include <utility>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#if !BML_RUNTIME_SDL
-#include <Windows.h>
-#endif
 #include "Platform/FileError.h"
 
 #include "PathUtils.h"
@@ -91,17 +85,7 @@ bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
         // BML 0.3.13 accepted configuration files written in the active ANSI
         // code page. Convert those documents once so the next save publishes
         // canonical UTF-8. CP_UTF8 has no distinct legacy encoding to recover.
-#if BML_RUNTIME_SDL
         return false;
-#else
-        if (GetACP() == CP_UTF8 ||
-            bytes.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
-            return false;
-        }
-        bytes = utils::Utf16ToUtf8(utils::AnsiToUtf16(bytes));
-        if (bytes.empty() || !utils::IsValidUtf8(bytes))
-            return false;
-#endif
     }
 
     ConfigData parsed;

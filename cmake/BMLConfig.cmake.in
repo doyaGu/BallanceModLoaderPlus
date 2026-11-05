@@ -13,31 +13,27 @@ set(BML_SDK_COMPILER_VERSION "@CMAKE_CXX_COMPILER_VERSION@")
 set(BML_SDK_POINTER_SIZE "@CMAKE_SIZEOF_VOID_P@")
 set(BML_SDK_SYSTEM_NAME "@CMAKE_SYSTEM_NAME@")
 set(BML_ABI_JSON [==[@BML_ABI_JSON@]==])
-if(BML_RUNTIME STREQUAL "win32")
-    find_dependency(VirtoolsSDK)
-else()
-    # CMake before 3.30 lets dependency configs overwrite PACKAGE_PREFIX_DIR.
-    # Engine and SDL packages may be installed under a different prefix.
-    set(_BML_SDL_PACKAGE_PREFIX_DIR "${PACKAGE_PREFIX_DIR}")
-    find_dependency(SDL3 3.4.8 CONFIG)
-    find_dependency(VxMath CONFIG)
-    find_dependency(CK2 CONFIG)
-    foreach(_bml_engine CK2 VxMath)
-        if(NOT TARGET VirtoolsSDK::${_bml_engine})
-            add_library(VirtoolsSDK::${_bml_engine} INTERFACE IMPORTED)
-            set_property(TARGET VirtoolsSDK::${_bml_engine} PROPERTY INTERFACE_LINK_LIBRARIES ${_bml_engine})
-        endif()
-    endforeach()
-    set(PACKAGE_PREFIX_DIR "${_BML_SDL_PACKAGE_PREFIX_DIR}")
-    unset(_BML_SDL_PACKAGE_PREFIX_DIR)
-endif()
+# CMake before 3.30 lets dependency configs overwrite PACKAGE_PREFIX_DIR.
+# Engine and SDL packages may be installed under a different prefix.
+set(_BML_SDL_PACKAGE_PREFIX_DIR "${PACKAGE_PREFIX_DIR}")
+find_dependency(SDL3 3.4.8 CONFIG)
+find_dependency(VxMath CONFIG)
+find_dependency(CK2 CONFIG)
+foreach(_engine CK2 VxMath)
+    if(NOT TARGET BML::${_engine})
+        add_library(BML::${_engine} INTERFACE IMPORTED)
+        set_property(TARGET BML::${_engine} PROPERTY INTERFACE_LINK_LIBRARIES ${_engine})
+    endif()
+endforeach()
+set(PACKAGE_PREFIX_DIR "${_BML_SDL_PACKAGE_PREFIX_DIR}")
+unset(_BML_SDL_PACKAGE_PREFIX_DIR)
 set(CMAKE_MODULE_PATH "${_BML_SAVED_CMAKE_MODULE_PATH}")
 unset(_BML_SAVED_CMAKE_MODULE_PATH)
 
 include("${CMAKE_CURRENT_LIST_DIR}/BMLTargets.cmake")
 
 # A native Mod must link the same MSVC runtime as the loader it is loaded into,
-# because the legacy native interface passes C++ objects across the DLL
+# because the native interface passes C++ objects across the DLL
 # boundary. Derive that runtime from the configurations this package actually
 # ships so bml_add_mod can enforce it. A package carrying both flavours cannot
 # decide for the consumer, so it leaves the choice to CMake's defaults.

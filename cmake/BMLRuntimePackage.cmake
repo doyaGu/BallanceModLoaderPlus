@@ -1,8 +1,5 @@
 include_guard(GLOBAL)
 
-if(NOT BML_RUNTIME STREQUAL "sdl")
-    return()
-endif()
 
 # The host supplies CK2, VxMath and SDL. Never install a second engine beside
 # the Loader: all plugins must resolve the same host libraries and state.

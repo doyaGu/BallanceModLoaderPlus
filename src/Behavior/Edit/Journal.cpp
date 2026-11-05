@@ -19,11 +19,7 @@ Status OrderFailure(bool restoring, std::string message) {
 }
 
 bool HasGraph(CKBehavior *graph) {
-#if BML_RUNTIME_SDL
     return graph && graph->GetType() != CKBEHAVIORTYPE_BASE;
-#else
-    return Engine::Nodes(graph) && Engine::Links(graph);
-#endif
 }
 
 std::vector<CKBehavior *> ReadNodes(CKBehavior *graph) {
@@ -38,19 +34,12 @@ std::vector<CKBehavior *> ReadNodes(CKBehavior *graph) {
 
 std::vector<CKBehaviorLink *> ReadSource(CKBehaviorIO *source) {
     std::vector<CKBehaviorLink *> result;
-#if BML_RUNTIME_SDL
     for (int i = 0; source && i < source->GetLinkCount(); ++i)
         result.push_back(source->GetLink(i));
-#else
-    XSObjectPointerArray *array = Engine::Outgoing(source);
-    for (int i = 0; array && i < array->Size(); ++i)
-        result.push_back(static_cast<CKBehaviorLink *>((*array)[i]));
-#endif
     return result;
 }
 
 CKERROR WriteNodes(CKBehavior *graph, const std::vector<CKBehavior *> &order) {
-#if BML_RUNTIME_SDL
     for (int dst = 0; dst < static_cast<int>(order.size()); ++dst) {
         int src = dst;
         while (src < graph->GetSubBehaviorCount() && graph->GetSubBehavior(src) != order[dst])
@@ -59,16 +48,10 @@ CKERROR WriteNodes(CKBehavior *graph, const std::vector<CKBehavior *> &order) {
         if (error != CK_OK)
             return error;
     }
-#else
-    XObjectPointerArray *array = Engine::Nodes(graph);
-    for (int i = 0; i < array->Size(); ++i)
-        (*array)[i] = order[static_cast<std::size_t>(i)];
-#endif
     return CK_OK;
 }
 
 CKERROR WriteSource(CKBehaviorIO *source, const std::vector<CKBehaviorLink *> &order) {
-#if BML_RUNTIME_SDL
     for (int dst = 0; dst < static_cast<int>(order.size()); ++dst) {
         int src = dst;
         while (src < source->GetLinkCount() && source->GetLink(src) != order[dst])
@@ -77,11 +60,6 @@ CKERROR WriteSource(CKBehaviorIO *source, const std::vector<CKBehaviorLink *> &o
         if (error != CK_OK)
             return error;
     }
-#else
-    XSObjectPointerArray *array = Engine::Outgoing(source);
-    for (int i = 0; i < array->Size(); ++i)
-        (*array)[i] = order[static_cast<std::size_t>(i)];
-#endif
     return CK_OK;
 }
 

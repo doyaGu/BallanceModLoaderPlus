@@ -543,18 +543,9 @@ private:
                                "A graph Link endpoint is not owned by its Behavior.");
             auto sourceOrder = m_SourceOrder.find(link);
             if (sourceOrder == m_SourceOrder.end()) {
-#if BML_RUNTIME_SDL
                 {
                     for (int linkIndex = 0; linkIndex < sourceIo->GetLinkCount(); ++linkIndex) {
                         CKBehaviorLink *outgoingLink = sourceIo->GetLink(linkIndex);
-#else
-                if (XSObjectPointerArray *outgoing =
-                        Engine::Outgoing(sourceIo)) {
-                    for (int linkIndex = 0; linkIndex < outgoing->Size();
-                         ++linkIndex) {
-                        auto *outgoingLink = CKBehaviorLink::Cast(
-                            (*outgoing)[linkIndex]);
-#endif
                         if (!Valid(outgoingLink) ||
                             !graphLinks.contains(outgoingLink)) {
                             return Failure(

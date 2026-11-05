@@ -167,11 +167,7 @@ static bool ImGui_ImplCK2_ShouldUploadDrawSegment(const ImDrawCmd *commands,
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#if BML_RUNTIME_SDL
 #include <SDL3/SDL_timer.h>
-#else
-#include <Windows.h>
-#endif
 
 enum ImGui_ImplCK2_TextureFailure
 {
@@ -271,16 +267,13 @@ static const VXRENDERSTATETYPE ImGui_ImplCK2_RenderStates[] = {
     VXRENDERSTATE_STENCILENABLE,
     VXRENDERSTATE_CLIPPING,
     VXRENDERSTATE_LIGHTING,
-#if BML_RUNTIME_SDL
     VXRENDERSTATE_ALPHAFUNC,
     VXRENDERSTATE_ALPHAREF,
     VXRENDERSTATE_ZFUNC,
     VXRENDERSTATE_TEXTUREPERSPECTIVE,
     VXRENDERSTATE_TEXTUREFACTOR,
-#endif
 };
 
-#if BML_RUNTIME_SDL
 // Legacy combine setters change several explicit stage states. Restore their
 // values first, then the explicit states, with shared address before U/V/W.
 static const CKRST_TEXTURESTAGESTATETYPE ImGui_ImplCK2_StageStates[] = {
@@ -361,33 +354,6 @@ private:
     VxMatrix TextureMatrices[CKRST_MAX_STAGES];
     CKDWORD StageValues[CKRST_MAX_STAGES][IM_ARRAYSIZE(ImGui_ImplCK2_StageStates)] = {};
 };
-#else
-class ImGui_ImplCK2_RenderStateBackup
-{
-public:
-    explicit ImGui_ImplCK2_RenderStateBackup(CKRenderContext *context) : Context(context)
-    {
-        Context->GetViewRect(ViewRect);
-        for (int i = 0; i < IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates); ++i)
-            Values[i] = Context->GetState(ImGui_ImplCK2_RenderStates[i]);
-    }
-
-    ~ImGui_ImplCK2_RenderStateBackup()
-    {
-        Context->SetViewRect(ViewRect);
-        for (int i = 0; i < IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates); ++i)
-            Context->SetState(ImGui_ImplCK2_RenderStates[i], Values[i]);
-    }
-
-    ImGui_ImplCK2_RenderStateBackup(const ImGui_ImplCK2_RenderStateBackup &) = delete;
-    ImGui_ImplCK2_RenderStateBackup &operator=(const ImGui_ImplCK2_RenderStateBackup &) = delete;
-
-private:
-    CKRenderContext *Context;
-    VxRect ViewRect;
-    CKDWORD Values[IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates)] = {};
-};
-#endif
 #endif
 
 static bool ImGui_ImplCK2_BuildDrawSlice(const ImDrawIdx *indices, unsigned int index_count,
@@ -1007,9 +973,7 @@ static void ImGui_ImplCK2_RenderDrawDataInternal(ImDrawData *draw_data, ImGui_Im
 {
     CKRenderContext *dev = bd->RenderContext;
 
-#if BML_RUNTIME_SDL
     ImGui_ImplCK2_RenderStateBackup state_backup(dev);
-#endif
     // Catch up with texture updates. Most of the times, the list will have 1 element with an OK status, aka nothing to do.
     // (This almost always points to ImGui::GetPlatformIO().Textures[] but is part of ImDrawData to allow overriding or disabling texture updates).
     if (draw_data->Textures != nullptr)
@@ -1017,9 +981,6 @@ static void ImGui_ImplCK2_RenderDrawDataInternal(ImDrawData *draw_data, ImGui_Im
             if (tex->Status != ImTextureStatus_OK)
                 ImGui_ImplCK2_UpdateTexture(tex);
 
-#if !BML_RUNTIME_SDL
-    ImGui_ImplCK2_RenderStateBackup state_backup(dev);
-#endif
 
     // Setup desired render state
     ImGui_ImplCK2_SetupRenderState(draw_data);
@@ -1225,28 +1186,13 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
     if (!bd || !bd->RenderContext)
         return;
 
-#if BML_RUNTIME_SDL
     const Uint64 start = SDL_GetPerformanceCounter();
-#else
-    LARGE_INTEGER start{};
-    const bool timing_available = bd->PerformanceFrequency != 0 && QueryPerformanceCounter(&start);
-#endif
     ImGui_ImplCK2_FrameMetrics metrics{};
     ImGui_ImplCK2_RenderDrawDataInternal(draw_data, bd, fb_width, fb_height, &metrics);
 
-#if BML_RUNTIME_SDL
     const Uint64 end = SDL_GetPerformanceCounter();
     if (bd->PerformanceFrequency && end >= start)
         metrics.RenderTimeMicroseconds = (end - start) * 1000000ULL / bd->PerformanceFrequency;
-#else
-    LARGE_INTEGER end{};
-    if (timing_available && QueryPerformanceCounter(&end) && end.QuadPart >= start.QuadPart)
-    {
-        metrics.RenderTimeMicroseconds = (ImU64)(end.QuadPart - start.QuadPart) * 1000000ULL /
-                                         bd->PerformanceFrequency;
-    }
-
-#endif
     bd->LastFrameMetrics = metrics;
     bd->TotalRenderTimeMicroseconds += metrics.RenderTimeMicroseconds;
     bd->TotalGeometryUploadFailureCount += metrics.GeometryUploadFailureCount;
@@ -1301,13 +1247,7 @@ bool ImGui_ImplCK2_Init(CKContext *context)
     bd->RenderContext = render_context;
     bd->TextureMaxWidth = texture_limits.Width;
     bd->TextureMaxHeight = texture_limits.Height;
-#if BML_RUNTIME_SDL
     bd->PerformanceFrequency = SDL_GetPerformanceFrequency();
-#else
-    LARGE_INTEGER performance_frequency{};
-    if (QueryPerformanceFrequency(&performance_frequency) && performance_frequency.QuadPart > 0)
-        bd->PerformanceFrequency = (ImU64)performance_frequency.QuadPart;
-#endif
 
     if (texture_limits.UsedFallback)
         utils::OutputDebugA("BML CK2 renderer received invalid texture limits; using %dx%d\n",

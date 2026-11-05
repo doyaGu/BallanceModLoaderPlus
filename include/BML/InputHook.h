@@ -209,9 +209,7 @@ private:
     friend void SetOverlayCursorVisible(bool visible);
     friend bool InputHookOwnsActive(const InputHook &hook);
     friend bool DetachInputHook(InputHook &hook);
-#if BML_RUNTIME_SDL
     friend void DeferInputPostProcess(InputHook &hook, bool defer);
-#endif
     static bool IsValid();
     struct Impl;
     Impl *m_Impl;

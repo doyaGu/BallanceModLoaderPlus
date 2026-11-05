@@ -55,7 +55,7 @@ set_target_properties(BML_StringUtils PROPERTIES
     FOLDER "Utils"
 )
 
-# Platform implementations preserve the original Win32 filesystem backend.
+# Select native crypto/debug facilities for the SDL host platform.
 if(WIN32)
     add_library(BML_CryptoUtils STATIC CryptoUtils.cpp)
     target_link_libraries(BML_CryptoUtils PUBLIC bcrypt)
@@ -74,16 +74,10 @@ else()
     target_link_libraries(BML_HookUtils PUBLIC BML_StringUtils)
 endif()
 
-if(BML_RUNTIME_SDL)
-    add_library(BML_PathUtils STATIC PathUtilsSdl.cpp ../Platform/FileSystemNative.cpp)
-    target_link_libraries(BML_PathUtils PUBLIC SDL3::SDL3)
-else()
-    add_library(BML_PathUtils STATIC PathUtils.cpp)
-endif()
+add_library(BML_PathUtils STATIC PathUtilsSdl.cpp ../Platform/FileSystemNative.cpp)
+target_link_libraries(BML_PathUtils PUBLIC SDL3::SDL3)
 target_link_libraries(BML_PathUtils PUBLIC BML_StringUtils zip)
-if(BML_RUNTIME_SDL)
-    target_link_libraries(BML_JsonUtils PUBLIC BML_PathUtils)
-endif()
+target_link_libraries(BML_JsonUtils PUBLIC BML_PathUtils)
 add_library(BML_IniFile STATIC IniFile.cpp)
 target_link_libraries(BML_IniFile PUBLIC BML_PathUtils BML_StringUtils utf8)
 foreach(_target BML_CryptoUtils BML_HookUtils BML_IniFile BML_PathUtils)

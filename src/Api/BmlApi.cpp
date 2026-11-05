@@ -2,14 +2,7 @@
 // translation unit. Mirrors Interfaces.cpp (the side of Interface.h) and
 // ImcApi.cpp (the side of Imc.h); BML.cpp keeps only the Virtools plugin entry
 // points and the process hooks.
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#if !BML_RUNTIME_SDL
-#include <Windows.h>
-#else
 #include <SDL3/SDL_stdinc.h>
-#endif
 
 #include "Platform/Module.h"
 #include <limits>
@@ -621,11 +614,7 @@ int BML_CDECL BML_EndsWith(const char *str, const char *suffix, int caseSensitiv
     if (caseSensitive) {
         return strcmp(strEnd, suffix) == 0 ? 1 : 0;
     } else {
-#if BML_RUNTIME_SDL
         return SDL_strcasecmp(strEnd, suffix) == 0 ? 1 : 0;
-#else
-        return _stricmp(strEnd, suffix) == 0 ? 1 : 0;
-#endif
     }
 }
 

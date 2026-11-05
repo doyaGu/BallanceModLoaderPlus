@@ -373,12 +373,12 @@ set(BML_UI_PRIVATE_HEADERS
         UI/ColorCodec.h
         UI/FontCommand.h
         UI/Ime/Presentation.h
-        UI/Ime/NativePresentation.h
         UI/Ime/PresentationOwnership.h
         UI/Ime/RailLayout.h
         UI/Ime/Runtime.h
-        UI/Ime/State.h
+        UI/Ime/NativePresentation.h
         UI/Ime/Tsf.h
+        UI/Ime/State.h
         UI/FontRuntime.h
         UI/GameFontCatalog.h
         UI/Gui/LegacyTextFont.h
@@ -396,16 +396,12 @@ set(BML_UI_SOURCES
         UI/ColorCodec.cpp
         UI/FontCommand.cpp
         UI/Ime/Presentation.cpp
-        UI/Ime/NativePresentation.cpp
         UI/Ime/RailLayout.cpp
-        UI/Ime/Runtime.cpp
         UI/Ime/State.cpp
-        UI/Ime/Tsf.cpp
         UI/FontRuntime.cpp
         UI/GameFontCatalog.cpp
         UI/ImGuiStateRecovery.cpp
         UI/Overlay.cpp
-        UI/OverlayPlatformInput.cpp
         UI/PaletteCommand.cpp
         UI/ScriptImGui.cpp
         UI/Gui/Button.cpp
@@ -421,25 +417,18 @@ set(BML_UI_SOURCES
 
 set(BML_HOOK_PRIVATE_HEADERS
         Hooks/BehaviorFunctionPatch.h
-        Hooks/CKRasterizer.h
-        Hooks/CKRasterizerEnums.h
-        Hooks/CKRasterizerTypes.h
         Hooks/HookLifecycle.h
         Hooks/InputCursor.h
-        Hooks/Macros.h
         Hooks/RenderHook.h
         Hooks/VTablePatch.h
-        Hooks/VTables.h
 )
 
 set(BML_HOOK_SOURCES
         Hooks/BehaviorFunctionPatch.cpp
         Hooks/HookLifecycle.cpp
-        Hooks/InputHook.cpp
         Hooks/ObjectLoadHook.cpp
         Hooks/PhysicsHook.cpp
         Hooks/RenderHook.cpp
-        Hooks/VTablePatch.cpp
 )
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
@@ -602,7 +591,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptDevToolsService.h
             AngelScript/ScriptDiagnostic.h
             AngelScript/ScriptFacadeAccess.h
-            AngelScript/ScriptFileWatcherWin32.h
             AngelScript/ScriptHookBlockService.h
             AngelScript/ScriptImcRecord.h
             AngelScript/ScriptImcService.h
@@ -636,11 +624,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptTimerService.h
             AngelScript/generated/BMLImGuiAngelScriptBindings.h
     )
-    if(BML_RUNTIME_SDL)
-        list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherSdl.cpp)
-    else()
-        list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherWin32.cpp)
-    endif()
+    list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherSdl.cpp)
     list(APPEND BML_ANGELSCRIPT_SOURCES
             AngelScript/AngelScriptBindings.cpp
             AngelScript/CKAngelScriptAdapter.cpp
@@ -717,7 +701,7 @@ set(IMGUI_HEADERS
         ${IMGUI_SOURCE_DIR}/imstb_rectpack.h
         ${IMGUI_SOURCE_DIR}/imstb_textedit.h
         ${IMGUI_SOURCE_DIR}/imstb_truetype.h
-        ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.h
+        ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.h
         ${IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.h
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.h
 )
@@ -728,22 +712,14 @@ set(IMGUI_SOURCES
         ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
         ${IMGUI_SOURCE_DIR}/imgui_demo.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
-        ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp
         ${IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.cpp
 )
 
-if(BML_RUNTIME_SDL)
-    list(REMOVE_ITEM BML_SOURCES
-        Hooks/InputHook.cpp Hooks/VTablePatch.cpp
-        UI/OverlayPlatformInput.cpp UI/Ime/Runtime.cpp
-        UI/Ime/NativePresentation.cpp UI/Ime/Tsf.cpp)
-    list(APPEND BML_SOURCES
-        Hooks/InputHookSdl.cpp Hooks/InputVTable.h Hooks/InputVTableMsvc.h Hooks/VTablePatchSdl.cpp
-        UI/OverlayPlatformInputSdl.cpp UI/Ime/RuntimeSdl.cpp UI/ImGuiFileSdl.cpp)
-    list(REMOVE_ITEM IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
-    list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
-endif()
+list(APPEND BML_SOURCES
+    Hooks/InputHookSdl.cpp Hooks/InputVTable.h Hooks/InputVTableMsvc.h Hooks/VTablePatchSdl.cpp
+    UI/OverlayPlatformInputSdl.cpp UI/Ime/RuntimeSdl.cpp UI/ImGuiFileSdl.cpp)
+list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
 
 if(NOT WIN32)
     list(REMOVE_ITEM BML_SOURCES BML.rc)
@@ -789,25 +765,21 @@ endif ()
 
 target_link_libraries(BML
         PUBLIC
-        VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        BML::CK2 BML::VxMath
         PRIVATE
         BMLUtils
         onig
 )
 
-if(BML_RUNTIME_SDL)
-    target_link_libraries(BML PRIVATE SDL3::SDL3)
-    if(APPLE)
-        set_target_properties(BML PROPERTIES INSTALL_RPATH "@loader_path;@loader_path/../Bin")
-    elseif(UNIX)
-        set_target_properties(BML PROPERTIES INSTALL_RPATH "$ORIGIN;$ORIGIN/../Bin")
-    endif()
-else()
-    target_link_libraries(BML PRIVATE minhook imm32 comctl32 ole32 oleaut32 uuid)
+target_link_libraries(BML PRIVATE SDL3::SDL3)
+if(APPLE)
+    set_target_properties(BML PROPERTIES INSTALL_RPATH "@loader_path;@loader_path/../Bin")
+elseif(UNIX)
+    set_target_properties(BML PROPERTIES INSTALL_RPATH "$ORIGIN;$ORIGIN/../Bin")
 endif()
 
 add_dependencies(BML BML_BuildVersionHeader)
-if(BML_RUNTIME_SDL AND BML_WITH_ANGELSCRIPT AND BML_BUILD_SCRIPT_RUNTIME AND TARGET CKAngelScript)
+if(BML_WITH_ANGELSCRIPT AND BML_BUILD_SCRIPT_RUNTIME AND TARGET CKAngelScript)
     add_dependencies(BML CKAngelScript)
 endif()
 
@@ -885,7 +857,6 @@ install(FILES
         "${PROJECT_SOURCE_DIR}/cmake/BMLInterface.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/BMLInterfacePackageConfig.cmake.in"
         "${PROJECT_SOURCE_DIR}/cmake/BMLImc.cmake"
-        "${PROJECT_SOURCE_DIR}/cmake/FindVirtoolsSDK.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
 )
 if(BML_RUNTIME STREQUAL "sdl" AND APPLE)
@@ -904,7 +875,6 @@ install(FILES
         "${PROJECT_SOURCE_DIR}/packaging/sdk/README_zh-CN.md"
         DESTINATION "."
 )
-
 install(FILES "${PROJECT_SOURCE_DIR}/deps/p256-m/apache-2.0.txt"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/licenses" RENAME p256-m.txt)
 install(FILES "${PROJECT_SOURCE_DIR}/deps/rhash-sha256/COPYING"
@@ -938,10 +908,6 @@ install(FILES
 )
 install(PROGRAMS "${PROJECT_SOURCE_DIR}/scripts/bml" DESTINATION "scripts")
 
-install(FILES
-        "${PROJECT_SOURCE_DIR}/scripts/lib/BMLProject.psm1"
-        DESTINATION "scripts/lib"
-)
 
 install(FILES
         "${PROJECT_SOURCE_DIR}/docs/en/modding.md"

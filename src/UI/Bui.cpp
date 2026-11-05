@@ -207,7 +207,7 @@ namespace Bui {
             return;
 
         // Virtools can observe the key that opens a native menu before the
-        // Win32 backend delivers that key to ImGui. Keep the ImGui ownership
+        // SDL backend delivers that key to ImGui. Keep the ImGui ownership
         // lock alive while the original device still reports it as held.
         state.navigationKeys |= pressed;
         RefreshNavigationKeyLocks(state);

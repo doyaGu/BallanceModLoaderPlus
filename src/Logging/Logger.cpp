@@ -8,14 +8,7 @@
 #include "AngelScript/ScriptDevToolsService.h"
 #endif
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#if BML_RUNTIME_SDL
 #include <SDL3/SDL_time.h>
-#else
-#include <Windows.h>
-#endif
 
 #include "Loader/ModContext.h"
 
@@ -54,16 +47,10 @@ void Logger::Error(const char *fmt, ...) {
 
 void Logger::Log(const char *level, const char *fmt, va_list args) {
     auto *ctx = BML_GetModContext();
-#if BML_RUNTIME_SDL
     SDL_DateTime sys{};
     SDL_Time now{};
     SDL_GetCurrentTime(&now);
     SDL_TimeToDateTime(now, &sys, true);
-#else
-    SYSTEMTIME sys;
-    GetLocalTime(&sys);
-    FILE *logFile = ctx ? ctx->GetLogFile() : nullptr;
-#endif
 
     std::string message;
     if (fmt) {
@@ -81,31 +68,10 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
         }
     }
 
-#if BML_RUNTIME_SDL
     char timestamp[64];
     std::snprintf(timestamp, sizeof(timestamp), "[%02d/%02d/%d %02d:%02d:%02d.%03d] ",
                   sys.month, sys.day, sys.year, sys.hour, sys.minute, sys.second, sys.nanosecond / 1000000);
     if (ctx) ctx->WriteLogLine(std::string(timestamp) + "[" + m_ModName + "/" + level + "]: " + message);
-#else
-    FILE *outFiles[] = {
-#ifdef _DEBUG
-        stdout,
-#endif
-        logFile
-    };
-
-    for (FILE *file: outFiles) {
-        if (!file) continue;
-
-        fprintf(file, "[%02d/%02d/%d %02d:%02d:%02d.%03d] ", sys.wMonth, sys.wDay,
-                sys.wYear, sys.wHour, sys.wMinute, sys.wSecond, sys.wMilliseconds);
-        fprintf(file, "[%s/%s]: ", m_ModName, level);
-        fputs(message.c_str(), file);
-        fputc('\n', file);
-        fflush(file);
-    }
-
-#endif
 
 #if BML_ENABLE_ANGELSCRIPT
     if (ctx) {

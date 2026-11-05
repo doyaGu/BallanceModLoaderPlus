@@ -1396,22 +1396,13 @@ static std::string BMLAS_CK_GetDataArrayString(CKDataArray *array,
     if (!BMLAS_CK_HasDataArrayCell(array, row, column))
         return defaultValue;
 
-#if BML_RUNTIME_SDL
     const int length = array->GetElementStringValue(row, column, nullptr, 0);
     if (length <= 0) return defaultValue;
     std::vector<char> buffer(static_cast<size_t>(length));
     const int result = array->GetElementStringValue(row, column, buffer.data(), length);
-#else
-    char buffer[4096] = {};
-    const int result = array->GetElementStringValue(row, column, buffer);
-#endif
     if (result <= 0 && buffer[0] == '\0')
         return defaultValue;
-#if BML_RUNTIME_SDL
     return buffer.data();
-#else
-    return buffer;
-#endif
 }
 
 static bool BMLAS_CK_GetDataArrayBool(CKDataArray *array, int row, int column, bool defaultValue) {

@@ -4,9 +4,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cwchar>
-#if !BML_RUNTIME_SDL
-#include <io.h>
-#endif
 #include <sstream>
 #include <unordered_map>
 
@@ -284,7 +281,6 @@ bool ScriptLibraryRegistry::Scan(std::string &diagnostic) {
     if (m_RootDirectory.empty() || !utils::DirectoryExistsW(m_RootDirectory))
         return true;
 
-#if BML_RUNTIME_SDL
     std::unordered_map<std::string, std::string> seenIds;
     for (const auto &idName : utils::ListDirectoriesW(m_RootDirectory)) {
         const std::string id = utils::Utf16ToUtf8(idName);
@@ -321,75 +317,6 @@ bool ScriptLibraryRegistry::Scan(std::string &diagnostic) {
             m_Packages.push_back(std::move(package));
         }
     }
-#else
-    const std::wstring pattern = m_RootDirectory + L"\\*";
-    _wfinddata_t idInfo = {};
-    auto idHandle = _wfindfirst(pattern.c_str(), &idInfo);
-    if (idHandle == -1)
-        return true;
-
-    std::unordered_map<std::string, std::string> seenIds;
-    do {
-        if ((idInfo.attrib & _A_SUBDIR) == 0 ||
-            std::wcscmp(idInfo.name, L".") == 0 ||
-            std::wcscmp(idInfo.name, L"..") == 0) {
-            continue;
-        }
-
-        const std::string id = utils::Utf16ToUtf8(idInfo.name);
-        const std::string foldedId = FoldAsciiLower(id);
-        auto seenId = seenIds.find(foldedId);
-        if (seenId != seenIds.end() && seenId->second != id) {
-            diagnostic = "Script library id directory has a Windows case collision: '" +
-                         seenId->second + "' and '" + id + "'.";
-            _findclose(idHandle);
-            return false;
-        }
-        seenIds.emplace(foldedId, id);
-        if (!IsValidLibraryId(id)) {
-            diagnostic = "Invalid script library id directory '" + id + "'.";
-            _findclose(idHandle);
-            return false;
-        }
-        const std::wstring idRoot = utils::CombinePathW(m_RootDirectory, idInfo.name);
-        const std::wstring versionPattern = idRoot + L"\\*";
-        _wfinddata_t versionInfo = {};
-        auto versionHandle = _wfindfirst(versionPattern.c_str(), &versionInfo);
-        if (versionHandle == -1)
-            continue;
-        do {
-            if ((versionInfo.attrib & _A_SUBDIR) == 0 ||
-                std::wcscmp(versionInfo.name, L".") == 0 ||
-                std::wcscmp(versionInfo.name, L"..") == 0) {
-                continue;
-            }
-
-            const std::string version = utils::Utf16ToUtf8(versionInfo.name);
-            if (!IsValidLibraryVersion(version)) {
-                diagnostic = "Invalid script library version directory '" + version + "' under '" + id + "'.";
-                _findclose(versionHandle);
-                _findclose(idHandle);
-                return false;
-            }
-            const std::string key = MakePackageKey(id, version);
-            if (m_Index.find(key) != m_Index.end()) {
-                diagnostic = "Duplicate script library package '" + id + "@" + version + "'.";
-                _findclose(versionHandle);
-                _findclose(idHandle);
-                return false;
-            }
-            ScriptLibraryPackage package;
-            package.Id = id;
-            package.Version = version;
-            package.RootDirectory = utils::ResolvePathW(utils::CombinePathW(idRoot, versionInfo.name));
-            package.VirtualRoot = "/bml/libs/" + id + "@" + version + "/";
-            m_Index.emplace(key, m_Packages.size());
-            m_Packages.push_back(std::move(package));
-        } while (_wfindnext(versionHandle, &versionInfo) == 0);
-        _findclose(versionHandle);
-    } while (_wfindnext(idHandle, &idInfo) == 0);
-    _findclose(idHandle);
-#endif
     std::sort(m_Packages.begin(), m_Packages.end(), [](const ScriptLibraryPackage &left,
                                                        const ScriptLibraryPackage &right) {
         if (left.Id != right.Id)

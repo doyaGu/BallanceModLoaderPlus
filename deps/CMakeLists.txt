@@ -1,8 +1,3 @@
-# MinHook
-if(NOT BML_RUNTIME_SDL)
-    add_subdirectory(minhook EXCLUDE_FROM_ALL)
-endif()
-
 # zip
 add_subdirectory(zip EXCLUDE_FROM_ALL)
 
