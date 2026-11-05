@@ -66,6 +66,7 @@ endif ()
 
 add_subdirectory(abi)
 add_subdirectory(codegen)
+add_subdirectory(crypto)
 add_subdirectory(sdk)
 add_subdirectory(unit)
 add_subdirectory(player)

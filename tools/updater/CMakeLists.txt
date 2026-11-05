@@ -1,3 +1,17 @@
+# Publisher tooling owns private-key signing; runtime binaries only verify.
+add_library(BMLUpdateSigning STATIC UpdaterSigning.cpp)
+target_link_libraries(BMLUpdateSigning PUBLIC BML_P256)
+target_compile_features(BMLUpdateSigning PUBLIC cxx_std_20)
+target_include_directories(BMLUpdateSigning PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(BMLUpdateSigner SignerMain.cpp)
+target_include_directories(BMLUpdateSigner PRIVATE "${BML_SOURCE_DIR}")
+target_link_libraries(BMLUpdateSigner PRIVATE BMLUpdateSigning BML_CryptoUtils BML_PathUtils)
+if(NOT APPLE)
+    target_link_libraries(BMLUpdateSigner PRIVATE BML_Sha256)
+endif()
+set_target_properties(BMLUpdateSigner PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/Bin")
+install(TARGETS BMLUpdateSigner RUNTIME DESTINATION bin)
+
 add_library(BMLUpdaterCore STATIC
     UpdaterDoctor.cpp
     UpdaterDoctor.h
