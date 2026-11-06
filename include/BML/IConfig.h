@@ -38,11 +38,14 @@
 
 // Optional presentation semantic for loader-owned configuration UIs. It is
 // schema metadata rather than part of the persisted value or PropertyType.
+#ifndef BML_CONFIG_EDITOR_DEFINED
+#define BML_CONFIG_EDITOR_DEFINED
 typedef enum BML_ConfigPropertyEditor {
     BML_CONFIG_EDITOR_DEFAULT = 0,
     BML_CONFIG_EDITOR_COLOR = 1,
     BML_CONFIG_EDITOR_CHOICE = 2,
 } BML_ConfigPropertyEditor;
+#endif
 
 // One setting. The loader owns it, it lives as long as the config does, and a Mod
 // may keep the pointer.

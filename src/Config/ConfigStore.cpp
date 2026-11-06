@@ -7,36 +7,41 @@ bool ConfigStore::Contains(const std::string &modId) const {
 }
 
 Config *ConfigStore::Add(const std::string &modId, IMod *owner, std::unique_ptr<Config> config) {
-    if (!owner || !config || config->GetMod() != owner || Contains(modId))
+    if (!owner || !config || config->GetMod() != owner || Contains(modId) ||
+        m_Owners.contains(owner))
         return nullptr;
 
     Config *rawConfig = config.get();
     const std::size_t position = m_Configs.size();
     m_Configs.push_back(std::move(config));
+    bool indexed = false;
     try {
         const bool inserted = m_Index.emplace(modId, position).second;
         if (!inserted) {
             m_Configs.pop_back();
             return nullptr;
         }
+        indexed = true;
+        m_Owners.emplace(owner, rawConfig);
     } catch (...) {
+        if (indexed)
+            m_Index.erase(modId);
         m_Configs.pop_back();
         throw;
     }
     return rawConfig;
 }
 
-std::unique_ptr<Config> ConfigStore::Remove(
-    const std::string &modId, IMod *owner, Config *config) {
+std::unique_ptr<Config> ConfigStore::Remove(const std::string &modId, IMod *owner, Config *config) {
     const auto it = m_Index.find(modId);
     if (it == m_Index.end() || it->second >= m_Configs.size() ||
-        m_Configs[it->second].get() != config ||
-        m_Configs[it->second]->GetMod() != owner) {
+        m_Configs[it->second].get() != config || m_Configs[it->second]->GetMod() != owner) {
         return nullptr;
     }
 
     const std::size_t position = it->second;
     std::unique_ptr<Config> removed = std::move(m_Configs[position]);
+    m_Owners.erase(owner);
     m_Configs.erase(m_Configs.begin() + static_cast<std::ptrdiff_t>(position));
     m_Index.erase(it);
     for (auto &entry : m_Index) {
@@ -53,6 +58,11 @@ Config *ConfigStore::Find(const std::string &modId, const IMod *owner) const {
         return nullptr;
     }
     return m_Configs[it->second].get();
+}
+
+Config *ConfigStore::Find(const IMod *owner) const noexcept {
+    const auto found = m_Owners.find(owner);
+    return found == m_Owners.end() ? nullptr : found->second;
 }
 
 std::vector<Config *> ConfigStore::Snapshot() const {

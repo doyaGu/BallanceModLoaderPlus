@@ -14,16 +14,18 @@ class IMod;
 // serializes access with m_Mutex; this class enforces owner identity and
 // container invariants, not synchronization.
 class ConfigStore {
-public:
+  public:
     bool Contains(const std::string &modId) const;
     Config *Add(const std::string &modId, IMod *owner, std::unique_ptr<Config> config);
     std::unique_ptr<Config> Remove(const std::string &modId, IMod *owner, Config *config);
     Config *Find(const std::string &modId, const IMod *owner) const;
+    Config *Find(const IMod *owner) const noexcept;
     std::vector<Config *> Snapshot() const;
 
-private:
+  private:
     std::vector<std::unique_ptr<Config>> m_Configs;
     std::unordered_map<std::string, std::size_t> m_Index;
+    std::unordered_map<const IMod *, Config *> m_Owners;
 };
 
 #endif // BML_CONFIGSTORE_H

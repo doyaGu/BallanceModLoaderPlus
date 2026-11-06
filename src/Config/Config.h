@@ -12,6 +12,8 @@
 
 #include "Config/ConfigValue.h"
 
+namespace BML::Api { class ConfigApi; }
+
 class Config;
 
 // Persisted values have no Mod owner, callbacks, revisions, or editor metadata.
@@ -34,6 +36,7 @@ private:
 };
 
 class Property : public IProperty {
+    friend class BML::Api::ConfigApi;
     friend class Config;
     friend class Category;
     friend BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property);
@@ -91,6 +94,7 @@ private:
     bool SetEditorMetadata(BML_ConfigPropertyEditor editor);
     bool SetChoiceMetadata(const char *const choices[], std::size_t count);
 
+    uint64_t m_Identity = 0;
     Value m_Value = 0;
     PropertyType m_Type = INTEGER;
     BML_ConfigPropertyEditor m_Editor = BML_CONFIG_EDITOR_DEFAULT;
@@ -103,6 +107,7 @@ private:
 };
 
 class Category {
+    friend class BML::Api::ConfigApi;
     friend class Config;
 
 public:
@@ -131,6 +136,7 @@ private:
 };
 
 class Config : public IConfig {
+    friend class BML::Api::ConfigApi;
     friend class Category;
     friend class Property;
 
@@ -184,6 +190,8 @@ public:
     IMod *GetMod() const { return m_Mod; }
     const std::string &GetModID() const { return m_ModID; }
     void SnapshotModMetadata();
+    void DetachMod() noexcept { m_Mod = nullptr; m_PendingNotifications.clear(); }
+    void AttachMod(IMod *mod);
 
     std::size_t GetCategoryCount() const { return m_Categories.size(); }
     Category *GetCategory(std::size_t i);

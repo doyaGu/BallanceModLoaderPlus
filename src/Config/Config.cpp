@@ -1,3 +1,5 @@
+#include "Api/HandleSequence.h"
+#include <atomic>
 #include "Config/Config.h"
 
 #include <algorithm>
@@ -192,6 +194,25 @@ Config::~Config() {
     }
     m_Categories.clear();
     m_CategoryMap.clear();
+}
+
+void Config::AttachMod(IMod *mod) {
+    // Retain values, not the retired owner's declaration schema. Prepare the
+    // source document before changing anything so allocation failure keeps the
+    // detached data available for another attempt.
+    ConfigData values;
+    for (const auto *category : m_Categories)
+        for (const auto *property : category->m_Properties)
+            if (property->m_Type != IProperty::NONE)
+                values.Set(property->m_Category.c_str(), property->m_Key.c_str(),
+                           property->m_Type, property->m_Value);
+    m_LoadedValues = std::move(values);
+    for (auto *category : m_Categories) delete category;
+    m_Categories.clear();
+    m_CategoryMap.clear();
+    m_PendingNotifications.clear();
+    m_Mod = mod;
+    TouchSchema();
 }
 
 bool Config::Load(const wchar_t *path) {
@@ -573,6 +594,9 @@ bool Category::HasKey(const char *key) const {
 }
 
 Property::Property(Config *config, std::string category, std::string key) {
+    static std::atomic<uint64_t> next{1};
+    m_Identity = BML::Api::NextHandle(next);
+    if (!m_Identity) throw std::overflow_error("Config property identities exhausted");
     m_Type = NONE;
     m_Value = 0;
     m_Config = config;
