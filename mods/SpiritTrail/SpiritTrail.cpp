@@ -1,43 +1,58 @@
 #include "SpiritTrail.h"
 
 #include <stdio.h>
-#include <sys/stat.h>
+#include <bit>
+#include <cstring>
+#include <limits>
 
-IMod *BMLEntry(IBML *bml) {
-    return new SpiritTrail(bml);
-}
-
-void BMLExit(IMod *mod) {
-    delete mod;
-}
+BML_DEFINE_MOD(SpiritTrail, {
+    .Id = "SpiritTrail",
+    .Name = "Spirit Trail",
+    .Version = BML_VERSION,
+    .Author = "Gamepiaynmo",
+    .Description = "Play the historical best record as a translucent ball.",
+    .MinimumLoaderVersion = BML_VERSION,
+})
 
 std::pair<char *, int> ReadDataFromFile(const char *filename) {
-    if (!filename) return {nullptr, 0};
-    FILE *fp = fopen(filename, "rb");
-    if (!fp) return {nullptr, 0};
-
-    fseek(fp, 0, SEEK_END);
-    int size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    char *buffer = new char[size];
-    fread(buffer, size, 1, fp);
-    fclose(fp);
-
-    return {buffer, size};
+    uint8_t *bytes = nullptr;
+    size_t size = 0;
+    if (!filename || !BML_ReadBinaryFileUtf8(filename, &bytes, &size))
+        return {nullptr, 0};
+    std::unique_ptr<uint8_t, decltype(&BML_Free)> owned(bytes, BML_Free);
+    if (size > INT_MAX)
+        return {nullptr, 0};
+    auto copy = std::make_unique<char[]>(size);
+    if (size)
+        std::memcpy(copy.get(), bytes, size);
+    return {copy.release(), static_cast<int>(size)};
 }
+namespace {
+uint32_t ReadWord(const char *p) {
+    const auto *b = reinterpret_cast<const unsigned char *>(p);
+    return uint32_t(b[0]) | (uint32_t(b[1]) << 8) | (uint32_t(b[2]) << 16) | (uint32_t(b[3]) << 24);
+}
+void WriteWord(char *p, uint32_t value) {
+    for (unsigned i = 0; i < 4; ++i)
+        p[i] = static_cast<char>(value >> (i * 8));
+}
+float ReadFloat(const char *p) { return std::bit_cast<float>(ReadWord(p)); }
+void WriteFloat(char *p, float value) { WriteWord(p, std::bit_cast<uint32_t>(value)); }
+} // namespace
 
 std::string GetFileHash(const char *filename) {
-    if (!filename) return "";
+    if (!filename)
+        return "";
     auto data = ReadDataFromFile(filename);
-    if (!data.first) return "";
+    if (!data.first)
+        return "";
 
     std::string res;
     int segm[] = {0, data.second / 4, data.second / 2, data.second * 3 / 4, data.second};
     for (int i = 0; i < 4; i++) {
         char hash[10];
         CKDWORD crc = CKComputeDataCRC(data.first + segm[i], segm[i + 1] - segm[i]);
-        sprintf(hash, "%08lx", crc);
+        snprintf(hash, sizeof(hash), "%08x", static_cast<unsigned>(crc));
         res += hash;
     }
 
@@ -45,83 +60,88 @@ std::string GetFileHash(const char *filename) {
     return res;
 }
 
-void WriteDataToFile(char *data, int size, const char *filename) {
-    if (!data || size == 0 || !filename)
-        return;
-
-    FILE *fp = fopen(filename, "wb");
-    fwrite(data, size, 1, fp);
-    fclose(fp);
-}
-
 std::pair<char *, int> UncompressDataFromFile(const char *filename) {
-    if (!filename) return {nullptr, 0};
-
-    FILE *fp = fopen(filename, "rb");
-    if (!fp) return {nullptr, 0};
-
-    fseek(fp, 0, SEEK_END);
-    int nsize = ftell(fp) - 4;
-    fseek(fp, 0, SEEK_SET);
-
-    int size;
-    char *buffer = new char[nsize];
-    fread(&size, 4, 1, fp);
-    fread(buffer, nsize, 1, fp);
-    fclose(fp);
-
-    char *res = CKUnPackData(size, buffer, nsize);
-    delete[] buffer;
-    return {res, size};
+    auto [bytes, length] = ReadDataFromFile(filename);
+    std::unique_ptr<char[]> owned(bytes);
+    if (!bytes || length <= 4)
+        return {nullptr, 0};
+    const uint32_t size = ReadWord(bytes);
+    if (size < 16 || size > INT_MAX)
+        return {nullptr, 0};
+    char *data = CKUnPackData(static_cast<int>(size), bytes + 4, length - 4);
+    return {data, data ? static_cast<int>(size) : 0};
+}
+bool CompressDataToFile(const char *data, int size, const char *filename) {
+    if (!data || size <= 0 || !filename)
+        return false;
+    int packedSize = 0;
+    char *packed = CKPackData(const_cast<char *>(data), size, packedSize, 9);
+    if (!packed || packedSize <= 0)
+        return false;
+    std::unique_ptr<char, void (*)(void *)> owned(packed, CKDeletePointer);
+    std::vector<uint8_t> bytes(static_cast<size_t>(packedSize) + 4);
+    WriteWord(reinterpret_cast<char *>(bytes.data()), static_cast<uint32_t>(size));
+    std::memcpy(bytes.data() + 4, packed, packedSize);
+    return BML_WriteBinaryFileUtf8(filename, bytes.data(), bytes.size()) != 0;
+}
+void SpiritTrail::OnUnload(const BML::Mod::Context &) {
+    StopPlaying();
+    StopRecording();
+    if (m_SaveRecord.joinable())
+        m_SaveRecord.join();
 }
 
-void CompressDataToFile(char *data, int size, const char *filename) {
-    if (!data || size == 0 || !filename)
-        return;
+void SpiritTrail::OnLoad(const BML::Mod::Context &context) {
+    m_Context = context;
+    m_Timers = ModSupport::Timers(context);
+    m_TrailsRoot = m_Context.GetDirectory(BML_DIR_LOADER).Value() + "/Trails/";
+    if (!BML_CreateFileTreeUtf8(m_TrailsRoot.c_str()))
+        throw std::runtime_error("Cannot create Spirit Trail directory");
 
-    int nsize;
-    char *res = CKPackData(data, size, nsize, 9);
+    m_Context.Config().SetCategoryComment("Misc", "Miscellaneous");
+    m_Enabled = m_Context.Config()
+                    .DeclareProperty({"Misc", "Enable", bool(false), "Enable Spirit Trail"})
+                    .Take();
 
-    FILE *fp = fopen(filename, "wb");
-    if (!fp) return;
+    m_HSSR = m_Context.Config()
+                 .DeclareProperty({"Misc", "HS_SR", bool(false), "Play HS(No) or SR(Yes) record"})
+                 .Take();
 
-    fwrite(&size, 4, 1, fp);
-    fwrite(res, nsize, 1, fp);
-    fclose(fp);
-
-    CKDeletePointer(res);
+    m_DeathReset = m_Context.Config()
+                       .DeclareProperty({"Misc", "DeathReset", bool(true), "Reset record on Death"})
+                       .Take();
 }
 
-void SpiritTrail::OnLoad() {
-    VxMakeDirectory("..\\ModLoader\\Trails\\");
+void SpiritTrail::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) {
+    const char *filename = event.Filename.data();
+    const bool isMap = event.IsMap;
+    const char *masterName = event.MasterName.data();
+    const auto filterClass = static_cast<CK_CLASSID>(event.FilterClass);
+    const bool addToScene = event.AddToScene, addtoscene = event.AddToScene,
+               reuseMeshes = event.ReuseMeshes, reuseMaterials = event.ReuseMaterials,
+               dynamic = event.Dynamic;
+    XObjectArray objects;
+    for (auto ref : event.Objects) {
+        auto p = BML::Engine::BorrowObject<CKObject>(m_Context, ref);
+        if (p)
+            objects.PushBack(p.Value()->GetID());
+    }
+    auto *objArray = &objects;
+    auto master = BML::Engine::BorrowObject<CKObject>(m_Context, event.MasterObject);
+    CKObject *masterObj = master ? master.Value() : nullptr;
 
-    GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
-    m_Enabled = GetConfig()->GetProperty("Misc", "Enable");
-    m_Enabled->SetComment("Enable Spirit Trail");
-    m_Enabled->SetDefaultBoolean(false);
-
-    m_HSSR = GetConfig()->GetProperty("Misc", "HS_SR");
-    m_HSSR->SetComment("Play HS(No) or SR(Yes) record");
-    m_HSSR->SetDefaultBoolean(false);
-
-    m_DeathReset = GetConfig()->GetProperty("Misc", "DeathReset");
-    m_DeathReset->SetComment("Reset record on Death");
-    m_DeathReset->SetDefaultBoolean(true);
-}
-
-void SpiritTrail::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                               CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                               XObjectArray *objArray, CKObject *masterObj) {
     if (isMap) {
         m_CurMap = filename;
         XString filepath = filename;
-        m_BML->GetPathManager()->ResolveFileName(filepath, DATA_PATH_IDX);
-        m_RecordDir = "..\\ModLoader\\Trails\\" + GetFileHash(filepath.CStr()) + "\\";
-        VxMakeDirectory((CKSTRING) m_RecordDir.c_str());
+        ModSupport::Engine(m_Context)->GetPathManager()->ResolveFileName(filepath, DATA_PATH_IDX);
+        StopPlaying();
+        m_RecordDir = m_TrailsRoot + GetFileHash(filepath.CStr()) + "/";
+        if (!BML_CreateFileTreeUtf8(m_RecordDir.c_str()))
+            throw std::runtime_error("Cannot create map record directory");
     }
 
-    if (!strcmp(filename, "3D Entities\\Balls.nmo")) {
-        CKDataArray *physBall = m_BML->GetArrayByName("Physicalize_GameBall");
+    if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
+        CKDataArray *physBall = ModSupport::Find<CKDataArray>(m_Context, "Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
             const int nameSize = physBall->GetElementStringValue(i, 0, nullptr, 0);
             if (nameSize <= 1)
@@ -130,16 +150,18 @@ void SpiritTrail::OnLoadObject(const char *filename, CKBOOL isMap, const char *m
             ball.name.resize(nameSize, '\0');
             physBall->GetElementStringValue(i, 0, ball.name.data(), nameSize);
             ball.name.pop_back();
-            ball.obj = m_BML->Get3dObjectByName(ball.name.c_str());
+            ball.obj = ModSupport::Find<CK3dObject>(m_Context, ball.name.c_str());
 
             CKDependencies dep;
             dep.Resize(40);
             dep.Fill(0);
             dep.m_Flags = CK_DEPENDENCIES_CUSTOM;
-            dep[CKCID_OBJECT] = CK_DEPENDENCIES_COPY_OBJECT_NAME | CK_DEPENDENCIES_COPY_OBJECT_UNIQUENAME;
+            dep[CKCID_OBJECT] =
+                CK_DEPENDENCIES_COPY_OBJECT_NAME | CK_DEPENDENCIES_COPY_OBJECT_UNIQUENAME;
             dep[CKCID_MESH] = CK_DEPENDENCIES_COPY_MESH_MATERIAL;
             dep[CKCID_3DENTITY] = CK_DEPENDENCIES_COPY_3DENTITY_MESH;
-            ball.obj = (CK3dObject *) m_BML->GetCKContext()->CopyObject(ball.obj, &dep, "_Spirit");
+            ball.obj =
+                (CK3dObject *)ModSupport::Engine(m_Context)->CopyObject(ball.obj, &dep, "_Spirit");
             for (int j = 0; j < ball.obj->GetMeshCount(); j++) {
                 CKMesh *mesh = ball.obj->GetMesh(j);
                 for (int k = 0; k < mesh->GetMaterialCount(); k++) {
@@ -151,28 +173,28 @@ void SpiritTrail::OnLoadObject(const char *filename, CKBOOL isMap, const char *m
                     color.a = 0.5f;
                     mat->SetDiffuse(color);
                     ball.materials.push_back(mat);
-                    m_BML->SetIC(mat);
+                    ModSupport::SetIC(m_Context, mat);
                 }
             }
             m_DualBalls.push_back(ball);
         }
-        GetLogger()->Info("Created Spirit Balls");
+        ModSupport::Log(m_Context, BML_LOG_INFO, "Created Spirit Balls");
     }
 
-    if (!strcmp(filename, "3D Entities\\Gameplay.nmo")) {
-        m_Energy = m_BML->GetArrayByName("Energy");
-        m_CurLevel = m_BML->GetArrayByName("CurrentLevel");
-        m_IngameParam = m_BML->GetArrayByName("IngameParameter");
+    if (ModSupport::ResourceIs(filename, "3D Entities\\Gameplay.nmo")) {
+        m_Energy = ModSupport::Find<CKDataArray>(m_Context, "Energy");
+        m_CurLevel = ModSupport::Find<CKDataArray>(m_Context, "CurrentLevel");
+        m_IngameParam = ModSupport::Find<CKDataArray>(m_Context, "IngameParameter");
     }
 }
 
-void SpiritTrail::OnProcess() {
+void SpiritTrail::OnProcess(const BML::Mod::Context &) {
     if (m_SRActivated)
-        m_SRTimer += m_BML->GetTimeManager()->GetLastDeltaTime();
+        m_SRTimer += ModSupport::Engine(m_Context)->GetTimeManager()->GetLastDeltaTime();
 
     const float delta = 1000.0f / TICK_SPEED;
     if (m_IsRecording && !m_RecordPaused) {
-        m_RecordTimer += m_BML->GetTimeManager()->GetLastDeltaTime();
+        m_RecordTimer += ModSupport::Engine(m_Context)->GetTimeManager()->GetLastDeltaTime();
         m_RecordTimer = (std::min)(m_RecordTimer, 1000.0f);
 
         while (m_RecordTimer > 0) {
@@ -183,7 +205,7 @@ void SpiritTrail::OnProcess() {
                 m_Record.trafo.emplace_back(m_Record.states.size(), curBall);
             m_CurBall = curBall;
 
-            auto *ball = (CK3dObject *) m_CurLevel->GetElementObject(0, 1);
+            auto *ball = (CK3dObject *)m_CurLevel->GetElementObject(0, 1);
             if (ball) {
                 Record::State state;
                 ball->GetPosition(&state.pos);
@@ -192,18 +214,19 @@ void SpiritTrail::OnProcess() {
             }
         }
 
-        if (m_BML->IsCheatEnabled()) {
+        if (ModSupport::CheatEnabled()) {
             StopRecording();
         }
 
         if (GetSRScore() > 1000 * 3600) {
-            GetLogger()->Info("Record is longer than 1 hour, stop recording");
+            ModSupport::Log(m_Context, BML_LOG_INFO,
+                            "Record is longer than 1 hour, stop recording");
             StopRecording();
         }
     }
 
     if (m_IsPlaying && !m_PlayPaused) {
-        m_PlayTimer += m_BML->GetTimeManager()->GetLastDeltaTime();
+        m_PlayTimer += ModSupport::Engine(m_Context)->GetTimeManager()->GetLastDeltaTime();
         m_PlayTimer = std::min(m_PlayTimer, 1000.0f);
 
         while (m_PlayTimer > 0) {
@@ -268,41 +291,57 @@ int SpiritTrail::GetCurrentSector() {
 
 void SpiritTrail::SetCurrentBall(int curBall) {
     m_PlayBall = curBall;
-    for (auto &ball: m_DualBalls)
+    for (auto &ball : m_DualBalls)
         ball.obj->Show(CKHIDE);
     if (m_PlayBall >= 0 && m_PlayBall < m_DualBalls.size())
         m_DualBalls[m_PlayBall].obj->Show();
 }
 
 void SpiritTrail::PreparePlaying() {
-    if (!m_IsPlaying && m_Enabled->GetBoolean() && !m_WaitPlaying) {
+    if (!m_IsPlaying && m_Enabled.Get<bool>() && !m_WaitPlaying) {
         m_WaitPlaying = true;
 
-        m_LoadPlay = std::thread([this]() {
-            std::string recfile[2] = {(m_RecordDir + "hs" + std::to_string(m_CurSector) + ".rec"),
-                                      (m_RecordDir + "sr" + std::to_string(m_CurSector) + ".rec")};
-            m_PlayHSSR = m_HSSR->GetBoolean();
-
-            struct stat buf = {0};
-            for (int i = 0; i < 2; i++) {
-                if (stat(recfile[i].c_str(), &buf) == 0) {
-                    std::pair<char *, int> data = UncompressDataFromFile(recfile[i].c_str());
-                    m_Play[i].hsscore = *reinterpret_cast<int *>(data.first);
-                    m_Play[i].srscore = *reinterpret_cast<float *>(data.first + 4);
-                    if (bool(i) == m_PlayHSSR) {
-                        int ssize = *reinterpret_cast<int *>(data.first + 8);
-                        int tsize = *reinterpret_cast<int *>(data.first + 12);
-                        m_Play[i].states.resize(ssize);
-                        memcpy(&m_Play[i].states[0], data.first + 16, ssize * sizeof(Record::State));
-                        m_Play[i].trafo.resize(tsize);
-                        memcpy(&m_Play[i].trafo[0], data.first + 16 + ssize * sizeof(Record::State),
-                               tsize * sizeof(std::pair<int, int>));
+        m_PlayHSSR = m_HSSR.Get<bool>();
+        const std::string paths[2] = {m_RecordDir + "hs" + std::to_string(m_CurSector) + ".rec",
+                                      m_RecordDir + "sr" + std::to_string(m_CurSector) + ".rec"};
+        const auto ballCount = m_DualBalls.size();
+        const bool selected = m_PlayHSSR;
+        m_LoadPlay = std::jthread([this, paths, ballCount, selected] {
+            for (int i = 0; i < 2; ++i) {
+                m_Play[i] = {};
+                try {
+                    auto [data, length] = UncompressDataFromFile(paths[i].c_str());
+                    std::unique_ptr<char, void (*)(void *)> owned(data, CKDeletePointer);
+                    if (!data || length < 16)
+                        continue;
+                    const uint32_t states = ReadWord(data + 8), transforms = ReadWord(data + 12);
+                    if (uint64_t(states) * 28 + uint64_t(transforms) * 8 + 16 != uint64_t(length) ||
+                        !states || !transforms || !std::isfinite(ReadFloat(data + 4)))
+                        continue;
+                    Record record;
+                    record.hsscore = std::bit_cast<int32_t>(ReadWord(data));
+                    record.srscore = ReadFloat(data + 4);
+                    if (bool(i) == selected) {
+                        record.states.resize(states);
+                        const char *p = data + 16;
+                        for (auto &state : record.states) {
+                            state.pos = VxVector(ReadFloat(p), ReadFloat(p + 4), ReadFloat(p + 8));
+                            state.rot = VxQuaternion(ReadFloat(p + 12), ReadFloat(p + 16),
+                                                     ReadFloat(p + 20), ReadFloat(p + 24));
+                            p += 28;
+                        }
+                        record.trafo.reserve(transforms);
+                        for (uint32_t j = 0; j < transforms; ++j, p += 8) {
+                            const uint32_t frame = ReadWord(p), ball = ReadWord(p + 4);
+                            if (frame >= states || ball >= ballCount)
+                                throw std::runtime_error("Invalid record transform");
+                            record.trafo.emplace_back(static_cast<int>(frame),
+                                                      static_cast<int>(ball));
+                        }
                     }
-
-                    CKDeletePointer(data.first);
-                } else {
-                    m_Play[i].hsscore = INT_MIN;
-                    m_Play[i].srscore = FLT_MAX;
+                    m_Play[i] = std::move(record);
+                } catch (...) {
+                    m_Play[i] = {};
                 }
             }
         });
@@ -310,13 +349,14 @@ void SpiritTrail::PreparePlaying() {
 }
 
 void SpiritTrail::StartPlaying() {
-    if (!m_IsPlaying && m_Enabled->GetBoolean() && m_WaitPlaying) {
+    if (!m_IsPlaying && m_Enabled.Get<bool>() && m_WaitPlaying) {
         m_WaitPlaying = false;
 
         if (m_LoadPlay.joinable())
             m_LoadPlay.join();
 
-        if (m_Play[m_PlayHSSR].hsscore > INT_MIN) {
+        if (m_Play[m_PlayHSSR].hsscore > INT_MIN && !m_Play[m_PlayHSSR].states.empty() &&
+            !m_Play[m_PlayHSSR].trafo.empty()) {
             m_IsPlaying = true;
             m_PlayPaused = false;
             m_PlayTimer = -1000.0f / TICK_SPEED;
@@ -327,15 +367,14 @@ void SpiritTrail::StartPlaying() {
     }
 }
 
-void SpiritTrail::PausePlaying() {
-    m_PlayPaused = true;
-}
+void SpiritTrail::PausePlaying() { m_PlayPaused = true; }
 
-void SpiritTrail::UnpausePlaying() {
-    m_PlayPaused = false;
-}
+void SpiritTrail::UnpausePlaying() { m_PlayPaused = false; }
 
 void SpiritTrail::StopPlaying() {
+    if (m_LoadPlay.joinable())
+        m_LoadPlay.join();
+    m_WaitPlaying = false;
     if (m_IsPlaying) {
         m_IsPlaying = false;
         for (int i = 0; i < 2; i++) {
@@ -345,19 +384,20 @@ void SpiritTrail::StopPlaying() {
             m_Play[i].trafo.shrink_to_fit();
         }
 
-        for (auto &ball: m_DualBalls)
+        for (auto &ball : m_DualBalls)
             ball.obj->Show(CKHIDE);
     }
 }
 
 void SpiritTrail::PrepareRecording() {
-    if (!m_IsRecording && !m_BML->IsCheatEnabled() && m_Enabled->GetBoolean() && !m_WaitRecording) {
+    if (!m_IsRecording && !ModSupport::CheatEnabled() && m_Enabled.Get<bool>() &&
+        !m_WaitRecording) {
         m_WaitRecording = true;
     }
 }
 
 void SpiritTrail::StartRecording() {
-    if (!m_IsRecording && !m_BML->IsCheatEnabled() && m_Enabled->GetBoolean() && m_WaitRecording) {
+    if (!m_IsRecording && !ModSupport::CheatEnabled() && m_Enabled.Get<bool>() && m_WaitRecording) {
         m_WaitRecording = false;
         m_IsRecording = true;
         m_RecordPaused = false;
@@ -370,13 +410,9 @@ void SpiritTrail::StartRecording() {
     }
 }
 
-void SpiritTrail::PauseRecording() {
-    m_RecordPaused = true;
-}
+void SpiritTrail::PauseRecording() { m_RecordPaused = true; }
 
-void SpiritTrail::UnpauseRecording() {
-    m_RecordPaused = false;
-}
+void SpiritTrail::UnpauseRecording() { m_RecordPaused = false; }
 
 void SpiritTrail::StopRecording() {
     if (m_IsRecording) {
@@ -388,60 +424,64 @@ void SpiritTrail::StopRecording() {
     }
 }
 
-static bool CopyFile(const char *src, const char *dst) {
-    FILE *fin = fopen(src, "rb");
-    if (!fin) return false;
-    FILE *fout = fopen(dst, "wb");
-    if (!fout) return false;
-
-    int ch;
-    while ((ch = fgetc(fin)) != EOF)
-        fputc(ch, fout);
-
-    fclose(fin);
-    fclose(fout);
-    return true;
-}
-
 void SpiritTrail::EndRecording() {
     if (m_IsRecording) {
         m_Record.hsscore = GetHSScore() - m_StartHS;
         m_Record.srscore = GetSRScore();
 
         bool savehs = m_Record.hsscore > m_Play[0].hsscore,
-            savesr = m_Record.srscore < m_Play[1].srscore;
+             savesr = m_Record.srscore < m_Play[1].srscore;
         if (savehs || savesr) {
-            int ssize = sizeof(Record::State) * m_Record.states.size();
-            int tsize = sizeof(std::pair<int, int>) * m_Record.trafo.size();
-            int size = 16 + ssize + tsize;
-
-            char *buffer = new char[size];
-            *reinterpret_cast<int *>(buffer) = m_Record.hsscore;
-            *reinterpret_cast<float *>(buffer + 4) = m_Record.srscore;
-            *reinterpret_cast<int *>(buffer + 8) = m_Record.states.size();
-            *reinterpret_cast<int *>(buffer + 12) = m_Record.trafo.size();
-            memcpy(buffer + 16, &m_Record.states[0], ssize);
-            memcpy(buffer + 16 + ssize, &m_Record.trafo[0], tsize);
-
-            std::string hspath = m_RecordDir + "hs" + std::to_string(m_CurSector) + ".rec",
-                srpath = m_RecordDir + "sr" + std::to_string(m_CurSector) + ".rec";
-
-            std::thread([savehs, savesr, hspath, srpath, buffer, size]() {
-                if (savehs) {
-                    CompressDataToFile(buffer, size, hspath.c_str());
-                    if (savesr) {
-                        CopyFile(hspath.c_str(), srpath.c_str());
+            const uint64_t bytes =
+                16 + uint64_t(m_Record.states.size()) * 28 + uint64_t(m_Record.trafo.size()) * 8;
+            if (bytes > INT_MAX)
+                throw std::runtime_error("Spirit Trail record exceeds the format capacity");
+            std::vector<char> buffer(static_cast<size_t>(bytes));
+            WriteWord(buffer.data(), static_cast<uint32_t>(m_Record.hsscore));
+            WriteFloat(buffer.data() + 4, m_Record.srscore);
+            WriteWord(buffer.data() + 8, static_cast<uint32_t>(m_Record.states.size()));
+            WriteWord(buffer.data() + 12, static_cast<uint32_t>(m_Record.trafo.size()));
+            char *p = buffer.data() + 16;
+            for (const auto &state : m_Record.states) {
+                WriteFloat(p, state.pos.x);
+                WriteFloat(p + 4, state.pos.y);
+                WriteFloat(p + 8, state.pos.z);
+                WriteFloat(p + 12, state.rot.x);
+                WriteFloat(p + 16, state.rot.y);
+                WriteFloat(p + 20, state.rot.z);
+                WriteFloat(p + 24, state.rot.w);
+                p += 28;
+            }
+            for (const auto &[frame, ball] : m_Record.trafo) {
+                WriteWord(p, static_cast<uint32_t>(frame));
+                WriteWord(p + 4, static_cast<uint32_t>(ball));
+                p += 8;
+            }
+            const auto hspath = m_RecordDir + "hs" + std::to_string(m_CurSector) + ".rec";
+            const auto srpath = m_RecordDir + "sr" + std::to_string(m_CurSector) + ".rec";
+            if (m_SaveRecord.joinable())
+                m_SaveRecord.join();
+            m_SaveRecord =
+                std::jthread([savehs, savesr, hspath, srpath, buffer = std::move(buffer)] {
+                    try {
+                        if (savehs) {
+                            if (CompressDataToFile(buffer.data(), static_cast<int>(buffer.size()),
+                                                   hspath.c_str()) &&
+                                savesr)
+                                BML_CopyFileUtf8(hspath.c_str(), srpath.c_str());
+                        } else
+                            CompressDataToFile(buffer.data(), static_cast<int>(buffer.size()),
+                                               srpath.c_str());
+                    } catch (...) {
                     }
-                } else {
-                    CompressDataToFile(buffer, size, srpath.c_str());
-                }
-                delete[] buffer;
-            }).detach();
+                });
 
             if (savehs)
-                GetLogger()->Info("HS of sector %d has updated", m_CurSector);
+                ModSupport::Log(m_Context, BML_LOG_INFO, "HS of sector %d has updated",
+                                m_CurSector);
             if (savesr)
-                GetLogger()->Info("SR of sector %d has updated", m_CurSector);
+                ModSupport::Log(m_Context, BML_LOG_INFO, "SR of sector %d has updated",
+                                m_CurSector);
         }
 
         StopRecording();

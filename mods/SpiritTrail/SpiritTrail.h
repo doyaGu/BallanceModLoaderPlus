@@ -2,69 +2,64 @@
 
 #include <thread>
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
 #define TICK_SPEED 8
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
+class SpiritTrail : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-class SpiritTrail : public IMod {
-public:
-    explicit SpiritTrail(IBML *bml) : IMod(bml) {}
+  public:
+    void OnUnload(const BML::Mod::Context &) override;
 
-    const char *GetID() override { return "SpiritTrail"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "Spirit Trail"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
-    const char *GetDescription() override { return "Play the historical best record as a translucent ball."; }
-    DECLARE_BML_VERSION;
 
-    void OnLoad() override;
-    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                      XObjectArray *objArray, CKObject *masterObj) override;
-    void OnProcess() override;
+    void OnLoad(const BML::Mod::Context &) override;
+    void OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) override;
+    void OnProcess(const BML::Mod::Context &) override;
 
-    void OnStartLevel() override {
+    void OnStartLevel(const BML::Mod::Context &) override {
         m_CurSector = 1;
         PreparePlaying();
         PrepareRecording();
     }
 
-    void OnBallNavActive() override {
+    void OnBallNavActive(const BML::Mod::Context &) override {
         StartPlaying();
         StartRecording();
     }
 
-    void OnPauseLevel() override {
+    void OnPauseLevel(const BML::Mod::Context &) override {
         PausePlaying();
         PauseRecording();
         m_SRActivated = false;
     }
-    void OnUnpauseLevel() override {
+    void OnUnpauseLevel(const BML::Mod::Context &) override {
         UnpausePlaying();
         UnpauseRecording();
         m_SRActivated = true;
     }
 
-    void OnCounterActive() override { m_SRActivated = true; }
-    void OnCounterInactive() override { m_SRActivated = false; }
+    void OnCounterActive(const BML::Mod::Context &) override { m_SRActivated = true; }
+    void OnCounterInactive(const BML::Mod::Context &) override { m_SRActivated = false; }
 
-    void OnPostResetLevel() override {
+    void OnPostResetLevel(const BML::Mod::Context &) override {
         StopPlaying();
         StopRecording();
     }
-    void OnPostExitLevel() override {
+    void OnPostExitLevel(const BML::Mod::Context &) override {
         StopPlaying();
         StopRecording();
     }
 
-    void OnBallOff() override {
+    void OnBallOff(const BML::Mod::Context &) override {
         int lifes;
         m_Energy->GetElementValue(0, 1, &lifes);
-        if (m_DeathReset->GetBoolean() || lifes <= 0) {
-            m_BML->AddTimer(1000.0f, [this, lifes]() {
+        if (m_DeathReset.Get<bool>() || lifes <= 0) {
+            m_Timers.After(1000.0f, [this, lifes]() {
                 StopPlaying();
                 StopRecording();
                 if (lifes > 0) {
@@ -75,17 +70,17 @@ public:
         }
     }
 
-    void OnLevelFinish() override { EndRecording(); }
-    void OnPostNextLevel() override { StopPlaying(); }
+    void OnLevelFinish(const BML::Mod::Context &) override { EndRecording(); }
+    void OnPostNextLevel(const BML::Mod::Context &) override { StopPlaying(); }
 
-    void OnPreCheckpointReached() override {
+    void OnPreCheckpointReached(const BML::Mod::Context &) override {
         StopPlaying();
         EndRecording();
         m_CurSector = GetCurrentSector() + 1;
         PreparePlaying();
         PrepareRecording();
     }
-    void OnPostCheckpointReached() override {
+    void OnPostCheckpointReached(const BML::Mod::Context &) override {
         StartPlaying();
         StartRecording();
     }
@@ -110,7 +105,7 @@ public:
     void StopRecording();
     void EndRecording();
 
-private:
+  private:
     std::string m_CurMap;
     std::string m_RecordDir;
     int m_CurSector = 0;
@@ -132,8 +127,8 @@ private:
     bool m_PlayPaused = false;
 
     struct Record {
-        int hsscore;
-        float srscore;
+        int hsscore = INT_MIN;
+        float srscore = FLT_MAX;
 
         struct State {
             VxVector pos;
@@ -144,23 +139,25 @@ private:
         std::vector<std::pair<int, int>> trafo;
     };
     Record m_Record, m_Play[2];
-    std::thread m_LoadPlay;
+    std::jthread m_LoadPlay;
+    std::jthread m_SaveRecord;
+    std::string m_TrailsRoot;
     bool m_LoadingPlay = false;
 
-    IProperty *m_Enabled = nullptr;
-    IProperty *m_HSSR = nullptr;
-    IProperty *m_DeathReset = nullptr;
+    BML::Config::Property m_Enabled = {};
+    BML::Config::Property m_HSSR = {};
+    BML::Config::Property m_DeathReset = {};
 
     struct SpiritBall {
         std::string name;
-        CK3dObject *obj;
-        std::vector<CKMaterial *> materials;
+        ModSupport::Object<CK3dObject> obj;
+        std::vector<ModSupport::Object<CKMaterial>> materials;
     };
     std::vector<SpiritBall> m_DualBalls;
 
-    CKDataArray *m_Energy = nullptr;
-    CKDataArray *m_CurLevel = nullptr;
-    CKDataArray *m_IngameParam = nullptr;
+    ModSupport::Object<CKDataArray> m_Energy{};
+    ModSupport::Object<CKDataArray> m_CurLevel{};
+    ModSupport::Object<CKDataArray> m_IngameParam{};
     float m_SRTimer = 0;
     bool m_SRActivated = false;
 };
