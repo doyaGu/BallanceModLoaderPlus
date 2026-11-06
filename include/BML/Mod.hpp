@@ -791,4 +791,9 @@ int GetInterface(uint16_t major, const BML_ModInterface **out) noexcept {
             return ::BML::Mod::Detail::ResolveDefinition(__VA_ARGS__);                             \
         }>(major, out);                                                                            \
     }
+// The common authoring surface is self-contained. Engine and ImGui remain opt-in.
+#include "BML/Config.hpp"
+#include "BML/Input.hpp"
+#include "BML/Timer.hpp"
+#include "BML/Command.hpp"
 #endif

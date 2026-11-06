@@ -9,6 +9,8 @@
 
 #include "Hooks/HookLifecycle.h"
 #include "Hooks/InputCursor.h"
+#include "Hooks/InputAccess.h"
+#include <climits>
 #include "Hooks/InputVTable.h"
 #include "Hooks/VTablePatch.h"
 
@@ -55,12 +57,14 @@ struct InputHook::Impl {
     static inline bool s_OverlayVisible = false;
     static inline bool s_DeferPostProcess = false;
     static inline bool s_PostProcessPending = false;
+    static inline uint64_t s_Revision = 1;
 
     static void CompletePostProcess() {
         if (!s_PostProcessPending)
             return;
         s_PostProcessPending = false;
         (s_InputManager->*s_Original.PostProcess)();
+        ++s_Revision;
     }
 
     static int IsBlocked(CK_INPUT_DEVICE device) {
@@ -70,7 +74,7 @@ struct InputHook::Impl {
     static void Block(CK_INPUT_DEVICE device) {
         if (!s_InputManager || device < 0 || device >= CK_INPUT_DEVICE_COUNT)
             return;
-        ++s_BlockedDevice[device];
+        if (s_BlockedDevice[device] < INT_MAX) ++s_BlockedDevice[device];
     }
 
     static void Unblock(CK_INPUT_DEVICE device) {
@@ -125,8 +129,9 @@ struct InputHook::Impl {
 
     static uint64_t AcquireBlock(uint32_t deviceMask) {
         const uint32_t mask = NormalizeBlockMask(deviceMask);
-        if (mask == 0)
-            return 0;
+        if (mask == 0) return 0;
+        for (uint32_t d = 0; d < CK_INPUT_DEVICE_COUNT; ++d)
+            if ((mask & (1u << d)) && s_BlockedDevice[d] == INT_MAX) return 0;
 
         uint64_t token = 0;
         do {
@@ -649,6 +654,7 @@ CKBOOL InputHook::IsJoystickButtonDown(int iJoystick, int iButton) {
 void InputHook::Pause(CKBOOL pause) {
     if (!IsValid()) return;
     Impl::s_InputManager->Pause(pause);
+    ++Impl::s_Revision;
 }
 
 void InputHook::ShowCursor(CKBOOL iShow) {
@@ -788,4 +794,31 @@ void InputHook::Process() {
         Impl::s_LastKeyboardState[key] = (state[key] & KS_RELEASED) ? KS_IDLE : state[key];
     // A snapshot taken without a scheduled cleanup must not retain release bits.
     GetMousePosition(Impl::s_LastMousePosition, false);
+    ++Impl::s_Revision;
+}
+
+uint64_t InputHookAccess::Revision(InputHook &) { return InputHook::Impl::s_Revision; }
+void InputHookAccess::ReadRawMouse(InputHook &hook, BML_InputMouseState &value) {
+    if (!InputHook::IsValid() || !value.Attached) return;
+    auto *manager = InputHook::Impl::s_InputManager;
+    const auto &o = InputHook::Impl::s_Original;
+    Vx2DVector screen{}, window{}; VxVector relative{};
+    (manager->*o.GetMousePosition)(screen, TRUE); (manager->*o.GetMousePosition)(window, FALSE);
+    (manager->*o.GetMouseRelativePosition)(relative);
+    value.ScreenPosition = {screen.x, screen.y}; value.WindowPosition = {window.x, window.y}; value.RelativePosition = {relative.x, relative.y, relative.z};
+    for (uint32_t i = 0; i < 4; ++i) { const auto b = static_cast<CK_MOUSEBUTTON>(i);
+        if (hook.oIsMouseButtonDown(b)) value.DownMask |= 1u << i;
+        if (hook.oIsMouseClicked(b)) value.ClickedMask |= 1u << i;
+        if (hook.oIsMouseToggled(b)) value.ToggledMask |= 1u << i;
+    }
+}
+void InputHookAccess::ReadRawJoystick(InputHook &, uint32_t index, BML_InputJoystickState &value) {
+    if (!InputHook::IsValid() || !value.Attached) return;
+    auto *manager = InputHook::Impl::s_InputManager;
+    const auto &o = InputHook::Impl::s_Original;
+    VxVector position{}, rotation{}; Vx2DVector sliders{};
+    (manager->*o.GetJoystickPosition)(index, &position); (manager->*o.GetJoystickRotation)(index, &rotation);
+    (manager->*o.GetJoystickSliders)(index, &sliders); (manager->*o.GetJoystickPointOfViewAngle)(index, &value.PointOfViewAngle);
+    value.Position = {position.x, position.y, position.z}; value.Rotation = {rotation.x, rotation.y, rotation.z}; value.Sliders = {sliders.x, sliders.y};
+    value.Buttons = (manager->*o.GetJoystickButtonsState)(index);
 }

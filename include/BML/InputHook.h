@@ -207,6 +207,7 @@ private:
     // Keep the loader's cursor request off this exported class: even private
     // members become DLL exports under MSVC.
     friend void SetOverlayCursorVisible(bool visible);
+    friend struct InputHookAccess;
     friend bool InputHookOwnsActive(const InputHook &hook);
     friend bool DetachInputHook(InputHook &hook);
     friend void DeferInputPostProcess(InputHook &hook, bool defer);
