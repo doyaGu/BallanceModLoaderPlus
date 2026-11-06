@@ -1,11 +1,11 @@
 #include "DebugCommands.h"
 #include "DebugUtilities.h"
 
-void CommandScore::Execute(IBML *bml, const std::vector<std::string> &args) {
-    if (bml->IsIngame() && args.size() > 2) {
-        int num = ParseInteger(args[2], 0);
+void CommandScore::Execute(const BML::Mod::Context &context, const std::vector<std::string> &args) {
+    if (ModSupport::GameState().Ingame && args.size() > 2) {
+        int num = ModSupport::ParseInteger(args[2], 0);
         if (!m_Energy) {
-            m_Energy = bml->GetArrayByName("Energy");
+            m_Energy = ModSupport::Find<CKDataArray>(context, "Energy");
         }
 
         if (m_Energy) {
@@ -18,14 +18,14 @@ void CommandScore::Execute(IBML *bml, const std::vector<std::string> &args) {
             else if (args[1] == "set")
                 score = num;
             m_Energy->SetElementValue(0, 0, &score);
-            bml->SendIngameMessage(("Ingame Score Changed to " + std::to_string(score)).c_str());
+            BML::UI::AddMessage(("Ingame Score Changed to " + std::to_string(score)).c_str());
         }
     }
 }
 
-void CommandKill::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CommandKill::Execute(const BML::Mod::Context &context, const std::vector<std::string> &args) {
     if (!m_DeactivateBall) {
-        CKBehavior *ingame = bml->GetScriptByName("Gameplay_Ingame");
+        CKBehavior *ingame = ModSupport::Find<CKBehavior>(context, "Gameplay_Ingame");
         CKBehavior *ballMgr = ScriptHelper::FindFirstBB(ingame, "BallManager");
         m_DeactivateBall = ScriptHelper::FindFirstBB(ballMgr, "Deactivate Ball");
     }
@@ -33,51 +33,51 @@ void CommandKill::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (m_DeactivateBall && m_Mod->IsInLevel()) {
         m_DeactivateBall->ActivateInput(0);
         m_DeactivateBall->Activate();
-        bml->SendIngameMessage("Killed Ball");
+        BML::UI::AddMessage("Killed Ball");
     }
 }
 
-void CommandSetSpawn::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CommandSetSpawn::Execute(const BML::Mod::Context &context,
+                              const std::vector<std::string> &args) {
     if (!m_CurLevel) {
-        m_CurLevel = bml->GetArrayByName("CurrentLevel");
+        m_CurLevel = ModSupport::Find<CKDataArray>(context, "CurrentLevel");
     }
 
-    if (bml->IsIngame() && m_CurLevel) {
-        CK3dEntity *camRef = bml->Get3dEntityByName("Cam_OrientRef");
+    if (ModSupport::GameState().Ingame && m_CurLevel) {
+        CK3dEntity *camRef = ModSupport::Find<CK3dEntity>(context, "Cam_OrientRef");
         VxMatrix mat = camRef->GetWorldMatrix();
         for (int i = 0; i < 3; i++) {
             std::swap(mat[0][i], mat[2][i]);
             mat[0][i] = -mat[0][i];
         }
         m_CurLevel->SetElementValue(0, 3, &mat);
-        bml->SendIngameMessage(
-                ("Set Spawn Point to (" +
-                 std::to_string(mat[3][0]) + ", " +
-                 std::to_string(mat[3][1]) + ", " +
-                 std::to_string(mat[3][2]) + ")").c_str());
+        BML::UI::AddMessage(("Set Spawn Point to (" + std::to_string(mat[3][0]) + ", " +
+                             std::to_string(mat[3][1]) + ", " + std::to_string(mat[3][2]) + ")")
+                                .c_str());
     }
 }
 
-void CommandSector::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CommandSector::Execute(const BML::Mod::Context &context,
+                            const std::vector<std::string> &args) {
     if (args.size() == 2) {
-        int sector = ParseInteger(args[1], 1, m_Mod->GetSectorCount() + 1);
+        int sector = ModSupport::ParseInteger(args[1], 1, m_Mod->GetSectorCount() + 1);
         m_Mod->SetSector(sector);
     }
 }
 
-void CommandWin::Execute(IBML *bml, const std::vector<std::string> &args) {
-    if (bml->IsPlaying()) {
-        CKMessageManager *mm = bml->GetMessageManager();
+void CommandWin::Execute(const BML::Mod::Context &context, const std::vector<std::string> &args) {
+    if (ModSupport::GameState().Playing) {
+        CKMessageManager *mm = ModSupport::Engine(context)->GetMessageManager();
         CKMessageType levelWin = mm->AddMessageType("Level_Finish");
 
-        mm->SendMessageSingle(levelWin, bml->GetGroupByName("All_Gameplay"));
-        bml->SendIngameMessage("Level Finished");
+        mm->SendMessageSingle(levelWin, ModSupport::Find<CKGroup>(context, "All_Gameplay"));
+        BML::UI::AddMessage("Level Finished");
     }
 }
 
-void CommandSpeed::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CommandSpeed::Execute(const BML::Mod::Context &context, const std::vector<std::string> &args) {
     if (args.size() > 1) {
-        float times = ParseFloat(args[1], 0, 1000);
+        float times = ModSupport::ParseFloat(args[1], 0, 1000);
         m_Mod->ChangeBallSpeed(times);
     }
 }

@@ -2,90 +2,135 @@
 
 #include <map>
 
-#include "BML/BMLAll.h"
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
 class DebugUtilities;
 
-class CommandScore : public ICommand {
-public:
-    std::string GetName() override { return "score"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Manage Ingame Score."; };
-    bool IsCheat() override { return true; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
-        return args.size() == 2 ? std::vector<std::string>({"add", "sub", "set"}) : std::vector<std::string>();
+class CommandScore {
+  public:
+    static BML::Command::Definition Define() {
+        BML::Command::Definition d;
+        d.Name = "score";
+        d.Alias = "";
+        d.Description = "Manage Ingame Score.";
+        d.Cheat = true;
+        return d;
+    }
+
+    void Execute(const BML::Mod::Context &context, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(const BML::Mod::Context &context,
+                                                    const std::vector<std::string> &args) {
+        return args.size() == 2 ? std::vector<std::string>({"add", "sub", "set"})
+                                : std::vector<std::string>();
     };
 
-private:
-    CKDataArray *m_Energy = nullptr;
+  private:
+    ModSupport::Object<CKDataArray> m_Energy{};
 };
 
-class CommandKill : public ICommand {
-public:
+class CommandKill {
+  public:
+    static BML::Command::Definition Define() {
+        BML::Command::Definition d;
+        d.Name = "kill";
+        d.Alias = "";
+        d.Description = "Suicide.";
+        d.Cheat = false;
+        return d;
+    }
+
     explicit CommandKill(DebugUtilities *mod) : m_Mod(mod) {}
+    void Execute(const BML::Mod::Context &context, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(const BML::Mod::Context &context,
+                                                    const std::vector<std::string> &args) {
+        return {};
+    };
 
-    std::string GetName() override { return "kill"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Suicide."; };
-    bool IsCheat() override { return false; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
-
-private:
+  private:
     DebugUtilities *m_Mod;
-    CKBehavior *m_DeactivateBall = nullptr;
+    ModSupport::Object<CKBehavior> m_DeactivateBall{};
 };
 
-class CommandSetSpawn : public ICommand {
-public:
-    std::string GetName() override { return "spawn"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Set Ball Spawn Point to Current Position."; };
-    bool IsCheat() override { return true; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
+class CommandSetSpawn {
+  public:
+    static BML::Command::Definition Define() {
+        BML::Command::Definition d;
+        d.Name = "spawn";
+        d.Alias = "";
+        d.Description = "Set Ball Spawn Point to Current Position.";
+        d.Cheat = true;
+        return d;
+    }
 
-private:
-    CKDataArray *m_CurLevel = nullptr;
+    void Execute(const BML::Mod::Context &context, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(const BML::Mod::Context &context,
+                                                    const std::vector<std::string> &args) {
+        return {};
+    };
+
+  private:
+    ModSupport::Object<CKDataArray> m_CurLevel{};
 };
 
-class CommandWin : public ICommand {
-public:
-    std::string GetName() override { return "win"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Finish this Level."; };
-    bool IsCheat() override { return true; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
+class CommandWin {
+  public:
+    static BML::Command::Definition Define() {
+        BML::Command::Definition d;
+        d.Name = "win";
+        d.Alias = "";
+        d.Description = "Finish this Level.";
+        d.Cheat = true;
+        return d;
+    }
+
+    void Execute(const BML::Mod::Context &context, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(const BML::Mod::Context &context,
+                                                    const std::vector<std::string> &args) {
+        return {};
+    };
 };
 
-class CommandSector : public ICommand {
-public:
+class CommandSector {
+  public:
+    static BML::Command::Definition Define() {
+        BML::Command::Definition d;
+        d.Name = "sector";
+        d.Alias = "";
+        d.Description = "Start playing specified sector.";
+        d.Cheat = true;
+        return d;
+    }
+
     explicit CommandSector(DebugUtilities *mod) : m_Mod(mod) {}
+    void Execute(const BML::Mod::Context &context, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(const BML::Mod::Context &context,
+                                                    const std::vector<std::string> &args) {
+        return {};
+    };
 
-    std::string GetName() override { return "sector"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Start playing specified sector."; };
-    bool IsCheat() override { return true; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
-
-private:
+  private:
     DebugUtilities *m_Mod;
 };
 
-class CommandSpeed : public ICommand {
-public:
+class CommandSpeed {
+  public:
+    static BML::Command::Definition Define() {
+        BML::Command::Definition d;
+        d.Name = "speed";
+        d.Alias = "";
+        d.Description = "Change Realtime Ball Speed.";
+        d.Cheat = true;
+        return d;
+    }
+
     explicit CommandSpeed(DebugUtilities *mod) : m_Mod(mod) {}
+    void Execute(const BML::Mod::Context &context, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(const BML::Mod::Context &context,
+                                                    const std::vector<std::string> &args) {
+        return {};
+    };
 
-    std::string GetName() override { return "speed"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Change Realtime Ball Speed."; };
-    bool IsCheat() override { return true; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
-
-private:
+  private:
     DebugUtilities *m_Mod;
 };
