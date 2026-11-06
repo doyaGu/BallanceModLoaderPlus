@@ -1,9 +1,6 @@
 #include "Loader/NativeMod.h"
 #include <gtest/gtest.h>
-#include <cstdlib>
 
-extern "C" void *BML_CDECL BML_Malloc(size_t size) { return std::malloc(size); }
-extern "C" void BML_CDECL BML_Free(void *pointer) { std::free(pointer); }
 
 namespace {
 int creates, loads, unloads, destroys;
@@ -65,6 +62,42 @@ TEST(NativeMod, QueryCopiesMetadataWithoutConstructingAndAcceptsShortCallbacks) 
     EXPECT_EQ(unloads, 1);
     EXPECT_EQ(destroys, 1);
 }
+
+TEST(NativeMod, DependencyValuesAndCViewsOwnShortAndLongDeclarations) {
+    Fixture fixture;
+    std::vector<std::string> ids, versions;
+    ids.reserve(64);
+    versions.reserve(64);
+    for (int i = 0; i != 64; ++i) {
+        ids.push_back("dep." + std::to_string(i) + (i % 2 ? std::string(400, 'a') : ""));
+        versions.push_back("1.2.3");
+    }
+    const auto expected = ids;
+    std::vector<BML_ModDependency> declarations;
+    for (std::size_t i = 0; i != ids.size(); ++i)
+        declarations.push_back({sizeof(BML_ModDependency), ids[i].c_str(), versions[i].c_str(),
+                                static_cast<uint32_t>(i % 2)});
+    fixture.Definition.Dependencies = declarations.data();
+    fixture.Definition.DependencyCount = declarations.size();
+    std::string diagnostic;
+    auto mod = NativeMod::Query(nullptr, &fixture.Api, diagnostic);
+    ASSERT_TRUE(mod) << diagnostic;
+    ids.clear();
+    versions.clear();
+    declarations.clear();
+    ASSERT_EQ(mod->Dependencies().size(), expected.size());
+    for (std::size_t i = 0; i != expected.size(); ++i) {
+        const auto &value = mod->Dependencies()[i];
+        const auto &view = mod->Definition().Dependencies[i];
+        EXPECT_EQ(value.Id, expected[i]);
+        EXPECT_EQ(value.MinVersion, BMLVersion(1, 2, 3));
+        EXPECT_EQ(value.Optional, i % 2 != 0);
+        EXPECT_STREQ(view.Id, expected[i].c_str());
+        EXPECT_STREQ(view.MinimumVersion, "1.2.3");
+        EXPECT_EQ(view.Optional, i % 2);
+    }
+}
+
 TEST(NativeMod, FailedOnLoadStillUnloadsAndFailedCleanupCanBeRetried) {
     Fixture fixture;
     std::string diagnostic;

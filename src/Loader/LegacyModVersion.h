@@ -8,7 +8,7 @@
 namespace BML {
 
 // ModRecord::GetVersion() historically accepted arbitrary text around the first
-// three digit runs. Preserve that parsing rule at the frozen facade boundary.
+// three digit runs. Preserve that rule when evaluating existing Mod versions.
 inline BMLVersion ParseLegacyModVersion(const char *text) noexcept {
     int parts[3] = {};
     int partCount = 0;

@@ -170,7 +170,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
             continue;
 
         if (tag.Name == "bml.require" || tag.Name == "bml.optional") {
-            ScriptModDependency dependency;
+            ModDependency dependency;
             dependency.Id = RequireMetadataArg(tag, "id", record.Metadata, diagnostics);
             dependency.Optional = tag.Name == "bml.optional";
             const std::string version = MetadataArg(tag, "version");

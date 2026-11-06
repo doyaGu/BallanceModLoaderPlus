@@ -2,9 +2,8 @@
 #define BML_MODVERSION_H
 
 #include <cstdio>
-#include <cstring>
 #include <string>
-#include "BML/BML.h"
+#include "BML/Version.h"
 
 struct BMLVersion {
     int major, minor, patch;
@@ -35,80 +34,12 @@ struct BMLVersion {
     }
 };
 
-// One entry of a Mod's dependency list, which the dependency registry reports a
-// copy of. The loader builds entries from native or script declarations. The
-// comparison operators look at id alone and ignore minVersion and optional.
+// Host-owned declarations are values. Only NativeMod projects them into borrowed
+// C strings at the bml.mod protocol boundary.
 struct ModDependency {
-    char *id;
-    BMLVersion minVersion;
-    int optional; // (0 = required, 1 = optional)
-
-    ModDependency() : id(nullptr), optional(0) {}
-
-    ModDependency(const char *modId, const BMLVersion &version, int isOptional = 0)
-        : minVersion(version), optional(isOptional) {
-        if (modId && strlen(modId) > 0) {
-            size_t len = strlen(modId);
-            id = static_cast<char *>(BML_Malloc(len + 1));
-            if (id) {
-                memcpy(id, modId, len);
-                id[len] = '\0';
-            }
-        } else {
-            id = nullptr;
-        }
-    }
-
-    ModDependency(const ModDependency &other)
-        : minVersion(other.minVersion), optional(other.optional) {
-        if (other.id && strlen(other.id) > 0) {
-            size_t len = strlen(other.id);
-            id = static_cast<char *>(BML_Malloc(len + 1));
-            if (id) {
-                memcpy(id, other.id, len);
-                id[len] = '\0';
-            }
-        } else {
-            id = nullptr;
-        }
-    }
-
-    ModDependency &operator=(const ModDependency &other) {
-        if (this != &other) {
-            if (id) {
-                BML_Free(id);
-                id = nullptr;
-            }
-
-            if (other.id && strlen(other.id) > 0) {
-                size_t len = strlen(other.id);
-                id = static_cast<char *>(BML_Malloc(len + 1));
-                if (id) {
-                    memcpy(id, other.id, len);
-                    id[len] = '\0';
-                }
-            }
-
-            minVersion = other.minVersion;
-            optional = other.optional;
-        }
-        return *this;
-    }
-
-    ~ModDependency() {
-        if (id) {
-            BML_Free(id);
-            id = nullptr;
-        }
-    }
-
-    int operator==(const ModDependency &other) const {
-        if (id == nullptr || other.id == nullptr)
-            return id == other.id;
-        return strcmp(id, other.id) == 0;
-    }
-
-    int operator!=(const ModDependency &other) const { return !(*this == other); }
+    std::string Id;
+    BMLVersion MinVersion{0, 0, 0};
+    bool Optional = false;
 };
 
 #endif

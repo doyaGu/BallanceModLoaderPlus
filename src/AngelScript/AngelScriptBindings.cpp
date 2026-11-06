@@ -1712,16 +1712,6 @@ static bool BMLAS_RegisterModul(const std::string &modulName) {
 }
 
 class BMLAS_ModRef {
-private:
-    struct DependencyInfo {
-        bool Valid = false;
-        std::string Id;
-        int Major = 0;
-        int Minor = 0;
-        int Patch = 0;
-        bool Optional = false;
-    };
-
 public:
     explicit BMLAS_ModRef(std::string id) : m_Id(std::move(id)) {}
 
@@ -1820,37 +1810,33 @@ public:
     }
 
     std::string GetDependencyId(int index) const {
-        DependencyInfo info = GetDependencyInfo(index);
-        return info.Valid ? info.Id : "";
+        auto info = GetDependencyInfo(index);
+        return info ? info->Id : "";
     }
 
     std::string GetDependencyVersion(int index) const {
-        DependencyInfo info = GetDependencyInfo(index);
-        if (!info.Valid)
-            return "";
-        return std::to_string(info.Major) + "." +
-               std::to_string(info.Minor) + "." +
-               std::to_string(info.Patch);
+        auto info = GetDependencyInfo(index);
+        return info ? info->MinVersion.ToString() : "";
     }
 
     int GetDependencyVersionMajor(int index) const {
-        DependencyInfo info = GetDependencyInfo(index);
-        return info.Valid ? info.Major : 0;
+        auto info = GetDependencyInfo(index);
+        return info ? info->MinVersion.major : 0;
     }
 
     int GetDependencyVersionMinor(int index) const {
-        DependencyInfo info = GetDependencyInfo(index);
-        return info.Valid ? info.Minor : 0;
+        auto info = GetDependencyInfo(index);
+        return info ? info->MinVersion.minor : 0;
     }
 
     int GetDependencyVersionPatch(int index) const {
-        DependencyInfo info = GetDependencyInfo(index);
-        return info.Valid ? info.Patch : 0;
+        auto info = GetDependencyInfo(index);
+        return info ? info->MinVersion.patch : 0;
     }
 
     bool IsDependencyOptional(int index) const {
-        DependencyInfo info = GetDependencyInfo(index);
-        return info.Valid && info.Optional;
+        auto info = GetDependencyInfo(index);
+        return info && info->Optional;
     }
 
     std::string GetDiagnostic() const {
@@ -1872,36 +1858,10 @@ private:
         return ctx->GetModLoader().FindMod(m_Id.c_str());
     }
 
-    DependencyInfo GetDependencyInfo(int index) const {
-        DependencyInfo info;
+    std::optional<ModDependency> GetDependencyInfo(int index) const {
         ModContext *ctx = nullptr;
         ModRecord *mod = Resolve(&ctx);
-        if (!ctx || !mod)
-            return info;
-
-        char dependencyId[256] = {};
-        int major = 0;
-        int minor = 0;
-        int patch = 0;
-        int optional = 0;
-        const int status = ctx->GetModLoader().GetDependencyInfo(mod,
-                                                  index,
-                                                  dependencyId,
-                                                  static_cast<int>(sizeof(dependencyId)),
-                                                  &major,
-                                                  &minor,
-                                                  &patch,
-                                                  &optional);
-        if (status != BML_OK)
-            return info;
-
-        info.Valid = true;
-        info.Id = dependencyId;
-        info.Major = major;
-        info.Minor = minor;
-        info.Patch = patch;
-        info.Optional = optional != 0;
-        return info;
+        return ctx && mod ? ctx->GetModLoader().ReadDependency(mod, index) : std::nullopt;
     }
 
     int m_RefCount = 1;

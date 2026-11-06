@@ -7,6 +7,7 @@
 #include <exception>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -59,13 +60,8 @@ public:
     BML_ModContextHandle IssueModContext(ModRecord *mod);
     NativeMod *FindNativeMod(const ModRecord *mod) const;
 
-    struct DependencyInfo {
-        std::string Id;
-        BMLVersion MinimumVersion;
-        bool Optional = false;
-    };
-
-    std::vector<DependencyInfo> ReadDependencies(const ModRecord *) const;
+    std::vector<ModDependency> ReadDependencies(const ModRecord *) const;
+    std::optional<ModDependency> ReadDependency(const ModRecord *, int index) const;
     std::string InvokedOwnerId() const;
     bool CanDispatchOwner(const ModRecord *) const;
     void FailOwner(ModRecord *, int code, const char *operation);
@@ -78,15 +74,8 @@ public:
         return body();
     }
 
-    int RegisterDependency(ModRecord *mod, const char *dependencyId, int major, int minor,
-                           int patch);
-    int RegisterOptionalDependency(ModRecord *mod, const char *dependencyId, int major, int minor,
-                                   int patch);
     int CheckDependencies(ModRecord *mod) const;
     int GetDependencyCount(ModRecord *mod) const;
-    int GetDependencyInfo(ModRecord *mod, int index, char *dependencyId, int idSize, int *major,
-                          int *minor, int *patch, int *optional) const;
-    int ClearDependencies(ModRecord *mod);
 
     std::string GetNativeModOwnerId(const void *callerAddress, const char *requestedOwnerId = nullptr) const;
     bool NativeModOwnsAddress(const std::string &ownerId, const void *address) const;
@@ -189,6 +178,8 @@ private:
         ModRecord *m_Mod = nullptr;
     };
 
+    int RegisterDependency(ModRecord *mod, const ModDependency &dependency);
+    int ClearDependencies(ModRecord *mod);
     bool LoadMods();
     void UnloadMods();
     bool InitMods();
@@ -203,17 +194,12 @@ private:
     std::size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods,
                             ModPackageDirectories &packages, std::size_t &nextPackage);
 #if BML_ENABLE_ANGELSCRIPT
-    struct ModDependencySnapshot {
-        std::string Id;
-        BMLVersion MinVersion;
-        bool Optional = false;
-    };
     struct RegisteredModSnapshot {
         const ModRecord *Identity = nullptr;
         std::string Id;
         std::string Version;
         bool Failed = false;
-        std::vector<ModDependencySnapshot> Dependencies;
+        std::vector<ModDependency> Dependencies;
     };
     std::vector<RegisteredModSnapshot> SnapshotModRegistry() const;
     std::size_t ExploreScriptMods(const std::wstring &path,

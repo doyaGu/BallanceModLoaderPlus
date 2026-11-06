@@ -59,7 +59,7 @@ int VisitOne(ModContext &ctx, ModRecord &mod, BML_ModVisitor visitor, void *data
     optional.reserve(source.size());
     for (const auto &d : source) {
         ids.push_back(d.Id);
-        versions.push_back(d.MinimumVersion.ToString());
+        versions.push_back(d.MinVersion.ToString());
         optional.push_back(d.Optional ? 1u : 0u);
     }
     std::vector<BML_ModDependency> dependencies;

@@ -1124,7 +1124,7 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
         return false;
     }
 
-    auto dependencyKey = [](const ScriptModDependency &dependency) {
+    auto dependencyKey = [](const ModDependency &dependency) {
         return dependency.Id + "\n" +
                std::to_string(dependency.MinVersion.major) + "." +
                std::to_string(dependency.MinVersion.minor) + "." +

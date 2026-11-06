@@ -10,12 +10,6 @@
 
 namespace BML {
 
-struct ScriptModDependency {
-    std::string Id;
-    BMLVersion MinVersion = BMLVersion(0, 0, 0);
-    bool Optional = false;
-};
-
 struct ScriptModDefinition {
     std::string Id;
     std::string Name;
@@ -28,7 +22,7 @@ struct ScriptModDefinition {
     std::string ClassNamespace;
     bool Enabled = true;
     std::string ReloadPolicy;
-    std::vector<ScriptModDependency> Dependencies;
+    std::vector<ModDependency> Dependencies;
     std::vector<ScriptLibraryUse> SourceLibraries;
     std::vector<ScriptSourceDependency> SourceDependencies;
     std::vector<ScriptSourceIncludeEdge> SourceIncludeEdges;

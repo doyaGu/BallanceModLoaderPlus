@@ -199,16 +199,20 @@ ModRecord *ModLoader::ResolveModHandle(BML_ModHandle handle) const {
     return nullptr;
 }
 
-std::vector<ModLoader::DependencyInfo> ModLoader::ReadDependencies(const ModRecord *mod) const {
+std::vector<ModDependency> ModLoader::ReadDependencies(const ModRecord *mod) const {
     std::lock_guard<std::mutex> lock(m_StateMutex);
-    std::vector<DependencyInfo> result;
-    auto it = m_ModDependencies.find(const_cast<ModRecord *>(mod));
-    if (it != m_ModDependencies.end()) {
-        result.reserve(it->second.size());
-        for (const auto &d : it->second)
-            result.push_back({d.id ? d.id : "", d.minVersion, d.optional != 0});
-    }
-    return result;
+    const auto it = m_ModDependencies.find(const_cast<ModRecord *>(mod));
+    return it == m_ModDependencies.end() ? std::vector<ModDependency>{} : it->second;
+}
+
+std::optional<ModDependency> ModLoader::ReadDependency(const ModRecord *mod, int index) const {
+    if (!mod || index < 0)
+        return std::nullopt;
+    std::lock_guard<std::mutex> lock(m_StateMutex);
+    const auto it = m_ModDependencies.find(const_cast<ModRecord *>(mod));
+    if (it == m_ModDependencies.end() || static_cast<std::size_t>(index) >= it->second.size())
+        return std::nullopt;
+    return it->second[static_cast<std::size_t>(index)];
 }
 
 std::string ModLoader::InvokedOwnerId() const {
@@ -254,9 +258,9 @@ bool ModLoader::CanUseProvider(const ModRecord *consumer, const ModRecord *provi
     if (it == m_ModDependencies.end())
         return false;
     for (const auto &d : it->second)
-        if (d.id && std::strcmp(d.id, id) == 0)
+        if (d.Id == id)
             return !(BML::ParseLegacyModVersion(const_cast<ModRecord *>(provider)->GetVersion()) <
-                     d.minVersion);
+                     d.MinVersion);
     return false;
 }
 
@@ -269,7 +273,7 @@ bool ModLoader::HasLiveDependents(const ModRecord *provider) const {
             provider == (m_BallTypeMod ? &m_BallTypeMod->Registration() : nullptr))
             return true;
         for (const auto &dep : entry.second->Dependencies())
-            if (dep.id && id == dep.id)
+            if (id == dep.Id)
                 return true;
     }
 #if BML_ENABLE_ANGELSCRIPT
@@ -877,40 +881,12 @@ ModRecord *ModLoader::FindModLocked(const std::string &id) const {
         : nullptr;
 }
 
-int ModLoader::RegisterDependency(ModRecord *mod, const char *dependencyId, int major, int minor,
-                                  int patch) {
-    if (!mod || !dependencyId) {
+int ModLoader::RegisterDependency(ModRecord *mod, const ModDependency &dependency) {
+    if (!mod || dependency.Id.empty())
         return BML_ERROR_FAIL;
-    }
-
     try {
         std::lock_guard<std::mutex> lock(m_StateMutex);
-        ModDependency dep;
-        dep.id = BML_Strdup(dependencyId);
-        dep.minVersion = BMLVersion(major, minor, patch);
-        dep.optional = false;
-
-        m_ModDependencies[mod].push_back(dep);
-        return BML_OK;
-    } catch (...) {
-        return BML_ERROR_FAIL;
-    }
-}
-
-int ModLoader::RegisterOptionalDependency(ModRecord *mod, const char *dependencyId, int major,
-                                          int minor, int patch) {
-    if (!mod || !dependencyId) {
-        return BML_ERROR_FAIL;
-    }
-
-    try {
-        std::lock_guard<std::mutex> lock(m_StateMutex);
-        ModDependency dep;
-        dep.id = BML_Strdup(dependencyId);
-        dep.minVersion = BMLVersion(major, minor, patch);
-        dep.optional = true;
-
-        m_ModDependencies[mod].push_back(dep);
+        m_ModDependencies[mod].push_back(dependency);
         return BML_OK;
     } catch (...) {
         return BML_ERROR_FAIL;
@@ -948,14 +924,13 @@ int ModLoader::EvaluateDependencies(ModRecord *mod, std::string *diagnostic) con
                 return 1;
             dependencies.reserve(it->second.size());
             for (const auto &dep : it->second) {
-                if (dep.id && *dep.id)
-                    dependencies.push_back({dep.id, dep.minVersion, dep.optional != 0, nullptr});
+                if (!dep.Id.empty())
+                    dependencies.push_back({dep.Id, dep.MinVersion, dep.Optional, nullptr});
             }
         }
 
-        /* The invocation gate keeps registered mod objects alive while the
-         * registry lock is released. Never call a virtual mod method while
-         * either registry mutex is held. */
+        // The invocation gate keeps registrations alive after releasing the registry lock.
+        // Mod callbacks must never run while either registry mutex is held.
         {
             std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
             for (auto &dependency : dependencies) {
@@ -1022,13 +997,13 @@ int ModLoader::EvaluateActivationDependencies(ModRecord *mod, std::string *diagn
     // InitMods runs on the game thread after dependency ordering is fixed, so
     // the Mod registry and activation vector cannot change during this pass.
     for (const ModDependency &dependency : dependencies->second) {
-        if (dependency.optional || !dependency.id || !*dependency.id)
+        if (dependency.Optional || dependency.Id.empty())
             continue;
-        ModRecord *registered = FindModLocked(dependency.id);
+        ModRecord *registered = FindModLocked(dependency.Id);
         if (!registered ||
             std::find(m_ActiveMods.begin(), m_ActiveMods.end(), registered) == m_ActiveMods.end()) {
             if (diagnostic)
-                *diagnostic = "required dependency '" + std::string(dependency.id) + "' did not initialize.";
+                *diagnostic = "required dependency '" + dependency.Id + "' did not initialize.";
             return 0;
         }
     }
@@ -1050,44 +1025,6 @@ int ModLoader::GetDependencyCount(ModRecord *mod) const {
         return static_cast<int>(it->second.size());
     } catch (...) {
         return -1;
-    }
-}
-
-int ModLoader::GetDependencyInfo(ModRecord *mod, int index, char *dependencyId, int idSize,
-                                 int *major, int *minor, int *patch, int *optional) const {
-    if (!mod || index < 0 || (dependencyId && idSize <= 0)) {
-        return BML_ERROR_FAIL;
-    }
-
-    try {
-        std::lock_guard<std::mutex> lock(m_StateMutex);
-        auto it = m_ModDependencies.find(mod);
-        if (it == m_ModDependencies.end() || index >= static_cast<int>(it->second.size())) {
-            return BML_ERROR_NOT_FOUND;
-        }
-
-        const auto &dep = it->second[index];
-
-        if (dependencyId && idSize > 0 && dep.id) {
-            size_t depIdLen = strlen(dep.id);
-            size_t copyLen = std::min(static_cast<size_t>(idSize - 1), depIdLen);
-
-            if (copyLen > 0) {
-                memcpy(dependencyId, dep.id, copyLen);
-            }
-            dependencyId[copyLen] = '\0'; // Guaranteed null termination
-        } else if (dependencyId && idSize > 0) {
-            dependencyId[0] = '\0'; // Empty string if no ID
-        }
-
-        if (major) *major = dep.minVersion.major;
-        if (minor) *minor = dep.minVersion.minor;
-        if (patch) *patch = dep.minVersion.patch;
-        if (optional) *optional = dep.optional ? 1 : 0;
-
-        return BML_OK;
-    } catch (...) {
-        return BML_ERROR_FAIL;
     }
 }
 
@@ -1277,12 +1214,7 @@ ModRecord *ModLoader::LoadMod(const std::wstring &path) {
     }
     try {
         for (const auto &dep : FindNativeMod(mod)->Dependencies()) {
-            const int result =
-                dep.optional
-                    ? RegisterOptionalDependency(mod, dep.id, dep.minVersion.major,
-                                                 dep.minVersion.minor, dep.minVersion.patch)
-                    : RegisterDependency(mod, dep.id, dep.minVersion.major, dep.minVersion.minor,
-                                         dep.minVersion.patch);
+            const int result = RegisterDependency(mod, dep);
             if (result != BML_OK)
                 throw std::runtime_error("cannot register declared dependency");
         }
@@ -1328,19 +1260,7 @@ void ModLoader::RegisterScriptModDependencies(ModRecord *mod,
         if (dependency.Id.empty())
             continue;
 
-        if (dependency.Optional) {
-            RegisterOptionalDependency(mod,
-                                       dependency.Id.c_str(),
-                                       dependency.MinVersion.major,
-                                       dependency.MinVersion.minor,
-                                       dependency.MinVersion.patch);
-        } else {
-            RegisterDependency(mod,
-                               dependency.Id.c_str(),
-                               dependency.MinVersion.major,
-                               dependency.MinVersion.minor,
-                               dependency.MinVersion.patch);
-        }
+        RegisterDependency(mod, dependency);
     }
 }
 #endif
@@ -1367,7 +1287,7 @@ void ModLoader::ProcessScriptModQueuedCallbacks() {
 std::vector<ModLoader::RegisteredModSnapshot> ModLoader::SnapshotModRegistry() const {
     struct PendingModSnapshot {
         ModRecord *Mod = nullptr;
-        std::vector<ModDependencySnapshot> Dependencies;
+        std::vector<ModDependency> Dependencies;
     };
 
     auto invocationLock = LockModInvocation();
@@ -1384,12 +1304,8 @@ std::vector<ModLoader::RegisteredModSnapshot> ModLoader::SnapshotModRegistry() c
             if (dependencies != m_ModDependencies.end()) {
                 item.Dependencies.reserve(dependencies->second.size());
                 for (const ModDependency &dependency : dependencies->second) {
-                    if (dependency.id && *dependency.id) {
-                        item.Dependencies.push_back({
-                            dependency.id,
-                            dependency.minVersion,
-                            dependency.optional != 0,
-                        });
+                    if (!dependency.Id.empty()) {
+                        item.Dependencies.push_back(dependency);
                     }
                 }
             }
@@ -1426,7 +1342,7 @@ bool ModLoader::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         if (fields)
             fields->push_back({key, value});
     };
-    auto addDependencyBoundary = [&](const BML::ScriptModDependency &dependency,
+    auto addDependencyBoundary = [&](const ModDependency &dependency,
                                      const char *action) {
         addField("boundary", "dependency_graph");
         addField("cascade", "false");
@@ -1519,7 +1435,7 @@ bool ModLoader::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         if (dependent.Identity == &mod->Registration())
             continue;
 
-        for (const ModDependencySnapshot &dependency : dependent.Dependencies) {
+        for (const ModDependency &dependency : dependent.Dependencies) {
             if (dependency.Id != candidate.Id)
                 continue;
             if (!dependency.Optional && candidateVersion < dependency.MinVersion) {
@@ -2024,15 +1940,9 @@ bool ModLoader::UnregisterMod(ModRecord *mod) {
 }
 
 bool ModLoader::ResolveDependencies() {
-    struct OrderDependency {
-        std::string Id;
-        BMLVersion MinVersion;
-        bool Optional = false;
-    };
-
     auto invocationLock = LockModInvocation();
     std::vector<ModRecord *> mods;
-    std::unordered_map<ModRecord *, std::vector<OrderDependency>> dependencies;
+    std::unordered_map<ModRecord *, std::vector<ModDependency>> dependencies;
     {
         std::lock_guard<std::mutex> stateLock(m_StateMutex);
         std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
@@ -2042,8 +1952,8 @@ bool ModLoader::ResolveDependencies() {
             auto &snapshot = dependencies[entry.first];
             snapshot.reserve(entry.second.size());
             for (const ModDependency &dependency : entry.second) {
-                if (dependency.id && *dependency.id)
-                    snapshot.push_back({dependency.id, dependency.minVersion, dependency.optional != 0});
+                if (!dependency.Id.empty())
+                    snapshot.push_back(dependency);
             }
         }
     }

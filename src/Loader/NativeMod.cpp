@@ -1,6 +1,7 @@
 #include "Loader/NativeMod.h"
 #include "Loader/ModDefinitionValidation.h"
 #include <limits>
+#include <cstring>
 #include <unordered_set>
 
 std::unique_ptr<NativeMod> NativeMod::Query(ModContext *host, const BML_ModInterface *api,
@@ -53,16 +54,14 @@ std::unique_ptr<NativeMod> NativeMod::Query(ModContext *host, const BML_ModInter
         BMLVersion version{0, 0, 0};
         if (!minimum.empty() && !BML::ParseModVersion(minimum, version))
             return reject("dependency MinimumVersion must be MAJOR.MINOR.PATCH");
-        result->m_Dependencies.emplace_back(dep->Id, version, static_cast<int>(dep->Optional));
-        if (!result->m_Dependencies.back().id)
-            throw std::bad_alloc();
+        result->m_Dependencies.emplace_back(dep->Id, version, dep->Optional != 0);
         result->m_DependencyVersions.push_back(minimum);
     }
     for (size_t i = 0; i != result->m_Dependencies.size(); ++i) {
         const auto &dep = result->m_Dependencies[i];
-        result->m_DependencyViews.push_back({sizeof(BML_ModDependency), dep.id,
+        result->m_DependencyViews.push_back({sizeof(BML_ModDependency), dep.Id.c_str(),
                                              result->m_DependencyVersions[i].c_str(),
-                                             static_cast<uint32_t>(dep.optional)});
+                                             static_cast<uint32_t>(dep.Optional)});
     }
     result->m_Definition = {sizeof(BML_ModDefinition),        result->m_Id.c_str(),
                             result->m_Name.c_str(),           result->m_Version.c_str(),
