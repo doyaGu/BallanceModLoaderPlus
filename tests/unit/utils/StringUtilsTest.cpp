@@ -602,7 +602,7 @@ TEST_F(StringUtilsTest, UnescapeString) {
         EXPECT_EQ("A", utils::UnescapeString("\\u0041"));
 
         // Surrogate pair: U+1D11E MUSICAL SYMBOL G CLEF
-        std::string gclef_utf8 = utils::Utf16ToUtf8(L"\xD834\xDD1E");
+        const std::string gclef_utf8 = "\xF0\x9D\x84\x9E";
         EXPECT_EQ(gclef_utf8, utils::UnescapeString("\\uD834\\uDD1E"));
 
         // Non-BMP via \U
