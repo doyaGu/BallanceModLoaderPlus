@@ -120,10 +120,10 @@ Parser.
 
 **DataShare Registry** — The process-wide, named byte store behind the public C
 API. Handles retain store instances; queued one-shot requests carry an owning
-Mod identity and are cancelled before that Mod DLL is released. The registry
+Mod identity and are cancelled before that Mod module is released. The registry
 owns byte values and request bookkeeping, not a typed schema or a callable Mod
 service. Callback and cleanup dispatch enters the shared Mod invocation gate
-before the DataShare callback lock, so owner retirement cannot race DLL unload
+before the DataShare callback lock, so owner retirement cannot race module unload
 or invert those locks.
 
 **Command Bar Feature Policy** — The private Built-in Console policy that
@@ -222,8 +222,9 @@ UI-less TSF candidate sink; the SDL implementation mirrors text-editing events.
 Composition clears on commit, cancellation, focus loss, or detachment. Native
 IME state remains separate from presentation and character submission.
 
-**IME Presentation** — Draws one in-game composition and candidate rail in
-windowed and true exclusive full-screen modes. Console may reserve the row
+**IME Presentation** — Draws the Windows in-game composition and candidate rail
+in windowed and exclusive full-screen modes; other SDL platforms can retain
+the system-native candidate window. Console may reserve the row
 below its command bar; other text fields use their caret and viewport. It owns
 measurement, layout, and drawing, not native IME state or character submission.
 
@@ -245,7 +246,7 @@ Overlay does not recreate these backend decisions.
 the current world. It is separate from the ImGui font atlas.
 
 **Legacy GUI Text** — The private style registry for BML::Gui::Text sprites
-backed by Windows font faces. It is separate from both ImGui and retail menu
+backed by engine-managed platform font faces. It is separate from both ImGui and retail menu
 fonts. See [font domain decision](docs/adr/0001-separate-font-domains.md).
 
 ## Behavior and engine access
@@ -257,8 +258,8 @@ graph Edits for Patches and Plans. Sessions survive world reset; world-bound
 objects and callbacks do not. The C, C++, and script layers use one native
 implementation: the C++ facade encodes calls into the C table, and the
 AngelScript layer projects that facade without including a Loader Behavior or
-facade Detail header. Text crosses the table as UTF-8 and is converted to and
-from the engine's code page at that boundary. Native Mods use the versioned C
+facade Detail header. Text crosses the SDL engine and table boundaries as UTF-8;
+there is no original Windows ACP conversion in this branch. Native Mods use the versioned C
 Mod protocol; their C++ authoring wrappers remain inside each Mod.
 
 **Behavior Plan Instance** — A revisioned view of one Plan installation in a
@@ -337,7 +338,7 @@ share the Behavior Runtime used by the owner-scoped authoring projection.
 - src/AngelScript/ owns script adapters, including Script Engine Calls;
   per-owner Behavior authoring remains a client of the public facade.
 - src/Behavior/ owns Sessions, Prototypes, graph authoring, Runtime, and the
-  legacy ScriptHelper implementation. Core/ holds Status, values, parameters,
+  CKScriptHelper implementation. Core/ holds Status, values, parameters,
   and layouts; Engine/ the CK2 primitives; Edit/ the Program, Ops, and
   Transaction; Install/ the Patch and Plan aggregate and Script selection.
   src/Behavior/Blocks/ holds private implementations tied to individual BBs.

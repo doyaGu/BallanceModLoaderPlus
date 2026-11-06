@@ -48,7 +48,7 @@ stay in Instance members and are cleaned by the host before Instance destruction
 OnUnload remains available for work such as joining your own threads.
 `BML_DEFINE_MOD(MyMod, DefineMyMod)` remains supported for computed metadata.
 Both forms evaluate metadata once at the first successful query, inside the
-exception-safe entry. They do not add initialization at DLL load or a new C ABI.
+exception-safe entry. They do not add initialization at module load or a new C ABI.
 
 Id, Name and Version are required. Author and Description may be empty.
 Versions use `MAJOR.MINOR.PATCH` with no leading zeroes or suffixes. Declare
@@ -111,9 +111,11 @@ the exception family and report the status and any supplied diagnostic.
 
 `.h` service tables compile as C11. `.hpp` files provide module-local C++20
 wrappers. `BMLAll.h` collects the core surface and does not include engine or
-ImGui headers. `IMod`, `IBML`, `IConfig`, `ICommand`, `InputHook` and ExecuteBB
-remain private implementation adapters; they are not an installed SDL authoring
-protocol. See the [migration guide](native-mod-migration.md).
+ImGui headers. `IMod`, `IBML`, `IMessageReceiver`, `IConfig`, `IProperty`,
+`ICommand` and `ILogger` have been removed, including their private
+implementations. Internal identities compose a `ModRecord`. `InputHook` is a
+private input adapter; the old ExecuteBB adapter is gone. Script-only CK calls
+use private `ScriptEngineCalls`. See the [migration guide](native-mod-migration.md).
 
 Status-only operations in the new Context/Config/Input/Timer/Command authoring
 layer return `Result<void>`, including Set, Pause, Cancel, Release and Unregister.
@@ -149,7 +151,7 @@ the owner or declaration generation.
 Only declared keys are persisted. The existing store supplies loaded values,
 notifications, migration, choice/colour editors and atomic UTF-8 saves. A failed
 save retains dirty values for explicit retry or reattachment on the next load;
-it does not require keeping a Mod DLL loaded solely for file I/O.
+it does not require keeping a Mod module loaded solely for file I/O.
 
 ## Timers and callbacks
 
@@ -220,7 +222,7 @@ fonts for Label, CKSpriteText fonts for Text, ImGui fonts for the overlay.
 
 `UI.h` controls the loader's HUD/messages/menus; it is separate from Bui and BGui.
 `ModMenu::Page` adds an entry under the owning Mod. Keep the Page alive until
-unregistered, pass an owning Context to your Page subclass for Bui drawing, and
+unregistered, pass the owner’s Context to your Page subclass for Bui drawing, and
 register/unregister it in OnLoad/OnUnload. Visible and hidden routes, generation
 checks and existing C Page callbacks remain unchanged.
 
@@ -253,7 +255,9 @@ capability or instance pointer. Default service calls require the game thread;
 copying Context does not authorize worker-thread calls. DataShare/IMC keep their
 existing thread contracts.
 
-`Result<T>` owns explicitly requested values in the caller module. Failed
+`Result<T>` stores its value in the caller module; a value containing a span,
+view or handle still follows that type’s borrowing rules. Taking or moving the
+Result does not turn borrowed input/event data into owning storage. Failed
 results have no value; check before Value/Take. Ordinary service errors remain
 caller-handled. A failed main notification or Timer callback stops that owner's
 ordinary dispatch and cleans up at a safe point; remaining Mods still receive

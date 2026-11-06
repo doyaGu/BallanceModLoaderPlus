@@ -94,10 +94,11 @@ false 结束。失败的 Result 取值仍属于 std::bad_optional_access 异常�
 
 服务 `.h` 可用 C11 编译，`.hpp` 提供模块内 C++20 包装。
 BMLAll.h 汇总核心接口，不隐式包含引擎或 ImGui 头。
-IMod、IBML、IConfig、ICommand、InputHook、ExecuteBB 的实现保留在宿主内部，
-不作为已安装 SDL SDK 的作者协议。已有 Mod 参照[迁移说明（英文）](../en/native-mod-migration.md)。
+IMod、IBML、IMessageReceiver、IConfig、IProperty、ICommand、ILogger 连同私有实现
+均已移除。InputHook 留在 Loader 私有实现；旧 ExecuteBB 作者接口已移除，脚本便捷
+引擎调用归 ScriptEngineCalls。已有 Mod 参照[迁移说明](native-mod-migration.md)。
 
-本轮新增的 Context/Config/Input/Timer/Command 作者接口中，无业务返回值的可失败操作
+Context/Config/Input/Timer/Command 作者接口中，无业务返回值的可失败操作
 统一返回 `Result<void>`，包括 Set、Pause、Cancel、Release 和 Unregister。
 可检查结果，也可调用 `.Take()` 通过现有 Mod 回调边界报告错误。读取/创建使用 `Result<T>`，
 纯局部谓词仍返回 bool，`Get<T>` 保留既有的检查后直接取值用法。
@@ -125,7 +126,7 @@ Read 返回拥有型 Info，Get 按类型读值并可指定回退值。Property 
 
 存储沿用原配置实现，保留迁移、修改通知、选项/颜色编辑器和 UTF-8 原子保存。
 只保存代码实际声明的键。保存失败保留脏值供显式重试或下次装载重新声明使用，
-不因纯文件 I/O 失败保留 Mod DLL。
+不因纯文件 I/O 失败保留 Mod 模块。
 
 ## 定时器与回调
 
@@ -213,7 +214,9 @@ ModHandle 仅用于观察，不是 instance 指针或操作其他 Mod 的权限�
 默认服务/引擎操作要求游戏线程；复制 Context 不赋予后台线程权限。
 DataShare/IMC 继续遵循各自已有线程约定。
 
-Result 显式返回拥有值；失败无可读 Value。普通服务错误由调用方处理。
+Result 在调用方保存其值，但值中的 span、view 或句柄仍遵循各自的借用寿命，
+Take/移动 Result 不会把输入或事件借用数据变成拥有存储。失败无可读 Value。
+普通服务错误由调用方处理。
 主通知或 Timer callback 失败会停止该 owner 的普通分派，在安全点清理，当前事件仍继续其他 Mod。
 C++ trampoline 在模块内部捕获异常并记录可用诊断，不把异常跨 C seam 传播。
 

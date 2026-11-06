@@ -39,9 +39,10 @@ new ownership rule for existing DataShare/Behavior callbacks.
 ## Removed compatibility interfaces
 
 The source and installed public SDK no longer contain IMod.h, IBML.h,
-IMessageReceiver.h, IConfig.h, ICommand.h, ILogger.h, InputHook.h, ExecuteBB.h or
-ModInterface.hpp. The host's remaining lifecycle, config, command and input
-adapters are private; they are not another native ABI. The old `MOD_EXPORT`
+IMessageReceiver.h, IConfig.h, IProperty.h, ICommand.h, ILogger.h, InputHook.h,
+ExecuteBB.h, ModInterface.hpp or RefCount.h. The old I* implementations are also
+deleted. Host services compose concrete state instead of retaining the old
+IMod/IBML hierarchy. The old `MOD_EXPORT`
 and `DECLARE_BML_VERSION` macros are removed. Use `BML_DEFINE_MOD` for C++ or
 `BML_MOD_ENTRY(int)` for the C entry, with the minimum version in the definition.
 
@@ -79,4 +80,4 @@ The loader process owns the shared engine, SDL and ImGui state.
 
 The SDK templates and all twelve in-tree Mods have been ported as examples.
 Release checks and unverified-target requirements are listed in
-[the release guide](../../RELEASING.md#native-c-protocol-release-gate).
+[the release guide](https://github.com/doyaGu/BallanceModLoaderPlus/blob/sdl/RELEASING.md#native-c-protocol-release-gate).

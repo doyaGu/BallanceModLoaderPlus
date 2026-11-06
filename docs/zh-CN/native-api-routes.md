@@ -32,7 +32,8 @@ C11 作者直接使用同一份 .h 表。原生和脚本共享同一份 Loader �
 | 既有文件/ZIP/编码/内存工具 | BML.h，按各自约定 BML_Free |
 
 BMLAll.h 汇总核心。引擎相关 Blocks、ScriptHelper、Guids、TypeConvert 和直接 CK/ImGui
-访问需要显式扩展目标。IMod、IBML 及旧服务虚表保留为本分支宿主内部适配，不再增加公开兼容代理。
+访问需要显式扩展目标。IMod、IBML 和旧服务虚表已连同私有实现移除。内部身份使用组合的
+ModRecord；作者 Instance 的虚调用仅在 Mod 模块内发生。
 
 普通跨 Mod 服务用 IMC。确需进程内函数表的原生基础设施可以使用 provider C 表，消费者必须声明
 依赖。宿主先完成消费者卸载，再清理 provider；缓存一个未声明 provider 的指针不构成保活。
@@ -41,5 +42,5 @@ BMLAll.h 汇总核心。引擎相关 Blocks、ScriptHelper、Guids、TypeConvert
 主通知失败会停用 owner；普通服务错误、命令退出状态由调用方处理。
 旧 BML.h 工具保留其 0/1 约定，默认服务和引擎操作仍要求游戏线程。
 
-参见[原生 API](native-mod-api.md)、[迁移（英文）](../en/native-mod-migration.md)、
+参见[原生 API](native-mod-api.md)、[迁移](native-mod-migration.md)、
 [Behavior](behavior-authoring.md)、[IMC](imc.md)。

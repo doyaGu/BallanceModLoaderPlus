@@ -35,8 +35,9 @@ loader state and one set of host services shared with scripts.
 
 `BMLAll.h` is a core aggregate. Engine-dependent Blocks, ScriptHelper, Guids,
 TypeConvert and raw CK/ImGui access require explicit optional targets. IMod,
-IBML and their old service vtables are private loader adapters on this branch.
-Do not start a second public compatibility layer around them.
+IBML and their old service vtables have been removed, including private
+implementations. Internal registration uses composed ModRecord values; author
+Instance virtual calls stay inside the Mod.
 
 Use IMC for ordinary inter-Mod services. A provider C table is appropriate for
 native base infrastructure whose consumers can declare and retain that provider

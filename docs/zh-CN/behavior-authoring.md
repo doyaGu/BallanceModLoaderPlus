@@ -6,7 +6,7 @@
 
 ### C seam 的位置
 
-`BML/Behavior.h` 是完整的底层 interface，不是 C++ facade 的残缺传输格式。Prototype 查询、Block 执行、Frame 读取、Graph 检查、Watch、Script、Patch 和 Plan 都通过同一张 1.0 function table 提供；C++ facade 也只调用这张表，不使用私有 DLL 入口。因此，一个 C 翻译单元可以在不包含 Virtools header 或 C++ Behavior header 的情况下直接使用它：
+`BML/Behavior.h` 是完整的底层 interface，不是 C++ facade 的残缺传输格式。Prototype 查询、Block 执行、Frame 读取、Graph 检查、Watch、Script、Patch 和 Plan 都通过同一张 1.0 function table 提供；C++ facade 也只调用这张表，不使用私有模块入口。因此，一个 C 翻译单元可以在不包含 Virtools header 或 C++ Behavior header 的情况下直接使用它：
 
 ```c
 #include <BML/Behavior.h>
@@ -38,9 +38,13 @@ static void UseBehavior(void) {
 
 输入字符串和数组只在调用期间借用。Frame、Graph 和 Layout 的变长读取要么写入完整结果，要么只报告所需缓冲区大小。完整 1.0 API 使用 `BML_BEHAVIOR_HAS_1_0` 检查，后续新增成员使用 `BML_IFACE_HAS`。
 
-经过函数表的文本一律是 UTF-8。Loader 把要交给 Virtools 的名称和字符串值转换为引擎当前的代码页，并把它返回的全部文本（包括 status message）转换回 UTF-8。代码页无法表示的文本按原 UTF-8 字节传递。owner、Patch、Plan 名称等 BML 标识始终保持 UTF-8。
+本 SDL 分支的 CK 名称、字符串值、状态消息和函数表文本都使用 UTF-8，不经过 ACP 转换。
+畸形 UTF-8 不按旧代码页解释；owner、Patch、Plan 标识也保持 UTF-8。
 
-这不意味着 BML 提供纯 C 的 Mod 启动协议：现有 Native Mod host 仍由 `IMod` 定义。链接进同一个 Native Mod DLL 的 C 翻译单元或其他语言适配层可以直接调用 C seam，并仍遵守 Mod ownership、game thread、world reset 和 `BML_ObjectRef` 生命周期。它是独立的 Behavior seam，不是脱离 BML Runtime 的独立库。
+纯 C Mod 使用 `BML/Mod.h` 的 `BML_GetModInterface` 启动，C++ 的 `BML_DEFINE_MOD`
+也建立在同一 C 协议上。两者按 Mod 所有权、游戏线程、世界重置和 `BML_ObjectRef`
+寿命规则调用 Behavior 表。Behavior 运行在 BML 内，不是独立引擎库；见
+[原生 API](native-mod-api.md)及 SDK 的 `examples/native-c-mod`。
 
 ## 1. 对象模型
 
@@ -81,7 +85,8 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 
 ## 2. 打开 Session
 
-在 Mod 初始化时打开一个 `Session`：
+在 `OnLoad(const BML::Mod::Context &ctx)` 内打开 `Session`，
+`m_Behavior` 是 Mod 的 `Session` 成员：
 
 ```cpp
 #include <BML/Behavior.hpp>
@@ -89,14 +94,13 @@ using namespace BML::Behavior;
 
 auto opened = Session::Open();
 if (!opened) {
-    GetLogger()->Error("Behavior unavailable: %s",
-                       opened.GetStatus().Message.c_str());
+    (void)ctx.LogError("Behavior unavailable: " + opened.GetStatus().Message);
     return;
 }
 m_Behavior = opened.Take();
 ```
 
-Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 DLL 释放前完成 callback 和 native Behavior 的退役。
+Loader 会核对调用模块，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 模块释放前完成 callback 和 native Behavior 的退役。
 
 `Behavior::Result<T>` 是共用 `BML::Result<T, Behavior::Status>` 的别名，只有诊断信息属于 Behavior。对具名 Result 调用 `Result<T>::Value()` 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 `Take()`。`Take()` 会清空结果中的值，但 `Code()` 和 `GetStatus()` 仍可用于读取诊断。
 
@@ -568,7 +572,7 @@ Node、Link 或 port 时，先前的 Patch 不能先关闭：Close 返回可重�
 `RevertConflict`，直到后来的 Patch 关闭。出于同样的原因，world reset 和 Mod
 unload 按从新到旧的顺序关闭 Patch。
 
-Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。
+Hook callback 在 game thread 执行。异常不会穿过 模块边界；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。
 
 返回 `HookResult::Error` 可以停止这条链：Hook Block 让所有 Out 保持未激活，callback 在下一次激活时照常运行。抛出异常的 callback 返回 `HookResult::Fault`；Loader 把第一个 fault 保留为该 Hook 的 diagnostic，此后不再调用它，Block 把这次激活原样传下去。Hook 或 Watch callback 持有的状态在释放其最后一个引用的那次 Behavior 调用结束时释放，所以它的析构函数可以关闭其他 Behavior 对象。
 
@@ -664,7 +668,7 @@ if (made) {
 }
 ```
 
-这些 adapter 仍返回普通 `Block`，不会绕过统一的 lifecycle、execution 或 teardown。新 Native Mod 不应再使用 legacy ExecuteBB interface。
+这些 adapter 仍返回普通 `Block`，不会绕过统一的 lifecycle、execution 或 teardown。新 Native Mod 不应再使用 已移除的 ExecuteBB 作者接口。
 
 ## 12. 生命周期、错误与性能
 

@@ -6,7 +6,7 @@ The domain types in `BML::Behavior` and the 1.0 C function table in `BML/Behavio
 
 ### Where the C seam fits
 
-`BML/Behavior.h` is the complete low-level interface, not a partial transport format for the C++ facade. Prototype discovery, Block execution, Frame reads, Graph inspection, Watches, Scripts, Patches, and Plans all use the same 1.0 function table. The C++ facade calls that table and does not rely on private DLL entry points. A C translation unit can therefore use the module without including Virtools or C++ Behavior headers:
+`BML/Behavior.h` is the complete low-level interface, not a partial transport format for the C++ facade. Prototype discovery, Block execution, Frame reads, Graph inspection, Watches, Scripts, Patches, and Plans all use the same 1.0 function table. The C++ facade calls that table and does not rely on private module entry points. A C translation unit can therefore use the module without including Virtools or C++ Behavior headers:
 
 ```c
 #include <BML/Behavior.h>
@@ -38,9 +38,9 @@ Initialize `StructSize` in every record that contains it. The layouts of all 1.0
 
 Input strings and arrays are borrowed only for the call. Variable-size Frame, Graph, and Layout reads either write the complete result or report the required buffer size. Use `BML_BEHAVIOR_HAS_1_0` for the full 1.0 API and `BML_IFACE_HAS` for members added later.
 
-All text crosses the table as UTF-8. The Loader converts names and string values bound for Virtools to the engine's active code page, and converts all text it returns, status messages included, back to UTF-8. Text that the code page cannot represent is passed on as its UTF-8 bytes. BML identifiers such as owner, Patch, and Plan names stay UTF-8 throughout.
+All text in this SDL branch is UTF-8, including CK names, string values and status messages. Behavior text is not converted through ACP; malformed UTF-8 is rejected rather than decoded using an old code-page hint. Owner, Patch and Plan identifiers remain UTF-8.
 
-This does not add a pure C Mod bootstrap: the existing Native Mod host is still defined by `IMod`. A C translation unit or another language adapter linked into the same Native Mod DLL can call this seam directly while following the same Mod ownership, game-thread, world-reset, and `BML_ObjectRef` lifetime rules. It is an independent Behavior seam, not a library independent of the BML Runtime.
+A pure C Mod boots through `BML_GetModInterface` in `BML/Mod.h`; C++ uses `BML_DEFINE_MOD` over that same C protocol. Both call the Behavior table while following Mod ownership, game-thread, world-reset and `BML_ObjectRef` lifetime rules. The Behavior interface runs inside BML; it is not a standalone engine library. See the [Native API](native-mod-api.md) and installed `examples/native-c-mod`.
 
 ## 1. Object model
 
@@ -81,7 +81,8 @@ The rest of this guide follows that order: BB execution first, graph reading and
 
 ## 2. Open a Session
 
-Open a `Session` during Mod initialization:
+Open a `Session` inside `OnLoad(const BML::Mod::Context &ctx)`;
+`m_Behavior` below is a `Session` member of the Mod:
 
 ```cpp
 #include <BML/Behavior.hpp>
@@ -89,14 +90,13 @@ using namespace BML::Behavior;
 
 auto opened = Session::Open();
 if (!opened) {
-    GetLogger()->Error("Behavior unavailable: %s",
-                       opened.GetStatus().Message.c_str());
+    (void)ctx.LogError("Behavior unavailable: " + opened.GetStatus().Message);
     return;
 }
 m_Behavior = opened.Take();
 ```
 
-The Loader verifies the calling DLL and binds the Session to the current Mod generation. A Session survives world reset; runs, Scripts, Watches, and Patches tied to that world do not. On Mod unload, the Loader stops new admission and retires callbacks and native Behaviors before unloading the DLL.
+The Loader verifies the calling module and binds the Session to the current Mod generation. A Session survives world reset; runs, Scripts, Watches, and Patches tied to that world do not. On Mod unload, the Loader stops new admission and retires callbacks and native Behaviors before unloading the module.
 
 `Behavior::Result<T>` is an alias of the shared `BML::Result<T, Behavior::Status>`; only the diagnostic remains Behavior-specific. `Result<T>::Value()` borrows from a named Result; a temporary Result may return a copyable value directly. Use `Take()` when ownership of a move-only domain object leaves a successful Result. `Take()` clears the stored value, while keeping `Code()` and `GetStatus()` available for diagnostics.
 
@@ -624,7 +624,7 @@ Link, or port that an earlier Patch introduced, the earlier Patch cannot close:
 Close reports a retryable `RevertConflict` until the later Patch has closed.
 World reset and Mod unload close Patches newest first for the same reason.
 
-Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.
+Hook callbacks run on the game thread. Exceptions do not cross the module seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.
 
 Return `HookResult::Error` to stop the chain: the Hook Block leaves every Out inactive, and the callback runs again on the next activation. A callback that throws returns `HookResult::Fault`; the Loader keeps that first fault as the Hook's diagnostic, stops calling it, and the Block passes the activation through. The state a Hook or Watch callback owns is released at the end of the Behavior call that dropped its last reference, so its destructor may close other Behavior objects.
 
@@ -724,7 +724,7 @@ if (made) {
 }
 ```
 
-These adapters return ordinary Blocks and do not bypass lifecycle, execution, or teardown. New Native Mod code should not use the legacy ExecuteBB interface.
+These adapters return ordinary Blocks and do not bypass lifecycle, execution, or teardown. New Native Mod code should not use the removed ExecuteBB authoring interface.
 
 ## 12. Lifetime, errors, and performance
 
@@ -732,7 +732,7 @@ These adapters return ordinary Blocks and do not bypass lifecycle, execution, or
 | --- | --- | --- | --- | --- | --- |
 | Explicit release | `Reset()` releases this value's lease; the last lease closes the native Session | `Close()` stops admission; teardown finishes at a safe point | `Close()` closes its initial graph, deactivates, leaves its owner, then destroys at a safe point | `Close()` remains readable during closure or conflict | `Close()` remains readable while rules retire |
 | World reset | Survives | Closes | Closes with the old world | Closes with the old graph | Survives and reconciles in the next world |
-| Mod unload/reload | Owner generation retires | Closes before DLL unload | Leaves its owner and closes before DLL unload | Callback and graph state retire first | Retires before callback code unloads |
+| Mod unload/reload | Owner generation retires | Closes before module unload | Leaves its owner and closes before module unload | Callback and graph state retire first | Retires before callback code unloads |
 
 Every Behavior operation, Close included, requires the game thread. A call from any other thread returns `BML_ERROR_WRONG_THREAD` and changes nothing, so destroy facade values on the game thread too: a destructor that runs elsewhere cannot close what it owns, and the Loader reclaims it only when the Mod retires. Every `Result<T>` carries both a stable error category and `Status`; branch on the error and phase, not on message text.
 
