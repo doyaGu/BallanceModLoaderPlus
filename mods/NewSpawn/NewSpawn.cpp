@@ -1,59 +1,76 @@
 #include "NewSpawn.h"
 
-IMod *BMLEntry(IBML *bml) {
-    return new NewSpawn(bml);
+BML_DEFINE_MOD(NewSpawn, {
+    .Id = "NewSpawn",
+    .Name = "NewSpawn",
+    .Version = "0.0.2",
+    .Author = "fluoresce",
+    .Description = "\"nsp\" to set a position. shortcut key to tp to the position. "
+                                 " Thanks for the help of BallanceBug and Swung ",
+    .MinimumLoaderVersion = BML_VERSION,
+})
+
+void NewSpawn::OnLoad(const BML::Mod::Context &context) {
+    m_Context = context;
+    m_Timers = ModSupport::Timers(context);
+    auto spawnCommand = std::make_shared<CommandNewSpawn>(this);
+    cmdspawnp_ptr = spawnCommand.get();
+    ModSupport::RegisterCommand(m_Context, m_Commands, std::move(spawnCommand));
+    m_Context.Config().SetCategoryComment("Main", "Main settings.");
+
+    prop_enabled = m_Context.Config().DeclareProperty({"Main", "Enabled"}).Value();
+    prop_enabled.SetDefault(bool(true));
+    prop_enabled.SetComment("Enabled to use this mod");
+    enabled = prop_enabled.Get<bool>();
+
+    reset_prop_enabled = m_Context.Config().DeclareProperty({"Main", "Prop_Reset"}).Value();
+    reset_prop_enabled.SetDefault(bool(false));
+    reset_prop_enabled.SetComment("Enable to reset prop when press Transport shortcut key.");
+    reset_enabled = reset_prop_enabled.Get<bool>();
+
+    reset_spirit_enabled = m_Context.Config().DeclareProperty({"Main", "Spirit_Record"}).Value();
+    reset_spirit_enabled.SetDefault(bool(true));
+    reset_spirit_enabled.SetComment(
+        "Enable to record and play spirit ball when press Record shortcut key.");
+    spirit_enabled = reset_spirit_enabled.Get<bool>();
+
+    prop_key = m_Context.Config().DeclareProperty({"Main", "Transport"}).Value();
+    prop_key.SetDefault(uint32_t(CKKEY_C));
+    prop_key.SetComment("Set your shortcut key for transporting your ball");
+    key_prop = prop_key.Get<uint32_t>();
+
+    prop_key_record = m_Context.Config().DeclareProperty({"Main", "Record"}).Value();
+    prop_key_record.SetDefault(uint32_t(CKKEY_V));
+    prop_key_record.SetComment("Set your shortcut key for saving the spirit record");
+    key_record = prop_key_record.Get<uint32_t>();
 }
 
-void BMLExit(IMod *mod) {
-    delete mod;
-}
+void NewSpawn::OnModifyConfig(const BML::Mod::Context &, const BML::Mod::ConfigEvent &event) {
+    const auto *category = event.Category.data();
+    const auto *key = event.Key.data();
+    auto found = m_Context.Config().FindProperty(event.Category, event.Key);
+    if (!found)
+        return;
+    auto prop = found.Value();
 
-void NewSpawn::OnLoad() {
-    cmdspawnp_ptr = new CommandNewSpawn(this);
-    m_BML->RegisterCommand(cmdspawnp_ptr);
-    GetConfig()->SetCategoryComment("Main", "Main settings.");
-
-    prop_enabled = GetConfig()->GetProperty("Main", "Enabled");
-    prop_enabled->SetDefaultBoolean(true);
-    prop_enabled->SetComment("Enabled to use this mod");
-    enabled = prop_enabled->GetBoolean();
-
-    reset_prop_enabled = GetConfig()->GetProperty("Main", "Prop_Reset");
-    reset_prop_enabled->SetDefaultBoolean(false);
-    reset_prop_enabled->SetComment("Enable to reset prop when press Transport shortcut key.");
-    reset_enabled = reset_prop_enabled->GetBoolean();
-
-    reset_spirit_enabled = GetConfig()->GetProperty("Main", "Spirit_Record");
-    reset_spirit_enabled->SetDefaultBoolean(true);
-    reset_spirit_enabled->SetComment("Enable to record and play spirit ball when press Record shortcut key.");
-    spirit_enabled = reset_spirit_enabled->GetBoolean();
-
-    prop_key = GetConfig()->GetProperty("Main", "Transport");
-    prop_key->SetDefaultKey(CKKEY_C);
-    prop_key->SetComment("Set your shortcut key for transporting your ball");
-    key_prop = prop_key->GetKey();
-
-    prop_key_record = GetConfig()->GetProperty("Main", "Record");
-    prop_key_record->SetDefaultKey(CKKEY_V);
-    prop_key_record->SetComment("Set your shortcut key for saving the spirit record");
-    key_record = prop_key_record->GetKey();
-
-    input_manager = m_BML->GetInputManager();
-}
-
-void NewSpawn::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
-    enabled = prop_enabled->GetBoolean();
-    reset_enabled = reset_prop_enabled->GetBoolean();
-    spirit_enabled = reset_spirit_enabled->GetBoolean();
-    if (prop == prop_key) {
-        key_prop = prop->GetKey();
+    enabled = prop_enabled.Get<bool>();
+    reset_enabled = reset_prop_enabled.Get<bool>();
+    spirit_enabled = reset_spirit_enabled.Get<bool>();
+    if ((event.Category == "Main" && event.Key == "Transport")) {
+        key_prop = prop.Get<uint32_t>();
     }
-    if (prop == prop_key_record) {
-        key_record = prop->GetKey();
+    if ((event.Category == "Main" && event.Key == "Record")) {
+        key_record = prop.Get<uint32_t>();
     }
 }
 
-void NewSpawn::OnLoadScript(const char *filename, CKBehavior *script) {
+void NewSpawn::OnLoadScript(const BML::Mod::Context &, const BML::Mod::LoadScriptEvent &event) {
+    const char *filename = event.Filename.data();
+    auto borrowed = BML::Engine::BorrowObject<CKBehavior>(m_Context, event.Script);
+    if (!borrowed)
+        return;
+    auto *script = borrowed.Value();
+
     if (strcmp(script->GetName(), "Gameplay_Ingame") == 0) {
         CKBehavior *ballMgr = ScriptHelper::FindFirstBB(script, "BallManager");
         CKBehavior *newBall = ScriptHelper::FindFirstBB(ballMgr, "New Ball");
@@ -62,29 +79,25 @@ void NewSpawn::OnLoadScript(const char *filename, CKBehavior *script) {
     }
 }
 
-void NewSpawn::OnBallNavActive() {
-    Ball_Active = true;
-}
+void NewSpawn::OnBallNavActive(const BML::Mod::Context &) { Ball_Active = true; }
 
-void NewSpawn::OnBallNavInactive() {
-    Ball_Active = false;
-}
+void NewSpawn::OnBallNavInactive(const BML::Mod::Context &) { Ball_Active = false; }
 
-void NewSpawn::OnPostStartMenu() {
+void NewSpawn::OnPostStartMenu(const BML::Mod::Context &) {
     if (init)
         return;
 
     if (!m_curLevel) {
-        m_curLevel = m_BML->GetArrayByName("CurrentLevel");
-        m_checkpoints = m_BML->GetArrayByName("Checkpoints");
-        m_resetpoints = m_BML->GetArrayByName("ResetPoints");
-        m_ingameParam = m_BML->GetArrayByName("IngameParameter");
-        CKBehavior *events = m_BML->GetScriptByName("Gameplay_Events");
+        m_curLevel = ModSupport::Find<CKDataArray>(m_Context, "CurrentLevel");
+        m_checkpoints = ModSupport::Find<CKDataArray>(m_Context, "Checkpoints");
+        m_resetpoints = ModSupport::Find<CKDataArray>(m_Context, "ResetPoints");
+        m_ingameParam = ModSupport::Find<CKDataArray>(m_Context, "IngameParameter");
+        CKBehavior *events = ModSupport::Find<CKBehavior>(m_Context, "Gameplay_Events");
         CKBehavior *id = ScriptHelper::FindNextBB(events, events->GetInput(0));
         m_curSector = id->GetOutputParameter(0)->GetDestination(0);
     }
 
-    auto *script = m_BML->GetScriptByName("Gameplay_Ingame");
+    auto *script = ModSupport::Find<CKBehavior>(m_Context, "Gameplay_Ingame");
     CKBehavior *trafoMgr = ScriptHelper::FindFirstBB(script, "Trafo Manager");
     m_setNewBall = ScriptHelper::FindFirstBB(trafoMgr, "set new Ball");
     CKBehavior *sop = ScriptHelper::FindFirstBB(m_setNewBall, "Switch On Parameter");
@@ -93,11 +106,26 @@ void NewSpawn::OnPostStartMenu() {
     init = true;
 }
 
-void NewSpawn::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                            CKBOOL addtoscene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                            XObjectArray *objArray, CKObject *masterObj) {
-    if (!strcmp(filename, "3D Entities\\Balls.nmo")) {
-        CKDataArray *physBall = m_BML->GetArrayByName("Physicalize_GameBall");
+void NewSpawn::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) {
+    const char *filename = event.Filename.data();
+    const bool isMap = event.IsMap;
+    const char *masterName = event.MasterName.data();
+    const auto filterClass = static_cast<CK_CLASSID>(event.FilterClass);
+    const bool addToScene = event.AddToScene, addtoscene = event.AddToScene,
+               reuseMeshes = event.ReuseMeshes, reuseMaterials = event.ReuseMaterials,
+               dynamic = event.Dynamic;
+    XObjectArray objects;
+    for (auto ref : event.Objects) {
+        auto p = BML::Engine::BorrowObject<CKObject>(m_Context, ref);
+        if (p)
+            objects.PushBack(p.Value()->GetID());
+    }
+    auto *objArray = &objects;
+    auto master = BML::Engine::BorrowObject<CKObject>(m_Context, event.MasterObject);
+    CKObject *masterObj = master ? master.Value() : nullptr;
+
+    if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
+        CKDataArray *physBall = ModSupport::Find<CKDataArray>(m_Context, "Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
             const int nameSize = physBall->GetElementStringValue(i, 0, nullptr, 0);
             if (nameSize <= 1)
@@ -106,16 +134,18 @@ void NewSpawn::OnLoadObject(const char *filename, CKBOOL isMap, const char *mast
             ball.name.resize(nameSize, '\0');
             physBall->GetElementStringValue(i, 0, ball.name.data(), nameSize);
             ball.name.pop_back();
-            ball.obj = m_BML->Get3dObjectByName(ball.name.c_str());
+            ball.obj = ModSupport::Find<CK3dObject>(m_Context, ball.name.c_str());
 
             CKDependencies dep;
             dep.Resize(40);
             dep.Fill(0);
             dep.m_Flags = CK_DEPENDENCIES_CUSTOM;
-            dep[CKCID_OBJECT] = CK_DEPENDENCIES_COPY_OBJECT_NAME | CK_DEPENDENCIES_COPY_OBJECT_UNIQUENAME;
+            dep[CKCID_OBJECT] =
+                CK_DEPENDENCIES_COPY_OBJECT_NAME | CK_DEPENDENCIES_COPY_OBJECT_UNIQUENAME;
             dep[CKCID_MESH] = CK_DEPENDENCIES_COPY_MESH_MATERIAL;
             dep[CKCID_3DENTITY] = CK_DEPENDENCIES_COPY_3DENTITY_MESH;
-            ball.obj = static_cast<CK3dObject *>(m_BML->GetCKContext()->CopyObject(ball.obj, &dep, "_Spirit"));
+            ball.obj = static_cast<CK3dObject *>(
+                ModSupport::Engine(m_Context)->CopyObject(ball.obj, &dep, "_Spirit"));
             for (int j = 0; j < ball.obj->GetMeshCount(); j++) {
                 CKMesh *mesh = ball.obj->GetMesh(j);
                 for (int k = 0; k < mesh->GetMaterialCount(); k++) {
@@ -127,13 +157,13 @@ void NewSpawn::OnLoadObject(const char *filename, CKBOOL isMap, const char *mast
                     color.a = 0.5f;
                     mat->SetDiffuse(color);
                     ball.materials.push_back(mat);
-                    m_BML->SetIC(mat);
+                    ModSupport::SetIC(m_Context, mat);
                 }
             }
             m_dualBalls.push_back(ball);
         }
 
-        GetLogger()->Info("Created Newspawn Spirit Balls");
+        ModSupport::Log(m_Context, BML_LOG_INFO, "Created Newspawn Spirit Balls");
     }
 
     if (!isMap || filename[0] == '\0')
@@ -143,7 +173,7 @@ void NewSpawn::OnLoadObject(const char *filename, CKBOOL isMap, const char *mast
 }
 
 int NewSpawn::GetCurrentBall() {
-    //get and return the balltype number
+    // get and return the balltype number
     CKObject *ball = m_curLevel->GetElementObject(0, 1);
     if (ball) {
         const std::string ballName = ball->GetName();
@@ -158,7 +188,7 @@ int NewSpawn::GetCurrentBall() {
 
 void NewSpawn::SetCurrentBall(int curBall) {
     m_playBall = curBall;
-    for (auto &ball: m_dualBalls)
+    for (auto &ball : m_dualBalls)
         ball.obj->Show(CKHIDE);
 }
 
@@ -178,7 +208,7 @@ void NewSpawn::StopRecording(bool save_data) {
 void NewSpawn::StopPlaying() {
     m_isPlaying = false;
 
-    for (auto &ball: m_dualBalls)
+    for (auto &ball : m_dualBalls)
         ball.obj->Show(CKHIDE);
 }
 
@@ -200,17 +230,17 @@ void NewSpawn::StartPlaying() {
     }
 }
 
-void NewSpawn::OnProcess() {
-    if (!(enabled && m_BML->IsCheatEnabled() && m_BML->IsPlaying()))
+void NewSpawn::OnProcess(const BML::Mod::Context &) {
+    if (!(enabled && ModSupport::CheatEnabled() && ModSupport::GameState().Playing))
         return;
-    if (input_manager->IsKeyPressed(key_prop) && Ball_Active) {
+    if (ModSupport::Keyboard(m_Context).IsKeyPressed(key_prop) && Ball_Active) {
         //[transport] no nsp or no set level: return
         if (!(cmdspawnp_ptr->get_is_spawned())) {
-            m_BML->SendIngameMessage("You have not set up a nsp point.");
+            BML::UI::AddMessage("You have not set up a nsp point.");
             return;
         }
         if (cmdspawnp_ptr->get_map_filename_setlevel() != get_map_filename_curlevel()) {
-            m_BML->SendIngameMessage("the nsp point you set is not in this level.");
+            BML::UI::AddMessage("the nsp point you set is not in this level.");
             return;
         }
 
@@ -224,12 +254,14 @@ void NewSpawn::OnProcess() {
         //[transport] Get the sector at the time of /nsp
         int set_sector = cmdspawnp_ptr->get_curSector();
         //[transport] Get the current sector
-        CKBehavior *events = m_BML->GetScriptByName("Gameplay_Events");
-        int cur_sector = ScriptHelper::GetParamValue<int>(
-            ScriptHelper::FindNextBB(events, events->GetInput(0))->GetOutputParameter(0)->GetDestination(0));
+        CKBehavior *events = ModSupport::Find<CKBehavior>(m_Context, "Gameplay_Events");
+        int cur_sector =
+            ScriptHelper::GetParamValue<int>(ScriptHelper::FindNextBB(events, events->GetInput(0))
+                                                 ->GetOutputParameter(0)
+                                                 ->GetDestination(0));
 
         //[transport] Switch sector if (set_sector != cur_sector)
-        CKContext *ctx = m_BML->GetCKContext();
+        CKContext *ctx = ModSupport::Engine(m_Context);
         if (m_curLevel) {
             if (set_sector != cur_sector) {
                 VxMatrix matrix;
@@ -240,52 +272,57 @@ void NewSpawn::OnProcess() {
                 m_ingameParam->SetElementValue(0, 2, &cur_sector);
                 ScriptHelper::SetParamValue(m_curSector, set_sector);
 
-                //m_BML->SendIngameMessage(("Changed to Sector " + std::to_string(set_sector)).c_str());
+                // BML::UI::AddMessage(("Changed to Sector " + std::to_string(set_sector)).c_str());
 
-                CKBehavior *sectorMgr = m_BML->GetScriptByName("Gameplay_SectorManager");
+                CKBehavior *sectorMgr =
+                    ModSupport::Find<CKBehavior>(m_Context, "Gameplay_SectorManager");
                 ctx->GetCurrentScene()->Activate(sectorMgr, true);
 
-                m_BML->AddTimerLoop(CKDWORD{1}, [this, set_sector, sectorMgr, ctx]() {
-                    if (sectorMgr->IsActive())
-                        return true;
+                m_Timers.EveryTicks(
+                    1, [this, set_sector, sectorMgr = ModSupport::Object(sectorMgr), ctx]() {
+                        if (sectorMgr->IsActive())
+                            return true;
 
-                    m_BML->AddTimer(CKDWORD{2}, [this, set_sector, ctx]() {
-                        CKBOOL active = false;
-                        m_curLevel->SetElementValue(0, 4, &active);
+                        m_Timers.AfterTicks(2, [this, set_sector, ctx]() {
+                            CKBOOL active = false;
+                            m_curLevel->SetElementValue(0, 4, &active);
 
-                        CK_ID flameId;
-                        m_checkpoints->GetElementValue(set_sector % 2, 1, &flameId);
-                        auto *flame = static_cast<CK3dEntity *>(ctx->GetObject(flameId));
-                        ctx->GetCurrentScene()->Activate(flame->GetScript(0), true);
+                            CK_ID flameId;
+                            m_checkpoints->GetElementValue(set_sector % 2, 1, &flameId);
+                            auto *flame = static_cast<CK3dEntity *>(ctx->GetObject(flameId));
+                            ctx->GetCurrentScene()->Activate(flame->GetScript(0), true);
 
-                        m_checkpoints->GetElementValue(set_sector - 1, 1, &flameId);
-                        flame = static_cast<CK3dEntity *>(ctx->GetObject(flameId));
-                        ctx->GetCurrentScene()->Activate(flame->GetScript(0), true);
+                            m_checkpoints->GetElementValue(set_sector - 1, 1, &flameId);
+                            flame = static_cast<CK3dEntity *>(ctx->GetObject(flameId));
+                            ctx->GetCurrentScene()->Activate(flame->GetScript(0), true);
 
-                        if (set_sector > m_checkpoints->GetRowCount()) {
-                            CKMessageManager *mm = m_BML->GetMessageManager();
-                            CKMessageType msg = mm->AddMessageType("last Checkpoint reached");
-                            mm->SendMessageSingle(msg, m_BML->GetGroupByName("All_Sound"));
-                        } else {
-                            m_BML->AddTimer(CKDWORD{2}, [this, set_sector, ctx, flame]() {
-                                VxMatrix matrix;
-                                m_checkpoints->GetElementValue(set_sector - 1, 0, &matrix);
-                                flame->SetWorldMatrix(matrix);
-                                CKBOOL active = true;
-                                m_curLevel->SetElementValue(0, 4, &active);
-                                ctx->GetCurrentScene()->Activate(flame->GetScript(0), true);
-                                m_BML->Show(flame, CKSHOW, true);
-                            });
-                        }
+                            if (set_sector > m_checkpoints->GetRowCount()) {
+                                CKMessageManager *mm =
+                                    ModSupport::Engine(m_Context)->GetMessageManager();
+                                CKMessageType msg = mm->AddMessageType("last Checkpoint reached");
+                                mm->SendMessageSingle(
+                                    msg, ModSupport::Find<CKGroup>(m_Context, "All_Sound"));
+                            } else {
+                                m_Timers.AfterTicks(2, [this, set_sector, ctx,
+                                                        flame = ModSupport::Object(flame)]() {
+                                    VxMatrix matrix;
+                                    m_checkpoints->GetElementValue(set_sector - 1, 0, &matrix);
+                                    flame->SetWorldMatrix(matrix);
+                                    CKBOOL active = true;
+                                    m_curLevel->SetElementValue(0, 4, &active);
+                                    ctx->GetCurrentScene()->Activate(flame->GetScript(0), true);
+                                    ModSupport::Show(m_Context, flame, CKSHOW, true);
+                                });
+                            }
+                        });
+
+                        return false;
                     });
-
-                    return false;
-                });
             }
         }
 
         //[transport] Reset camera
-        CKDataArray *ph = m_BML->GetArrayByName("PH");
+        CKDataArray *ph = ModSupport::Find<CKDataArray>(m_Context, "PH");
         for (int i = 0; i < ph->GetRowCount(); i++) {
             CKBOOL set = true;
             char name[100] = {};
@@ -298,27 +335,29 @@ void NewSpawn::OnProcess() {
         if (reset_enabled) {
             m_ingameParam->SetElementValueFromParameter(0, 1, m_curSector);
             m_ingameParam->SetElementValueFromParameter(0, 2, m_curSector);
-            CKBehavior *sectorMgr = m_BML->GetScriptByName("Gameplay_SectorManager");
+            CKBehavior *sectorMgr =
+                ModSupport::Find<CKBehavior>(m_Context, "Gameplay_SectorManager");
             ctx->GetCurrentScene()->Activate(sectorMgr, true);
         }
 
         //[transport] Ball position transport
-        CKMessageManager *mm = m_BML->GetMessageManager();
+        CKMessageManager *mm = ModSupport::Engine(m_Context)->GetMessageManager();
         CKMessageType ballDeact = mm->AddMessageType("BallNav deactivate");
-        mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Gameplay"));
-        mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Sound"));
+        mm->SendMessageSingle(ballDeact, ModSupport::Find<CKGroup>(m_Context, "All_Gameplay"));
+        mm->SendMessageSingle(ballDeact, ModSupport::Find<CKGroup>(m_Context, "All_Sound"));
         m_dynamicPos->ActivateInput(1);
         m_dynamicPos->Activate();
         auto current_ball = get_curBall();
 
-        m_BML->AddTimer(CKDWORD{2}, [this, current_ball, mm, ballDeact]() {
-            ExecuteBB::Unphysicalize(current_ball);
+        m_Timers.AfterTicks(2, [this, current_ball = ModSupport::Object(current_ball), mm,
+                                ballDeact]() {
+            ModSupport::Unphysicalize(m_Behaviors, m_Context, current_ball);
 
             auto matrix = cmdspawnp_ptr->get_matrix();
 
             current_ball->SetWorldMatrix(matrix);
-            CK3dEntity *camMF = m_BML->Get3dEntityByName("Cam_MF");
-            m_BML->RestoreIC(camMF, true);
+            CK3dEntity *camMF = ModSupport::Find<CK3dEntity>(m_Context, "Cam_MF");
+            ModSupport::RestoreIC(m_Context, camMF, true);
             camMF->SetWorldMatrix(matrix);
 
             m_dynamicPos->ActivateInput(0);
@@ -326,17 +365,17 @@ void NewSpawn::OnProcess() {
             m_phyNewBall->ActivateInput(0);
             m_phyNewBall->Activate();
             m_phyNewBall->GetParent()->Activate();
-            mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Gameplay"));
-            mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Sound"));
+            mm->SendMessageSingle(ballDeact, ModSupport::Find<CKGroup>(m_Context, "All_Gameplay"));
+            mm->SendMessageSingle(ballDeact, ModSupport::Find<CKGroup>(m_Context, "All_Sound"));
 
             //[transport] Ball type reset
             CK3dEntity *curBall = get_curBall();
-            ExecuteBB::Unphysicalize(curBall);
+            ModSupport::Unphysicalize(m_Behaviors, m_Context, curBall);
             static char trafoTypes[3][6] = {"paper", "wood", "stone"};
             SetParamString(m_curTrafo, trafoTypes[cmdspawnp_ptr->get_ball_type()]);
             m_setNewBall->ActivateInput(0);
             m_setNewBall->Activate();
-            GetLogger()->Info("NewSpawn Reset Ball");
+            ModSupport::Log(m_Context, BML_LOG_INFO, "NewSpawn Reset Ball");
         });
 
         //[spirit] Transport end, start recording and playing if enable
@@ -353,9 +392,9 @@ void NewSpawn::OnProcess() {
 
     //[spirit] Recording
     if (m_isRecording) {
-        m_srtimer += m_BML->GetTimeManager()->GetLastDeltaTime();
+        m_srtimer += ModSupport::Engine(m_Context)->GetTimeManager()->GetLastDeltaTime();
 
-        m_recordTimer += m_BML->GetTimeManager()->GetLastDeltaTime();
+        m_recordTimer += ModSupport::Engine(m_Context)->GetTimeManager()->GetLastDeltaTime();
         m_recordTimer = (std::min)(m_recordTimer, 1000.0f);
 
         while (m_recordTimer > 0) {
@@ -376,7 +415,8 @@ void NewSpawn::OnProcess() {
             }
         }
         if (m_srtimer > 1000 * 1800) {
-            GetLogger()->Info("NewSpawn Record is longer than half hour, stop recording");
+            ModSupport::Log(m_Context, BML_LOG_INFO,
+                            "NewSpawn Record is longer than half hour, stop recording");
             StopPlaying();
             StopRecording(true);
         }
@@ -384,7 +424,7 @@ void NewSpawn::OnProcess() {
 
     //[spirit] Playing
     if (m_isPlaying) {
-        m_playTimer += m_BML->GetTimeManager()->GetLastDeltaTime();
+        m_playTimer += ModSupport::Engine(m_Context)->GetTimeManager()->GetLastDeltaTime();
         m_playTimer = (std::min)(m_playTimer, 1000.0f);
 
         while (m_playTimer > 0) {
@@ -418,49 +458,56 @@ void NewSpawn::OnProcess() {
                     ball->SetQuaternion(&rotation);
                 }
             }
-        } else StopPlaying();
+        } else
+            StopPlaying();
     }
 
     //[spirit] Recording saving
-    if (input_manager->IsKeyPressed(key_record)) {
+    if (ModSupport::Keyboard(m_Context).IsKeyPressed(key_record)) {
         if (record_save_enable) {
             StopPlaying();
             StopRecording(true);
-            m_BML->SendIngameMessage("record is updated.");
+            BML::UI::AddMessage("record is updated.");
         } else {
-            m_BML->SendIngameMessage("Please use transport shortcut key to reset the ball position first.");
+            BML::UI::AddMessage(
+                "Please use transport shortcut key to reset the ball position first.");
         }
     }
 }
 
-void CommandNewSpawn::Execute(IBML *bml, const std::vector<std::string> &args) {
-    if (bml->IsIngame()) {
-        //get spawn position
-        CK3dEntity *camRef = bml->Get3dEntityByName("Cam_OrientRef");
+void CommandNewSpawn::Execute(const BML::Mod::Context &context,
+                              const std::vector<std::string> &args) {
+    if (ModSupport::GameState().Ingame) {
+        // get spawn position
+        CK3dEntity *camRef = ModSupport::Find<CK3dEntity>(context, "Cam_OrientRef");
         matrix = camRef->GetWorldMatrix();
         for (int i = 0; i < 4; i++) {
             std::swap(matrix[0][i], matrix[2][i]);
             matrix[0][i] = -matrix[0][i];
         }
-        //get spawn sector
-        CKBehavior *events = bml->GetScriptByName("Gameplay_Events");
-        set_curSector(ScriptHelper::GetParamValue<int>(
-            ScriptHelper::FindNextBB(events, events->GetInput(0))->GetOutputParameter(0)->GetDestination(0)));
-        //get spawn ball type
+        // get spawn sector
+        CKBehavior *events = ModSupport::Find<CKBehavior>(context, "Gameplay_Events");
+        set_curSector(
+            ScriptHelper::GetParamValue<int>(ScriptHelper::FindNextBB(events, events->GetInput(0))
+                                                 ->GetOutputParameter(0)
+                                                 ->GetDestination(0)));
+        // get spawn ball type
         ball_type = ball_name_to_id[mod->get_curBall()->GetName()];
 
-        bml->SendIngameMessage(("Set NSpawn Point to (sector "
-                                + std::to_string(get_curSector()) + ", position "
-                                + std::to_string(matrix[3][0]) + ", "
-                                + std::to_string(matrix[3][1]) + ", "
-                                + std::to_string(matrix[3][2]) + ")").c_str());
-        //get spawn level and is spawned
+        BML::UI::AddMessage(("Set NSpawn Point to (sector " + std::to_string(get_curSector()) +
+                             ", position " + std::to_string(matrix[3][0]) + ", " +
+                             std::to_string(matrix[3][1]) + ", " + std::to_string(matrix[3][2]) +
+                             ")")
+                                .c_str());
+        // get spawn level and is spawned
         ///
         set_map_filename_setlevel(mod->get_map_filename_curlevel());
         set_is_spawned(true);
     }
 }
 
-const std::vector<std::string> CommandNewSpawn::GetTabCompletion(IBML *bml, const std::vector<std::string> &args) {
+const std::vector<std::string>
+CommandNewSpawn::GetTabCompletion(const BML::Mod::Context &context,
+                                  const std::vector<std::string> &args) {
     return {};
 }

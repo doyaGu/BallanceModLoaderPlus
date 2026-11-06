@@ -1,26 +1,31 @@
 #pragma once
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
 #define TICK_SPEED 8
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
-
 class NewSpawn;
 
-std::unordered_map<std::string, int> ball_name_to_id{{"Ball_Paper", 0}, {"Ball_Wood", 1}, {"Ball_Stone", 2}};
+std::unordered_map<std::string, int> ball_name_to_id{
+    {"Ball_Paper", 0}, {"Ball_Wood", 1}, {"Ball_Stone", 2}};
 
-class CommandNewSpawn : public ICommand {
-public:
+class CommandNewSpawn {
+  public:
+    static BML::Command::Definition Define() {
+        BML::Command::Definition d;
+        d.Name = "newspawn";
+        d.Alias = "nsp";
+        d.Description = "Sets your spawn point to tp without reset prop";
+        d.Cheat = true;
+        return d;
+    }
+
     explicit CommandNewSpawn(NewSpawn *np) : mod(np) {}
-    std::string GetName() override { return "newspawn"; }
-    std::string GetAlias() override { return "nsp"; }
-    std::string GetDescription() override { return "Sets your spawn point to tp without reset prop"; }
-    bool IsCheat() override { return true; }
 
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
+    void Execute(const BML::Mod::Context &context, const std::vector<std::string> &args);
 
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(const BML::Mod::Context &context,
+                                                    const std::vector<std::string> &args);
 
     const VxMatrix &get_matrix() const { return matrix; }
     void set_matrix(const VxMatrix &mat) { matrix = mat; }
@@ -36,7 +41,7 @@ public:
     const std::string &get_map_filename_setlevel() const { return map_filename; }
     void set_map_filename_setlevel(const std::string &type) { map_filename = type; }
 
-private:
+  private:
     NewSpawn *mod = nullptr;
 
     VxMatrix matrix = {};
@@ -48,46 +53,39 @@ private:
     std::string map_filename;
 };
 
-class NewSpawn : public IMod {
-public:
-    explicit NewSpawn(IBML *bml) : IMod(bml) {}
+class NewSpawn : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-    const char *GetID() override { return "NewSpawn"; }
-    const char *GetVersion() override { return "0.0.2"; }
-    const char *GetName() override { return "NewSpawn"; }
-    const char *GetAuthor() override { return "fluoresce"; }
-    const char *GetDescription() override {
-        return "\"nsp\" to set a position. shortcut key to tp to the position. "
-                " Thanks for the help of BallanceBug and Swung ";
-    }
-    DECLARE_BML_VERSION;
+  public:
+
 
     //[transport]
-    void OnLoad() override;
-    void OnProcess() override;
-    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
-    void OnLoadScript(const char *filename, CKBehavior *script) override;
-    void OnBallNavActive() override;
-    void OnBallNavInactive() override;
-    void OnPostStartMenu() override;
-    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName,
-                      CK_CLASSID filterClass, CKBOOL addtoscene, CKBOOL reuseMeshes, CKBOOL reuseMaterials,
-                      CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) override;
+    void OnLoad(const BML::Mod::Context &) override;
+    void OnProcess(const BML::Mod::Context &) override;
+    void OnModifyConfig(const BML::Mod::Context &, const BML::Mod::ConfigEvent &event) override;
+    void OnLoadScript(const BML::Mod::Context &, const BML::Mod::LoadScriptEvent &event) override;
+    void OnBallNavActive(const BML::Mod::Context &) override;
+    void OnBallNavInactive(const BML::Mod::Context &) override;
+    void OnPostStartMenu(const BML::Mod::Context &) override;
+    void OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) override;
 
     //[spirit]
-    void OnPreResetLevel() override {
+    void OnPreResetLevel(const BML::Mod::Context &) override {
         StopRecording();
         StopPlaying();
         record_save_enable = false;
     }
 
-    void OnPreExitLevel() override {
+    void OnPreExitLevel(const BML::Mod::Context &) override {
         StopRecording();
         StopPlaying();
         record_save_enable = false;
     }
 
-    void OnPreEndLevel() override {
+    void OnPreEndLevel(const BML::Mod::Context &) override {
         StopRecording();
         StopPlaying();
         record_save_enable = false;
@@ -99,7 +97,7 @@ public:
     std::string get_map_filename_curlevel() { return map_filename_curlevel; }
     void set_map_filename_curlevel(const std::string &type) { map_filename_curlevel = type; }
 
-private:
+  private:
     int GetCurrentBall();
     void SetCurrentBall(int curBall);
 
@@ -109,37 +107,34 @@ private:
     void StartRecording();
     void StartPlaying();
 
-    static void SetParamString(CKParameter *param, CKSTRING value) {
-        param->SetStringValue(value);
-    }
+    static void SetParamString(CKParameter *param, CKSTRING value) { param->SetStringValue(value); }
 
     //[transport]
     bool init = false;
     bool Ball_Active = false;
-    IProperty *prop_enabled = nullptr;
-    IProperty *reset_prop_enabled = nullptr;
-    IProperty *prop_key = nullptr;
-    IProperty *reset_spirit_enabled = nullptr;
-    IProperty *prop_key_record = nullptr;
-    InputHook *input_manager = nullptr;
-    CKKEYBOARD key_prop = {};
-    CKKEYBOARD key_record = {};
+    BML::Config::Property prop_enabled = {};
+    BML::Config::Property reset_prop_enabled = {};
+    BML::Config::Property prop_key = {};
+    BML::Config::Property reset_spirit_enabled = {};
+    BML::Config::Property prop_key_record = {};
+    uint32_t key_prop = {};
+    uint32_t key_record = {};
     bool enabled = false;
     bool reset_enabled = false;
     bool spirit_enabled = false;
     CommandNewSpawn *cmdspawnp_ptr = nullptr;
 
-    CKBehavior *m_dynamicPos = nullptr;
-    CKBehavior *m_phyNewBall = nullptr;
-    CKDataArray *m_curLevel = nullptr;
-    CKDataArray *m_checkpoints = nullptr;
-    CKDataArray *m_resetpoints = nullptr;
-    CKDataArray *m_ingameParam = nullptr;
-    CKParameter *m_curSector = nullptr;
+    ModSupport::Object<CKBehavior> m_dynamicPos{};
+    ModSupport::Object<CKBehavior> m_phyNewBall{};
+    ModSupport::Object<CKDataArray> m_curLevel{};
+    ModSupport::Object<CKDataArray> m_checkpoints{};
+    ModSupport::Object<CKDataArray> m_resetpoints{};
+    ModSupport::Object<CKDataArray> m_ingameParam{};
+    ModSupport::Object<CKParameter> m_curSector{};
 
     //[transport] Ball type
-    CKParameter *m_curTrafo = nullptr;
-    CKBehavior *m_setNewBall = nullptr;
+    ModSupport::Object<CKParameter> m_curTrafo{};
+    ModSupport::Object<CKBehavior> m_setNewBall{};
 
     //[transport] Map filename
     std::string map_filename_curlevel;
@@ -176,8 +171,8 @@ private:
     Record m_record = {};
     Record m_play = {};
 
-    size_t m_playBall= {};
-    size_t m_curBall= {};
+    size_t m_playBall = {};
+    size_t m_curBall = {};
     size_t m_playFrame = {};
     size_t m_playTrafo = {};
 };
