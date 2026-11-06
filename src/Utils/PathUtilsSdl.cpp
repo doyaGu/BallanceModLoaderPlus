@@ -240,8 +240,11 @@ std::vector<std::wstring> ListDirectoriesW(const std::wstring &p, const std::wst
 bool ListFilePathsRecursiveW(const std::wstring &p, std::vector<std::wstring> &files) {
     files.clear();
     std::function<bool(const std::string &)> visit = [&](const std::string &path) {
-        if (Native::IsLink(path)) return true;
         SDL_PathInfo info{}; if (!SDL_GetPathInfo(path.c_str(), &info)) return false;
+        // Keep logical file aliases so source consumers can check their final
+        // path against their own package root. Do not recurse through linked
+        // directories: they can escape the tree or form cycles.
+        if (Native::IsLink(path) && info.type != SDL_PATHTYPE_FILE) return true;
         if (info.type == SDL_PATHTYPE_DIRECTORY) return Enumerate(path, visit);
         if (info.type == SDL_PATHTYPE_FILE) files.push_back(Utf8ToUtf16(path));
         return true;

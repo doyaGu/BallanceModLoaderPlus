@@ -30,6 +30,7 @@ protected:
     }
 
     void Write(const std::wstring &path, const std::string &content) {
+        ASSERT_TRUE(utils::CreateFileTreeW(utils::GetDirectoryW(path)));
         ASSERT_TRUE(utils::WriteTextFileUtf8(utils::Utf16ToUtf8(path), content));
     }
 
@@ -502,12 +503,25 @@ TEST_F(ScriptSourceSnapshotBuilderTest, LocalIncludeEdgesUseActualSnapshotSectio
     Write(utils::CombinePathW(modRoot, L"User.mod.as"), "#include \"Scripts/Helper.as\"\nclass User {}\n");
     Write(utils::CombinePathW(modRoot, L"scripts\\helper.as"), "void Helper() {}\n");
 
+#ifndef _WIN32
+    ScriptSourceSnapshot rejected;
+    ScriptDiagnostic diagnostic;
+    EXPECT_FALSE(TryBuildDirectoryMod(L"User", rejected, diagnostic));
+    EXPECT_NE(diagnostic.Message.find("include not found"), std::string::npos);
+    // POSIX source sections are case sensitive, even on a case-insensitive
+    // development volume. Exact spelling remains portable to Linux.
+    Write(utils::CombinePathW(modRoot, L"User.mod.as"), "#include \"scripts/helper.as\"\nclass User {}\n");
+#endif
     ScriptSourceSnapshot snapshot = BuildDirectoryMod(L"User");
 
     const ScriptSourceIncludeEdge *edge =
         FindIncludeEdge(snapshot, "User.mod.as", "scripts/helper.as");
     ASSERT_NE(nullptr, edge) << DumpIncludeEdges(snapshot);
+#ifdef _WIN32
     EXPECT_EQ("Scripts/Helper.as", edge->Include);
+#else
+    EXPECT_EQ("scripts/helper.as", edge->Include);
+#endif
     EXPECT_FALSE(edge->LibraryOwned);
 }
 
