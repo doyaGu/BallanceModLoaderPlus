@@ -7,6 +7,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 endif()
 
+add_test(NAME BmlAbiCmakeTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/BmlAbiCmakeTest.py"
+                --source-root "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}")
+set_tests_properties(BmlAbiCmakeTest PROPERTIES LABELS "sdk;cmake;abi" TIMEOUT 120)
 
 add_test(
         NAME BmlCliTest
