@@ -14,11 +14,11 @@ BallancePlayer / Virtools CK2
             |
        ModManager              CK lifecycle and engine callbacks
             |
-       ModContext              IBML runtime services and CK state
+       ModContext              private runtime services and CK state
             |
        ModLoader               discovery, ownership, callbacks, lifecycle
         /         \
- native mods     script host   IMod callbacks / CKAngelScript callbacks
+ native mods     script host   bml.mod C tables / CKAngelScript callbacks
         \         /
        built-in loader features
 ```
@@ -26,7 +26,7 @@ BallancePlayer / Virtools CK2
 `ModManager` connects the Virtools manager lifecycle to BML+. `ModContext`
 is the stable `IBML` object and owns runtime services. Its private `ModLoader`
 owns Mod discovery, dependency order, callback dispatch, and Mod shutdown.
-Native mods enter through the installed C++ ABI; script mods enter
+Native mods enter through versioned C tables and module-local C++ wrappers; script mods enter
 through the CKAngelScript host. Mods may use IMC to publish their own interfaces;
 the loader does not publish a generated IMC interface.
 
@@ -75,16 +75,16 @@ desktop and matching game assets. Unexecuted targets remain unverified.
 | Script discovery, binding, execution, or reload | `src/AngelScript/`, `docs/api/` | Focused script tests, API stub check, and script-capable Player smoke test |
 | Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/package_sdl_update.py` | Both strict MkDocs builds, CMake install, and SDK stage validation |
 
-Start with `ModManager.cpp`, then read the declarations in `IMod.h`,
-`IMessageReceiver.h`, `IBML.h`, `ModLoader.h`, and `ModContext.h`. Follow
+Start with `ModManager.cpp`, then `Mod.h/.hpp`, `ModLoader.h`, NativeMod
+and `ModContext.h`. The old IMod/IBML declarations describe private adapters. Follow
 `ModLoader.cpp` for Mod lifecycle and `ModContext.cpp` for runtime services.
 
 ## Public interface rules
 
-The legacy native C++ interfaces, including `IBML`, `IMod`, and
-`IMessageReceiver`, cross the DLL boundary and are ABI-frozen for the current
-release line. Do not change virtual function signatures or order, object
-layout, ownership rules, or types passed across that boundary.
+SDL public authoring uses the C tables and module-local C++ wrappers. Preserve
+released table prefixes, fixed-width fields, cdecl, ownership and version rules.
+IMod/IBML remain private adapters on this branch; they are not another exported
+Mod authoring route. The original Windows branch keeps its own frozen ABI.
 
 The `BML_*` C APIs and IMC use explicit handles, status codes, and allocation
 functions. Preserve their documented ownership and compatibility rules. A new

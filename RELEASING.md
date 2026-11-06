@@ -85,3 +85,19 @@ end-to-end update check.
   it with a new release instead.
 - If the channel update fails, revert the channel change to the previous
   signed metadata and investigate. Never publish unsigned channel metadata.
+
+## Native C protocol release gate
+
+SDL packages use the `bml.mod` major-1 C entry and schema-2 sidecars. SDK content
+hash changes are diagnostic; target/protocol and opted-in Engine/ImGui ids are
+compatibility gates. Rebuild older SDL C++-entry Mods. Do not change an existing
+C table prefix, field encoding or callback ownership without its version rule.
+
+Build the installed pure C and `native-mod` convenience examples and all four
+workflow profiles after relocating the SDK. Run Player acceptance separately
+from Updater/doctor process tests. Verify the platform, static-host, gameplay and performance acceptance matrix
+before claiming release acceptance. Static hosts remain unsupported here.
+
+SDL 包使用 bml.mod major 1 和 schema 2；旧 SDL C++ 入口产物需重编译。
+发布前运行安装后 C/C++ 示例、四种模板和真实 Player 验收；未运行平台、静态宿主、
+完整玩法和性能矩阵继续明确标为待验收，不用编译成功替代实机结果。

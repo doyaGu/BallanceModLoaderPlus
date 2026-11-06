@@ -1,8 +1,9 @@
 # SDL native Mods
 
 The twelve supported Mods build with `-DBML_BUILD_MODS=ON` and the matching
-SDL CK2/VxMath SDK. Each remains a separate native module. IVP v1 belongs to the
-original runtime and is absent from this branch; IVP v2 remains unimplemented.
+SDL CK2/VxMath SDK. Each remains a separate native module using the C entry and module-local C++
+wrappers. Existing gameplay logic and resource packages are retained. IVP v1 belongs to the
+original runtime and is absent from this branch; IVP v2 is not planned.
 
 ```sh
 cmake -S . -B build-mods -DBML_RUNTIME=sdl -DBML_BUILD_MODS=ON

@@ -28,7 +28,8 @@ only when changing BML+ or its in-tree mods.
 ## Install and verify
 
 Use the matching Ballanced SDL runtime package and BML+ runtime/SDK for your
-platform, architecture, compiler ABI and build configuration. Install the Loader
+platform and architecture. Native Mods use a C ABI; optional engine/ImGui
+extensions also match the host dependency/compiler/runtime ABI. Install the Loader
 in `Managers`; keep Player's CK2, VxMath and SDL libraries. See the
 [installation guide](docs/en/using-bml.md). The original Windows engine backend
 is maintained outside this `sdl` branch. Static-host integration remains pending.

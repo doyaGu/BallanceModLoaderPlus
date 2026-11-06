@@ -4,7 +4,8 @@
 
 Use a Ballanced SDL Player and a BML+ runtime matching its platform,
 architecture, host linkage and build configuration. Native Mods also require
-the matching SDK, compiler ABI and C++ runtime. Dynamic hosts are supported;
+a matching SDK. Engine/ImGui extensions additionally require matching compiler
+ABI and C++ runtime. Dynamic hosts are supported;
 static-host integration remains pending.
 
 ## Install BML+
@@ -104,3 +105,6 @@ Rebuild it using the matching installed SDL SDK. For missing dependencies, run
 `Updater doctor` and inspect the loader log. Case-sensitive filesystems require
 exact resource and script filenames. A successful cross-build does not certify
 native game functionality on that target.
+
+Older SDL BMLEntry/IMod modules require migration and recompilation; schema 2
+packages use the C protocol. See [native migration](native-mod-migration.md).

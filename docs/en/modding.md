@@ -3,10 +3,11 @@
 Use a released BML+ SDK to create mods. Building the BML+ repository is only
 necessary when changing the loader, SDK, script host, or bundled services.
 
-For an SDL game, choose a matching platform/architecture/compiler SDK. On Linux
+For an SDL game, choose a matching platform/architecture SDK. On Linux
 and macOS use `<BML-SDK>/scripts/bml` and `./bml`; Windows keeps `bml.cmd`.
 The SDL native workflow uses the SDK's ABI descriptor and configuration,
-matching CK2/VxMath/SDL3 development packages, and a platform CMake generator.
+a platform CMake generator. CK2/VxMath/SDL3 development packages and the exact
+host compiler ABI are needed only by optional Engine/ImGui extensions.
 It does not ask for the retail Virtools SDK. `--package-root` adds dependency
 prefixes and `--generator` selects a generator. SDK and game ABI descriptors
 must match before deployment. Standard `Bin/Player` and flat `Player` layouts
@@ -26,7 +27,7 @@ RPC handlers, or a performance-critical loop.
 | Route | Use it when | Main trade-off |
 | --- | --- | --- |
 | Script mod | You want quick edit/test cycles, commands, config, UI, gameplay scripting, CKAngelScript engine access, or a generated IMC Client/Provider without C++. | IMC callbacks run on the game thread; scripts should not own unsafe hooks or performance-critical loops. |
-| Native mod | You need C++20, direct Virtools integration, native hooks, caller-thread IMC execution, or tight control over hot-path work. | Requires the host's compiler ABI and explicit binary lifetime discipline. |
+| Native mod | You need C++20, direct Virtools integration, native hooks, caller-thread IMC execution, or tight control over hot-path work. | Uses a C ABI with module-local C++ wrappers; direct engine/ImGui extensions also require the host dependency ABI. |
 | Native plugin with a CKAngelScript extension | Scripts must directly use plugin-specific native objects or engine primitives that cannot be represented as IMC records. | The native plugin must register and maintain that script API through CKAngelScript. |
 
 Do not reproduce CKAngelScript's scene, behavior, component, message, or async
@@ -84,10 +85,14 @@ the same pages under `share/BML/docs/en/script-mod`.
    Player. On Windows use `bml.cmd`; on POSIX use `./bml`. Select an additional
    dependency prefix with `--package-root`.
 3. Edit the generated source and run `bml run` again.
-4. Match the SDK, compiler, C++ runtime and game configuration. macOS modules
+4. Match the SDK target and required extensions. Core C ABI Mods may use a
+   compatible independent C++ runtime. Engine/ImGui extensions must match the
+   host compiler/runtime/configuration. macOS modules
    reuse Player's SDL without deployment-time binary editing.
 
-An existing CMake Mod does not need to be regenerated or rewritten. Run this
+An existing CMake project can keep its build structure. Old SDL IMod/IBML
+source must first follow the [native migration guide](native-mod-migration.md).
+To adopt the optional workflow, run this
 once from the extracted SDK:
 
 ```bat
@@ -177,8 +182,8 @@ when that split makes the mod easier to develop.
 
 ## Publish
 
-- Native mods normally publish a `.bmodp` package and must export both
-  `BMLEntry(IBML*)` and `BMLExit(IMod*)`.
+- Native mods export `BML_GetModInterface` and publish `.bmodp` together with
+  `.bmodp.abi.json`, normally inside a ZIP.
 - Script mods publish a single `*.mod.as` file or a zip containing exactly one
   entry. `.bmodp` is native-only.
 - Test the distributed artifact, not only the working directory or a
