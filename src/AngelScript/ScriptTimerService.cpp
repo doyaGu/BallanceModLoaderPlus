@@ -29,6 +29,17 @@ struct ScriptTimerEntry {
     std::string Name;
     int ActiveCalls = 0;
     bool PendingRetire = false;
+    ScriptTimerEntry() = default;
+    ScriptTimerEntry(const ScriptTimerEntry &) = delete;
+    ScriptTimerEntry &operator=(const ScriptTimerEntry &) = delete;
+    ScriptTimerEntry(ScriptTimerEntry &&other) noexcept
+        : Object(std::exchange(other.Object, nullptr)), Callback(std::exchange(other.Callback, nullptr)),
+          OwnsCallbackRef(std::exchange(other.OwnsCallbackRef, false)), Loop(other.Loop),
+          ReturnsBool(other.ReturnsBool), Name(std::move(other.Name)) {}
+    ~ScriptTimerEntry() {
+        if (Object) Object->Release();
+        if (OwnsCallbackRef && Callback) Callback->Release();
+    }
 };
 
 static bool IsTimerCallbackSignature(asIScriptFunction *callback, bool returnsBool) {
@@ -59,7 +70,8 @@ public:
     ScriptModRuntime *Runtime = nullptr;
     ScriptModContextView *ContextView = nullptr;
     bool Active = false;
-    std::unordered_map<Timer::TimerId, ScriptTimerEntry> Timers;
+    TimerRegistry *Registry = nullptr;
+    std::unordered_map<TimerScheduler::TimerId, ScriptTimerEntry> Timers;
 };
 
 static ScriptDiagnostic MakeAngelScriptDiagnostic(ScriptDiagnosticPhase phase,
@@ -411,19 +423,13 @@ static void ReleaseScriptTimerObject(ScriptTimerEntry &entry) {
 }
 
 static void RetireTimerEntry(const std::shared_ptr<ScriptTimerServiceState> &state,
-                             Timer::TimerId id,
-                             bool cancelNativeTimer) {
+                             TimerScheduler::TimerId id) {
     if (!state)
         return;
 
     auto it = state->Timers.find(id);
     if (it == state->Timers.end())
         return;
-
-    if (cancelNativeTimer) {
-        if (std::shared_ptr<Timer> timer = Timer::FindById(id))
-            timer->Cancel();
-    }
 
     if (it->second.ActiveCalls > 0) {
         it->second.PendingRetire = true;
@@ -469,8 +475,8 @@ static int ReadTimerFunctionResult(asIScriptContext *context, void *userdata) {
 }
 
 static bool ExecuteTimerCallback(const std::weak_ptr<ScriptTimerServiceState> &weakState,
-                                 Timer::TimerId id,
-                                 Timer &timer) {
+                                 TimerScheduler::TimerId id,
+                                 const BML_TimerEvent &timer) {
     std::shared_ptr<ScriptTimerServiceState> state = weakState.lock();
     if (!state || !state->Active)
         return false;
@@ -481,7 +487,7 @@ static bool ExecuteTimerCallback(const std::weak_ptr<ScriptTimerServiceState> &w
     if (it == state->Timers.end() || !it->second.Callback || !state->ContextView)
         return false;
 
-    ScriptTimerEventView event(&timer);
+    ScriptTimerEventView event(timer);
     ScriptDiagnostic diagnostic;
     bool continueTimer = false;
     ++it->second.ActiveCalls;
@@ -519,7 +525,6 @@ static bool ExecuteTimerCallback(const std::weak_ptr<ScriptTimerServiceState> &w
         auto afterCall = state->Timers.find(id);
         if (afterCall != state->Timers.end() && afterCall->second.ActiveCalls > 0)
             --afterCall->second.ActiveCalls;
-        RetireTimerEntry(state, id, false);
         return false;
     }
 
@@ -530,21 +535,24 @@ static bool ExecuteTimerCallback(const std::weak_ptr<ScriptTimerServiceState> &w
             --afterCall->second.ActiveCalls;
         keepTimer = afterCall->second.Loop && continueTimer && !afterCall->second.PendingRetire;
     }
-    if (!keepTimer)
-        RetireTimerEntry(state, id, false);
     return keepTimer;
 }
 
-ScriptTimerEventView::ScriptTimerEventView(Timer *timer)
+ScriptTimerEventView::ScriptTimerEventView(TimerScheduler *timer)
     : m_Valid(timer != nullptr),
       m_Id(timer ? static_cast<int>(timer->GetId()) : 0),
       m_Name(timer ? timer->GetName() : std::string()),
-      m_State(timer ? static_cast<int>(timer->GetState()) : static_cast<int>(Timer::CANCELLED)),
-      m_Type(timer ? static_cast<int>(timer->GetType()) : static_cast<int>(Timer::ONCE)),
-      m_TimeBase(timer ? static_cast<int>(timer->GetTimeBase()) : static_cast<int>(Timer::TICK)),
+      m_State(timer ? static_cast<int>(timer->GetState()) : static_cast<int>(TimerScheduler::CANCELLED)),
+      m_Type(timer ? static_cast<int>(timer->GetType()) : static_cast<int>(TimerScheduler::ONCE)),
+      m_TimeBase(timer ? static_cast<int>(timer->GetTimeBase()) : static_cast<int>(TimerScheduler::TICK)),
       m_CompletedIterations(timer ? timer->GetCompletedIterations() : 0),
       m_RemainingIterations(timer ? timer->GetRemainingIterations() : 0),
       m_Progress(timer ? timer->GetProgress() : 0.0f) {}
+ScriptTimerEventView::ScriptTimerEventView(const BML_TimerEvent &event)
+    : m_Valid(true), m_Id(static_cast<int>(event.Handle)), m_Name(event.Name ? event.Name : ""),
+      m_State(event.State), m_Type(event.Type), m_TimeBase(event.TimeBase),
+      m_CompletedIterations(static_cast<int>(event.CompletedIterations)),
+      m_RemainingIterations(static_cast<int>(event.RemainingIterations)), m_Progress(event.Progress) {}
 int ScriptTimerEventView::GetId() const { return m_Id; }
 std::string ScriptTimerEventView::GetName() const { return m_Name; }
 int ScriptTimerEventView::GetState() const { return m_State; }
@@ -554,7 +562,7 @@ int ScriptTimerEventView::GetCompletedIterations() const { return m_CompletedIte
 int ScriptTimerEventView::GetRemainingIterations() const { return m_RemainingIterations; }
 float ScriptTimerEventView::GetProgress() const { return m_Progress; }
 
-ScriptTimerRef::ScriptTimerRef(std::weak_ptr<ScriptTimerServiceState> state, Timer::TimerId id)
+ScriptTimerRef::ScriptTimerRef(std::weak_ptr<ScriptTimerServiceState> state, TimerScheduler::TimerId id)
     : m_State(std::move(state)), m_Id(id) {}
 
 void ScriptTimerRef::AddRef() { ++m_RefCount; }
@@ -563,51 +571,51 @@ void ScriptTimerRef::Release() {
         delete this;
 }
 
-Timer *ScriptTimerRef::ResolveTimer() const {
+TimerScheduler *ScriptTimerRef::ResolveTimer() const {
     std::shared_ptr<ScriptTimerServiceState> state = m_State.lock();
-    if (!state || !state->Active || m_Id == Timer::InvalidId)
+    if (!state || !state->Active || m_Id == TimerScheduler::InvalidId)
         return nullptr;
     if (state->Timers.find(m_Id) == state->Timers.end())
         return nullptr;
-    std::shared_ptr<Timer> timer = Timer::FindById(m_Id);
+    auto timer = state->Registry ? state->Registry->Find(state.get(), m_Id) : nullptr;
     return timer ? timer.get() : nullptr;
 }
 
 bool ScriptTimerRef::IsValid() const { return ResolveTimer() != nullptr; }
 int ScriptTimerRef::GetId() const { return static_cast<int>(m_Id); }
 std::string ScriptTimerRef::GetName() const {
-    Timer *timer = ResolveTimer();
+    TimerScheduler *timer = ResolveTimer();
     return timer ? timer->GetName() : std::string();
 }
 int ScriptTimerRef::GetState() const {
-    Timer *timer = ResolveTimer();
-    return timer ? static_cast<int>(timer->GetState()) : static_cast<int>(Timer::CANCELLED);
+    TimerScheduler *timer = ResolveTimer();
+    return timer ? static_cast<int>(timer->GetState()) : static_cast<int>(TimerScheduler::CANCELLED);
 }
 int ScriptTimerRef::GetCompletedIterations() const {
-    Timer *timer = ResolveTimer();
+    TimerScheduler *timer = ResolveTimer();
     return timer ? timer->GetCompletedIterations() : 0;
 }
 int ScriptTimerRef::GetRemainingIterations() const {
-    Timer *timer = ResolveTimer();
+    TimerScheduler *timer = ResolveTimer();
     return timer ? timer->GetRemainingIterations() : 0;
 }
 float ScriptTimerRef::GetProgress() const {
-    Timer *timer = ResolveTimer();
+    TimerScheduler *timer = ResolveTimer();
     return timer ? timer->GetProgress() : 0.0f;
 }
 void ScriptTimerRef::Pause() {
-    if (Timer *timer = ResolveTimer())
-        timer->Pause();
+    if (auto state = m_State.lock(); state && state->Active && state->Registry)
+        (void) state->Registry->Control(state.get(), m_Id, 0);
 }
 void ScriptTimerRef::Resume() {
-    if (Timer *timer = ResolveTimer())
-        timer->Resume();
+    if (auto state = m_State.lock(); state && state->Active && state->Registry)
+        (void) state->Registry->Control(state.get(), m_Id, 1);
 }
 void ScriptTimerRef::Cancel() {
     std::shared_ptr<ScriptTimerServiceState> state = m_State.lock();
-    if (!state || !state->Active || m_Id == Timer::InvalidId)
+    if (!state || !state->Active || m_Id == TimerScheduler::InvalidId)
         return;
-    RetireTimerEntry(state, m_Id, true);
+    if (state->Registry) (void) state->Registry->Control(state.get(), m_Id, 2);
 }
 
 ScriptTimerService::ScriptTimerService() : m_State(std::make_shared<ScriptTimerServiceState>()) {}
@@ -630,6 +638,7 @@ bool ScriptTimerService::Bind(ModContext *context, ScriptMod *owner, ScriptModRu
     m_State->Owner = owner;
     m_State->Runtime = runtime;
     m_State->ContextView = contextView;
+    m_State->Registry = context ? &context->GetTimerApi().Registry() : nullptr;
     m_State->Active = true;
     return true;
 }
@@ -676,26 +685,21 @@ ScriptTimerRef *ScriptTimerService::Add(asIScriptObject *timer) {
         return nullptr;
     }
 
-    Timer::Builder builder;
-    if (registration.HasDelayTicks && registration.DelayTicks > 0)
-        builder.WithDelayTicks(registration.DelayTicks);
-    else
-        builder.WithDelaySeconds(registration.DelayMs / 1000.0f);
-
-    if (registration.RepeatCount > 1)
-        registration.Loop = true;
-    builder.WithType(registration.Loop ? Timer::LOOP : Timer::ONCE)
-        .WithPriority(static_cast<int8_t>(std::max(-128, std::min(127, registration.Priority))));
-    if (registration.RepeatCount > 0)
-        builder.WithRepeatCount(registration.RepeatCount);
-    if (registration.StartPaused)
-        builder.StartPaused();
-
-    return AddTimer(builder,
-                    timer,
-                    registration,
-                    time->GetMainTickCount(),
-                    time->GetAbsoluteTime() / 1000.0f);
+    BML_TimerDefinition definition = BML_TIMER_DEFINITION_INIT;
+    definition.Name = registration.Name.c_str();
+    definition.StartPaused = registration.StartPaused;
+    definition.Priority = registration.Priority;
+    if (registration.HasDelayTicks && registration.DelayTicks > 0) {
+        definition.TimeBase = BML_TIMER_TIMEBASE_TICK;
+        definition.DelayTicks = registration.DelayTicks;
+    } else {
+        definition.TimeBase = BML_TIMER_TIMEBASE_TIME;
+        definition.DelayMs = registration.DelayMs;
+    }
+    definition.Type = registration.RepeatCount > 0 ? BML_TIMER_REPEAT
+        : registration.Loop ? BML_TIMER_LOOP : BML_TIMER_ONCE;
+    if (definition.Type == BML_TIMER_REPEAT) definition.RepeatCount = registration.RepeatCount;
+    return AddTimer(definition, timer, registration);
 }
 
 ScriptTimerRef *ScriptTimerService::AddTimeoutTicks(unsigned int delayTicks,
@@ -712,14 +716,12 @@ ScriptTimerRef *ScriptTimerService::AddTimeoutTicks(unsigned int delayTicks,
     if (!time)
         return nullptr;
 
-    Timer::Builder builder;
-    builder.WithDelayTicks(delayTicks).WithType(Timer::ONCE);
-    return AddCallbackTimer(builder,
-                            callback,
-                            false,
-                            name,
-                            time->GetMainTickCount(),
-                            time->GetAbsoluteTime() / 1000.0f);
+    BML_TimerDefinition definition = BML_TIMER_DEFINITION_INIT;
+    definition.Name = name.c_str();
+    definition.Type = BML_TIMER_ONCE;
+    definition.TimeBase = BML_TIMER_TIMEBASE_TICK;
+    definition.DelayTicks = delayTicks;
+    return AddCallbackTimer(definition, callback, false);
 }
 
 ScriptTimerRef *ScriptTimerService::AddTimeoutMs(float delayMs,
@@ -736,14 +738,12 @@ ScriptTimerRef *ScriptTimerService::AddTimeoutMs(float delayMs,
     if (!time)
         return nullptr;
 
-    Timer::Builder builder;
-    builder.WithDelaySeconds(delayMs / 1000.0f).WithType(Timer::ONCE);
-    return AddCallbackTimer(builder,
-                            callback,
-                            false,
-                            name,
-                            time->GetMainTickCount(),
-                            time->GetAbsoluteTime() / 1000.0f);
+    BML_TimerDefinition definition = BML_TIMER_DEFINITION_INIT;
+    definition.Name = name.c_str();
+    definition.Type = BML_TIMER_ONCE;
+    definition.TimeBase = BML_TIMER_TIMEBASE_TIME;
+    definition.DelayMs = delayMs;
+    return AddCallbackTimer(definition, callback, false);
 }
 
 ScriptTimerRef *ScriptTimerService::AddIntervalTicks(unsigned int delayTicks,
@@ -760,14 +760,12 @@ ScriptTimerRef *ScriptTimerService::AddIntervalTicks(unsigned int delayTicks,
     if (!time)
         return nullptr;
 
-    Timer::Builder builder;
-    builder.WithDelayTicks(delayTicks).WithType(Timer::LOOP);
-    return AddCallbackTimer(builder,
-                            callback,
-                            true,
-                            name,
-                            time->GetMainTickCount(),
-                            time->GetAbsoluteTime() / 1000.0f);
+    BML_TimerDefinition definition = BML_TIMER_DEFINITION_INIT;
+    definition.Name = name.c_str();
+    definition.Type = BML_TIMER_INTERVAL;
+    definition.TimeBase = BML_TIMER_TIMEBASE_TICK;
+    definition.DelayTicks = delayTicks;
+    return AddCallbackTimer(definition, callback, true);
 }
 
 ScriptTimerRef *ScriptTimerService::AddIntervalMs(float delayMs,
@@ -784,107 +782,65 @@ ScriptTimerRef *ScriptTimerService::AddIntervalMs(float delayMs,
     if (!time)
         return nullptr;
 
-    Timer::Builder builder;
-    builder.WithDelaySeconds(delayMs / 1000.0f).WithType(Timer::LOOP);
-    return AddCallbackTimer(builder,
-                            callback,
-                            true,
-                            name,
-                            time->GetMainTickCount(),
-                            time->GetAbsoluteTime() / 1000.0f);
+    BML_TimerDefinition definition = BML_TIMER_DEFINITION_INIT;
+    definition.Name = name.c_str();
+    definition.Type = BML_TIMER_INTERVAL;
+    definition.TimeBase = BML_TIMER_TIMEBASE_TIME;
+    definition.DelayMs = delayMs;
+    return AddCallbackTimer(definition, callback, true);
 }
 
-ScriptTimerRef *ScriptTimerService::AddTimer(Timer::Builder &builder,
+static ScriptTimerRef *RegisterTimer(const std::shared_ptr<ScriptTimerServiceState> &state,
+                                     const BML_TimerDefinition &definition, ScriptTimerEntry entry) {
+    if (!state || !state->Active || !state->Registry || !state->Context || !state->Owner)
+        return nullptr;
+    auto *clock = state->Context->GetTimeManager();
+    if (!clock) return nullptr;
+    auto identity = std::make_shared<BML_TimerHandle>(0);
+    std::weak_ptr<ScriptTimerServiceState> weak = state;
+    const int code = state->Registry->Register(state.get(), &definition,
+        [weak](const BML_TimerEvent &event, uint32_t &keep) {
+            keep = ExecuteTimerCallback(weak, event.Handle, event);
+            return BML_OK;
+        }, [weak, identity] { RetireTimerEntry(weak.lock(), *identity); },
+        clock->GetMainTickCount(), clock->GetAbsoluteTime() / 1000.0f, identity.get());
+    if (code != BML_OK) return nullptr;
+    const auto handle = *identity;
+    try {
+        state->Timers.emplace(handle, std::move(entry));
+        auto ref = std::make_unique<ScriptTimerRef>(state, handle);
+        return ref.release();
+    } catch (...) {
+        (void) state->Registry->Control(state.get(), handle, 2);
+        throw;
+    }
+}
+
+ScriptTimerRef *ScriptTimerService::AddTimer(const BML_TimerDefinition &definition,
                                              asIScriptObject *timer,
-                                             const ScriptTimerRegistration &registration,
-                                             size_t tick,
-                                             float time) {
-    if (!m_State || !m_State->Active || !m_State->Owner || !timer || !timer->GetObjectType())
-        return nullptr;
-
-    std::weak_ptr<ScriptTimerServiceState> weakState = m_State;
-    builder.WithName(registration.Name)
-        .AddToGroup(std::string("script:") + (m_State->Owner ? m_State->Owner->GetID() : "unknown"));
-    if (registration.Loop) {
-        builder.WithLoopCallback([weakState](Timer &nativeTimer) {
-            return ExecuteTimerCallback(weakState, nativeTimer.GetId(), nativeTimer);
-        });
-    } else {
-        builder.WithOnceCallback([weakState](Timer &nativeTimer) {
-            ExecuteTimerCallback(weakState, nativeTimer.GetId(), nativeTimer);
-        });
-    }
-
-    std::shared_ptr<Timer> nativeTimer = builder.Build(tick, time);
-    if (!nativeTimer)
-        return nullptr;
-
-    ScriptTimerRef *ref = new (std::nothrow) ScriptTimerRef(m_State, nativeTimer->GetId());
-    if (!ref) {
-        nativeTimer->Cancel();
-        if (m_State->Owner) {
-            m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-                "Unable to create timer reference."));
-        }
-        return nullptr;
-    }
-
-    ScriptObjectHandle retained = ScriptObjectHandle::Retain(timer);
+                                             const ScriptTimerRegistration &registration) {
+    if (!timer) return nullptr;
     ScriptTimerEntry entry;
+    auto retained = ScriptObjectHandle::Retain(timer);
     entry.Object = retained.Detach();
     entry.Callback = registration.TickMethod;
-    entry.Loop = registration.Loop;
+    entry.Loop = definition.Type != BML_TIMER_ONCE;
     entry.ReturnsBool = true;
     entry.Name = registration.Name;
-    m_State->Timers.emplace(nativeTimer->GetId(), std::move(entry));
-    return ref;
+    return RegisterTimer(m_State, definition, std::move(entry));
 }
 
-ScriptTimerRef *ScriptTimerService::AddCallbackTimer(Timer::Builder &builder,
-                                                     asIScriptFunction *callback,
-                                                     bool loop,
-                                                     const std::string &name,
-                                                     size_t tick,
-                                                     float time) {
-    if (!m_State || !m_State->Active || !m_State->Owner || !callback)
-        return nullptr;
-
-    std::weak_ptr<ScriptTimerServiceState> weakState = m_State;
-    builder.WithName(name)
-        .AddToGroup(std::string("script:") + (m_State->Owner ? m_State->Owner->GetID() : "unknown"));
-    if (loop) {
-        builder.WithLoopCallback([weakState](Timer &nativeTimer) {
-            return ExecuteTimerCallback(weakState, nativeTimer.GetId(), nativeTimer);
-        });
-    } else {
-        builder.WithOnceCallback([weakState](Timer &nativeTimer) {
-            ExecuteTimerCallback(weakState, nativeTimer.GetId(), nativeTimer);
-        });
-    }
-
-    std::shared_ptr<Timer> nativeTimer = builder.Build(tick, time);
-    if (!nativeTimer)
-        return nullptr;
-
-    ScriptTimerRef *ref = new (std::nothrow) ScriptTimerRef(m_State, nativeTimer->GetId());
-    if (!ref) {
-        nativeTimer->Cancel();
-        if (m_State->Owner) {
-            m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-                "Unable to create timer reference."));
-        }
-        return nullptr;
-    }
-
-    callback->AddRef();
+ScriptTimerRef *ScriptTimerService::AddCallbackTimer(const BML_TimerDefinition &definition,
+                                                     asIScriptFunction *callback, bool loop) {
+    if (!callback) return nullptr;
     ScriptTimerEntry entry;
+    callback->AddRef();
     entry.Callback = callback;
     entry.OwnsCallbackRef = true;
     entry.Loop = loop;
     entry.ReturnsBool = loop;
-    entry.Name = name;
-    m_State->Timers.emplace(nativeTimer->GetId(), std::move(entry));
-    return ref;
+    entry.Name = definition.Name ? definition.Name : "";
+    return RegisterTimer(m_State, definition, std::move(entry));
 }
 
 void ScriptTimerService::Release(ScriptDiagnostic *) {
@@ -893,12 +849,7 @@ void ScriptTimerService::Release(ScriptDiagnostic *) {
 
     std::shared_ptr<ScriptTimerServiceState> releasedState = m_State;
     releasedState->Active = false;
-    for (auto &entry : releasedState->Timers) {
-        if (std::shared_ptr<Timer> timer = Timer::FindById(entry.first))
-            timer->Cancel();
-        ReleaseScriptTimerObject(entry.second);
-    }
-    releasedState->Timers.clear();
+    if (releasedState->Registry) releasedState->Registry->CleanupOwner(releasedState.get());
     m_State.reset();
 }
 
@@ -908,31 +859,34 @@ size_t ScriptTimerService::GetActiveCount() const {
 
 #ifdef BML_TEST
 ScriptTimerRef *ScriptTimerService::AddTestTimerForRelease(const std::string &name,
-                                                           Timer::SimpleCallback callback) {
+                                                           TimerScheduler::SimpleCallback callback) {
     if (!m_State)
         return nullptr;
     m_State->Active = true;
     if (!callback)
         callback = []() {};
 
-    std::shared_ptr<Timer> nativeTimer = Timer::Builder()
-        .WithName(name)
-        .WithDelayTicks(1000)
-        .AddToGroup("script:test")
-        .WithSimpleCallback(std::move(callback))
-        .Build(0, 0.0f);
-    if (!nativeTimer)
+    static TimerRegistry registry;
+    m_State->Registry = &registry;
+    BML_TimerDefinition definition = BML_TIMER_DEFINITION_INIT;
+    definition.Name = name.c_str();
+    definition.TimeBase = BML_TIMER_TIMEBASE_TICK;
+    definition.DelayTicks = 1000;
+    auto identity = std::make_shared<BML_TimerHandle>(0);
+    std::weak_ptr<ScriptTimerServiceState> weak = m_State;
+    if (registry.Register(m_State.get(), &definition,
+        [fn = std::move(callback)](const BML_TimerEvent &, uint32_t &keep) { fn(); keep = 0; return BML_OK; },
+        [weak, identity] { RetireTimerEntry(weak.lock(), *identity); }, 0, 0.0f, identity.get()) != BML_OK)
         return nullptr;
-
-    ScriptTimerEntry entry;
-    entry.Name = name;
-    ScriptTimerRef *ref = new (std::nothrow) ScriptTimerRef(m_State, nativeTimer->GetId());
-    if (!ref) {
-        nativeTimer->Cancel();
-        return nullptr;
+    try {
+        ScriptTimerEntry entry;
+        entry.Name = name;
+        m_State->Timers.emplace(*identity, std::move(entry));
+        return new ScriptTimerRef(m_State, *identity);
+    } catch (...) {
+        (void) registry.Control(m_State.get(), *identity, 2);
+        throw;
     }
-    m_State->Timers.emplace(nativeTimer->GetId(), std::move(entry));
-    return ref;
 }
 #endif
 

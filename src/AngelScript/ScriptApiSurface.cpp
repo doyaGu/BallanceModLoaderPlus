@@ -3,7 +3,7 @@
 #include "BML/IConfig.h"
 #include "BML/InputHook.h"
 #include "BML/ModMenu.h"
-#include "BML/Timer.h"
+#include "Timer/TimerScheduler.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptModContextView.h"
 #include "ScriptStateBag.h"
@@ -205,26 +205,26 @@ static const ScriptEnumValueDescriptor kConfigPropertyEditorValues[] = {
 };
 
 static const ScriptEnumValueDescriptor kTimerStateValues[] = {
-    {"TIMER_IDLE", Timer::IDLE, "TimerState::TIMER_IDLE"},
-    {"TIMER_RUNNING", Timer::RUNNING, "TimerState::TIMER_RUNNING"},
-    {"TIMER_PAUSED", Timer::PAUSED, "TimerState::TIMER_PAUSED"},
-    {"TIMER_COMPLETED", Timer::COMPLETED, "TimerState::TIMER_COMPLETED"},
-    {"TIMER_CANCELLED", Timer::CANCELLED, "TimerState::TIMER_CANCELLED"},
+    {"TIMER_IDLE", TimerScheduler::IDLE, "TimerState::TIMER_IDLE"},
+    {"TIMER_RUNNING", TimerScheduler::RUNNING, "TimerState::TIMER_RUNNING"},
+    {"TIMER_PAUSED", TimerScheduler::PAUSED, "TimerState::TIMER_PAUSED"},
+    {"TIMER_COMPLETED", TimerScheduler::COMPLETED, "TimerState::TIMER_COMPLETED"},
+    {"TIMER_CANCELLED", TimerScheduler::CANCELLED, "TimerState::TIMER_CANCELLED"},
 };
 
 static const ScriptEnumValueDescriptor kTimerTypeValues[] = {
-    {"TIMER_ONCE", Timer::ONCE, "TimerType::TIMER_ONCE"},
-    {"TIMER_LOOP", Timer::LOOP, "TimerType::TIMER_LOOP"},
-    {"TIMER_REPEAT", Timer::REPEAT, "TimerType::TIMER_REPEAT"},
-    {"TIMER_INTERVAL", Timer::INTERVAL, "TimerType::TIMER_INTERVAL"},
-    {"TIMER_DEBOUNCE", Timer::DEBOUNCE, "TimerType::TIMER_DEBOUNCE"},
-    {"TIMER_THROTTLE", Timer::THROTTLE, "TimerType::TIMER_THROTTLE"},
+    {"TIMER_ONCE", TimerScheduler::ONCE, "TimerType::TIMER_ONCE"},
+    {"TIMER_LOOP", TimerScheduler::LOOP, "TimerType::TIMER_LOOP"},
+    {"TIMER_REPEAT", TimerScheduler::REPEAT, "TimerType::TIMER_REPEAT"},
+    {"TIMER_INTERVAL", TimerScheduler::INTERVAL, "TimerType::TIMER_INTERVAL"},
+    {"TIMER_DEBOUNCE", TimerScheduler::DEBOUNCE, "TimerType::TIMER_DEBOUNCE"},
+    {"TIMER_THROTTLE", TimerScheduler::THROTTLE, "TimerType::TIMER_THROTTLE"},
 };
 
 static const ScriptEnumValueDescriptor kTimerTimeBaseValues[] = {
-    {"TIMER_TIMEBASE_TICK", Timer::TICK, "TimerTimeBase::TIMER_TIMEBASE_TICK"},
-    {"TIMER_TIMEBASE_TIME", Timer::TIME, "TimerTimeBase::TIMER_TIMEBASE_TIME"},
-    {"TIMER_TIMEBASE_REALTIME", Timer::REALTIME, "TimerTimeBase::TIMER_TIMEBASE_REALTIME"},
+    {"TIMER_TIMEBASE_TICK", TimerScheduler::TICK, "TimerTimeBase::TIMER_TIMEBASE_TICK"},
+    {"TIMER_TIMEBASE_TIME", TimerScheduler::TIME, "TimerTimeBase::TIMER_TIMEBASE_TIME"},
+    {"TIMER_TIMEBASE_REALTIME", TimerScheduler::REALTIME, "TimerTimeBase::TIMER_TIMEBASE_REALTIME"},
 };
 
 static const ScriptEnumValueDescriptor kDataShareValueTypeValues[] = {

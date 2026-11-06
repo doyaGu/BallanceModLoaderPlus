@@ -40,3 +40,5 @@ add_bml_test(TypeConvertTest
         SOURCES TypeConvertTest.cpp
         DEPENDENCIES VxMath
 )
+
+add_bml_test(TimerRegistryTest SOURCES TimerRegistryTest.cpp)

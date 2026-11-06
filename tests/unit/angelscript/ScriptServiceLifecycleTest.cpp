@@ -10,7 +10,7 @@
 #include "BML/DataShare.h"
 #include "Console/Shell/ShellTypes.h"
 #include "DataShare/DataShare.h"
-#include "BML/Timer.h"
+#include "Timer/TimerScheduler.h"
 
 namespace BML {
 namespace Test {
@@ -18,14 +18,14 @@ namespace Test {
 class ScriptServiceLifecycleTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        Timer::CancelAll();
-        Timer::ProcessAll(0, 0.0f);
+        TimerScheduler::CancelAll();
+        TimerScheduler::ProcessAll(0, 0.0f);
         DataShareStore::ResetRegistryForTests();
     }
 
     void TearDown() override {
-        Timer::CancelAll();
-        Timer::ProcessAll(0, 0.0f);
+        TimerScheduler::CancelAll();
+        TimerScheduler::ProcessAll(0, 0.0f);
         DataShareStore::ResetRegistryForTests();
     }
 };
@@ -50,7 +50,7 @@ TEST_F(ScriptServiceLifecycleTest, TimerReleaseInvalidatesOldRef) {
     });
     ASSERT_NE(nullptr, newRef);
 
-    Timer::ProcessAll(1000, 0.0f);
+    TimerScheduler::ProcessAll(1000, 0.0f);
 
     EXPECT_FALSE(ref->IsValid());
     EXPECT_EQ(0, oldCalls);
@@ -92,7 +92,7 @@ TEST_F(ScriptServiceLifecycleTest, TimerReleaseSuppressesOldCallbacksAndRunsNewC
         newRefs.push_back(ref);
     }
 
-    Timer::ProcessAll(1000, 0.0f);
+    TimerScheduler::ProcessAll(1000, 0.0f);
 
     EXPECT_EQ(0, oldCalls);
     EXPECT_EQ(kTimerCount, newCalls);
