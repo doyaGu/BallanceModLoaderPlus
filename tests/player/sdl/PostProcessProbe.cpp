@@ -216,6 +216,14 @@ private:
                         ("Mod did not load: " + id).c_str());
             }
         }
+        if (const char *scripts = std::getenv("BML_EXPECT_SCRIPTS"); scripts && *scripts == '1') {
+            auto helper = m_Context.FindMod("SdlDependencyProbe");
+            BML::Command::Info info;
+            Require(helper && helper.Value().Read().Value().State == BML_MOD_STATE_LOADED &&
+                        BML::Command::Find("bml_probe_dependencies", info) == BML_OK,
+                    "script dependency values and invalid indices");
+        }
+
         CheckCommandLifetime(true);
         CheckCommandLifetime(false);
 

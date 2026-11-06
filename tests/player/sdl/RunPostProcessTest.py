@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 
-def stage(source, probe, destination, mods_from=None):
+def stage(source, probe, destination, mods_from=None, scripts=False):
     runtime = destination / "runtime"
     # Materialize links so neither Player nor test staging can write back into
     # the supplied runtime through a symlink to its configuration or Mods.
@@ -22,6 +22,8 @@ def stage(source, probe, destination, mods_from=None):
     mods.mkdir(parents=True)
     if mods_from:
         shutil.copytree(mods_from, mods, dirs_exist_ok=True, symlinks=False)
+    if scripts:
+        shutil.copy2(Path(__file__).with_name("DependencyProbe.mod.as"), mods / "DependencyProbe.mod.as")
     installed = mods / probe.name
     shutil.copy2(probe, installed)
     shutil.copy2(Path(str(probe) + ".abi.json"), Path(str(installed) + ".abi.json"))
@@ -64,11 +66,12 @@ def run(args):
     results = []
     for cycle in range(args.repeat):
         directory = Path(tempfile.mkdtemp(prefix=f"cycle-{cycle + 1}-", dir=args.output))
-        runtime, player = stage(args.runtime, args.probe, directory, args.mods_from)
+        runtime, player = stage(args.runtime, args.probe, directory, args.mods_from, host_abi.get("scripts", False))
         result_path = directory / "result.json"
         env = os.environ.copy()
         env["BML_POSTPROCESS_RESULT"] = str(result_path)
         env["BML_EXPECT_MODS"] = ",".join(args.expect_mod)
+        env["BML_EXPECT_SCRIPTS"] = "1" if host_abi.get("scripts") else "0"
         with (directory / "player-output.log").open("wb") as log:
             process = subprocess.Popen([str(player)], cwd=player.parent, env=env,
                                        stdout=log, stderr=subprocess.STDOUT)
