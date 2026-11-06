@@ -1,55 +1,74 @@
-# BML+ SDK
+# BML+ SDL SDK
 
 [English](README.md)
 
-这个压缩包用于开发 Mod，不是 BML+ 运行时包，不能直接解压到 Ballance 游戏目录。
+本包用于 Mod 开发。游戏中安装配套的**运行时包**，SDK 留在独立源码工作区。
+本分支支持动态 SDL 宿主，尚不提供静态宿主 SDK，也不接受原 Windows Mod 二进制。
 
-## Windows、Linux 和 macOS 上的 SDL SDK
+## 创建项目
 
-SDK 必须匹配游戏的运行时、平台、架构、宿主链接方式、编译器、C++ 标准库和运行库。
-SDL CLI 目前支持动态宿主。
-
-Linux 和 macOS 使用 Python 3.10+ 及有执行权限的 POSIX 入口：
+需要 Python 3.10+。以下命令跨平台通用；系统命令为 `python3` 时替换 `python`：
 
 ```sh
-"<BML-SDK>/scripts/bml" new native yourname.my-mod
+python "/path/to/BML-SDK/scripts/bml.py" new native yourname.my-mod
 cd MyMod
-./bml build
-./bml run --ballance-root "/path/to/game"
-./bml pack
+python bml.py build
+python bml.py run --ballance-root "/path/to/game"
+python bml.py pack
 ```
 
-脚本项目改用 `new script`，其余命令一致。Windows 继续使用 `bml.cmd`。
-SDL 原生构建默认采用 `share/BML/BML.abi.json` 中的配置，需要匹配的 CK2、VxMath
-和 SDL3 开发包，不使用原版 Virtools SDK。额外依赖的安装前缀可用 `--package-root`
-传入。POSIX 默认选择 Ninja 或 Unix Makefiles，Windows 默认选择 Visual Studio；
-可用 `--generator` 指定其他生成器。在首次构建前用 `CXX` 选择匹配的编译器。
-Windows 使用非 Visual Studio 生成器时，需要先初始化编译器环境。
+脚本项目使用 `new script`。POSIX 还可运行 `scripts/bml` 和项目 `./bml`，
+Windows 使用 `scripts/bml.cmd` 和项目 `bml.cmd`。原生 `--profile` 支持 `basic`、
+`interface-provider`、`interface-consumer`、`imc-provider`。
+`python bml.py help --verbose` 列出完整命令。
 
-游戏路径填写根目录。支持 `Bin/Player`（Windows 为 `Bin/Player.exe`），以及与
-`base.cmo` 并列的扁平 `Player`。运行时须有 `ModLoader/BML.abi.json`；原生部署会
-在替换文件前核对其与 SDK 的兼容性。脚本运行要求 `Managers` 中的 BML 和
-`BuildingBlocks` 中的 CKAngelScript，文件名采用对应平台的动态库格式。
+游戏根目录包含 `base.cmo`，Player 位于 `Bin/Player` 或根目录（Windows 为
+`Player.exe`），并须有 `ModLoader/BML.abi.json`。不要把 `Bin` 当作根目录。
+`build` 准备产物；`run` 还会部署并启动 Player。脚本 `run` 会同步保存后的源码，
+让已加载 Mod 自动热重载。
 
-`build` 同时准备 `.bmodp` 和 `.bmodp.abi.json`。SDL 的 `pack` 生成包含两者的 ZIP，
-采用原子替换，并用 `--force` 防止意外覆盖。将 ZIP 放入 `ModLoader/Mods`，也可
-同时复制两个构建产物；缺少 ABI 描述的 SDL `.bmodp` 会被拒绝。SDK 可移动目录；不要将 SDK 的引擎库复制进
-现有游戏安装。
+## ABI 与依赖
 
-SDL Mod 复用 Player 随包的 SDL，macOS SDL 构建需要 CMake 3.19 或更新版本。
-macOS 上，即使开发环境 SDL 使用绝对安装路径，
-`bml_add_mod` 也会在链接后将 Mod 的 SDL 依赖改为 `@rpath` 并更新临时签名。
-构建出的 `.bmodp` 可直接复制到 `ModLoader/Mods`；部署时无需修改二进制，也不要
-另外携带 SDL。需要发行签名时，请在构建完成后使用自己的签名身份签名。
+SDK 须匹配运行时、平台、架构、宿主链接方式和协议/SDK ABI。
+SDK 描述为 `share/BML/BML.abi.json`，部署前与游戏运行时描述比对。
 
-## CMake
+- 核心原生 API 使用 C11 协议 `BML_GetModInterface` 和模块内 C++20 wrapper，
+  只需 `BML::BML`。C 边界不传递 STL、虚表、异常或跨模块分配器所有权。
+- 直接访问 CK2/VxMath 才启用 `BML::Engine`，直接使用宿主 ImGui 才启用
+  `BML::ImGui`。这些扩展须匹配引擎/ImGui ABI、编译器、标准库、运行库和构建配置。
+  用 `--package-root` 提供相应开发包，不得使用原 Virtools SDK。
+- CK2、VxMath、SDL 和 ImGui 共享状态归 Player 所有。Mod 不得携带第二份 SDL，
+  也不得再次静态链接引擎。
+
+CLI 默认使用描述中的配置；只有匹配的 SDK 才能用 `--configuration` 指定其他配置。
+`--generator` 选择 CMake 生成器，Windows 需要已配置的编译器环境。
+更换工具链、架构或 SDK 后使用全新构建目录。
+
+macOS 的 SDK 在链接时将 SDL 依赖规范为 `@rpath` 并更新临时签名，部署直接复制
+未经修改的产物。发行签名应在构建后执行。SDK CMake helper 需要 CMake 3.19+，
+BML+ 自身构建需要 CMake 3.25+。
+
+## 手动 CMake 构建
 
 ```cmake
+cmake_minimum_required(VERSION 3.19)
+project(MyMod LANGUAGES CXX)
 find_package(BML CONFIG REQUIRED)
 bml_add_mod(MyMod src/MyMod.cpp)
 bml_install_mod(MyMod)
 ```
 
-Use `basic`, `interface-provider`, `interface-consumer`, or `imc-provider` with
-`bml new native --profile`. Script projects use `bml new script`.
-The full guides are installed under `share/BML/docs`.
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH="/path/to/BML-SDK" -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+cmake --install build --config Release --prefix "/path/to/game/ModLoader"
+```
+
+`.bmodp` 与 `.bmodp.abi.json` 必须一起携带。原生 `pack` 目前只将模块和 ABI 描述放入 ZIP，
+额外资源需要项目自己的 CMake 资源打包步骤。脚本 `pack` 包含源码与资源，排除
+编辑器声明和本地设置；覆盖须显式 `--force`。把 ZIP 放入 `ModLoader/Mods`。
+缺失或不兼容的 ABI 描述会在执行原生入口前被拒绝。
+
+SDK 可移动目录。完整指南位于 `share/BML/docs`，补全声明位于 `docs/api`。
+示例包括 `examples/native-mod`、`examples/native-c-mod`、接口提供方/使用方，以及
+启用脚本时的 `examples/script-mod`。

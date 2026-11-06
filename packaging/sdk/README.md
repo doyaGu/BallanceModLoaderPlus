@@ -1,61 +1,83 @@
-# BML+ SDK
+# BML+ SDL SDK
 
 [简体中文](README_zh-CN.md)
 
-This archive is for Mod development. It is not the BML+ runtime package and
-must not be extracted into the Ballance directory.
+This package is for Mod development. Install the matching **runtime** in the game;
+keep the SDK in a separate source workspace. This branch supports dynamic SDL
+hosts. Static-host SDKs and original Windows binary Mods are not supported here.
 
-## SDL SDK on Windows, Linux and macOS
+## Start a project
 
-Choose the SDK matching the game's runtime, platform, architecture, host linkage,
-compiler, C++ standard library and runtime. The SDL CLI currently supports dynamic hosts.
-
-On Linux and macOS, use Python 3.10+ through the executable POSIX launcher:
+Python 3.10+ is required. The following commands work in all supported shells
+(use `python3` if that is your Python executable):
 
 ```sh
-"<BML-SDK>/scripts/bml" new native yourname.my-mod
+python "/path/to/BML-SDK/scripts/bml.py" new native yourname.my-mod
 cd MyMod
-./bml build
-./bml run --ballance-root "/path/to/game"
-./bml pack
+python bml.py build
+python bml.py run --ballance-root "/path/to/game"
+python bml.py pack
 ```
 
-Use `new script` for the same script workflow. Windows keeps `bml.cmd`.
-SDL native builds use the configuration in `share/BML/BML.abi.json` and need
-matching CK2, VxMath and SDL3 development packages; they do not use the retail
-Virtools SDK. Pass additional installed dependency prefixes with `--package-root`.
-Select another CMake generator with `--generator`; Ninja or Unix Makefiles is
-selected on POSIX, and Visual Studio on Windows. Set `CXX` in a fresh build if
-the matching compiler is not the default. A non-Visual-Studio Windows generator
-requires an initialized compiler environment.
+Use `new script` for AngelScript. POSIX launchers are `scripts/bml` and project
+`./bml`; Windows launchers are `scripts/bml.cmd` and project `bml.cmd`.
+`--profile` selects `basic`, `interface-provider`, `interface-consumer`, or
+`imc-provider` for native projects. `python bml.py help --verbose` lists commands.
 
-The game path is its root: `Bin/Player` (Windows: `Bin/Player.exe`) or a flat
-`Player` executable alongside `base.cmo`. The runtime must include
-`ModLoader/BML.abi.json`. Native deployment checks it against the SDK before
-replacing files. Script runs require BML in `Managers` and CKAngelScript in
-`BuildingBlocks`, using the platform's shared-library names.
+The game root contains `base.cmo`, with `Bin/Player` or a flat `Player` executable
+(`Player.exe` on Windows). It must include `ModLoader/BML.abi.json`. Do not pass
+its `Bin` subdirectory as the game root. `build` prepares artifacts; `run` also
+deploys and starts Player. Script `run` synchronizes saved sources for hot reload.
 
-`build` stages `.bmodp` and `.bmodp.abi.json` together. SDL `pack` produces a ZIP
-containing both files, with atomic replacement and `--force` protection. Install
-that ZIP in `ModLoader/Mods`, or copy both staged files there. A bare SDL
-`.bmodp` without its descriptor is rejected. The SDK directory can be relocated; do not copy SDK engine
-libraries into an existing game installation.
+## ABI and dependencies
 
-SDL Mods reuse Player's SDL library. macOS SDL builds require CMake 3.19+.
-On macOS, `bml_add_mod` normalizes SDL load
-commands to `@rpath` and renews the Mod's ad hoc signature after linking, even
-when the development SDL uses an absolute install name. The built `.bmodp` is
-ready to copy into `ModLoader/Mods`; deployment needs no binary edits and must
-not include another SDL. Apply your own distribution signature after building.
+Choose a package matching runtime, platform, architecture, host linkage and
+protocol/SDK ABI. `share/BML/BML.abi.json` describes the SDK; deployment compares
+it with the installed runtime before replacing files.
 
-## CMake
+- Core native Mods use the C11 protocol (`BML_GetModInterface`) and module-local
+  C++20 wrappers. They need only `BML::BML`; the core C seam does not expose C++
+  STL, virtual tables, exceptions or allocator ownership.
+- Direct CK2/VxMath access opts into `BML::Engine`. Direct host ImGui access opts
+  into `BML::ImGui`. These extensions require the matching engine/ImGui ABI,
+  compiler, C++ standard library, runtime and build configuration. Supply matching
+  development packages with `--package-root`; never use the original Virtools SDK.
+- Player owns CK2, VxMath, SDL and ImGui state. Do not ship another SDL or
+  statically link another engine into a Mod.
+
+The CLI takes its default configuration from the descriptor. Override it only
+with a compatible SDK, using `--configuration`. `--generator` selects CMake's
+generator; Windows generators need a working compiler environment. Use a fresh
+build directory after changing compiler, architecture or SDK.
+
+On macOS the SDK normalizes Mod SDL load commands to `@rpath` and renews the
+ad hoc signature during linking. Deployment copies unchanged output. Apply any
+distribution signature after the build. The CMake helper needs CMake 3.19+;
+building BML+ itself requires CMake 3.25+.
+
+## Manual CMake build
 
 ```cmake
+cmake_minimum_required(VERSION 3.19)
+project(MyMod LANGUAGES CXX)
 find_package(BML CONFIG REQUIRED)
 bml_add_mod(MyMod src/MyMod.cpp)
 bml_install_mod(MyMod)
 ```
 
-Use `basic`, `interface-provider`, `interface-consumer`, or `imc-provider` with
-`bml new native --profile`. Script projects use `bml new script`.
-The full guides are installed under `share/BML/docs`.
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH="/path/to/BML-SDK" -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+cmake --install build --config Release --prefix "/path/to/game/ModLoader"
+```
+
+Keep `.bmodp` and `.bmodp.abi.json` together. `pack` produces a ZIP with both
+and rejects accidental overwrite without `--force`. Native `pack` currently
+contains only that pair; projects with extra resources need their own CMake
+resource-package step. Script `pack` includes source/resources and excludes
+editor stubs and local settings. Copy that ZIP into `ModLoader/Mods`.
+Missing or incompatible sidecars are rejected before loading native code.
+
+The SDK is relocatable. Full guides live in `share/BML/docs`; editor declarations
+live in `docs/api`. See `examples/native-mod`, `examples/native-c-mod`, the
+interface provider/consumer pair, and (when enabled) `examples/script-mod`.
