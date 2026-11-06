@@ -1,29 +1,5 @@
-// Reads input for a Mod, and blocks the game from reading it. Get the single
-// instance from IBML::GetInputManager; do not construct one.
-//
-// Most functions forward to the game's CKInputManager. Both backends intercept
-// its input-query vtable entries so game Building Blocks respect device blocks.
-// SDL acquisition remains scheduled by the engine. While the loader is running,
-// its InputHook defers scheduled PostProcess cleanup until after Mod callbacks.
-//
-// Three groups of functions behave differently while a device is blocked:
-//   - the plain readers below return an empty result, because they go through the
-//     ordinary query path;
-//   - the o-prefixed readers further down use the original/raw query path and keep
-//     reading the captured device input;
-//   - the functions that are not device reads, meaning GetKeyName,
-//     GetKeyFromName, the repetition and attachment queries, the cursor
-//     functions, and Pause, are not affected by the block at all.
-//
-// Blocked reads with an out parameter differ in how they report emptiness.
-// GetKeyboardState hands back a zeroed 256-byte buffer and GetMouseButtonsState
-// fills oStates with KS_IDLE, but GetMousePosition and GetMouseRelativePosition
-// return without touching the vector, so initialize it before the call rather
-// than expecting a zero.
-//
-// Everything here is for the game thread only, from inside a Mod callback. There
-// is no locking, and the snapshots the edge detection compares against advance
-// once per frame.
+// Private CK input interception and snapshots used by the loader.
+// Native Mods use BML/Input.h or BML/Input.hpp.
 #ifndef BML_INPUTHOOK_H
 #define BML_INPUTHOOK_H
 
@@ -35,12 +11,12 @@
 
 typedef enum CK_INPUT_DEVICE {
     CK_INPUT_DEVICE_KEYBOARD = 0,
-    CK_INPUT_DEVICE_MOUSE    = 1,
+    CK_INPUT_DEVICE_MOUSE = 1,
     CK_INPUT_DEVICE_JOYSTICK = 2,
-    CK_INPUT_DEVICE_COUNT    = 3,
+    CK_INPUT_DEVICE_COUNT = 3,
 } CK_INPUT_DEVICE;
 
-class BML_EXPORT InputHook {
+class InputHook {
 public:
     explicit InputHook(CKInputManager *input);
     ~InputHook();

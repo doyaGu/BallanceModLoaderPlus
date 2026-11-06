@@ -2,7 +2,7 @@
 
 #include "Loader/ModContext.h"
 
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "Hooks/HookLifecycle.h"
 #include "Hooks/InputCursor.h"
 #include "Hooks/RenderHook.h"

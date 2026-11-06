@@ -8,7 +8,7 @@
 #include <SDL3/SDL.h>
 #include "CKAll.h"
 #include "SdlInputManager.h"
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "Hooks/HookLifecycle.h"
 #include "Hooks/InputCursor.h"
 #include "Hooks/InputVTable.h"

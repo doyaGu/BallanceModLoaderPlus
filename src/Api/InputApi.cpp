@@ -1,7 +1,7 @@
 #include "Api/HandleSequence.h"
 #include "Api/InputApi.h"
 #include "Api/ModApi.h"
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "Hooks/InputAccess.h"
 #include <climits>
 

@@ -22,7 +22,7 @@
 #include "BML/Defines.h"
 #include "Console/ICommand.h"
 #include "BML/IMessageReceiver.h"
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 
 class IMod;
 

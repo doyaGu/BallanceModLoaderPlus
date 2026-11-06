@@ -1,4 +1,4 @@
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 
 #include <cassert>
 #include <cstring>

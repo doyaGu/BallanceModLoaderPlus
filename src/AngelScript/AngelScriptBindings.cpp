@@ -10,7 +10,7 @@
 #include "BML/DataShare.h"
 #include "Config/IConfig.h"
 #include "BML/Types.h"
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "Logging/ILogger.h"
 
 #if BML_ENABLE_ANGELSCRIPT

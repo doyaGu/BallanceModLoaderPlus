@@ -162,6 +162,7 @@ set(BML_LOADER_PRIVATE_HEADERS
         Config/IConfig.h
         Console/ICommand.h
         Logging/ILogger.h
+        Hooks/InputHook.h
         Loader/LegacyModVersion.h
         Loader/ModContext.h
         Loader/ModLoader.h

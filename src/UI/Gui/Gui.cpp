@@ -4,7 +4,7 @@
 #include <utility>
 #include <vector>
 
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "BML/Guids/Interface.h"
 
 #include "Loader/ModContext.h"

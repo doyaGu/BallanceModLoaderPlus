@@ -1,7 +1,7 @@
 #include "ScriptApiSurface.h"
 
 #include "Config/IConfig.h"
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "BML/ModMenu.h"
 #include "Timer/TimerScheduler.h"
 #include "ScriptCallbackEvents.h"

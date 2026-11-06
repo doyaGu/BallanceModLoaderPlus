@@ -5,7 +5,7 @@
 #include <string>
 
 #include "CKAll.h"
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 
 namespace BML {
 namespace ScriptFacadeAccess {

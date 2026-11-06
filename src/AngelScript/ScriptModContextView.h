@@ -4,7 +4,7 @@
 #include <string>
 
 #include "CKAll.h"
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "ScriptModLifecycle.h"
 
 class ModContext;

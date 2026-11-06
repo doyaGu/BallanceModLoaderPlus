@@ -2,7 +2,7 @@
 
 #include <exception>
 
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "Hooks/RenderHook.h"
 
 HookLifecycle::HookLifecycle(ModContext &context)

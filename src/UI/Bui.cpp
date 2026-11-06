@@ -23,7 +23,7 @@
 #include "UI/BuiInternal.h"
 #include "UI/ColorCodec.h"
 #ifndef BML_UI_AUTOMATION_TEST
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "Loader/ModContext.h"
 #include "UI/Overlay.h"
 #endif
