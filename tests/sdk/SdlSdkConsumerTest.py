@@ -76,6 +76,27 @@ def main() -> int:
     else:
         loader = next(sdk.rglob("libBMLPlus.dylib" if sys.platform == "darwin" else "libBMLPlus.so"))
     host_library = ctypes.CDLL(str(loader), mode=ctypes.RTLD_GLOBAL)
+    for name in ("CKGetPluginInfoCount", "CKGetPluginInfo", "RegisterBehaviorDeclarations",
+                 "BML_GetInterface"):
+        assert hasattr(host_library, name), f"Required host export is missing: {name}"
+    # Obsolete C++ vtables and caller-address services must not remain a second
+    # native entry route. Installed consumers use Context and versioned C tables.
+    obsolete_headers = ("IMod.h", "IBML.h", "IConfig.h", "ICommand.h", "ILogger.h",
+                        "IMessageReceiver.h", "InputHook.h", "ExecuteBB.h", "ModInterface.hpp")
+    for name in obsolete_headers:
+        assert not (sdk / "include/BML" / name).exists(), name
+    obsolete_symbols = [
+        "BML_GetLoaderPathW", "BML_GetLoaderPathUtf8", "BML_GetModRootW",
+        "BML_GetModRootUtf8", "BML_UnregisterCommand", "BML_SetCommandStatus",
+        "BML_GetCommandInput", "BML_GetConfigPropertyEditor", "BML_SetConfigPropertyEditor",
+        "BML_GetConfigPropertyChoiceCount", "BML_GetConfigPropertyChoice",
+        "BML_SetConfigPropertyChoices",
+    ]
+    if os.name != "nt":
+        obsolete_symbols += ["_ZTI4IMod", "_ZTI4IBML", "_ZTI9IProperty", "_ZTI7IConfig",
+                             "_ZTI8ICommand", "_ZTI7ILogger", "_ZTI16IMessageReceiver"]
+    for name in obsolete_symbols:
+        assert not hasattr(host_library, name), f"Obsolete native export remains: {name}"
     host = work / "中文宿主 with spaces"
     host_mods = host / "ModLoader/Mods"
     host_mods.mkdir(parents=True)
