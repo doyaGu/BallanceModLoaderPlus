@@ -1,7 +1,7 @@
 #ifndef BML_LOADER_NATIVEMOD_H
 #define BML_LOADER_NATIVEMOD_H
 
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 #include "BML/Mod.h"
 #include "Loader/ModState.h"
 #include <memory>

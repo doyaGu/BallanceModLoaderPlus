@@ -1,17 +1,5 @@
-// What a Mod calls into the loader with. Every IMod already holds one as m_BML,
-// so a Mod never looks this up and never implements it.
-//
-// The vtable layout of this class is fixed. Existing functions keep their order
-// and their signatures across loader releases, because a Mod compiled against an
-// older SDK calls them by slot number, and no function is ever added, removed, or
-// reordered here. Capabilities that arrived after the layout was fixed live
-// elsewhere: the BML_* C functions in BML.h, and the versioned interfaces and
-// C++ facades in Time.hpp, Scene.h, Gameplay.h, UI.h, and Speedrun.h.
-// So when something a Mod needs is missing here, look there rather than expecting
-// it to appear below.
-//
-// Everything here is for the game thread, called from a Mod callback. Nothing
-// here is safe from a thread of the Mod's own.
+// Private loader services used by built-in features and Script Mod adapters.
+// External Mods use the versioned C interfaces through an explicit Mod Context.
 #ifndef BML_IBML_H
 #define BML_IBML_H
 
@@ -21,12 +9,12 @@
 
 #include "BML/Defines.h"
 #include "Console/ICommand.h"
-#include "BML/IMessageReceiver.h"
+#include "Loader/IMessageReceiver.h"
 #include "Hooks/InputHook.h"
 
 class IMod;
 
-class BML_EXPORT IBML : public IMessageReceiver {
+class IBML : public IMessageReceiver {
 public:
     virtual ~IBML() = default;
 
@@ -90,11 +78,8 @@ public:
     virtual void SendIngameMessage(const char *msg) = 0;
 
     // The loader stores the raw pointer and never deletes it. Keep the command
-    // alive while it is registered. This interface has no matching virtual slot,
-    // but BML_UnregisterCommand in BML.h removes a command without changing this
-    // frozen vtable. A Mod may unregister during OnUnload and delete the command
-    // only after BML_UnregisterCommand returns BML_OK. A command that is not
-    // unregistered must remain alive for the whole process lifetime.
+    // alive while it is registered. ModContext owns command registration and
+    // detaches callbacks before destroying their owner.
     // Registration is silent on success and only logs on failure. It fails for
     // a null command, an invalid name or alias, an already registered name, and a
     // call outside the game thread. Metadata is copied during this call.
@@ -146,16 +131,19 @@ public:
     // Balls.nmo, Levelinit.nmo, and Sound.nmo. Call them from OnLoad, because an
     // entry recorded after those files have loaded is never written anywhere. Every
     // string is copied, so the caller does not have to keep it alive.
-    virtual void RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
-                                  float friction, float elasticity, float mass, const char *collGroup, float linearDamp,
-                                  float rotDamp, float force, float radius) = 0;
-    virtual void RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
-                                   const char *collGroup, bool enableColl) = 0;
-    virtual void RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
-                                   const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
-                                   float linearDamp, float rotDamp, float radius) = 0;
-    virtual void RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity, float mass,
-                                     const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
+    virtual void RegisterBallType(const char *ballFile, const char *ballId, const char *ballName,
+                                  const char *objName, float friction, float elasticity, float mass,
+                                  const char *collGroup, float linearDamp, float rotDamp,
+                                  float force, float radius) = 0;
+    virtual void RegisterFloorType(const char *floorName, float friction, float elasticity,
+                                   float mass, const char *collGroup, bool enableColl) = 0;
+    virtual void RegisterModulBall(const char *modulName, bool fixed, float friction,
+                                   float elasticity, float mass, const char *collGroup, bool frozen,
+                                   bool enableColl, bool calcMassCenter, float linearDamp,
+                                   float rotDamp, float radius) = 0;
+    virtual void RegisterModulConvex(const char *modulName, bool fixed, float friction,
+                                     float elasticity, float mass, const char *collGroup,
+                                     bool frozen, bool enableColl, bool calcMassCenter,
                                      float linearDamp, float rotDamp) = 0;
     virtual void RegisterTrafo(const char *modulName) = 0;
     virtual void RegisterModul(const char *modulName) = 0;
@@ -217,8 +205,10 @@ public:
     // optional dependency never blocks anything and only pulls the other Mod ahead
     // of this one in load order, which it also does for a required one. Both return
     // BML_OK, or BML_ERROR_FAIL for a null argument or an allocation failure.
-    virtual int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) = 0;
-    virtual int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) = 0;
+    virtual int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor,
+                                   int patch) = 0;
+    virtual int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major,
+                                           int minor, int patch) = 0;
 
     // Note the return values do not agree across this group. CheckDependencies
     // answers 1 when every required dependency is installed and new enough and 0
@@ -232,8 +222,8 @@ public:
     // optional and may be null.
     virtual int CheckDependencies(IMod *mod) const = 0;
     virtual int GetDependencyCount(IMod *mod) const = 0;
-    virtual int GetDependencyInfo(IMod *mod, int index, char *dependencyId, int idSize,
-                                  int *major, int *minor, int *patch, int *optional) const = 0;
+    virtual int GetDependencyInfo(IMod *mod, int index, char *dependencyId, int idSize, int *major,
+                                  int *minor, int *patch, int *optional) const = 0;
     virtual int ClearDependencies(IMod *mod) = 0;
 };
 

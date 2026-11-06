@@ -9,7 +9,7 @@
 
 #include "Platform/Module.h"
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Console/ICommand.h"
 #include "Console/CommandContext.h"
 #include "Console/Shell/ShellIo.h"

@@ -4,7 +4,7 @@
 #include <cstdio>
 
 #include "BML/BML.h"
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Console/Shell/ShellIo.h"
 #include "UI/AnsiPalette.h"
 #include "UI/AnsiText.h"

@@ -1,32 +1,12 @@
-// The gameplay callbacks, inherited by IMod. A Mod overrides the ones it needs and
-// the loader calls them; nothing here is called by a Mod.
-//
-// These are not polled and not queued. The loader inserts a hook block into the
-// game's own scripts, Event_handler, Gameplay_Ingame, Gameplay_Energy and
-// Gameplay_Events, at the exact point where the game handles the matching Virtools
-// message, so the callback runs in the middle of the game's own logic on the game
-// thread. Work done here delays the game's script for as long as it takes, and the
-// hooks only exist once those scripts have loaded, which is why nothing here fires
-// before the main menu appears.
-//
-// Where a Pre and a Post callback come as a pair, they bracket the game's own work
-// at that spot: Pre runs before the block chain that handles the message, Post after
-// it has finished. So the state a Mod wants to read before a change belongs in the
-// Pre one and the result belongs in the Post one.
-//
-// The loader updates IBML::IsIngame, IsPaused and IsPlaying after the callback
-// returns, so inside these functions those three still report the state before the
-// event. Act on the callback rather than reading the flags back.
-//
-// The loader catches whatever a callback throws, logs it against the Mod's id, and
-// carries on with the next Mod.
+// Private game-event dispatch shared by the loader's built-in and Script Mods.
+// Native notifications cross modules through BML_ModEvent, not this vtable.
 #ifndef BML_IMESSAGERECEIVER_H
 #define BML_IMESSAGERECEIVER_H
 
 #include "BML/Defines.h"
 
-class BML_EXPORT IMessageReceiver {
-    public:
+class IMessageReceiver {
+public:
     // The eleven callbacks below follow the messages Event_handler switches on, in
     // its own order: Start Menu, Exit Game, Load Level, Start Level, Reset Level,
     // Pause Level, Unpause Level, Exit Level, Next Level, Dead, End Level.

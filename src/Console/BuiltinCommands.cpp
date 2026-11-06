@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Console/Console.h"
 #include "Console/Shell/ShellIo.h"
 #include "Loader/ModContext.h"

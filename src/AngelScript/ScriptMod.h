@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "Console/ICommand.h"
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 #include "UI/ScriptImGui.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptDiagnostic.h"

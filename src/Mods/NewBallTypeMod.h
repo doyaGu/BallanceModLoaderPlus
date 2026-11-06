@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "BML/Behavior.hpp"
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 #include "BML/Version.h"
 
 struct TypeRegistration { std::string m_Owner; bool m_Applied = false; };
@@ -74,7 +74,7 @@ public:
     const char *GetName() override { return "New Ball Type"; }
     const char *GetAuthor() override { return "doyaGu & Gamepiaynmo"; }
     const char *GetDescription() override { return "Implementation of registering new ball types."; }
-    DECLARE_BML_VERSION;
+    BMLVersion GetBMLVersion() override { return {}; }
 
     void OnLoad() override;
     void OnUnload() override;

@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <utility>
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Logging/ILogger.h"
-#include "BML/IMessageReceiver.h"
+#include "Loader/IMessageReceiver.h"
 
 namespace {
 namespace Behavior = BML::Behavior;

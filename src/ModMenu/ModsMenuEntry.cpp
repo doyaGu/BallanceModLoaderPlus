@@ -2,7 +2,7 @@
 
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/TT_Toolbox_RT.h"
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Logging/ILogger.h"
 
 #include "Loader/ModContext.h"

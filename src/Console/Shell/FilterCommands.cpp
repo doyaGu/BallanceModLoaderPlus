@@ -6,7 +6,7 @@
 
 #include <oniguruma.h>
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Console/Shell/ShellIo.h"
 #include "Console/Shell/ShellTypes.h"
 #include "StringUtils.h"

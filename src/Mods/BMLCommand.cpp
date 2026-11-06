@@ -1,8 +1,8 @@
 #include "Mods/BMLCommand.h"
 
 #include "BML/BML.h"
-#include "BML/IBML.h"
-#include "BML/IMod.h"
+#include "Loader/IBML.h"
+#include "Loader/IMod.h"
 #include "Diagnostics/SystemReport.h"
 
 namespace {

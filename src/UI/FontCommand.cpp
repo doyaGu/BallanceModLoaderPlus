@@ -12,7 +12,7 @@
 #include <sstream>
 #include <utility>
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Config/IConfig.h"
 
 #include "StringUtils.h"

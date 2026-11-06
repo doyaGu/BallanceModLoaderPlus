@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "Console/ICommand.h"
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 
 namespace BML {
 

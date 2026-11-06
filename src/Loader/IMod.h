@@ -1,21 +1,5 @@
-// What a Mod derives from. Implement the five identity functions, write
-// DECLARE_BML_VERSION, override the callbacks the Mod needs, and return one
-// instance from the DLL's BMLEntry. The loader takes that pointer and hands it
-// back to BMLExit to be destroyed, so both live in the Mod's own DLL and the
-// object is allocated and freed by the same C++ runtime.
-//
-// The loader works out which callbacks a Mod overrides by comparing its vtable
-// against a blank IMod subclass, and only calls the slots that differ. A callback
-// whose signature does not match the declaration below therefore becomes a new
-// slot rather than an override, and the loader never calls it. Write override on
-// every one, which turns that mistake into a compile error.
-//
-// Every callback runs on the game thread. The loader catches whatever a callback
-// throws, logs it against the Mod's id, and goes on to the next Mod, so an
-// escaping exception abandons the rest of that callback quietly instead of
-// crashing the game.
-//
-// The gameplay callbacks are in IMessageReceiver, which this class inherits.
+// Private lifecycle adapter for built-in and Script Mods, and the native C protocol bridge.
+// External Mods use BML/Mod.h or the module-local BML/Mod.hpp wrapper.
 #ifndef BML_IMOD_H
 #define BML_IMOD_H
 
@@ -25,23 +9,20 @@
 #include "CKAll.h"
 
 #include "BML/BML.h"
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Logging/ILogger.h"
 #include "Config/IConfig.h"
 
 class ModContext;
 
-namespace BML::Interfaces::Detail {
-class DependencyAccess;
-}
-
 // A three-part version, ordered by major, then minor, then patch. The default
 // constructor takes the version of the SDK headers it is compiled against, which
-// is what makes DECLARE_BML_VERSION work.
+// is what the built-in adapters report.
 struct BMLVersion {
     int major, minor, patch;
 
     BMLVersion() : major(BML_MAJOR_VERSION), minor(BML_MINOR_VERSION), patch(BML_PATCH_VERSION) {}
+
     BMLVersion(int mj, int mn, int bd) : major(mj), minor(mn), patch(bd) {}
 
     bool operator<(const BMLVersion &o) const {
@@ -53,9 +34,7 @@ struct BMLVersion {
         return major < o.major;
     }
 
-    bool operator>=(const BMLVersion &o) const {
-        return !(*this < o);
-    }
+    bool operator>=(const BMLVersion &o) const { return !(*this < o); }
 
     bool operator==(const BMLVersion &o) const {
         return major == o.major && minor == o.minor && patch == o.patch;
@@ -68,16 +47,8 @@ struct BMLVersion {
     }
 };
 
-// Implements GetBMLVersion from the SDK headers the Mod is being compiled
-// against. Write it once in the class body.
-#define DECLARE_BML_VERSION \
-    BMLVersion GetBMLVersion() override { return { BML_MAJOR_VERSION, BML_MINOR_VERSION, BML_PATCH_VERSION }; }
-
 // One entry of a Mod's dependency list, which IBML::GetDependencyInfo reports a
-// copy of. A Mod does not build these itself; it calls IMod::AddDependency. id is
-// allocated with BML_Malloc and released with BML_Free so that it can be handed
-// across the DLL boundary, and it is left null when that allocation fails, which
-// turns the entry into an empty one instead of reporting the failure. The
+// copy of. The loader builds entries from native or script declarations. The
 // comparison operators look at id alone and ignore minVersion and optional.
 struct ModDependency {
     char *id;
@@ -100,7 +71,8 @@ struct ModDependency {
         }
     }
 
-    ModDependency(const ModDependency &other) : minVersion(other.minVersion), optional(other.optional) {
+    ModDependency(const ModDependency &other)
+        : minVersion(other.minVersion), optional(other.optional) {
         if (other.id && strlen(other.id) > 0) {
             size_t len = strlen(other.id);
             id = static_cast<char *>(BML_Malloc(len + 1));
@@ -148,14 +120,13 @@ struct ModDependency {
         return strcmp(id, other.id) == 0;
     }
 
-    int operator!=(const ModDependency &other) const {
-        return !(*this == other);
-    }
+    int operator!=(const ModDependency &other) const { return !(*this == other); }
 };
 
-class BML_EXPORT IMod : public IMessageReceiver {
+class IMod : public IMessageReceiver {
 public:
     explicit IMod(IBML *bml) : m_BML(bml) {}
+
     virtual ~IMod();
 
     // The identity of the Mod, and the key everything else files it under: the
@@ -230,9 +201,11 @@ public:
     //
     // objArray and masterObj belong to the game: the array pointer is only good
     // until the callback returns, and the objects it names die with the level.
-    virtual void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                              CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                              XObjectArray *objArray, CKObject *masterObj) {}
+    virtual void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName,
+                              CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes,
+                              CKBOOL reuseMaterials, CKBOOL dynamic, XObjectArray *objArray,
+                              CKObject *masterObj) {}
+
     virtual void OnLoadScript(const char *filename, CKBehavior *script) {}
 
     // Draw all ImGui and Bui controls from OnProcess. It is the only callback
@@ -260,21 +233,25 @@ public:
     // arrays, freed as soon as the callback returns, and their counts can be zero,
     // in which case the pointer is null. collGroup and collSurface come straight
     // from the block's parameters and can also be null.
-    virtual void OnPhysicalize(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
-                               const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
-                               float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
-                               int convexCnt, CKMesh **convexMesh, int ballCnt, VxVector *ballCenter, float *ballRadius,
-                               int concaveCnt, CKMesh **concaveMesh) {}
+    virtual void OnPhysicalize(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity,
+                               float mass, const char *collGroup, CKBOOL startFrozen,
+                               CKBOOL enableColl, CKBOOL calcMassCenter, float linearDamp,
+                               float rotDamp, const char *collSurface, VxVector massCenter,
+                               int convexCnt, CKMesh **convexMesh, int ballCnt,
+                               VxVector *ballCenter, float *ballRadius, int concaveCnt,
+                               CKMesh **concaveMesh) {}
+
     virtual void OnUnphysicalize(CK3dEntity *target) {}
 
     // Every command the loader runs, whoever registered it, which is how a Mod
     // watches the command bar without owning a command. A line such as `a; b | c`
     // fires them once per simple command, after the shell has split and expanded
     // its words. args[0] is the word that named the command, so the arguments start
-    // at args[1], and both callbacks see the same vector. Neither runs for a line that names no known command or for a
-    // cheat command refused because cheats are off, and OnPostCommandExecute is
-    // skipped when the command itself throws.
+    // at args[1], and both callbacks see the same vector. Neither runs for a line that names no
+    // known command or for a cheat command refused because cheats are off, and OnPostCommandExecute
+    // is skipped when the command itself throws.
     virtual void OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {}
+
     virtual void OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) {}
 
 protected:
@@ -287,46 +264,12 @@ protected:
     virtual ILogger *GetLogger() final;
     virtual IConfig *GetConfig() final;
 
-    // Declare these from the Mod constructor. The loader checks dependencies once,
-    // between constructing the Mods and calling OnLoad, so one declared in OnLoad
-    // is recorded but no longer gates anything. See IBML::RegisterDependency for
-    // what a missing, too-old, or optional dependency does.
-    bool AddDependency(const char *modId, const BMLVersion &minVersion = BMLVersion(0, 0, 0)) {
-        return m_BML->RegisterDependency(this, modId, minVersion.major, minVersion.minor, minVersion.patch) == BML_OK;
-    }
-
-    bool AddOptionalDependency(const char *modId, const BMLVersion &minVersion = BMLVersion(0, 0, 0)) {
-        return m_BML->RegisterOptionalDependency(this, modId, minVersion.major, minVersion.minor, minVersion.patch) == BML_OK;
-    }
-
-    // True when every required dependency is installed and new enough. The loader
-    // has already made this check by the time OnLoad runs, so calling it there only
-    // re-answers a question that has been answered; it is useful after
-    // ClearDependencies has changed the list.
-    bool CheckDependencies() {
-        return m_BML->CheckDependencies(this) != 0;
-    }
-
-    // How many entries the list holds, required and optional together. Read them
-    // with IBML::GetDependencyInfo.
-    int GetDependencyCount() {
-        return m_BML->GetDependencyCount(this);
-    }
-
-    // Drops the whole list. The loader has already used it by the time any callback
-    // runs, so this does not unload anything; it only stops the list being reported.
-    // The destructor does it as well.
-    bool ClearDependencies() {
-        return m_BML->ClearDependencies(this) == BML_OK;
-    }
-
     // The loader, handed to the constructor. It stays valid for as long as the Mod
-    // does, and is never null for a Mod the loader constructed through BMLEntry.
+    // does, and is never null for an adapter constructed by this loader.
     IBML *m_BML = nullptr;
 
 private:
     friend class ModContext;
-    friend class BML::Interfaces::Detail::DependencyAccess;
 
     ILogger *m_Logger = nullptr;
     IConfig *m_Config = nullptr;

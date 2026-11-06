@@ -2,7 +2,7 @@
 
 #include <angelscript.h>
 
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 #include "Logging/ILogger.h"
 #include "Loader/ModContext.h"
 #include "ScriptFacadeAccess.h"

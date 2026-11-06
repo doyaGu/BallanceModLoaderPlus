@@ -159,6 +159,9 @@ set(BML_MODS_SOURCES
 )
 
 set(BML_LOADER_PRIVATE_HEADERS
+        Loader/IBML.h
+        Loader/IMod.h
+        Loader/IMessageReceiver.h
         Config/IConfig.h
         Console/ICommand.h
         Logging/ILogger.h

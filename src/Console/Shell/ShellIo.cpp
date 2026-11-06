@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Console/Shell/ShellTypes.h"
 
 namespace BML::Shell {

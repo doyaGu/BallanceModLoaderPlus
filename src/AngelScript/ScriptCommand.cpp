@@ -1,6 +1,6 @@
 #include "AngelScript/ScriptCommand.h"
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Console/Shell/ShellIo.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScript/ScriptDevToolsService.h"

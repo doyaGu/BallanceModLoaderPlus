@@ -3,7 +3,7 @@
 
 #include <limits>
 
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 
 namespace BML {
 

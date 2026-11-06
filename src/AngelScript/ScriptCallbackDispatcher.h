@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "Console/ICommand.h"
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 #include "ScriptApiSurface.h"
 #include "ScriptDiagnostic.h"
 

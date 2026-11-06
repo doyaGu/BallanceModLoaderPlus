@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstring>
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Config/IConfig.h"
 #include "BML/Version.h"
 

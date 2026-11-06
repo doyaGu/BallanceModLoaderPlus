@@ -3,8 +3,8 @@
 
 #include <cstddef>
 
-#include "BML/IMod.h"
-#include "BML/IBML.h"
+#include "Loader/IMod.h"
+#include "Loader/IBML.h"
 #include "BML/Behavior.hpp"
 
 #include "Console/Console.h"
@@ -34,7 +34,7 @@ public:
         return "Implementation of functions provided by Ballance Mod Loader."
                "\n\n https://github.com/doyaGu/BallanceModLoaderPlus";
     }
-    DECLARE_BML_VERSION;
+    BMLVersion GetBMLVersion() override { return {}; }
 
     void OnLoad() override;
     void OnUnload() override;

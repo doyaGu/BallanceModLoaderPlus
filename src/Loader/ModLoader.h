@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 #include "Loader/ModInvocationGate.h"
 #include "Loader/NativeModRegistry.h"
 #include "Loader/NativeMod.h"

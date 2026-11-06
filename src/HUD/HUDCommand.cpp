@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <sstream>
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 #include "Console/Shell/ShellIo.h"
 #include "HUD/HUDRuntime.h"
 #include "UI/AnsiPalette.h"

@@ -15,7 +15,7 @@
 #endif
 #include "Platform/FileError.h"
 
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 
 #include "Config/Config.h"
 #include "Config/ConfigStore.h"
@@ -115,7 +115,7 @@ public:
         return "Test description for the mock mod.";
     }
 
-    DECLARE_BML_VERSION;
+    BMLVersion GetBMLVersion() override { return {}; }
 
     void OnModifyConfig(const char *category, const char *key, IProperty *prop) override {
         modifiedCount++;

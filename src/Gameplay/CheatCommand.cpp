@@ -1,6 +1,6 @@
 #include "Gameplay/CheatCommand.h"
 
-#include "BML/IBML.h"
+#include "Loader/IBML.h"
 
 void CheatCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() == 1) {

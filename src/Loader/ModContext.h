@@ -19,8 +19,8 @@ struct SDL_IOStream;
 #include <vector>
 
 #include "BML/BML.h"
-#include "BML/IBML.h"
-#include "BML/IMod.h"
+#include "Loader/IBML.h"
+#include "Loader/IMod.h"
 
 #include "Config/Config.h"
 #include "Config/ConfigStore.h"

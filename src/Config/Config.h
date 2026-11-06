@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "Config/IConfig.h"
-#include "BML/IMod.h"
+#include "Loader/IMod.h"
 
 #include "Config/ConfigValue.h"
 
