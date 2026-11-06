@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 
-def stage(source, probe, destination):
+def stage(source, probe, destination, mods_from=None):
     runtime = destination / "runtime"
     # Materialize links so neither Player nor test staging can write back into
     # the supplied runtime through a symlink to its configuration or Mods.
@@ -20,6 +20,8 @@ def stage(source, probe, destination):
     if mods.exists():
         mods.rename(destination / "original-mods")
     mods.mkdir(parents=True)
+    if mods_from:
+        shutil.copytree(mods_from, mods, dirs_exist_ok=True, symlinks=False)
     installed = mods / probe.name
     shutil.copy2(probe, installed)
     shutil.copy2(Path(str(probe) + ".abi.json"), Path(str(installed) + ".abi.json"))
@@ -52,17 +54,21 @@ def stage(source, probe, destination):
 def run(args):
     probe_abi = json.loads(Path(str(args.probe) + ".abi.json").read_text(encoding="utf-8"))
     host_abi = json.loads((args.runtime / "ModLoader/BML.abi.json").read_text(encoding="utf-8"))
-    for key in ("schema", "runtime", "platform", "architecture", "host_linkage", "sdk_abi", "configuration"):
+    for key in ("schema", "runtime", "platform", "architecture", "host_linkage", "mod_api", "mod_api_major"):
         if probe_abi.get(key) != host_abi.get(key):
             raise RuntimeError(f"Probe/Player ABI mismatch ({key}): {probe_abi.get(key)} != {host_abi.get(key)}")
+    for name, required in probe_abi.get("extensions", {}).items():
+        if required != host_abi.get("extension_abis", {}).get(name):
+            raise RuntimeError(f"Probe/Player extension ABI mismatch ({name})")
     args.output.mkdir(parents=True, exist_ok=True)
     results = []
     for cycle in range(args.repeat):
         directory = Path(tempfile.mkdtemp(prefix=f"cycle-{cycle + 1}-", dir=args.output))
-        runtime, player = stage(args.runtime, args.probe, directory)
+        runtime, player = stage(args.runtime, args.probe, directory, args.mods_from)
         result_path = directory / "result.json"
         env = os.environ.copy()
         env["BML_POSTPROCESS_RESULT"] = str(result_path)
+        env["BML_EXPECT_MODS"] = ",".join(args.expect_mod)
         with (directory / "player-output.log").open("wb") as log:
             process = subprocess.Popen([str(player)], cwd=player.parent, env=env,
                                        stdout=log, stderr=subprocess.STDOUT)
@@ -100,6 +106,8 @@ if __name__ == "__main__":
     parser.add_argument("--probe", type=lambda p: Path(p).resolve(), required=True)
     parser.add_argument("--output", type=lambda p: Path(p).resolve(), required=True)
     parser.add_argument("--repeat", type=int, default=3)
+    parser.add_argument("--mods-from", type=lambda p: Path(p).resolve())
+    parser.add_argument("--expect-mod", action="append", default=[])
     parser.add_argument("--timeout", type=float, default=60)
     arguments = parser.parse_args()
     if arguments.repeat < 1 or arguments.timeout <= 0:

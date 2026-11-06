@@ -8,7 +8,7 @@ if(NOT BML_RUNTIME STREQUAL "sdl" OR NOT BML_HOST_LINKAGE STREQUAL "dynamic")
     message(FATAL_ERROR "This test requires the SDK for a dynamic SDL Player")
 endif()
 bml_add_mod(SdlPostProcessProbe PostProcessProbe.cpp)
-target_link_libraries(SdlPostProcessProbe PRIVATE SDL3::SDL3)
+target_link_libraries(SdlPostProcessProbe PRIVATE BML::Engine BML::ImGui SDL3::SDL3)
 
 set(BML_SDL_PLAYER_ROOT "" CACHE PATH "Prepared SDL Player runtime with matching BML and game assets")
 if(BML_SDL_PLAYER_ROOT)

@@ -12,6 +12,7 @@ if (NOT TARGET BML::BML)
 endif ()
 
 bml_add_mod(BMLNativeImcSmoke NativeImcSmoke.cpp)
+target_link_libraries(BMLNativeImcSmoke PRIVATE BML::Engine)
 bml_target_imc_api(BMLNativeImcSmoke INPUT smoke.native.imc)
 set_target_properties(BMLNativeImcSmoke PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
