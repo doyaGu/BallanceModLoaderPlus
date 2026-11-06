@@ -1,12 +1,15 @@
-#include "BML/Gui/Element.h"
+#include "UI/Gui/Element.h"
 
 #include "Loader/ModContext.h"
+#include <stdexcept>
 
-using namespace BGui;
+using namespace BGuiHost;
 
 Element::Element(const char *name) {
     CKContext *context = BML_GetCKContext();
+    if (!context || !context->GetCurrentLevel()) throw std::runtime_error("GUI requires a live level");
     m_2dEntity = (CK2dEntity *) context->CreateObject(CKCID_2DENTITY, (CKSTRING) name);
+    if (!m_2dEntity) throw std::bad_alloc();
     context->GetCurrentLevel()->AddObject(m_2dEntity);
     m_2dEntity->SetHomogeneousCoordinates();
     m_2dEntity->EnableClipToCamera(false);

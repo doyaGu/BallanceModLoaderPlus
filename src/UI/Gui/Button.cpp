@@ -1,6 +1,6 @@
-#include "BML/Gui/Button.h"
+#include "UI/Gui/Button.h"
 
-using namespace BGui;
+using namespace BGuiHost;
 
 CKMaterial *g_Up = nullptr;
 CKMaterial *g_Over = nullptr;

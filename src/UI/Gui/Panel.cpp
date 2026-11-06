@@ -1,4 +1,4 @@
-#include "BML/Gui/Panel.h"
+#include "UI/Gui/Panel.h"
 
 #include "CKContext.h"
 #include "CK2dEntity.h"
@@ -7,11 +7,12 @@
 
 #include <string>
 
-using namespace BGui;
+using namespace BGuiHost;
 
 Panel::Panel(const char *name) : Element(name) {
     CKContext *context = m_2dEntity->GetCKContext();
     m_Material = (CKMaterial *)context->CreateObject(CKCID_MATERIAL, (CKSTRING) ((std::string(name) + "_Mat").c_str()));
+    if (!m_Material) throw std::bad_alloc();
     context->GetCurrentLevel()->AddObject(m_Material);
     m_Material->EnableAlphaBlend();
     m_Material->SetSourceBlend(VXBLEND_SRCALPHA);

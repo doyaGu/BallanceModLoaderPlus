@@ -1,3 +1,4 @@
+#include "BML/Gameplay.h"
 #include "AngelScriptBindings.h"
 
 #include "Loader/ModContext.h"
@@ -5,7 +6,7 @@
 #include <string>
 
 #include "BML/BML.h"
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "BML/DataShare.h"
 #include "BML/IConfig.h"
 #include "BML/Types.h"
@@ -746,66 +747,17 @@ struct BMLAS_Text2DDefinition {
     int Flags = 1;
 };
 
-struct BMLAS_BallTypeDefinition {
-    std::string BallFile;
-    std::string BallId;
-    std::string BallName;
-    std::string ObjectName;
-    float Friction = 0.0f;
-    float Elasticity = 0.0f;
-    float Mass = 0.0f;
-    std::string CollisionGroup;
-    float LinearDamp = 0.0f;
-    float RotDamp = 0.0f;
-    float Force = 0.0f;
-    float Radius = 0.0f;
-};
+using BMLAS_BallTypeDefinition = BML::Gameplay::BallTypeDefinition;
 
-struct BMLAS_FloorTypeDefinition {
-    std::string Name;
-    float Friction = 0.0f;
-    float Elasticity = 0.0f;
-    float Mass = 0.0f;
-    std::string CollisionGroup;
-    bool EnableCollision = true;
-};
+using BMLAS_FloorTypeDefinition = BML::Gameplay::FloorTypeDefinition;
 
-struct BMLAS_ModuleBallDefinition {
-    std::string Name;
-    bool Fixed = false;
-    float Friction = 0.0f;
-    float Elasticity = 0.0f;
-    float Mass = 0.0f;
-    std::string CollisionGroup;
-    bool StartFrozen = false;
-    bool EnableCollision = true;
-    bool CalcMassCenter = false;
-    float LinearDamp = 0.0f;
-    float RotDamp = 0.0f;
-    float Radius = 0.0f;
-};
+using BMLAS_ModuleBallDefinition = BML::Gameplay::ModuleBallDefinition;
 
-struct BMLAS_ModuleConvexDefinition {
-    std::string Name;
-    bool Fixed = false;
-    float Friction = 0.0f;
-    float Elasticity = 0.0f;
-    float Mass = 0.0f;
-    std::string CollisionGroup;
-    bool StartFrozen = false;
-    bool EnableCollision = true;
-    bool CalcMassCenter = false;
-    float LinearDamp = 0.0f;
-    float RotDamp = 0.0f;
-};
+using BMLAS_ModuleConvexDefinition = BML::Gameplay::ModuleConvexDefinition;
 
-struct BMLAS_TrafoDefinition {
-    std::string Name;
-};
+using BMLAS_TrafoDefinition = BML::Gameplay::TrafoDefinition;
 
-struct BMLAS_ModuleDefinition {
-    std::string Name;
-};
+using BMLAS_ModuleDefinition = BML::Gameplay::ModuleDefinition;
 
 static void BMLAS_ConstructPhysicalizeDefinition(BMLAS_PhysicalizeDefinition *self) {
     new (self) BMLAS_PhysicalizeDefinition();
@@ -1833,7 +1785,11 @@ public:
                 return 3; // MOD_STATE_FAILED
             return scriptMod->IsLoaded() ? 2 : 1; // loaded : registered
         }
-        return 2; // native mods are loaded while registered
+        if (ModContextLease context; context) {
+            if (const auto *native = context->GetModLoader().FindNativeMod(mod))
+                return native->IsFailed() ? BML_MOD_STATE_FAILED : native->IsLoaded() ? BML_MOD_STATE_LOADED : BML_MOD_STATE_REGISTERED;
+        }
+        return BML_MOD_STATE_LOADED;
     }
 
     bool IsValid() const { return Resolve() != nullptr; }
@@ -1990,7 +1946,7 @@ BMLAS_ModRef *BMLAS_ContextGetMod(BML::ScriptModContextView *view, int index) {
 }
 
 bool BMLAS_UI_BeginRenderCall() {
-    if (Bui::GetImGuiContext() && Overlay::IsImGuiReady() && Overlay::IsImGuiFrameActive())
+    if (BuiHost::GetImGuiContext() && Overlay::IsImGuiReady() && Overlay::IsImGuiFrameActive())
         return true;
 
     static bool logged = false;
@@ -2004,163 +1960,163 @@ bool BMLAS_UI_BeginRenderCall() {
     return false;
 }
 
-Bui::ButtonType BMLAS_UI_ToButtonType(int type) {
-    return type >= 0 && type < Bui::BUTTON_COUNT
-               ? static_cast<Bui::ButtonType>(type)
-               : Bui::BUTTON_COUNT;
+BuiHost::ButtonType BMLAS_UI_ToButtonType(int type) {
+    return type >= 0 && type < BuiHost::BUTTON_COUNT
+               ? static_cast<BuiHost::ButtonType>(type)
+               : BuiHost::BUTTON_COUNT;
 }
 
 void BMLAS_UI_SetCursorCoord(float x, float y) {
     if (!BMLAS_UI_BeginRenderCall())
         return;
-    Bui::ImGuiContextScope scope;
-    ImGui::SetCursorScreenPos(Bui::CoordToPixel(ImVec2(x, y)));
+    BuiHost::ImGuiContextScope scope;
+    ImGui::SetCursorScreenPos(BuiHost::CoordToPixel(ImVec2(x, y)));
 }
 
 float BMLAS_UI_CoordToPixelX(float x) {
     if (!BMLAS_UI_BeginRenderCall())
         return 0.0f;
-    Bui::ImGuiContextScope scope;
-    return Bui::CoordToPixel(ImVec2(x, 0.0f)).x;
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::CoordToPixel(ImVec2(x, 0.0f)).x;
 }
 
 float BMLAS_UI_CoordToPixelY(float y) {
     if (!BMLAS_UI_BeginRenderCall())
         return 0.0f;
-    Bui::ImGuiContextScope scope;
-    return Bui::CoordToPixel(ImVec2(0.0f, y)).y;
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::CoordToPixel(ImVec2(0.0f, y)).y;
 }
 
 float BMLAS_UI_GetMenuPosX() {
     if (!BMLAS_UI_BeginRenderCall())
         return 0.0f;
-    Bui::ImGuiContextScope scope;
-    return Bui::GetMenuPos().x;
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::GetMenuPos().x;
 }
 
 float BMLAS_UI_GetMenuPosY() {
     if (!BMLAS_UI_BeginRenderCall())
         return 0.0f;
-    Bui::ImGuiContextScope scope;
-    return Bui::GetMenuPos().y;
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::GetMenuPos().y;
 }
 
 float BMLAS_UI_GetMenuSizeX() {
     if (!BMLAS_UI_BeginRenderCall())
         return 0.0f;
-    Bui::ImGuiContextScope scope;
-    return Bui::GetMenuSize().x;
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::GetMenuSize().x;
 }
 
 float BMLAS_UI_GetMenuSizeY() {
     if (!BMLAS_UI_BeginRenderCall())
         return 0.0f;
-    Bui::ImGuiContextScope scope;
-    return Bui::GetMenuSize().y;
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::GetMenuSize().y;
 }
 
 int BMLAS_UI_CalcPageCount(int totalCount, int pageSize) {
-    return Bui::CalcPageCount(totalCount, pageSize);
+    return BuiHost::CalcPageCount(totalCount, pageSize);
 }
 
 bool BMLAS_UI_CanPrevPage(int pageIndex) {
-    return Bui::CanPrevPage(pageIndex);
+    return BuiHost::CanPrevPage(pageIndex);
 }
 
 bool BMLAS_UI_CanNextPage(int pageIndex, int totalCount, int pageSize) {
-    return Bui::CanNextPage(pageIndex, totalCount, pageSize);
+    return BuiHost::CanNextPage(pageIndex, totalCount, pageSize);
 }
 
 bool BMLAS_UI_MainButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::MainButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::MainButton(label.c_str());
 }
 
 bool BMLAS_UI_OkButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::OkButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::OkButton(label.c_str());
 }
 
 bool BMLAS_UI_BackButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::BackButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::BackButton(label.c_str());
 }
 
 bool BMLAS_UI_OptionButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::OptionButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::OptionButton(label.c_str());
 }
 
 bool BMLAS_UI_LevelButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::LevelButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::LevelButton(label.c_str());
 }
 
 bool BMLAS_UI_LevelButtonSelected(const std::string &label, bool &selected) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::LevelButton(label.c_str(), &selected);
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::LevelButton(label.c_str(), &selected);
 }
 
 bool BMLAS_UI_SmallButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::SmallButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::SmallButton(label.c_str());
 }
 
 bool BMLAS_UI_SmallButtonSelected(const std::string &label, bool &selected) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::SmallButton(label.c_str(), &selected);
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::SmallButton(label.c_str(), &selected);
 }
 
 bool BMLAS_UI_LeftButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::LeftButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::LeftButton(label.c_str());
 }
 
 bool BMLAS_UI_RightButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::RightButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::RightButton(label.c_str());
 }
 
 bool BMLAS_UI_PlusButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::PlusButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::PlusButton(label.c_str());
 }
 
 bool BMLAS_UI_MinusButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::MinusButton(label.c_str());
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::MinusButton(label.c_str());
 }
 
 bool BMLAS_UI_KeyButton(const std::string &label, bool &toggled, int &keyChord) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
+    BuiHost::ImGuiContextScope scope;
     ImGuiKeyChord nativeChord = static_cast<ImGuiKeyChord>(keyChord);
-    const bool changed = Bui::KeyButton(label.c_str(), &toggled, &nativeChord);
+    const bool changed = BuiHost::KeyButton(label.c_str(), &toggled, &nativeChord);
     keyChord = static_cast<int>(nativeChord);
     return changed;
 }
@@ -2168,49 +2124,49 @@ bool BMLAS_UI_KeyButton(const std::string &label, bool &toggled, int &keyChord) 
 void BMLAS_UI_Title(const std::string &text, float y, float scale) {
     if (!BMLAS_UI_BeginRenderCall())
         return;
-    Bui::ImGuiContextScope scope;
-    Bui::Title(text.c_str(), y, scale);
+    BuiHost::ImGuiContextScope scope;
+    BuiHost::Title(text.c_str(), y, scale);
 }
 
 void BMLAS_UI_WrappedText(const std::string &text, float width, float baseX, float scale) {
     if (!BMLAS_UI_BeginRenderCall())
         return;
-    Bui::ImGuiContextScope scope;
-    Bui::WrappedText(text.c_str(), width, baseX, scale);
+    BuiHost::ImGuiContextScope scope;
+    BuiHost::WrappedText(text.c_str(), width, baseX, scale);
 }
 
 bool BMLAS_UI_NavLeft(float x, float y) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::NavLeft(x, y);
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::NavLeft(x, y);
 }
 
 bool BMLAS_UI_NavRight(float x, float y) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::NavRight(x, y);
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::NavRight(x, y);
 }
 
 bool BMLAS_UI_NavBack(float x, float y) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::NavBack(x, y);
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::NavBack(x, y);
 }
 
 bool BMLAS_UI_YesNoButton(const std::string &label, bool &value) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::YesNoButton(label.c_str(), &value);
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::YesNoButton(label.c_str(), &value);
 }
 
 bool BMLAS_UI_RadioButtonText(const std::string &label, int &currentItem, const std::string &itemsText) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
+    BuiHost::ImGuiContextScope scope;
     std::vector<std::string> items;
     std::size_t start = 0;
     while (start <= itemsText.size()) {
@@ -2233,20 +2189,20 @@ bool BMLAS_UI_RadioButtonText(const std::string &label, int &currentItem, const 
     itemPointers.reserve(items.size());
     for (const std::string &item : items)
         itemPointers.push_back(item.c_str());
-    return Bui::RadioButton(label.c_str(), &currentItem, itemPointers.data(), static_cast<int>(itemPointers.size()));
+    return BuiHost::RadioButton(label.c_str(), &currentItem, itemPointers.data(), static_cast<int>(itemPointers.size()));
 }
 
 bool BMLAS_UI_InputTextButton(const std::string &label, std::string &text, int maxLength) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
+    BuiHost::ImGuiContextScope scope;
     if (maxLength < 1)
         maxLength = 1;
     if (maxLength > 4096)
         maxLength = 4096;
     std::vector<char> buffer(static_cast<std::size_t>(maxLength) + 1, '\0');
     std::strncpy(buffer.data(), text.c_str(), buffer.size() - 1);
-    const bool changed = Bui::InputTextButton(label.c_str(), buffer.data(), buffer.size());
+    const bool changed = BuiHost::InputTextButton(label.c_str(), buffer.data(), buffer.size());
     if (changed)
         text = buffer.data();
     return changed;
@@ -2255,62 +2211,62 @@ bool BMLAS_UI_InputTextButton(const std::string &label, std::string &text, int m
 bool BMLAS_UI_InputIntButton(const std::string &label, int &value, int step, int stepFast) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::InputIntButton(label.c_str(), &value, step, stepFast);
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::InputIntButton(label.c_str(), &value, step, stepFast);
 }
 
 bool BMLAS_UI_InputFloatButton(const std::string &label, float &value, float step, float stepFast) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::InputFloatButton(label.c_str(), &value, step, stepFast);
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::InputFloatButton(label.c_str(), &value, step, stepFast);
 }
 
 bool BMLAS_UI_ColorButton(const std::string &label, ImVec4 &color) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
-    return Bui::ColorButton(label.c_str(), &color);
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::ColorButton(label.c_str(), &color);
 }
 
 bool BMLAS_UI_SearchBar(std::string &text, float x, float y, float width) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
+    BuiHost::ImGuiContextScope scope;
     char buffer[512] = {};
     std::strncpy(buffer, text.c_str(), sizeof(buffer) - 1);
-    const bool changed = Bui::SearchBar(buffer, sizeof(buffer), x, y, width);
+    const bool changed = BuiHost::SearchBar(buffer, sizeof(buffer), x, y, width);
     if (changed)
         text = buffer;
     return changed;
 }
 
 void BMLAS_UI_PlayMenuClickSound() {
-    Bui::PlayMenuClickSound();
+    BuiHost::PlayMenuClickSound();
 }
 
 int BMLAS_UI_CKKeyToImGuiKey(CKKEYBOARD key) {
-    return static_cast<int>(Bui::CKKeyToImGuiKey(key));
+    return static_cast<int>(BuiHost::CKKeyToImGuiKey(key));
 }
 
 CKKEYBOARD BMLAS_UI_ImGuiKeyToCKKey(int key) {
-    return Bui::ImGuiKeyToCKKey(static_cast<ImGuiKey>(key));
+    return BuiHost::ImGuiKeyToCKKey(static_cast<ImGuiKey>(key));
 }
 
 std::string BMLAS_UI_KeyChordToString(int keyChord) {
     if (!BMLAS_UI_BeginRenderCall())
         return {};
-    Bui::ImGuiContextScope scope;
+    BuiHost::ImGuiContextScope scope;
     char buffer[128] = {};
-    return Bui::KeyChordToString(static_cast<ImGuiKeyChord>(keyChord), buffer, sizeof(buffer)) ? buffer : "";
+    return BuiHost::KeyChordToString(static_cast<ImGuiKeyChord>(keyChord), buffer, sizeof(buffer)) ? buffer : "";
 }
 
 bool BMLAS_UI_SetKeyChordFromIO(int &keyChord) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
-    Bui::ImGuiContextScope scope;
+    BuiHost::ImGuiContextScope scope;
     ImGuiKeyChord nativeChord = static_cast<ImGuiKeyChord>(keyChord);
-    const bool changed = Bui::SetKeyChordFromIO(&nativeChord);
+    const bool changed = BuiHost::SetKeyChordFromIO(&nativeChord);
     keyChord = static_cast<int>(nativeChord);
     return changed;
 }
@@ -2318,34 +2274,34 @@ bool BMLAS_UI_SetKeyChordFromIO(int &keyChord) {
 float BMLAS_UI_GetButtonSizeX(int type) {
     if (!BMLAS_UI_BeginRenderCall())
         return 0.0f;
-    Bui::ImGuiContextScope scope;
-    return Bui::GetButtonSize(BMLAS_UI_ToButtonType(type)).x;
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::GetButtonSize(BMLAS_UI_ToButtonType(type)).x;
 }
 
 float BMLAS_UI_GetButtonSizeY(int type) {
     if (!BMLAS_UI_BeginRenderCall())
         return 0.0f;
-    Bui::ImGuiContextScope scope;
-    return Bui::GetButtonSize(BMLAS_UI_ToButtonType(type)).y;
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::GetButtonSize(BMLAS_UI_ToButtonType(type)).y;
 }
 
 float BMLAS_UI_GetButtonIndent(int type) {
     if (!BMLAS_UI_BeginRenderCall())
         return 0.0f;
-    Bui::ImGuiContextScope scope;
-    return Bui::GetButtonIndent(BMLAS_UI_ToButtonType(type));
+    BuiHost::ImGuiContextScope scope;
+    return BuiHost::GetButtonIndent(BMLAS_UI_ToButtonType(type));
 }
 
 float BMLAS_UI_GetButtonSizeCoordX(int type) {
-    return Bui::GetButtonSizeInCoord(BMLAS_UI_ToButtonType(type)).x;
+    return BuiHost::GetButtonSizeInCoord(BMLAS_UI_ToButtonType(type)).x;
 }
 
 float BMLAS_UI_GetButtonSizeCoordY(int type) {
-    return Bui::GetButtonSizeInCoord(BMLAS_UI_ToButtonType(type)).y;
+    return BuiHost::GetButtonSizeInCoord(BMLAS_UI_ToButtonType(type)).y;
 }
 
 float BMLAS_UI_GetButtonIndentCoord(int type) {
-    return Bui::GetButtonIndentInCoord(BMLAS_UI_ToButtonType(type));
+    return BuiHost::GetButtonIndentInCoord(BMLAS_UI_ToButtonType(type));
 }
 
 BML::ScriptCommandCompletion *BMLAS_CreateInvalidCommandCompletion() {
@@ -3276,16 +3232,16 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
 };
 
 static const ScriptUiEnumValueRegistration kUiButtonTypeRegistrations[] = {
-    {"BUTTON_MAIN", Bui::BUTTON_MAIN, "BML::UI::BUTTON_MAIN"},
-    {"BUTTON_BACK", Bui::BUTTON_BACK, "BML::UI::BUTTON_BACK"},
-    {"BUTTON_OPTION", Bui::BUTTON_OPTION, "BML::UI::BUTTON_OPTION"},
-    {"BUTTON_LEVEL", Bui::BUTTON_LEVEL, "BML::UI::BUTTON_LEVEL"},
-    {"BUTTON_KEY", Bui::BUTTON_KEY, "BML::UI::BUTTON_KEY"},
-    {"BUTTON_SMALL", Bui::BUTTON_SMALL, "BML::UI::BUTTON_SMALL"},
-    {"BUTTON_LEFT", Bui::BUTTON_LEFT, "BML::UI::BUTTON_LEFT"},
-    {"BUTTON_RIGHT", Bui::BUTTON_RIGHT, "BML::UI::BUTTON_RIGHT"},
-    {"BUTTON_PLUS", Bui::BUTTON_PLUS, "BML::UI::BUTTON_PLUS"},
-    {"BUTTON_MINUS", Bui::BUTTON_MINUS, "BML::UI::BUTTON_MINUS"},
+    {"BUTTON_MAIN", BuiHost::BUTTON_MAIN, "BML::UI::BUTTON_MAIN"},
+    {"BUTTON_BACK", BuiHost::BUTTON_BACK, "BML::UI::BUTTON_BACK"},
+    {"BUTTON_OPTION", BuiHost::BUTTON_OPTION, "BML::UI::BUTTON_OPTION"},
+    {"BUTTON_LEVEL", BuiHost::BUTTON_LEVEL, "BML::UI::BUTTON_LEVEL"},
+    {"BUTTON_KEY", BuiHost::BUTTON_KEY, "BML::UI::BUTTON_KEY"},
+    {"BUTTON_SMALL", BuiHost::BUTTON_SMALL, "BML::UI::BUTTON_SMALL"},
+    {"BUTTON_LEFT", BuiHost::BUTTON_LEFT, "BML::UI::BUTTON_LEFT"},
+    {"BUTTON_RIGHT", BuiHost::BUTTON_RIGHT, "BML::UI::BUTTON_RIGHT"},
+    {"BUTTON_PLUS", BuiHost::BUTTON_PLUS, "BML::UI::BUTTON_PLUS"},
+    {"BUTTON_MINUS", BuiHost::BUTTON_MINUS, "BML::UI::BUTTON_MINUS"},
 };
 
 static const ScriptUiEnumValueRegistration kFontTypeRegistrations[] = {

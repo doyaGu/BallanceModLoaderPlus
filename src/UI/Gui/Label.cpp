@@ -1,9 +1,10 @@
-#include "BML/Gui/Label.h"
+#include "UI/Gui/Label.h"
 
 #include "Loader/ModContext.h"
 #include "Behavior/Blocks/Text2DView.h"
+#include <stdexcept>
 
-using namespace BGui;
+using namespace BGuiHost;
 
 namespace {
 // Every function below writes or reads one Slot of the same Block, so each one
@@ -15,11 +16,13 @@ BML::Behavior::Internal::Text2DView::View Text(CKBehavior *block) {
 
 Label::Label(const char *name) : Element(name) {
     ModContext *context = BML_GetModContext();
+    if (!context || !context->GetScriptByName("Level_Init")) throw std::runtime_error("GUI labels require Level_Init");
     // ~Label destroys the Block itself, so no Run may own it.
     m_Text2d = context->BehaviorSessions().CreateUnmanaged(
         context->GetScriptByName("Level_Init"),
         BML::Behavior::Internal::BlockSpec::From(BML::Behavior::Internal::Text2DView::Options{
             m_2dEntity, context->GetGameFonts().Resolve(BML::GameFont::None)}));
+    if (!m_Text2d) throw std::runtime_error("GUI text Behavior creation failed");
 }
 
 Label::~Label() {

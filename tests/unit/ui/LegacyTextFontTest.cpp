@@ -2,7 +2,7 @@
 
 #include "UI/Gui/LegacyTextFont.h"
 
-using BGui::ChooseLegacyTextDefaultFace;
+using BGuiHost::ChooseLegacyTextDefaultFace;
 
 TEST(LegacyTextFontTest, PrefersChineseUiFaceRegardlessOfEnumerationOrder) {
     const std::vector<std::string> faces = {

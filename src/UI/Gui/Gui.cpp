@@ -1,4 +1,4 @@
-#include "BML/Gui/Gui.h"
+#include "UI/Gui/Gui.h"
 
 #include <string>
 #include <utility>
@@ -10,7 +10,7 @@
 #include "Loader/ModContext.h"
 #include "UI/Gui/LegacyTextFont.h"
 
-using namespace BGui;
+using namespace BGuiHost;
 
 extern CKMaterial *g_Up;
 extern CKMaterial *g_Over;

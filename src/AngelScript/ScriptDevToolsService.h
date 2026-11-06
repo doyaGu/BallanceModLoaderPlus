@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "ScriptDevEvents.h"
 #include "ScriptMod.h"
 
@@ -126,7 +126,7 @@ struct ScriptDevAction {
     bool WatchEnabled = false;
 };
 
-class ScriptDevToolsService final : public Bui::Window {
+class ScriptDevToolsService final : public BuiHost::Window {
 public:
     explicit ScriptDevToolsService(ModContext *context);
     ~ScriptDevToolsService() override;

@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "BML/ILogger.h"
 #include "Loader/ModContext.h"
 #include "Mods/BMLMod.h"
@@ -951,7 +951,7 @@ bool EnterLevelOneFromModList(ImGuiTestContext *ctx) {
 namespace {
 
 bool StartEngine() {
-    ImGuiContext *imguiContext = Bui::GetImGuiContext();
+    ImGuiContext *imguiContext = BuiHost::GetImGuiContext();
     if (!imguiContext)
         return false;
 
@@ -1176,7 +1176,7 @@ void AdvanceFrame() {
 
     ImGuiTestEngineIO &io = ImGuiTestEngine_GetIO(g_Engine);
     if (!io.IsRunningTests && ImGuiTestEngine_IsTestQueueEmpty(g_Engine)) {
-        ImGuiContext *imguiContext = Bui::GetImGuiContext();
+        ImGuiContext *imguiContext = BuiHost::GetImGuiContext();
         ImGuiTestEngine_Stop(g_Engine);
         const bool resultWritten = WriteScenarioResult();
         ImGuiTestEngine_UnbindImGuiContext(g_Engine, imguiContext);

@@ -1,9 +1,9 @@
-#include "BML/Gui/Input.h"
+#include "UI/Gui/Input.h"
 
 #include "Loader/ModContext.h"
 #include "Behavior/Blocks/Text2DView.h"
 
-using namespace BGui;
+using namespace BGuiHost;
 
 CKMaterial *g_Caret = nullptr;
 
@@ -35,13 +35,13 @@ void Input::OnCharTyped(CKDWORD key) {
     switch (key) {
         case CKKEY_BACK:
             if (m_Caret > 0) {
-                m_Text.erase(--m_Caret);
+                m_Text.erase(--m_Caret, 1);
                 changed = true;
             }
             break;
         case CKKEY_DELETE:
             if (m_Caret < m_Text.size()) {
-                m_Text.erase(m_Caret);
+                m_Text.erase(m_Caret, 1);
                 changed = true;
             }
             break;

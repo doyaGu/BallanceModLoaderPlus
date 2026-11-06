@@ -660,7 +660,7 @@ void DrawDiagnosticBlock(const char *title, const ScriptDiagnosticSnapshot &diag
 } // namespace
 
 ScriptDevToolsService::ScriptDevToolsService(ModContext *context)
-    : Bui::Window("Script Developer Tools"),
+    : BuiHost::Window("Script Developer Tools"),
       m_Context(context),
       m_EventStore(kEventCapacity) {
     m_Visible = false;
