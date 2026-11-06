@@ -48,11 +48,11 @@ set_tests_properties(NativeModResourcePackageTest PROPERTIES
         TIMEOUT 120)
 
 add_test(
-        NAME ExecuteBBDepsTest
-        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ExecuteBBDepsTest.py"
+        NAME BehaviorDepsTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/BehaviorDepsTest.py"
                 --source-root "${PROJECT_SOURCE_DIR}"
 )
-set_tests_properties(ExecuteBBDepsTest PROPERTIES LABELS "architecture;native")
+set_tests_properties(BehaviorDepsTest PROPERTIES LABELS "architecture;native")
 
 add_test(
         NAME BmlModCmakeTest

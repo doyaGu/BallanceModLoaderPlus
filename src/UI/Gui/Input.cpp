@@ -103,9 +103,9 @@ void Input::SetText(const char *text) {
 }
 
 void Input::GetFocus() {
-    SetTextFlags(GetTextFlags() | TEXT_SHOWCARET);
+    SetTextFlags(GetTextFlags() | BML_GUI_TEXT_SHOWCARET);
 }
 
 void Input::LoseFocus() {
-    SetTextFlags(GetTextFlags() & ~TEXT_SHOWCARET);
+    SetTextFlags(GetTextFlags() & ~BML_GUI_TEXT_SHOWCARET);
 }

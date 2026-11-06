@@ -38,15 +38,14 @@ void Label::SetText(const char *text) {
     Text(m_Text2d).SetText(text);
 }
 
-ExecuteBB::FontType Label::GetFont() {
+BML::GameFont Label::GetFont() {
     const BML::GameFontCatalog &fonts = BML_GetModContext()->GetGameFonts();
-    return static_cast<ExecuteBB::FontType>(
-        fonts.Identify(Text(m_Text2d).Font()));
+    return fonts.Identify(Text(m_Text2d).Font());
 }
 
-void Label::SetFont(ExecuteBB::FontType font) {
+void Label::SetFont(BML::GameFont font) {
     const BML::GameFontCatalog &fonts = BML_GetModContext()->GetGameFonts();
-    Text(m_Text2d).SetFont(fonts.Resolve(static_cast<BML::GameFont>(font)));
+    Text(m_Text2d).SetFont(fonts.Resolve(font));
 }
 
 void Label::SetAlignment(int align) {

@@ -55,15 +55,6 @@ Behavior::Internal::RunResult ExecuteBBAdapter::Run(
     return result;
 }
 
-Behavior::Internal::RunResult ExecuteBBAdapter::SetPhysicsForce(
-    const Behavior::Blocks::PhysicsForce::Options &options) {
-    return m_PhysicsForce.Set(options);
-}
-
-Behavior::Internal::RunResult ExecuteBBAdapter::UnsetPhysicsForce(CK3dEntity *target) {
-    return m_PhysicsForce.Clear(target);
-}
-
 std::pair<XObjectArray *, CKObject *> ExecuteBBAdapter::LoadObjects(
     const Behavior::Blocks::ObjectLoad::Options &options, bool rename) {
     m_Sessions.CloseRun(std::exchange(m_LastObjectLoad, 0));

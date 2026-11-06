@@ -232,7 +232,7 @@ ModContext::ModContext(CKContext *context)
                       status.Message.c_str());
           }),
       m_PhysicsForce(context, m_Behaviors),
-      m_ExecuteBB(m_BehaviorSessions, m_PhysicsForce),
+      m_ExecuteBB(m_BehaviorSessions),
       m_Loader(*this) {
     assert(context != nullptr);
     m_CommandApi = std::make_unique<BML::Api::CommandApi>(*this);

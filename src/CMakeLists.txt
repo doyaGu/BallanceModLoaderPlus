@@ -213,7 +213,6 @@ set(BML_API_SOURCES
         Api/BuiltinCapabilities.cpp
         Api/CommandApi.cpp
         Api/Errors.cpp
-        Api/ExecuteBB.cpp
         Api/ExecuteBBAdapter.cpp
         Api/IMod.cpp
         Api/Interfaces.cpp

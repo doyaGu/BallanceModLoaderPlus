@@ -231,7 +231,7 @@ int GuiApi::Read(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_GuiElement
         v.Alignment = r->SpriteText->m_Sprite->GetAlign();
     }
     if (r->Label) {
-        v.GameFont = r->Label->GetFont();
+        v.GameFont = static_cast<uint32_t>(r->Label->GetFont());
         v.Alignment = r->Align;
         v.TextFlags = r->Label->GetTextFlags();
         v.Offset = r->Offset;
@@ -391,7 +391,7 @@ int GuiApi::SetGameFont(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_
         return BML_ERROR_TYPE_MISMATCH;
     if (v > BML_GUI_GAMEFONT_CREDITS_BIG)
         return BML_ERROR_INVALID_PARAMETER;
-    r->Label->SetFont(static_cast<ExecuteBB::FontType>(v));
+    r->Label->SetFont(static_cast<BML::GameFont>(v));
     return BML_OK;
 }
 

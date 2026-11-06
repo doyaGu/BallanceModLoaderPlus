@@ -35,7 +35,8 @@
 #include "CKDefines.h"
 
 #include "BML/Defines.h"
-#include "BML/ExecuteBB.h"
+#include "BML/Gui.h"
+#include "UI/GameFontCatalog.h"
 
 #include "UI/Gui/Element.h"
 #include "UI/Gui/Text.h"
@@ -79,12 +80,12 @@ class Gui {
     Panel *AddPanel(const char *name, VxColor color, float xPos, float yPos, float xSize,
                     float ySize);
 
-    Label *AddTextLabel(const char *name, const char *text, ExecuteBB::FontType font, float xPos,
+    Label *AddTextLabel(const char *name, const char *text, BML::GameFont font, float xPos,
                         float yPos, float xSize, float ySize);
     Text *AddText(const char *name, const char *text, float xPos, float yPos, float xSize,
                   float ySize);
     Input *AddTextInput(
-        const char *name, ExecuteBB::FontType font, float xPos, float yPos, float xSize,
+        const char *name, BML::GameFont font, float xPos, float yPos, float xSize,
         float ySize, std::function<void(CKDWORD)> callback = [](CKDWORD) {});
 
     std::pair<Button *, KeyInput *> AddKeyButton(

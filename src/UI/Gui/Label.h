@@ -5,15 +5,16 @@
 // called.
 //
 // That block is also why a Label cannot be built before the game's Level_Init script
-// exists. The fonts are the game's, chosen from ExecuteBB::FontType, and the flags from
-// SetTextFlags are the block's own, TEXT_SCREEN and the rest declared in ExecuteBB.h.
+// exists. The fonts are the game's, chosen from BML::GameFont, and the flags from
+// SetTextFlags are the block's own, BML_GUI_TEXT_SCREEN and the rest declared in BML/Gui.h.
 // SetOffset shifts the text inside the element, which is how the text on a button is
 // moved off the left edge.
 #ifndef BML_UI_GUI_HOST_LABEL_H
 #define BML_UI_GUI_HOST_LABEL_H
 
 #include "BML/Defines.h"
-#include "BML/ExecuteBB.h"
+#include "BML/Gui.h"
+#include "UI/GameFontCatalog.h"
 
 #include "UI/Gui/Element.h"
 
@@ -33,8 +34,8 @@ class Label : public Element {
     virtual const char *GetText();
     virtual void SetText(const char *text);
 
-    ExecuteBB::FontType GetFont();
-    void SetFont(ExecuteBB::FontType font);
+    BML::GameFont GetFont();
+    void SetFont(BML::GameFont font);
 
     void SetAlignment(int align);
 

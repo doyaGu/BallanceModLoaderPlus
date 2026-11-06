@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def fail(message: str) -> None:
-    raise SystemExit(f"ExecuteBB dependency check failed: {message}")
+    raise SystemExit(f"Behavior dependency check failed: {message}")
 
 
 def includes(path: Path) -> set[str]:
@@ -23,7 +23,6 @@ def main() -> None:
     root = Path(args.source_root).resolve()
     source = root / "src"
     behavior = source / "Behavior"
-    facade = source / "Api" / "ExecuteBB.cpp"
     block_names = {
         "ObjectLoad",
         "Physicalize",
@@ -34,8 +33,13 @@ def main() -> None:
         "Text2D",
     }
 
-    if not facade.is_file():
-        fail("ExecuteBB API facade is missing")
+    obsolete = ("IMod.h", "IBML.h", "IConfig.h", "ICommand.h", "ILogger.h",
+                "IMessageReceiver.h", "InputHook.h", "ExecuteBB.h", "ModInterface.hpp")
+    for name in obsolete:
+        if (root / "include" / "BML" / name).exists():
+            fail(f"obsolete public native header remains: {name}")
+    if (source / "Api" / "ExecuteBB.cpp").exists():
+        fail("the obsolete ExecuteBB export facade remains")
     public_blocks = root / "include" / "BML" / "Behavior" / "Blocks"
     for name in block_names:
         header = public_blocks / f"{name}.hpp"
@@ -65,36 +69,18 @@ def main() -> None:
         if (behavior / legacy).exists():
             fail(f"mechanism-based Behavior bucket still exists: Behavior/{legacy}")
 
-    required = {
-        "BML/ExecuteBB.h",
-        "Loader/ModContext.h",
-        "UI/GameFontCatalog.h",
-        "Api/ExecuteBBAdapter.h",
-        "Behavior/Blocks/HookBlock.h",
-        "Behavior/Block.h",
-        "BML/Behavior/Blocks.hpp",
-    }
-    missing = required - includes(facade)
-    if missing:
-        fail(
-            "ExecuteBB facade no longer crosses the declared module seams: "
-            + ", ".join(sorted(missing))
-        )
-
     forbidden_calls = re.compile(
         r"ExecuteBB::(?:Create|ObjectLoad|Physicalize|Unphysicalize|"
         r"SetPhysics|UnsetPhysics|PhysicsImpulse|PhysicsWakeUp|Init|GetFont)"
     )
     for path in source.rglob("*.cpp"):
-        if path == facade:
-            continue
         content = path.read_text(encoding="utf-8")
         if '#include "BML/ExecuteBB.h"' in content:
-            fail(f"loader implementation includes the public ExecuteBB interface: {path.relative_to(root)}")
+            fail(f"loader implementation includes the removed ExecuteBB interface: {path.relative_to(root)}")
         match = forbidden_calls.search(content)
         if match:
             fail(
-                f"loader implementation calls the public ExecuteBB facade in "
+                f"loader implementation calls the removed ExecuteBB facade in "
                 f"{path.relative_to(root)}: {match.group(0)}"
             )
     for path in behavior.rglob("*"):
