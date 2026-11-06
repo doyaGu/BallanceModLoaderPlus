@@ -78,4 +78,5 @@ for direct CK/ImGui calls. Match those extensions' exact dependency/compiler ABI
 The loader process owns the shared engine, SDL and ImGui state.
 
 The SDK templates and all twelve in-tree Mods have been ported as examples.
-Other platforms, static hosts and complete gameplay remain pending acceptance.
+Release checks and unverified-target requirements are listed in
+[the release guide](../../RELEASING.md#native-c-protocol-release-gate).

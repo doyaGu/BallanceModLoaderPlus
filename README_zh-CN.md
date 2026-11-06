@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue.svg)]()
 
 BML+ 是 [BallancePlayer](https://github.com/doyaGu/BallancePlayer) 使用的 Mod
 Loader。它可以装载原生 Mod 和 AngelScript Mod，并为这些 Mod 提供生命周期、
@@ -23,25 +23,14 @@ BML+ 只支持 BallancePlayer，不支持原版 Ballance Player。
 
 Mod 作者应使用已发布的 BML+ SDK。只有修改 BML+ 或仓库内的 Mod 时才需要构建本仓库。
 
-## 安装并确认运行正常
+## 安装与验证
 
-1. 从 [Releases](https://github.com/doyaGu/BallanceModLoaderPlus/releases)
-   下载 `BMLPlus-<version>.zip`。
-2. 将压缩包内的全部文件解压到 Ballance 安装目录。
-3. 确认 `BuildingBlocks/BMLPlus.dll` 存在。支持脚本 Mod 的发布包还包含
-   `BuildingBlocks/AngelScript.dll`。
-4. 启动 `Bin/Player.exe`。
-5. 确认游戏窗口顶部显示 BML+ 版本，再检查 `ModLoader/ModLoader.log` 中是否有
-   加载错误。
+使用匹配平台、架构的 Ballanced SDL 运行包与 BML+。原生 Mod 使用 C ABI，
+显式 Engine/ImGui 扩展另需匹配宿主依赖、编译器和运行库 ABI。
+Loader 安装在 `Managers`，CK2、VxMath 和 SDL 复用 Player 随包的库。
+详见[安装说明](docs/zh-CN/using-bml.md)。本 `sdl` 分支不包含原版 Windows 引擎后端，
+静态宿主集成仍待完成。
 
-`BMLPlus-Update-<version>.zip` 是 Updater 使用的更新载荷，不能作为手动安装包。
-手动安装、覆盖更新和修复安装都应使用完整的 `BMLPlus-<version>.zip`。
-
-`BMLPlus-Mods-<version>.zip` 是可选包：解压到游戏根目录即可安装全部仓库内
-Mod，也可以只取其中 `ModLoader/Mods/` 下需要的包。主安装包只包含原有的三个
-默认工具 Mod。
-
-在游戏中按 `/` 打开命令栏。输入 `bml` 可以查看 Loader 版本和已加载的 Mod。
 
 ## 项目链接
 

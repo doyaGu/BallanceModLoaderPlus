@@ -3,6 +3,17 @@
 编写 Mod 时应使用已发布的 BML+ SDK。只有修改 Loader、SDK、脚本宿主或内建服务时
 才需要构建 BML+ 仓库。
 
+SDL 游戏须选择匹配平台、架构的 SDK。Linux、macOS 使用
+`<BML-SDK>/scripts/bml` 和 `./bml`，Windows 继续使用 `bml.cmd`。SDL 原生流程
+采用 SDK 的 ABI 描述与构建配置、平台 CMake 生成器；使用 Engine/ImGui 扩展时
+才需匹配的 CK2/VxMath/SDL3 开发包及编译器/运行库。不询问原版 Virtools SDK。`--package-root` 可添加依赖前缀，`--generator`
+可指定生成器。部署前核对 SDK 和游戏的 ABI 描述。支持 `Bin/Player` 标准布局和
+扁平 `Player` 布局，`--ballance-root` 填写游戏根目录。
+
+SDL 原生 `pack` 生成同时包含 `.bmodp` 与必需的 `.bmodp.abi.json` 的 ZIP。将 ZIP
+路径和单个 `.bmodp` 发布流程继续保留。SDL 静态宿主集成与其他目标的游戏功能
+验收仍待完成。
+
 不确定选择哪条路线时，先从脚本 Mod 开始。它不需要 C++ 构建，并具有最短的编辑、
 热重载和诊断循环。只有明确需要原生 Hook、原生内存、调用线程 RPC Handler 或
 性能敏感循环时，再进入原生路线。
@@ -12,7 +23,6 @@
 | 路线 | 适用场景 | 主要代价 |
 | --- | --- | --- |
 | 脚本 Mod | 希望快速修改和测试，需要命令、配置、UI、玩法脚本、CKAngelScript 引擎访问，或不经 C++ 使用生成式 IMC Client/Provider。 | IMC 回调固定在游戏线程；不应承担不安全 Hook 或性能敏感的原生循环。 |
-| 原生 Mod | 需要 C++20、直接 Virtools 集成、原生 Hook、调用线程 IMC 执行，或必须严格控制热路径。 | 需要兼容 MSVC ABI 的 Win32 构建，并明确处理 DLL ABI 和所有权。 |
 | 原生插件加 CKAngelScript 扩展 | 脚本必须直接借用插件专有的原生对象，或调用无法表示为 IMC Record 的引擎原语。 | 原生插件必须通过 CKAngelScript 注册并维护该脚本接口。 |
 
 不要在 BML 中重新封装一套 CKAngelScript 已有的 Scene、Behavior、Component、
@@ -78,37 +88,13 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
    .\bml run
    ```
 
-   首次运行会询问 Virtools SDK 和 Ballance 目录。之后会选择本机最新的 Visual
-   Studio 生成器，配置 Win32，构建并部署
-   `RelWithDebInfo`，启动 Player，并在退出后只打印这个 Mod 本次新增的日志。两个
-   路径和生成器会缓存到已忽略的 `.bml/settings.json`；之后只需运行 `.\bml run`。
-3. 修改生成的源码，然后重复同一条命令。interface provider 修改
-   `api/*.bml-interface`；确认兼容变化后运行 `.\bml interface update`。生成的头文件
-   不需要手工维护。
-4. 原生接口会让 C++ 对象
-   跨越 DLL 边界，因此原生 Mod 必须与装载它的 Loader 链接同一套 MSVC 运行库。
-   `BMLPlus-<version>.zip` 中的运行时基于 Release 版 MSVC 运行库构建，Debug
-   `.bmodp` 与之不具备 ABI 兼容性；`RelWithDebInfo` 在使用兼容运行库的同时保留调试
-   信息。`bml_add_mod` 会把 Mod 的运行库固定为所配置 SDK 使用的那一套，并在
-   `CMAKE_MSVC_RUNTIME_LIBRARY` 与之冲突时直接让配置失败，所以两者不会在无声中错位。
-   `BMLPlus-SDK-<version>-Debug.zip` 是受支持的例外。它包含 Debug 版
-   `bin/BMLPlus.dll` 及其 `.pdb`，只要同时用这个 Debug Loader 覆盖
-   `BuildingBlocks/BMLPlus.dll`，Debug Mod 就是有效的。Loader 和所有已安装的原生
-   Mod 必须处于同一侧；测试待发布产物前要换回 Release 版 Loader。
-5. 发布前运行 `.\bml run --configuration Release` 并测试该产物，然后运行
-   `.\bml pack` 将 Release `.bmodp` 复制到 `dist`。只有在 CI 或排查构建系统本身时，
-   才需要使用生成 README 中的手工 CMake 命令。
-
-SDK 的 CMake 入口为：
-
-```cmake
-find_package(BML CONFIG REQUIRED)
-bml_add_mod(MyMod MyMod.cpp)
-bml_install_mod(MyMod)
-```
-
-增加所有权、回调、UI 或跨 Mod 服务前，先阅读[原生 Mod API 总览](native-mod-api.md)；
-某项能力有不止一种写法时，参见[原生 API 该走哪条路](native-api-routes.md)。
+   工具使用 SDK 中记录的 ABI 与构建配置，构建 Mod 与 ABI 描述，部署到
+   Player 并启动游戏。POSIX 使用 `./bml`，Windows 使用 `bml.cmd`。
+   额外的引擎或接口开发包通过 `--package-root` 传入。
+3. 修改生成的源码，再次运行 `bml run`。
+4. 核心 C ABI Mod 可使用兼容的独立 C++ 运行库；显式使用 Engine/ImGui 扩展时，
+   编译器、依赖 ABI、运行库与配置必须匹配。macOS 的 SDL 依赖与签名由
+   SDK 在构建时完成，部署时原样复制产物。
 
 ## 两条路线共同遵守的规则
 
@@ -146,8 +132,8 @@ BML 回调和同步 IMC handler 通常在游戏线程执行。稳定的查询结
 
 ## 发布
 
-- 原生 Mod 通常发布为 `.bmodp`，并同时导出 `BMLEntry(IBML*)` 和
-  `BMLExit(IMod*)`。
+- 原生 Mod 导出 `BML_GetModInterface`，同时分发 `.bmodp` 和
+  `.bmodp.abi.json`，通常放在同一个 ZIP 中。
 - 脚本 Mod 发布为单个 `*.mod.as` 文件，或包含且只包含一个入口的 zip；
   `.bmodp` 只属于原生 Mod。
 - 测试实际发布的产物，而不只是开发目录或 `RelWithDebInfo` 构建。

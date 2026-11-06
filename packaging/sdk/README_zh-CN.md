@@ -4,72 +4,52 @@
 
 这个压缩包用于开发 Mod，不是 BML+ 运行时包，不能直接解压到 Ballance 游戏目录。
 
-## 选择开发路线
+## Windows、Linux 和 macOS 上的 SDL SDK
 
-### 脚本 Mod
+SDK 必须匹配游戏的运行时、平台、架构、宿主链接方式、编译器、C++ 标准库和运行库。
+SDL CLI 目前支持动态宿主。
 
-除非明确需要原生 Hook、原生内存访问、生成式 IMC Provider 或性能敏感的原生循环，
-否则先从脚本 Mod 开始。
+Linux 和 macOS 使用 Python 3.10+ 及有执行权限的 POSIX 入口：
 
-1. 打开 [`share/BML/docs/zh-CN/modding.md`](share/BML/docs/zh-CN/modding.md)。
-2. 在平常保存源码的工作区中创建 Mod；省略名称和作者时会自动推导：
+```sh
+"<BML-SDK>/scripts/bml" new native yourname.my-mod
+cd MyMod
+./bml build
+./bml run --ballance-root "/path/to/game"
+./bml pack
+```
 
-   ```bat
-   "<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
-   ```
+脚本项目改用 `new script`，其余命令一致。Windows 继续使用 `bml.cmd`。
+SDL 原生构建默认采用 `share/BML/BML.abi.json` 中的配置，需要匹配的 CK2、VxMath
+和 SDL3 开发包，不使用原版 Virtools SDK。额外依赖的安装前缀可用 `--package-root`
+传入。POSIX 默认选择 Ninja 或 Unix Makefiles，Windows 默认选择 Visual Studio；
+可用 `--generator` 指定其他生成器。在首次构建前用 `CXX` 选择匹配的编译器。
+Windows 使用非 Visual Studio 生成器时，需要先初始化编译器环境。
 
-3. 进入项目并运行 `bml run`。首次运行会询问 Ballance 目录、部署受管副本、启动
-   Player，并持续同步源码以保留热重载。运行 `bml pack` 会生成
-   `dist/<项目名>.zip`。
+游戏路径填写根目录。支持 `Bin/Player`（Windows 为 `Bin/Player.exe`），以及与
+`base.cmo` 并列的扁平 `Player`。运行时须有 `ModLoader/BML.abi.json`；原生部署会
+在替换文件前核对其与 SDK 的兼容性。脚本运行要求 `Managers` 中的 BML 和
+`BuildingBlocks` 中的 CKAngelScript，文件名采用对应平台的动态库格式。
 
-需要自行编写自动化流程时，也可以手动复制
-[`templates/script-mod-template`](templates/script-mod-template)。
+`build` 同时准备 `.bmodp` 和 `.bmodp.abi.json`。SDL 的 `pack` 生成包含两者的 ZIP，
+采用原子替换，并用 `--force` 防止意外覆盖。将 ZIP 放入 `ModLoader/Mods`，也可
+同时复制两个构建产物；缺少 ABI 描述的 SDL `.bmodp` 会被拒绝。SDK 可移动目录；不要将 SDK 的引擎库复制进
+现有游戏安装。
 
-模板运行成功后，从 [`examples/script-mod`](examples/script-mod) 复制一个目录，
-通过可运行示例学习命令与配置、输入与界面或游戏状态访问。
+SDL Mod 复用 Player 随包的 SDL，macOS SDL 构建需要 CMake 3.19 或更新版本。
+macOS 上，即使开发环境 SDL 使用绝对安装路径，
+`bml_add_mod` 也会在链接后将 Mod 的 SDL 依赖改为 `@rpath` 并更新临时签名。
+构建出的 `.bmodp` 可直接复制到 `ModLoader/Mods`；部署时无需修改二进制，也不要
+另外携带 SDL。需要发行签名时，请在构建完成后使用自己的签名身份签名。
 
-存在 `templates/script-mod-template` 和 `docs/api/as.predefined` 时，表示该 SDK
-包含脚本支持。`as.predefined` 只供编辑器补全使用，不是运行时脚本。
+## CMake
 
-### 原生 Mod
+```cmake
+find_package(BML CONFIG REQUIRED)
+bml_add_mod(MyMod src/MyMod.cpp)
+bml_install_mod(MyMod)
+```
 
-只有确实需要 C++、Virtools SDK 或生成式 IMC 服务时才选择原生路线。
-
-1. 打开 [`share/BML/docs/zh-CN/modding.md`](share/BML/docs/zh-CN/modding.md)。
-2. 在源码工作区中创建项目；省略名称和作者时会自动推导：
-
-   ```bat
-   "<BML-SDK>\scripts\bml.cmd" new native yourname.my-mod
-   ```
-
-3. 进入项目后运行完整开发循环；首次运行后会在本地记住路径：
-
-   ```bat
-   .\bml run
-   ```
-
-   首次运行会询问 Virtools SDK 和 Ballance 目录并记住答案。之后会自动构建、部署、
-   启动 Player，并在退出后只显示这个 Mod 本次新增的日志。
-
-也可以手动复制 [`templates/native-mod-template`](templates/native-mod-template)。
-
-需要发布仅限原生侧使用的 provider interface 时，参见两个独立工程：
-[`examples/native-interface-provider`](examples/native-interface-provider) 和
-[`examples/native-interface-consumer`](examples/native-interface-consumer)。提供方使用
-`bml_add_interface_package`；使用方只取得安装后的头文件 target，不链接提供方二进制。
-
-## 目录用途
-
-| 路径 | 用途 |
-| --- | --- |
-| `templates/` | 可直接运行的起始项目 |
-| `examples/` | 聚焦单一主题的后续示例 |
-| `share/BML/docs/en/` | 英文 Mod 开发文档 |
-| `share/BML/docs/zh-CN/` | 中文 Mod 开发文档 |
-| `docs/api/` | 启用脚本支持时提供的 AngelScript 编辑器声明 |
-| `include/`、`lib/` | 原生头文件、库和 CMake package |
-| `share/BML/tools/` | 原生 interface 与 IMC 代码生成器 |
-| `scripts/` | 统一的原生与脚本 Mod Developer Workflow |
-
-安装 BML+ 到游戏时应使用运行时发布包 `BMLPlus-<version>.zip`，不能使用 SDK
-压缩包代替运行时包。
+Use `basic`, `interface-provider`, `interface-consumer`, or `imc-provider` with
+`bml new native --profile`. Script projects use `bml new script`.
+The full guides are installed under `share/BML/docs`.
