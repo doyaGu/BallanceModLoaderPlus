@@ -1,4 +1,4 @@
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 
 #include <array>
 #include <cmath>
@@ -28,7 +28,7 @@
 #include "UI/Overlay.h"
 #endif
 
-namespace Bui {
+namespace BuiHost {
     void LockNavigationKeyUntilRelease(ImGuiKey key) {
         if (!ImGui::GetCurrentContext() || !ImGui::IsNamedKey(key))
             return;
@@ -260,8 +260,9 @@ namespace Bui {
         if (token == 0)
             return;
 
-        it->second.pendingReleases.insert(token);
-        context->AddTimerLoop(CKDWORD{1}, [ckContext, context, token] {
+        try {
+            it->second.pendingReleases.insert(token);
+            context->AddTimerLoop(CKDWORD{1}, [ckContext, context, token] {
             const auto state = KeyboardInputBlocks.find(ckContext);
             if (state == KeyboardInputBlocks.end() || !state->second.pendingReleases.contains(token))
                 return false;
@@ -277,7 +278,17 @@ namespace Bui {
             if (!state->second.HasUsers() && state->second.pendingReleases.empty())
                 KeyboardInputBlocks.erase(state);
             return false;
-        });
+            });
+        } catch (...) {
+            // A delayed release is a convenience, not a reason to lose the
+            // last token when scheduling or bookkeeping allocation fails.
+            if (auto *input = context->GetInputManager()) input->ReleaseBlock(token);
+            if (const auto state = KeyboardInputBlocks.find(ckContext); state != KeyboardInputBlocks.end()) {
+                state->second.pendingReleases.erase(token);
+                if (!state->second.HasUsers() && state->second.pendingReleases.empty()) KeyboardInputBlocks.erase(state);
+            }
+            throw;
+        }
     }
 
     static void ResetKeyboardInputBlocks(CKContext *ckContext) {
@@ -1097,6 +1108,14 @@ namespace Bui {
         return pressed;
     }
 
+    bool DrawButton(ButtonType type, const char *label, bool *selected, ImGuiButtonFlags flags) {
+        if (type == BUTTON_LEVEL || type == BUTTON_SMALL)
+            return SelectableTextImageButton(label, label, type, selected, flags);
+        if (type >= BUTTON_LEFT)
+            return ImageButton(label, type, flags);
+        return TextImageButton(label, label, type, flags);
+    }
+
     bool MainButton(const char *label, ImGuiButtonFlags flags) {
         return TextImageButton(label, label, BUTTON_MAIN, flags);
     }
@@ -1828,23 +1847,37 @@ namespace Bui {
         }
     }
 
-    void BlockKeyboardInput(const void *owner) {
+    bool BlockKeyboardInput(const void *owner) {
         if (!owner) {
-            BlockKeyboardInput();
-            return;
+            return false;
         }
         ModContext *context = BML_GetModContext();
         CKContext *ckContext = context ? context->GetCKContext() : nullptr;
         if (!ckContext)
-            return;
+            return false;
         KeyboardInputBlockState &state = KeyboardInputBlocks[ckContext];
         state.context = context;
         if (state.owners.contains(owner))
-            return;
-        if (KeyboardInputBlockState *acquired = AcquireKeyboardInputBlock()) {
-            acquired->owners.insert(owner);
-            CaptureNavigationKeys(*acquired);
+            return true;
+        // Allocate the share before acquiring a token. Publication cannot fail
+        // after the game keyboard has been blocked.
+        state.owners.insert(owner);
+        try {
+            if (KeyboardInputBlockState *acquired = AcquireKeyboardInputBlock()) {
+                CaptureNavigationKeys(*acquired);
+                return true;
+            }
+        } catch (...) {
+            if (const auto it = KeyboardInputBlocks.find(ckContext); it != KeyboardInputBlocks.end()) {
+                it->second.owners.erase(owner);
+                if (!it->second.HasUsers()) {
+                    if (auto *input = context->GetInputManager()) input->ReleaseBlock(it->second.token);
+                    it->second.token = 0;
+                }
+            }
+            throw;
         }
+        return false;
     }
 
     void ActivateScript(const char *scriptName) {

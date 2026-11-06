@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "Console/CommandBarTheme.h"
 #include "Console/CommandInput.h"
 #include "Console/ConsoleLayout.h"
@@ -20,7 +20,7 @@
 #include "Console/Shell/ShellHighlighter.h"
 #include "Console/Shell/ShellHistory.h"
 
-class CommandBar : public Bui::Window {
+class CommandBar : public BuiHost::Window {
 public:
     struct Features {
         bool syntaxHighlighting = true;

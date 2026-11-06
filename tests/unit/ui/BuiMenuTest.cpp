@@ -6,10 +6,10 @@
 
 #include <gtest/gtest.h>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "UI/ImGuiStateRecovery.h"
 
-namespace Bui {
+namespace BuiHost {
 
 bool NavLeft(float, float) { return false; }
 bool NavRight(float, float) { return false; }
@@ -89,16 +89,16 @@ public:
 
 private:
     // Declared last: routes and Pages are destroyed before hooks/counters.
-    Bui::Menu m_Routes;
+    BuiHost::Menu m_Routes;
 };
 
 struct PageState {
-    using EnterHandler = std::function<void(Bui::PageEnterReason)>;
-    using FrameHandler = std::function<Bui::PageAction()>;
-    using LeaveHandler = std::function<void(Bui::PageLeaveReason)>;
+    using EnterHandler = std::function<void(BuiHost::PageEnterReason)>;
+    using FrameHandler = std::function<BuiHost::PageAction()>;
+    using LeaveHandler = std::function<void(BuiHost::PageLeaveReason)>;
 
-    std::vector<Bui::PageEnterReason> EnterReasons;
-    std::vector<Bui::PageLeaveReason> LeaveReasons;
+    std::vector<BuiHost::PageEnterReason> EnterReasons;
+    std::vector<BuiHost::PageLeaveReason> LeaveReasons;
     EnterHandler Enter;
     FrameHandler Frame;
     LeaveHandler Leave;
@@ -121,7 +121,7 @@ private:
     PageState &m_State;
 };
 
-class ProbePage final : public Bui::Page {
+class ProbePage final : public BuiHost::Page {
 public:
     explicit ProbePage(PageState &state) : m_State(state) {}
 
@@ -131,20 +131,20 @@ public:
         ++m_State.DestructionCount;
     }
 
-    void OnEnter(Bui::PageEnterReason reason) override {
+    void OnEnter(BuiHost::PageEnterReason reason) override {
         CallbackScope scope(m_State);
         m_State.EnterReasons.push_back(reason);
         if (m_State.Enter)
             m_State.Enter(reason);
     }
 
-    Bui::PageAction OnFrame() override {
+    BuiHost::PageAction OnFrame() override {
         CallbackScope scope(m_State);
         ++m_State.FrameCount;
-        return m_State.Frame ? m_State.Frame() : Bui::PageAction::None();
+        return m_State.Frame ? m_State.Frame() : BuiHost::PageAction::None();
     }
 
-    void OnLeave(Bui::PageLeaveReason reason) override {
+    void OnLeave(BuiHost::PageLeaveReason reason) override {
         CallbackScope scope(m_State);
         m_State.LeaveReasons.push_back(reason);
         if (m_State.Leave)
@@ -155,18 +155,18 @@ private:
     PageState &m_State;
 };
 
-class ThrowingWindow final : public Bui::Window {
+class ThrowingWindow final : public BuiHost::Window {
 public:
-    ThrowingWindow() : Bui::Window("Throwing Bui Window") {}
+    ThrowingWindow() : BuiHost::Window("Throwing Bui Window") {}
 
     void OnDraw() override {
         throw std::runtime_error("draw failed");
     }
 };
 
-class ThrowingPreBeginWindow final : public Bui::Window {
+class ThrowingPreBeginWindow final : public BuiHost::Window {
 public:
-    ThrowingPreBeginWindow() : Bui::Window("Throwing Bui Pre-Begin Window") {}
+    ThrowingPreBeginWindow() : BuiHost::Window("Throwing Bui Pre-Begin Window") {}
 
     void OnPreBegin() override {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -176,9 +176,9 @@ public:
     void OnDraw() override {}
 };
 
-class ThrowingLifecycleWindow final : public Bui::Window {
+class ThrowingLifecycleWindow final : public BuiHost::Window {
 public:
-    ThrowingLifecycleWindow() : Bui::Window("Throwing Bui Lifecycle Window") {}
+    ThrowingLifecycleWindow() : BuiHost::Window("Throwing Bui Lifecycle Window") {}
 
     void OnPostBegin() override {
         ++PostBeginCount;
@@ -204,7 +204,7 @@ public:
 };
 
 TEST(BuiPaginationTest, OwnsAndClampsOnlyListPosition) {
-    Bui::Pagination pagination;
+    BuiHost::Pagination pagination;
 
     pagination.Update(25, 10);
     EXPECT_EQ(pagination.GetPageCount(), 3);
@@ -254,15 +254,15 @@ TEST(BuiMenuTest, NavigationPairsLifecycleAndKeepsOneSession) {
     EXPECT_EQ(menu.CloseCount, 1);
 
     EXPECT_EQ(first.EnterReasons,
-              (std::vector<Bui::PageEnterReason>{Bui::PageEnterReason::Open,
-                                                  Bui::PageEnterReason::Back}));
+              (std::vector<BuiHost::PageEnterReason>{BuiHost::PageEnterReason::Open,
+                                                  BuiHost::PageEnterReason::Back}));
     EXPECT_EQ(first.LeaveReasons,
-              (std::vector<Bui::PageLeaveReason>{Bui::PageLeaveReason::Push,
-                                                  Bui::PageLeaveReason::Close}));
+              (std::vector<BuiHost::PageLeaveReason>{BuiHost::PageLeaveReason::Push,
+                                                  BuiHost::PageLeaveReason::Close}));
     EXPECT_EQ(second.EnterReasons,
-              (std::vector<Bui::PageEnterReason>{Bui::PageEnterReason::Push}));
+              (std::vector<BuiHost::PageEnterReason>{BuiHost::PageEnterReason::Push}));
     EXPECT_EQ(second.LeaveReasons,
-              (std::vector<Bui::PageLeaveReason>{Bui::PageLeaveReason::Back}));
+              (std::vector<BuiHost::PageLeaveReason>{BuiHost::PageLeaveReason::Back}));
 }
 
 TEST(BuiMenuTest, DestroyingAnOpenControllerClosesBeforeDestroyingPages) {
@@ -274,7 +274,7 @@ TEST(BuiMenuTest, DestroyingAnOpenControllerClosesBeforeDestroyingPages) {
         menu.CloseHook = [&] {
             ++closeCount;
             EXPECT_EQ(state.LeaveReasons,
-                      (std::vector<Bui::PageLeaveReason>{Bui::PageLeaveReason::Close}));
+                      (std::vector<BuiHost::PageLeaveReason>{BuiHost::PageLeaveReason::Close}));
             EXPECT_EQ(state.DestructionCount, 0);
         };
 
@@ -291,8 +291,8 @@ TEST(BuiMenuTest, DestructionContinuesWhenLeaveAndCloseCallbacksThrow) {
     PageState state;
     int closeCount = 0;
 
-    state.Leave = [](Bui::PageLeaveReason reason) {
-        EXPECT_EQ(reason, Bui::PageLeaveReason::Close);
+    state.Leave = [](BuiHost::PageLeaveReason reason) {
+        EXPECT_EQ(reason, BuiHost::PageLeaveReason::Close);
         throw std::runtime_error("leave failed");
     };
 
@@ -310,7 +310,7 @@ TEST(BuiMenuTest, DestructionContinuesWhenLeaveAndCloseCallbacksThrow) {
 
     EXPECT_EQ(closeCount, 1);
     EXPECT_EQ(state.LeaveReasons,
-              (std::vector<Bui::PageLeaveReason>{Bui::PageLeaveReason::Close}));
+              (std::vector<BuiHost::PageLeaveReason>{BuiHost::PageLeaveReason::Close}));
     EXPECT_EQ(state.DestructionCount, 1);
     EXPECT_FALSE(state.DestroyedDuringCallback);
 }
@@ -336,7 +336,7 @@ TEST(BuiMenuTest, DirectMutationIsRejectedInsidePageCallbacks) {
     PageState current;
     PageState other;
     TestMenu menu;
-    current.Enter = [&](Bui::PageEnterReason) {
+    current.Enter = [&](BuiHost::PageEnterReason) {
         EXPECT_FALSE(menu.RemovePage("current"));
         EXPECT_FALSE(menu.Open("other"));
         EXPECT_FALSE(menu.Close());
@@ -375,8 +375,8 @@ TEST(BuiMenuTest, SessionCallbacksCannotReenterTheRouteController) {
 TEST(BuiMenuTest, RemovingCurrentPageLeavesBeforeDestroyingIt) {
     PageState state;
     TestMenu menu;
-    state.Leave = [&](Bui::PageLeaveReason reason) {
-        EXPECT_EQ(reason, Bui::PageLeaveReason::Remove);
+    state.Leave = [&](BuiHost::PageLeaveReason reason) {
+        EXPECT_EQ(reason, BuiHost::PageLeaveReason::Remove);
         EXPECT_EQ(state.DestructionCount, 0);
         EXPECT_FALSE(menu.RemovePage("self"));
     };
@@ -389,7 +389,7 @@ TEST(BuiMenuTest, RemovingCurrentPageLeavesBeforeDestroyingIt) {
     EXPECT_FALSE(state.DestroyedDuringCallback);
     EXPECT_EQ(state.DestructionCount, 1);
     EXPECT_EQ(state.LeaveReasons,
-              (std::vector<Bui::PageLeaveReason>{Bui::PageLeaveReason::Remove}));
+              (std::vector<BuiHost::PageLeaveReason>{BuiHost::PageLeaveReason::Remove}));
     EXPECT_EQ(menu.OpenCount, 1);
     EXPECT_EQ(menu.CloseCount, 1);
 }
@@ -398,7 +398,7 @@ TEST(BuiMenuTest, FrameActionRunsAfterDrawingAndCanRemoveItsPage) {
     ScopedImGuiContext imgui;
     PageState state;
     TestMenu menu;
-    state.Frame = [] { return Bui::PageAction::RemoveSelf(); };
+    state.Frame = [] { return BuiHost::PageAction::RemoveSelf(); };
     ASSERT_TRUE(menu.CreatePage<ProbePage>("self", state));
     ASSERT_TRUE(menu.Open("self"));
     ASSERT_EQ(menu.OpenCount, 1);
@@ -413,7 +413,7 @@ TEST(BuiMenuTest, FrameActionRunsAfterDrawingAndCanRemoveItsPage) {
     EXPECT_EQ(state.DestructionCount, 1);
     EXPECT_EQ(state.FrameCount, 1);
     EXPECT_EQ(state.LeaveReasons,
-              (std::vector<Bui::PageLeaveReason>{Bui::PageLeaveReason::Remove}));
+              (std::vector<BuiHost::PageLeaveReason>{BuiHost::PageLeaveReason::Remove}));
     EXPECT_EQ(menu.CloseCount, 1);
 }
 
@@ -433,7 +433,7 @@ TEST(BuiMenuTest, RemovingAHistoryPageCannotLeaveADanglingRoute) {
     ASSERT_TRUE(menu.Back());
     EXPECT_FALSE(menu.IsOpen());
     EXPECT_EQ(second.LeaveReasons,
-              (std::vector<Bui::PageLeaveReason>{Bui::PageLeaveReason::Back}));
+              (std::vector<BuiHost::PageLeaveReason>{BuiHost::PageLeaveReason::Back}));
     EXPECT_EQ(menu.CloseCount, 1);
 }
 
@@ -457,7 +457,7 @@ TEST(BuiMenuTest, HistoryLimitRejectsNavigationWithoutLeavingCurrentPage) {
 TEST(BuiMenuTest, LifecycleExceptionsLeaveACoherentRouteState) {
     PageState state;
     TestMenu menu;
-    state.Enter = [](Bui::PageEnterReason) {
+    state.Enter = [](BuiHost::PageEnterReason) {
         throw std::runtime_error("enter failed");
     };
     ASSERT_TRUE(menu.CreatePage<ProbePage>("page", state));
@@ -468,7 +468,7 @@ TEST(BuiMenuTest, LifecycleExceptionsLeaveACoherentRouteState) {
 
     state.Enter = {};
     ASSERT_TRUE(menu.Open("page"));
-    state.Leave = [](Bui::PageLeaveReason) {
+    state.Leave = [](BuiHost::PageLeaveReason) {
         throw std::runtime_error("leave failed");
     };
 
@@ -486,7 +486,7 @@ TEST(BuiMenuTest, RenderReportsAnInvalidPageActionWithoutChangingRoute) {
     ScopedImGuiContext imgui;
     PageState state;
     TestMenu menu;
-    state.Frame = [] { return Bui::PageAction::Push("missing"); };
+    state.Frame = [] { return BuiHost::PageAction::Push("missing"); };
     ASSERT_TRUE(menu.CreatePage<ProbePage>("current", state));
     ASSERT_TRUE(menu.Open("current"));
 
@@ -502,7 +502,7 @@ TEST(BuiMenuTest, RenderRestoresImGuiWindowScopeWhenPageThrows) {
     ScopedImGuiContext imgui;
     PageState state;
     TestMenu menu;
-    state.Frame = []() -> Bui::PageAction {
+    state.Frame = []() -> BuiHost::PageAction {
         throw std::runtime_error("draw failed");
     };
     ASSERT_TRUE(menu.CreatePage<ProbePage>("throwing", state));

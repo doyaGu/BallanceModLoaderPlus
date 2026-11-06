@@ -12,7 +12,7 @@
 #include <utility>
 #include <type_traits>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "UI/AnsiText.h"
 
 // Constants
@@ -590,7 +590,7 @@ private:
     std::shared_ptr<HUDElement> DetachChild(size_t index);
 };
 
-class HUD : public Bui::Window {
+class HUD : public BuiHost::Window {
 public:
     HUD();
     ~HUD() override;

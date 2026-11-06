@@ -845,16 +845,16 @@ void CommandBar::ToggleCommandBar(bool on) {
         if (IsVisible())
             return;
         Show();
-        Bui::BlockKeyboardInput(this);
+        BuiHost::BlockKeyboardInput(this);
     } else {
         if (!IsVisible())
             return;
         Hide();
-        if (ImGuiContext *context = Bui::GetImGuiContext()) {
-            Bui::ImGuiContextScope scope(context);
+        if (ImGuiContext *context = BuiHost::GetImGuiContext()) {
+            BuiHost::ImGuiContextScope scope(context);
             ImGui::SetWindowFocus(nullptr);
         }
-        Bui::UnblockKeyboardAfterRelease(this);
+        BuiHost::UnblockKeyboardAfterRelease(this);
     }
 }
 

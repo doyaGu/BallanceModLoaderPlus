@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 
 #include "UI/BuiInternal.h"
 #include "ModMenu/ModMenuModel.h"
@@ -34,22 +34,22 @@ namespace {
         std::string notice;
     };
 
-    class ModListPage final : public Bui::Page {
+    class ModListPage final : public BuiHost::Page {
     public:
         ModListPage(ModMenuModel &model, ModMenuPresentation &presentation)
             : m_Model(model), m_Presentation(presentation) {}
 
     protected:
-        void OnEnter(Bui::PageEnterReason reason) override {
-            if (reason == Bui::PageEnterReason::Back)
+        void OnEnter(BuiHost::PageEnterReason reason) override {
+            if (reason == BuiHost::PageEnterReason::Back)
                 m_Model.ClearSelection();
         }
 
-        Bui::PageAction OnFrame() override {
+        BuiHost::PageAction OnFrame() override {
             const ModMenuRouteAction action = m_Presentation.DrawModListPage(m_Model);
             if (action == ModMenuRouteAction::OpenDetails)
-                return Bui::PageAction::Push(ModDetailsRoute);
-            return action == ModMenuRouteAction::Back ? Bui::PageAction::Back() : Bui::PageAction::None();
+                return BuiHost::PageAction::Push(ModDetailsRoute);
+            return action == ModMenuRouteAction::Back ? BuiHost::PageAction::Back() : BuiHost::PageAction::None();
         }
 
     private:
@@ -57,24 +57,24 @@ namespace {
         ModMenuPresentation &m_Presentation;
     };
 
-    class ModDetailsPage final : public Bui::Page {
+    class ModDetailsPage final : public BuiHost::Page {
     public:
         ModDetailsPage(ModMenuModel &model, ModMenuPresentation &presentation)
             : m_Model(model), m_Presentation(presentation) {}
 
     protected:
-        Bui::PageAction OnFrame() override {
+        BuiHost::PageAction OnFrame() override {
             const ModMenuRouteAction action = m_Presentation.DrawDetailsPage(m_Model);
             if (action == ModMenuRouteAction::OpenSettings)
-                return Bui::PageAction::Push(ModSettingsRoute);
+                return BuiHost::PageAction::Push(ModSettingsRoute);
             if (action == ModMenuRouteAction::OpenPage) {
                 const ModMenuOwner *owner = m_Model.GetSession().GetSelectedMod();
                 const ModMenuDetailsActionDocument *selected = m_Model.GetSelectedDetailsAction();
                 const auto *page = selected ? std::get_if<ModMenuPageInfo>(selected) : nullptr;
                 if (owner && page)
-                    return Bui::PageAction::Push(PageRoute(*owner, page->key));
+                    return BuiHost::PageAction::Push(PageRoute(*owner, page->key));
             }
-            return action == ModMenuRouteAction::Back ? Bui::PageAction::Back() : Bui::PageAction::None();
+            return action == ModMenuRouteAction::Back ? BuiHost::PageAction::Back() : BuiHost::PageAction::None();
         }
 
     private:
@@ -82,15 +82,15 @@ namespace {
         ModMenuPresentation &m_Presentation;
     };
 
-    class ModSettingsPage final : public Bui::Page {
+    class ModSettingsPage final : public BuiHost::Page {
     public:
         ModSettingsPage(ModMenuModel &model, ModMenuPresentation &presentation)
             : m_Model(model), m_Presentation(presentation) {}
 
     protected:
-        Bui::PageAction OnFrame() override {
+        BuiHost::PageAction OnFrame() override {
             const ModMenuRouteAction action = m_Presentation.DrawSettingsPage(m_Model);
-            return action == ModMenuRouteAction::Back ? Bui::PageAction::Back() : Bui::PageAction::None();
+            return action == ModMenuRouteAction::Back ? BuiHost::PageAction::Back() : BuiHost::PageAction::None();
         }
 
     private:
@@ -98,7 +98,7 @@ namespace {
         ModMenuPresentation &m_Presentation;
     };
 
-    class ModPage final : public Bui::Page {
+    class ModPage final : public BuiHost::Page {
     public:
         ModPage(ModMenuModel &model, ModMenuPresentation &presentation,
                 PageNavigationState &navigation, ModMenuOwner owner,
@@ -108,19 +108,19 @@ namespace {
               m_Page(std::move(page)), m_Route(PageRoute(m_Owner, m_Page.key)) {}
 
     protected:
-        void OnEnter(Bui::PageEnterReason reason) override {
+        void OnEnter(BuiHost::PageEnterReason reason) override {
             m_Navigation.notice.clear();
             BML_ModMenuPageEnterReason pageReason = BML_MOD_MENU_PAGE_ENTER_PUSH;
-            if (reason == Bui::PageEnterReason::Back)
+            if (reason == BuiHost::PageEnterReason::Back)
                 pageReason = BML_MOD_MENU_PAGE_ENTER_BACK;
-            else if (reason == Bui::PageEnterReason::Replace)
+            else if (reason == BuiHost::PageEnterReason::Replace)
                 pageReason = BML_MOD_MENU_PAGE_ENTER_REPLACE;
             m_Entered = m_Model.EnterPage(m_Owner, m_Page.key, pageReason) == BML_OK;
             m_Status = m_Entered ? ModMenuPageStatus::Ready
                                  : ModMenuPageStatus::EnterFailed;
         }
 
-        Bui::PageAction OnFrame() override {
+        BuiHost::PageAction OnFrame() override {
             const ModMenuPagePresentationResult result =
                 m_Presentation.DrawPage(m_Model, m_Owner, m_Page,
                                         m_Status, m_Navigation.notice);
@@ -129,17 +129,17 @@ namespace {
                 m_Navigation.pending.sourceRoute = m_Route;
                 m_Navigation.pending.navigation = result.navigation;
             }
-            return Bui::PageAction::None();
+            return BuiHost::PageAction::None();
         }
 
-        void OnLeave(Bui::PageLeaveReason reason) override {
+        void OnLeave(BuiHost::PageLeaveReason reason) override {
             if (m_Entered) {
                 BML_ModMenuPageLeaveReason pageReason = BML_MOD_MENU_PAGE_LEAVE_CLOSE;
-                if (reason == Bui::PageLeaveReason::Back)
+                if (reason == BuiHost::PageLeaveReason::Back)
                     pageReason = BML_MOD_MENU_PAGE_LEAVE_BACK;
-                else if (reason == Bui::PageLeaveReason::Push)
+                else if (reason == BuiHost::PageLeaveReason::Push)
                     pageReason = BML_MOD_MENU_PAGE_LEAVE_PUSH;
-                else if (reason == Bui::PageLeaveReason::Replace)
+                else if (reason == BuiHost::PageLeaveReason::Replace)
                     pageReason = BML_MOD_MENU_PAGE_LEAVE_REPLACE;
                 (void) m_Model.LeavePage(m_Owner, m_Page.key, pageReason);
             }
@@ -194,7 +194,7 @@ struct ModMenu::State {
         if (routes.IsOpen() || openPending)
             return true;
 
-        Bui::BlockKeyboardInput(this);
+        BuiHost::BlockKeyboardInput(this);
         openPending = true;
         // Virtools menu callbacks run after ImGui::NewFrame(). Open on the
         // next frame, after the opening key's ImGui ownership has taken effect.
@@ -409,9 +409,9 @@ struct ModMenu::State {
 
     void ReleaseInput(CloseDestination destination) {
         if (destination == CloseDestination::Options)
-            Bui::TransitionToScriptAndUnblock("Menu_Options", this);
+            BuiHost::TransitionToScriptAndUnblock("Menu_Options", this);
         else
-            Bui::UnblockKeyboardAfterRelease(this);
+            BuiHost::UnblockKeyboardAfterRelease(this);
     }
 
     ModMenuModel model;
@@ -420,7 +420,7 @@ struct ModMenu::State {
     CloseDestination closeDestination = CloseDestination::Options;
     bool openPending = false;
     int openRequestFrame = -1;
-    Bui::Menu routes;
+    BuiHost::Menu routes;
     std::vector<PageRouteEntry> pageRoutes;
     std::optional<ModMenuOwner> observedRouteOwner;
     std::uint64_t observedPageRevision = 0;

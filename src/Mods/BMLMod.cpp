@@ -4,8 +4,8 @@
 #include <bitset>
 #include <vector>
 
-#include "BML/Bui.h"
-#include "BML/Gui.h"
+#include "UI/BuiHost.h"
+#include "UI/GuiHost.h"
 
 #include "Config/Config.h"
 #include "Loader/ModContext.h"
@@ -216,7 +216,7 @@ void BMLMod::OnUnload() {
     m_ModsMenuEntry.Unload();
     m_Behavior.Reset();
 
-    Bui::CleanupResources(m_CKContext);
+    BuiHost::CleanupResources(m_CKContext);
 
     if (m_EnableIniSettings->GetBoolean()) {
         ImGui::SaveIniSettingsToDisk(m_ImGuiIniFilename.c_str());
@@ -233,8 +233,8 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
     m_CustomMaps.OnLoadObject(filename);
 
     if (!strcmp(filename, "3D Entities\\Menu.nmo")) {
-        BGui::Gui::InitMaterials();
-        Bui::InitSounds(m_CKContext);
+        BGuiHost::Gui::InitMaterials();
+        BuiHost::InitSounds(m_CKContext);
     }
 }
 
@@ -551,8 +551,8 @@ void BMLMod::InitGUI() {
         }
     }
 
-    Bui::InitTextures(m_CKContext);
-    Bui::InitMaterials(m_CKContext);
+    BuiHost::InitTextures(m_CKContext);
+    BuiHost::InitMaterials(m_CKContext);
 }
 
 void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {

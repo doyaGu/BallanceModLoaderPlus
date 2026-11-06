@@ -5,17 +5,17 @@
 #include <string>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "CustomMaps/MapMenuState.h"
 
 class ILogger;
 
-class MapListPage : public Bui::Page {
+class MapListPage : public BuiHost::Page {
 public:
     explicit MapListPage(MapMenuState &state) : m_State(state) {}
 
-    void OnEnter(Bui::PageEnterReason) override;
-    Bui::PageAction OnFrame() override;
+    void OnEnter(BuiHost::PageEnterReason) override;
+    BuiHost::PageAction OnFrame() override;
 
 private:
     void SyncCatalog();
@@ -26,7 +26,7 @@ private:
     bool OnDrawEntry(MapEntry *entry, bool *v);
 
     MapMenuState &m_State;
-    Bui::Pagination m_Pagination;
+    BuiHost::Pagination m_Pagination;
     std::uint64_t m_CatalogRevision = 0;
     int m_Count = 0;
     bool m_FocusFirstEntry = true;
@@ -63,7 +63,7 @@ private:
     bool m_ShuttingDown = false;
     std::string m_PendingRoute;
     int m_OpenRequestFrame = -1;
-    Bui::Menu m_Routes;
+    BuiHost::Menu m_Routes;
 };
 
 #endif // BML_MAPMENU_H

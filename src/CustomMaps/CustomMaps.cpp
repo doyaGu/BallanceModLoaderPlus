@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "BML/DataShare.h"
 #include "BML/IBML.h"
 #include "BML/IConfig.h"
@@ -284,7 +284,7 @@ void CustomMaps::OnProcess() {
 
         if (ImGui::Begin("Button_Custom_Maps", nullptr, buttonFlags)) {
             ImGui::SetNextItemShortcut(ImGuiKey_RightArrow, ImGuiInputFlags_RouteGlobal);
-            if (Bui::RightButton("Enter_Custom_Maps")) {
+            if (BuiHost::RightButton("Enter_Custom_Maps")) {
                 m_ExitStart->ActivateInput(0);
                 m_ExitStart->Activate();
                 Open();

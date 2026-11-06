@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 
 #include "Console/ConsoleLayout.h"
 #include "UI/AnsiPalette.h"
@@ -33,7 +33,7 @@
  * Scrolling controls (when command bar visible AND content overflows):
  * - Mouse wheel: Scroll up/down
  */
-class MessageBoard : public Bui::Window {
+class MessageBoard : public BuiHost::Window {
 public:
     using ConsoleColor = AnsiText::ConsoleColor;
 
