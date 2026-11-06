@@ -371,8 +371,9 @@ int OpenRun(BML_ObjectRef owner,
         g_State.SettingIndex = binding.Slot.Index;
         g_State.SettingName.assign(binding.Slot.Name.Data,
                                    binding.Slot.Name.Length);
-        g_State.Text.assign(binding.Value.Data.Utf8.Data,
-                            binding.Value.Data.Utf8.Length);
+        if (binding.Value.Kind == BML_BEHAVIOR_VALUE_UTF8)
+            g_State.Text.assign(binding.Value.Data.Utf8.Data,
+                                binding.Value.Data.Utf8.Length);
     }
     if (g_State.RejectStaleGeneration &&
         block->PrototypeGeneration != g_State.ProviderGeneration) {
