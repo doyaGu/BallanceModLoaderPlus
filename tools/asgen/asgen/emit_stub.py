@@ -69,8 +69,10 @@ def emit_stub(ctx, functions: list[FunctionBinding]) -> str:
     properties = object_properties()
     for type_name in sorted(ctx.opaque_handle_types):
         out.append(f"class {type_name} {{\n")
-        for as_type, field, _ in properties.get(type_name, []):
+        for as_type, field, read_only in properties.get(type_name, []):
             out.append(f"  {as_type} get_{field}() property;\n")
+            if not read_only:
+                out.append(f"  void set_{field}({as_type} value) property;\n")
         if type_name == "ImDrawList":
             for binding in draw_list_method_bindings():
                 out.append(f"  {binding.declaration};\n")
