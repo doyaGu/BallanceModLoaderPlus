@@ -71,6 +71,13 @@ enum InputDevice {
   INPUT_DEVICE_COUNT = 3
 }
 
+enum InputBlockMask {
+  INPUT_BLOCK_KEYBOARD = 1,
+  INPUT_BLOCK_MOUSE = 2,
+  INPUT_BLOCK_JOYSTICK = 4,
+  INPUT_BLOCK_ALL = 7
+}
+
 enum InputKeyEvent {
   INPUT_KEY_NONE = 0,
   INPUT_KEY_PRESSED = 1,
@@ -223,6 +230,8 @@ class VxRect {
   float Top;
   float Right;
   float Bottom;
+  VxRect &opAssign(const VxRect &in);
+
 }
 
 class PhysicalizeDefinition {
@@ -238,6 +247,8 @@ class PhysicalizeDefinition {
   float RotDamp;
   string CollisionSurface;
   VxVector MassCenter;
+  PhysicalizeDefinition &opAssign(const PhysicalizeDefinition &in);
+
 }
 
 class ObjectLoadOptions {
@@ -249,6 +260,8 @@ class ObjectLoadOptions {
   bool ReuseMeshes;
   bool ReuseMaterials;
   bool Dynamic;
+  ObjectLoadOptions &opAssign(const ObjectLoadOptions &in);
+
 }
 
 class ObjectLoadResult {
@@ -267,6 +280,8 @@ class Text2DDefinition {
   Vx2DVector ParagraphIndent;
   float CaretSize;
   int Flags;
+  Text2DDefinition &opAssign(const Text2DDefinition &in);
+
 }
 
 class BallTypeDefinition {
@@ -282,6 +297,8 @@ class BallTypeDefinition {
   float RotDamp;
   float Force;
   float Radius;
+  BallTypeDefinition &opAssign(const BallTypeDefinition &in);
+
 }
 
 class FloorTypeDefinition {
@@ -291,6 +308,8 @@ class FloorTypeDefinition {
   float Mass;
   string CollisionGroup;
   bool EnableCollision;
+  FloorTypeDefinition &opAssign(const FloorTypeDefinition &in);
+
 }
 
 class ModuleBallDefinition {
@@ -306,6 +325,8 @@ class ModuleBallDefinition {
   float LinearDamp;
   float RotDamp;
   float Radius;
+  ModuleBallDefinition &opAssign(const ModuleBallDefinition &in);
+
 }
 
 class ModuleConvexDefinition {
@@ -320,14 +341,20 @@ class ModuleConvexDefinition {
   bool CalcMassCenter;
   float LinearDamp;
   float RotDamp;
+  ModuleConvexDefinition &opAssign(const ModuleConvexDefinition &in);
+
 }
 
 class TrafoDefinition {
   string Name;
+  TrafoDefinition &opAssign(const TrafoDefinition &in);
+
 }
 
 class ModuleDefinition {
   string Name;
+  ModuleDefinition &opAssign(const ModuleDefinition &in);
+
 }
 
 namespace Path {
@@ -492,11 +519,15 @@ float GetElapsedTime();
 class RenderEvent {
   int get_Flags() const;
   int GetFlags() const;
+  RenderEvent &opAssign(const RenderEvent &in);
+
 }
 
 class CheatEvent {
   bool get_Enabled() const;
   bool IsEnabled() const;
+  CheatEvent &opAssign(const CheatEvent &in);
+
 }
 
 class LoadObjectEvent {
@@ -512,12 +543,16 @@ class LoadObjectEvent {
   int GetObjectId(int index) const;
   CKObject@ BorrowObject(int index) const;
   CKObject@ BorrowMasterObject() const;
+  LoadObjectEvent &opAssign(const LoadObjectEvent &in);
+
 }
 
 class LoadScriptEvent {
   string get_Filename() const;
   int get_ScriptId() const;
   CKBehavior@ BorrowScript() const;
+  LoadScriptEvent &opAssign(const LoadScriptEvent &in);
+
 }
 
 class CommandEvent {
@@ -531,6 +566,8 @@ class CommandEvent {
   string GetArg(int index) const;
   string get_ArgsText() const;
   bool get_IsCheat() const;
+  CommandEvent &opAssign(const CommandEvent &in);
+
 }
 
 class ConfigEvent {
@@ -540,6 +577,8 @@ class ConfigEvent {
   ConfigPropertyType get_Type() const;
   bool get_HasProperty() const;
   ConfigProperty@ BorrowProperty() const;
+  ConfigEvent &opAssign(const ConfigEvent &in);
+
 }
 
 interface Command {
@@ -559,6 +598,8 @@ class CommandDefinition {
   bool Cheat;
   bool Hidden;
   bool Enabled;
+  CommandDefinition &opAssign(const CommandDefinition &in);
+
 }
 
 class CommandCompletion {
@@ -582,6 +623,8 @@ class MenuPageDefinition {
   string Label;
   string Description;
   bool ShowInDetails;
+  MenuPageDefinition &opAssign(const MenuPageDefinition &in);
+
 }
 
 class MenuPageFrame {
@@ -632,6 +675,8 @@ class TimerEvent {
   int get_CompletedIterations() const;
   int get_RemainingIterations() const;
   float get_Progress() const;
+  TimerEvent &opAssign(const TimerEvent &in);
+
 }
 
 interface DataShareRequest {
@@ -650,6 +695,8 @@ class DataShareEvent {
   bool get_BoolValue() const;
   int get_IntValue() const;
   float get_FloatValue() const;
+  DataShareEvent &opAssign(const DataShareEvent &in);
+
 }
 
 class DataShareRequestRef {
@@ -702,9 +749,9 @@ class ImcRecord {
   void WriteObjectArray(uint id, const array<CKObject@> &in value);
   // Host registrations take ? so AngelScript does not instantiate array<VecN>
   // inside the BML config group. Pass array<BML::Vec2/Vec3/Mat4>.
-  void WriteVec2Array(uint id, const array<BML::Vec2> &in value);
-  void WriteVec3Array(uint id, const array<BML::Vec3> &in value);
-  void WriteMat4Array(uint id, const array<BML::Mat4> &in value);
+  void WriteVec2Array(uint id, const ? &in values);
+  void WriteVec3Array(uint id, const ? &in values);
+  void WriteMat4Array(uint id, const ? &in values);
   int ReadBool(uint id, bool &out value) const;
   int ReadInt(uint id, int &out value) const;
   int ReadFloat(uint id, float &out value) const;
@@ -725,9 +772,9 @@ class ImcRecord {
   int ReadDoubleArray(uint id, array<double> &out value) const;
   int ReadStringArray(uint id, array<string> &out value) const;
   int ReadObjectArray(uint id, array<CKObject@> &out value) const;
-  int ReadVec2Array(uint id, array<BML::Vec2> &out value) const;
-  int ReadVec3Array(uint id, array<BML::Vec3> &out value) const;
-  int ReadMat4Array(uint id, array<BML::Mat4> &out value) const;
+  int ReadVec2Array(uint id, ? &out values) const;
+  int ReadVec3Array(uint id, ? &out values) const;
+  int ReadMat4Array(uint id, ? &out values) const;
 }
 class ImcReply {
   void Complete(int status);
@@ -760,6 +807,8 @@ class HookBlockEvent {
   CKBehavior@ BorrowOwnerScript() const;
   bool ActivateOutput(int index) const;
   void ActivateAllOutputs() const;
+  HookBlockEvent &opAssign(const HookBlockEvent &in);
+
 }
 
 funcdef int HookBlockCallback(const BML::ModContext &in ctx, const BML::HookBlockEvent &in event);
@@ -806,12 +855,16 @@ class PhysicalizeEvent {
   float GetBallRadius(int index) const;
   int get_ConcaveCount() const;
   CKMesh@ BorrowConcaveMesh(int index) const;
+  PhysicalizeEvent &opAssign(const PhysicalizeEvent &in);
+
 }
 
 class ObjectEvent {
   int get_TargetId() const;
   string get_TargetName() const;
   CK3dEntity@ BorrowTarget() const;
+  ObjectEvent &opAssign(const ObjectEvent &in);
+
 }
 
 class InputHook {
@@ -858,6 +911,8 @@ class InputHook {
   int IsBlocked(InputDevice device) const;
   void Block(InputDevice device) const;
   void Unblock(InputDevice device) const;
+  uint64 AcquireBlock(uint mask) const;
+  void ReleaseBlock(uint64 token) const;
 }
 
 class Logger {
@@ -1021,6 +1076,8 @@ class ModContext {
   ModRef@ FindMod(const string &in id) const;
   int GetModCount() const;
   ModRef@ GetMod(int index) const;
+  ModContext &opAssign(const ModContext &in);
+
 }
 
 class ModRef {
@@ -1071,13 +1128,19 @@ class StateBag {
   string GetString(const string &in key, const string &in defaultValue = "") const;
 }
 
-class Vec2 { float x; float y; }
-class Vec3 { float x; float y; float z; }
+class Vec2 { float x; float y;
+  Vec2 &opAssign(const Vec2 &in);
+}
+class Vec3 { float x; float y; float z;
+  Vec3 &opAssign(const Vec3 &in);
+}
 class Mat4 {
   float m00; float m01; float m02; float m03;
   float m10; float m11; float m12; float m13;
   float m20; float m21; float m22; float m23;
   float m30; float m31; float m32; float m33;
+  Mat4 &opAssign(const Mat4 &in);
+
 }
 
 string GetVersion();
@@ -1151,7 +1214,9 @@ enum PlanState {
 enum ScriptState { Ready = 1, Closing = 2, Failed = 3 }
 enum CloseState { Closing = 0, Closed = 1 }
 
-class Selector {}
+class Selector {
+  Selector &opAssign(const Selector &in);
+}
 Selector Only();
 Selector At(int index);
 Selector Named(const string &in name, int occurrence);
@@ -1159,6 +1224,8 @@ Selector Unique(const string &in name);
 
 class FramePolicy {
   FramePolicy Pouts(bool include = true) const;
+
+  FramePolicy &opAssign(const FramePolicy &in);
 }
 FramePolicy Signals(uint limit = 64);
 FramePolicy EachFrame(uint limit);
@@ -1173,6 +1240,8 @@ class Value {
   Value(const VxBbox &in value); Value(const VxMatrix &in value);
   Value(const CKGUID &in type, CKObject@ object);
   CKGUID get_Type() const; ValueKind get_Kind() const; bool get_IsNull() const;
+
+  Value &opAssign(const Value &in);
 }
 Value Euler(const VxVector &in value);
 
@@ -1180,6 +1249,8 @@ class SlotValue {
   SlotValue();
   SlotValue(const Selector &in slot, const Value &in value);
   SlotValue(const string &in slot, const Value &in value);
+
+  SlotValue &opAssign(const SlotValue &in);
 }
 
 class NodePattern {
@@ -1195,6 +1266,8 @@ class NodePattern {
   NodePattern &Setting(const Selector &in slot, const Value &in value);
   NodePattern &Local(const Selector &in slot, const Value &in value);
   NodePattern &Target(const Value &in value);
+
+  NodePattern &opAssign(const NodePattern &in);
 }
 
 class Slot {
@@ -1311,20 +1384,20 @@ class Graph {
   uint64 get_Fingerprint() const; int get_NodeCount() const; int get_LinkCount() const;
   Node@ Root() const; Node@ NodeAt(int index) const; Link@ LinkAt(int index) const;
   Node@ Find(const Selector &in selector, const CKGUID &in prototype) const;
-  int IncomingCount(Node@ node) const; int IncomingCount(Port@ port) const;
-  int OutgoingCount(Node@ node) const; int OutgoingCount(Port@ port) const;
-  Link@ Incoming(Node@ node, int index) const; Link@ Incoming(Port@ port, int index) const;
-  Link@ Outgoing(Node@ node, int index) const; Link@ Outgoing(Port@ port, int index) const;
-  Link@ Entering(Node@ node) const; Link@ Entering(Port@ port) const;
-  Link@ Leaving(Node@ node) const; Link@ Leaving(Port@ port) const;
-  Node@ Previous(Node@ node) const; Node@ Previous(Port@ port) const;
-  Node@ Next(Node@ node) const; Node@ Next(Port@ port) const;
-  ObservedValue@ Read(Port@ port) const; Graph@ Inspect(Node@ node) const;
+  int IncomingCount(Node@+ node) const; int IncomingCount(Port@+ port) const;
+  int OutgoingCount(Node@+ node) const; int OutgoingCount(Port@+ port) const;
+  Link@ Incoming(Node@+ node, int index) const; Link@ Incoming(Port@+ port, int index) const;
+  Link@ Outgoing(Node@+ node, int index) const; Link@ Outgoing(Port@+ port, int index) const;
+  Link@ Entering(Node@+ node) const; Link@ Entering(Port@+ port) const;
+  Link@ Leaving(Node@+ node) const; Link@ Leaving(Port@+ port) const;
+  Node@ Previous(Node@+ node) const; Node@ Previous(Port@+ port) const;
+  Node@ Next(Node@+ node) const; Node@ Next(Port@+ port) const;
+  ObservedValue@ Read(Port@+ port) const; Graph@ Inspect(Node@+ node) const;
   Graph@ Logical() const; Graph@ Live() const;
-  Patch@ Apply(const string &in name, Edit@ edit) const;
+  Patch@ Apply(const string &in name, Edit@+ edit) const;
   Watch@ Watch(WatchCallback@+ callback) const;
-  Watch@ Watch(Node@ node, WatchCallback@+ callback) const;
-  Watch@ Watch(Port@ port, WatchCallback@+ callback) const;
+  Watch@ Watch(Node@+ node, WatchCallback@+ callback) const;
+  Watch@ Watch(Port@+ port, WatchCallback@+ callback) const;
 }
 
 class EditPort { bool get_IsValid() const; }
@@ -1352,37 +1425,37 @@ class EditGraph {
   EditNode@ Require(const Selector &in selector, const CKGUID &in prototype) const;
   EditNode@ Require(const NodePattern &in pattern) const;
   EditNodes@ Each(const NodePattern &in pattern) const;
-  EditNode@ Require(Node@ node) const; EditLink@ Require(Link@ link) const;
-  EditNode@ Use(Node@ node) const; EditLink@ Use(Link@ link) const;
-  EditLink@ Between(EditPort@ source, EditPort@ sink, int delay = 0) const;
-  EditNode@ Next(EditPort@ source) const; EditNode@ Next(EditNode@ source) const;
-  EditNode@ Previous(EditPort@ sink) const; EditNode@ Previous(EditNode@ sink) const;
-  EditLink@ Leaving(EditPort@ source) const; EditLink@ Leaving(EditNode@ source) const;
-  EditLink@ Entering(EditPort@ sink) const; EditLink@ Entering(EditNode@ sink) const;
-  EditLink@ To(EditPort@ source, EditNode@ target) const; EditPath@ Follow(EditPort@ source) const;
-  EditNode@ Add(Block@ block) const; EditNode@ AddGraph(const string &in name, int priority = 0) const;
-  EditNode@ Replace(EditNode@ target, Block@ block) const; bool Remove(EditNode@ node) const;
-  bool Flow(EditPort@ source, EditPort@ sink, int delay = 0) const;
-  bool Flow(EditPorts@ sources, EditPort@ sink, int delay = 0) const;
-  bool Flow(EditPort@ source, EditPorts@ sinks, int delay = 0) const;
-  bool FlowCycle(EditPort@ source, EditPort@ sink, int delay = 0) const;
-  bool FlowCycle(EditPorts@ sources, EditPort@ sink, int delay = 0) const;
-  bool FlowCycle(EditPort@ source, EditPorts@ sinks, int delay = 0) const;
-  bool Bind(EditPort@ sink, EditPort@ source) const;
-  bool Bind(EditPort@ sink, bool value) const;
-  bool Bind(EditPort@ sink, int value) const;
-  bool Bind(EditPort@ sink, float value) const;
-  bool Bind(EditPort@ sink, const string &in value) const;
-  bool Bind(EditPort@ sink, const Vx2DVector &in value) const;
-  bool Bind(EditPort@ sink, const VxVector &in value) const;
-  bool Bind(EditPort@ sink, const Value &in value) const;
-  bool Bind(EditPorts@ sinks, EditPort@ source) const;
-  bool Bind(EditPorts@ sinks, const Value &in value) const;
-  bool Share(EditPort@ sink, EditPort@ source) const;
-  bool Share(EditPorts@ sinks, EditPort@ source) const;
-  bool Push(EditPort@ source, EditPort@ sink) const;
-  bool Push(EditPorts@ sources, EditPort@ sink) const;
-  bool Push(EditPort@ source, EditPorts@ sinks) const;
+  EditNode@ Require(Node@+ node) const; EditLink@ Require(Link@+ link) const;
+  EditNode@ Use(Node@+ node) const; EditLink@ Use(Link@+ link) const;
+  EditLink@ Between(EditPort@+ source, EditPort@+ sink, int delay = 0) const;
+  EditNode@ Next(EditPort@+ source) const; EditNode@ Next(EditNode@+ source) const;
+  EditNode@ Previous(EditPort@+ sink) const; EditNode@ Previous(EditNode@+ sink) const;
+  EditLink@ Leaving(EditPort@+ source) const; EditLink@ Leaving(EditNode@+ source) const;
+  EditLink@ Entering(EditPort@+ sink) const; EditLink@ Entering(EditNode@+ sink) const;
+  EditLink@ To(EditPort@+ source, EditNode@+ target) const; EditPath@ Follow(EditPort@+ source) const;
+  EditNode@ Add(Block@+ block) const; EditNode@ AddGraph(const string &in name, int priority = 0) const;
+  EditNode@ Replace(EditNode@+ target, Block@+ block) const; bool Remove(EditNode@+ node) const;
+  bool Flow(EditPort@+ source, EditPort@+ sink, int delay = 0) const;
+  bool Flow(EditPorts@+ sources, EditPort@+ sink, int delay = 0) const;
+  bool Flow(EditPort@+ source, EditPorts@+ sinks, int delay = 0) const;
+  bool FlowCycle(EditPort@+ source, EditPort@+ sink, int delay = 0) const;
+  bool FlowCycle(EditPorts@+ sources, EditPort@+ sink, int delay = 0) const;
+  bool FlowCycle(EditPort@+ source, EditPorts@+ sinks, int delay = 0) const;
+  bool Bind(EditPort@+ sink, EditPort@+ source) const;
+  bool Bind(EditPort@+ sink, bool value) const;
+  bool Bind(EditPort@+ sink, int value) const;
+  bool Bind(EditPort@+ sink, float value) const;
+  bool Bind(EditPort@+ sink, const string &in value) const;
+  bool Bind(EditPort@+ sink, const Vx2DVector &in value) const;
+  bool Bind(EditPort@+ sink, const VxVector &in value) const;
+  bool Bind(EditPort@+ sink, const Value &in value) const;
+  bool Bind(EditPorts@+ sinks, EditPort@+ source) const;
+  bool Bind(EditPorts@+ sinks, const Value &in value) const;
+  bool Share(EditPort@+ sink, EditPort@+ source) const;
+  bool Share(EditPorts@+ sinks, EditPort@+ source) const;
+  bool Push(EditPort@+ source, EditPort@+ sink) const;
+  bool Push(EditPorts@+ sources, EditPort@+ sink) const;
+  bool Push(EditPort@+ source, EditPorts@+ sinks) const;
   Operation@ AddOperation(const CKGUID &in operation, const CKGUID &in result,
                           const CKGUID &in input1 = CKGUID(0, 0),
                           const CKGUID &in input2 = CKGUID(0, 0)) const;
@@ -1390,25 +1463,25 @@ class EditGraph {
   EditPort@ AppendPin(const string &in name, const CKGUID &in type) const;
   EditPort@ AppendPout(const string &in name, const CKGUID &in type) const;
   EditPort@ AppendLocal(const string &in name, const CKGUID &in type) const;
-  EditPort@ AppendIn(EditNode@ owner, const string &in name) const;
-  EditPort@ AppendOut(EditNode@ owner, const string &in name) const;
-  EditPort@ AppendPin(EditNode@ owner, const string &in name,
+  EditPort@ AppendIn(EditNode@+ owner, const string &in name) const;
+  EditPort@ AppendOut(EditNode@+ owner, const string &in name) const;
+  EditPort@ AppendPin(EditNode@+ owner, const string &in name,
                       const CKGUID &in type) const;
-  EditPort@ AppendPout(EditNode@ owner, const string &in name,
+  EditPort@ AppendPout(EditNode@+ owner, const string &in name,
                        const CKGUID &in type) const;
-  EditPort@ AppendLocal(EditNode@ owner, const string &in name,
+  EditPort@ AppendLocal(EditNode@+ owner, const string &in name,
                         const CKGUID &in type) const;
-  bool Splice(EditLink@ link, EditNode@ through) const;
-  bool Splice(EditLink@ link, EditPort@ sink, EditPort@ source) const;
-  bool Redirect(EditLink@ link, EditPort@ sink) const;
-  bool Redirect(EditLink@ link, EditLink@ destination) const;
-  bool Reconnect(EditLink@ link, EditPort@ source, EditPort@ sink) const;
-  bool ReconnectCycle(EditLink@ link, EditPort@ source, EditPort@ sink) const;
-  bool Tap(EditPort@ source, HookCallback@+ callback) const;
-  bool Tap(EditPorts@ sources, HookCallback@+ callback) const;
-  bool Before(EditLink@ link, HookCallback@+ callback) const;
-  bool After(EditPath@ path, HookCallback@+ callback) const;
-  bool After(EditPort@ source, HookCallback@+ callback) const;
+  bool Splice(EditLink@+ link, EditNode@+ through) const;
+  bool Splice(EditLink@+ link, EditPort@+ sink, EditPort@+ source) const;
+  bool Redirect(EditLink@+ link, EditPort@+ sink) const;
+  bool Redirect(EditLink@+ link, EditLink@+ destination) const;
+  bool Reconnect(EditLink@+ link, EditPort@+ source, EditPort@+ sink) const;
+  bool ReconnectCycle(EditLink@+ link, EditPort@+ source, EditPort@+ sink) const;
+  bool Tap(EditPort@+ source, HookCallback@+ callback) const;
+  bool Tap(EditPorts@+ sources, HookCallback@+ callback) const;
+  bool Before(EditLink@+ link, HookCallback@+ callback) const;
+  bool After(EditPath@+ path, HookCallback@+ callback) const;
+  bool After(EditPort@+ source, HookCallback@+ callback) const;
 }
 class Edit {
   bool get_IsValid() const; EditGraph@ Root() const;
@@ -1587,19 +1660,19 @@ class Instance {
 }
 class Patch {
   bool get_IsValid() const; PatchState get_State() const; string get_Error() const;
-  bool Enable(); bool Disable(); bool Replace(Graph@ graph, Edit@ edit);
-  ObjectRef@ Resolve(EditNode@ node) const; CloseState Close();
+  bool Enable(); bool Disable(); bool Replace(Graph@+ graph, Edit@+ edit);
+  ObjectRef@ Resolve(EditNode@+ node) const; CloseState Close();
 }
 class Plan {
   bool get_IsValid() const; PlanState get_State() const; string get_Error() const;
   bool Enable(); bool Disable();
-  bool Replace(const string &in script, Edit@ edit, bool each = false); CloseState Close();
+  bool Replace(const string &in script, Edit@+ edit, bool each = false); CloseState Close();
 }
 class Script {
   bool get_IsValid() const; ScriptState get_State() const; string get_Error() const;
   bool Activate(); bool Restart(); bool Deactivate();
   Graph@ Inspect(bool live = false) const;
-  Patch@ Apply(const string &in name, Edit@ edit) const; CloseState Close();
+  Patch@ Apply(const string &in name, Edit@+ edit) const; CloseState Close();
 }
 
 Block@ Use(const CKGUID &in prototype);
@@ -1618,17 +1691,30 @@ namespace Gameplay {
 class LevelState {
   int Id; BML::Mat4 ResetMatrix; int Points;
   CKObject@ BorrowActiveBall() const;
+
+  LevelState &opAssign(const LevelState &in);
 }
 class EnergyState {
   int Points; int Lives; int StartPoints; int StartLives; float TimeFactor; int LifeBonus;
+
+  EnergyState &opAssign(const EnergyState &in);
 }
 class CatalogEntry {
   int Bonus; int Music;
   bool FileTruncated; bool StartBallTruncated; bool SkyTruncated;
   string get_File() const; string get_StartBall() const; string get_Sky() const;
+
+  CatalogEntry &opAssign(const CatalogEntry &in);
 }
-class Checkpoint { BML::Mat4 Matrix; CKObject@ BorrowObject() const; }
-class Resetpoint { CKObject@ BorrowObject() const; }
+class Checkpoint {
+  BML::Mat4 Matrix;
+  CKObject@ BorrowObject() const;
+  Checkpoint &opAssign(const Checkpoint &in);
+}
+class Resetpoint {
+  CKObject@ BorrowObject() const;
+  Resetpoint &opAssign(const Resetpoint &in);
+}
 int ReadLevel(LevelState &out state);
 int ReadEnergy(EnergyState &out state);
 int ReadHighScore(int &out score);
