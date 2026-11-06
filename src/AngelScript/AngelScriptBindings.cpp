@@ -130,35 +130,6 @@ std::string BMLAS_GetGameEventName(int event) {
     return BML::GetScriptGameEventName(event);
 }
 
-bool BMLAS_IsInitialized() { return GetActiveContext() != nullptr; }
-bool BMLAS_IsIngame() { ModContext *ctx = nullptr; return RequireContext(ctx) && ctx->IsIngame(); }
-bool BMLAS_IsInLevel() { ModContext *ctx = nullptr; return RequireContext(ctx) && ctx->IsInLevel(); }
-bool BMLAS_IsPaused() { ModContext *ctx = nullptr; return RequireContext(ctx) && ctx->IsPaused(); }
-bool BMLAS_IsPlaying() { ModContext *ctx = nullptr; return RequireContext(ctx) && ctx->IsPlaying(); }
-bool BMLAS_IsCheatEnabled() { ModContext *ctx = nullptr; return RequireContext(ctx) && ctx->IsCheatEnabled(); }
-
-void BMLAS_EnableCheat(bool enable) {
-    ModContext *ctx = nullptr;
-    if (RequireContext(ctx))
-        ctx->EnableCheat(enable);
-}
-
-void BMLAS_ExecuteCommand(const std::string &command) {
-    ModContext *ctx = nullptr;
-    if (RequireLoadedContext(ctx))
-        ctx->ExecuteCommand(command.c_str());
-}
-
-float BMLAS_GetSRScore() {
-    ModContext *ctx = nullptr;
-    return RequireLoadedContext(ctx) ? ctx->GetSRScore() : 0.0f;
-}
-
-int BMLAS_GetHSScore() {
-    ModContext *ctx = nullptr;
-    return RequireLoadedContext(ctx) ? ctx->GetHSScore() : 0;
-}
-
 void BMLAS_UI_AddMessage(const std::string &message) {
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -245,101 +216,6 @@ void BMLAS_Speedrun_ResetTimer() {
 float BMLAS_Speedrun_GetElapsedTime() {
     ModContext *ctx = nullptr;
     return RequireLoadedContext(ctx) ? ctx->GetSRTime() : 0.0f;
-}
-
-void BMLAS_SkipRenderForNextTick() {
-    ModContext *ctx = nullptr;
-    if (RequireContext(ctx))
-        ctx->SkipRenderForNextTick();
-}
-
-CKContext *BMLAS_GetCKContext() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetCKContext() : nullptr;
-}
-
-CKRenderContext *BMLAS_GetRenderContext() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetRenderContext() : nullptr;
-}
-
-void BMLAS_ExitGame() {
-    ModContext *ctx = nullptr;
-    if (RequireLoadedContext(ctx))
-        ctx->ExitGame();
-}
-
-CKAttributeManager *BMLAS_GetAttributeManager() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetAttributeManager() : nullptr;
-}
-
-CKBehaviorManager *BMLAS_GetBehaviorManager() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetBehaviorManager() : nullptr;
-}
-
-CKCollisionManager *BMLAS_GetCollisionManager() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetCollisionManager() : nullptr;
-}
-
-CKMessageManager *BMLAS_GetMessageManager() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetMessageManager() : nullptr;
-}
-
-CKPathManager *BMLAS_GetPathManager() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetPathManager() : nullptr;
-}
-
-CKParameterManager *BMLAS_GetParameterManager() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetParameterManager() : nullptr;
-}
-
-CKRenderManager *BMLAS_GetRenderManager() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetRenderManager() : nullptr;
-}
-
-CKSoundManager *BMLAS_GetSoundManager() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetSoundManager() : nullptr;
-}
-
-CKTimeManager *BMLAS_GetTimeManager() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetTimeManager() : nullptr;
-}
-
-float BMLAS_GetTimeMs() {
-    ModContext *ctx = nullptr;
-    return BML::ScriptFacadeAccess::GetTimeMs(RequireContext(ctx) ? ctx->GetTimeManager() : nullptr);
-}
-
-float BMLAS_GetAbsoluteTimeMs() {
-    ModContext *ctx = nullptr;
-    return BML::ScriptFacadeAccess::GetAbsoluteTimeMs(RequireContext(ctx) ? ctx->GetTimeManager() : nullptr);
-}
-
-float BMLAS_GetDeltaTimeMs() {
-    ModContext *ctx = nullptr;
-    return BML::ScriptFacadeAccess::GetDeltaTimeMs(RequireContext(ctx) ? ctx->GetTimeManager() : nullptr);
-}
-
-uint32_t BMLAS_GetFrameCount() {
-    ModContext *ctx = nullptr;
-    return BML::ScriptFacadeAccess::GetFrameCount(RequireContext(ctx) ? ctx->GetTimeManager() : nullptr);
-}
-
-std::string BMLAS_GetDirectoryUtf8(DirectoryType type) {
-    ModContext *ctx = nullptr;
-    if (!RequireContext(ctx))
-        return {};
-    const char *dir = ctx->GetDirectoryUtf8(type);
-    return dir ? dir : "";
 }
 
 static bool BMLAS_InputHookIsValid(InputHook *input) { return BML::ScriptFacadeAccess::IsInputValid(input); }
@@ -483,76 +359,6 @@ CK3dEntity *BMLAS_Get3dEntityParent(CK3dEntity *entity) {
     return BML::ScriptFacadeAccess::Get3dEntityParent(entity);
 }
 
-CKDataArray *BMLAS_GetArrayByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetArrayByName(name.c_str()) : nullptr;
-}
-
-CKGroup *BMLAS_GetGroupByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetGroupByName(name.c_str()) : nullptr;
-}
-
-CKMaterial *BMLAS_GetMaterialByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetMaterialByName(name.c_str()) : nullptr;
-}
-
-CKMesh *BMLAS_GetMeshByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetMeshByName(name.c_str()) : nullptr;
-}
-
-CK2dEntity *BMLAS_Get2dEntityByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->Get2dEntityByName(name.c_str()) : nullptr;
-}
-
-CK3dEntity *BMLAS_Get3dEntityByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->Get3dEntityByName(name.c_str()) : nullptr;
-}
-
-CK3dObject *BMLAS_Get3dObjectByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->Get3dObjectByName(name.c_str()) : nullptr;
-}
-
-CKCamera *BMLAS_GetCameraByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetCameraByName(name.c_str()) : nullptr;
-}
-
-CKTargetCamera *BMLAS_GetTargetCameraByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetTargetCameraByName(name.c_str()) : nullptr;
-}
-
-CKLight *BMLAS_GetLightByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetLightByName(name.c_str()) : nullptr;
-}
-
-CKTargetLight *BMLAS_GetTargetLightByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetTargetLightByName(name.c_str()) : nullptr;
-}
-
-CKSound *BMLAS_GetSoundByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetSoundByName(name.c_str()) : nullptr;
-}
-
-CKTexture *BMLAS_GetTextureByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetTextureByName(name.c_str()) : nullptr;
-}
-
-CKBehavior *BMLAS_GetScriptByName(const std::string &name) {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetScriptByName(name.c_str()) : nullptr;
-}
-
 void BMLAS_SetIC(CKBeObject *object, bool hierarchy) {
     ModContext *ctx = nullptr;
     if (RequireContext(ctx) && object)
@@ -582,8 +388,6 @@ std::string BMLAS_NormalizePathUtf8(const std::string &path) { return CopyAndFre
 std::string BMLAS_GetFileNameUtf8(const std::string &path) { return CopyAndFree(BML_GetFileNameUtf8(path.c_str())); }
 std::string BMLAS_GetExtensionUtf8(const std::string &path) { return CopyAndFree(BML_GetExtensionUtf8(path.c_str())); }
 std::string BMLAS_RemoveExtensionUtf8(const std::string &path) { return CopyAndFree(BML_RemoveExtensionUtf8(path.c_str())); }
-std::string BMLAS_ReadTextFileUtf8(const std::string &path) { return CopyAndFree(BML_ReadTextFileUtf8(path.c_str())); }
-
 bool BMLAS_DataShareSetString(const std::string &key, const std::string &value, const std::string &name) {
     BML_DataShare *share = BML_GetDataShare(name.empty() ? nullptr : name.c_str());
     if (!share)
@@ -1548,38 +1352,12 @@ static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
             BML::Behavior::Blocks::PhysicsWakeUp::Options{target}));
 }
 
-static BML::ScriptTimerRef *BMLAS_AddTimer(asIScriptObject *timer) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    if (owner)
-        return owner->AddScriptTimer(timer);
-    return nullptr;
-}
-
-static BML::ScriptCommandRef *BMLAS_RegisterCommand(asIScriptObject *command) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    if (owner)
-        return owner->RegisterScriptCommand(command);
-    return nullptr;
-}
-
 static BML::ScriptCommandRef *BMLAS_ContextRegisterCommandDelegate(
     const BML::ScriptModContextView *context,
     const BMLAS_CommandDefinition &definition,
     asIScriptFunction *execute,
     asIScriptFunction *complete) {
     return context ? context->RegisterCommand(definition, execute, complete) : nullptr;
-}
-
-static bool BMLAS_UnregisterCommand(const std::string &name) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    return owner && owner->UnregisterScriptCommand(name);
-}
-
-static BML::ScriptDataShareRequestRef *BMLAS_RequestDataShare(asIScriptObject *request) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    if (owner)
-        return owner->RequestScriptDataShare(request);
-    return nullptr;
 }
 
 static BML::ScriptDataShareRequestRef *BMLAS_ContextRequestDataShareDelegate(
@@ -1639,76 +1417,6 @@ static void BMLAS_HookBlockRefSetEnabled(BML::ScriptHookBlockRef *self, bool ena
 static void BMLAS_HookBlockRefSetAutoActivateOutputs(BML::ScriptHookBlockRef *self, bool enabled) {
     if (self)
         self->SetAutoActivateOutputs(enabled);
-}
-
-static bool BMLAS_RegisterBallType(const std::string &ballFile,
-                                   const std::string &ballId,
-                                   const std::string &ballName,
-                                   const std::string &objName,
-                                   float friction,
-                                   float elasticity,
-                                   float mass,
-                                   const std::string &collGroup,
-                                   float linearDamp,
-                                   float rotDamp,
-                                   float force,
-                                   float radius) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    return owner && owner->RegisterScriptBallType(ballFile, ballId, ballName, objName, friction, elasticity, mass,
-                                                 collGroup, linearDamp, rotDamp, force, radius);
-}
-
-static bool BMLAS_RegisterFloorType(const std::string &floorName,
-                                    float friction,
-                                    float elasticity,
-                                    float mass,
-                                    const std::string &collGroup,
-                                    bool enableColl) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    return owner && owner->RegisterScriptFloorType(floorName, friction, elasticity, mass, collGroup, enableColl);
-}
-
-static bool BMLAS_RegisterModulBall(const std::string &modulName,
-                                    bool fixed,
-                                    float friction,
-                                    float elasticity,
-                                    float mass,
-                                    const std::string &collGroup,
-                                    bool frozen,
-                                    bool enableColl,
-                                    bool calcMassCenter,
-                                    float linearDamp,
-                                    float rotDamp,
-                                    float radius) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    return owner && owner->RegisterScriptModulBall(modulName, fixed, friction, elasticity, mass, collGroup,
-                                                   frozen, enableColl, calcMassCenter, linearDamp, rotDamp, radius);
-}
-
-static bool BMLAS_RegisterModulConvex(const std::string &modulName,
-                                      bool fixed,
-                                      float friction,
-                                      float elasticity,
-                                      float mass,
-                                      const std::string &collGroup,
-                                      bool frozen,
-                                      bool enableColl,
-                                      bool calcMassCenter,
-                                      float linearDamp,
-                                      float rotDamp) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    return owner && owner->RegisterScriptModulConvex(modulName, fixed, friction, elasticity, mass, collGroup,
-                                                     frozen, enableColl, calcMassCenter, linearDamp, rotDamp);
-}
-
-static bool BMLAS_RegisterTrafo(const std::string &modulName) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    return owner && owner->RegisterScriptTrafo(modulName);
-}
-
-static bool BMLAS_RegisterModul(const std::string &modulName) {
-    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
-    return owner && owner->RegisterScriptModul(modulName);
 }
 
 class BMLAS_ModRef {
@@ -1876,19 +1584,6 @@ BMLAS_ModRef *BMLAS_FindMod(const std::string &id) {
     return mod ? BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ModRef(mod->GetID()),
                                          "Out of memory creating BML::ModRef.")
                : nullptr;
-}
-
-int BMLAS_GetModCount() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetModLoader().GetModCount() : 0;
-}
-
-std::string BMLAS_GetModId(int index) {
-    ModContext *ctx = nullptr;
-    if (!RequireContext(ctx))
-        return "";
-    ModRecord *mod = ctx->GetModLoader().GetMod(index);
-    return mod ? mod->GetID() : "";
 }
 
 BMLAS_ModRef *BMLAS_GetMod(int index) {
