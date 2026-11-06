@@ -7,7 +7,7 @@
 #include <new>
 #include <utility>
 
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 #include "Loader/ModContext.h"
 #include "ScriptAngelScriptHandle.h"
 #include "ScriptFunctionSupport.h"

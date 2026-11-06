@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 
 IMod::~IMod() = default;
-ILogger *IMod::GetLogger() { return nullptr; }
+Logger *IMod::GetLogger() { return nullptr; }
 IConfig *IMod::GetConfig() { return nullptr; }
 
 namespace {

@@ -14,7 +14,7 @@
 #include "BML/DataShare.h"
 #include "Loader/IBML.h"
 #include "Config/IConfig.h"
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 
 #include "Api/ObjectRefs.h"
 #include "CustomMaps/CustomMapLoad.h"
@@ -165,7 +165,7 @@ bool CustomMaps::OnModifyConfig(const char *category, const char *key, IProperty
     return property == m_LevelNumber && std::strcmp(key ? key : "", "LevelNumber") == 0;
 }
 
-void CustomMaps::OnLoad(IBML &bml, ILogger &logger,
+void CustomMaps::OnLoad(IBML &bml, Logger &logger,
                         const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
                         const std::wstring &tempDirectory) {
     m_BML = &bml;

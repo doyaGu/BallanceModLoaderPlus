@@ -17,7 +17,7 @@ class CKContext;
 class CKDataArray;
 class IBML;
 class IConfig;
-class ILogger;
+class Logger;
 class IProperty;
 struct BML_DataShare;
 
@@ -38,7 +38,7 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, ILogger &logger,
+    void OnLoad(IBML &bml, Logger &logger,
                 const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
                 const std::wstring &tempDirectory);
     void OnUnload();
@@ -81,7 +81,7 @@ private:
 
     IBML *m_BML = nullptr;
     CKContext *m_CKContext = nullptr;
-    ILogger *m_Logger = nullptr;
+    Logger *m_Logger = nullptr;
     BML_DataShare *m_DataShare = nullptr;
     std::wstring m_MapsDirectory;
     std::unique_ptr<LoadAttempt> m_LoadAttempt;

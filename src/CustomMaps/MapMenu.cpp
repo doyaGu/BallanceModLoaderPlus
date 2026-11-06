@@ -10,7 +10,7 @@
 #include <oniguruma.h>
 
 #include "Hooks/InputHook.h"
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 
 #include "StringUtils.h"
 
@@ -22,7 +22,7 @@ MapMenu::~MapMenu() {
     Shutdown();
 }
 
-void MapMenu::Init(const std::wstring &mapsDirectory, ILogger &logger) {
+void MapMenu::Init(const std::wstring &mapsDirectory, Logger &logger) {
     m_State.BindCatalog(mapsDirectory, logger);
     if (!m_Initialized) {
         if (!m_Routes.CreatePage<MapListPage>("Custom Maps", m_State)) {
@@ -152,7 +152,7 @@ BuiHost::PageAction MapListPage::OnFrame() {
                     return *lhs < *rhs;
                 });
             } catch (...) {
-                if (ILogger *logger = m_State.GetLogger())
+                if (Logger *logger = m_State.GetLogger())
                     logger->Error("Failed to sort current directory entries");
             }
         }
@@ -244,7 +244,7 @@ void MapListPage::OnSearchMaps() {
         if (r != ONIG_NORMAL) {
             char s[ONIG_MAX_ERROR_MESSAGE_LEN];
             onig_error_code_to_str((UChar *) s, r, &einfo);
-            if (ILogger *logger = m_State.GetLogger())
+            if (Logger *logger = m_State.GetLogger())
                 logger->Error("%s", s);
             return;
         }
@@ -278,7 +278,7 @@ void MapListPage::OnSearchMaps() {
                 } else if (r != ONIG_MISMATCH) {
                     char s[ONIG_MAX_ERROR_MESSAGE_LEN];
                     onig_error_code_to_str((UChar *) s, r);
-                    if (ILogger *logger = m_State.GetLogger())
+                    if (Logger *logger = m_State.GetLogger())
                         logger->Error("%s", s);
                 }
 
@@ -304,7 +304,7 @@ void MapListPage::OnSearchMaps() {
                 return utils::CompareString(a->name, b->name) < 0;
             });
         } catch (...) {
-            if (ILogger *logger = m_State.GetLogger())
+            if (Logger *logger = m_State.GetLogger())
                 logger->Error("Failed to sort search results");
         }
     }

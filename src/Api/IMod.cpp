@@ -6,7 +6,7 @@
 #include "Config/Config.h"
 #include "Loader/ModContext.h"
 
-ILogger *IMod::GetLogger() {
+Logger *IMod::GetLogger() {
     if (m_Logger == nullptr)
         m_Logger = new Logger(GetID());
     return m_Logger;

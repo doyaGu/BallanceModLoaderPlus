@@ -3,7 +3,7 @@
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/TT_Toolbox_RT.h"
 #include "Loader/IBML.h"
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 
 #include "Loader/ModContext.h"
 
@@ -87,7 +87,7 @@ Behavior::Result<Behavior::Node> FindFirstNeighbor(
 } // namespace
 
 void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
-                         IBML &bml, ILogger &logger) {
+                         IBML &bml, Logger &logger) {
     if (m_Patch || m_Retiring) {
         m_PendingLoad = {&behavior, script ? script->GetID() : 0,
                          &bml, &logger};
@@ -100,7 +100,7 @@ void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
 
 void ModsMenuEntry::BeginLoad(Behavior::Session &behavior,
                               CKBehavior *script, IBML &bml,
-                              ILogger &logger) {
+                              Logger &logger) {
     m_Context = bml.GetCKContext();
     m_BML = &bml;
     m_Logger = &logger;

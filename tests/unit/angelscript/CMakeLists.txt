@@ -95,6 +95,7 @@ if (BML_WITH_ANGELSCRIPT)
     add_bml_test(ScriptReloadStagingCleanupTest
             SOURCES
             ScriptReloadStagingCleanupTest.cpp
+            ${PROJECT_SOURCE_DIR}/tests/support/Logger.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptReloadStagingCleanup.cpp
             DEPENDENCIES
             BML_PathUtils

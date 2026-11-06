@@ -237,7 +237,7 @@ public:
     bool LoadConfig(Config *config);
     bool SaveConfig(Config *config, bool snapshotModMetadata = true);
 
-    ILogger *GetLogger() const {return m_Logger; }
+    Logger *GetLogger() const {return m_Logger; }
     void WriteLogLine(const std::string &line);
 
     const wchar_t *GetDirectory(DirectoryType type);
@@ -540,7 +540,7 @@ private:
     BML::DataShareStore *m_DataShare = nullptr;
 
     struct SDL_IOStream *m_LogStream = nullptr;
-    ILogger *m_Logger = nullptr;
+    Logger *m_Logger = nullptr;
 
     CKContext *m_CKContext = nullptr;
 

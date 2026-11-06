@@ -4,7 +4,7 @@
 
 #include "Loader/IBML.h"
 #include "Config/IConfig.h"
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 
 #include "UI/AnsiText.h"
 #include "Console/CommandContext.h"
@@ -173,7 +173,7 @@ void Console::ApplyMessageBoardDisplayPolicy() {
     });
 }
 
-void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger) {
+void Console::OnLoad(IBML &bml, BML::CommandContext &commands, Logger &logger) {
     m_Commands = &commands;
     m_Logger = &logger;
 

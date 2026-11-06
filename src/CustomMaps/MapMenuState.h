@@ -8,7 +8,7 @@
 
 #include "CustomMaps/MapCatalog.h"
 
-class ILogger;
+class Logger;
 
 class MapMenuState {
 public:
@@ -24,7 +24,7 @@ public:
     bool TakeMapLoaded();
     void ResetLoad();
 
-    void BindCatalog(std::wstring mapsDirectory, ILogger &logger);
+    void BindCatalog(std::wstring mapsDirectory, Logger &logger);
     void RefreshMaps();
 
     MapEntry *GetCurrentMaps() const { return m_Current; }
@@ -34,7 +34,7 @@ public:
 
     bool ShouldShowTooltip() const { return m_ShowTooltip; }
     void SetShowTooltip(bool show) { m_ShowTooltip = show; }
-    ILogger *GetLogger() const { return m_Logger; }
+    Logger *GetLogger() const { return m_Logger; }
     bool SetMaxDepth(int depth);
 
 private:
@@ -50,7 +50,7 @@ private:
     bool m_ShowTooltip = true;
     int m_MaxDepth = 8;
     std::wstring m_MapsDirectory;
-    ILogger *m_Logger = nullptr;
+    Logger *m_Logger = nullptr;
     MapCatalog m_Catalog;
     MapEntry *m_Current;
     std::uint64_t m_CatalogRevision = 0;

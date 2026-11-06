@@ -8,7 +8,7 @@
 #include <cstddef>
 
 class BMLMod;
-class ILogger;
+class Logger;
 class ModContext;
 
 namespace BML {
@@ -17,7 +17,7 @@ class ObjectRefs;
 
 /* Registers the reads behind the loader's own interface structs. */
 void RegisterBuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects,
-                                  ILogger *logger);
+                                  Logger *logger);
 void UnregisterBuiltinCapabilities(BMLMod &mod);
 
 /* The scene interface in Scene.h answers out of these. Opaque CK references

@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "Loader/IBML.h"
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 #include "Loader/IMessageReceiver.h"
 
 namespace {
@@ -188,7 +188,7 @@ Behavior::Edit GameplayEvents(Receiver *receiver,
 }
 } // namespace
 
-void GameEventHooks::OnLoad(IBML &bml, ILogger &logger) {
+void GameEventHooks::OnLoad(IBML &bml, Logger &logger) {
     m_Receiver = &bml;
     m_Logger = &logger;
     CKMessageManager *messages = bml.GetMessageManager();

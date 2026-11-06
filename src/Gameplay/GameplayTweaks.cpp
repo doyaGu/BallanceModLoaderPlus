@@ -6,7 +6,7 @@
 #include "BML/Guids/TT_ParticleSystems_RT.h"
 #include "Loader/IBML.h"
 #include "Config/IConfig.h"
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 
 namespace {
 namespace Behavior = BML::Behavior;
@@ -97,7 +97,7 @@ bool GameplayTweaks::OnModifyConfig(const char *category, const char *key,
     return false;
 }
 
-void GameplayTweaks::OnLoad(IBML &bml, ILogger &logger) {
+void GameplayTweaks::OnLoad(IBML &bml, Logger &logger) {
     m_BML = &bml;
     m_Logger = &logger;
 

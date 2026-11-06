@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "UI/BuiHost.h"
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 #include "Loader/ModContext.h"
 #include "Mods/BMLMod.h"
 #include "player/UiTestFramework.h"
@@ -86,7 +86,7 @@ constexpr NativeMenuRoute OptionsToImGuiRoute = {
 
 ImGuiTestEngine *g_Engine = nullptr;
 BMLMod *g_Mod = nullptr;
-ILogger *g_Logger = nullptr;
+Logger *g_Logger = nullptr;
 ModContext *g_Runtime = nullptr;
 std::string g_ResultPath;
 std::string g_ScenarioName;
@@ -1056,7 +1056,7 @@ void Start(BMLMod &mod) {
     const char *resultPath = std::getenv("BML_UI_AUTOMATION_RESULT");
     const char *scenarioName = std::getenv("BML_UI_AUTOMATION_SCENARIO");
     const char *sessionPath = std::getenv("BML_UI_AUTOMATION_SESSION");
-    ILogger *logger = nullptr;
+    Logger *logger = nullptr;
     if (ModContext *runtime = mod.GetRuntimeContext())
         logger = runtime->GetLogger();
     if (logger) {

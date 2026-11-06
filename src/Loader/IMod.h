@@ -10,7 +10,7 @@
 
 #include "BML/BML.h"
 #include "Loader/IBML.h"
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 #include "Config/IConfig.h"
 
 class ModContext;
@@ -261,7 +261,7 @@ protected:
     // unregistered. Its first call reads Configs\<id>.cfg from the loader directory,
     // so call it from OnLoad or later, and reach for the SetDefault functions on the
     // properties rather than the Set ones, which would overwrite what the player saved.
-    virtual ILogger *GetLogger() final;
+    virtual Logger *GetLogger() final;
     virtual IConfig *GetConfig() final;
 
     // The loader, handed to the constructor. It stays valid for as long as the Mod
@@ -271,7 +271,7 @@ protected:
 private:
     friend class ModContext;
 
-    ILogger *m_Logger = nullptr;
+    Logger *m_Logger = nullptr;
     IConfig *m_Config = nullptr;
 };
 

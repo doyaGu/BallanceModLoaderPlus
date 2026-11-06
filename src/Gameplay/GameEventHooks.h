@@ -4,12 +4,12 @@
 #include "BML/Behavior.hpp"
 
 class IBML;
-class ILogger;
+class Logger;
 class IMessageReceiver;
 
 class GameEventHooks {
 public:
-    void OnLoad(IBML &bml, ILogger &logger);
+    void OnLoad(IBML &bml, Logger &logger);
     void OnUnload();
 
 private:
@@ -18,7 +18,7 @@ private:
     BML::Behavior::Session m_Behavior;
     BML::Behavior::Plan m_Plan;
     IMessageReceiver *m_Receiver = nullptr;
-    ILogger *m_Logger = nullptr;
+    Logger *m_Logger = nullptr;
 };
 
 #endif // BML_GAMEEVENTHOOKS_H

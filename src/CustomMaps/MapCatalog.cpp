@@ -8,7 +8,7 @@
 #include "Platform/FileSystemNative.h"
 #include "Platform/FileError.h"
 
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
 
@@ -105,7 +105,7 @@ bool MapCatalog::ValidateFile(const std::wstring &mapsDirectory, const std::wstr
     return true;
 }
 
-bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, ILogger *logger) {
+bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, Logger *logger) {
     auto newRoot = std::unique_ptr<MapEntry>(new(std::nothrow) MapEntry(nullptr, MAP_ENTRY_DIR));
     if (!newRoot) {
         if (logger)
@@ -165,7 +165,7 @@ std::vector<std::string> MapCatalog::ListFiles(std::string_view fragment, std::s
     return paths;
 }
 
-MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogger *logger,
+MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, Logger *logger,
                                                const std::wstring &rootPath) {
     if (!maps || maps->type != MAP_ENTRY_DIR || maps->path.empty())
         return ScanResult::Failure;
@@ -175,7 +175,7 @@ MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogge
     struct Scan {
         MapEntry *Maps;
         int Depth;
-        ILogger *Logger;
+        Logger *Logger;
         const std::wstring &Root;
     } scan{maps, depth, logger, rootPath};
     const auto directory = utils::Utf16ToUtf8(maps->path);

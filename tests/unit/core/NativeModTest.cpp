@@ -6,7 +6,7 @@ extern "C" void *BML_CDECL BML_Malloc(size_t size) { return std::malloc(size); }
 extern "C" void BML_CDECL BML_Free(void *pointer) { std::free(pointer); }
 
 IMod::~IMod() = default;
-ILogger *IMod::GetLogger() { return nullptr; }
+Logger *IMod::GetLogger() { return nullptr; }
 IConfig *IMod::GetConfig() { return nullptr; }
 namespace {
 int creates, loads, unloads, destroys;

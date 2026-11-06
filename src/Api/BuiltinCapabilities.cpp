@@ -287,7 +287,7 @@ BuiltinCapabilities *Find(ModContext &context) {
 } // namespace
 
 void RegisterBuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects,
-                                 ILogger *logger) {
+                                 Logger *logger) {
     UnregisterBuiltinCapabilities(mod);
     try {
         g_Capabilities.emplace(&mod, std::make_unique<BuiltinCapabilities>(mod, objects));

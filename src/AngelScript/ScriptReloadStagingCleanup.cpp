@@ -4,7 +4,7 @@
 
 #include "Platform/FileSystemNative.h"
 
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -54,7 +54,7 @@ bool TryParseScriptReloadArtifactName(const std::wstring &name,
 ScriptReloadCleanupResult CleanupStaleScriptReloadDirectoryChildren(const std::wstring &root,
                                                                     const wchar_t *marker,
                                                                     bool requireSiblingZip,
-                                                                    ILogger *logger) {
+                                                                    Logger *logger) {
     ScriptReloadCleanupResult result;
     if (root.empty() || !marker || !utils::DirectoryExistsW(root))
         return result;
@@ -84,7 +84,7 @@ ScriptReloadCleanupResult CleanupStaleScriptReloadDirectoryChildren(const std::w
 }
 
 ScriptReloadCleanupResult CleanupStaleScriptReloadArtifacts(const std::wstring &modsRoot,
-                                                            ILogger *logger) {
+                                                            Logger *logger) {
     ScriptReloadCleanupResult result;
     ScriptReloadCleanupResult snapshotResult =
         CleanupStaleScriptReloadDirectoryChildren(utils::CombinePathW(utils::GetTempPathW(), L"BMLScriptReload"),

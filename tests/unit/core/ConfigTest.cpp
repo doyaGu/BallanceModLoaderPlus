@@ -64,14 +64,14 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
     };
 
     for (FILE *file : out_files) {
-        fprintf(file, "[%s/%s]: ", m_ModName, level);
+        fprintf(file, "[%s/%s]: ", m_ModName.c_str(), level);
         vfprintf(file, fmt, args);
         fputc('\n', file);
         fflush(file);
     }
 }
 
-ILogger *IMod::GetLogger() {
+Logger *IMod::GetLogger() {
     if (m_Logger == nullptr)
         m_Logger = new Logger(GetID());
     return m_Logger;

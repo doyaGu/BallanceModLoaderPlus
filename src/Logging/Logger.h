@@ -2,27 +2,25 @@
 #define BML_LOGGER_H
 
 #include <cstdarg>
+#include <string>
 
-#include "Logging/ILogger.h"
-
-class Logger : public ILogger
-{
+class Logger {
 public:
 	static Logger *GetDefault();
 	static void SetDefault(Logger *logger);
 
 	explicit Logger(const char *modName);
 
-	void Info(const char *fmt, ...) override;
-	void Warn(const char *fmt, ...) override;
-	void Error(const char *fmt, ...) override;
+        void Info(const char *fmt, ...);
+        void Warn(const char *fmt, ...);
+        void Error(const char *fmt, ...);
 
-private:
-	void Log(const char *level, const char *fmt, va_list args);
+    private:
+        void Log(const char *level, const char *fmt, va_list args);
 
-    const char *m_ModName;
+        std::string m_ModName;
 
-	static Logger *m_DefaultLogger;
+        static Logger *m_DefaultLogger;
 };
 
 #endif // BML_LOGGER_H

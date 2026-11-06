@@ -838,17 +838,17 @@ std::string ScriptMod::ReadModTextFileUtf8(const std::string &relativePath,
 }
 
 void ScriptMod::LogInfo(const std::string &message) {
-    if (ILogger *logger = GetLogger())
+    if (Logger *logger = GetLogger())
         logger->Info("%s", message.c_str());
 }
 
 void ScriptMod::LogWarn(const std::string &message) {
-    if (ILogger *logger = GetLogger())
+    if (Logger *logger = GetLogger())
         logger->Warn("%s", message.c_str());
 }
 
 void ScriptMod::LogError(const std::string &message) {
-    if (ILogger *logger = GetLogger())
+    if (Logger *logger = GetLogger())
         logger->Error("%s", message.c_str());
 }
 

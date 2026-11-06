@@ -164,7 +164,6 @@ set(BML_LOADER_PRIVATE_HEADERS
         Loader/IMessageReceiver.h
         Config/IConfig.h
         Console/ICommand.h
-        Logging/ILogger.h
         Hooks/InputHook.h
         Loader/LegacyModVersion.h
         Loader/ModContext.h

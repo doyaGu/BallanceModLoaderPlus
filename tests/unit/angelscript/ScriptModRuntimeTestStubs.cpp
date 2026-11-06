@@ -4,7 +4,7 @@
 
 IMod::~IMod() = default;
 
-ILogger *IMod::GetLogger() {
+Logger *IMod::GetLogger() {
     return nullptr;
 }
 

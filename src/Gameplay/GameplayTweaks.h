@@ -5,7 +5,7 @@
 
 class IBML;
 class IConfig;
-class ILogger;
+class Logger;
 class IProperty;
 
 class GameplayTweaks {
@@ -13,7 +13,7 @@ public:
     void InitConfig(IConfig &config);
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, ILogger &logger);
+    void OnLoad(IBML &bml, Logger &logger);
     void OnUnload();
     void OnExitGame();
 
@@ -26,7 +26,7 @@ private:
     void ClosePlan(BML::Behavior::Plan &plan, const char *name);
 
     IBML *m_BML = nullptr;
-    ILogger *m_Logger = nullptr;
+    Logger *m_Logger = nullptr;
 
     IProperty *m_LanternAlphaTest = nullptr;
     IProperty *m_FixLifeBall = nullptr;

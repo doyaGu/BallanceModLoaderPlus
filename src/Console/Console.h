@@ -10,7 +10,7 @@
 
 class IBML;
 class IConfig;
-class ILogger;
+class Logger;
 class IProperty;
 
 namespace BML {
@@ -23,7 +23,7 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger);
+    void OnLoad(IBML &bml, BML::CommandContext &commands, Logger &logger);
     void OnUnload();
     void OnProcess();
     void CloseCommandBar();
@@ -59,7 +59,7 @@ private:
     void RegisterCommands(IBML &bml);
 
     BML::CommandContext *m_Commands = nullptr;
-    ILogger *m_Logger = nullptr;
+    Logger *m_Logger = nullptr;
     bool m_OutputCallbackInstalled = false;
     BML::Shell::History m_History;
     CommandBar m_CommandBar;

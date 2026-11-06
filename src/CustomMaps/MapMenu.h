@@ -8,7 +8,7 @@
 #include "UI/BuiHost.h"
 #include "CustomMaps/MapMenuState.h"
 
-class ILogger;
+class Logger;
 
 class MapListPage : public BuiHost::Page {
 public:
@@ -40,7 +40,7 @@ public:
     explicit MapMenu(MapMenuState::MapLoader loader);
     ~MapMenu();
 
-    void Init(const std::wstring &mapsDirectory, ILogger &logger);
+    void Init(const std::wstring &mapsDirectory, Logger &logger);
     void Shutdown();
 
     bool Open(const std::string &id);

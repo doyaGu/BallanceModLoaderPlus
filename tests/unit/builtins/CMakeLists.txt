@@ -49,6 +49,7 @@ if(WIN32)
     add_bml_test(MapCatalogTest
             SOURCES
             MapCatalogTest.cpp
+            ${PROJECT_SOURCE_DIR}/tests/support/Logger.cpp
             ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
             ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
             DEPENDENCIES
@@ -59,6 +60,7 @@ endif()
 add_bml_test(MapMenuStateTest
         SOURCES
         MapMenuStateTest.cpp
+        ${PROJECT_SOURCE_DIR}/tests/support/Logger.cpp
         ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
         ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
         ${BML_SOURCE_DIR}/CustomMaps/MapMenuState.cpp

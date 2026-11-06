@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <string>
 
-class ILogger;
+class Logger;
 
 namespace BML {
 
@@ -20,10 +20,10 @@ bool TryParseScriptReloadArtifactName(const std::wstring &name,
 ScriptReloadCleanupResult CleanupStaleScriptReloadDirectoryChildren(const std::wstring &root,
                                                                     const wchar_t *marker,
                                                                     bool requireSiblingZip,
-                                                                    ILogger *logger = nullptr);
+                                                                    Logger *logger = nullptr);
 
 ScriptReloadCleanupResult CleanupStaleScriptReloadArtifacts(const std::wstring &modsRoot,
-                                                            ILogger *logger = nullptr);
+                                                            Logger *logger = nullptr);
 
 } // namespace BML
 

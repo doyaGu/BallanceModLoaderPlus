@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "Logging/ILogger.h"
+#include "Logging/Logger.h"
 
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -60,7 +60,7 @@ bool MapMenuState::SetMaxDepth(int depth) {
     return true;
 }
 
-void MapMenuState::BindCatalog(std::wstring mapsDirectory, ILogger &logger) {
+void MapMenuState::BindCatalog(std::wstring mapsDirectory, Logger &logger) {
     m_MapsDirectory = std::move(mapsDirectory);
     m_Logger = &logger;
 }
