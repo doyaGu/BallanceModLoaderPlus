@@ -1,4 +1,4 @@
-#include "BML/Bui.h"
+#include "BML/Bui/ImGui.hpp"
 
 static_assert(sizeof(ImWchar) == sizeof(ImWchar32),
               "BML consumers must use the loader's 32-bit ImWchar ABI");

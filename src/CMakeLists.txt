@@ -88,17 +88,23 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Result.hpp
         ${BML_INCLUDE_DIR}/BML/Interface.h
         ${BML_INCLUDE_DIR}/BML/Interface.hpp
-        ${BML_INCLUDE_DIR}/BML/ModInterface.hpp
+        ${BML_INCLUDE_DIR}/BML/Mod.h
+        ${BML_INCLUDE_DIR}/BML/Mod.hpp
+        ${BML_INCLUDE_DIR}/BML/Config.h
+        ${BML_INCLUDE_DIR}/BML/Config.hpp
+        ${BML_INCLUDE_DIR}/BML/Timer.h
+        ${BML_INCLUDE_DIR}/BML/Timer.hpp
+        ${BML_INCLUDE_DIR}/BML/Input.h
+        ${BML_INCLUDE_DIR}/BML/Input.hpp
+        ${BML_INCLUDE_DIR}/BML/Engine.h
+        ${BML_INCLUDE_DIR}/BML/Engine.hpp
+        ${BML_INCLUDE_DIR}/BML/ImGui.h
+        ${BML_INCLUDE_DIR}/BML/ImGui.hpp
+        ${BML_INCLUDE_DIR}/BML/Detail/Api.hpp
         ${BML_INCLUDE_DIR}/BML/BML.h
         ${BML_INCLUDE_DIR}/BML/Command.h
         ${BML_INCLUDE_DIR}/BML/Command.hpp
 
-        ${BML_INCLUDE_DIR}/BML/ILogger.h
-        ${BML_INCLUDE_DIR}/BML/ICommand.h
-        ${BML_INCLUDE_DIR}/BML/IConfig.h
-        ${BML_INCLUDE_DIR}/BML/IMessageReceiver.h
-        ${BML_INCLUDE_DIR}/BML/IBML.h
-        ${BML_INCLUDE_DIR}/BML/IMod.h
         ${BML_INCLUDE_DIR}/BML/DataShare.h
         ${BML_INCLUDE_DIR}/BML/DataShare.hpp
         ${BML_INCLUDE_DIR}/BML/Types.h
@@ -119,12 +125,14 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/ModMenu.hpp
         ${BML_INCLUDE_DIR}/BML/Speedrun.h
 
+        ${BML_INCLUDE_DIR}/BML/Bui/ImGui.hpp
+        ${BML_INCLUDE_DIR}/BML/Gui/Engine.hpp
+        ${BML_INCLUDE_DIR}/BML/Bui.hpp
         ${BML_INCLUDE_DIR}/BML/Bui.h
+        ${BML_INCLUDE_DIR}/BML/Gui.hpp
         ${BML_INCLUDE_DIR}/BML/Gui.h
         ${BML_PUBLIC_GUI_HEADERS}
-        ${BML_INCLUDE_DIR}/BML/InputHook.h
 
-        ${BML_INCLUDE_DIR}/BML/ExecuteBB.h
         ${BML_INCLUDE_DIR}/BML/ScriptHelper.h
         ${BML_INCLUDE_DIR}/BML/Guids.h
         ${BML_PUBLIC_GUID_HEADERS}
@@ -749,6 +757,13 @@ if (BML_BUILD_UI_AUTOMATION)
 endif ()
 
 target_compile_features(BML PUBLIC cxx_std_20)
+# Header-only wrapper state must remain local even for consumers that create a
+# target directly instead of using bml_add_mod.
+target_compile_options(BML INTERFACE
+    "$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fvisibility=hidden>"
+    "$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fvisibility-inlines-hidden>"
+    "$<$<COMPILE_LANG_AND_ID:C,MSVC>:/utf-8>"
+    "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
 
 target_compile_options(BML PRIVATE
         $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/MP>
@@ -758,10 +773,10 @@ target_include_directories(BML
         PUBLIC
         $<BUILD_INTERFACE:${BML_INCLUDE_DIR}>
         $<BUILD_INTERFACE:${BML_ABI_INCLUDE_DIR}>
-        $<BUILD_INTERFACE:${IMGUI_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${IMGUI_SOURCE_DIR}
         ${BML_BUILD_VERSION_DIR}
 )
 
@@ -774,9 +789,8 @@ if (BML_WITH_ANGELSCRIPT)
 endif ()
 
 target_link_libraries(BML
-        PUBLIC
-        BML::CK2 BML::VxMath
         PRIVATE
+        BML::CK2 BML::VxMath
         BMLUtils
         onig
 )
@@ -796,9 +810,8 @@ endif()
 target_compile_definitions(BML
         PUBLIC
         BML_RUNTIME_SDL=${BML_RUNTIME_SDL}
-        "$<BUILD_INTERFACE:IMGUI_USER_CONFIG=\"${CMAKE_CURRENT_SOURCE_DIR}/BMLImGuiConfig.h\">"
-        "$<INSTALL_INTERFACE:IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\">"
         PRIVATE
+        IMGUI_USER_CONFIG="BMLImGuiConfig.h"
         BML_BUILD_CONFIGURATION="$<CONFIG>"
         BML_EXPORTS IMGUI_EXPORT
         _WIN32_WINNT=0x0A00 WINVER=0x0A00
@@ -816,6 +829,26 @@ set_target_properties(BML PROPERTIES
 
 install(FILES "${BML_ABI_INCLUDE_DIR}/BML/Abi.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/BML")
 install(FILES "${PROJECT_BINARY_DIR}/abi/$<CONFIG>/BML.abi.json" DESTINATION "${CMAKE_INSTALL_DATADIR}/BML")
+
+add_library(BMLEngine INTERFACE)
+add_library(BML::Engine ALIAS BMLEngine)
+set_target_properties(BMLEngine PROPERTIES EXPORT_NAME Engine
+    INTERFACE_BML_ENGINE_ABI "${BML_ENGINE_ABI_ID}")
+set_property(TARGET BMLEngine APPEND PROPERTY COMPATIBLE_INTERFACE_STRING BML_ENGINE_ABI)
+target_link_libraries(BMLEngine INTERFACE BML BML::CK2 BML::VxMath)
+add_library(BMLImGui INTERFACE)
+add_library(BML::ImGui ALIAS BMLImGui)
+set_target_properties(BMLImGui PROPERTIES EXPORT_NAME ImGui
+    INTERFACE_BML_IMGUI_ABI "${BML_IMGUI_ABI_ID}")
+set_property(TARGET BMLImGui APPEND PROPERTY COMPATIBLE_INTERFACE_STRING BML_IMGUI_ABI)
+target_link_libraries(BMLImGui INTERFACE BML)
+target_include_directories(BMLImGui INTERFACE
+    $<BUILD_INTERFACE:${IMGUI_SOURCE_DIR}> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_compile_definitions(BMLImGui INTERFACE
+    "$<BUILD_INTERFACE:IMGUI_USER_CONFIG=\"${CMAKE_CURRENT_SOURCE_DIR}/BMLImGuiConfig.h\">"
+    "$<INSTALL_INTERFACE:IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\">")
+install(TARGETS BMLEngine BMLImGui EXPORT BMLTargets)
 
 install(TARGETS BML
         EXPORT BMLTargets
@@ -864,6 +897,7 @@ install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfigVersion.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
+        "${PROJECT_SOURCE_DIR}/cmake/BMLDependencyAbi.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/BMLInterface.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/BMLInterfacePackageConfig.cmake.in"
         "${PROJECT_SOURCE_DIR}/cmake/BMLImc.cmake"
@@ -906,6 +940,8 @@ install(DIRECTORY
 )
 
 install(DIRECTORY
+        "${PROJECT_SOURCE_DIR}/examples/native-c-mod"
+        "${PROJECT_SOURCE_DIR}/examples/native-mod"
         "${PROJECT_SOURCE_DIR}/examples/native-interface-provider"
         "${PROJECT_SOURCE_DIR}/examples/native-interface-consumer"
         DESTINATION "examples"
@@ -922,6 +958,7 @@ install(PROGRAMS "${PROJECT_SOURCE_DIR}/scripts/bml" DESTINATION "scripts")
 install(FILES
         "${PROJECT_SOURCE_DIR}/docs/en/modding.md"
         "${PROJECT_SOURCE_DIR}/docs/en/native-mod-api.md"
+        "${PROJECT_SOURCE_DIR}/docs/en/native-mod-migration.md"
         "${PROJECT_SOURCE_DIR}/docs/en/native-api-routes.md"
         "${PROJECT_SOURCE_DIR}/docs/en/behavior-authoring.md"
         "${PROJECT_SOURCE_DIR}/docs/en/imc-author-guide.md"
@@ -932,6 +969,7 @@ install(FILES
 install(FILES
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/modding.md"
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/native-mod-api.md"
+        "${PROJECT_SOURCE_DIR}/docs/zh-CN/native-mod-migration.md"
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/native-api-routes.md"
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/behavior-authoring.md"
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/imc-author-guide.md"
@@ -976,3 +1014,6 @@ if (BML_WITH_ANGELSCRIPT)
     )
 
 endif ()
+
+install(FILES "${PROJECT_SOURCE_DIR}/docs/design/native-mod-api-implementation.md"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/design")

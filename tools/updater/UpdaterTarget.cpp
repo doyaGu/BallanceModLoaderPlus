@@ -37,7 +37,7 @@ void WriteUpdateTarget(utils::MutableJsonDocument &doc, yyjson_mut_val *root, co
 Result ReadRuntimeTarget(const UpdaterContext &context, UpdateTarget &target) {
     std::string error;
     auto doc = utils::JsonDocument::ParseFile(JoinPath(context.gameRoot, L"ModLoader/BML.abi.json"), error);
-    if (!doc.IsValid() || utils::JsonGetInt(doc.Root(), "schema", 0) != 1)
+    if (!doc.IsValid() || (utils::JsonGetInt(doc.Root(), "schema", 0) != 1 && utils::JsonGetInt(doc.Root(), "schema", 0) != 2))
         return Result::Failure("Missing or invalid ModLoader/BML.abi.json: " + error);
     auto result = ReadUpdateTarget(doc.Root(), target);
     if (!result.ok) return result;

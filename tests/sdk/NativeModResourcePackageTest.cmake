@@ -34,6 +34,8 @@ extern "C" int FixtureEntry() { return 7; }
     set(project [=[
 cmake_minimum_required(VERSION 3.25)
 project(ResourcePackageFixture LANGUAGES CXX)
+add_library(BML::Engine INTERFACE IMPORTED)
+add_library(BML::ImGui INTERFACE IMPORTED)
 set(BML_RUNTIME "@PROFILE@")
 function(bml_add_mod target)
     add_library(${target} MODULE ${ARGN})

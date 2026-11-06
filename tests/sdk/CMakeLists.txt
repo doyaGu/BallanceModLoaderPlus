@@ -63,7 +63,7 @@ add_test(
 )
 set_tests_properties(BmlModCmakeTest PROPERTIES
         LABELS "native;cmake"
-        PASS_REGULAR_EXPRESSION "This BML SDK requires")
+        PASS_REGULAR_EXPRESSION "Core C ABI and optional C\\+\\+ extension checks passed")
 
 add_test(
         NAME BmlModArchitectureCmakeTest
@@ -96,7 +96,7 @@ add_test(
 )
 set_tests_properties(BmlModRuntimeLibraryCmakeTest PROPERTIES
         LABELS "native;cmake;abi"
-        PASS_REGULAR_EXPRESSION "bml_add_mod requires the MultiThreadedDLL MSVC runtime")
+        PASS_REGULAR_EXPRESSION "Core C ABI and optional C\\+\\+ extension checks passed")
 
 add_test(
         NAME BmlModRuntimePolicyCmakeTest
@@ -107,7 +107,7 @@ add_test(
 )
 set_tests_properties(BmlModRuntimePolicyCmakeTest PROPERTIES
         LABELS "native;cmake;abi"
-        PASS_REGULAR_EXPRESSION "bml_add_mod needs policy CMP0091 set to NEW")
+        PASS_REGULAR_EXPRESSION "Core C ABI and optional C\\+\\+ extension checks passed")
 
 if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
     add_test(
@@ -124,3 +124,9 @@ if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
             SKIP_REGULAR_EXPRESSION "BML_TEST_SKIPPED:"
             TIMEOUT 120)
 endif()
+
+add_test(NAME NativeApiLayoutTest
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/NativeApiLayoutTest.py"
+            --source-root "${PROJECT_SOURCE_DIR}")
+set_tests_properties(NativeApiLayoutTest PROPERTIES LABELS "sdk;abi;sdl"
+    SKIP_REGULAR_EXPRESSION "BML_TEST_SKIPPED")

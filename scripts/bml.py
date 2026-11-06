@@ -25,7 +25,7 @@ CONFIGURATIONS = ("Debug", "Release", "RelWithDebInfo")
 MOD_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)+$")
 TARGET_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.+-]*$")
 VERSION_PATTERN = re.compile(
-    r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
+    r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$"
 )
 TOKEN_PATTERN = re.compile(r"__[A-Z][A-Z0-9_]*__")
 TEXT_EXTENSIONS = {
@@ -311,6 +311,8 @@ def create_native_mod(args: argparse.Namespace, script_path: Path) -> None:
     cmake_text = cmake_path.read_text(encoding="utf-8").replace("1.0.0", version_core)
     source_text = source_path.read_text(encoding="utf-8")
     source_text = source_text.replace(f'return "{target}";', f'return "{cpp_string(mod_id)}";')
+    source_text = source_text.replace(f'definition.Id = "{target}";', f'definition.Id = "{cpp_string(mod_id)}";')
+    source_text = source_text.replace(f'.Id = "{target}",', f'.Id = "{cpp_string(mod_id)}",')
     source_text = source_text.replace('"Hello Mod"', f'"{cpp_string(name)}"')
     source_text = source_text.replace('"Template"', f'"{cpp_string(author)}"')
     source_text = source_text.replace('"1.0.0"', f'"{cpp_string(args.version)}"')
@@ -738,7 +740,7 @@ def find_visual_studio_generator(cmake: str) -> str:
 def read_abi(path: Path) -> dict[str, Any]:
     abi = read_json(path)
     if (
-        abi.get("schema") != 1
+        abi.get("schema") not in (1, 2)
         or abi.get("runtime") != "sdl"
         or abi.get("platform") not in ("windows", "linux", "macos")
         or abi.get("architecture") not in ("x86", "x64", "arm64")
@@ -748,6 +750,15 @@ def read_abi(path: Path) -> dict[str, Any]:
         or abi.get("configuration") not in CONFIGURATIONS
     ):
         raise BmlError(f"Invalid or unsupported BML ABI descriptor: {path}")
+    if abi["schema"] == 2:
+        if abi.get("mod_api") != "bml.mod" or abi.get("mod_api_major") != 1:
+            raise BmlError(f"Unsupported native Mod C protocol: {path}")
+        for name in ("extensions", "extension_abis"):
+            values = abi.get(name, {})
+            if not isinstance(values, dict) or any(key not in ("engine", "imgui") or not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}-(Debug|Release|RelWithDebInfo|MinSizeRel)", value) for key, value in values.items()):
+                raise BmlError(f"Invalid native Mod extension ABI: {path}")
+        if path.name.endswith(".bmodp.abi.json") and "extensions" not in abi:
+            raise BmlError(f"Native Mod extension requirements are missing: {path}")
     return abi
 
 
@@ -797,9 +808,16 @@ def game_abi(game: Path) -> dict[str, Any]:
 
 
 def check_abi_match(expected: dict[str, Any], actual: dict[str, Any], label: str) -> None:
-    for field in expected:
+    fields = expected if expected.get("schema") == 1 else (
+        "runtime", "platform", "architecture", "host_linkage", "mod_api", "mod_api_major")
+    for field in fields:
         if actual.get(field) != expected[field]:
             raise BmlError(f"{label} ABI mismatch for {field}: expected {expected[field]!r}, got {actual.get(field)!r}.")
+    if expected.get("schema") == 2:
+        available = expected.get("extension_abis", {})
+        for extension, required in actual.get("extensions", {}).items():
+            if required and required != available.get(extension):
+                raise BmlError(f"{label} ABI mismatch for {extension}: expected {available.get(extension)!r}, got {required!r}.")
 
 
 def player_is_running() -> bool:
@@ -848,7 +866,7 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
     if abi["host_linkage"] != "dynamic":
         raise BmlError("The SDL static-host SDK workflow is not implemented.")
     configuration = args.configuration or abi["configuration"]
-    if configuration != abi["configuration"]:
+    if abi["schema"] == 1 and configuration != abi["configuration"]:
         raise BmlError(f"This SDK requires configuration {abi['configuration']}; got {configuration}.")
 
     game_value = getattr(args, "ballance_root", None) or settings.get("ballanceRoot") or os.environ.get("BML_BALLANCE_ROOT")
@@ -877,7 +895,7 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
     state_dir = root / ".bml"
     # Keep incompatible runtimes/SDKs/configurations out of the same CMake cache.
     build_dir = state_dir / "build" / f"sdl-{abi['sdk_abi']}-{configuration}"
-    install_dir = game / "ModLoader" if install and game else state_dir / "stage"
+    install_dir = state_dir / "stage"
     prefixes = [sdk]
     if game:
         prefixes.append(game / "ModLoader")
@@ -923,7 +941,15 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
     artifact = str(manifest.get("artifact") or manifest["target"])
     mod_path = install_dir / "Mods" / f"{artifact}.bmodp"
     require_file(mod_path, "Built Mod")
-    check_abi_match(abi, read_abi(mod_path.with_suffix(".bmodp.abi.json")), "Built Mod")
+    built_abi = read_abi(mod_path.with_suffix(".bmodp.abi.json"))
+    check_abi_match(abi, built_abi, "Built Mod")
+    if install:
+        check_abi_match(game_abi(game), built_abi, "Game")
+        if player_is_running():
+            raise BmlError("Ballance is running. Close it before replacing this native Mod.")
+        run_checked([cmake, "--install", str(build_dir), "--config", configuration,
+                     "--prefix", str(game / "ModLoader")], "Mod installation failed", args.verbose)
+        mod_path = game / "ModLoader/Mods" / mod_path.name
     print("Ready:")
     print(f"  {mod_path}")
     if not launch:

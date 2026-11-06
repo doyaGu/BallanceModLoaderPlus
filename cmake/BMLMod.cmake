@@ -10,10 +10,6 @@ function(bml_add_mod TARGET_NAME)
     if (ARGC LESS 2)
         message(FATAL_ERROR "bml_add_mod(${TARGET_NAME}) requires at least one source file")
     endif ()
-    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL BML_SDK_COMPILER_ID OR
-       NOT CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL BML_SDK_COMPILER_VERSION)
-        message(FATAL_ERROR "This BML SDK requires ${BML_SDK_COMPILER_ID} ${BML_SDK_COMPILER_VERSION}; use the matching compiler and C++ standard library")
-    endif()
     if(NOT CMAKE_SIZEOF_VOID_P EQUAL BML_SDK_POINTER_SIZE OR
        NOT CMAKE_SYSTEM_NAME STREQUAL BML_SDK_SYSTEM_NAME)
         message(FATAL_ERROR "The Mod target does not match this BML SDK platform/word size")
@@ -37,48 +33,45 @@ function(bml_add_mod TARGET_NAME)
     if(NOT _bml_mod_arch STREQUAL BML_TARGET_ARCH)
         message(FATAL_ERROR "The Mod architecture ${_bml_mod_arch} does not match this BML SDK (${BML_TARGET_ARCH}); build one architecture per SDK")
     endif()
-    # BML_MSVC_RUNTIME_LIBRARY is set by BMLConfig.cmake to the runtime the
-    # packaged loader was built against. The legacy native interface passes C++
-    # objects across the DLL boundary, so a Mod that links the other runtime
-    # corrupts allocations and iterator debug state at load time instead of
-    # failing to build.
-    if (NOT "${BML_MSVC_RUNTIME_LIBRARY}" STREQUAL "")
-        if (NOT "${CMAKE_MSVC_RUNTIME_LIBRARY}" STREQUAL ""
-            AND NOT "${CMAKE_MSVC_RUNTIME_LIBRARY}" STREQUAL "${BML_MSVC_RUNTIME_LIBRARY}")
-            message(FATAL_ERROR
-                    "bml_add_mod requires the ${BML_MSVC_RUNTIME_LIBRARY} MSVC runtime to match this BML+ SDK, "
-                    "but CMAKE_MSVC_RUNTIME_LIBRARY is ${CMAKE_MSVC_RUNTIME_LIBRARY}; "
-                    "use the SDK archive that matches the loader you install, or clear CMAKE_MSVC_RUNTIME_LIBRARY")
-        endif ()
-        cmake_policy(GET CMP0091 BML_MSVC_RUNTIME_POLICY)
-        if (NOT BML_MSVC_RUNTIME_POLICY STREQUAL "NEW")
-            message(FATAL_ERROR
-                    "bml_add_mod needs policy CMP0091 set to NEW so it can pin the ${BML_MSVC_RUNTIME_LIBRARY} "
-                    "MSVC runtime required by this BML+ SDK; raise cmake_minimum_required to 3.15 or newer")
-        endif ()
-    endif ()
-
     add_library("${TARGET_NAME}" MODULE ${ARGN})
     target_link_libraries("${TARGET_NAME}" PRIVATE BML::BML)
-    target_compile_features("${TARGET_NAME}" PRIVATE cxx_std_20)
-    if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
-    target_link_options("${TARGET_NAME}" PRIVATE
-            "/EXPORT:BMLEntry"
-            "/EXPORT:BMLExit"
-    )
+    if(CMAKE_CXX_COMPILER_LOADED)
+        target_compile_features("${TARGET_NAME}" PRIVATE cxx_std_20)
+    endif()
+    if(CMAKE_C_COMPILER_LOADED)
+        target_compile_features("${TARGET_NAME}" PRIVATE c_std_11)
+    endif()
+    if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC" OR CMAKE_C_SIMULATE_ID STREQUAL "MSVC")
+        if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+            target_link_options("${TARGET_NAME}" PRIVATE "/EXPORT:BML_GetModInterface=_BML_GetModInterface")
+        else()
+            target_link_options("${TARGET_NAME}" PRIVATE "/EXPORT:BML_GetModInterface")
+        endif()
+    elseif(WIN32)
+        set(_bml_exports "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_NAME}-entry.def")
+        file(GENERATE OUTPUT "${_bml_exports}" CONTENT "EXPORTS\n  BML_GetModInterface\n")
+        target_sources("${TARGET_NAME}" PRIVATE "${_bml_exports}")
     endif()
     set_target_properties("${TARGET_NAME}" PROPERTIES
             CXX_EXTENSIONS OFF
+            C_VISIBILITY_PRESET hidden
+            CXX_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN TRUE
             PREFIX ""
             SUFFIX ".bmodp"
             BML_MOD_PACKAGE_NAME "${TARGET_NAME}.bmodp"
             FOLDER "Mods"
     )
-    file(GENERATE OUTPUT "$<TARGET_FILE:${TARGET_NAME}>.abi.json" CONTENT "${BML_ABI_JSON}\n")
+    string(REGEX REPLACE "}$" "" _bml_mod_abi "${BML_ABI_JSON}")
+    set(_bml_engine_requirement "$<TARGET_PROPERTY:${TARGET_NAME},BML_ENGINE_ABI>")
+    set(_bml_imgui_requirement "$<TARGET_PROPERTY:${TARGET_NAME},BML_IMGUI_ABI>")
+    string(APPEND _bml_mod_abi ",\"extensions\":{$<$<BOOL:${_bml_engine_requirement}>:\"engine\":\"${_bml_engine_requirement}-$<CONFIG>\">$<$<AND:$<BOOL:${_bml_engine_requirement}>,$<BOOL:${_bml_imgui_requirement}>>:,>$<$<BOOL:${_bml_imgui_requirement}>:\"imgui\":\"${_bml_imgui_requirement}-$<CONFIG>\">}}")
+    file(GENERATE OUTPUT "$<TARGET_FILE:${TARGET_NAME}>.abi.json" CONTENT "${_bml_mod_abi}\n")
     # Modules run inside Player. Use its layout from the first link, so
     # repeated installs do not edit an already-relocated Mach-O in place.
     set_target_properties("${TARGET_NAME}" PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE)
     if(APPLE)
+        target_link_options("${TARGET_NAME}" PRIVATE "LINKER:-u,_BML_GetModInterface")
         if(CMAKE_VERSION VERSION_LESS 3.19)
             message(FATAL_ERROR "Building macOS SDL Mods requires CMake 3.19 or newer")
         endif()
@@ -94,15 +87,10 @@ function(bml_add_mod TARGET_NAME)
             COMMENT "Binding ${TARGET_NAME} to Player's SDL"
             VERBATIM)
     elseif(UNIX)
+        target_link_options("${TARGET_NAME}" PRIVATE "LINKER:--undefined=BML_GetModInterface" "LINKER:--no-undefined")
         set_target_properties("${TARGET_NAME}" PROPERTIES INSTALL_RPATH "$ORIGIN/../../Managers;$ORIGIN/../../Bin;$ORIGIN/../../lib;$ORIGIN/../..")
     endif()
-    if (NOT "${BML_MSVC_RUNTIME_LIBRARY}" STREQUAL "")
-        # Pin the runtime instead of letting it follow the build configuration,
-        # so a Debug-configured Mod still links the runtime its loader uses.
-        set_target_properties("${TARGET_NAME}" PROPERTIES
-                MSVC_RUNTIME_LIBRARY "${BML_MSVC_RUNTIME_LIBRARY}"
-        )
-    endif ()
+
 endfunction()
 
 function(bml_install_mod TARGET_NAME)
@@ -112,4 +100,90 @@ function(bml_install_mod TARGET_NAME)
 
     install(TARGETS "${TARGET_NAME}" RUNTIME DESTINATION Mods LIBRARY DESTINATION Mods)
     install(FILES "$<TARGET_FILE:${TARGET_NAME}>.abi.json" DESTINATION Mods)
+endfunction()
+
+# Follow private interface libraries too; extensions selected after bml_add_mod
+# must participate in validation and in the generated descriptor.
+function(_bml_uses_extension target extension output)
+    set(_queue "${target}")
+    set(_visited "")
+    while(_queue)
+        list(POP_FRONT _queue _item)
+        if(_item MATCHES "BML::${extension}")
+            set(${output} TRUE PARENT_SCOPE)
+            return()
+        endif()
+        if(NOT TARGET "${_item}" OR _item IN_LIST _visited)
+            continue()
+        endif()
+        list(APPEND _visited "${_item}")
+        foreach(_property LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+            get_target_property(_links "${_item}" "${_property}")
+            if(_links)
+                foreach(_link IN LISTS _links)
+                    if(_link MATCHES "^\\$<LINK_ONLY:(.*)>$")
+                        set(_link "${CMAKE_MATCH_1}")
+                    endif()
+                    list(APPEND _queue "${_link}")
+                endforeach()
+            endif()
+        endforeach()
+    endwhile()
+    set(${output} FALSE PARENT_SCOPE)
+endfunction()
+
+function(_bml_sdk_targets directory output)
+    get_property(_targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
+    get_property(_children DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
+    foreach(_child IN LISTS _children)
+        _bml_sdk_targets("${_child}" _nested)
+        list(APPEND _targets ${_nested})
+    endforeach()
+    set(${output} "${_targets}" PARENT_SCOPE)
+endfunction()
+
+function(_bml_resolve_sdk_extensions)
+    _bml_sdk_targets("${CMAKE_SOURCE_DIR}" _targets)
+    set(_needs_engine FALSE)
+    foreach(_target IN LISTS _targets)
+        _bml_uses_extension("${_target}" Engine _engine)
+        _bml_uses_extension("${_target}" ImGui _imgui)
+        if(NOT _engine AND NOT _imgui)
+            continue()
+        endif()
+        get_target_property(_compiler BML::BML BML_SDK_COMPILER_ID)
+        get_target_property(_version BML::BML BML_SDK_COMPILER_VERSION)
+        if(NOT CMAKE_CXX_COMPILER_ID STREQUAL _compiler OR NOT CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL _version)
+            message(FATAL_ERROR "${_target} uses BML C++ extensions and requires ${_compiler} ${_version}; core C API Mods do not have this restriction")
+        endif()
+        get_target_property(_runtime BML::BML BML_MSVC_RUNTIME_LIBRARY)
+        if(_runtime)
+            cmake_policy(GET CMP0091 _runtime_policy)
+            if(NOT _runtime_policy STREQUAL "NEW")
+                message(FATAL_ERROR "BML C++ extensions need policy CMP0091 set to NEW")
+            endif()
+            if(CMAKE_MSVC_RUNTIME_LIBRARY AND NOT CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL _runtime)
+                message(FATAL_ERROR "${_target} requires MSVC runtime ${_runtime} for its BML C++ extensions")
+            endif()
+            set_property(TARGET "${_target}" PROPERTY MSVC_RUNTIME_LIBRARY "${_runtime}")
+        endif()
+        if(_engine)
+            set(_needs_engine TRUE)
+        endif()
+    endforeach()
+    if(_needs_engine)
+        find_package(SDL3 3.4.8 CONFIG REQUIRED)
+        find_package(VxMath CONFIG REQUIRED)
+        find_package(CK2 CONFIG REQUIRED)
+        set_property(TARGET BML::CK2 PROPERTY INTERFACE_LINK_LIBRARIES CK2)
+        set_property(TARGET BML::VxMath PROPERTY INTERFACE_LINK_LIBRARIES VxMath)
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/BMLDependencyAbi.cmake")
+        bml_dependency_abi(CK2 CKAll.h _ck2)
+        bml_dependency_abi(VxMath VxMath.h _vxmath)
+        get_target_property(_expected_ck2 BML::BML BML_SDK_CK2_ABI_ID)
+        get_target_property(_expected_vxmath BML::BML BML_SDK_VXMATH_ABI_ID)
+        if(NOT _ck2 STREQUAL _expected_ck2 OR NOT _vxmath STREQUAL _expected_vxmath)
+            message(FATAL_ERROR "BML Engine SDK ABI mismatch: use matching CK2/VxMath headers and public compile settings")
+        endif()
+    endif()
 endfunction()

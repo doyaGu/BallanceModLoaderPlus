@@ -181,7 +181,7 @@ Result UpdaterService::BuildApplyPlan(const LocalPackageVerification &verificati
     // the runtime this package is allowed to replace.
     auto doc = utils::JsonDocument::ParseFile(JoinPath(stagingRoot, L"ModLoader/BML.abi.json"), error);
     UpdateTarget payload;
-    if (!doc.IsValid() || utils::JsonGetInt(doc.Root(), "schema", 0) != 1 ||
+    if (!doc.IsValid() || (utils::JsonGetInt(doc.Root(), "schema", 0) != 1 && utils::JsonGetInt(doc.Root(), "schema", 0) != 2) ||
         !ReadUpdateTarget(doc.Root(), payload).ok || payload != verification.manifest.target)
         return Result::Failure("Package ABI descriptor does not match its signed update target");
     const auto sdk = utils::JsonGetString(doc.Root(), "sdk_abi", "");

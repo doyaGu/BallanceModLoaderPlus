@@ -35,7 +35,7 @@ endif ()
 # must arrive through BML's public usage requirements, exactly as it does for a
 # Native Mod built against the build-tree package.
 add_library(ImGuiAbiConsumerCompile OBJECT ImGuiAbiConsumerCompile.cpp)
-target_link_libraries(ImGuiAbiConsumerCompile PRIVATE BML)
+target_link_libraries(ImGuiAbiConsumerCompile PRIVATE BML::ImGui BML::Engine)
 set_target_properties(ImGuiAbiConsumerCompile PROPERTIES FOLDER "Tests")
 
 add_library(LegacyGuiAbiCompile OBJECT LegacyGuiAbiCompile.cpp)
