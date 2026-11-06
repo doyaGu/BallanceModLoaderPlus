@@ -1,38 +1,33 @@
 #pragma once
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
+class TravelMode : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-class TravelMode : public IMod {
-public:
-    explicit TravelMode(IBML *bml) : IMod(bml) {}
+  public:
 
-    const char *GetID() override { return "TravelMode"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "Travel Mode"; }
-    const char *GetAuthor() override { return "Gamepiaynmo & Kakuty"; }
-    const char *GetDescription() override { return "Travel Mode for Ballance."; }
-    DECLARE_BML_VERSION;
 
-    void OnLoad() override;
-    void OnUnload() override;
-    void OnProcess() override;
+    void OnLoad(const BML::Mod::Context &) override;
+    void OnUnload(const BML::Mod::Context &) override;
+    void OnProcess(const BML::Mod::Context &) override;
 
-    void OnExitGame() override;
-    void OnPreExitLevel() override;
+    void OnExitGame(const BML::Mod::Context &) override;
+    void OnPreExitLevel(const BML::Mod::Context &) override;
 
     void EnterTravelCam();
     void ExitTravelCam();
     bool IsInTravelCam();
 
-private:
+  private:
     CKRenderContext *m_RenderContext = nullptr;
-    InputHook *m_InputHook = nullptr;
     float m_DeltaTime = 0.0f;
 
     float m_TravelSpeed = 0.2f;
     float m_RotateSpeed = 0.2f;
-    CKCamera *m_TravelCam = nullptr;
+    ModSupport::Object<CKCamera> m_TravelCam{};
 };

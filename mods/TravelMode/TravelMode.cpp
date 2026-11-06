@@ -1,86 +1,85 @@
 #include "TravelMode.h"
 #include "TravelCommand.h"
 
+BML_DEFINE_MOD(TravelMode, {
+    .Id = "TravelMode",
+    .Name = "Travel Mode",
+    .Version = BML_VERSION,
+    .Author = "Gamepiaynmo & Kakuty",
+    .Description = "Travel Mode for Ballance.",
+    .MinimumLoaderVersion = BML_VERSION,
+})
 
-IMod *BMLEntry(IBML *bml) {
-    return new TravelMode(bml);
+void TravelMode::OnLoad(const BML::Mod::Context &context) {
+    m_Context = context;
+    m_Timers = ModSupport::Timers(context);
+    ModSupport::RegisterCommand(m_Context, m_Commands, std::make_shared<TravelCommand>(this));
+
+    m_RenderContext = ModSupport::Render(m_Context);
 }
 
-void BMLExit(IMod *mod) {
-    delete mod;
-}
+void TravelMode::OnUnload(const BML::Mod::Context &) { ExitTravelCam(); }
 
-void TravelMode::OnLoad() {
-    m_BML->RegisterCommand(new TravelCommand(this));
-
-    m_RenderContext = m_BML->GetRenderContext();
-    m_InputHook = m_BML->GetInputManager();
-}
-
-void TravelMode::OnUnload() {
-    ExitTravelCam();
-}
-
-void TravelMode::OnProcess() {
-    m_DeltaTime = m_BML->GetTimeManager()->GetLastDeltaTime() / 10;
+void TravelMode::OnProcess(const BML::Mod::Context &) {
+    m_DeltaTime = ModSupport::Engine(m_Context)->GetTimeManager()->GetLastDeltaTime() / 10;
 
     VxVector vect;
     VxQuaternion quat;
 
-    if (!m_BML->IsPaused() && IsInTravelCam()) {
-        if (m_InputHook->IsKeyDown(CKKEY_1)) {
+    if (!ModSupport::GameState().Paused && IsInTravelCam()) {
+        if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_1)) {
             m_TravelSpeed = 0.2f;
-        } else if (m_InputHook->IsKeyDown(CKKEY_2)) {
+        } else if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_2)) {
             m_TravelSpeed = 0.4f;
-        } else if (m_InputHook->IsKeyDown(CKKEY_3)) {
+        } else if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_3)) {
             m_TravelSpeed = 0.8f;
-        } else if (m_InputHook->IsKeyDown(CKKEY_4)) {
+        } else if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_4)) {
             m_TravelSpeed = 1.6f;
-        } else if (m_InputHook->IsKeyDown(CKKEY_5)) {
+        } else if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_5)) {
             m_TravelSpeed = 2.4f;
         }
 
-        if (m_InputHook->IsKeyDown(CKKEY_LCONTROL)) {
-            if (m_InputHook->IsKeyDown(CKKEY_1)) {
+        if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_LCONTROL)) {
+            if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_1)) {
                 m_RotateSpeed = 0.2f;
-            } else if (m_InputHook->IsKeyDown(CKKEY_2)) {
+            } else if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_2)) {
                 m_RotateSpeed = 0.4f;
-            } else if (m_InputHook->IsKeyDown(CKKEY_3)) {
+            } else if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_3)) {
                 m_RotateSpeed = 0.6f;
-            } else if (m_InputHook->IsKeyDown(CKKEY_4)) {
+            } else if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_4)) {
                 m_RotateSpeed = 0.8f;
-            } else if (m_InputHook->IsKeyDown(CKKEY_5)) {
+            } else if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_5)) {
                 m_RotateSpeed = 1.0f;
             }
         }
 
-        if (m_InputHook->IsKeyDown(CKKEY_W)) {
+        if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_W)) {
             vect = VxVector(0, 0, m_TravelSpeed * m_DeltaTime);
             m_TravelCam->Translate(&vect, m_TravelCam);
         }
-        if (m_InputHook->IsKeyDown(CKKEY_S)) {
+        if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_S)) {
             vect = VxVector(0, 0, -m_TravelSpeed * m_DeltaTime);
             m_TravelCam->Translate(&vect, m_TravelCam);
         }
-        if (m_InputHook->IsKeyDown(CKKEY_A)) {
+        if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_A)) {
             vect = VxVector(-m_TravelSpeed * m_DeltaTime, 0, 0);
             m_TravelCam->Translate(&vect, m_TravelCam);
         }
-        if (m_InputHook->IsKeyDown(CKKEY_D)) {
+        if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_D)) {
             vect = VxVector(m_TravelSpeed * m_DeltaTime, 0, 0);
             m_TravelCam->Translate(&vect, m_TravelCam);
         }
-        if (m_InputHook->IsKeyDown(CKKEY_SPACE)) {
+        if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_SPACE)) {
             vect = VxVector(0, m_TravelSpeed * m_DeltaTime, 0);
             m_TravelCam->Translate(&vect);
         }
-        if (m_InputHook->IsKeyDown(CKKEY_LSHIFT)) {
+        if (ModSupport::Keyboard(m_Context).IsKeyDown(CKKEY_LSHIFT)) {
             vect = VxVector(0, -m_TravelSpeed * m_DeltaTime, 0);
             m_TravelCam->Translate(&vect);
         }
 
         VxVector delta;
-        m_InputHook->GetMouseRelativePosition(delta);
+        delta = BML::Convert::ToVxVector(m_Context.Input().ReadMouse().Value().RelativePosition);
         const float factor = (180.0f / PI) * m_RotateSpeed * m_DeltaTime;
         const int width = m_RenderContext->GetWidth();
         const int height = m_RenderContext->GetHeight();
@@ -90,28 +89,26 @@ void TravelMode::OnProcess() {
         }
         if (delta.y != 0 && height > 0) {
             vect = VxVector(1, 0, 0);
-            m_TravelCam->Rotate(&vect, (-delta.y / static_cast<float>(height)) * factor, m_TravelCam);
+            m_TravelCam->Rotate(&vect, (-delta.y / static_cast<float>(height)) * factor,
+                                m_TravelCam);
         }
     }
 }
 
-void TravelMode::OnExitGame() {
-    ExitTravelCam();
-}
+void TravelMode::OnExitGame(const BML::Mod::Context &) { ExitTravelCam(); }
 
-void TravelMode::OnPreExitLevel() {
-    ExitTravelCam();
-}
+void TravelMode::OnPreExitLevel(const BML::Mod::Context &) { ExitTravelCam(); }
 
 void TravelMode::EnterTravelCam() {
     if (IsInTravelCam())
         return;
 
-    CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
+    CKCamera *cam = ModSupport::Find<CKTargetCamera>(m_Context, "InGameCam");
     if (!cam)
         return;
 
-    m_TravelCam = (CKCamera *) m_BML->GetCKContext()->CreateObject(CKCID_CAMERA, "TravelCam");
+    m_TravelCam =
+        (CKCamera *)ModSupport::Engine(m_Context)->CreateObject(CKCID_CAMERA, "TravelCam");
     m_TravelCam->SetWorldMatrix(cam->GetWorldMatrix());
     int width, height;
     cam->GetAspectRatio(width, height);
@@ -119,18 +116,18 @@ void TravelMode::EnterTravelCam() {
     m_TravelCam->SetFov(cam->GetFov());
     m_RenderContext->AttachViewpointToCamera(m_TravelCam);
 
-    m_BML->ExecuteCommand("hud off");
+    ModSupport::ExecuteCommand("hud off");
 }
 
 void TravelMode::ExitTravelCam() {
     if (m_TravelCam) {
-        CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
+        CKCamera *cam = ModSupport::Find<CKTargetCamera>(m_Context, "InGameCam");
         if (cam)
             m_RenderContext->AttachViewpointToCamera(cam);
-        m_BML->GetCKContext()->DestroyObject(m_TravelCam);
+        ModSupport::Engine(m_Context)->DestroyObject(m_TravelCam);
         m_TravelCam = nullptr;
 
-        m_BML->ExecuteCommand("hud on");
+        ModSupport::ExecuteCommand("hud on");
     }
 }
 
