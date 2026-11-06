@@ -1,4 +1,4 @@
-#include "Api/ExecuteBBAdapter.h"
+#include "AngelScript/ScriptEngineCalls.h"
 
 #include <algorithm>
 #include <string>
@@ -22,8 +22,7 @@ using Behavior::Internal::Sessions;
 RunResult ReadResult(const Sessions &sessions, const OpenRun &run) {
     if (!run)
         return {run.Result, RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    RunResult result{run.Info.LastStatus, run.Info.State,
-                     run.Info.LastStatus.BehaviorResult, {}};
+    RunResult result{run.Info.LastStatus, run.Info.State, run.Info.LastStatus.BehaviorResult, {}};
     if (const auto frames = sessions.Frames(run.Id)) {
         const std::vector<RunFrame> retained = frames->Read();
         if (!retained.empty()) {
@@ -37,16 +36,16 @@ RunResult ReadResult(const Sessions &sessions, const OpenRun &run) {
 
 } // namespace
 
-Behavior::Internal::Status ExecuteBBAdapter::Open(const std::string &ownerId) {
+Behavior::Internal::Status ScriptEngineCalls::Open(const std::string &ownerId) {
     m_Sessions.CloseSession(std::exchange(m_Session, 0));
     return m_Sessions.OpenSession(ownerId, m_Session);
 }
 
-Behavior::Internal::RunResult ExecuteBBAdapter::Run(
-    CKBeObject *owner, const Behavior::Internal::BlockSpec &spec, int input) {
-    const OpenRun run = m_Sessions.Start(
-        m_Session, owner, spec,
-        Behavior::Internal::Slot::At(Behavior::Internal::SlotKind::Input, input));
+Behavior::Internal::RunResult
+ScriptEngineCalls::Run(CKBeObject *owner, const Behavior::Internal::BlockSpec &spec, int input) {
+    const OpenRun run =
+        m_Sessions.Start(m_Session, owner, spec,
+                         Behavior::Internal::Slot::At(Behavior::Internal::SlotKind::Input, input));
     RunResult result = ReadResult(m_Sessions, run);
     if (run.Id && run.Info.State == RunState::Pending)
         m_Tasks.push_back(run.Id);
@@ -55,22 +54,24 @@ Behavior::Internal::RunResult ExecuteBBAdapter::Run(
     return result;
 }
 
-std::pair<XObjectArray *, CKObject *> ExecuteBBAdapter::LoadObjects(
-    const Behavior::Blocks::ObjectLoad::Options &options, bool rename) {
+std::pair<XObjectArray *, CKObject *>
+ScriptEngineCalls::LoadObjects(const Behavior::Blocks::ObjectLoad::Options &options, bool rename) {
     m_Sessions.CloseRun(std::exchange(m_LastObjectLoad, 0));
-    const OpenRun load = m_Sessions.Start(
-        m_Session, nullptr, Behavior::Internal::BlockSpec::From(options),
-        Behavior::Internal::Slot::At(Behavior::Internal::SlotKind::Input, 0));
+    const OpenRun load =
+        m_Sessions.Start(m_Session, nullptr, Behavior::Internal::BlockSpec::From(options),
+                         Behavior::Internal::Slot::At(Behavior::Internal::SlotKind::Input, 0));
     m_LastObjectLoad = load.Id;
-    CKBehavior *behavior = load && load.Info.State == RunState::Ready
-        ? m_Sessions.Block(load.Id) : nullptr;
+    CKBehavior *behavior =
+        load && load.Info.State == RunState::Ready ? m_Sessions.Block(load.Id) : nullptr;
     if (!behavior)
         return {nullptr, nullptr};
 
-    XObjectArray *objects = behavior->GetOutputParameterCount() > 0
-        ? *static_cast<XObjectArray **>(behavior->GetOutputParameterWriteDataPtr(0)) : nullptr;
-    CKObject *master = behavior->GetOutputParameterCount() > 1
-        ? behavior->GetOutputParameterObject(1) : nullptr;
+    XObjectArray *objects =
+        behavior->GetOutputParameterCount() > 0
+            ? *static_cast<XObjectArray **>(behavior->GetOutputParameterWriteDataPtr(0))
+            : nullptr;
+    CKObject *master =
+        behavior->GetOutputParameterCount() > 1 ? behavior->GetOutputParameterObject(1) : nullptr;
 
     if (rename && objects) {
         const unsigned int suffix = ++m_LoadCount;
@@ -86,26 +87,25 @@ std::pair<XObjectArray *, CKObject *> ExecuteBBAdapter::LoadObjects(
     return {objects, master};
 }
 
-CKBehavior *ExecuteBBAdapter::CreateUnmanaged(
-    CKBehavior *parent, const Behavior::Internal::BlockSpec &spec) {
+CKBehavior *ScriptEngineCalls::CreateUnmanaged(CKBehavior *parent,
+                                               const Behavior::Internal::BlockSpec &spec) {
     return m_Sessions.CreateUnmanaged(parent, spec);
 }
 
-void ExecuteBBAdapter::ProcessFrame() {
-    m_Tasks.erase(
-        std::remove_if(m_Tasks.begin(), m_Tasks.end(),
-                       [&](std::uintptr_t task) {
-                           Behavior::Internal::RunInfo info;
-                           if (m_Sessions.ReadRun(task, info) &&
-                               info.State == RunState::Pending)
-                               return false;
-                           m_Sessions.CloseRun(task);
-                           return true;
-                       }),
-        m_Tasks.end());
+void ScriptEngineCalls::ProcessFrame() {
+    m_Tasks.erase(std::remove_if(m_Tasks.begin(), m_Tasks.end(),
+                                 [&](std::uintptr_t task) {
+                                     Behavior::Internal::RunInfo info;
+                                     if (m_Sessions.ReadRun(task, info) &&
+                                         info.State == RunState::Pending)
+                                         return false;
+                                     m_Sessions.CloseRun(task);
+                                     return true;
+                                 }),
+                  m_Tasks.end());
 }
 
-void ExecuteBBAdapter::Reset() {
+void ScriptEngineCalls::Reset() {
     m_Sessions.CloseRun(std::exchange(m_LastObjectLoad, 0));
     for (std::uintptr_t task : m_Tasks)
         m_Sessions.CloseRun(task);

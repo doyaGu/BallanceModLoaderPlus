@@ -1,5 +1,5 @@
-#ifndef BML_API_EXECUTEBBADAPTER_H
-#define BML_API_EXECUTEBBADAPTER_H
+#ifndef BML_SCRIPTENGINECALLS_H
+#define BML_SCRIPTENGINECALLS_H
 
 #include <cstdint>
 #include <string>
@@ -14,20 +14,19 @@ namespace BML {
 
 // Private Behavior adapter for script bindings. Owns operations that outlive one
 // call in the Loader's Session, which retires with the built-in Mod.
-class ExecuteBBAdapter final {
+class ScriptEngineCalls final {
 public:
-    explicit ExecuteBBAdapter(Behavior::Internal::Sessions &sessions)
-        : m_Sessions(sessions) {}
+    explicit ScriptEngineCalls(Behavior::Internal::Sessions &sessions) : m_Sessions(sessions) {}
 
     // Opens the Loader's Session for the built-in Mod's owner.
     Behavior::Internal::Status Open(const std::string &ownerId);
 
     Behavior::Internal::RunResult Run(CKBeObject *owner, const Behavior::Internal::BlockSpec &spec,
-                            int input = 0);
+                                      int input = 0);
     // The returned array belongs to the load's Block, which stays open until
     // the next load replaces it.
-    std::pair<XObjectArray *, CKObject *> LoadObjects(
-        const Behavior::Blocks::ObjectLoad::Options &options, bool rename);
+    std::pair<XObjectArray *, CKObject *>
+    LoadObjects(const Behavior::Blocks::ObjectLoad::Options &options, bool rename);
     CKBehavior *CreateUnmanaged(CKBehavior *parent, const Behavior::Internal::BlockSpec &spec);
     void ProcessFrame();
     void Reset();
@@ -44,4 +43,4 @@ private:
 
 } // namespace BML
 
-#endif // BML_API_EXECUTEBBADAPTER_H
+#endif // BML_SCRIPTENGINECALLS_H

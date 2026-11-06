@@ -1211,7 +1211,7 @@ static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions
     definition.ReuseMeshes = options.ReuseMeshes ? TRUE : FALSE;
     definition.ReuseMaterials = options.ReuseMaterials ? TRUE : FALSE;
     definition.Dynamic = options.Dynamic ? TRUE : FALSE;
-    const auto [loaded, master] = ctx->ExecuteBB().LoadObjects(definition, options.Rename);
+    const auto [loaded, master] = ctx->EngineCalls().LoadObjects(definition, options.Rename);
     std::vector<CK_ID> objects;
     if (loaded)
         objects.assign(loaded->Begin(), loaded->End());
@@ -1249,7 +1249,7 @@ static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
     recipe.CaretSize = definition.CaretSize;
     recipe.CaretMaterial = caretMaterial;
     recipe.Flags = definition.Flags;
-    return ctx->ExecuteBB().CreateUnmanaged(
+    return ctx->EngineCalls().CreateUnmanaged(
         ownerScript, BML::Behavior::Internal::BlockSpec::From(recipe));
 }
 
@@ -1451,7 +1451,7 @@ static bool BMLAS_Physics_HasTarget(CK3dEntity *target, ModContext *&context) {
 // it finishes, exactly as the native ExecuteBB call does.
 static bool BMLAS_RunBehavior(ModContext &context, CKBeObject *owner,
                               const BML::Behavior::Internal::BlockSpec &spec, int input = 0) {
-    const BML::Behavior::Internal::RunResult result = context.ExecuteBB().Run(owner, spec, input);
+    const BML::Behavior::Internal::RunResult result = context.EngineCalls().Run(owner, spec, input);
     return result && result.State != BML::Behavior::Internal::RunState::Failed;
 }
 

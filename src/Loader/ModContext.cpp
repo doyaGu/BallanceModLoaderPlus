@@ -232,7 +232,9 @@ ModContext::ModContext(CKContext *context)
                       status.Message.c_str());
           }),
       m_PhysicsForce(context, m_Behaviors),
-      m_ExecuteBB(m_BehaviorSessions),
+#if BML_ENABLE_ANGELSCRIPT
+      m_ScriptEngineCalls(m_BehaviorSessions),
+#endif
       m_Loader(*this) {
     assert(context != nullptr);
     m_CommandApi = std::make_unique<BML::Api::CommandApi>(*this);
@@ -518,7 +520,9 @@ void ModContext::ResetVirtoolsWorld() {
     // Runtime owners close native state first. Public object references belong
     // to the API seam and are reset only after internal teardown is complete.
     m_GuiApi.ResetWorld();
-    m_ExecuteBB.Reset();
+#if BML_ENABLE_ANGELSCRIPT
+    m_ScriptEngineCalls.Reset();
+#endif
     m_PhysicsForce.Reset();
     const BML::Behavior::Internal::Status plans =
         m_BehaviorInstallations.LeaveWorld();
@@ -588,7 +592,9 @@ void ModContext::ProcessVirtoolsFrame() {
         m_Logger->Error("Failed to reconcile Behavior Plans: %s",
                         plans.Message.c_str());
     m_BehaviorScripts.ProcessFrame();
-    m_ExecuteBB.ProcessFrame();
+#if BML_ENABLE_ANGELSCRIPT
+    m_ScriptEngineCalls.ProcessFrame();
+#endif
 }
 
 BML::Behavior::Internal::Status ModContext::RetireBehaviorState(
@@ -1723,14 +1729,15 @@ bool ModContext::RegisterModOwner(const std::string &ownerId) noexcept {
         return false;
     }
 
-    // The Loader's own Behavior work runs in the built-in Mod's Session. It
-    // opens with that owner and retires with it, after every other Mod.
+#if BML_ENABLE_ANGELSCRIPT
+    // Script engine convenience calls use the built-in Mod's Session. The
+    // owner-scoped authoring projection opens its own Sessions separately.
     ModRecord *builtin =
         m_Loader.GetBuiltinMod() ? &m_Loader.GetBuiltinMod()->Registration() : nullptr;
     if (!builtin || ownerId != builtin->GetID())
         return true;
     try {
-        const BML::Behavior::Internal::Status opened = m_ExecuteBB.Open(ownerId);
+        const BML::Behavior::Internal::Status opened = m_ScriptEngineCalls.Open(ownerId);
         if (opened)
             return true;
         if (m_Logger)
@@ -1742,6 +1749,9 @@ bool ModContext::RegisterModOwner(const std::string &ownerId) noexcept {
     }
     RetireFailedModOwner(ownerId);
     return false;
+#else
+    return true;
+#endif
 }
 
 void ModContext::StopModWork(ModRecord *owner) noexcept {

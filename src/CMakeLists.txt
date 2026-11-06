@@ -186,7 +186,6 @@ set(BML_API_PRIVATE_HEADERS
         Api/BehaviorApi.h
         Api/BuiltinCapabilities.h
         Api/CommandApi.h
-        Api/ExecuteBBAdapter.h
         Api/InterfaceRegistry.h
         Api/ObjectRefs.h
 )
@@ -210,7 +209,6 @@ set(BML_API_SOURCES
         Api/BuiltinCapabilities.cpp
         Api/CommandApi.cpp
         Api/Errors.cpp
-        Api/ExecuteBBAdapter.cpp
         Api/Interfaces.cpp
         Api/InterfaceRegistry.cpp
         Api/ObjectRefs.cpp
@@ -603,6 +601,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/AngelScriptImGuiBindings.h
             AngelScript/ScriptApiSurface.h
             AngelScript/ScriptBehavior.h
+            AngelScript/ScriptEngineCalls.h
             AngelScript/ScriptBehaviorBindings.inc
             AngelScript/ScriptAngelScriptHandle.h
             AngelScript/ScriptAvailabilityLogLimiter.h
@@ -652,6 +651,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/CKAngelScriptAdapter.cpp
             AngelScript/ScriptApiSurface.cpp
             AngelScript/ScriptBehavior.cpp
+            AngelScript/ScriptEngineCalls.cpp
             AngelScript/ScriptCallbackDispatcher.cpp
             AngelScript/ScriptCallbackEvents.cpp
             AngelScript/ScriptCommandService.cpp

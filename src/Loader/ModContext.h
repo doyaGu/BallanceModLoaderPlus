@@ -43,7 +43,9 @@ struct SDL_IOStream;
 #include "Behavior/Sessions.h"
 #include "Behavior/Install/Installations.h"
 #include "Behavior/PrototypeCatalog.h"
-#include "Api/ExecuteBBAdapter.h"
+#if BML_ENABLE_ANGELSCRIPT
+#include "AngelScript/ScriptEngineCalls.h"
+#endif
 #include "Behavior/Blocks/PhysicsForce.h"
 #include "Hooks/HookLifecycle.h"
 
@@ -317,7 +319,9 @@ public:
     BML::Behavior::Internal::PrototypeCatalog &BehaviorPrototypes() noexcept {
         return m_BehaviorPrototypes;
     }
-    BML::ExecuteBBAdapter &ExecuteBB() noexcept { return m_ExecuteBB; }
+#if BML_ENABLE_ANGELSCRIPT
+    BML::ScriptEngineCalls &EngineCalls() noexcept { return m_ScriptEngineCalls; }
+#endif
     BML::Behavior::Internal::PhysicsForce::Sessions &PhysicsForce() noexcept {
         return m_PhysicsForce;
     }
@@ -492,7 +496,9 @@ private:
     BML::Behavior::Internal::Installations m_BehaviorInstallations;
     BML::Behavior::Internal::Scripts m_BehaviorScripts;
     BML::Behavior::Internal::PhysicsForce::Sessions m_PhysicsForce;
-    BML::ExecuteBBAdapter m_ExecuteBB;
+#if BML_ENABLE_ANGELSCRIPT
+    BML::ScriptEngineCalls m_ScriptEngineCalls;
+#endif
     BML::GameFontCatalog m_GameFonts;
     ModMenuPages m_ModMenuPages;
     std::unique_ptr<BML::UI::FontRuntime> m_UiFonts;
