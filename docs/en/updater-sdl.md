@@ -2,7 +2,10 @@
 
 The SDL updater is a separate executable. It uses SDL filesystem APIs, libcurl
 7.68+ for HTTPS, and native crypto on Windows/macOS; Linux uses the statically compiled
-RHash SHA-256 and p256-m primitives. The original engine's schema 1 updater is outside this SDL branch.
+RHash SHA-256 and p256-m primitives. BML+ does not directly require OpenSSL;
+libcurl’s TLS backend follows its own build. The original engine’s schema 1
+updater is outside this SDL branch. This branch builds dynamic hosts; static
+metadata routing below is not completed static Player integration.
 
 From an SDL installation, run:
 
@@ -110,7 +113,7 @@ Test keys are compiled into a separate, uninstalled test executable.
 Current validation covers macOS ARM64 builds, disposable runtime fixtures,
 loopback HTTPS, signed packages, rejection, permissions and interrupted recovery.
 Windows/Linux native runs, real static Player integration and real game update
-acceptance remain pending.
+acceptance remain pending. See the dated [validation record](validation.md).
 
 `BMLUpdateSigner` accepts unencrypted P-256 SEC1 or PKCS#8 keys in PEM/DER.
 It signs with OS entropy and emits the existing raw 64-byte signature; the

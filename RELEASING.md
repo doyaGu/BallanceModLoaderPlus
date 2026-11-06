@@ -1,104 +1,124 @@
-# Releasing BML+
+# Releasing the SDL branch
 
-This checklist records the decisions and checks required for an official
-release. It deliberately does not record a release version, command transcript,
-or artifact inventory. Use `CMakeLists.txt` for the project version and the
-[CI workflow](.github/workflows/build.yml),
-[packaging script](scripts/Package-BMLRelease.ps1),
-[signing script](scripts/Sign-BMLReleaseFiles.ps1), and
-[updater channel script](scripts/Copy-BMLUpdaterFilesToPages.ps1) for the
-current build and publication details.
+This runbook describes the tools present in this checkout. The runtime is a
+Ballanced SDL **dynamic** host. Original-Player releases use their own branch;
+static-package updater tests do not provide a working static BML Player.
 
-## Release checklist
+The [build workflow](.github/workflows/build.yml) currently runs standalone SDK
+and CLI contracts on Windows, Linux and macOS. It does not build or publish a
+complete seven-target runtime/SDK matrix. The [docs workflow](.github/workflows/docs.yml)
+strictly builds both languages and uploads a site artifact; it reserves `/updates`
+for updater metadata. Neither workflow publishes release packages or deploys Pages.
 
-### 1. Freeze the source
+## Freeze the source and acceptance record
 
-- Confirm the intended commit is reviewed, tested locally, on the release
-  branch, and has a clean worktree. The project version and release tag must
-  agree.
-- Check legacy Native Mod compatibility beyond exported symbols: public C++
-  object layouts, member offsets, and virtual tables must remain compatible.
-  For changes at that boundary, test an unchanged binary built with the
-  previous stable SDK; rebuilding the Mod against new headers is not enough.
-- Recheck reported regressions in their original Player scenario. Record any
-  unverified reports separately from passing unit tests or diagnostic probes;
-  do not describe them as fixed without that acceptance.
-- Create and push the tag once. Do not move or reuse a published tag.
-- Prerelease tags can exercise CI, but the stable signing and channel scripts
-  accept only final release tags.
-
-Gate: the tag identifies the exact source commit to be released.
-
-### 2. Verify the CI output
-
-- Confirm the successful build run belongs to that tag and commit. Check that
-  the build, tests, package validation, and SDK consumer checks passed.
-- Obtain the complete CI output without changing names or contents. Use the
-  workflow and packaging checks for the expected inventory, not this document.
-
-Gate: the files to publish are the files built and validated by CI. Do not
-rebuild or repackage them on the release machine.
-
-### 3. Sign in the release environment
-
-- Keep the production signing key outside CI. Sign into a separate, empty
-  output directory so the unsigned CI output remains untouched.
-- Verify the previous signed channel metadata and carry forward its revocation
-  information. An empty revocation list is only appropriate when creating the
-  first channel.
-- Let the signing script validate the package, manifest, signatures, and
-  resulting file set. Confirm the CI archives remain byte-for-byte unchanged.
-
-Gate: the complete signed output is ready for review; no unsigned or partially
-signed set may be published.
-
-### 4. Publish the GitHub Release
-
-- A human maintainer creates the draft from the signed output. Review its tag,
-  author, release notes, and full asset set before making it public.
-- Confirm the published assets and updater manifest are publicly accessible
-  before changing the updater channel. CI must not create or publish the
-  Release on the maintainer's behalf.
-
-Gate: the public Release is complete and usable independently of the updater
-channel.
-
-### 5. Switch and verify the updater channel
-
-- Start from a clean checkout of the current Pages branch. Use the channel
-  script, inspect the diff, and publish only the updater channel files. Do not
-  force-push or replace unrelated Pages content.
-- If Pages advances before the channel commit is published, refresh the
-  checkout and repeat the copy rather than overwriting the newer branch.
-- From a disposable game installation, verify that the public channel and its
-  signature can be fetched, the updater accepts them, the update completes,
-  and the installed files match the expected hashes.
-
-Gate: the channel points to a published, signed Release that has passed an
-end-to-end update check.
-
-## Failure and recovery
-
-- Before the Release is public, stop on any failed check. Keep or discard the
-  draft, correct the issue, and repeat the affected checks before proceeding.
-- Once the Release is public, do not replace its assets or move its tag. Fix
-  it with a new release instead.
-- If the channel update fails, revert the channel change to the previous
-  signed metadata and investigate. Never publish unsigned channel metadata.
+- Use one reviewed source revision and matching Ballanced/CKAngelScript baselines
+  and submodules. Record compiler, configuration, platform, architecture, linkage,
+  script option, engine/ImGui identities and owned dependencies.
+- Match the project version in `CMakeLists.txt`, package metadata and intended
+  release tag. Never move a published tag or replace published versioned assets.
+- Build in a clean directory for each target. Run script-on and script-off tests,
+  installed/relocated SDK consumers, in-tree Mod builds and the real Player probe.
+  Cross-compilation is a build result, not a native gameplay pass.
+- Record full level/reset/death/map/input/UI/per-Mod acceptance separately from
+  probes. Use the [validation record](docs/en/validation.md) as a dated local
+  record, not evidence that every release target is accepted.
 
 ## Native C protocol release gate
 
-SDL packages use the `bml.mod` major-1 C entry and schema-2 sidecars. SDK content
-hash changes are diagnostic; target/protocol and opted-in Engine/ImGui ids are
-compatibility gates. Rebuild older SDL C++-entry Mods. Do not change an existing
-C table prefix, field encoding or callback ownership without its version rule.
+The SDL Mod entry is `BML_GetModInterface` (`bml.mod`, major 1). Sidecars use schema
+2. Old SDL `BMLEntry`/`IMod` binaries must be migrated and rebuilt; they are not an
+alternate accepted entry or retained private backend.
 
-Build the installed pure C and `native-mod` convenience examples and all four
-workflow profiles after relocating the SDK. Run Player acceptance separately
-from Updater/doctor process tests. Check the pending platform, static-host, gameplay
-and performance acceptance matrix before claiming release acceptance. Static hosts
-remain unsupported here.
+Preserve released C table prefixes, calling conventions, record semantics and
+ownership. C++ wrappers stay inside the author module. SDK content hashes are
+diagnostic; runtime/platform/architecture/linkage, Mod protocol and opted-in
+engine/ImGui identities are compatibility gates. A direct extension must also
+match its dependency compiler/standard-library/runtime/configuration ABI.
 
-SDL 包使用 bml.mod major 1 和 schema 2；旧 SDL C++ 入口产物需重编译。
-发布前运行安装后 C/C++ 示例、四种模板和真实 Player 验收；未运行平台、静态宿主、
-完整玩法和性能矩阵继续明确标为待验收，不用编译成功替代实机结果。
+Build installed C11 and C++ convenience examples and Native/Interface/IMC/Script
+workflow profiles. Verify that modules reuse Player's SDL and staging preserves
+module bytes and signatures. Check unload failure, retained callbacks, invalid
+handles, world reset, duplicate IDs and incorrect/missing ABI sidecars.
+
+## Stage runtime, SDK and Mods separately
+
+Build with the selected configuration and `BML_BUILD_MODS=ON`; build updater tools
+with `BML_BUILD_UPDATER=ON` and the declared libcurl dependency when they are part
+of the delivery. The production signing public key must be the intended key.
+Test executables with test keys are not production tools.
+
+```sh
+cmake --build build/sdl-release --config Release --parallel
+cmake --install build/sdl-release --config Release --prefix /path/to/sdk
+cmake --install build/sdl-release --config Release \
+  --prefix /path/to/disposable-game --component BMLRuntime
+cmake --install build/sdl-release --config Release \
+  --prefix /path/to/disposable-game --component BMLMods
+```
+
+The runtime prefix is an isolated copy of the **matching complete Player**, with
+host SDL available for macOS fixup. Keep CK2/VxMath/SDL supplied by Player. The
+component manifest selects BML-owned files from that tree; do not make a dynamic
+BML update out of Player, engine libraries or user files.
+
+Keep runtime, SDK and Mods archives distinct. Test SDK relocation; preserve
+POSIX executable modes, Linux load paths and macOS install names/signatures.
+Perform distribution signing after build fixups. Launch a fresh unpacked runtime
+on each accepted target. Do not ship user configuration as package defaults.
+
+## Sign and construct the target channel
+
+The publisher uses `scripts/package_sdl_update.py` and the separate native
+`BMLUpdateSigner`. There are no PowerShell release/sign/channel-copy helpers on
+this branch. Keep the private key outside the repository and ordinary CI logs.
+The signer accepts unencrypted P-256 SEC1/PKCS#8 PEM or DER keys.
+
+```sh
+python scripts/package_sdl_update.py \
+  --stage /path/to/disposable-game \
+  --install-manifest build/sdl-release/install_manifest_BMLRuntime.txt \
+  --output /path/to/review-output --version 0.3.14 \
+  --signing-key /secure/p256-key.pem --signer /path/to/BMLUpdateSigner \
+  --base-url https://example.invalid/bml --channel beta
+```
+
+Replace the sample version, paths, key and URL. The stage supplies its own target
+from `ModLoader/BML.abi.json`; do not edit it to impersonate another target.
+Review the ZIP, exact JSON manifest bytes, SHA-256/size/mode inventory and detached
+signatures. The format is ECDSA P-256/SHA-256, base64 of raw 64-byte `r || s`.
+The runtime and publisher public key must agree.
+
+The channel lives under `sdl/<platform>/<architecture>/<host_linkage>/` as
+`stable.json` or `beta.json`, with its detached signature. Review the generated
+output tree rather than inventing names. Preserve prior revocation arrays and
+signed installed-file ownership. `--force` may overwrite local review output;
+it does not make replacing a published release safe.
+
+## Publish only the reviewed artifacts
+
+1. A maintainer reviews the tag, release notes, signatures, target descriptors and
+   complete asset set. State unverified targets explicitly.
+2. Publish the immutable versioned assets and verify their intended HTTPS URLs.
+3. Update only the corresponding signed target channel and signature. Preserve
+   unrelated Pages content and the `/updates` namespace. Do not force-push or
+   discard a concurrent Pages change.
+4. From an isolated game copy run the production updater's doctor/check/plan,
+   then update. Verify file hashes, preserved Mods/configuration, executable
+   modes, restart and game acceptance. Exercise signature/target rejection,
+   interrupted recovery and rollback before declaring the channel accepted.
+
+Documentation/build checks produce review artifacts. Publishing versioned assets
+and switching signed channels are separate maintainer release steps.
+
+## Failure and recovery
+
+Before publication, stop and correct any failed check; a partial signed set must
+not become a channel. After publication, fix a bad release with a new version
+rather than changing existing assets or tags. A bad channel can be reverted to
+previous valid signed metadata. Keep transaction journals/backups during recovery;
+never “repair” verification by publishing unsigned metadata or disabling TLS.
+
+See [Updater and doctor](docs/en/updater-sdl.md) for diagnostic/apply/rollback
+commands and the distinction between implemented static-package routing and
+unimplemented static Player integration.
