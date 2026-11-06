@@ -79,9 +79,8 @@ bool show = prop.GetBoolean(true);
 
 ## 定时器
 
-BML+ 会在脚本 Mod 卸载或热重载时取消它拥有的定时器。脚本 Mod 的所有回调中都不允许
-创建 CKAngelScript `Async::*` 任务，因为这种 detached 任务不归 Mod 生命周期管理，
-可能越过热重载继续运行。需要延迟到后续帧或周期执行时，应使用这里的 BML+ Timer。
+BML+ 会在脚本 Mod 卸载或热重载时取消它拥有的定时器。固定回调不能挂起或 `Await`。CKAngelScript 能创建 `Async::*` 任务，但这些任务
+不归 BML Mod 生命周期管理，可能越过热重载继续持有旧模块。需要延迟到后续帧或周期执行时，应使用这里的 BML+ Timer。
 
 ### 一次性
 

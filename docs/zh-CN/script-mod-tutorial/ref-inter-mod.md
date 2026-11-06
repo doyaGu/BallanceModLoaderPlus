@@ -9,7 +9,7 @@ Client 或 Provider，并共享相同的 Record、路由、状态码和版本规
 脚本中读取 BML 自带能力时，直接使用有类型的接口：
 
 ```angelscript
-if (ctx.IsInLevel()) {
+if (ctx.IsInLevel) {
   // 当前在关卡内，可继续读取 Gameplay 数据。
 }
 

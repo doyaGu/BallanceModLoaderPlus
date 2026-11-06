@@ -2,6 +2,10 @@
 
 mod 在自己机器上跑通之后，下一步是让别的玩家也能用。
 
+本教程的发行目标是启用脚本的配套 SDL 动态运行时。脚本源码无需按 CPU 架构
+重编译，但所用 API、引擎资源和原生 provider 仍须匹配目标环境；不要把编辑器声明
+或字节码缓存当成通用运行时代码打包。
+
 ## 发布意味着什么
 
 发布之后，使用环境和本地开发不同：
@@ -73,7 +77,7 @@ class CompleteMod {
 
 `bml="0.3.14"` 表示需要 BML+ 0.3.14 或更高版本。版本不满足时 Mod 不会被加载，日志会提示不匹配。
 
-判断方法：检查用到的 API 是在哪个版本引入的。基础回调（`OnLoad`、`OnUnload`、`GetConfig`）可以保持较低要求；用了新 API 就更新到对应版本。不确定时写你开发环境的 BML 版本，至少保证测试过的环境匹配。
+判断方法：检查用到的 API 是在哪个版本引入的。基础回调（`OnLoad`、`OnUnload`）可以保持较低要求；用了新 API 就更新到对应版本。不确定时写你开发环境的 BML 版本，至少保证测试过的环境匹配。
 
 ---
 
@@ -117,8 +121,8 @@ CompleteMod/
 
 正式发布目录形式的 Mod 时，使用项目内的 Developer Workflow：
 
-```bat
-.\bml pack
+```sh
+python bml.py pack
 ```
 
 默认产物是 `dist/CompleteMod.zip`。自动化流程仍可通过 `--project` 和 `--output`
@@ -135,7 +139,7 @@ CompleteMod.zip
 ```
 
 用户把 `CompleteMod.zip` 直接放入 `ModLoader/Mods/` 即可，不需要手动解压。
-`.bmodp` 只用于原生 DLL Mod，不能作为脚本 Mod 的扩展名。
+`.bmodp` 只用于原生动态模块 Mod，不能作为脚本 Mod 的扩展名。
 
 打包器会自动排除 `dist`、编辑器设置、版本控制元数据、`as.predefined` 和 Python
 缓存文件。下面的源码与运行行为检查仍需作者自己完成。
@@ -346,7 +350,7 @@ Ballance 社区常见的发布平台：
 
 **现象**：zip 放入 `Mods/` 后 BML 拒绝加载。**原因**：包内没有入口，或存在多个
 `*.mod.as` 入口。**解决**：让源目录顶层恰好保留一个入口，并使用 SDK 的
-`.\bml pack --force` 重新打包。
+`python bml.py pack --force` 重新打包。
 
 ### 残留调试代码
 

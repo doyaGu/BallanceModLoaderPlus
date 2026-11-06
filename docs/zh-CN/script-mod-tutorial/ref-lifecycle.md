@@ -100,6 +100,18 @@ void RestoreState(BML::StateBag@ state)
 PRE_LOAD_LEVEL -> POST_LOAD_LEVEL -> START_LEVEL
 ```
 
+## Process 与 Render
+
+SDL 后端在管理器 `PreProcess` 开始 ImGui 帧，在靠后的 `PostProcess` 中，
+依次到达 Behavior 安全点、处理 Mod/服务（含 `OnProcess`）、完成 ImGui 绘制数据、结束输入快照。
+此时引擎已按默认调度处理管理器与物理，但仍在 `CKContext::Process` 内部，
+并非等它返回后才调用 Mod。
+
+Render 独立调度，`OnRender` 来自引擎的 post-render 通知，不用于画 ImGui。
+连续 Process 不保证发生同等次数的 Render。
+`ctx.SkipRenderForNextTick()` 保留原脚本名称，实际请求用 `CK_RENDER_SKIPALL`
+跳过下一次 Render；请求会合并，期间经过多少次 Process 都不消耗它。
+
 ## 热重载
 
 热重载只替换已经被 BML 发现的脚本 mod runtime，不会在运行中新增 mod，也不会重排依赖图。

@@ -34,7 +34,8 @@ BML 靠函数名匹配。函数名、返回值、参数类型全部对上，BML 
 
 ## 时序总览
 
-先给出一帧循环的全貌，后面逐个展开：
+先给出常见循环的全貌，后面逐个展开。Process 与 Render 可分开调度；
+下图不表示两者必然一一对应。
 
 ```text
 游戏启动
@@ -42,9 +43,10 @@ BML 靠函数名匹配。函数名、返回值、参数类型全部对上，BML 
        └─ OnLoad <- 执行一次
 
 游戏运行（每帧循环）
-  ┌─ OnProcess <- 逻辑更新
+  ┌─ CKContext::Process：默认管理器/物理处理
+  ├─ BML late PostProcess：Behavior 安全点 -> OnProcess
   │     检查按键、更新数据、提交 ImGui
-  ├─ OnRender <- Virtools 渲染回调
+  ├─ 独立 Render -> OnRender（post-render 通知）
   │     读取 RenderEvent 中的渲染标志
   └─ 回到下一帧
 
@@ -54,6 +56,10 @@ BML 靠函数名匹配。函数名、返回值、参数类型全部对上，BML 
 游戏退出
   └─ OnUnload <- 执行一次
 ```
+
+BML 在 PreProcess 开始 ImGui 帧，在 late PostProcess 执行 Mod 处理、提交
+ImGui 并结束输入快照。`OnProcess` 仍在 `CKContext::Process` 内部。完整的跳帧
+与回调顺序见[生命周期参考](ref-lifecycle.md#process-render)。
 
 ---
 
