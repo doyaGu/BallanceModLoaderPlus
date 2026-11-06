@@ -3,6 +3,9 @@
 #include <BML/ImGui.hpp>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+#include <array>
+#include <chrono>
 #include <cstdlib>
 #include <sstream>
 #include <string>
@@ -212,6 +215,50 @@ private:
                 "removed command and alias no longer resolve");
     }
 
+    template <class Operation> double MeasureApi(Operation &&operation) {
+        constexpr unsigned iterations = 10000;
+        std::array<double, 7> samples{};
+        uint64_t checksum = 0;
+        for (unsigned i = 0; i < 100; ++i)
+            checksum += operation();
+        for (auto &sample : samples) {
+            const auto start = std::chrono::steady_clock::now();
+            for (unsigned i = 0; i < iterations; ++i)
+                checksum += operation();
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            sample = std::chrono::duration<double, std::nano>(elapsed).count() / iterations;
+        }
+        m_ApiBenchmarkChecksum += checksum;
+        std::sort(samples.begin(), samples.end());
+        return samples[samples.size() / 2];
+    }
+
+    void BenchmarkCommonApi() {
+        const char *enabled = std::getenv("BML_BENCHMARK_API");
+        if (!enabled || *enabled != '1')
+            return;
+        auto input = m_Context.Input();
+        const auto directory = MeasureApi(
+            [&] { return m_Context.GetDirectory(BML_MOD_DIRECTORY_ROOT).Value().size(); });
+        const auto keyName = MeasureApi([&] { return input.GetKeyName(CKKEY_A).Value().size(); });
+        auto block = input.AcquireBlock(BML_INPUT_BLOCK_KEYBOARD).Take();
+        const auto filtered = MeasureApi([&] {
+            const auto keyboard = input.ReadKeyboard().Value();
+            Require(!keyboard.IsKeyDown(CKKEY_A) && keyboard.Events.empty(),
+                    "blocked benchmark keyboard");
+            return keyboard.Keys.size();
+        });
+        const auto raw =
+            MeasureApi([&] { return input.ReadKeyboard(BML_INPUT_RAW).Value().Keys.size(); });
+        block.Release().Take();
+        std::ostringstream values;
+        values << ",\"api_benchmark_ns\":{\"directory\":" << directory
+               << ",\"key_name\":" << keyName << ",\"keyboard_blocked\":" << filtered
+               << ",\"keyboard_raw\":" << raw
+               << "},\"api_benchmark_checksum\":" << m_ApiBenchmarkChecksum;
+        m_ApiBenchmark = values.str();
+    }
+
     void CheckScriptAccess(CKContext *engine) {
         auto helper = m_Context.FindMod("SdlScriptAccessProbe");
         BML::Command::Info info;
@@ -257,6 +304,8 @@ private:
                     "script dependency values and invalid indices");
             CheckScriptAccess(engine);
         }
+
+        BenchmarkCommonApi();
 
         CheckCommandLifetime(true);
         CheckCommandLifetime(false);
@@ -379,16 +428,18 @@ private:
     void Finish(bool passed, const std::string &detail) {
         m_Finished = true;
         std::ostringstream result;
-        result << "{\"passed\":" << (passed ? "true" : "false")
-               << ",\"detail\":\"" << detail << "\",\"frames\":" << m_Frames
-               << ",\"physics_frames\":" << m_PhysicsFrames << ",\"renders\":" << m_Renders
-               << ",\"input_phases\":" << m_Phase << ",\"bml_priority\":" << m_Priority << "}\n";
+        result << "{\"passed\":" << (passed ? "true" : "false") << ",\"detail\":\"" << detail
+               << "\",\"frames\":" << m_Frames << ",\"physics_frames\":" << m_PhysicsFrames
+               << ",\"renders\":" << m_Renders << ",\"input_phases\":" << m_Phase
+               << ",\"bml_priority\":" << m_Priority << m_ApiBenchmark << "}\n";
         if (!Write(m_ResultPath, result.str()))
             (void)m_Context.LogError(std::string("Cannot write PostProcess test result: ")+SDL_GetError());
         (void)m_Context.LogInfo(std::string("PostProcess test: ")+result.str());
         (void)BML::Gameplay::ExitGame(m_Context);
     }
 
+    std::string m_ApiBenchmark;
+    uint64_t m_ApiBenchmarkChecksum = 0;
     std::string m_ResultPath;
     BML::Mod::Context m_Context;
     BML::Input::Block m_Block;

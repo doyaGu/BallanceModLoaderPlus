@@ -4,6 +4,7 @@ import argparse
 import configparser
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -73,6 +74,8 @@ def run(args):
         env["BML_POSTPROCESS_RESULT"] = str(result_path)
         env["BML_EXPECT_MODS"] = ",".join(args.expect_mod)
         env["BML_EXPECT_SCRIPTS"] = "1" if host_abi.get("scripts") else "0"
+        if args.benchmark_api:
+            env["BML_BENCHMARK_API"] = "1"
         with (directory / "player-output.log").open("wb") as log:
             process = subprocess.Popen([str(player)], cwd=player.parent, env=env,
                                        stdout=log, stderr=subprocess.STDOUT)
@@ -96,6 +99,12 @@ def run(args):
                       unloaded=Path(str(result_path) + ".unloaded").exists(),
                       clean_shutdown="Goodbye!" in log,
                       directory=str(directory))
+        if args.benchmark_api:
+            metrics = result.get("api_benchmark_ns", {})
+            for name in ("directory", "key_name", "keyboard_blocked", "keyboard_raw"):
+                value = metrics.get(name, 0)
+                if not math.isfinite(value) or value <= 0:
+                    raise RuntimeError(f"Missing API benchmark sample ({name}); logs: {directory}")
         results.append(result)
         (args.output / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
         if not (result["passed"] and exit_code == 0 and result["unloaded"] and result["clean_shutdown"]
@@ -113,6 +122,7 @@ if __name__ == "__main__":
     parser.add_argument("--mods-from", type=lambda p: Path(p).resolve())
     parser.add_argument("--expect-mod", action="append", default=[])
     parser.add_argument("--timeout", type=float, default=60)
+    parser.add_argument("--benchmark-api", action="store_true", help="Measure common SDK calls in Player")
     arguments = parser.parse_args()
     if arguments.repeat < 1 or arguments.timeout <= 0:
         parser.error("repeat and timeout must be positive")
