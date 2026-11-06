@@ -757,7 +757,7 @@ void ScriptMod::OnUnphysicalize(CK3dEntity *target) {
     FailIfEventCallFailed(m_Callbacks.CallUnphysicalize(target, diagnostic), diagnostic);
 }
 
-void ScriptMod::OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {
+void ScriptMod::OnPreCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
@@ -768,7 +768,7 @@ void ScriptMod::OnPreCommandExecute(ICommand *command, const std::vector<std::st
     FailIfEventCallFailed(m_Callbacks.CallCommandEvent(true, command, args, diagnostic), diagnostic);
 }
 
-void ScriptMod::OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) {
+void ScriptMod::OnPostCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;

@@ -191,12 +191,12 @@ void BMLMod::OnLoad() {
     m_GameplayTweaks.OnLoad(*m_BML, *GetLogger());
     m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger());
     m_HUD.OnLoad(*m_BML);
-    m_BML->RegisterCommand(new BMLCommand(GetRuntimeContext()));
-    m_BML->RegisterCommand(new FontCommand(GetFontCommandContext()));
-    m_BML->RegisterCommand(new CheatCommand());
-    m_BML->RegisterCommand(new HUDCommand(&m_HUD));
-    m_BML->RegisterCommand(new PaletteCommand());
-    m_BML->RegisterCommand(new ScriptCommand());
+    m_BML->RegisterCommand(std::make_unique<BMLCommand>(GetRuntimeContext()));
+    m_BML->RegisterCommand(std::make_unique<FontCommand>(GetFontCommandContext()));
+    m_BML->RegisterCommand(std::make_unique<CheatCommand>());
+    m_BML->RegisterCommand(std::make_unique<HUDCommand>(&m_HUD));
+    m_BML->RegisterCommand(std::make_unique<PaletteCommand>());
+    m_BML->RegisterCommand(std::make_unique<ScriptCommand>());
 
     if (ModContext *context = GetRuntimeContext())
         RegisterBuiltinCapabilities(*this, context->ObjectRefs(), GetLogger());

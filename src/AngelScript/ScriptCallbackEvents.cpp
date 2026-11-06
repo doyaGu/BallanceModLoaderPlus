@@ -147,11 +147,11 @@ CKBehavior *ScriptLoadScriptEventView::BorrowScript() const {
 }
 
 ScriptCommandEventView::ScriptCommandEventView(ScriptCommandEventPhase phase,
-                                               ICommand *command,
+                                               BML::CommandRecord *command,
                                                const std::vector<std::string> *args)
-    : m_Phase(phase), m_IsCheat(command && command->IsCheat()) {
+    : m_Phase(phase), m_IsCheat(command && command->Info.Cheat) {
     if (command)
-        m_CommandName = command->GetName();
+        m_CommandName = command->Info.Name;
     else if (args && !args->empty())
         m_CommandName = (*args)[0];
 

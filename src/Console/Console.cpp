@@ -293,25 +293,25 @@ void Console::OnCommandOutput(const char *message, void *userdata) {
 void Console::RegisterCommands(ModContext &bml) {
     ModContext *context = BML_GetModContext();
     BML::Shell::Environment &environment = context->GetShellEnvironment();
-    bml.RegisterCommand(new BML::Shell::CommandSet(environment));
-    bml.RegisterCommand(new BML::Shell::CommandAlias(environment));
-    bml.RegisterCommand(new BML::Shell::CommandUnalias(environment));
-    bml.RegisterCommand(new BML::Shell::CommandTrue());
-    bml.RegisterCommand(new BML::Shell::CommandFalse());
-    bml.RegisterCommand(new BML::Shell::CommandXargs(
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandSet>(environment));
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandAlias>(environment));
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandUnalias>(environment));
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandTrue>());
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandFalse>());
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandXargs>(
         [context](const std::vector<std::string> &args, const std::string *input) {
             return context->InvokeCommandArgs(args, input);
         }));
-    bml.RegisterCommand(new BML::Shell::CommandGrep());
-    bml.RegisterCommand(new BML::Shell::CommandHead());
-    bml.RegisterCommand(new BML::Shell::CommandTail());
-    bml.RegisterCommand(new BML::Shell::CommandWc());
-    bml.RegisterCommand(new BML::Shell::CommandSort());
-    bml.RegisterCommand(new BML::Shell::CommandUniq());
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandGrep>());
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandHead>());
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandTail>());
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandWc>());
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandSort>());
+    bml.RegisterCommand(std::make_unique<BML::Shell::CommandUniq>());
 
-    bml.RegisterCommand(new CommandHelp());
-    bml.RegisterCommand(new CommandEcho());
-    bml.RegisterCommand(new CommandClear(this));
-    bml.RegisterCommand(new CommandHistory(this));
-    bml.RegisterCommand(new CommandExit());
+    bml.RegisterCommand(std::make_unique<CommandHelp>());
+    bml.RegisterCommand(std::make_unique<CommandEcho>());
+    bml.RegisterCommand(std::make_unique<CommandClear>(this));
+    bml.RegisterCommand(std::make_unique<CommandHistory>(this));
+    bml.RegisterCommand(std::make_unique<CommandExit>());
 }

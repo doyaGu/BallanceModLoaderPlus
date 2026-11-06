@@ -19,7 +19,7 @@ public:
     void Prepare(void (IMod::*)(bool), bool enabled);
     void Prepare(void (IMod::*)(const char *, CKBehavior *), const char *, CKBehavior *);
     void Prepare(void (IMod::*)(CK3dEntity *), CK3dEntity *);
-    void Prepare(void (IMod::*)(ICommand *, const std::vector<std::string> &), ICommand *,
+    void Prepare(void (IMod::*)(BML::CommandRecord *, const std::vector<std::string> &), BML::CommandRecord *,
                  const std::vector<std::string> &);
     void Prepare(void (IMod::*)(const char *, CKBOOL, const char *, CK_CLASSID, CKBOOL, CKBOOL,
                                 CKBOOL, CKBOOL, XObjectArray *, CKObject *),

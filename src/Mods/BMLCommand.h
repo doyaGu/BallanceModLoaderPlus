@@ -1,20 +1,25 @@
 #ifndef BML_MODS_BML_COMMAND_H
 #define BML_MODS_BML_COMMAND_H
 
-#include "Console/ICommand.h"
+#include "Console/CommandRecord.h"
 
 class ModContext;
 
-class BMLCommand : public ICommand {
+class BMLCommand {
 public:
     explicit BMLCommand(ModContext *context) : m_Context(context) {}
 
-    std::string GetName() override { return "bml"; }
-    std::string GetAlias() override { return ""; }
-    std::string GetDescription() override { return "Show loader information and installed Mods."; }
-    bool IsCheat() override { return false; }
-    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override;
+    std::string GetName() { return "bml"; }
+
+    std::string GetAlias() { return ""; }
+
+    std::string GetDescription() { return "Show loader information and installed Mods."; }
+
+    bool IsCheat() { return false; }
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                    const std::vector<std::string> &args);
 
 private:
     ModContext *m_Context = nullptr;

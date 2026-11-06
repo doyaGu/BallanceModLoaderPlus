@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "Console/ICommand.h"
+#include "Console/CommandRecord.h"
 #include "Loader/IMod.h"
 
 namespace BML {
@@ -135,7 +135,7 @@ private:
 class ScriptCommandEventView {
 public:
     ScriptCommandEventView() = default;
-    ScriptCommandEventView(ScriptCommandEventPhase phase, ICommand *command,
+    ScriptCommandEventView(ScriptCommandEventPhase phase, BML::CommandRecord *command,
                            const std::vector<std::string> *args);
 
     ScriptCommandEventPhase GetPhase() const { return m_Phase; }

@@ -10,11 +10,10 @@
 #include "Platform/Module.h"
 
 #include "Loader/ModContext.h"
-#include "Console/ICommand.h"
+#include "Console/CommandRecord.h"
 #include "Console/CommandContext.h"
 #include "Console/Shell/ShellIo.h"
 #include "Console/Shell/ShellTypes.h"
-#include "Loader/ModContext.h"
 #include "Logging/Logger.h"
 #include "StringUtils.h"
 
@@ -38,16 +37,15 @@ int ServeOnMainThread(Body &&body) {
     }
 }
 
-class CallbackCommand final : public ICommand {
+class CallbackCommand final {
 public:
-    explicit CallbackCommand(ModContext &context, IMod *owner, const BML_CommandDefinition &definition)
+    explicit CallbackCommand(ModContext &context, IMod *owner,
+                             const BML_CommandDefinition &definition)
         : m_Context(context), m_Owner(owner), m_Name(definition.Name),
           m_Alias(definition.Alias ? definition.Alias : ""),
           m_Description(definition.Description ? definition.Description : ""),
-          m_Cheat((definition.Flags & BML_COMMAND_CHEAT) != 0),
-          m_UserData(definition.UserData),
-          m_Execute(definition.Execute),
-          m_Complete(definition.Complete),
+          m_Cheat((definition.Flags & BML_COMMAND_CHEAT) != 0), m_UserData(definition.UserData),
+          m_Execute(definition.Execute), m_Complete(definition.Complete),
           m_Release(definition.Release) {}
 
     ~CallbackCommand() {
@@ -59,10 +57,13 @@ public:
         }
     }
 
-    std::string GetName() override { return m_Name; }
-    std::string GetAlias() override { return m_Alias; }
-    std::string GetDescription() override { return m_Description; }
-    bool IsCheat() override { return m_Cheat; }
+    std::string GetName() { return m_Name; }
+
+    std::string GetAlias() { return m_Alias; }
+
+    std::string GetDescription() { return m_Description; }
+
+    bool IsCheat() { return m_Cheat; }
 
     const std::string &Name() const noexcept { return m_Name; }
     bool IsActive() const noexcept { return m_ActiveCalls != 0; }
@@ -71,9 +72,9 @@ public:
     }
     void AdoptUserData() noexcept { m_OwnsUserData = true; }
 
-    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(
-        ModContext *bml, const std::vector<std::string> &args) override;
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                    const std::vector<std::string> &args);
 
 private:
     class ActiveCall {
@@ -370,8 +371,8 @@ void CallbackCommand::Execute(ModContext *bml, const std::vector<std::string> &a
     Shell::SetStatus(status);
 }
 
-const std::vector<std::string> CallbackCommand::GetTabCompletion(
-    ModContext *, const std::vector<std::string> &args) {
+const std::vector<std::string>
+CallbackCommand::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
     if (!m_Complete || !m_Context.GetModLoader().CanDispatchOwner(m_Owner))
         return {};
     auto ownerCall=m_Context.LockModInvocation();
@@ -469,7 +470,7 @@ int CommandApi::Register(const std::string &owner,
         int result = BML_ERROR_FAIL;
         try {
             result = m_Context.RegisterCallbackCommand(
-                registrar, &registrar->Command, std::move(info), entry);
+                registrar, MakeCommandRecord(&registrar->Command, std::move(info), entry));
         } catch (...) {
             m_Entries.erase(candidate);
             throw;

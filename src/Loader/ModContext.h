@@ -186,13 +186,16 @@ public:
                           int *major, int *minor, int *patch, int *optional) const;
     int ClearDependencies(IMod *mod);
 
-    void RegisterCommand(ICommand *cmd);
+    template <class T> void RegisterCommand(std::unique_ptr<T> command) {
+        std::shared_ptr<T> owner(std::move(command));
+        auto record = BML::MakeCommandRecord(owner.get(), owner);
+        if (RegisterCallbackCommand(this, std::move(record)) != BML_OK && m_Logger)
+            m_Logger->Error("Failed to register built-in command.");
+    }
 
     // Retained callback commands may remove lookup during their own invocation;
     // the registry's lifetime token keeps the active callback alive.
-    int RegisterCallbackCommand(const void *registrar, ICommand *command,
-                                BML::CommandContext::CommandInfo info,
-                                std::shared_ptr<void> lifetime);
+    int RegisterCallbackCommand(const void *registrar, std::shared_ptr<BML::CommandRecord> command);
     BML::CommandContext::UnregisterResult UnregisterCallbackCommand(
         const void *registrar, const char *name);
     bool RetireCallbackCommands(const void *registrar) noexcept;
@@ -201,8 +204,8 @@ public:
     }
 
     int GetCommandCount() const;
-    ICommand *GetCommand(int index) const;
-    ICommand *FindCommand(const char *name) const;
+    BML::CommandRecord *GetCommand(int index) const;
+    BML::CommandRecord *FindCommand(const char *name) const;
     void ExecuteCommand(const char *cmd);
 
     // Runs one line through the console shell (quoting, ; && || and |, $NAME,
@@ -222,7 +225,7 @@ public:
     std::vector<BML::CommandContext::CommandInfo> GetCommandSnapshot() const;
     bool GetCommandInfo(int index, BML::CommandContext::CommandInfo &info) const;
     bool FindCommandInfo(const char *name, BML::CommandContext::CommandInfo &info) const;
-    bool SetCommandEnabled(ICommand *command, bool enabled);
+    bool SetCommandEnabled(const void *implementation, bool enabled);
     std::vector<std::string> CompleteCommand(
         const char *name, const std::vector<std::string> &args);
 
@@ -472,7 +475,6 @@ private:
     bool ShutdownHooks();
     bool GetManagers();
 
-    bool RegisterOwnedCommand(const void *registrar, ICommand *command);
 
     class ShellDispatcher;
     void WriteShellError(std::string_view message);

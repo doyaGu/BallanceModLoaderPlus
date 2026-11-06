@@ -651,53 +651,14 @@ BML::Behavior::Internal::Status ModContext::RetireBehaviorOwner(
     return RetireBehaviorState(ownerId, BehaviorRetirement::Report);
 }
 
-void ModContext::RegisterCommand(ICommand *cmd) {
-    // Taken before the lock: this is a virtual the Mod calls across the DLL
-    // boundary, so the return address is in whichever module is registering.
-    void *const registrar = ModuleFromAddress(BML_CALLER_ADDRESS());
-
-    if (!IsMainThread()) {
-        if (m_Logger)
-            m_Logger->Error("RegisterCommand must run on the game thread.");
-        return;
-    }
-
-    if (RegisterOwnedCommand(registrar, cmd)) {
-        return;
-    }
-
-    if (!cmd) {
-        m_Logger->Error("Failed to register a null command.");
-        return;
-    }
-
-    m_Logger->Error(
-        "Failed to register command '%s'. Command names are case-insensitive and must be valid UTF-8 tokens without spaces.",
-        cmd->GetName().c_str());
-}
-
-bool ModContext::RegisterOwnedCommand(const void *registrar, ICommand *command) {
-    if (!IsMainThread() || !registrar || !command)
-        return false;
-
-    BML::CommandContext::CommandInfo info;
-    info.Name = command->GetName();
-    info.Alias = command->GetAlias();
-    info.Description = command->GetDescription();
-    info.Cheat = command->IsCheat();
-
-    std::lock_guard<std::mutex> lock(m_CommandMutex);
-    return m_CommandContext.RegisterCommand(registrar, command, std::move(info));
-}
-
-int ModContext::RegisterCallbackCommand(const void *registrar, ICommand *command,
-                                        BML::CommandContext::CommandInfo info,
-                                        std::shared_ptr<void> lifetime) {
+int ModContext::RegisterCallbackCommand(const void *registrar,
+                                        std::shared_ptr<BML::CommandRecord> command) {
     if (!IsMainThread())
         return BML_ERROR_WRONG_THREAD;
     if (!registrar || !command)
         return BML_ERROR_INVALID_PARAMETER;
 
+    auto &info = command->Info;
     std::lock_guard<std::mutex> lock(m_CommandMutex);
     if (m_CommandContext.GetCommandByName(info.Name.c_str()) ||
         (!info.Alias.empty() &&
@@ -708,9 +669,8 @@ int ModContext::RegisterCallbackCommand(const void *registrar, ICommand *command
 
     const std::string name = info.Name;
     try {
-        return m_CommandContext.RegisterCommand(registrar, command, std::move(info),
-                                                std::move(lifetime))
-            ? BML_OK : BML_ERROR_FAIL;
+        return m_CommandContext.RegisterCommand(registrar, std::move(command)) ? BML_OK
+                                                                               : BML_ERROR_FAIL;
     } catch (...) {
         (void) m_CommandContext.UnregisterCommand(registrar, name.c_str());
         throw;
@@ -756,14 +716,14 @@ int ModContext::GetCommandCount() const {
     return static_cast<int>(m_CommandContext.GetCommandCount());
 }
 
-ICommand *ModContext::GetCommand(int index) const {
+BML::CommandRecord *ModContext::GetCommand(int index) const {
     if (!IsMainThread())
         return nullptr;
     std::lock_guard<std::mutex> lock(m_CommandMutex);
     return m_CommandContext.GetCommandByIndex(index);
 }
 
-ICommand *ModContext::FindCommand(const char *name) const {
+BML::CommandRecord *ModContext::FindCommand(const char *name) const {
     if (!IsMainThread())
         return nullptr;
     std::lock_guard<std::mutex> lock(m_CommandMutex);
@@ -793,11 +753,11 @@ bool ModContext::FindCommandInfo(
     return m_CommandContext.GetCommandInfoByName(name, info);
 }
 
-bool ModContext::SetCommandEnabled(ICommand *command, bool enabled) {
+bool ModContext::SetCommandEnabled(const void *implementation, bool enabled) {
     if (!IsMainThread())
         return false;
     std::lock_guard<std::mutex> lock(m_CommandMutex);
-    return m_CommandContext.SetCommandEnabled(command, enabled);
+    return m_CommandContext.SetCommandEnabled(implementation, enabled);
 }
 
 std::vector<std::string> ModContext::CompleteCommand(
@@ -813,7 +773,7 @@ std::vector<std::string> ModContext::CompleteCommand(
     }
     std::vector<std::string> completions;
     if (call.Command && call.Info.Enabled)
-        completions = call.Command->GetTabCompletion(this, args);
+        completions = call.Command->Complete(this, args);
     m_CommandApi->FlushPending();
     return completions;
 }

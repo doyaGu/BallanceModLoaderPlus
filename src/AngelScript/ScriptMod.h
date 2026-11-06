@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "Console/ICommand.h"
+#include "Console/CommandRecord.h"
 #include "Loader/IMod.h"
 #include "UI/ScriptImGui.h"
 #include "ScriptCallbackEvents.h"
@@ -176,8 +176,8 @@ public:
                        int concaveCnt,
                        CKMesh **concaveMesh) override;
     void OnUnphysicalize(CK3dEntity *target) override;
-    void OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) override;
-    void OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) override;
+    void OnPreCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args) override;
+    void OnPostCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args) override;
 
     bool IsFailed() const { return m_State.IsFailed(); }
     bool IsLoaded() const { return m_State.IsLoaded(); }

@@ -4,7 +4,6 @@
 #include "Console/Shell/ShellIo.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScript/ScriptDevToolsService.h"
-#include "Loader/ModContext.h"
 #endif
 
 void ScriptCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
@@ -23,7 +22,8 @@ void ScriptCommand::Execute(ModContext *bml, const std::vector<std::string> &arg
 #endif
 }
 
-const std::vector<std::string> ScriptCommand::GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) {
+const std::vector<std::string>
+ScriptCommand::GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) {
 #if BML_ENABLE_ANGELSCRIPT
     auto *context = bml;
     if (context && context->GetScriptDevTools())

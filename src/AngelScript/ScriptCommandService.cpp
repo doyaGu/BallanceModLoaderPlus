@@ -26,6 +26,8 @@ static constexpr const char *kCommandExecuteDecl =
 static constexpr const char *kCommandCompleteDecl =
     "void Complete(const BML::ModContext &in, const BML::CommandEvent &in, BML::CommandCompletion &inout)";
 
+class ScriptCommand;
+
 struct ScriptCommandEntry {
     ScriptCommandEntry() = default;
     ScriptCommandEntry(const ScriptCommandEntry &) = delete;
@@ -46,7 +48,7 @@ struct ScriptCommandEntry {
     asIScriptFunction *ExecuteMethod = nullptr;
     asIScriptFunction *CompleteMethod = nullptr;
     bool OwnsFunctionRefs = false;
-    std::shared_ptr<ICommand> Command;
+    std::shared_ptr<ScriptCommand> Command;
 #ifdef BML_TEST
     std::function<void(const std::vector<std::string> &)> TestExecute;
 #endif
@@ -336,9 +338,89 @@ ScriptCommandEntry::~ScriptCommandEntry() {
     ReleaseScriptCommandObject(*this);
 }
 
-static std::shared_ptr<ICommand> CreateScriptCommand(
-    const std::shared_ptr<ScriptCommandServiceState> &state,
-    const std::shared_ptr<ScriptCommandEntry> &entry);
+class ScriptCommand final {
+public:
+    ScriptCommand(std::weak_ptr<ScriptCommandServiceState> state,
+                  std::weak_ptr<ScriptCommandEntry> entry, std::string name, std::string alias,
+                  std::string description, bool cheat)
+        : m_State(std::move(state)), m_Entry(std::move(entry)), m_Name(std::move(name)),
+          m_Alias(std::move(alias)), m_Description(std::move(description)), m_Cheat(cheat) {}
+
+    std::string GetName() { return m_Name; }
+
+    std::string GetAlias() { return m_Alias; }
+
+    std::string GetDescription() { return m_Description; }
+
+    bool IsCheat() { return m_Cheat; }
+
+    void Execute(ModContext *, const std::vector<std::string> &args) {
+        std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
+        if (!state || !state->Active || !state->ContextView)
+            return;
+        if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
+            return;
+
+        const std::shared_ptr<ScriptCommandEntry> entry = m_Entry.lock();
+        if (!entry || !entry->ExecuteMethod)
+            return;
+
+        ScriptCommandEventView event(ScriptCommandEventExecute,
+                                     state->Context->FindCommand(m_Name.c_str()), &args);
+        CommandCallArgs callArgs = {state->Owner, state->ContextView, &event, nullptr};
+        ScriptDiagnostic diagnostic;
+        const bool ok = ExecutePreparedMethod(entry->Object, entry->ExecuteMethod, callArgs, false,
+                                              "Command callback failed", diagnostic);
+        if (!ok) {
+            Shell::SetStatus(Shell::Status::Failure);
+            if (state->Owner)
+                state->Owner->SetLoadFailure(diagnostic);
+        }
+    }
+
+    const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                    const std::vector<std::string> &args) {
+        std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
+        if (!state || !state->Active || !state->ContextView)
+            return {};
+        if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
+            return {};
+
+        const std::shared_ptr<ScriptCommandEntry> entry = m_Entry.lock();
+        if (!entry || !entry->CompleteMethod)
+            return {};
+
+        std::vector<std::string> completions;
+        ScriptCommandCompletion completion(&completions);
+        ScriptCommandEventView event(ScriptCommandEventComplete,
+                                     state->Context->FindCommand(m_Name.c_str()), &args);
+        CommandCallArgs callArgs = {state->Owner, state->ContextView, &event, &completion};
+        ScriptDiagnostic diagnostic;
+        const bool ok = ExecutePreparedMethod(entry->Object, entry->CompleteMethod, callArgs, true,
+                                              "Command completion callback failed", diagnostic);
+        if (!ok) {
+            if (state->Owner)
+                state->Owner->SetLoadFailure(diagnostic);
+            return {};
+        }
+        return completions;
+    }
+
+private:
+    std::weak_ptr<ScriptCommandServiceState> m_State;
+    std::weak_ptr<ScriptCommandEntry> m_Entry;
+    std::string m_Name;
+    std::string m_Alias;
+    std::string m_Description;
+    bool m_Cheat = false;
+};
+
+static std::shared_ptr<ScriptCommand>
+CreateScriptCommand(const std::shared_ptr<ScriptCommandServiceState> &state,
+                    const std::shared_ptr<ScriptCommandEntry> &entry) {
+    return std::make_shared<ScriptCommand>(state, entry, entry->Name, entry->Alias,
+                                           entry->Description, entry->Cheat);
+}
 
 static ScriptCommandRef *RegisterCommandEntry(
     const std::shared_ptr<ScriptCommandServiceState> &state,
@@ -425,99 +507,6 @@ static bool InvokeTestCommand(const std::shared_ptr<ScriptCommandServiceState> &
 }
 #endif
 
-class ScriptCommand final : public ICommand {
-public:
-    ScriptCommand(std::weak_ptr<ScriptCommandServiceState> state,
-                  std::weak_ptr<ScriptCommandEntry> entry,
-                  std::string name,
-                  std::string alias,
-                  std::string description,
-                  bool cheat)
-        : m_State(std::move(state)),
-          m_Entry(std::move(entry)),
-          m_Name(std::move(name)),
-          m_Alias(std::move(alias)),
-          m_Description(std::move(description)),
-          m_Cheat(cheat) {}
-
-    std::string GetName() override { return m_Name; }
-    std::string GetAlias() override { return m_Alias; }
-    std::string GetDescription() override { return m_Description; }
-    bool IsCheat() override { return m_Cheat; }
-
-    void Execute(ModContext *, const std::vector<std::string> &args) override {
-        std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
-        if (!state || !state->Active || !state->ContextView)
-            return;
-        if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
-            return;
-
-        const std::shared_ptr<ScriptCommandEntry> entry = m_Entry.lock();
-        if (!entry || !entry->ExecuteMethod)
-            return;
-
-        ScriptCommandEventView event(ScriptCommandEventExecute, this, &args);
-        CommandCallArgs callArgs = {state->Owner, state->ContextView, &event, nullptr};
-        ScriptDiagnostic diagnostic;
-        const bool ok = ExecutePreparedMethod(entry->Object,
-                                              entry->ExecuteMethod,
-                                              callArgs,
-                                              false,
-                                              "Command callback failed",
-                                              diagnostic);
-        if (!ok) {
-            Shell::SetStatus(Shell::Status::Failure);
-            if (state->Owner)
-                state->Owner->SetLoadFailure(diagnostic);
-        }
-    }
-
-    const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override {
-        std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
-        if (!state || !state->Active || !state->ContextView)
-            return {};
-        if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
-            return {};
-
-        const std::shared_ptr<ScriptCommandEntry> entry = m_Entry.lock();
-        if (!entry || !entry->CompleteMethod)
-            return {};
-
-        std::vector<std::string> completions;
-        ScriptCommandCompletion completion(&completions);
-        ScriptCommandEventView event(ScriptCommandEventComplete, this, &args);
-        CommandCallArgs callArgs = {state->Owner, state->ContextView, &event, &completion};
-        ScriptDiagnostic diagnostic;
-        const bool ok = ExecutePreparedMethod(entry->Object,
-                                              entry->CompleteMethod,
-                                              callArgs,
-                                              true,
-                                              "Command completion callback failed",
-                                              diagnostic);
-        if (!ok) {
-            if (state->Owner)
-                state->Owner->SetLoadFailure(diagnostic);
-            return {};
-        }
-        return completions;
-    }
-
-private:
-    std::weak_ptr<ScriptCommandServiceState> m_State;
-    std::weak_ptr<ScriptCommandEntry> m_Entry;
-    std::string m_Name;
-    std::string m_Alias;
-    std::string m_Description;
-    bool m_Cheat = false;
-};
-
-static std::shared_ptr<ICommand> CreateScriptCommand(
-    const std::shared_ptr<ScriptCommandServiceState> &state,
-    const std::shared_ptr<ScriptCommandEntry> &entry) {
-    return std::make_shared<ScriptCommand>(
-        state, entry, entry->Name, entry->Alias,
-        entry->Description, entry->Cheat);
-}
 
 void ScriptCommandCompletion::Add(const std::string &value) const {
     if (m_Items && !value.empty() &&

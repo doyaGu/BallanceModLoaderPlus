@@ -240,7 +240,7 @@ bool ScriptCallbackDispatcher::CallCheatEnabled(bool enable, ScriptDiagnostic &d
 }
 
 bool ScriptCallbackDispatcher::CallCommandEvent(bool beforeCommand,
-                                                ICommand *command,
+                                                BML::CommandRecord *command,
                                                 const std::vector<std::string> &args,
                                                 ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnCommandEvent))

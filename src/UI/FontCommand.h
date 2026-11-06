@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "Console/ICommand.h"
+#include "Console/CommandRecord.h"
 #include "UI/FontRuntime.h"
 
 class Property;
@@ -25,19 +25,21 @@ struct FontCommandContext {
     void WriteFallbackFaces(const std::vector<std::string> &faces) const;
 };
 
-class FontCommand final : public ICommand {
+class FontCommand final {
 public:
     explicit FontCommand(FontCommandContext context);
 
-    std::string GetName() override { return "font"; }
-    std::string GetAlias() override { return ""; }
-    std::string GetDescription() override {
-        return "Inspect and configure the built-in UI font runtime.";
-    }
-    bool IsCheat() override { return false; }
+    std::string GetName() { return "font"; }
 
-    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override;
+    std::string GetAlias() { return ""; }
+
+    std::string GetDescription() { return "Inspect and configure the built-in UI font runtime."; }
+
+    bool IsCheat() { return false; }
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                    const std::vector<std::string> &args);
 
 private:
     void ExecutePrimary(ModContext &bml, const std::vector<std::string> &args);

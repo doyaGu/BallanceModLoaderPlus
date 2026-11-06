@@ -1,5 +1,5 @@
 // Text filters for pipelines: grep, head, tail, wc, sort, uniq. Each has a pure
-// core over a vector of lines, which the tests drive, and a thin ICommand that
+// core over a vector of lines, which the tests drive, and a thin BML::CommandRecord that
 // reads the piped text and prints the result one line per message.
 #ifndef BML_SHELL_FILTER_COMMANDS_H
 #define BML_SHELL_FILTER_COMMANDS_H
@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Console/ICommand.h"
+#include "Console/CommandRecord.h"
 
 namespace BML::Shell::Filters {
     // Splits captured text into lines; the final newline does not add a line.
@@ -52,65 +52,95 @@ namespace BML::Shell::Filters {
 }
 
 namespace BML::Shell {
-    class CommandGrep final : public ICommand {
-    public:
-        std::string GetName() override { return "grep"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Print piped lines matching a pattern."; }
-        bool IsCheat() override { return false; }
-        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
-    };
+class CommandGrep final {
+public:
+    std::string GetName() { return "grep"; }
 
-    class CommandHead final : public ICommand {
-    public:
-        std::string GetName() override { return "head"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Print the first lines of piped text."; }
-        bool IsCheat() override { return false; }
-        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
-    };
+    std::string GetAlias() { return ""; }
 
-    class CommandTail final : public ICommand {
-    public:
-        std::string GetName() override { return "tail"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Print the last lines of piped text."; }
-        bool IsCheat() override { return false; }
-        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
-    };
+    std::string GetDescription() { return "Print piped lines matching a pattern."; }
 
-    class CommandWc final : public ICommand {
-    public:
-        std::string GetName() override { return "wc"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Count lines, words, and bytes of piped text."; }
-        bool IsCheat() override { return false; }
-        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
-    };
+    bool IsCheat() { return false; }
 
-    class CommandSort final : public ICommand {
-    public:
-        std::string GetName() override { return "sort"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Sort piped lines."; }
-        bool IsCheat() override { return false; }
-        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
-    };
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                    const std::vector<std::string> &args);
+};
 
-    class CommandUniq final : public ICommand {
-    public:
-        std::string GetName() override { return "uniq"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Drop repeated adjacent piped lines."; }
-        bool IsCheat() override { return false; }
-        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
-    };
+class CommandHead final {
+public:
+    std::string GetName() { return "head"; }
+
+    std::string GetAlias() { return ""; }
+
+    std::string GetDescription() { return "Print the first lines of piped text."; }
+
+    bool IsCheat() { return false; }
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                    const std::vector<std::string> &args);
+};
+
+class CommandTail final {
+public:
+    std::string GetName() { return "tail"; }
+
+    std::string GetAlias() { return ""; }
+
+    std::string GetDescription() { return "Print the last lines of piped text."; }
+
+    bool IsCheat() { return false; }
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                    const std::vector<std::string> &args);
+};
+
+class CommandWc final {
+public:
+    std::string GetName() { return "wc"; }
+
+    std::string GetAlias() { return ""; }
+
+    std::string GetDescription() { return "Count lines, words, and bytes of piped text."; }
+
+    bool IsCheat() { return false; }
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                    const std::vector<std::string> &args);
+};
+
+class CommandSort final {
+public:
+    std::string GetName() { return "sort"; }
+
+    std::string GetAlias() { return ""; }
+
+    std::string GetDescription() { return "Sort piped lines."; }
+
+    bool IsCheat() { return false; }
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                    const std::vector<std::string> &args);
+};
+
+class CommandUniq final {
+public:
+    std::string GetName() { return "uniq"; }
+
+    std::string GetAlias() { return ""; }
+
+    std::string GetDescription() { return "Drop repeated adjacent piped lines."; }
+
+    bool IsCheat() { return false; }
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                    const std::vector<std::string> &args);
+};
 }
 
 #endif // BML_SHELL_FILTER_COMMANDS_H

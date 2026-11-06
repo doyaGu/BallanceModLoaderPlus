@@ -201,7 +201,8 @@ namespace BML::Shell {
         }
 
         // Reads "-n N" or "-N" style counts. Returns false after printing an error.
-        bool ReadCount(ModContext *bml, const char *command, const std::vector<std::string> &args, std::size_t &count) {
+        bool ReadCount(ModContext *bml, const char *command, const std::vector<std::string> &args,
+                       std::size_t &count) {
             count = 10;
             for (std::size_t i = 1; i < args.size(); ++i) {
                 const std::string &arg = args[i];
@@ -293,7 +294,8 @@ namespace BML::Shell {
             SetStatus(Status::Failure);
     }
 
-    const std::vector<std::string> CommandGrep::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
+    const std::vector<std::string>
+    CommandGrep::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         if (args.size() >= 2 && !args.back().empty() && args.back()[0] == '-')
             return {"-i", "-v", "-n", "-c", "-F", "-e"};
         return {};
@@ -306,7 +308,8 @@ namespace BML::Shell {
         PrintLines(bml, Filters::Head(InputLines(), count));
     }
 
-    const std::vector<std::string> CommandHead::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
+    const std::vector<std::string>
+    CommandHead::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         return args.size() == 2 ? std::vector<std::string>{"-n"} : std::vector<std::string>{};
     }
 
@@ -317,7 +320,8 @@ namespace BML::Shell {
         PrintLines(bml, Filters::Tail(InputLines(), count));
     }
 
-    const std::vector<std::string> CommandTail::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
+    const std::vector<std::string>
+    CommandTail::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         return args.size() == 2 ? std::vector<std::string>{"-n"} : std::vector<std::string>{};
     }
 
@@ -345,7 +349,8 @@ namespace BML::Shell {
             bml->SendIngameMessage(Filters::Wc(input ? *input : std::string(), options).c_str());
     }
 
-    const std::vector<std::string> CommandWc::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
+    const std::vector<std::string>
+    CommandWc::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         return args.size() == 2 ? std::vector<std::string>{"-l", "-w", "-c"} : std::vector<std::string>{};
     }
 
@@ -371,7 +376,8 @@ namespace BML::Shell {
         PrintLines(bml, Filters::Sort(InputLines(), options));
     }
 
-    const std::vector<std::string> CommandSort::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
+    const std::vector<std::string>
+    CommandSort::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         return args.size() == 2 ? std::vector<std::string>{"-r", "-u", "-n"} : std::vector<std::string>{};
     }
 
@@ -388,7 +394,8 @@ namespace BML::Shell {
         PrintLines(bml, Filters::Uniq(InputLines(), count));
     }
 
-    const std::vector<std::string> CommandUniq::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
+    const std::vector<std::string>
+    CommandUniq::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         return args.size() == 2 ? std::vector<std::string>{"-c"} : std::vector<std::string>{};
     }
 }

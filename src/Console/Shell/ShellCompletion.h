@@ -22,7 +22,7 @@ namespace BML::Shell {
         std::function<std::vector<std::string>()> commandNames;
         std::function<std::vector<std::string>()> aliasNames;
         std::function<std::vector<std::string>()> variableNames;
-        // args as ICommand::GetTabCompletion expects them: args[0] the command,
+        // args as BML::CommandRecord::GetTabCompletion expects them: args[0] the command,
         // an empty last element when a new argument is being started.
         std::function<std::vector<std::string>(const std::vector<std::string> &args)> argumentCandidates;
     };

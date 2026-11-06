@@ -204,7 +204,8 @@ void PaletteCommand::Execute(ModContext *bml, const std::vector<std::string> &ar
     }
 }
 
-const std::vector<std::string> PaletteCommand::GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) {
+const std::vector<std::string>
+PaletteCommand::GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) {
     if (args.size() == 2) return {"reload", "sample", "list", "theme", "show", "info", "set", "get", "reset"};
     if (args.size() == 3 && args[1] == std::string("theme")) {
         // Dynamic theme names + 'none' using palette API

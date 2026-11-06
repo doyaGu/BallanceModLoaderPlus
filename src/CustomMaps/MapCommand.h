@@ -1,23 +1,27 @@
 #ifndef BML_CUSTOMMAPS_MAPCOMMAND_H
 #define BML_CUSTOMMAPS_MAPCOMMAND_H
 
-#include "Console/ICommand.h"
+#include "Console/CommandRecord.h"
 
 class CustomMaps;
 
 namespace CustomMap {
 
-class MapCommand final : public ICommand {
+class MapCommand final {
 public:
     explicit MapCommand(CustomMaps &maps) : m_Maps(maps) {}
 
-    std::string GetName() override { return "map"; }
-    std::string GetAlias() override { return ""; }
-    std::string GetDescription() override { return "List and load custom maps."; }
-    bool IsCheat() override { return false; }
-    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(
-        ModContext *bml, const std::vector<std::string> &args) override;
+    std::string GetName() { return "map"; }
+
+    std::string GetAlias() { return ""; }
+
+    std::string GetDescription() { return "List and load custom maps."; }
+
+    bool IsCheat() { return false; }
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                    const std::vector<std::string> &args);
 
 private:
     CustomMaps &m_Maps;

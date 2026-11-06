@@ -6,7 +6,6 @@
 #include "Loader/ModContext.h"
 #include "Console/Console.h"
 #include "Console/Shell/ShellIo.h"
-#include "Loader/ModContext.h"
 #include "StringUtils.h"
 
 void CommandHelp::Execute(ModContext *bml, const std::vector<std::string> &args) {

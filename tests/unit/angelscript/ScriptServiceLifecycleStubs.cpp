@@ -5,19 +5,13 @@
 #include "Console/CommandContext.h"
 #include "Loader/ModContext.h"
 
+IMod::~IMod() = default;
+Logger *IMod::GetLogger() { return nullptr; }
+Config *IMod::GetConfig() { return nullptr; }
+
 void ModContext::SendIngameMessage(const char *) {}
 
-IMod::~IMod() = default;
-
-Logger *IMod::GetLogger() {
-    return nullptr;
-}
-
-Config *IMod::GetConfig() {
-    return nullptr;
-}
-
-ICommand *ModContext::FindCommand(const char *) const {
+BML::CommandRecord *ModContext::FindCommand(const char *) const {
     return nullptr;
 }
 
@@ -30,7 +24,7 @@ bool ModContext::FindCommandInfo(
     return false;
 }
 
-bool ModContext::SetCommandEnabled(ICommand *, bool) {
+bool ModContext::SetCommandEnabled(const void *, bool) {
     return true;
 }
 
@@ -40,17 +34,7 @@ const char *CKAngelScriptAdapter::StatusName(CKAS_STATUS) {
 
 namespace BML {
 
-bool CommandContext::RegisterCommand(const void *, ICommand *) {
-    return false;
-}
-
-bool CommandContext::RegisterCommand(
-    const void *, ICommand *, CommandInfo) {
-    return false;
-}
-
-bool CommandContext::RegisterCommand(
-    const void *, ICommand *, CommandInfo, std::shared_ptr<void>) {
+bool CommandContext::RegisterCommand(const void *, std::shared_ptr<CommandRecord>) {
     return false;
 }
 
@@ -85,8 +69,7 @@ CommandContext::UnregisterResult CommandContext::UnregisterCommand(const void *,
 
 void CommandContext::UnregisterCommands(const void *) {}
 
-ScriptCommandEventView::ScriptCommandEventView(ScriptCommandEventPhase,
-                                               ICommand *,
+ScriptCommandEventView::ScriptCommandEventView(ScriptCommandEventPhase, BML::CommandRecord *,
                                                const std::vector<std::string> *) {}
 
 ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *) {}

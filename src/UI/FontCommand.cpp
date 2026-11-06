@@ -590,7 +590,8 @@ void FontCommand::Execute(ModContext *bml, const std::vector<std::string> &args)
                           ". Use 'font help'.");
 }
 
-const std::vector<std::string> FontCommand::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
+const std::vector<std::string> FontCommand::GetTabCompletion(ModContext *,
+                                                             const std::vector<std::string> &args) {
     if (args.size() == 2) {
         return {"status", "sources", "list", "sample", "check", "primary",
                 "size", "fallback", "system", "reload", "reset", "help"};

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "Console/ICommand.h"
+#include "Console/CommandRecord.h"
 #include "Loader/IMod.h"
 #include "ScriptApiSurface.h"
 #include "ScriptDiagnostic.h"
@@ -46,7 +46,7 @@ public:
     bool CallLoadScript(const char *filename, CKBehavior *script, ScriptDiagnostic &diagnostic);
     bool CallCheatEnabled(bool enable, ScriptDiagnostic &diagnostic);
     bool CallCommandEvent(bool beforeCommand,
-                          ICommand *command,
+                          BML::CommandRecord *command,
                           const std::vector<std::string> &args,
                           ScriptDiagnostic &diagnostic);
     bool CallModifyConfig(const char *modId,

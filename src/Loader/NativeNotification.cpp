@@ -87,12 +87,12 @@ void NativeNotification::Prepare(void (IMod::*)(CK3dEntity *), CK3dEntity *objec
     m_Storage->ObjectValue = {sizeof(BML_ObjectEvent), m_Context.ObjectRefs().Issue(object)};
 }
 
-void NativeNotification::Prepare(void (IMod::*callback)(ICommand *,
+void NativeNotification::Prepare(void (IMod::*callback)(BML::CommandRecord *,
                                                         const std::vector<std::string> &),
-                                 ICommand *command, const std::vector<std::string> &args) {
+                                 BML::CommandRecord *command, const std::vector<std::string> &args) {
     auto &s = *m_Storage;
     s.Type = Storage::Command;
-    s.Text[0] = command ? command->GetName() : "";
+    s.Text[0] = command ? command->Info.Name : "";
     s.Arguments = args;
     s.ArgumentViews.clear();
     for (size_t i = 1; i < s.Arguments.size(); ++i)
@@ -104,7 +104,7 @@ void NativeNotification::Prepare(void (IMod::*callback)(ICommand *,
                       s.Arguments.empty() ? "" : s.Arguments[0].c_str(),
                       s.ArgumentViews.data(),
                       s.ArgumentViews.size(),
-                      command && command->IsCheat() ? 1u : 0u};
+                      command && command->Info.Cheat ? 1u : 0u};
 }
 
 void NativeNotification::Prepare(void (IMod::*)(const char *, CKBOOL, const char *, CK_CLASSID,

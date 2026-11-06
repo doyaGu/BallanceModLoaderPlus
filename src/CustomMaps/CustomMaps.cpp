@@ -191,7 +191,8 @@ void CustomMaps::OnLoad(ModContext &bml, Logger &logger,
     m_Menu.Init(m_MapsDirectory, logger);
     if (!m_Command)
         m_Command = std::make_unique<CustomMap::MapCommand>(*this);
-    bml.RegisterCommand(m_Command.get());
+    if (bml.RegisterCallbackCommand(this, BML::MakeCommandRecord(m_Command.get())) != BML_OK)
+        logger.Error("Failed to register the map command.");
 }
 
 void CustomMaps::OnUnload() {

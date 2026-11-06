@@ -1,5 +1,5 @@
 // Per-invocation state a command may reach while its Execute runs: the text
-// piped into it and the exit status it wants to report. ICommand::Execute is
+// piped into it and the exit status it wants to report. BML::CommandRecord::Execute is
 // adapted to the console's InvocationScope. SetStatus and GetInput supply the
 // invocation state shared by built-in commands and the native C command bridge.
 #ifndef BML_SHELL_IO_H

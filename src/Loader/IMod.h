@@ -9,7 +9,7 @@
 #include "CKAll.h"
 
 #include "BML/BML.h"
-#include "Console/ICommand.h"
+#include "Console/CommandRecord.h"
 #include "Loader/IMessageReceiver.h"
 #include "Logging/Logger.h"
 #include "Config/Config.h"
@@ -251,9 +251,9 @@ public:
     // at args[1], and both callbacks see the same vector. Neither runs for a line that names no
     // known command or for a cheat command refused because cheats are off, and OnPostCommandExecute
     // is skipped when the command itself throws.
-    virtual void OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {}
+    virtual void OnPreCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args) {}
 
-    virtual void OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) {}
+    virtual void OnPostCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args) {}
 
 protected:
     // Both are created on the first call, so do not delete what they return.

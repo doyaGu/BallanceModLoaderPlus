@@ -161,7 +161,6 @@ set(BML_MODS_SOURCES
 set(BML_LOADER_PRIVATE_HEADERS
         Loader/IMod.h
         Loader/IMessageReceiver.h
-        Console/ICommand.h
         Hooks/InputHook.h
         Loader/LegacyModVersion.h
         Loader/ModContext.h
@@ -259,6 +258,7 @@ set(BML_CONFIG_SOURCES
 )
 
 set(BML_CONSOLE_PRIVATE_HEADERS
+        Console/CommandRecord.h
         Console/BuiltinCommands.h
         Console/CommandBar.h
         Console/CommandBarTheme.h

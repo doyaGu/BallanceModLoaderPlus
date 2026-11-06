@@ -59,8 +59,8 @@ void MapCommand::Execute(ModContext *bml, const std::vector<std::string> &args) 
                   "Usage: map list [name fragment] | map load \"<path relative to ModLoader/Maps>\"");
 }
 
-const std::vector<std::string> MapCommand::GetTabCompletion(
-    ModContext *, const std::vector<std::string> &args) {
+const std::vector<std::string> MapCommand::GetTabCompletion(ModContext *,
+                                                            const std::vector<std::string> &args) {
     return args.size() == 2 ? std::vector<std::string>{"list", "load"}
                             : std::vector<std::string>{};
 }

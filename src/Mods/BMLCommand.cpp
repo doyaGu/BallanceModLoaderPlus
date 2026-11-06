@@ -6,10 +6,10 @@
 #include "Diagnostics/SystemReport.h"
 
 namespace {
-    void SendLine(ModContext &bml, const std::string &line) {
-        const std::string message = line + '\n';
-        bml.SendIngameMessage(message.c_str());
-    }
+void SendLine(ModContext &bml, const std::string &line) {
+    const std::string message = line + '\n';
+    bml.SendIngameMessage(message.c_str());
+}
 }
 
 void BMLCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
@@ -38,8 +38,8 @@ void BMLCommand::Execute(ModContext *bml, const std::vector<std::string> &args) 
     }
 }
 
-const std::vector<std::string> BMLCommand::GetTabCompletion(
-    ModContext *, const std::vector<std::string> &args) {
+const std::vector<std::string> BMLCommand::GetTabCompletion(ModContext *,
+                                                            const std::vector<std::string> &args) {
     if (args.size() == 2)
         return {"system"};
     return {};
