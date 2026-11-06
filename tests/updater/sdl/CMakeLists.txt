@@ -49,7 +49,7 @@ add_executable(BMLUpdaterSdlTest UpdaterSdlTest.cpp)
 target_link_libraries(BMLUpdaterSdlTest PRIVATE BMLUpdaterTestCore GTest::gtest_main BMLUpdateSigning)
 target_include_directories(BMLUpdaterSdlTest PRIVATE "${BML_SOURCE_DIR}")
 add_test(NAME BMLUpdaterSdlTest COMMAND BMLUpdaterSdlTest)
-set_tests_properties(BMLUpdaterSdlTest PROPERTIES LABELS "updater;sdl;integration" TIMEOUT 120)
+set_tests_properties(BMLUpdaterSdlTest PROPERTIES LABELS "updater;sdl;integration" TIMEOUT 120 RUN_SERIAL TRUE)
 
 add_test(NAME BMLUpdaterSdlIntegrationTest
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/UpdaterIntegrationTest.py"
@@ -60,4 +60,4 @@ add_test(NAME BMLUpdaterSdlIntegrationTest
         --platform "${BML_TARGET_PLATFORM}" --architecture "${BML_TARGET_ARCH}"
         --packager "${PROJECT_SOURCE_DIR}/scripts/package_sdl_update.py"
         --signer "$<TARGET_FILE:BMLUpdateSigner>")
-set_tests_properties(BMLUpdaterSdlIntegrationTest PROPERTIES LABELS "updater;sdl;network;integration" TIMEOUT 180)
+set_tests_properties(BMLUpdaterSdlIntegrationTest PROPERTIES LABELS "updater;sdl;network;integration" TIMEOUT 180 RUN_SERIAL TRUE)

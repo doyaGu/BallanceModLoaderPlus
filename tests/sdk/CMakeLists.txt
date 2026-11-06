@@ -24,7 +24,7 @@ add_test(
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/BmlSdlCliTest.py"
                 --source-root "${PROJECT_SOURCE_DIR}"
 )
-set_tests_properties(BmlSdlCliTest PROPERTIES LABELS "sdk;workflow;sdl")
+set_tests_properties(BmlSdlCliTest PROPERTIES LABELS "sdk;workflow;sdl" RUN_SERIAL TRUE)
 
 if(CK2_INSTALL AND VXMATH_INSTALL)
     add_test(
