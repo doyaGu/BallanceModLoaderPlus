@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   sdk-contracts:
-    name: SDK and CLI (${{ matrix.os }})
+    name: SDK, CLI and UI framework (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -32,3 +32,9 @@ jobs:
         run: cmake -S tests/sdk -B build/sdk-contracts
       - name: Run SDK contract tests
         run: ctest --test-dir build/sdk-contracts --output-on-failure
+      - name: Configure UI framework tests
+        run: cmake -S tests/ui -B build/ui-framework
+      - name: Build UI framework tests
+        run: cmake --build build/ui-framework --config Release
+      - name: Run UI framework tests
+        run: ctest --test-dir build/ui-framework -C Release --output-on-failure

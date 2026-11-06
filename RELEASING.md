@@ -4,9 +4,10 @@ This runbook describes the tools present in this checkout. The runtime is a
 Ballanced SDL **dynamic** host. Original-Player releases use their own branch;
 static-package updater tests do not provide a working static BML Player.
 
-The [build workflow](.github/workflows/build.yml) currently runs standalone SDK
-and CLI contracts on Windows, Linux and macOS. It does not build or publish a
-complete seven-target runtime/SDK matrix. The [docs workflow](.github/workflows/docs.yml)
+The [build workflow](.github/workflows/build.yml) currently runs standalone SDK,
+CLI and UI framework contracts on Windows, Linux and macOS. It does not build
+or publish a complete seven-target runtime/SDK matrix.
+The [docs workflow](.github/workflows/docs.yml)
 strictly builds both languages and uploads a site artifact; it reserves `/updates`
 for updater metadata. Neither workflow publishes release packages or deploys Pages.
 
