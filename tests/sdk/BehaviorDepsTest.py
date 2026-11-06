@@ -9,7 +9,7 @@ def fail(message: str) -> None:
 
 def includes(path: Path) -> set[str]:
     return set(re.findall(
-        r'^\s*#include\s+"([^"]+)"',
+        r'^\s*#include\s*[<"]([^>"]+)[>"]',
         path.read_text(encoding="utf-8"),
         flags=re.MULTILINE,
     ))
@@ -34,12 +34,26 @@ def main() -> None:
     }
 
     obsolete = ("IMod.h", "IBML.h", "IConfig.h", "ICommand.h", "ILogger.h",
-                "IMessageReceiver.h", "InputHook.h", "ExecuteBB.h", "ModInterface.hpp")
+                "IMessageReceiver.h", "InputHook.h", "ExecuteBB.h", "ModInterface.hpp",
+                "RefCount.h")
     for name in obsolete:
         if (root / "include" / "BML" / name).exists():
             fail(f"obsolete public native header remains: {name}")
     if (source / "Api" / "ExecuteBB.cpp").exists():
         fail("the obsolete ExecuteBB export facade remains")
+    # Public authoring headers must remain usable without the Loader source tree.
+    # Resolve includes as well as checking names, so relative paths cannot bypass
+    # this contract. CK/ImGui adapters still use their explicit SDK dependencies.
+    private_root = source.resolve()
+    for header in (root / "include" / "BML").rglob("*"):
+        if header.suffix not in {".h", ".hpp"}:
+            continue
+        for include in includes(header):
+            candidates = (header.parent / include, root / "include" / include,
+                          source / include)
+            if any(path.is_file() and path.resolve().is_relative_to(private_root)
+                   for path in candidates):
+                fail(f"public header {header.relative_to(root)} includes private implementation: {include}")
     public_blocks = root / "include" / "BML" / "Behavior" / "Blocks"
     for name in block_names:
         header = public_blocks / f"{name}.hpp"

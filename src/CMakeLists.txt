@@ -159,7 +159,6 @@ set(BML_MODS_SOURCES
 )
 
 set(BML_LOADER_PRIVATE_HEADERS
-        Hooks/InputHook.h
         Loader/ModContext.h
         Loader/ModRecord.h
         Loader/ModVersion.h
@@ -223,6 +222,7 @@ if (BML_ENABLE_BEHAVIOR_TEST_INTERFACE)
 endif ()
 
 set(BML_DATA_SHARE_PRIVATE_HEADERS
+        DataShare/RefCount.h
         DataShare/DataShare.h
 )
 
@@ -438,6 +438,7 @@ set(BML_UI_SOURCES
 )
 
 set(BML_HOOK_PRIVATE_HEADERS
+        Hooks/InputHook.h
         Hooks/BehaviorFunctionPatch.h
         Hooks/HookLifecycle.h
         Hooks/InputCursor.h

@@ -1,12 +1,4 @@
-/**
- * @file RefCount.h
- * @brief Intrusive reference counter with resurrection guard and clear memory model notes.
- *
- * Loader-internal header. It is deliberately absent from BML_PUBLIC_HEADERS in
- * src/CMakeLists.txt and is not installed into the SDK, so a Mod cannot include
- * it. Its only consumer is DataShareStore, which uses it to refcount the
- * entries a Mod reaches through the BML_DataShare* C functions in DataShare.h.
- */
+// Private intrusive reference count for DataShareStore entries.
 #ifndef BML_REFCOUNT_H
 #define BML_REFCOUNT_H
 
@@ -16,7 +8,7 @@
 namespace BML {
     class RefCount {
     public:
-        // Start at 1 by default for intrusive objects that are born owned; use 0 if you really pool-manage.
+        // Starts unowned; pass 1 when constructing an already-owned entry.
         explicit RefCount(uint32_t initial = 0) noexcept : m_RefCount(initial) {}
         ~RefCount() = default;
 

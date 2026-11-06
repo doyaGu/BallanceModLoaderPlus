@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "BML/DataShare.h"
-#include "BML/RefCount.h"
+#include "DataShare/RefCount.h"
 
 namespace BML {
     class ModInvocationGate;

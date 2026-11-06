@@ -82,7 +82,8 @@ def main() -> int:
     # Obsolete C++ vtables and caller-address services must not remain a second
     # native entry route. Installed consumers use Context and versioned C tables.
     obsolete_headers = ("IMod.h", "IBML.h", "IConfig.h", "ICommand.h", "ILogger.h",
-                        "IMessageReceiver.h", "InputHook.h", "ExecuteBB.h", "ModInterface.hpp")
+                        "IMessageReceiver.h", "InputHook.h", "ExecuteBB.h", "ModInterface.hpp",
+                        "RefCount.h")
     for name in obsolete_headers:
         assert not (sdk / "include/BML" / name).exists(), name
     obsolete_symbols = [
