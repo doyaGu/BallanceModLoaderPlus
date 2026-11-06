@@ -164,6 +164,8 @@ set(BML_LOADER_SOURCES
         Loader/ModLoader.cpp
         Loader/ModManager.cpp
         Loader/NativeModRegistry.cpp
+        Loader/NativeMod.cpp
+        Loader/NativeNotification.cpp
 )
 
 set(BML_API_PRIVATE_HEADERS
@@ -185,6 +187,14 @@ set(BML_API_SOURCES
         Api/Behavior/Table.cpp
         Api/Behavior/Text.cpp
         Api/BmlApi.cpp
+        Api/GuiApi.cpp
+        Api/BuiApi.cpp
+        Api/ModApi.cpp
+        Api/ConfigApi.cpp
+        Api/TimerApi.cpp
+        Api/InputApi.cpp
+        Api/InteropApi.cpp
+        Api/GameplayRegistrationApi.cpp
         Api/BuiltinCapabilities.cpp
         Api/CommandApi.cpp
         Api/Errors.cpp

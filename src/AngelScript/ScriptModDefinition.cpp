@@ -1,3 +1,4 @@
+#include "Loader/ModDefinitionValidation.h"
 #include "ScriptModDefinition.h"
 
 #include <cctype>
@@ -79,42 +80,8 @@ static bool ParseMetadataQuotedString(const std::string &text, size_t &pos, std:
     return false;
 }
 
-static bool ParseVersionPart(const std::string &value, size_t &pos, int &part) {
-    if (pos >= value.size() || !std::isdigit(static_cast<unsigned char>(value[pos])))
-        return false;
-    if (value[pos] == '0' && pos + 1 < value.size() &&
-        std::isdigit(static_cast<unsigned char>(value[pos + 1]))) {
-        return false;
-    }
-
-    int parsed = 0;
-    do {
-        const int digit = value[pos] - '0';
-        if (parsed > ((std::numeric_limits<int>::max)() - digit) / 10)
-            return false;
-        parsed = parsed * 10 + digit;
-        ++pos;
-    } while (pos < value.size() &&
-             std::isdigit(static_cast<unsigned char>(value[pos])));
-
-    part = parsed;
-    return true;
-}
-
 bool ParseScriptModVersion(const std::string &value, BMLVersion &version) {
-    size_t pos = 0;
-    int parts[3] = {};
-    for (int index = 0; index < 3; ++index) {
-        if (index != 0 && (pos >= value.size() || value[pos++] != '.'))
-            return false;
-        if (!ParseVersionPart(value, pos, parts[index]))
-            return false;
-    }
-    if (pos != value.size())
-        return false;
-
-    version = BMLVersion(parts[0], parts[1], parts[2]);
-    return true;
+    return ParseModVersion(value, version);
 }
 
 ScriptModReloadPolicy ParseScriptModReloadPolicy(const std::string &value) {

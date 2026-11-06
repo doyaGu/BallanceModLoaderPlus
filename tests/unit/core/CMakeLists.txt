@@ -2,8 +2,7 @@ add_bml_test(ResultTest
         SOURCES ResultTest.cpp
 )
 
-if(WIN32)
-    add_bml_test(ConfigTest
+add_bml_test(ConfigTest
             SOURCES
             ConfigTest.cpp
             ${BML_SOURCE_DIR}/Config/Config.cpp
@@ -20,8 +19,6 @@ if(WIN32)
     target_compile_definitions(ConfigTest PRIVATE
             BML_TEST_FONT_DIRECTORY="${PROJECT_SOURCE_DIR}/packaging/runtime/ModLoader/Fonts"
     )
-
-endif()
 
 add_bml_test(NativeModRegistryTest
         SOURCES
@@ -46,3 +43,15 @@ add_bml_test(ModInvocationGateTest
         SOURCES
         ModInvocationGateTest.cpp
 )
+
+add_bml_test(ModProtocolTest
+        SOURCES ModProtocolTest.cpp
+)
+
+add_bml_test(ModDefinitionTest
+        SOURCES ModDefinitionTest.cpp
+)
+
+add_bml_test(NativeModTest
+    SOURCES NativeModTest.cpp ${BML_SOURCE_DIR}/Loader/NativeMod.cpp
+    DEPENDENCIES CK2 VxMath)

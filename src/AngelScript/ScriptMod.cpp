@@ -1469,6 +1469,7 @@ void ScriptMod::Fail(const ScriptDiagnostic &diagnostic) {
     ScriptDiagnostic rewritten = RewriteRuntimeDiagnosticPaths(diagnostic);
     m_State.MarkLoaded(false);
     m_State.Fail(rewritten);
+    if(m_Context)m_Context->StopModWork(this);
     TouchModGeneration();
     if (m_Context) {
         if (auto *devTools = m_Context->GetScriptDevTools()) {

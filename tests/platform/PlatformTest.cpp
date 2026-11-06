@@ -74,6 +74,7 @@ int main(int argc, char **argv) {
 #endif
         std::string descriptor;
         Require(utils::ReadFileBytesUtf8(argv[2], descriptor), "host ABI descriptor");
+        descriptor.insert(descriptor.rfind('}'), ",\"extensions\":{}");
         const auto modPath = utils::CombinePathW(root, L"example.bmodp");
         std::string abiError;
         Require(!BML::Platform::ValidateModAbi(modPath, abiError), "missing ABI rejected");
@@ -90,14 +91,14 @@ int main(int argc, char **argv) {
         const auto first = BML::Platform::Module::Open(argv[1], loadError);
         const auto second = BML::Platform::Module::Open(argv[1], loadError);
         Require(first && second, loadError.c_str());
-        auto entry = first->Symbol("BMLEntry");
+        auto entry = first->Symbol("BML_GetModInterface");
         Require(entry && first->Identity() == second->Identity(), "duplicate loads share identity");
         Require(first->Identity() == BML::Platform::ModuleFromAddress(entry), "address ownership");
         Require(reinterpret_cast<int (*)()>(entry)() == 42, "native call");
         Require(!first->Symbol("missing_symbol"), "missing symbol");
         auto reference = BML::Platform::RetainModule(first);
         Require(reference.get() == first->Identity(), "registry uses image identity");
-        Require(BML::Platform::ModuleSymbol(reference, "BMLEntry") == entry, "symbol lookup uses retained load handle");
+        Require(BML::Platform::ModuleSymbol(reference, "BML_GetModInterface") == entry, "symbol lookup uses retained load handle");
         Require(utils::DeleteDirectoryW(root), "cleanup without following symlinks");
         std::cout << "SDL filesystem, module identity and crypto contracts passed\n";
         return 0;

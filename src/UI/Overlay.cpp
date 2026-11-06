@@ -1,3 +1,4 @@
+#include "Loader/ModContext.h"
 #include "UI/Overlay.h"
 
 #include "UI/Ime/Presentation.h"
@@ -135,6 +136,10 @@ namespace Overlay {
                 ImGui::EndFrame();
             }
 
+            // Old draw data has now been discarded and no business callback is
+            // active. Fault cleanup may release code/resources used by that data.
+            if (ModContextLease context; context) context->GetModLoader().ProcessFailedNativeMods();
+
             PlatformInput::ProcessEvents();
             ImGui_ImplSDL3_NewFrame();
             ImGui_ImplCK2_NewFrame();
@@ -165,7 +170,20 @@ namespace Overlay {
         }
     }
 
+    void ImGuiDiscardDrawData() {
+        ImGuiContextScope scope;
+        if (!scope.IsActive()) return;
+        ImGuiEndFrame();
+        g_DrawDataReady = false;
+        if (ImDrawData *data = ImGui::GetDrawData()) data->Valid = false;
+    }
+
     void ImGuiOnRender() {
+        ModContextLease context;
+        if (!context) return;
+        // Custom draw callbacks are module code too. A reentrant Stop may not
+        // unload them while the backend is consuming their command list.
+        auto invocation = context->LockModInvocation();
         if (g_DrawDataReady) {
             ImGuiContextScope scope;
             ImGui_ImplCK2_RenderDrawData(ImGui::GetDrawData());

@@ -3,7 +3,7 @@
 namespace BML {
 
 void ScriptModState::MarkLoaded(bool loaded) {
-    m_Loaded = loaded;
+    m_State.MarkLoaded(loaded);
 }
 
 void ScriptModState::Record(const ScriptDiagnostic &diagnostic) {
@@ -12,12 +12,12 @@ void ScriptModState::Record(const ScriptDiagnostic &diagnostic) {
 }
 
 void ScriptModState::Fail(const ScriptDiagnostic &diagnostic) {
-    m_Failed = true;
+    m_State.Fail();
     Record(diagnostic);
 }
 
 void ScriptModState::ClearFailure() {
-    m_Failed = false;
+    m_State.ClearFailure();
     m_LastDiagnostic = ScriptDiagnostic();
     m_LastDiagnosticText.clear();
 }

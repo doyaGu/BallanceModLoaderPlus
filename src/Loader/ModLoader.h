@@ -17,6 +17,8 @@
 #include "BML/IMod.h"
 #include "Loader/ModInvocationGate.h"
 #include "Loader/NativeModRegistry.h"
+#include "Loader/NativeMod.h"
+#include "Loader/NativeNotification.h"
 #include "UI/ImGuiStateRecovery.h"
 #include "HookUtils.h"
 
@@ -53,6 +55,23 @@ public:
     IMod *FindMod(const char *id) const;
     std::uint64_t GetModGeneration(const IMod *mod) const;
     std::uint64_t GetModRegistryRevision() const;
+    IMod *ResolveModContext(BML_ModContextHandle context) const;
+    IMod *ResolveModHandle(BML_ModHandle handle) const;
+    BML_ModContextHandle IssueModContext(IMod *mod);
+    NativeMod *FindNativeMod(const IMod *mod) const;
+    struct DependencyInfo { std::string Id; BMLVersion MinimumVersion; bool Optional = false; };
+    std::vector<DependencyInfo> ReadDependencies(const IMod *) const;
+    std::string InvokedOwnerId() const;
+    bool CanDispatchOwner(const IMod *) const;
+    void FailOwner(IMod *, int code, const char *operation);
+    bool CanUseProvider(const IMod *consumer, const IMod *provider) const;
+    bool HasLiveDependents(const IMod *provider) const;
+    void ProcessFailedNativeMods();
+    template<class Body> auto InvokeAs(IMod *mod, Body &&body) -> decltype(body()) {
+        ModInvocation invocation(this, mod);
+        return body();
+    }
+
 
     int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch);
     int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch);
@@ -93,18 +112,32 @@ public:
     template<typename T, typename... Args>
     std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
         auto invocationLock = LockModInvocation();
-        std::vector<IMod *> mods;
+        std::shared_ptr<const std::vector<IMod *>> mods;
         {
             std::lock_guard<std::mutex> lock(m_StateMutex);
             auto it = m_CallbackMap.find(utils::TypeErase(callback));
             if (it != m_CallbackMap.end())
                 mods = it->second;
         }
-        for (IMod *mod : mods) {
+        if (!mods) return;
+        NativeNotification nativeEvent(m_Context);
+        nativeEvent.Prepare(callback, args...);
+        for (IMod *mod : *mods) {
+            if (!CanDispatchOwner(mod)) continue;
             const Overlay::ImGuiStateSnapshot imguiState = Overlay::CaptureImGuiState();
             try {
                 ModInvocation invocation(this, mod);
-                (mod->*callback)(std::forward<Args>(args)...);
+                if (auto *native = FindNativeMod(mod)) {
+                    if (!native->IsFailed()) {
+                        const int code = nativeEvent.Dispatch(*native);
+                        if (code != BML_OK) {
+                            FailOwner(mod, code, nativeEvent.Name());
+                            LogCallbackFailure(mod, native->Diagnostic().c_str());
+                        }
+                    }
+                } else {
+                    (mod->*callback)(std::forward<Args>(args)...);
+                }
             } catch (const std::exception &e) {
                 LogCallbackFailure(mod, e.what());
             } catch (...) {
@@ -126,8 +159,8 @@ public:
 private:
     class ModInvocation final {
     public:
-        ModInvocation(const ModLoader *loader, IMod *mod) noexcept
-            : m_Previous(s_Current), m_Loader(loader), m_Mod(mod) { s_Current = this; }
+        ModInvocation(const ModLoader *loader, IMod *mod)
+            : m_Call(loader->LockModInvocation()), m_Previous(s_Current), m_Loader(loader), m_Mod(mod) { s_Current = this; }
         ~ModInvocation() { s_Current = m_Previous; }
         ModInvocation(const ModInvocation &) = delete;
         ModInvocation &operator=(const ModInvocation &) = delete;
@@ -140,6 +173,7 @@ private:
         }
     private:
         inline static thread_local const ModInvocation *s_Current = nullptr;
+        BML::ModInvocationGate::CallLock m_Call;
         const ModInvocation *m_Previous = nullptr;
         const ModLoader *m_Loader = nullptr;
         IMod *m_Mod = nullptr;
@@ -194,6 +228,25 @@ private:
     int EvaluateActivationDependencies(IMod *mod, std::string *diagnostic) const;
     bool ResolveDependencies();
     void FillCallbackMap(IMod *mod);
+    template<class T> static bool Subscribed(const NativeMod &mod, T callback) {
+        const auto &c = mod.Callbacks();
+        if constexpr (std::is_same_v<T, decltype(&IMessageReceiver::OnStartLevel)>) return c.OnGameEvent != nullptr;
+        else if constexpr (std::is_same_v<T, decltype(&IMod::OnProcess)>) {
+            if (callback == &IMod::OnLoad) return c.OnLoad != nullptr;
+            if (callback == &IMod::OnUnload) return c.OnUnload != nullptr;
+            return c.OnProcess != nullptr;
+        }
+        else if constexpr (std::is_same_v<T, decltype(&IMod::OnRender)>) return c.OnRender != nullptr;
+        else if constexpr (std::is_same_v<T, decltype(&IMod::OnCheatEnabled)>) return c.OnCheatEnabled != nullptr;
+        else if constexpr (std::is_same_v<T, decltype(&IMod::OnLoadObject)>) return c.OnLoadObject != nullptr;
+        else if constexpr (std::is_same_v<T, decltype(&IMod::OnLoadScript)>) return c.OnLoadScript != nullptr;
+        else if constexpr (std::is_same_v<T, decltype(&IMod::OnModifyConfig)>) return c.OnModifyConfig != nullptr;
+        else if constexpr (std::is_same_v<T, decltype(&IMod::OnPhysicalize)>) return c.OnPhysicalize != nullptr;
+        else if constexpr (std::is_same_v<T, decltype(&IMod::OnUnphysicalize)>) return c.OnUnphysicalize != nullptr;
+        else if constexpr (std::is_same_v<T, decltype(&IMod::OnPreCommandExecute)>) return c.OnCommandEvent != nullptr;
+        else return false;
+    }
+
 
     ModContext &m_Context;
     std::atomic<bool> m_ModsLoaded{false};
@@ -206,16 +259,19 @@ private:
     std::unique_ptr<BML::ScriptDevToolsService> m_ScriptDevTools;
     std::unique_ptr<BML::ScriptModHotReloadService> m_ScriptHotReload;
 #endif
+    std::unordered_map<IMod *, std::unique_ptr<NativeMod>> m_CNativeMods;
+    std::unordered_map<BML_ModContextHandle, IMod *> m_ModContexts;
     NativeModRegistry m_NativeModRegistry;
     std::vector<std::shared_ptr<void>> m_RejectedNativeDlls;
     std::vector<IMod *> m_Mods;
     std::vector<IMod *> m_ActiveMods;
+    std::vector<IMod *> m_UnloadedMods;
     std::unordered_map<std::string, std::size_t> m_ModIndex;
     std::unordered_map<const IMod *, std::uint64_t> m_ModGenerations;
     std::uint64_t m_NextModGeneration = 1;
     std::uint64_t m_ModRegistryRevision = 0;
     std::unordered_map<IMod *, std::vector<ModDependency>> m_ModDependencies;
-    std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
+    std::unordered_map<void *, std::shared_ptr<const std::vector<IMod *>>> m_CallbackMap;
 
     // Hold the invocation gate before either state lock when a Mod or DLL
     // lifetime is involved. If both locks are needed, take state before

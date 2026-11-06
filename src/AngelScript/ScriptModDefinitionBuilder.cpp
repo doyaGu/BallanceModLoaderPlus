@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "Utils/StringUtils.h"
+#include "Loader/ModDefinitionValidation.h"
+#include <unordered_set>
 
 namespace BML {
 
@@ -190,10 +192,18 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
         diagnostics.push_back("missing required class metadata 'bml.mod'.");
     if (reflected.Id.empty())
         diagnostics.push_back("bml.mod is missing required id.");
+    else if (!IsModId(reflected.Id))
+        diagnostics.push_back("bml.mod id must contain only letters, digits, '.', '_' or '-'.");
     if (reflected.Name.empty())
         diagnostics.push_back("bml.mod is missing required name.");
     if (reflected.Version.empty())
         diagnostics.push_back("bml.mod is missing required version.");
+
+    std::unordered_set<std::string> dependencies;
+    for (const auto &dependency : reflected.Dependencies) {
+        if (!IsModId(dependency.Id) || dependency.Id == reflected.Id || !dependencies.insert(dependency.Id).second)
+            diagnostics.push_back("bml.require has an invalid, duplicate or self dependency id.");
+    }
 
     if (!diagnostics.empty()) {
         std::ostringstream message;

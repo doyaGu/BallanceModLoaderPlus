@@ -56,6 +56,8 @@ namespace BML {
         static bool RetireCallbacksFromOwner(const std::string &owner) noexcept;
         static bool ActivateCallbacksFromOwner(const std::string &owner) noexcept;
         static void SetOwnerResolver(OwnerResolver resolver) noexcept;
+        using OwnerAdmission = bool (*)(const std::string &, bool callback) noexcept;
+        static void SetOwnerAdmission(OwnerAdmission) noexcept;
         static void SetInvocationGate(ModInvocationGate *gate) noexcept;
         static bool ResolveOwner(const void *callerAddress, const char *ownerId,
                                  const void *callbackAddress,
@@ -115,6 +117,7 @@ namespace BML {
         static std::unordered_map<std::string, bool> s_OwnerStates;
         static std::atomic<BML_DataShareRequest> s_NextRequest;
         static std::atomic<OwnerResolver> s_OwnerResolver;
+        static std::atomic<OwnerAdmission> s_OwnerAdmission;
         static std::atomic<ModInvocationGate *> s_InvocationGate;
     };
 }

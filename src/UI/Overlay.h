@@ -53,6 +53,7 @@ namespace Overlay {
     void ImGuiEndFrame();
     void ImGuiRender();
     void ImGuiOnRender();
+    void ImGuiDiscardDrawData();
 };
 
 #endif // BML_OVERLAY_H

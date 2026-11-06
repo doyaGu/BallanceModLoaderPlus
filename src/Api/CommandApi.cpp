@@ -1,4 +1,5 @@
 #include "Api/CommandApi.h"
+#include "Api/ModApi.h"
 
 #include <cstring>
 #include <exception>
@@ -39,8 +40,8 @@ int ServeOnMainThread(Body &&body) {
 
 class CallbackCommand final : public ICommand {
 public:
-    explicit CallbackCommand(const BML_CommandDefinition &definition)
-        : m_Name(definition.Name),
+    explicit CallbackCommand(ModContext &context, IMod *owner, const BML_CommandDefinition &definition)
+        : m_Context(context), m_Owner(owner), m_Name(definition.Name),
           m_Alias(definition.Alias ? definition.Alias : ""),
           m_Description(definition.Description ? definition.Description : ""),
           m_Cheat((definition.Flags & BML_COMMAND_CHEAT) != 0),
@@ -93,6 +94,8 @@ private:
         CallbackCommand &m_Command;
     };
 
+    ModContext &m_Context;
+    IMod *m_Owner = nullptr;
     std::string m_Name;
     std::string m_Alias;
     std::string m_Description;
@@ -346,6 +349,8 @@ BML_CommandCompletionRequest BuildCompletionRequest(
 }
 
 void CallbackCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+    if (!m_Context.GetModLoader().CanDispatchOwner(m_Owner)) { Shell::SetStatus(Shell::Status::Failure);return; }
+    auto ownerCall=m_Context.LockModInvocation();
     ActiveCall active(*this);
     int status = Shell::Status::Failure;
     try {
@@ -353,8 +358,7 @@ void CallbackCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
         OutputContext output = {bml};
         const BML_CommandInvocation invocation =
             BuildInvocation(m_Name, args, arguments, output);
-        status = m_Execute ? m_Execute(m_UserData, &invocation)
-                           : Shell::Status::Failure;
+        status = m_Context.GetModLoader().InvokeAs(m_Owner,[&] {return m_Execute ? m_Execute(m_UserData, &invocation) : Shell::Status::Failure;});
     } catch (const std::exception &error) {
         Logger::GetDefault()->Error("Exception in command '%s': %s",
                                     m_Name.c_str(), error.what());
@@ -368,8 +372,9 @@ void CallbackCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
 
 const std::vector<std::string> CallbackCommand::GetTabCompletion(
     IBML *, const std::vector<std::string> &args) {
-    if (!m_Complete)
+    if (!m_Complete || !m_Context.GetModLoader().CanDispatchOwner(m_Owner))
         return {};
+    auto ownerCall=m_Context.LockModInvocation();
 
     ActiveCall active(*this);
     try {
@@ -383,7 +388,7 @@ const std::vector<std::string> CallbackCommand::GetTabCompletion(
             &completionContext,
             &AddCompletion,
         };
-        const int status = m_Complete(m_UserData, &request, &completion);
+        const int status = m_Context.GetModLoader().InvokeAs(m_Owner,[&] {return m_Complete(m_UserData, &request, &completion);});
         return status == BML_OK && completionContext.Status == BML_OK
             ? std::move(items)
             : std::vector<std::string>();
@@ -400,8 +405,8 @@ const std::vector<std::string> CallbackCommand::GetTabCompletion(
 } // namespace
 
 struct CommandApi::Entry {
-    Entry(std::string owner, const BML_CommandDefinition &definition)
-        : Owner(std::move(owner)), Command(definition) {}
+    Entry(ModContext &context, std::string owner, const BML_CommandDefinition &definition)
+        : Owner(std::move(owner)), Command(context, context.FindMod(Owner.c_str()), definition) {}
 
     std::string Owner;
     CallbackCommand Command;
@@ -443,7 +448,9 @@ int CommandApi::Register(const std::string &owner,
         if (candidate == BML_COMMAND_INVALID_HANDLE)
             return BML_ERROR_BUSY;
 
-        auto entry = std::make_shared<Entry>(owner, definition);
+        auto *ownerMod=m_Context.FindMod(owner.c_str());
+        if(!ownerMod||!AcceptsModWork(m_Context,*ownerMod))return BML_ERROR_FROZEN;
+        auto entry = std::make_shared<Entry>(m_Context, owner, definition);
         Entry *registrar = entry.get();
         const auto inserted = m_Entries.emplace(candidate, entry);
         if (!inserted.second)

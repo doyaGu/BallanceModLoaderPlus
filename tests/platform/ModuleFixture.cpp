@@ -3,4 +3,4 @@
 #else
 #define EXPORT __attribute__((visibility("default")))
 #endif
-extern "C" EXPORT int BMLEntry() { return 42; }
+extern "C" EXPORT int BML_GetModInterface() { return 42; }

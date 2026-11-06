@@ -75,3 +75,34 @@ TEST(ModInvocationGateTest, NestedMutationsAreReentrant) {
     EXPECT_FALSE(gate.IsMutationActiveOnCurrentThread());
     EXPECT_FALSE(gate.IsCallActiveOnCurrentThread());
 }
+
+TEST(ModInvocationGateTest, BorrowSurvivesNestedReadsAndEndsWithOuterCall) {
+    BML::ModInvocationGate gate;
+    std::weak_ptr<int> first,second;
+    {
+        auto outer=gate.LockCall();
+        auto a=std::make_shared<int>(7);first=a;
+        gate.HoldBorrow(a);gate.HoldBorrow(a);a.reset();
+        {
+            auto nested=gate.LockCall();
+            auto b=std::make_shared<int>(9);second=b;
+            gate.HoldBorrow(b);b.reset();
+        }
+        EXPECT_EQ(gate.CallDepth(),1u);
+        EXPECT_EQ(*first.lock(),7);
+        EXPECT_EQ(*second.lock(),9);
+    }
+    EXPECT_TRUE(first.expired());EXPECT_TRUE(second.expired());
+    {auto next=gate.LockCall();EXPECT_EQ(gate.CallDepth(),1u);}
+    EXPECT_EQ(gate.CallDepth(),0u);
+}
+
+#include "Api/HandleSequence.h"
+#include <limits>
+TEST(ModInvocationGateTest, ExhaustedSequenceNeverReusesPublishedHandles) {
+    std::atomic<uint64_t> next{std::numeric_limits<uint64_t>::max()-1};
+    EXPECT_EQ(BML::Api::NextHandle(next),UINT64_MAX-1);
+    EXPECT_EQ(BML::Api::NextHandle(next),UINT64_MAX);
+    EXPECT_EQ(BML::Api::NextHandle(next),0u);
+    EXPECT_EQ(BML::Api::NextHandle(next),0u);
+}

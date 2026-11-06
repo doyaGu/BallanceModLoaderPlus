@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <mutex>
+#include <memory>
 #include <shared_mutex>
 #include <utility>
 #include <vector>
@@ -15,25 +16,25 @@ public:
     public:
         CallLock() = default;
 
-        explicit CallLock(ModInvocationGate &gate)
-            : m_Gate(&gate) {
+        explicit CallLock(ModInvocationGate &gate) : m_Gate(&gate) {
             for (auto &entry : s_CallEntries) {
-                if (entry.Gate == &gate) {
-                    ++entry.Depth;
-                    return;
+                if (entry.Gate == &gate && entry.Depth) { ++entry.Depth; return; }
+            }
+            bool mutation = false;
+            for (const auto &entry : s_MutationEntries) if (entry.Gate == &gate) mutation = true;
+            if (!mutation) {
+                m_Lock = std::shared_lock<std::shared_mutex>(gate.m_Mutex);
+                m_OwnsUnderlyingLock = true;
+            }
+            for (auto &entry : s_CallEntries) {
+                if (entry.Gate == &gate && !entry.Depth) {
+                    entry.Depth = 1; m_IsOutermost = true; return;
                 }
             }
-            for (const auto &entry : s_MutationEntries) {
-                if (entry.Gate == &gate) {
-                    s_CallEntries.push_back({&gate, 1});
-                    m_IsOutermost = true;
-                    return;
-                }
+            for (auto &entry : s_CallEntries) {
+                if (!entry.Depth) { entry.Gate = &gate; entry.Depth = 1; m_IsOutermost = true; return; }
             }
-
-            m_Lock = std::shared_lock<std::shared_mutex>(gate.m_Mutex);
-            s_CallEntries.push_back({&gate, 1});
-            m_OwnsUnderlyingLock = true;
+            s_CallEntries.push_back({&gate, 1, {}});
             m_IsOutermost = true;
         }
 
@@ -68,7 +69,7 @@ public:
                 if (it->Gate != m_Gate)
                     continue;
                 if (--it->Depth == 0)
-                    s_CallEntries.erase(it);
+                    it->Borrows.clear();
                 break;
             }
             if (m_OwnsUnderlyingLock)
@@ -173,10 +174,25 @@ public:
 
     bool IsCallActiveOnCurrentThread() const {
         for (const auto &entry : s_CallEntries) {
-            if (entry.Gate == this)
+            if (entry.Gate == this && entry.Depth)
                 return true;
         }
         return false;
+    }
+
+    // Host-owned immutable snapshots are pinned until the outer callback exits.
+    // Inactive entries retain capacity, keeping stable reads allocation-free.
+    void HoldBorrow(std::shared_ptr<const void> value) {
+        for (auto &entry : s_CallEntries) {
+            if (entry.Gate != this || !entry.Depth) continue;
+            for (const auto &held : entry.Borrows) if (held.get() == value.get()) return;
+            entry.Borrows.push_back(std::move(value));
+            return;
+        }
+    }
+    size_t CallDepth() const noexcept {
+        for (const auto &entry : s_CallEntries) if (entry.Gate == this) return entry.Depth;
+        return 0;
     }
 
     bool IsMutationActiveOnCurrentThread() const {
@@ -191,6 +207,7 @@ private:
     struct CallEntry {
         ModInvocationGate *Gate = nullptr;
         size_t Depth = 0;
+        std::vector<std::shared_ptr<const void>> Borrows;
     };
     inline static thread_local std::vector<CallEntry> s_CallEntries;
     inline static thread_local std::vector<CallEntry> s_MutationEntries;

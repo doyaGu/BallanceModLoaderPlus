@@ -24,6 +24,11 @@ struct SDL_IOStream;
 
 #include "Config/Config.h"
 #include "Config/ConfigStore.h"
+#include "Api/ConfigApi.h"
+#include "Api/TimerApi.h"
+#include "Api/InputApi.h"
+#include "Api/BuiApi.h"
+#include "Api/GuiApi.h"
 #include "Loader/ModLoader.h"
 #include "DataShare/DataShare.h"
 #include "Console/CommandContext.h"
@@ -115,6 +120,7 @@ public:
     // Loader lifecycle operations. These keep service cleanup inside Context;
     // the Loader controls when each stage runs.
     bool RegisterModOwner(const std::string &ownerId) noexcept;
+    void StopModWork(IMod *owner) noexcept;
     void RetireFailedModOwner(const std::string &ownerId) noexcept;
     bool PrepareModUnload(const std::string &ownerId);
     void RetireModBehaviorState(const std::string &ownerId) noexcept;
@@ -231,6 +237,11 @@ public:
     Config *AddConfig(std::unique_ptr<Config> config);
     bool RemoveConfig(Config *config);
     Config *GetConfig(IMod *mod);
+    BML::Api::GuiApi &GetGuiApi() noexcept { return m_GuiApi; }
+    BML::Api::BuiApi &GetBuiApi() noexcept { return m_BuiApi; }
+    BML::Api::InputApi &GetInputApi() noexcept { return m_InputApi; }
+    BML::Api::TimerApi &GetTimerApi() noexcept { return m_TimerApi; }
+    BML::Api::ConfigApi &GetConfigApi() noexcept { return m_ConfigApi; }
     bool LoadConfig(Config *config);
     bool SaveConfig(Config *config, bool snapshotModMetadata = true);
 
@@ -562,12 +573,18 @@ private:
 
     BML::ImcRuntime m_ImcRuntime;
     ConfigStore m_ConfigStore;
+    std::vector<std::unique_ptr<Config>> m_DetachedConfigs;
 
     const std::thread::id m_MainThreadId = std::this_thread::get_id();
 
     mutable BML::ModInvocationGate m_CommandInvocationGate;
     mutable std::mutex m_CommandMutex;
     mutable std::mutex m_ConfigMutex;
+    BML::Api::GuiApi m_GuiApi;
+    BML::Api::BuiApi m_BuiApi;
+    BML::Api::InputApi m_InputApi;
+    BML::Api::TimerApi m_TimerApi;
+    BML::Api::ConfigApi m_ConfigApi;
     ModLoader m_Loader;
 };
 

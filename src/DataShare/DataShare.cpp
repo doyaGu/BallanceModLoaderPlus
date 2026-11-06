@@ -74,6 +74,8 @@ namespace BML {
     std::atomic<BML_DataShareRequest> DataShareStore::s_NextRequest{1};
     std::atomic<DataShareStore::OwnerResolver> DataShareStore::s_OwnerResolver{nullptr};
     std::atomic<ModInvocationGate *> DataShareStore::s_InvocationGate{nullptr};
+    std::atomic<DataShareStore::OwnerAdmission> DataShareStore::s_OwnerAdmission{nullptr};
+    void DataShareStore::SetOwnerAdmission(OwnerAdmission value) noexcept{s_OwnerAdmission.store(value,std::memory_order_release);}
 
     class DataShareStore::InvocationScope final {
     public:
@@ -320,8 +322,9 @@ namespace BML {
         // Callers guarantee data outlives this call, so no extra snapshot needed.
         for (Callback &callback : pending) {
             OwnerCallbackScope scope(callback.owner);
-            InvokeDataShareCallbackNoexcept(
-                callback.callback, key, data, size, callback.userdata);
+            const auto admission=s_OwnerAdmission.load(std::memory_order_acquire);
+            if(!admission || admission(callback.owner,true))
+                InvokeDataShareCallbackNoexcept(callback.callback, key, data, size, callback.userdata);
             InvokeDataShareCleanupNoexcept(
                 callback.cleanup, key, callback.userdata);
         }
@@ -494,6 +497,8 @@ namespace BML {
         }
 
         if (!owner.empty()) {
+            const auto admission=s_OwnerAdmission.load(std::memory_order_acquire);
+            if(admission&&!admission(owner,false)){OwnerCallbackScope scope(owner);InvokeDataShareCleanupNoexcept(cleanup,key,userdata);return BML_DATASHARE_INVALID_REQUEST;}
             const auto state = s_OwnerStates.find(owner);
             if (state == s_OwnerStates.end() || !state->second) {
                 OwnerCallbackScope scope(owner);
@@ -526,8 +531,9 @@ namespace BML {
 
         const void *payload = snapshot.empty() ? nullptr : snapshot.data();
         OwnerCallbackScope scope(owner);
-        InvokeDataShareCallbackNoexcept(
-            callback, key, payload, snapshot.size(), userdata);
+        const auto admission=s_OwnerAdmission.load(std::memory_order_acquire);
+        if(!admission || admission(owner,true))
+            InvokeDataShareCallbackNoexcept(callback, key, payload, snapshot.size(), userdata);
         InvokeDataShareCleanupNoexcept(cleanup, key, userdata);
         return BML_DATASHARE_INVALID_REQUEST;
     }
