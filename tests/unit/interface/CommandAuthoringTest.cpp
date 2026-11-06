@@ -189,7 +189,7 @@ TEST(CommandAuthoringTest, CopiesMetadataAndFindsRegisteredCommand) {
 
     BML::Command::Registration registration;
     ASSERT_EQ(registration.Register(
-        definition, [](const BML::Command::Invocation &) { return 0; }), BML_OK);
+        definition, [](const BML::Command::Invocation &) { return 0; }).Code(), BML_OK);
 
     BML::Command::Info info;
     EXPECT_EQ(BML::Command::Find("i", info), BML_OK);
@@ -212,11 +212,11 @@ TEST(CommandAuthoringTest, CallbackStateLivesUntilTheHostReleasesRegistration) {
     BML::Command::Registration registration;
     ASSERT_EQ(registration.Register(
         definition,
-        [marker](const BML::Command::Invocation &) { return *marker; }), BML_OK);
+        [marker](const BML::Command::Invocation &) { return *marker; }).Code(), BML_OK);
 
     marker.reset();
     EXPECT_FALSE(lifetime.expired());
-    EXPECT_EQ(registration.Unregister(), BML_OK);
+    EXPECT_EQ(registration.Unregister().Code(), BML_OK);
     EXPECT_TRUE(lifetime.expired());
 }
 
@@ -232,7 +232,7 @@ TEST(CommandAuthoringTest, DistinguishesAnEmptyPipeFromNoPipe) {
             hasInput.push_back(invocation.HasInput());
             EXPECT_TRUE(invocation.Input().empty());
             return BML_COMMAND_STATUS_SUCCESS;
-        }), BML_OK);
+        }).Code(), BML_OK);
 
     const BML_CommandInvocation noPipe = {
         sizeof(BML_CommandInvocation), "input", "input", 0, nullptr,
@@ -259,14 +259,14 @@ TEST(CommandAuthoringTest, RejectsStringsThatTheCInterfaceWouldTruncate) {
     definition.Name = std::string("hidden\0suffix", 13);
     BML::Command::Registration invalidRegistration;
     EXPECT_EQ(invalidRegistration.Register(
-        definition, [](const BML::Command::Invocation &) { return 0; }),
+        definition, [](const BML::Command::Invocation &) { return 0; }).Code(),
         BML_ERROR_INVALID_PARAMETER);
     EXPECT_FALSE(g_Host.Registered);
 
     definition.Name = "visible";
     BML::Command::Registration registration;
     ASSERT_EQ(registration.Register(
-        definition, [](const BML::Command::Invocation &) { return 0; }), BML_OK);
+        definition, [](const BML::Command::Invocation &) { return 0; }).Code(), BML_OK);
 
     BML::Command::Info info;
     const std::string truncatedName("visible\0suffix", 14);
@@ -289,7 +289,7 @@ TEST(CommandAuthoringTest, CanDestroyRegistrationInsideItsCallback) {
         [&registration](const BML::Command::Invocation &) {
             registration.reset();
             return 23;
-        }), BML_OK);
+        }).Code(), BML_OK);
 
     int commandStatus = 0;
     EXPECT_EQ(BML::Command::ExecuteLine("self-close", commandStatus), BML_OK);
@@ -304,7 +304,7 @@ TEST(CommandAuthoringTest, MoveKeepsTheRegisteredCallbackStable) {
     definition.Name = "move";
     BML::Command::Registration original;
     ASSERT_EQ(original.Register(
-        definition, [](const BML::Command::Invocation &) { return 31; }), BML_OK);
+        definition, [](const BML::Command::Invocation &) { return 31; }).Code(), BML_OK);
     const BML_CommandHandle handle = original.Handle();
 
     BML::Command::Registration moved(std::move(original));
@@ -323,7 +323,7 @@ TEST(CommandAuthoringTest, MoveAssignmentDoesNotTransferTheTargetToTheSource) {
     targetDefinition.Name = "target";
     BML::Command::Registration target;
     ASSERT_EQ(target.Register(
-        targetDefinition, [](const BML::Command::Invocation &) { return 40; }),
+        targetDefinition, [](const BML::Command::Invocation &) { return 40; }).Code(),
         BML_OK);
 
     // Model a registration already removed by owner cleanup before its C++
@@ -333,7 +333,7 @@ TEST(CommandAuthoringTest, MoveAssignmentDoesNotTransferTheTargetToTheSource) {
     definition.Name = "source";
     BML::Command::Registration source;
     ASSERT_EQ(source.Register(
-        definition, [](const BML::Command::Invocation &) { return 41; }), BML_OK);
+        definition, [](const BML::Command::Invocation &) { return 41; }).Code(), BML_OK);
 
     target = std::move(source);
 
@@ -352,7 +352,7 @@ TEST(CommandAuthoringTest, FailedDestructorCleanupDisablesRegistration) {
         definition.Name = "busy";
         BML::Command::Registration registration;
         ASSERT_EQ(registration.Register(
-            definition, [](const BML::Command::Invocation &) { return 17; }), BML_OK);
+            definition, [](const BML::Command::Invocation &) { return 17; }).Code(), BML_OK);
     }
 
     ASSERT_TRUE(g_Host.Registered);
@@ -368,11 +368,11 @@ TEST(CommandAuthoringTest, HostCleanupBeforeWrapperDestructionReleasesCapturedSt
         definition.Name = "host-cleanup";
         BML::Command::Registration registration;
         ASSERT_EQ(registration.Register(definition,
-            [hold = alive](const BML::Command::Invocation &) { return *hold; }), BML_OK);
+            [hold = alive](const BML::Command::Invocation &) { return *hold; }).Code(), BML_OK);
         EXPECT_EQ(alive.use_count(), 2);
         ReleaseHostRegistration();
         EXPECT_FALSE(registration.IsRegistered());
-        EXPECT_EQ(registration.Unregister(), BML_OK);
+        EXPECT_EQ(registration.Unregister().Code(), BML_OK);
     }
     EXPECT_EQ(alive.use_count(), 1);
 }
@@ -385,7 +385,7 @@ TEST(CommandAuthoringTest, RejectsAProviderThatReturnsAnInvalidHandle) {
     BML::Command::Registration registration;
 
     EXPECT_EQ(registration.Register(
-        definition, [](const BML::Command::Invocation &) { return 17; }),
+        definition, [](const BML::Command::Invocation &) { return 17; }).Code(),
         BML_ERROR_MALFORMED_MESSAGE);
     EXPECT_FALSE(registration.IsRegistered());
 
@@ -414,13 +414,13 @@ TEST(CommandAuthoringTest, CompletionHasDedicatedCursorContext) {
             EXPECT_EQ(request.Name(), "open");
             EXPECT_EQ(request.InvokedAs(), "o");
             if (request.Arguments().size() != 2u)
-                return BML_ERROR_FAIL;
+                return BML::Result<void>::Failure(BML_ERROR_FAIL);
             EXPECT_EQ(request.Argument(0), "folder");
             EXPECT_EQ(request.Argument(1), "pa");
             EXPECT_EQ(request.ActiveArgument(), 1u);
             EXPECT_EQ(request.Prefix(), "pa");
             return completion.Add("path");
-        }), BML_OK);
+        }).Code(), BML_OK);
 
     const char *arguments[] = {"folder", "pa"};
     const BML_CommandCompletionRequest request = {

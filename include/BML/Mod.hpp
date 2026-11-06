@@ -31,18 +31,25 @@ class View;
 namespace BML::Mod {
 
 struct Dependency {
-    std::string Id, MinimumVersion;
+    std::string Id;
+    std::string MinimumVersion;
     bool Optional = false;
 };
 
 struct Definition {
-    std::string Id, Name, Version, Author, Description, MinimumLoaderVersion;
+    std::string Id;
+    std::string Name;
+    std::string Version;
+    std::string Author;
+    std::string Description;
+    std::string MinimumLoaderVersion;
     std::vector<Dependency> Dependencies;
 };
 
 struct Info {
     BML_ModHandle Handle = 0;
-    uint32_t Kind = 0, State = 0;
+    uint32_t Kind = 0;
+    uint32_t State = 0;
     BML::Mod::Definition Definition;
     std::string Diagnostic;
 };
@@ -68,11 +75,17 @@ public:
     [[nodiscard]] Result<View> FindMod(std::string_view id) const;
     [[nodiscard]] Result<std::vector<Info>> ReadMods() const;
 
-    int LogInfo(std::string_view message) const noexcept { return Log(BML_LOG_INFO, message); }
+    [[nodiscard]] Result<void> LogInfo(std::string_view message) const noexcept {
+        return BML::Detail::ToResult(Log(BML_LOG_INFO, message));
+    }
 
-    int LogWarn(std::string_view message) const noexcept { return Log(BML_LOG_WARN, message); }
+    [[nodiscard]] Result<void> LogWarn(std::string_view message) const noexcept {
+        return BML::Detail::ToResult(Log(BML_LOG_WARN, message));
+    }
 
-    int LogError(std::string_view message) const noexcept { return Log(BML_LOG_ERROR, message); }
+    [[nodiscard]] Result<void> LogError(std::string_view message) const noexcept {
+        return BML::Detail::ToResult(Log(BML_LOG_ERROR, message));
+    }
 
     [[nodiscard]] Result<std::string> GetDirectory(uint32_t directory) const;
     [[nodiscard]] Result<std::string> GetResourcePath(std::string_view path) const;
@@ -287,7 +300,10 @@ struct LoadObjectEvent {
     bool IsMap;
     std::string_view MasterName;
     uint32_t FilterClass;
-    bool AddToScene, ReuseMeshes, ReuseMaterials, Dynamic;
+    bool AddToScene;
+    bool ReuseMeshes;
+    bool ReuseMaterials;
+    bool Dynamic;
     std::span<const BML_ObjectRef> Objects;
     BML_ObjectRef MasterObject;
 };
@@ -314,10 +330,15 @@ struct ConfigEvent {
 struct PhysicalizeEvent {
     BML_ObjectRef Target;
     bool Fixed;
-    float Friction, Elasticity, Mass;
+    float Friction;
+    float Elasticity;
+    float Mass;
     std::optional<std::string_view> CollisionGroup;
-    bool StartFrozen, EnableCollision, CalcMassCenter;
-    float LinearDamp, RotDamp;
+    bool StartFrozen;
+    bool EnableCollision;
+    bool CalcMassCenter;
+    float LinearDamp;
+    float RotDamp;
     std::optional<std::string_view> CollisionSurface;
     BML_Vec3 MassCenter;
     std::span<const BML_ObjectRef> ConvexMeshes;
@@ -627,146 +648,152 @@ template <class T> struct Export {
         }
     }
 
-    static int BML_CDECL OnLoad(void *p, BML_ModContextHandle h) noexcept {
-        return Callback(h, [&] {
-            static_cast<T *>(p)->OnLoad(ContextAccess::Make(h));
+    static int BML_CDECL OnLoad(void *instance, BML_ModContextHandle contextHandle) noexcept {
+        return Callback(contextHandle, [&] {
+            static_cast<T *>(instance)->OnLoad(ContextAccess::Make(contextHandle));
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnUnload(void *p, BML_ModContextHandle h) noexcept {
-        return Callback(h, [&] {
-            static_cast<T *>(p)->OnUnload(ContextAccess::Make(h));
+    static int BML_CDECL OnUnload(void *instance, BML_ModContextHandle contextHandle) noexcept {
+        return Callback(contextHandle, [&] {
+            static_cast<T *>(instance)->OnUnload(ContextAccess::Make(contextHandle));
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnProcess(void *p, BML_ModContextHandle h) noexcept {
-        return Callback(h, [&] {
-            static_cast<T *>(p)->OnProcess(ContextAccess::Make(h));
+    static int BML_CDECL OnProcess(void *instance, BML_ModContextHandle contextHandle) noexcept {
+        return Callback(contextHandle, [&] {
+            static_cast<T *>(instance)->OnProcess(ContextAccess::Make(contextHandle));
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnGameEvent(void *p, BML_ModContextHandle h, BML_GameEvent e) noexcept {
-        return Callback(h, [&] {
-            static_cast<T *>(p)->OnGameEvent(ContextAccess::Make(h), e);
+    static int BML_CDECL OnGameEvent(void *instance, BML_ModContextHandle contextHandle,
+                                     BML_GameEvent eventId) noexcept {
+        return Callback(contextHandle, [&] {
+            static_cast<T *>(instance)->OnGameEvent(ContextAccess::Make(contextHandle), eventId);
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnRender(void *p, BML_ModContextHandle h,
-                                  const BML_RenderEvent *e) noexcept {
-        if (!e || e->StructSize < BML_RENDER_EVENT_1_0_SIZE)
+    static int BML_CDECL OnRender(void *instance, BML_ModContextHandle contextHandle,
+                                  const BML_RenderEvent *record) noexcept {
+        if (!record || record->StructSize < BML_RENDER_EVENT_1_0_SIZE)
             return BML_ERROR_INVALID_PARAMETER;
-        return Callback(h, [&] {
-            const RenderEvent event{e->Flags};
-            static_cast<T *>(p)->OnRender(ContextAccess::Make(h), event);
+        return Callback(contextHandle, [&] {
+            const RenderEvent event{record->Flags};
+            static_cast<T *>(instance)->OnRender(ContextAccess::Make(contextHandle), event);
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnCheatEnabled(void *p, BML_ModContextHandle h,
-                                        const BML_CheatEvent *e) noexcept {
-        if (!e || e->StructSize < BML_CHEAT_EVENT_1_0_SIZE)
+    static int BML_CDECL OnCheatEnabled(void *instance, BML_ModContextHandle contextHandle,
+                                        const BML_CheatEvent *record) noexcept {
+        if (!record || record->StructSize < BML_CHEAT_EVENT_1_0_SIZE)
             return BML_ERROR_INVALID_PARAMETER;
-        return Callback(h, [&] {
-            const CheatEvent event{e->Enabled != 0};
-            static_cast<T *>(p)->OnCheatEnabled(ContextAccess::Make(h), event);
+        return Callback(contextHandle, [&] {
+            const CheatEvent event{record->Enabled != 0};
+            static_cast<T *>(instance)->OnCheatEnabled(ContextAccess::Make(contextHandle), event);
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnLoadObject(void *p, BML_ModContextHandle h,
-                                      const BML_LoadObjectEvent *e) noexcept {
-        if (!e || e->StructSize < BML_LOAD_OBJECT_EVENT_1_0_SIZE)
+    static int BML_CDECL OnLoadObject(void *instance, BML_ModContextHandle contextHandle,
+                                      const BML_LoadObjectEvent *record) noexcept {
+        if (!record || record->StructSize < BML_LOAD_OBJECT_EVENT_1_0_SIZE)
             return BML_ERROR_INVALID_PARAMETER;
-        return Callback(h, [&] {
-            const LoadObjectEvent event{
-                Text(e->Filename),      e->IsMap != 0,      Text(e->MasterName),
-                e->FilterClass,         e->AddToScene != 0, e->ReuseMeshes != 0,
-                e->ReuseMaterials != 0, e->Dynamic != 0,    {e->Objects, e->ObjectCount},
-                e->MasterObject};
-            static_cast<T *>(p)->OnLoadObject(ContextAccess::Make(h), event);
+        return Callback(contextHandle, [&] {
+            const LoadObjectEvent event{Text(record->Filename),
+                                        record->IsMap != 0,
+                                        Text(record->MasterName),
+                                        record->FilterClass,
+                                        record->AddToScene != 0,
+                                        record->ReuseMeshes != 0,
+                                        record->ReuseMaterials != 0,
+                                        record->Dynamic != 0,
+                                        {record->Objects, record->ObjectCount},
+                                        record->MasterObject};
+            static_cast<T *>(instance)->OnLoadObject(ContextAccess::Make(contextHandle), event);
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnLoadScript(void *p, BML_ModContextHandle h,
-                                      const BML_LoadScriptEvent *e) noexcept {
-        if (!e || e->StructSize < BML_LOAD_SCRIPT_EVENT_1_0_SIZE)
+    static int BML_CDECL OnLoadScript(void *instance, BML_ModContextHandle contextHandle,
+                                      const BML_LoadScriptEvent *record) noexcept {
+        if (!record || record->StructSize < BML_LOAD_SCRIPT_EVENT_1_0_SIZE)
             return BML_ERROR_INVALID_PARAMETER;
-        return Callback(h, [&] {
-            const LoadScriptEvent event{Text(e->Filename), e->Script};
-            static_cast<T *>(p)->OnLoadScript(ContextAccess::Make(h), event);
+        return Callback(contextHandle, [&] {
+            const LoadScriptEvent event{Text(record->Filename), record->Script};
+            static_cast<T *>(instance)->OnLoadScript(ContextAccess::Make(contextHandle), event);
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnCommandEvent(void *p, BML_ModContextHandle h,
-                                        const BML_CommandEvent *e) noexcept {
-        if (!e || e->StructSize < BML_COMMAND_EVENT_1_0_SIZE)
+    static int BML_CDECL OnCommandEvent(void *instance, BML_ModContextHandle contextHandle,
+                                        const BML_CommandEvent *record) noexcept {
+        if (!record || record->StructSize < BML_COMMAND_EVENT_1_0_SIZE)
             return BML_ERROR_INVALID_PARAMETER;
-        return Callback(h, [&] {
-            const CommandEvent event{e->Phase,
-                                     Text(e->Name),
-                                     Text(e->InvokedAs),
-                                     {e->Arguments, e->ArgumentCount},
-                                     e->Cheat != 0};
-            static_cast<T *>(p)->OnCommandEvent(ContextAccess::Make(h), event);
+        return Callback(contextHandle, [&] {
+            const CommandEvent event{record->Phase,
+                                     Text(record->Name),
+                                     Text(record->InvokedAs),
+                                     {record->Arguments, record->ArgumentCount},
+                                     record->Cheat != 0};
+            static_cast<T *>(instance)->OnCommandEvent(ContextAccess::Make(contextHandle), event);
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnModifyConfig(void *p, BML_ModContextHandle h,
-                                        const BML_ConfigEvent *e) noexcept {
-        if (!e || e->StructSize < BML_CONFIG_EVENT_1_0_SIZE)
+    static int BML_CDECL OnModifyConfig(void *instance, BML_ModContextHandle contextHandle,
+                                        const BML_ConfigEvent *record) noexcept {
+        if (!record || record->StructSize < BML_CONFIG_EVENT_1_0_SIZE)
             return BML_ERROR_INVALID_PARAMETER;
-        return Callback(h, [&] {
-            const ConfigEvent event{e->Mod,       Text(e->ModId), Text(e->Category),
-                                    Text(e->Key), e->Type,        e->Property};
-            static_cast<T *>(p)->OnModifyConfig(ContextAccess::Make(h), event);
+        return Callback(contextHandle, [&] {
+            const ConfigEvent event{record->Mod,       Text(record->ModId), Text(record->Category),
+                                    Text(record->Key), record->Type,        record->Property};
+            static_cast<T *>(instance)->OnModifyConfig(ContextAccess::Make(contextHandle), event);
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnPhysicalize(void *p, BML_ModContextHandle h,
-                                       const BML_PhysicalizeEvent *e) noexcept {
-        if (!e || e->StructSize < BML_PHYSICALIZE_EVENT_1_0_SIZE)
+    static int BML_CDECL OnPhysicalize(void *instance, BML_ModContextHandle contextHandle,
+                                       const BML_PhysicalizeEvent *record) noexcept {
+        if (!record || record->StructSize < BML_PHYSICALIZE_EVENT_1_0_SIZE)
             return BML_ERROR_INVALID_PARAMETER;
-        return Callback(h, [&] {
+        return Callback(contextHandle, [&] {
             const PhysicalizeEvent event{
-                e->Target,
-                e->Fixed != 0,
-                e->Friction,
-                e->Elasticity,
-                e->Mass,
-                e->CollisionGroup ? std::optional<std::string_view>(e->CollisionGroup)
-                                  : std::nullopt,
-                e->StartFrozen != 0,
-                e->EnableCollision != 0,
-                e->CalcMassCenter != 0,
-                e->LinearDamp,
-                e->RotDamp,
-                e->CollisionSurface ? std::optional<std::string_view>(e->CollisionSurface)
-                                    : std::nullopt,
-                e->MassCenter,
-                {e->ConvexMeshes, e->ConvexCount},
-                {e->SphereCenters, e->SphereCount},
-                {e->SphereRadii, e->SphereCount},
-                {e->ConcaveMeshes, e->ConcaveCount}};
-            static_cast<T *>(p)->OnPhysicalize(ContextAccess::Make(h), event);
+                record->Target,
+                record->Fixed != 0,
+                record->Friction,
+                record->Elasticity,
+                record->Mass,
+                record->CollisionGroup ? std::optional<std::string_view>(record->CollisionGroup)
+                                       : std::nullopt,
+                record->StartFrozen != 0,
+                record->EnableCollision != 0,
+                record->CalcMassCenter != 0,
+                record->LinearDamp,
+                record->RotDamp,
+                record->CollisionSurface ? std::optional<std::string_view>(record->CollisionSurface)
+                                         : std::nullopt,
+                record->MassCenter,
+                {record->ConvexMeshes, record->ConvexCount},
+                {record->SphereCenters, record->SphereCount},
+                {record->SphereRadii, record->SphereCount},
+                {record->ConcaveMeshes, record->ConcaveCount}};
+            static_cast<T *>(instance)->OnPhysicalize(ContextAccess::Make(contextHandle), event);
             return BML_OK;
         });
     }
 
-    static int BML_CDECL OnUnphysicalize(void *p, BML_ModContextHandle h,
-                                         const BML_ObjectEvent *e) noexcept {
-        if (!e || e->StructSize < BML_OBJECT_EVENT_1_0_SIZE)
+    static int BML_CDECL OnUnphysicalize(void *instance, BML_ModContextHandle contextHandle,
+                                         const BML_ObjectEvent *record) noexcept {
+        if (!record || record->StructSize < BML_OBJECT_EVENT_1_0_SIZE)
             return BML_ERROR_INVALID_PARAMETER;
-        return Callback(h, [&] {
-            const ObjectEvent event{e->Object};
-            static_cast<T *>(p)->OnUnphysicalize(ContextAccess::Make(h), event);
+        return Callback(contextHandle, [&] {
+            const ObjectEvent event{record->Object};
+            static_cast<T *>(instance)->OnUnphysicalize(ContextAccess::Make(contextHandle), event);
             return BML_OK;
         });
     }

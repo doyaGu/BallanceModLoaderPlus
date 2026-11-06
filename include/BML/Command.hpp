@@ -94,10 +94,11 @@ public:
 
     [[nodiscard]] bool HasInput() const noexcept { return m_Value && m_Value->Input; }
 
-    [[nodiscard]] int Write(std::string_view text) const noexcept {
+    [[nodiscard]] Result<void> Write(std::string_view text) const noexcept {
         if (!m_Value || !m_Value->Write)
-            return BML_ERROR_UNAVAILABLE;
-        return m_Value->Write(m_Value->OutputContext, text.data(), text.size());
+            return BML::Detail::ToResult(BML_ERROR_UNAVAILABLE);
+        return BML::Detail::ToResult(
+            m_Value->Write(m_Value->OutputContext, text.data(), text.size()));
     }
 
 private:
@@ -110,10 +111,10 @@ private:
 
 class Completion {
 public:
-    [[nodiscard]] int Add(std::string_view value) const noexcept {
+    [[nodiscard]] Result<void> Add(std::string_view value) const noexcept {
         if (!m_Value || !m_Value->Add)
-            return BML_ERROR_UNAVAILABLE;
-        return m_Value->Add(m_Value->Context, value.data(), value.size());
+            return BML::Detail::ToResult(BML_ERROR_UNAVAILABLE);
+        return BML::Detail::ToResult(m_Value->Add(m_Value->Context, value.data(), value.size()));
     }
 
 private:
@@ -163,9 +164,8 @@ private:
 };
 
 using ExecuteCallback = std::function<int(const Invocation &)>;
-// Return BML_OK after adding every candidate, or a BML error to discard this
-// completion result.
-using CompleteCallback = std::function<int(const CompletionRequest &, const Completion &)>;
+// Completion failure discards the candidate list; the C bridge forwards its status code.
+using CompleteCallback = std::function<Result<void>(const CompletionRequest &, const Completion &)>;
 
 // Register, Unregister, SetEnabled, and destruction belong on the game thread.
 // Keep a Registration alive while it is registered. Destruction requests
@@ -231,24 +231,24 @@ public:
         return *this;
     }
 
-    [[nodiscard]] int Register(const Definition &definition, ExecuteCallback execute,
-                               CompleteCallback complete = {},
-                               const char *ownerId = nullptr) noexcept {
+    [[nodiscard]] Result<void> Register(const Definition &definition, ExecuteCallback execute,
+                                        CompleteCallback complete = {},
+                                        const char *ownerId = nullptr) noexcept {
         if (m_Handle != BML_COMMAND_INVALID_HANDLE)
-            return BML_ERROR_ALREADY_EXISTS;
+            return BML::Detail::ToResult(BML_ERROR_ALREADY_EXISTS);
         if (!execute || definition.Name.empty() ||
             definition.Name.size() > BML_COMMAND_MAX_NAME_BYTES ||
             definition.Alias.size() > BML_COMMAND_MAX_NAME_BYTES || ContainsNull(definition.Name) ||
             ContainsNull(definition.Alias) || ContainsNull(definition.Description) ||
             ContainsNull(definition.Usage) || ContainsNull(definition.Category))
-            return BML_ERROR_INVALID_PARAMETER;
+            return BML::Detail::ToResult(BML_ERROR_INVALID_PARAMETER);
 
         int status = m_Interface.Open();
         if (status != BML_OK)
-            return status;
+            return BML::Detail::ToResult(status);
         if (!BML_IFACE_HAS(m_Interface.Get(), BML_CommandInterface, Register)) {
             m_Interface.Reset();
-            return BML_ERROR_NOT_FOUND;
+            return BML::Detail::ToResult(BML_ERROR_NOT_FOUND);
         }
 
         CallbackState *state = nullptr;
@@ -278,7 +278,7 @@ public:
                 state->Abandoned.store(true, std::memory_order_release);
                 state = nullptr;
                 Reset();
-                return BML_ERROR_MALFORMED_MESSAGE;
+                return BML::Detail::ToResult(BML_ERROR_MALFORMED_MESSAGE);
             }
             if (status == BML_OK) {
                 state = nullptr;
@@ -289,37 +289,37 @@ public:
                 state = nullptr;
                 Reset();
             }
-            return status;
+            return BML::Detail::ToResult(status);
         } catch (const std::bad_alloc &) {
             if (state)
                 state->Release();
             Reset();
-            return BML_ERROR_OUT_OF_MEMORY;
+            return BML::Detail::ToResult(BML_ERROR_OUT_OF_MEMORY);
         } catch (...) {
             if (state)
                 state->Release();
             Reset();
-            return BML_ERROR_FAIL;
+            return BML::Detail::ToResult(BML_ERROR_FAIL);
         }
     }
 
-    [[nodiscard]] int Unregister() noexcept {
+    [[nodiscard]] Result<void> Unregister() noexcept {
         if (m_State && m_State->HostReleased.load(std::memory_order_acquire)) {
             Reset();
-            return BML_OK;
+            return BML::Detail::ToResult(BML_OK);
         }
         if (m_Handle == BML_COMMAND_INVALID_HANDLE)
-            return BML_OK;
+            return BML::Detail::ToResult(BML_OK);
         if (!m_Interface)
-            return BML_ERROR_NOT_FOUND;
+            return BML::Detail::ToResult(BML_ERROR_NOT_FOUND);
         if (!BML_IFACE_HAS(m_Interface.Get(), BML_CommandInterface, Unregister))
-            return BML_ERROR_NOT_FOUND;
+            return BML::Detail::ToResult(BML_ERROR_NOT_FOUND);
 
         const char *ownerId = m_OwnerId.empty() ? nullptr : m_OwnerId.c_str();
         const int status = m_Interface->Unregister(ownerId, m_Handle);
         if (status == BML_OK || status == BML_ERROR_NOT_FOUND || status == BML_ERROR_INVALID_HANDLE)
             Reset();
-        return status;
+        return BML::Detail::ToResult(status);
     }
 
     [[nodiscard]] bool IsRegistered() const noexcept {
@@ -329,13 +329,13 @@ public:
 
     [[nodiscard]] BML_CommandHandle Handle() const noexcept { return m_Handle; }
 
-    [[nodiscard]] int SetEnabled(bool enabled) noexcept {
+    [[nodiscard]] Result<void> SetEnabled(bool enabled) noexcept {
         if (!IsRegistered() || !m_Interface)
-            return BML_ERROR_INVALID_HANDLE;
+            return BML::Detail::ToResult(BML_ERROR_INVALID_HANDLE);
         if (!BML_IFACE_HAS(m_Interface.Get(), BML_CommandInterface, SetEnabled))
-            return BML_ERROR_NOT_FOUND;
+            return BML::Detail::ToResult(BML_ERROR_NOT_FOUND);
         const char *ownerId = m_OwnerId.empty() ? nullptr : m_OwnerId.c_str();
-        return m_Interface->SetEnabled(ownerId, m_Handle, enabled ? 1 : 0);
+        return BML::Detail::ToResult(m_Interface->SetEnabled(ownerId, m_Handle, enabled ? 1 : 0));
     }
 
 private:
@@ -369,7 +369,7 @@ private:
             return BML_ERROR_COMMAND_EXECUTION;
         try {
             return state->Complete
-                       ? state->Complete(CompletionRequest(request), Completion(completion))
+                       ? state->Complete(CompletionRequest(request), Completion(completion)).Code()
                        : BML_OK;
         } catch (const std::bad_alloc &) {
             return BML_ERROR_OUT_OF_MEMORY;
@@ -405,7 +405,7 @@ private:
     }
 
     void Dispose() noexcept {
-        if (Unregister() != BML_OK)
+        if (!Unregister())
             Abandon();
     }
 
@@ -524,8 +524,10 @@ public:
         if (!info)
             return Result<Registration>::Failure(info.Code());
         Registration registration;
-        const int code = registration.Register(definition, std::move(execute), std::move(complete),
-                                               info.Value().Definition.Id.c_str());
+        const int code = registration
+                             .Register(definition, std::move(execute), std::move(complete),
+                                       info.Value().Definition.Id.c_str())
+                             .Code();
         return code == BML_OK ? Result<Registration>::Success(std::move(registration))
                               : Result<Registration>::Failure(code);
     } catch (const std::bad_alloc &) {
