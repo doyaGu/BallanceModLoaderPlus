@@ -1,11 +1,11 @@
 // The pieces every other public header starts from, and the error codes the loader
 // answers with. Nothing here does anything on its own, so a Mod includes it for
-// MOD_EXPORT and for the error codes rather than for its own sake.
+// BML_MOD_ENTRY and for the error codes rather than for its own sake.
 //
 // BML_EXPORT marks what the loader exports and turns into an import when a Mod compiles,
 // which is why a Mod must not define BML_EXPORTS. BML_MOD_ENTRY marks the Mod's
 // BML_GetModInterface entry with C linkage, export visibility and explicit cdecl.
-// MOD_EXPORT remains for older entries. BML_BEGIN_CDECLS and BML_END_CDECLS wrap the plain C parts so the same
+// BML_BEGIN_CDECLS and BML_END_CDECLS wrap the plain C parts so the same
 // header compiles as C and as C++.
 //
 // The error codes are one numbering shared by everything that answers with an int: 0 is
@@ -73,8 +73,7 @@ _Static_assert(FLT_RADIX == 2 && FLT_MANT_DIG == 24 && DBL_MANT_DIG == 53,
 #endif
 #endif // !BML_CDECL
 
-// Legacy export prefix. New entry points should use BML_MOD_ENTRY so their
-// calling convention is independent of the Mod project's compiler defaults.
+// Mod entry points have C linkage, export visibility and an explicit calling convention.
 #if defined(_WIN32)
 #define BML_MOD_EXPORT __declspec(dllexport)
 #else
@@ -85,7 +84,6 @@ _Static_assert(FLT_RADIX == 2 && FLT_MANT_DIG == 24 && DBL_MANT_DIG == 53,
 #else
 #define BML_EXTERN_C
 #endif
-#define MOD_EXPORT BML_EXTERN_C BML_MOD_EXPORT
 #define BML_MOD_ENTRY(return_type) \
     BML_EXTERN_C BML_MOD_EXPORT return_type BML_CDECL
 

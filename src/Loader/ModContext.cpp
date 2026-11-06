@@ -1967,7 +1967,7 @@ bool ModContext::UnregisterNativeCommands(const void *module) noexcept {
     }
 }
 
-void ModContext::ClearLegacyCommands() {
+void ModContext::ClearCommands() {
     std::lock_guard<std::mutex> lock(m_CommandMutex);
     m_CommandContext.ClearCommands();
 }

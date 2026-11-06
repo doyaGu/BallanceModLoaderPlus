@@ -181,7 +181,6 @@ private:
 
     bool LoadMods();
     void UnloadMods();
-    void CleanupRejectedNativeEntry(const std::shared_ptr<void> &dllHandle);
     bool InitMods();
     void ShutdownMods();
     void DeactivateActiveMods(bool dispatchPendingNotifications);
@@ -217,7 +216,7 @@ private:
 #endif
     std::shared_ptr<void> LoadLib(const wchar_t *path);
     bool UnloadLib(void *dllHandle);
-    void DestroyNativeMod(const std::shared_ptr<void> &dllHandle, IMod *mod, const char *modLabel) noexcept;
+    void DestroyNativeMod(IMod *mod) noexcept;
     IMod *LoadMod(const std::wstring &path);
     bool UnloadMod(const std::string &id);
     bool RegisterBuiltinMods();
@@ -262,7 +261,6 @@ private:
     std::unordered_map<IMod *, std::unique_ptr<NativeMod>> m_CNativeMods;
     std::unordered_map<BML_ModContextHandle, IMod *> m_ModContexts;
     NativeModRegistry m_NativeModRegistry;
-    std::vector<std::shared_ptr<void>> m_RejectedNativeDlls;
     std::vector<IMod *> m_Mods;
     std::vector<IMod *> m_ActiveMods;
     std::vector<IMod *> m_UnloadedMods;

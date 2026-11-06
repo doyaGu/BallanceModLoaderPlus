@@ -81,7 +81,6 @@ std::shared_ptr<Module> Module::Open(const std::string &path, std::string &error
     // Identity is the image base, never the native loader's opaque handle.
     // The new Mod protocol has one entry; engine plugins keep their own one.
     const void *entry = dlsym(handle, "BML_GetModInterface");
-    if (!entry) entry = dlsym(handle, "BMLEntry");
     if (!entry) entry = dlsym(handle, "CKGetPluginInfo");
     const auto identity = ModuleFromAddress(entry);
 #endif

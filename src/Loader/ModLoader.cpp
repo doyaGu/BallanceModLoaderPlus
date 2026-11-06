@@ -136,7 +136,7 @@ bool ModLoader::Stop() {
         return false;
     }
     return !m_ModsLoaded && !m_ModsInited && m_Mods.empty() &&
-           m_RejectedNativeDlls.empty() && !m_BMLMod && !m_BallTypeMod;
+           !m_BMLMod && !m_BallTypeMod;
 }
 
 void ModLoader::Abandon() noexcept {
@@ -481,7 +481,7 @@ bool ModLoader::LoadMods() {
 }
 
 void ModLoader::UnloadMods() {
-    if (!m_Context.IsInited() && m_Mods.empty() && m_RejectedNativeDlls.empty() &&
+    if (!m_Context.IsInited() && m_Mods.empty() &&
         !m_BMLMod && !m_BallTypeMod)
         return;
     if (!m_Context.IsMainThread()) {
@@ -512,17 +512,11 @@ void ModLoader::UnloadMods() {
             UnloadMod(*rit);
     }
 
-    for (auto it = m_RejectedNativeDlls.begin(); it != m_RejectedNativeDlls.end();) {
-        if (m_Context.UnregisterNativeCommands(it->get()))
-            it = m_RejectedNativeDlls.erase(it);
-        else
-            ++it;
-    }
-
-    if (!m_Mods.empty() || !m_RejectedNativeDlls.empty()) {
+    if (!m_Mods.empty()) {
         if (m_Context.GetLogger())
-            m_Context.GetLogger()->Error("ModLoader stopped with %zu registered Mod(s) and %zu rejected DLL(s); their code remains loaded for a safe retry.",
-                                      m_Mods.size(), m_RejectedNativeDlls.size());
+            m_Context.GetLogger()->Error(
+                "ModLoader stopped with %zu registered Mod(s); their code remains loaded for a safe retry.",
+                m_Mods.size());
         return;
     }
 
@@ -802,7 +796,7 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
         std::lock_guard<std::mutex> lock(m_StateMutex);
         m_CallbackMap.clear();
     }
-    m_Context.ClearLegacyCommands();
+    m_Context.ClearCommands();
     m_ActiveMods.erase(std::remove_if(m_ActiveMods.begin(), m_ActiveMods.end(),
                                       [&](IMod *mod) {
                                           return !GetModGeneration(mod) ||
@@ -1227,67 +1221,18 @@ bool ModLoader::UnloadLib(void *dllHandle) {
     return success;
 }
 
-void ModLoader::DestroyNativeMod(const std::shared_ptr<void> &dllHandle, IMod *mod, const char *modLabel) noexcept {
-    if (!dllHandle || !mod)
+void ModLoader::DestroyNativeMod(IMod *mod) noexcept {
+    auto *native = FindNativeMod(mod);
+    if (!native || !native->CanDestroy())
         return;
-
-    if (auto *native = FindNativeMod(mod)) {
-        if (!native->CanDestroy())
-            return;
-        native->Destroy();
-        for (auto it = m_ModContexts.begin(); it != m_ModContexts.end();) {
-            if (it->second == mod)
-                it = m_ModContexts.erase(it);
-            else
-                ++it;
-        }
-        m_CNativeMods.erase(mod);
-        return;
+    native->Destroy();
+    for (auto it = m_ModContexts.begin(); it != m_ModContexts.end();) {
+        if (it->second == mod)
+            it = m_ModContexts.erase(it);
+        else
+            ++it;
     }
-
-    constexpr const char *EXIT_SYMBOL = "BMLExit";
-    typedef void (BML_CDECL *BMLExitFunc)(IMod *);
-
-    try {
-        auto func = reinterpret_cast<BMLExitFunc>(
-
-            BML::Platform::ModuleSymbol(dllHandle, EXIT_SYMBOL)
-);
-        if (!func) {
-            if (m_Context.GetLogger()) {
-                m_Context.GetLogger()->Warn(
-                    "Native Mod %s does not export %s; its instance cannot be destroyed safely.",
-                    modLabel ? modLabel : "<unknown>", EXIT_SYMBOL);
-            }
-            return;
-        }
-
-        try {
-            func(mod);
-        } catch (const std::exception &e) {
-            if (m_Context.GetLogger()) {
-                m_Context.GetLogger()->Error("Exception in %s for native Mod %s: %s",
-                                EXIT_SYMBOL, modLabel ? modLabel : "<unknown>", e.what());
-            }
-        } catch (...) {
-            if (m_Context.GetLogger()) {
-                m_Context.GetLogger()->Error("Unknown exception in %s for native Mod %s.",
-                                EXIT_SYMBOL, modLabel ? modLabel : "<unknown>");
-            }
-        }
-    } catch (...) {
-        // A failed exit callback must not interrupt loader cleanup.
-    }
-}
-
-void ModLoader::CleanupRejectedNativeEntry(const std::shared_ptr<void> &dllHandle) {
-    if (!m_Context.UnregisterNativeCommands(dllHandle.get())) {
-        // LoadMod reserves capacity before calling BMLEntry. Keep the DLL
-        // alive until command callbacks can be detached on a later Stop.
-        m_RejectedNativeDlls.push_back(dllHandle);
-        if (m_Context.GetLogger())
-            m_Context.GetLogger()->Error("Cannot detach commands from a rejected native Mod DLL yet; retaining the DLL.");
-    }
+    m_CNativeMods.erase(mod);
 }
 
 IMod *ModLoader::LoadMod(const std::wstring &path) {
@@ -2066,7 +2011,7 @@ bool ModLoader::UnregisterMod(IMod *mod) {
         }
 
         m_Context.GetConfigApi().CleanupOwner(*mod);
-        DestroyNativeMod(ownedDllHandle, mod, modIdCopy.c_str());
+        DestroyNativeMod(mod);
         m_Context.RemoveModDataPath(mod);
 
         return true;

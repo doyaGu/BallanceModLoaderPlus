@@ -128,7 +128,7 @@ public:
     void SnapshotConfigMetadata();
     void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
     bool UnregisterNativeCommands(const void *module) noexcept;
-    void ClearLegacyCommands();
+    void ClearCommands();
     void SetModDataPath(const IMod *mod, const std::wstring &root);
     void RemoveModDataPath(const IMod *mod);
 
