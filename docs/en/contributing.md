@@ -1,171 +1,142 @@
-# Contributing to BML+
+# Build and contribute to BML+
 
-This guide is for contributors who build and change the BML+ loader itself. If
-you want to create a mod against a released BML+ SDK, use the [native mod
-guide](native-mod-api.md) or the [script mod guide](script-mod/index.md)
-instead. Mod authors do not need to build this repository.
+Mod authors normally use an installed SDK and the [Mod workflow](modding.md).
+This page is for changing the Loader, its SDK, bindings or tools.
 
-## Runtime flow
+## Prerequisites and engine selection
 
-```text
-BallancePlayer / Virtools CK2
-            |
-       BMLPlus.dll
-            |
-       ModManager              CK lifecycle and engine callbacks
-            |
-       ModContext              private runtime services and CK state
-            |
-       ModLoader               discovery, ownership, callbacks, lifecycle
-        /         \
- native mods     script host   bml.mod C tables / CKAngelScript callbacks
-        \         /
-       built-in loader features
-```
-
-`ModManager` connects the Virtools manager lifecycle to BML+. `ModContext`
-is the stable `IBML` object and owns runtime services. Its private `ModLoader`
-owns Mod discovery, dependency order, callback dispatch, and Mod shutdown.
-Native mods enter through versioned C tables and module-local C++ wrappers; script mods enter
-through the CKAngelScript host. Mods may use IMC to publish their own interfaces;
-the loader does not publish a generated IMC interface.
-
-## Development environment
-
-This branch targets Ballanced's SDL CK2 and VxMath, using C++20, CMake 3.25+
-and Python 3.10+. Initialize the BML+ submodules. Use the matching Ballanced
-`sdl` sources or installed CK2/VxMath and SDL3 development packages. AngelScript
-support additionally uses the matching CKAngelScript source tree or SDK.
+Use CMake 3.25+, C++20, Python 3.10+ and SDL3 3.4.8+ development files. Initialize
+BML+'s submodules. Use the matching Ballanced `sdl` revision and submodules;
+never mix original Virtools headers/libraries into this build.
 
 ```sh
 git submodule update --init --recursive
-cmake -S . -B build-sdl -DBML_RUNTIME=sdl -DBML_BUILD_MODS=ON \
-  -DBALLANCED_ROOT=/path/to/Ballanced
-cmake --build build-sdl --config Release
-cmake --install build-sdl --config Release --prefix /path/to/sdk
+cmake -S . -B build/sdl-release -DBML_RUNTIME=sdl \
+  -DBALLANCED_ROOT=/path/to/Ballanced \
+  -DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript \
+  -DCMAKE_BUILD_TYPE=Release -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
+cmake --build build/sdl-release --config Release --parallel
 ```
 
-Use a separate build directory for each compiler, architecture and configuration.
-`BML_ENABLE_ANGELSCRIPT=OFF` builds the script-free variant. Dynamic hosts are
-implemented; static-host integration is pending.
+`BALLANCED_ROOT` defaults to a sibling `Ballanced` checkout. Existing CK2/VxMath
+CMake targets are reused; otherwise matching source subdirectories are added or
+installed packages are found. To select installed packages rather than that
+sibling tree, pass `-DBALLANCED_ROOT=` and `-DCMAKE_PREFIX_PATH=/path/to/engine-sdk`.
+SDL3 must also be discoverable through CMake.
 
-## Runtime validation
+Scripts are enabled by default. The default `BML_BUILD_SCRIPT_RUNTIME=ON` builds
+the matching CKAngelScript plugin from `CKANGELSCRIPT_ROOT` against the same
+engine targets. For the script-free build use a separate directory and
+`-DBML_ENABLE_ANGELSCRIPT=OFF`. Supplying only headers is not a runtime deployment.
 
-Run the SDL component tests in `tests/ck2/sdl`,
-installed-SDK Player regression in `tests/player/sdl`, and the focused
-SDK tests in `tests/sdk`. Updater tests live in `tests/updater/sdl`.
-Component tests use SDL dummy video; native Player tests require a working
-desktop and matching game assets. Unexecuted targets remain unverified.
+A compiler/architecture/configuration change needs a new build directory. The
+branch accepts only `BML_RUNTIME=sdl` and dynamic hosts; it rejects static host
+integration and old `VIRTOOLS_SDK_PATH` cache settings. On a multi-config generator
+keep `--config Release` and `ctest -C Release`; on Windows choose the architecture
+of the Player, not an unconditional `-A Win32`.
 
-## Find the owner of a change
+## Install the right component
 
-| Change | Owner | Minimum focused validation |
-| --- | --- | --- |
-| Plugin entry, Hook Block registration, or engine interception | `src/BML.cpp`, `src/Behavior/Blocks/HookBlock.*`, `src/Hooks/` | SDL build plus the affected real Player scenario |
-| Building Block configuration, execution, or graph insertion | `src/Behavior/Block.*`, `src/Behavior/Runtime.*`, `include/BML/Behavior/Blocks/`, `src/Api/ExecuteBB.cpp` | Focused Behavior and ABI tests, SDL build, and affected Player test |
-| CK lifecycle and callback timing | `src/Loader/ModManager.*` | Focused lifecycle tests and Player smoke test |
-| Mod discovery, dependency order, callback dispatch, or Mod shutdown | `src/Loader/ModLoader.*` | Relevant loader/dependency tests and native/script smoke coverage |
-| IBML services or CK runtime state | `src/Loader/ModContext.*` | Relevant service tests and native/script smoke coverage |
-| HUD, menus, command bar, or built-in behavior | `src/Mods/BMLMod.*`, `src/HUD/`, `src/Console/`, `src/CustomMaps/`, `src/ModMenu/`, `src/Gameplay/`, `src/UI/` | Focused UI/service tests and Player visual/input smoke test |
-| Legacy native SDK or CMake consumer behavior | `include/BML/`, `cmake/` | ABI/compile tests, template configure/build, and installed SDK check |
-| IMC runtime | `src/Imc/ImcApi.cpp`, `src/Imc/ImcRuntime.*` | IMC runtime/compatibility tests and native IMC smoke test |
-| Built-in interface struct or the reads behind it | `include/BML/Interface.h`, `src/Api/Interfaces.cpp`, `src/Api/BuiltinCapabilities.*` | Focused interface tests, the C ABI compile test, and native smoke test |
-| Opaque CK object references at the C/script seam | `include/BML/Types.h`, `src/Api/ObjectRefs.*` | `ObjectRefsTest`, C ABI/IMC compile tests, and a Player lifecycle test when deletion timing changes |
-| IMC code generator or its sample interface | `tools/imc_codegen.py`, `tests/codegen/imc/` | Generator check, compatibility test, and review of interface, lock, and header together |
-| Script discovery, binding, execution, or reload | `src/AngelScript/`, `docs/api/` | Focused script tests, API stub check, and script-capable Player smoke test |
-| Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/package_sdl_update.py` | Both strict MkDocs builds, CMake install, and SDK stage validation |
-
-Start with `ModManager.cpp`, then `Mod.h/.hpp`, `ModLoader.h`, NativeMod
-and `ModContext.h`. The old IMod/IBML declarations describe private adapters. Follow
-`ModLoader.cpp` for Mod lifecycle and `ModContext.cpp` for runtime services.
-
-## Public interface rules
-
-SDL public authoring uses the C tables and module-local C++ wrappers. Preserve
-released table prefixes, fixed-width fields, cdecl, ownership and version rules.
-IMod/IBML remain private adapters on this branch; they are not another exported
-Mod authoring route. The original Windows branch keeps its own frozen ABI.
-
-The `BML_*` C APIs and IMC use explicit handles, status codes, and allocation
-functions. Preserve their documented ownership and compatibility rules. A new
-loader capability belongs in a versioned interface struct reached through
-`BML_GetInterface`; a service one Mod publishes for other Mods normally belongs
-in a generated IMC interface. A provider interface registered through BML is
-reserved for native base Mods that need process-local pointers and can enforce
-a required Mod dependency; never introduce an ad hoc C++ ABI.
-
-Script APIs are public source interfaces. A binding change must update the
-script API reference, author documentation, and runtime smoke coverage in the
-same change.
-
-## Generated interfaces
-
-The loader publishes no `.imc` interface of its own; the generator is for Mods.
-`tests/codegen/imc/test.sample.imc` checks the generator, lock, and committed
-header. The `.imc` files under `tests/smoke/` and `tests/player/` exercise runtime
-interop; the provider template has its own starter interface. Runtime test
-headers are generated in the build tree.
-
-Do not edit a generated header by hand. Change the matching `.imc` file and run
-the generator. For the sample interface that is:
-
-```powershell
-python tools/imc_codegen.py `
-  --update-lock `
-  --out-dir tests/codegen/imc/generated `
-  --input tests/codegen/imc/test.sample.imc
+```sh
+cmake --install build/sdl-release --config Release --prefix /path/to/sdk
+cmake --install build/sdl-release --config Release \
+  --prefix /path/to/disposable-game --component BMLRuntime
+cmake --install build/sdl-release --config Release \
+  --prefix /path/to/disposable-game --component BMLMods
 ```
 
-Review and commit the `.imc`, `.imc.lock`, and generated header together. The
-lock owns stable field and endpoint identities; do not edit its numbers by
-hand. A normal BML+ build runs the generator in check mode over the sample and
-fails when its committed binding is stale. The smoke interface is regenerated by
-the build itself, and a lock that no longer matches its `.imc` fails that build
-with the `bml_update_imc_locks` target to run.
+The first command creates the development installation. `BMLRuntime` installs
+only the runtime component into an already prepared matching Player tree;
+`BMLMods` installs the optional in-tree Mods. Build those Mods with
+`BML_BUILD_MODS=ON`. Player supplies CK2, VxMath and SDL. On macOS the runtime
+stage must contain the matching host SDL for load-command normalization/signing;
+use a disposable copy of a complete Player installation, not SDK libraries copied
+into a game. Packaging uses the component install manifest to select owned files.
 
-Public Mod-author documentation is installed from CMake into
-`share/BML/docs/<language>`. The release packager copies that installed tree;
-do not add a second source-document copy step to the packaging script. Editor
-API stubs remain under `docs/api` because they are tool inputs rather than
-reader documentation.
-
-## Change discipline
-
-- Keep game-thread callbacks short. Do not block in `OnProcess`, `OnRender`,
-  engine hooks, or game-thread IMC handlers.
-- Treat borrowed CK objects as non-owning. Revalidate stored object references
-  after object deletion, level changes, and CK reset.
-- Do not unload a mod DLL while one of its callbacks is running.
-- Use generated IMC bindings instead of hand-written payload codecs.
-- Add behavior tests for observable rules. Avoid tests that only search source
-  files for implementation text.
-- Update English and Simplified Chinese public documentation together when the
-  same public behavior is documented in both languages.
-
-Commit titles use short imperative English, for example:
+## Actual runtime flow and owners
 
 ```text
-Fix native mod instance cleanup
-Document native mod build requirements
-Reject malformed event payloads
+Ballanced SDL Player / CK2
+  ModManager: CK lifecycle, ImGui frame, late PostProcess, render notification
+    ModContext: composes services and borrows CK managers
+      ModLoader: ModRecord identities, dependencies, instances and invocation gates
+        NativeMod: C definition/instance/callbacks
+        ScriptMod: CKAngelScript runtime and per-Mod context projection
+        built-in Mods: composed registrations and local callbacks
 ```
 
-Keep unrelated behavior, documentation, generated output, and cleanup changes
-in separate commits when they can be reviewed independently.
+The CK engine performs its default physics scheduling. BML's late PostProcess
+runs the Behavior safe point, then its normal service/Mod work, then completes
+deferred input cleanup. It is inside `CKContext::Process`, before that function
+returns. Render is a separate operation; a pending skip is consumed by the next
+Render. BML does not add a Player dependency on the Loader.
 
-## Before submitting a change
+`IMod`, `IBML`, `IMessageReceiver`, `IConfig`, `IProperty`, `ICommand` and `ILogger`
+have been removed, including internal implementations. `ModRecord` is a composed
+registration, not a replacement inherited Mod interface. Public C++
+`Mod::Instance` virtual calls stay inside each Mod module.
 
-- Build Debug and Release for the selected SDL platform.
-- Run the relevant focused tests and the full test suite.
-- Run the appropriate real Player validation for runtime-facing changes. A
-  smoke run is sufficient only when process integration is the behavior under
-  test; game semantics require a focused Player scenario.
-- Verify generated IMC headers and locks when an interface changed.
-- Build both documentation sites with strict warnings.
-- Confirm that legacy native headers and exports were not changed accidentally.
-- Review the final diff for unrelated local files before staging it.
+| Change | Source owner | Focused checks |
+| --- | --- | --- |
+| CK plugin entry / manager lifecycle | `src/BML.cpp`, `src/Loader/ModManager.*` | Build and real Player start/stop |
+| Discovery, dependencies, unload/callback ownership | `src/Loader/ModLoader.*`, `NativeMod.*`, `ModRecord.*` | Loader/registry tests and Player retirement/reload |
+| Runtime composition and borrowing | `src/Loader/ModContext.*` | Service tests, script on/off, shutdown |
+| Versioned C records and module-local C++ SDK | `include/BML/`, `src/Api/`, `cmake/` | C/C++ layout, installed/relocated SDK consumers |
+| Behavior graph/execution/world lifetime | `src/Behavior/`, `src/Api/Behavior/` | Behavior and object-reference tests |
+| Script VM, projections, convenience engine calls | `src/AngelScript/` | Binding/reference checks, script and Player tests |
+| Input interception and render requests | `src/Hooks/` | Input phases, borrowing, Process/Render separation |
+| Commands, config, timers, IMC, DataShare | Their named directories under `src/` | Module contracts and callback cleanup |
+| Fonts, console, menu and HUD | `src/UI/`, `Console/`, `ModMenu/`, `HUD/` | Headless tests plus real visual/input acceptance |
+| SDK/CLI/update tools | `scripts/`, `tools/`, `tests/sdk`, `tests/updater/sdl` | CLI/package/ABI and signed transaction fixtures |
 
-C/C++ changes use the root `.clang-format`: four-space indentation, unindented
-access labels, one data member per declaration, and named parameters in public
-C tables. Format changed code; keep third-party sources and unrelated pending
-work out of formatting patches. Use descriptive names for callback plumbing.
+`ScriptEngineCalls` is private and compiled only with scripting. It runs existing
+engine convenience operations in the built-in Mod's Behavior Session; per-Mod
+Behavior authoring keeps its own ownership. RefCount is private to DataShare.
+There is no `ExecuteBBAdapter`, `ScriptFacadeAccess` or old I* compatibility layer.
+
+## Validation
+
+```sh
+ctest --test-dir build/sdl-release -C Release --output-on-failure --parallel 6
+cmake -S tests/sdk -B build/sdk-contracts
+ctest --test-dir build/sdk-contracts --output-on-failure
+```
+
+The standalone SDK contracts need no engine. The full suite also builds installed
+SDK consumers when CK2/VxMath installation is available. Run the script-free
+configuration separately. Process-management and updater tests are serialized
+because they inspect running Player processes.
+
+Real [Player acceptance](https://github.com/doyaGu/BallanceModLoaderPlus/tree/sdl/tests/player/sdl)
+requires a desktop and matching game assets. Its runner uses copies and compares
+original/staged Mod hashes; it must not patch a Mod to repair SDK relocation.
+Use `--benchmark-api` for API timings, not as a functional pass/fail threshold.
+[Validation status](validation.md) records executed targets and remaining work.
+
+## Public changes and generated files
+
+Preserve C table prefixes, calling conventions, record ownership, borrowed
+lifetimes and explicit failure codes. SDK C++ values and callbacks remain
+module-local. Engine/ImGui opt-ins additionally require their C++ dependency ABI.
+Internal refactors must not change event names or callback order implicitly.
+
+Change an IMC `.imc` or native interface schema, update its adjacent lock with the
+provided generator/workflow, and review source, lock and generated files together.
+Do not hand-edit generated codecs. `bml_update_imc_locks` updates CMake-managed
+IMC locks; `bml interface update` updates an author project’s interface lock.
+
+For documentation use the existing requirements and both configurations:
+
+```sh
+python -m pip install -r requirements-docs.txt
+python -m mkdocs build --strict --config-file mkdocs.yml
+python -m mkdocs build --strict --config-file mkdocs.zh-CN.yml
+```
+
+Keep paired guides, examples, API declarations and install layout consistent.
+Native snippets use the installed SDK; script snippets use the actual registered
+properties and methods. Do not package API completion stubs as runtime scripts.
+Historical design records are not the current authoring contract.
+
+Documentation source mapping, API regeneration and example checks are described
+in [the documentation maintenance notes](https://github.com/doyaGu/BallanceModLoaderPlus/blob/sdl/docs/README.md).
