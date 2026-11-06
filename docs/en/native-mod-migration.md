@@ -36,6 +36,28 @@ Configuration values/files, Command, Behavior, IMC and DataShare retain their
 existing formats and semantics. Do not rewrite IMC wire schemas or introduce a
 new ownership rule for existing DataShare/Behavior callbacks.
 
+## Removed compatibility interfaces
+
+The source and installed public SDK no longer contain IMod.h, IBML.h,
+IMessageReceiver.h, IConfig.h, ICommand.h, ILogger.h, InputHook.h, ExecuteBB.h or
+ModInterface.hpp. The host's remaining lifecycle, config, command and input
+adapters are private; they are not another native ABI. The old `MOD_EXPORT`
+and `DECLARE_BML_VERSION` macros are removed. Use `BML_DEFINE_MOD` for C++ or
+`BML_MOD_ENTRY(int)` for the C entry, with the minimum version in the definition.
+
+| Removed export | Replacement |
+| --- | --- |
+| BML_GetLoaderPathW/Utf8, BML_GetModRootW/Utf8 | `ctx.GetDirectory(BML_DIR_*)` / `ctx.GetDirectory(BML_MOD_DIRECTORY_ROOT)` |
+| BML_UnregisterCommand | Retained `Command::Registration::Unregister()` |
+| BML_SetCommandStatus | Return the shell exit status from the command callback |
+| BML_GetCommandInput | `Command::Invocation::Input()` |
+| BML_Get/SetConfigPropertyEditor, BML_GetConfigPropertyChoiceCount/Choice, BML_SetConfigPropertyChoices | `Config::Property::Read()` / `SetEditor()` / `SetChoices()` |
+| ExecuteBB C++ exports | Behavior Session/Blocks/Call/Task/Instance |
+
+The `BML_DIR_*` ids remain available from `Mod.h`. Standalone allocation,
+filesystem, ZIP and encoding utilities in `BML.h` remain available. Script
+interfaces and configuration data formats are unchanged.
+
 ## Recommended ownership pattern
 
 Keep Command/Timer/Input registrations as Instance members. Capture callback

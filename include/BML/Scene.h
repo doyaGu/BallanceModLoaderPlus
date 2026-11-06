@@ -80,8 +80,7 @@ typedef struct BML_SceneInterface {
     // a null ref and still answers BML_OK when nothing matches.
     int (BML_CDECL *FindObject)(const char *name, BML_ObjectRef *out);
 
-    // classId is a CK_CLASSID. This is the counterpart of the IBML GetXxxByName
-    // family: pass CKCID_3DOBJECT here instead of calling IBML::Get3dObjectByName.
+    // classId is a CK_CLASSID, for example CKCID_3DOBJECT to find a 3D object.
     // Writes a null ref and still answers BML_OK when nothing matches.
     int (BML_CDECL *FindObjectOfClass)(const char *name, int classId,
                                        BML_ObjectRef *out);

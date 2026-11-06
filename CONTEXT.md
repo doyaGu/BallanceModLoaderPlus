@@ -18,9 +18,9 @@ rendering initialization; `Stop()` deactivates them before rendering teardown.
 If owner cleanup cannot complete, the Loader retains the instance and DLL for a
 later stop attempt instead of releasing callable code.
 
-**Runtime Context** — The stable `ModContext : IBML` object passed to native
-and script Mods. It owns CK managers and services such as Config, Command,
-Behavior, IMC, DataShare, UI, directories, and logging. Its Mod queries and
+**Runtime Context** — The host-owned services reached through per-Mod native
+Context handles and private script/built-in adapters. It owns CK managers and
+services such as Config, Command, Behavior, IMC, DataShare, UI, directories, and logging. Its Mod queries and
 dependency methods delegate to the Mod Loader; it does not keep a second Mod
 registry.
 Public C API calls borrow the Context for their duration. Shutdown first stops
@@ -260,8 +260,8 @@ objects and callbacks do not. The C, C++, and script layers use one native
 implementation: the C++ facade encodes calls into the C table, and the
 AngelScript layer projects that facade without including a Loader Behavior or
 facade Detail header. Text crosses the table as UTF-8 and is converted to and
-from the engine's code page at that boundary. The legacy IMod interface still
-bootstraps Native Mods.
+from the engine's code page at that boundary. Native Mods use the versioned C
+Mod protocol; their C++ authoring wrappers remain inside each Mod.
 
 **Behavior Plan Instance** — A revisioned view of one Plan installation in a
 world. Symbolic Nodes and Ports can be resolved to checked Object References or
@@ -323,16 +323,15 @@ BML_ObjectRef values across the C and script seams. It observes CK deletion and
 world reset, rejecting stale identities. Destruction without CK notification is
 outside what it can observe.
 
-**ExecuteBB Adapter** — The API-side adapter that translates exported
-ExecuteBB calls into Blocks and runs them on the loader's own Behavior
-Session. The AngelScript ExecuteBB bindings delegate to it, so there is one
-frontend. Behavior Runtime does not depend on ExecuteBB.
+**Script Behavior Adapter** — The private bridge from script convenience calls
+to Blocks running on the loader's Behavior Session. Native authoring uses the
+Behavior C table and module-local wrappers over the same Runtime.
 
 ## Source ownership
 
 - src/BML.cpp composes the loader; src/Mods/ contains its bundled Mods.
 - src/Loader/ModLoader.* owns Mod discovery, invocation, and lifecycle;
-  ModContext.* owns the runtime services and IBML entry point; ModManager.*
+  ModContext.* owns runtime services and private built-in/script adapters; ModManager.*
   connects both to CK manager lifecycle.
 - src/Api/ adapts public BML interfaces to private implementations.
   src/Api/Behavior/ holds the Behavior C table and the Codec that reads and

@@ -4,8 +4,8 @@
 // two others, or take a link out of the way. The CK SDK can do all of that, and this is
 // the short way to write it.
 //
-// A Mod gets the script to work on from IBML::GetScriptByName or from
-// IMod::OnLoadScript, which is the moment the loader offers a script before the game has
+// A Mod resolves the script through Engine/Scene or its OnLoadScript event,
+// which is the moment the loader offers a script before the game has
 // run it and the only safe place to rewrite one. The names to look for are the ones
 // Virtools Dev shows, and the GUIDs for CreateBB are in BML/Guids.
 //

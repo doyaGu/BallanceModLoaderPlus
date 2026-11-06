@@ -13,5 +13,5 @@ cmake --install build --config Release --prefix /path/to/game/ModLoader
 
 `BMLExampleValue::Interface` contains headers and a dependency on the BML SDK.
 It does not contain or link `BMLExampleValueProvider.bmodp`. Runtime availability
-comes from `RequiredInterface`, which declares the provider Mod dependency and
-performs the typed lookup in `OnLoad`.
+comes from `Definition::Dependencies`; `Interfaces::Reference` performs the typed
+lookup in `OnLoad` and resets in `OnUnload`.

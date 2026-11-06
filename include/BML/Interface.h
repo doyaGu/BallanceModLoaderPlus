@@ -1,7 +1,6 @@
-// Versioned structs of function pointers handed out through BML. This is how a
-// capability added after the legacy C++ interfaces were frozen reaches a native
-// Mod: no vtable slot moves, and nothing is encoded on the way. Interfaces may
-// be built into the loader or registered by a native base Mod.
+// Versioned C function tables shared by the loader and native Mods. C++ wrappers
+// remain local to each Mod; no C++ vtable or standard-library type crosses the
+// module boundary. Tables may be built into the loader or registered by a Mod.
 //
 // An interface is a plain C struct whose first member is named Header and is a
 // BML_InterfaceHeader, and whose remaining members are function pointers. The
@@ -36,8 +35,8 @@
 // for the duration of the call.
 //
 // Every function reached through an interface runs on the calling thread, with no
-// queue in between, so like the legacy C++ interfaces they belong on the game
-// thread unless their own header says otherwise.
+// queue in between. Calls belong on the game thread unless their own header
+// says otherwise.
 //
 // C++ provider and consumer Mods should include Interface.hpp instead of writing
 // these calls directly. Declare provider dependencies in Mod::Definition and

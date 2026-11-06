@@ -28,7 +28,7 @@
 // thread. Callbacks run outside the stored-value lock, on whichever thread called
 // BML_DataShare_Set. Dispatch is serialized with cancellation and owner retirement,
 // so callbacks should stay short. A Mod that only touches the game from the game
-// thread should hand the work to IBML::AddTimer instead of doing it in the callback.
+// thread should queue game work for OnProcess instead of doing it in the callback.
 // An exception escaping a callback is swallowed. Stop worker threads before
 // OnUnload returns; an API call cannot safely continue after its caller DLL is
 // released.

@@ -8,7 +8,7 @@
 // function here runs on the calling thread and touches UI state the loader draws
 // from the main thread, so every one of them, the read included, answers
 // BML_ERROR_WRONG_THREAD when called from any other thread. Nothing is queued for
-// the next frame: hand the work to the main thread yourself, from IMod::OnProcess
+// the next frame: hand the work to the main thread yourself, from Mod::Instance::OnProcess
 // or another loader callback.
 //
 // Each function answers BML_ERROR_INVALID_PARAMETER for a null argument and
@@ -16,7 +16,7 @@
 // parameter only when it answers BML_OK.
 //
 // None of this is ImGui. Unlike the Bui controls, which only work inside the
-// ImGui frame that the loader keeps open across IMod::OnProcess, these functions
+// ImGui frame that the loader keeps open across Mod::Instance::OnProcess, these functions
 // hand work to loader-owned UI and can be called from any main-thread callback.
 #ifndef BML_UI_H
 #define BML_UI_H
@@ -54,7 +54,7 @@ typedef struct BML_UIInterface {
     int (BML_CDECL *ReadHUDState)(BML_UIHUDState *out);
 
     // Appends one line to the loader's ingame message list, the same list
-    // IBML::SendIngameMessage writes to. Older lines scroll off on their own.
+    // the console writes to. Older lines scroll off on their own.
     int (BML_CDECL *AddMessage)(const char *message);
     int (BML_CDECL *ClearMessages)(void);
 

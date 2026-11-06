@@ -769,7 +769,7 @@ public:
         return Mutate([&]() { return CloseMenu(); });
     }
 
-    // Draw the current route once during IMod::OnProcess. A closed Menu is a
+    // Draw the current route once during Mod::Instance::OnProcess. A closed Menu is a
     // successful no-op. False means rendering was re-entered, the registry was
     // inconsistent, or OnFrame returned an action that could not be applied.
     bool Render() {
