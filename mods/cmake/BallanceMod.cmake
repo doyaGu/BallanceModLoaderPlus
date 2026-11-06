@@ -38,6 +38,8 @@ function(ballance_add_mod TARGET_NAME)
     endforeach()
 
     bml_add_mod(${TARGET_NAME} ${BALLANCE_MOD_SOURCES})
+    target_link_libraries(${TARGET_NAME} PRIVATE BML::Engine BML::ImGui)
+    target_include_directories(${TARGET_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/mods")
 
     if(BALLANCE_MOD_LIBRARIES)
         target_link_libraries(${TARGET_NAME} PRIVATE ${BALLANCE_MOD_LIBRARIES})
