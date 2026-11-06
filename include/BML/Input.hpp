@@ -1,11 +1,13 @@
 #ifndef BML_INPUT_HPP
 #define BML_INPUT_HPP
+
 #include "BML/Input.h"
 #include "BML/Mod.hpp"
 
 namespace BML::Input {
 struct KeyboardState {
-    bool Attached = false, RepetitionEnabled = false;
+    bool Attached = false;
+    bool RepetitionEnabled = false;
     std::span<const BML_InputKeyState> Keys;
     std::span<const BML_InputKeyEvent> Events;
 
@@ -48,17 +50,17 @@ public:
 
     [[nodiscard]] bool IsValid() const noexcept { return m_Handle && m_Context.IsValid(); }
 
-    int Release() noexcept {
+    [[nodiscard]] Result<void> Release() noexcept {
         if (!m_Handle)
-            return BML_OK;
+            return BML::Detail::ToResult(BML_OK);
         const int code = m_Api->ReleaseBlock(m_Context.Handle(), m_Handle);
         // This wrapper can only own handles returned by a successful Acquire.
         // An invalidated owned token has already been removed by owner cleanup.
         if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
             m_Handle = 0;
-            return BML_OK;
+            return BML::Detail::ToResult(BML_OK);
         }
-        return code;
+        return BML::Detail::ToResult(code);
     }
 
 private:
@@ -68,8 +70,8 @@ private:
         : m_Context(ctx), m_Api(api), m_Handle(handle) {}
 
     void Dispose() noexcept {
-        if (Release() != BML_OK) {
-            m_Context.LogError("Input block release failed; retained until owner cleanup");
+        if (!Release()) {
+            (void)m_Context.LogError("Input block release failed; retained until owner cleanup");
             m_Handle = 0;
         }
     }
@@ -170,9 +172,10 @@ public:
         return Result<uint32_t>::Failure(BML_ERROR_FAIL);
     }
 
-    int EnableKeyboardRepetition(bool enable = true) const noexcept {
-        return m_Api ? m_Api->EnableKeyboardRepetition(m_Context.Handle(), enable ? 1u : 0u)
-                     : BML_ERROR_UNAVAILABLE;
+    [[nodiscard]] Result<void> EnableKeyboardRepetition(bool enable = true) const noexcept {
+        return BML::Detail::ToResult(
+            m_Api ? m_Api->EnableKeyboardRepetition(m_Context.Handle(), enable ? 1u : 0u)
+                  : BML_ERROR_UNAVAILABLE);
     }
     [[nodiscard]] Result<Block> AcquireBlock(uint32_t mask) const try {
         BML_InputBlockHandle block = 0;
@@ -196,8 +199,9 @@ public:
         return Result<uint32_t>::Failure(BML_ERROR_FAIL);
     }
 
-    int Pause(bool pause) const noexcept {
-        return m_Api ? m_Api->Pause(m_Context.Handle(), pause ? 1u : 0u) : BML_ERROR_UNAVAILABLE;
+    [[nodiscard]] Result<void> Pause(bool pause) const noexcept {
+        return BML::Detail::ToResult(m_Api ? m_Api->Pause(m_Context.Handle(), pause ? 1u : 0u)
+                                           : BML_ERROR_UNAVAILABLE);
     }
     [[nodiscard]] Result<BML_InputCursorState> ReadCursor() const try {
         BML_InputCursorState value{};
@@ -212,13 +216,15 @@ public:
         return Result<BML_InputCursorState>::Failure(BML_ERROR_FAIL);
     }
 
-    int ShowCursor(bool visible) const noexcept {
-        return m_Api ? m_Api->ShowCursor(m_Context.Handle(), visible ? 1u : 0u)
-                     : BML_ERROR_UNAVAILABLE;
+    [[nodiscard]] Result<void> ShowCursor(bool visible) const noexcept {
+        return BML::Detail::ToResult(m_Api
+                                         ? m_Api->ShowCursor(m_Context.Handle(), visible ? 1u : 0u)
+                                         : BML_ERROR_UNAVAILABLE);
     }
 
-    int SetSystemCursor(uint32_t shape) const noexcept {
-        return m_Api ? m_Api->SetSystemCursor(m_Context.Handle(), shape) : BML_ERROR_UNAVAILABLE;
+    [[nodiscard]] Result<void> SetSystemCursor(uint32_t shape) const noexcept {
+        return BML::Detail::ToResult(m_Api ? m_Api->SetSystemCursor(m_Context.Handle(), shape)
+                                           : BML_ERROR_UNAVAILABLE);
     }
 
 private:

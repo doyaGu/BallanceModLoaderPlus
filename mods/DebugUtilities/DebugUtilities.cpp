@@ -583,7 +583,7 @@ void DebugUtilities::OnProcess_ChangeBall() {
                 m_SetNewBall->ActivateInput(0);
                 m_SetNewBall->Activate();
 
-                ModSupport::Check(m_ChangeBallBlock.Release());
+                m_ChangeBallBlock.Release().Take();
                 m_ChangeBallCd = 0;
                 ModSupport::Log(m_Context, BML_LOG_INFO, "Set to %s Ball",
                                 i == 0   ? "Paper"
@@ -778,7 +778,7 @@ void DebugUtilities::OnProcess_Summon() {
 
         m_CurSel = -1;
         m_CurObj = nullptr;
-        ModSupport::Check(m_SummonBlock.Release());
+        m_SummonBlock.Release().Take();
 
         ModSupport::Log(m_Context, BML_LOG_INFO, "Summoned a %s",
                         m_CurSel < 2    ? m_CurSel == 0 ? "Paper Ball" : "Wood Ball"
