@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 namespace BML::Shell {
     class Environment;

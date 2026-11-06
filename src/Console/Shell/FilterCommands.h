@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 namespace BML::Shell::Filters {
     // Splits captured text into lines; the final newline does not add a line.

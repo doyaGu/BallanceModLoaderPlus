@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 #include "BML/IMod.h"
 #include "UI/ScriptImGui.h"
 #include "ScriptCallbackEvents.h"

@@ -10,7 +10,7 @@
 #include <vector>
 #include <unordered_map>
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 namespace BML {
     typedef void (*CommandOutputCallback)(const char *line, void *userdata);

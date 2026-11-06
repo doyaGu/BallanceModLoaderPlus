@@ -13,7 +13,7 @@
 #include <imgui_internal.h>
 #include <misc/cpp/imgui_stdlib.h>
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 #include "Console/CommandContext.h"
 #include "Console/CommandInput.h"
 #include "Console/Shell/ShellEnvironment.h"

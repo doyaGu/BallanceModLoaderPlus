@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 #include "BML/IMod.h"
 
 namespace BML {

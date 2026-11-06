@@ -1,7 +1,7 @@
 #ifndef BML_GAMEPLAY_CHEAT_COMMAND_H
 #define BML_GAMEPLAY_CHEAT_COMMAND_H
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 class CheatCommand : public ICommand {
 public:

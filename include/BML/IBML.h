@@ -20,7 +20,7 @@
 #include "CKAll.h"
 
 #include "BML/Defines.h"
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 #include "BML/IMessageReceiver.h"
 #include "BML/InputHook.h"
 

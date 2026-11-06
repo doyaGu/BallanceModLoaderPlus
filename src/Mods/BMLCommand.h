@@ -1,7 +1,7 @@
 #ifndef BML_MODS_BML_COMMAND_H
 #define BML_MODS_BML_COMMAND_H
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 class ModContext;
 

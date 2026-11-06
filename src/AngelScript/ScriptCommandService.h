@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 #include "ScriptDiagnostic.h"
 
 class ModContext;

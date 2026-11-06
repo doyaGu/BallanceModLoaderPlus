@@ -1,7 +1,7 @@
 #ifndef BML_UI_PALETTE_COMMAND_H
 #define BML_UI_PALETTE_COMMAND_H
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 class PaletteCommand : public ICommand {
 public:

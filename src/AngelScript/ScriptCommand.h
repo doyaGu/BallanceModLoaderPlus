@@ -1,7 +1,7 @@
 #ifndef BML_ANGELSCRIPT_SCRIPT_COMMAND_H
 #define BML_ANGELSCRIPT_SCRIPT_COMMAND_H
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 class ScriptCommand : public ICommand {
 public:

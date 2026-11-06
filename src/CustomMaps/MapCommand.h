@@ -1,7 +1,7 @@
 #ifndef BML_CUSTOMMAPS_MAPCOMMAND_H
 #define BML_CUSTOMMAPS_MAPCOMMAND_H
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 class CustomMaps;
 

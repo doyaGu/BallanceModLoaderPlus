@@ -1,19 +1,5 @@
-// One command for the loader's command bar, which the player opens with the / key.
-// A Mod derives from this, allocates one instance, and hands it to
-// IBML::RegisterCommand from OnLoad. The loader keeps the pointer, never deletes
-// it, and BML_UnregisterCommand is the only way to take it back; this class has no
-// virtual destructor, so the Mod still owns and deletes the concrete object.
-//
-// The loader snapshots the name, alias, description, and cheat flag during
-// registration. Return stable metadata: later changes are deliberately not reflected
-// until the command is unregistered and registered again. GetName, GetAlias, and
-// GetDescription return std::string by value and Execute takes a
-// std::vector<std::string>, so a Mod implementing this is tied to the standard
-// library the loader was built with, which is why the loader and its Mods have to
-// use the same MSVC runtime.
-//
-// Everything here is called on the game thread, from the command bar or from
-// IBML::ExecuteCommand.
+// Private command adapter for the console, built-in features and script bindings.
+// Native commands use the versioned table in BML/Command.h.
 #ifndef BML_ICOMMAND_H
 #define BML_ICOMMAND_H
 
@@ -27,7 +13,7 @@
 
 class IBML;
 
-class BML_EXPORT ICommand {
+class ICommand {
 public:
     // What the player types. It has to be at most 256 bytes and valid UTF-8, start
     // with an ASCII letter or an underscore, and hold nothing but ASCII letters,
@@ -68,8 +54,8 @@ public:
     // needs no quoting. There is no word splitting after expansion: one word in the
     // line is one element of args. Write output with IBML::SendIngameMessage; when
     // the command is a pipeline stage that output goes to the next stage instead
-    // of the board. Report a failure with BML_SetCommandStatus so `&&`, `||`, and
-    // $? see it, and read piped text with BML_GetCommandInput. An exception thrown
+    // of the board. Report failure through BML::Shell::SetStatus and read piped
+    // text through BML::Shell::GetInput. An exception thrown
     // here is caught by the loader, logged, shown to the player, counts as a
     // failure, and skips the OnPostCommandExecute broadcast.
     virtual void Execute(IBML *bml, const std::vector<std::string> &args) = 0;
@@ -82,7 +68,8 @@ public:
     // has been typed, ignoring case, and drops duplicates. Return an empty vector
     // for a position with nothing to offer. This runs inside the loader's ImGui
     // frame while the player waits, so do not read files or block here.
-    virtual const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) = 0;
+    virtual const std::vector<std::string>
+    GetTabCompletion(IBML *bml, const std::vector<std::string> &args) = 0;
 
     // Argument helpers, all of them silent about a bad argument. ParseInteger and
     // ParseFloat go through atoi and atof, which yield 0 for text that is not a
@@ -93,9 +80,11 @@ public:
     static int ParseInteger(const std::string &str, int mn = INT_MIN, int mx = INT_MAX) {
         return (std::max)(mn, (std::min)(mx, atoi(str.c_str())));
     }
+
     static float ParseFloat(const std::string &str, float mn = -FLT_MAX, float mx = FLT_MAX) {
-        return (std::max)(mn, (std::min)(mx, (float) atof(str.c_str())));
+        return (std::max)(mn, (std::min)(mx, (float)atof(str.c_str())));
     }
+
     static bool ParseBoolean(const std::string &str) {
         return str == "true" || str == "on" || str == "1";
     }

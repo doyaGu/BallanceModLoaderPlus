@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 #include "UI/FontRuntime.h"
 
 class IProperty;

@@ -1,7 +1,7 @@
 #ifndef BML_CONSOLE_BUILTIN_COMMANDS_H
 #define BML_CONSOLE_BUILTIN_COMMANDS_H
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 class Console;
 

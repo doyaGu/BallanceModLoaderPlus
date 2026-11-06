@@ -1,7 +1,7 @@
 #ifndef BML_HUD_COMMAND_H
 #define BML_HUD_COMMAND_H
 
-#include "BML/ICommand.h"
+#include "Console/ICommand.h"
 
 class HUDRuntime;
 
