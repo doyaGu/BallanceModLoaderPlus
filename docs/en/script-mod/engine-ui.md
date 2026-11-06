@@ -28,7 +28,8 @@ BML+ callbacks receive `BML::ModContext`, not `ScriptContext` or
 
 Raw `NativePointer`, `NativeBuffer`, DynCall/DynLoad/DynCallback, and writable
 native memory are escape hatches for proven native integration work. They are
-not a normal replacement for a missing plugin API.
+not a normal replacement for a missing plugin API. FFI availability depends on
+the matching CKAngelScript build; the default BML build does not enable DynCall.
 
 ## CK objects and durable identity
 
@@ -47,14 +48,20 @@ void OnLoad(const BML::ModContext &in ctx) {
 }
 
 void OnProcess(const BML::ModContext &in ctx) {
-  if (ball is null || !ball.valid)
+  CKContext@ ck = ctx.BorrowCKContext();
+  if (ck is null || ball is null || !ball.valid)
     return;
 
-  CK3dEntity@ entity = ball.Entity3D();
+  CK3dEntity@ entity = cast<CK3dEntity>(ck.GetObject(ball.id));
   if (entity !is null)
     entity.Translate(VxVector(0.0f, 0.0f, 0.1f));
 }
 ```
+
+This excerpt assumes a scene object named `Ball`; substitute a known object
+name or capture the reference when that scene is loaded. `Entity3DRef` exposes
+checked identity, not an `Entity3D()` raw-pointer method. After checking `valid`,
+resolve its `id` through the current CKContext and cast the borrowed result.
 
 Resolve raw CK handles close to the operation. Revalidate after deletion, level
 changes, and CK reset. `BML::CK::IsValid()` checks the handle address against
@@ -65,12 +72,12 @@ before passing a stored raw handle to the other `BML::CK` helpers.
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
-  CKDataArray@ array = ctx.BorrowDataArrayByName("Some_Array");
-  int column = BML::CK::FindColumn(array, "Name");
-  string value = BML::CK::GetString(array, 0, column, "");
+  CKDataArray@ data = ctx.BorrowDataArrayByName("Some_Array");
+  int column = BML::CK::FindColumn(data, "Name");
+  string value = BML::CK::GetString(data, 0, column, "");
 
   BML::ObjectLoadOptions options;
-  options.File = "3D Entities\\Example.nmo";
+  options.File = "3D Entities/Example.nmo";
   BML::ObjectLoadResult@ loaded = BML::CK::LoadObject(options);
   CKObject@ main = loaded is null ? null : loaded.BorrowMainObject();
 }
@@ -134,13 +141,28 @@ int OnBallHook(const BML::ModContext &in ctx,
 
 void OnLoad(const BML::ModContext &in ctx) {
   CKBehavior@ owner = ctx.BorrowScriptByName("Gameplay_Ingame");
-  CKBehavior@ source = FindSubBehaviorByName(owner, "Some_Behavior");
-  if (owner is null || source is null)
+  if (owner is null)
+    return;
+
+  CKBehavior@ source = null;
+  for (int i = 0; i < owner.GetSubBehaviorCount(); ++i) {
+    CKBehavior@ candidate = owner.GetSubBehavior(i);
+    if (candidate !is null && BML::CK::GetName(candidate) == "Some_Behavior") {
+      @source = candidate;
+      break;
+    }
+  }
+  if (source is null)
     return;
 
   @hook = ctx.InsertHookBlockAfter(owner, source, OnBallHook, "example hook");
 }
 ```
+
+The example searches direct children with existing CKBehavior methods; replace
+`Some_Behavior` with a verified node name. It does not rely on an implicit
+`FindSubBehaviorByName` helper. For nested or ambiguous graphs, use the existing
+Behavior inspection/selectors to choose the exact node.
 
 `CreateHookBlock` creates an unattached block. `InsertHookBlockAfter`,
 `InsertHookBlockBefore`, and `InsertHookBlockBetween` cover common one-input,

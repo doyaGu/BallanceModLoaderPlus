@@ -132,7 +132,10 @@ void OnProcess(const BML::ModContext &in ctx) {
 
 `ModContext` exposes `IsInGame`, `IsInLevel`, `IsPaused`, `IsPlaying`,
 `IsCheatEnabled`, `EnableCheat`, `ExitGame`, `ExecuteCommand`,
-`SkipRenderForNextTick`, `GetSRScore`, and `GetHSScore`.
+`SkipRenderForNextTick`, `GetSRScore`, and `GetHSScore`. Read state flags as
+properties, for example `ctx.IsInLevel`. Despite its retained script name,
+`SkipRenderForNextTick()` requests one skipped **Render**, not one Process
+interval; repeated requests before that Render coalesce.
 
 Loader-owned presentation commands live under `BML::UI`: messages, mod/map
 menus, HUD mode, title, and FPS. Speedrun timing is separate under
@@ -143,6 +146,39 @@ commands do not require an active ImGui frame. Drawing controls do; see
 Guard mutations that require an active level with an explicit state check.
 Defaults and no-ops prevent a host crash, but an explicit branch produces a
 clearer script and diagnostic.
+
+## Input blocks and ownership
+
+Script `InputHook` queries see BML-filtered input. ImGui observes SDL events
+separately, so opening a menu can block game input while the menu stays usable.
+A read never polls SDL or advances the input snapshot. `Pause` belongs to the
+engine input manager; BML blocks do not unpause it.
+
+For a temporary script-owned block, retain and explicitly release its token:
+
+```angelscript
+uint64 keyboardBlock = 0;
+
+void OnLoad(const BML::ModContext &in ctx) {
+  BML::InputHook@ input = ctx.BorrowInputManager();
+  if (input !is null && input.IsValid)
+    keyboardBlock = input.AcquireBlock(BML::INPUT_BLOCK_KEYBOARD);
+}
+
+void OnUnload(const BML::ModContext &in ctx) {
+  BML::InputHook@ input = ctx.BorrowInputManager();
+  if (input !is null && keyboardBlock != 0)
+    input.ReleaseBlock(keyboardBlock);
+  keyboardBlock = 0;
+}
+```
+
+Zero means acquisition failed. Unlike the native SDK’s move-only `Input::Block`,
+this script token is an integer and does **not** release itself when discarded.
+Release it when closing the UI as well as during unload/reload; repeated token
+release is harmless. `Block`/`Unblock` and `SetBlock(true/false)` are counted
+operations, so balance every successful acquisition. Do not release a block
+belonging to another user of the input service.
 
 ## Built-in typed snapshots
 
@@ -155,7 +191,7 @@ callback, gameplay reads return `BML::ERROR_UNAVAILABLE`.
 ```angelscript
 BML::Gameplay::LevelState level;
 
-if (ctx.IsInLevel() && BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
+if (ctx.IsInLevel && BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
   CKObject@ ball = level.BorrowActiveBall();
 }
 ```
@@ -168,9 +204,10 @@ mod needs to retain; there is no script-side event queue to open or poll.
 ## Timers
 
 BML+ owns registered timers for the script mod and cancels them at unload.
-CKAngelScript `Async::*` task creation is intentionally unavailable inside
-script-mod callbacks; those tasks have no script-mod lifetime owner. Use a BML+
-timer whenever work must continue in a later frame.
+Fixed callbacks cannot suspend or `Await`. CKAngelScript can create `Async::*`
+tasks, but BML+ does not adopt them as Mod-owned registrations; they can retain
+an old script module across reload. Use a BML+ timer for delayed work that must
+stop with the Mod.
 Prefer callback timers for simple delays and intervals:
 
 ```angelscript

@@ -61,7 +61,7 @@ void OnUnphysicalize(const BML::ModContext &in ctx, const BML::ObjectEvent &in e
 | `OnLoad` | Create config, commands, timers, DataShare requests, hooks, and registered content. A failure fails the script mod load. |
 | `OnUnload` | Undo script-authored world changes and clear local state. BML+ also removes script-owned registrations. |
 | `OnProcess` | Per-tick logic, input handling, and BML/ImGui drawing. |
-| `OnRender` | Observe the Virtools render callback. Do not draw BML/ImGui UI here. |
+| `OnRender` | Observe the engine post-render callback. Do not draw BML/ImGui UI here. |
 | `OnGameEvent` | Handle level, reset, pause, finish, ball, and navigation events. |
 | `OnCheatEnabled` | Observe cheat-state changes. |
 | `OnLoadObject` / `OnLoadScript` | Observe object and behavior-script loading. |
@@ -73,6 +73,22 @@ Event objects copy scalar, string, and list data. Their `Borrow*` methods resolv
 non-owning CK handles that may become null or stale after the callback. Store a
 CK id or CKAngelScript reference for delayed work, then resolve the raw object
 near the operation.
+
+## Process and Render timing
+
+BML starts its ImGui frame in the manager’s `PreProcess`. In late `PostProcess`,
+after the engine’s normal manager/physics work, it reaches the Behavior safe
+point, runs Mod/service processing (including `OnProcess`), finalizes ImGui draw data, and
+finishes the input snapshot. All of this is **inside** `CKContext::Process`;
+`OnProcess` does not run after that function returns. Physics uses the engine’s
+default schedule.
+
+Render is scheduled separately. `OnRender` follows the engine’s post-render
+notification and is not an ImGui drawing scope. Multiple Process calls without
+Render still produce multiple `OnProcess` calls. A pending one-shot skip is
+consumed by the next Render using `CK_RENDER_SKIPALL`, irrespective of how many
+Process calls intervene. Do not infer that every Process has a corresponding
+drawn frame.
 
 ## Hot reload
 

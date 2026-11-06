@@ -13,7 +13,7 @@ class GameStateExample {
         if (event != BML::GAME_EVENT_START_LEVEL)
             return;
 
-        if (!ctx.IsInLevel()) {
+        if (!ctx.IsInLevel) {
             ctx.LogWarn("Start-level event arrived without an active level");
             return;
         }

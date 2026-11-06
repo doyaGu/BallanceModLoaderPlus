@@ -28,8 +28,13 @@ code.
 
 ## Requirements
 
-- A BML+ release built with script support.
-- The matching `BuildingBlocks/AngelScript.dll` from that release.
+- A matching Ballanced SDL dynamic Player and BML+ runtime built with
+  `BML_ENABLE_ANGELSCRIPT=ON`. Native-only builds cannot run script Mods.
+- The runtime’s Loader in `Managers` and CKAngelScript in `BuildingBlocks`.
+  Plugin filenames are `BMLPlus.dll` / `AngelScript.dll` on Windows,
+  `libBMLPlus.so` / `libAngelScript.so` on Linux, and
+  `libBMLPlus.dylib` / `libAngelScript.dylib` on macOS.
+- A writable `ModLoader` directory. See [installation](../using-bml.md).
 - Basic AngelScript class and function syntax. The first Mod does not require
   handles, interfaces, or delegates; learn those when an API first needs them.
 - CKAngelScript documentation when working with Virtools objects, behavior
@@ -43,9 +48,15 @@ cannot start.
 
 Create the project in your normal source workspace:
 
-```bat
-"<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
+```sh
+python "/path/to/BML-SDK/scripts/bml.py" new script yourname.my-mod
+cd MyMod
+python bml.py run --ballance-root "/path/to/game"
 ```
+
+Use Python 3.10+ (`python3` where appropriate). POSIX also supports `./bml`;
+Windows supports `bml.cmd`. Pass the game root containing `base.cmo`, with
+`Bin/Player` or a flat `Player` (`.exe` on Windows).
 
 The command derives a safe class and entry filename from the id and refuses to
 overwrite an existing directory. Copying `templates/script-mod-template`
@@ -66,7 +77,7 @@ class HelloScript {
 }
 ```
 
-Run `.\bml run` once without editing the generated source. It deploys a managed
+Run the generated project once without editing its source. It deploys a managed
 copy, starts Player, and keeps later saved changes synchronized. The in-game
 greeting proves that `OnLoad` ran; the `My Mod loaded` line in
 `ModLoader/ModLoader.log` proves which Mod produced it. Together they confirm
@@ -129,7 +140,7 @@ Keep helper files under the owning mod directory. Do not use a shared global
 and source root. For a single-file mod, resources live in the sibling directory
 named after the entry stem, such as `Mods/Foo/Resources` for `Foo.mod.as`.
 
-`.bmodp` is reserved for native DLL mods.
+`.bmodp` is reserved for native shared modules and requires an ABI sidecar on SDL.
 
 ## AngelScript rules used by BML+
 
@@ -148,8 +159,12 @@ named after the entry stem, such as `Mods/Foo/Resources` for `Foo.mod.as`.
 - Interface signatures must match exactly, including `const`, `&in`, return
   type, and method name.
 
-The `@+` markers in editor declarations document native retention. They do not
-change the syntax used when passing an ordinary script object or delegate.
+The `@+` markers are AngelScript auto-handle annotations at the native binding
+boundary. Pass ordinary handles/delegates normally; use the specific service’s
+registration and release contract rather than inferring ownership from `@+`.
+For properties, use `ctx.IsInLevel`, `ctx.HasContext`, or `input.IsValid`,
+without parentheses. Same-named compatibility methods can be hidden by property
+syntax; the property form is unambiguous.
 
 ## Develop and package
 
@@ -160,8 +175,8 @@ use manual reload and are intended for distribution testing.
 
 Run the project-local Developer Workflow:
 
-```bat
-.\bml pack
+```sh
+python bml.py pack
 ```
 
 It writes `dist/MyScriptMod.zip`. `--project`, `--output`, and `--force` remain

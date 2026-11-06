@@ -15,8 +15,10 @@ The SDK installs the same files locally under `docs/api`. Use
 dependency.
 
 An accessor named `get_Name()` defines an AngelScript property and is normally
-used as `object.Name`. A declaration containing `@+` transfers a retained
-reference to BML+ when the corresponding registration succeeds.
+used as `object.Name`. `@+` is an AngelScript auto-handle annotation at the native boundary. It does
+not replace each service’s documented ownership/release contract. Prefer
+property syntax (`input.IsValid`, `ctx.IsInLevel`) when an accessor is present,
+even if a same-named method alias also appears in the declarations.
 
 Use `as.predefined` for editor tooling. Use the two smaller files when looking
 up only the BML+-owned API surface.
@@ -36,7 +38,7 @@ void DrawChild(BML::MenuPageFrame &inout frame) {
   if (BML::UI::MainButton("Return to overview")) frame.Back();
 }
 
-// Add your [bml.mod] annotation to this class as shown in the lifecycle guide.
+[bml.mod id="example.menu.script" name="Menu Example" version="1.0.0"]
 class MenuExampleMod {
   BML::MenuPageRef@ entryPage;
   BML::MenuPageRef@ childPage;
@@ -70,3 +72,21 @@ or replacement, and its callbacks are not called again after unregistration.
 Draw callbacks run inside the Mods menu's central, scrollable ImGui content
 region; do not start or end a frame. The loader supplies the native Back
 control separately, so a page need not draw its own.
+
+## ImGui properties
+
+`ImGuiIO` is read-only through script bindings. `ImGuiStyle` exposes the existing
+writable properties; the reference includes their setters as well as getters.
+Both are borrowed from the current ImGui context. Prefer balanced Push/Pop style
+calls for a local change instead of leaving a shared style mutation behind.
+
+## Reference baseline
+
+The current combined declaration file was regenerated on 2026-11-06 from a
+macOS ARM64 SDL dynamic host running AngelScript 2.38.0, with DynCall disabled,
+then combined with the BML+ and ImGui declarations. It includes current
+BehaviorFrame/Scene signatures and 64-bit pointer-sized aliases. CKAS platform
+aliases and optional FFI bindings depend on the host; this is an editor snapshot,
+not a universal ABI definition. Regenerate against the target host when those
+features matter. The runtime’s registered declarations decide whether a script
+compiles.
