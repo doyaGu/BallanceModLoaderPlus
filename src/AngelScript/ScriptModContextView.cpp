@@ -167,58 +167,6 @@ unsigned int ScriptModContextView::GetFrameCount() const {
     return ScriptFacadeAccess::GetFrameCount(GetTimeManager());
 }
 
-bool ScriptModContextView::IsObjectValid(CKObject *object) const {
-    return ScriptFacadeAccess::IsObjectValid(GetCKContext(), object);
-}
-
-int ScriptModContextView::GetObjectId(CKObject *object) const {
-    return ScriptFacadeAccess::GetObjectId(object);
-}
-
-std::string ScriptModContextView::GetObjectName(CKObject *object) const {
-    return ScriptFacadeAccess::GetObjectName(object);
-}
-
-int ScriptModContextView::GetObjectClassId(CKObject *object) const {
-    return ScriptFacadeAccess::GetObjectClassId(object);
-}
-
-bool ScriptModContextView::IsObjectVisible(CKObject *object) const {
-    return ScriptFacadeAccess::IsObjectVisible(object);
-}
-
-bool ScriptModContextView::IsObjectDynamic(CKObject *object) const {
-    return ScriptFacadeAccess::IsObjectDynamic(object);
-}
-
-int ScriptModContextView::GetBeObjectPriority(CKBeObject *object) const {
-    return ScriptFacadeAccess::GetBeObjectPriority(object);
-}
-
-int ScriptModContextView::GetBeObjectScriptCount(CKBeObject *object) const {
-    return ScriptFacadeAccess::GetBeObjectScriptCount(object);
-}
-
-int ScriptModContextView::GetBeObjectAttributeCount(CKBeObject *object) const {
-    return ScriptFacadeAccess::GetBeObjectAttributeCount(object);
-}
-
-VxVector ScriptModContextView::Get3dEntityPosition(CK3dEntity *entity) const {
-    return ScriptFacadeAccess::Get3dEntityPosition(entity);
-}
-
-VxVector ScriptModContextView::Get3dEntityScale(CK3dEntity *entity, bool local) const {
-    return ScriptFacadeAccess::Get3dEntityScale(entity, local);
-}
-
-int ScriptModContextView::Get3dEntityChildCount(CK3dEntity *entity) const {
-    return ScriptFacadeAccess::Get3dEntityChildCount(entity);
-}
-
-CK3dEntity *ScriptModContextView::Get3dEntityParent(CK3dEntity *entity) const {
-    return ScriptFacadeAccess::Get3dEntityParent(entity);
-}
-
 CKDataArray *ScriptModContextView::GetArrayByName(const std::string &name) const {
     return m_Context ? m_Context->GetArrayByName(name.c_str()) : nullptr;
 }
