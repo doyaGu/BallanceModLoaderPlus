@@ -26,12 +26,14 @@ add_bml_test(BehaviorSessionTest
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
         ${BML_SOURCE_DIR}/Behavior/Watch.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorPrototypeCatalogTest
         SOURCES
         BehaviorPrototypeCatalogTest.cpp
         ${BML_SOURCE_DIR}/Behavior/PrototypeCatalog.cpp
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorLifecycleTest
@@ -68,6 +70,7 @@ add_bml_test(BehaviorCallbackTest
         BehaviorCallbackTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
         ${BML_SOURCE_DIR}/Behavior/Blocks/Hook.cpp
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorWatchTest
@@ -75,6 +78,7 @@ add_bml_test(BehaviorWatchTest
         BehaviorWatchTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Watch.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorTopologyTest
@@ -127,6 +131,7 @@ add_bml_test(BehaviorValueTest
         SOURCES
         BehaviorValueTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Core/Value.cpp
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorTextTest

@@ -31,6 +31,7 @@ add_bml_test(ObjectRefsTest
         SOURCES
         ObjectRefsTest.cpp
         ${BML_SOURCE_DIR}/Api/ObjectRefs.cpp
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(DataShareTest

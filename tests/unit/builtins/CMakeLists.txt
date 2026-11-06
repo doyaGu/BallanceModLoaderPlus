@@ -17,13 +17,14 @@ add_bml_test(CommandBarThemeTest
         ${BML_SOURCE_DIR}/Config/Config.cpp
         ${BML_SOURCE_DIR}/Console/CommandBarTheme.cpp
         ${BML_SOURCE_DIR}/UI/ColorCodec.cpp
-        DEPENDENCIES BMLUtils
+        DEPENDENCIES BMLUtils CK2 VxMath
 )
 
 add_bml_test(ModMenuSessionTest
         SOURCES
         ModMenuSessionTest.cpp
         ${BML_SOURCE_DIR}/ModMenu/ModMenuSession.cpp
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(ModMenuPagesTest
@@ -170,6 +171,7 @@ add_bml_test(FilterCommandsTest
         DEPENDENCIES
         BMLUtils
         onig
+        CK2 VxMath
 )
 
 add_bml_test(ShellHistoryTest
@@ -194,3 +196,6 @@ add_bml_test(ShellCompletionTest
         BML_StringUtils
         utf8
 )
+
+# GTest includes the system regex.h on POSIX; use Oniguruma's namespaced type.
+target_compile_definitions(FilterCommandsTest PRIVATE ONIG_ESCAPE_REGEX_T_COLLISION)
