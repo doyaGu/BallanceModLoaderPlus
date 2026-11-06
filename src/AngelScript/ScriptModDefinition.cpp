@@ -1,4 +1,3 @@
-#include "Loader/ModDefinitionValidation.h"
 #include "ScriptModDefinition.h"
 
 #include <cctype>
@@ -78,10 +77,6 @@ static bool ParseMetadataQuotedString(const std::string &text, size_t &pos, std:
 
     diagnostic = "metadata string is missing closing quote.";
     return false;
-}
-
-bool ParseScriptModVersion(const std::string &value, BMLVersion &version) {
-    return ParseModVersion(value, version);
 }
 
 ScriptModReloadPolicy ParseScriptModReloadPolicy(const std::string &value) {

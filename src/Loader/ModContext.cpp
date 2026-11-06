@@ -1377,8 +1377,8 @@ void ModContext::OnRender(CKRenderContext *dev) {
 }
 
 void ModContext::OnLoadGame() {
-    m_Loader.BroadcastCallback<ModEvent::OnLoadObject>("base.cmo", false, "", CKCID_3DOBJECT, true, true,
-                                              true, false, nullptr, nullptr);
+    m_Loader.BroadcastCallback<ModEvent::OnLoadObject>("base.cmo", false, "", CKCID_3DOBJECT, true,
+                                                       true, true, false, nullptr, nullptr);
 
     int scriptCnt = m_CKContext->GetObjectsCountByClassID(CKCID_BEHAVIOR);
     CK_ID *scripts = m_CKContext->GetObjectsListByClassID(CKCID_BEHAVIOR);

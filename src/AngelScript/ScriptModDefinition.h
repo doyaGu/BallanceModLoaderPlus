@@ -37,7 +37,6 @@ enum class ScriptModReloadPolicy {
 
 ScriptModReloadPolicy ParseScriptModReloadPolicy(const std::string &value);
 const char *ToString(ScriptModReloadPolicy policy);
-bool ParseScriptModVersion(const std::string &value, BMLVersion &version);
 
 struct ScriptMetadataTag {
     std::string Name;

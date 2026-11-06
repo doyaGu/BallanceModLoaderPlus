@@ -164,7 +164,6 @@ set(BML_LOADER_PRIVATE_HEADERS
         Loader/ModRecord.h
         Loader/ModVersion.h
         Loader/ModCallbacks.h
-        Loader/LegacyModVersion.h
         Loader/ModLoader.h
         Loader/ModInvocationGate.h
         Loader/ModManager.h

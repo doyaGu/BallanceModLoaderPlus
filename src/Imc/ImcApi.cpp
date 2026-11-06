@@ -38,8 +38,8 @@ BML_EXPORT int BML_CDECL BML_Imc_OpenClient(const char *ownerId,
         ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
-        const std::string resolved = context->GetModLoader().GetNativeModOwnerId(
-            callerReturnAddress, ownerId);
+        const std::string resolved =
+            context->GetModLoader().GetNativeModOwnerId(callerReturnAddress, ownerId);
         if (resolved.empty() || (ownerId && resolved != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         return context->GetImcRuntime().OpenClient(resolved, outClient);

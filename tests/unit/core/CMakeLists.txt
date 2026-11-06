@@ -61,3 +61,6 @@ add_bml_test(NativeModTest
 add_bml_test(ModRecordTest
     SOURCES ModRecordTest.cpp
     DEPENDENCIES CK2 VxMath)
+
+add_bml_test(ModDefinitionValidationTest
+    SOURCES ModDefinitionValidationTest.cpp)

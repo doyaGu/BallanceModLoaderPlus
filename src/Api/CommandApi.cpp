@@ -351,7 +351,7 @@ BML_CommandCompletionRequest BuildCompletionRequest(
 
 void CallbackCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
     if (!m_Context.GetModLoader().CanDispatchOwner(m_Owner)) { Shell::SetStatus(Shell::Status::Failure);return; }
-    auto ownerCall=m_Context.GetModLoader().LockModInvocation();
+    auto ownerCall = m_Context.GetModLoader().LockModInvocation();
     ActiveCall active(*this);
     int status = Shell::Status::Failure;
     try {
@@ -375,7 +375,7 @@ const std::vector<std::string>
 CallbackCommand::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
     if (!m_Complete || !m_Context.GetModLoader().CanDispatchOwner(m_Owner))
         return {};
-    auto ownerCall=m_Context.GetModLoader().LockModInvocation();
+    auto ownerCall = m_Context.GetModLoader().LockModInvocation();
 
     ActiveCall active(*this);
     try {
@@ -407,7 +407,8 @@ CallbackCommand::GetTabCompletion(ModContext *, const std::vector<std::string> &
 
 struct CommandApi::Entry {
     Entry(ModContext &context, std::string owner, const BML_CommandDefinition &definition)
-        : Owner(std::move(owner)), Command(context, context.GetModLoader().FindMod(Owner.c_str()), definition) {}
+        : Owner(std::move(owner)),
+          Command(context, context.GetModLoader().FindMod(Owner.c_str()), definition) {}
 
     std::string Owner;
     CallbackCommand Command;
@@ -449,7 +450,7 @@ int CommandApi::Register(const std::string &owner,
         if (candidate == BML_COMMAND_INVALID_HANDLE)
             return BML_ERROR_BUSY;
 
-        auto *ownerMod=m_Context.GetModLoader().FindMod(owner.c_str());
+        auto *ownerMod = m_Context.GetModLoader().FindMod(owner.c_str());
         if(!ownerMod||!AcceptsModWork(m_Context,*ownerMod))return BML_ERROR_FROZEN;
         auto entry = std::make_shared<Entry>(m_Context, owner, definition);
         Entry *registrar = entry.get();

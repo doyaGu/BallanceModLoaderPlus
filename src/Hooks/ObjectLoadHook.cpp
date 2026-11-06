@@ -122,8 +122,8 @@ int HookLifecycle::ObjectLoad(const CKBehaviorContext &behcontext) {
             auto *behavior = static_cast<CKBehavior *>(obj);
             if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
                 modContext->BehaviorScriptLoaded(behavior);
-                modContext->GetModLoader().BroadcastCallback<ModEvent::OnLoadScript>(callbackName.c_str(),
-                                                                      behavior);
+                modContext->GetModLoader().BroadcastCallback<ModEvent::OnLoadScript>(
+                    callbackName.c_str(), behavior);
             }
         }
     }

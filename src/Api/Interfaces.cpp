@@ -328,22 +328,23 @@ int BML_CDECL ModMenuRegisterPage(
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
 
-        const std::string owner = context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
+        const std::string owner =
+            context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
-        if (!context->GetModLoader().NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Draw)))
+        if (!context->GetModLoader().NativeModOwnsAddress(
+                owner, reinterpret_cast<const void *>(page->Draw)))
             return BML_ERROR_ACCESS_DENIED;
-        if (page->Enter &&
-            !context->GetModLoader().NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Enter))) {
-            return BML_ERROR_ACCESS_DENIED;
-        }
-        if (page->Leave &&
-            !context->GetModLoader().NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Leave))) {
+        if (page->Enter && !context->GetModLoader().NativeModOwnsAddress(
+                               owner, reinterpret_cast<const void *>(page->Enter))) {
             return BML_ERROR_ACCESS_DENIED;
         }
-        if (page->Release &&
-            !context->GetModLoader().NativeModOwnsAddress(
-                owner, reinterpret_cast<const void *>(page->Release))) {
+        if (page->Leave && !context->GetModLoader().NativeModOwnsAddress(
+                               owner, reinterpret_cast<const void *>(page->Leave))) {
+            return BML_ERROR_ACCESS_DENIED;
+        }
+        if (page->Release && !context->GetModLoader().NativeModOwnsAddress(
+                                 owner, reinterpret_cast<const void *>(page->Release))) {
             return BML_ERROR_ACCESS_DENIED;
         }
         return context->GetModMenuPages().Register(owner, *page);
@@ -366,7 +367,8 @@ int BML_CDECL ModMenuUnregisterPage(const char *ownerId, const char *pageId) {
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
 
-        const std::string owner = context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
+        const std::string owner =
+            context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         return context->GetModMenuPages().Unregister(owner, pageId);

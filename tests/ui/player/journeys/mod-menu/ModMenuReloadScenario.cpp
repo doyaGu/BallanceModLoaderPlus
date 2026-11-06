@@ -18,7 +18,8 @@ constexpr char ReloadModId[] = "bml.ui.mod-menu-reload";
 
 BML::ScriptMod *FindReloadMod() {
     ModContext *context = BML_GetModContext();
-    return context ? dynamic_cast<BML::ScriptMod *>(context->GetModLoader().FindMod(ReloadModId)) : nullptr;
+    return context ? dynamic_cast<BML::ScriptMod *>(context->GetModLoader().FindMod(ReloadModId))
+                   : nullptr;
 }
 
 bool WaitForReload(ImGuiTestContext *ctx, unsigned int previousGeneration) {

@@ -21,10 +21,3 @@ add_bml_test(InterfaceStructOffsetsTest
         SOURCES
         InterfaceStructOffsetsTest.cpp
 )
-
-add_bml_test(LegacyModVersionTest
-        SOURCES
-        LegacyModVersionTest.cpp
-        DEPENDENCIES
-        CK2
-)

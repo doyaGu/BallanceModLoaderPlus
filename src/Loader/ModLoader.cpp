@@ -17,7 +17,7 @@
 #include "Timer/TimerScheduler.h"
 #include "Logging/Logger.h"
 #include "UI/Overlay.h"
-#include "Loader/LegacyModVersion.h"
+#include "Loader/ModDefinitionValidation.h"
 #include "Mods/BMLMod.h"
 #include "Mods/NewBallTypeMod.h"
 #include "PathUtils.h"
@@ -252,20 +252,22 @@ bool ModLoader::CanUseProvider(const ModRecord *consumer, const ModRecord *provi
         return false;
     if (consumer == provider)
         return true;
-    const auto id = const_cast<ModRecord *>(provider)->GetID();
+    const auto id = provider->GetID();
     std::lock_guard<std::mutex> lock(m_StateMutex);
     auto it = m_ModDependencies.find(const_cast<ModRecord *>(consumer));
     if (it == m_ModDependencies.end())
         return false;
     for (const auto &d : it->second)
-        if (d.Id == id)
-            return !(BML::ParseLegacyModVersion(const_cast<ModRecord *>(provider)->GetVersion()) <
-                     d.MinVersion);
+        if (d.Id == id) {
+            BMLVersion version(0, 0, 0);
+            const char *text = provider->GetVersion();
+            return text && BML::ParseModVersion(text, version) && !(version < d.MinVersion);
+        }
     return false;
 }
 
 bool ModLoader::HasLiveDependents(const ModRecord *provider) const {
-    const std::string id = const_cast<ModRecord *>(provider)->GetID();
+    const std::string id = provider->GetID();
     for (const auto &entry : m_CNativeMods) {
         if (entry.first == provider || !entry.second->HasInstance())
             continue;
@@ -959,7 +961,15 @@ int ModLoader::EvaluateDependencies(ModRecord *mod, std::string *diagnostic) con
             }
 #endif
             const char *verStr = depMod->GetVersion();
-            BMLVersion have = BML::ParseLegacyModVersion(verStr);
+            BMLVersion have(0, 0, 0);
+            if (!verStr || !BML::ParseModVersion(verStr, have)) {
+                if (dependency.Optional)
+                    continue;
+                if (diagnostic)
+                    *diagnostic =
+                        "required dependency '" + dependency.Id + "' has an invalid version.";
+                return 0;
+            }
 
             // If version is older than required and it's not optional -> not satisfied
             if (have < dependency.MinVersion) {
@@ -1342,8 +1352,7 @@ bool ModLoader::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         if (fields)
             fields->push_back({key, value});
     };
-    auto addDependencyBoundary = [&](const ModDependency &dependency,
-                                     const char *action) {
+    auto addDependencyBoundary = [&](const ModDependency &dependency, const char *action) {
         addField("boundary", "dependency_graph");
         addField("cascade", "false");
         addField("dependency", dependency.Id);
@@ -1415,7 +1424,15 @@ bool ModLoader::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
             }
             continue;
         }
-        const BMLVersion have = BML::ParseLegacyModVersion(dependencyIt->Version.c_str());
+        BMLVersion have(0, 0, 0);
+        if (!BML::ParseModVersion(dependencyIt->Version, have)) {
+            if (dependency.Optional)
+                continue;
+            diagnostic =
+                "Script mod reload dependency '" + dependency.Id + "' has an invalid version.";
+            addDependencyBoundary(dependency, "fix_dependency_metadata");
+            return false;
+        }
         if (have < dependency.MinVersion && !dependency.Optional) {
             diagnostic = "Script mod reload dependency '" + dependency.Id + "' is older than required. "
                          "Hot reload does not cascade reload dependencies; update/reload that dependency first, or restart.";
@@ -1425,7 +1442,7 @@ bool ModLoader::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
     }
 
     BMLVersion candidateVersion(0, 0, 0);
-    if (!BML::ParseScriptModVersion(candidate.Version, candidateVersion)) {
+    if (!BML::ParseModVersion(candidate.Version, candidateVersion)) {
         diagnostic = "Script mod reload candidate has an invalid version.";
         addField("boundary", "mod_version");
         addField("action", "fix_metadata");
@@ -1649,6 +1666,14 @@ bool ModLoader::RegisterMod(ModRecord *mod, const std::shared_ptr<void> &dllHand
             return false;
         }
         modId = reportedId;
+        const char *reportedVersion = mod->GetVersion();
+        BMLVersion version(0, 0, 0);
+        if (!reportedVersion || !BML::ParseModVersion(reportedVersion, version)) {
+            m_Context.GetLogger()->Error(
+                "Mod registration failed for %s: version must be MAJOR.MINOR.PATCH.",
+                modId.c_str());
+            return false;
+        }
 
         BMLVersion curVer;
         BMLVersion reqVer = mod->GetBMLVersion();

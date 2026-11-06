@@ -141,7 +141,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
         reflected.Version = RequireMetadataArg(tag, "version", record.Metadata, diagnostics);
         if (!reflected.Version.empty()) {
             BMLVersion version(0, 0, 0);
-            if (!ParseScriptModVersion(reflected.Version, version))
+            if (!ParseModVersion(reflected.Version, version))
                 diagnostics.push_back("bml.mod version must use canonical MAJOR.MINOR.PATCH decimal form.");
         }
         reflected.Author = MetadataArg(tag, "author");
@@ -155,7 +155,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
         if (!bmlVersion.empty()) {
             reflected.Metadata["bml"] = bmlVersion;
             BMLVersion version(0, 0, 0);
-            if (ParseScriptModVersion(bmlVersion, version))
+            if (ParseModVersion(bmlVersion, version))
                 reflected.MinBmlVersion = version;
             else
                 diagnostics.push_back("bml.mod bml must use canonical MAJOR.MINOR.PATCH decimal form.");
@@ -174,7 +174,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
             dependency.Id = RequireMetadataArg(tag, "id", record.Metadata, diagnostics);
             dependency.Optional = tag.Name == "bml.optional";
             const std::string version = MetadataArg(tag, "version");
-            if (!version.empty() && !ParseScriptModVersion(version, dependency.MinVersion))
+            if (!version.empty() && !ParseModVersion(version, dependency.MinVersion))
                 diagnostics.push_back(tag.Name + " version must use canonical MAJOR.MINOR.PATCH decimal form.");
             reflected.Dependencies.push_back(dependency);
             continue;

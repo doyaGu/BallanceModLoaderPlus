@@ -1156,7 +1156,8 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
         return false;
     }
 
-    if (!m_Context || !m_Context->GetModLoader().ValidateScriptModReloadDependencies(this, candidate, diagnostic, fields))
+    if (!m_Context || !m_Context->GetModLoader().ValidateScriptModReloadDependencies(
+                          this, candidate, diagnostic, fields))
         return false;
 
     return true;
@@ -1519,16 +1520,14 @@ void ScriptMod::ProcessFailureCleanup() {
     TouchModGeneration();
 
     if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
-        m_Context->GetModLoader().GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
-                                                     "ScriptRuntimeResourcesReleased",
-                                                     GetID() ? GetID() : "",
-                                                     "runtime",
-                                                     failure.EntryPath,
-                                                     "Released BML-managed script resources after runtime failure.",
-                                                     {{"boundary", "bml_managed_resources"},
-                                                      {"notRestored", "game-world side effects made by script code"},
-                                                      {"action", "fix_script_and_reload_or_restart"}},
-                                                     GetReloadAttemptId());
+        m_Context->GetModLoader().GetScriptDevTools()->PublishEvent(
+            ScriptDevEventSeverity::Warn, "ScriptRuntimeResourcesReleased", GetID() ? GetID() : "",
+            "runtime", failure.EntryPath,
+            "Released BML-managed script resources after runtime failure.",
+            {{"boundary", "bml_managed_resources"},
+             {"notRestored", "game-world side effects made by script code"},
+             {"action", "fix_script_and_reload_or_restart"}},
+            GetReloadAttemptId());
     }
     clearGate();
 }
@@ -1654,11 +1653,10 @@ std::unique_ptr<ScriptModReloadCandidate> ScriptMod::PrepareReloadCandidate(cons
         if (result.SourcePath.empty())
             result.SourcePath = diagnostic.EntryPath;
         if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
-            m_Context->GetModLoader().GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
-                                                              options.DryRun ? "ScriptReloadDryRunDiagnostic" : "ScriptReloadDiagnostic",
-                                                              GetID() ? GetID() : "",
-                                                              diagnostic,
-                                                              GetReloadAttemptId());
+            m_Context->GetModLoader().GetScriptDevTools()->PublishDiagnostic(
+                ScriptDevEventSeverity::Error,
+                options.DryRun ? "ScriptReloadDryRunDiagnostic" : "ScriptReloadDiagnostic",
+                GetID() ? GetID() : "", diagnostic, GetReloadAttemptId());
         }
         return finishFailure(FormatScriptDiagnostic(diagnostic), &diagnostic);
     };
@@ -1667,11 +1665,10 @@ std::unique_ptr<ScriptModReloadCandidate> ScriptMod::PrepareReloadCandidate(cons
         if (result.SourcePath.empty())
             result.SourcePath = diagnostic.EntryPath;
         if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
-            m_Context->GetModLoader().GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
-                                                              options.DryRun ? "ScriptReloadDryRunDiagnostic" : "ScriptReloadDiagnostic",
-                                                              GetID() ? GetID() : "",
-                                                              diagnostic,
-                                                              GetReloadAttemptId());
+            m_Context->GetModLoader().GetScriptDevTools()->PublishDiagnostic(
+                ScriptDevEventSeverity::Error,
+                options.DryRun ? "ScriptReloadDryRunDiagnostic" : "ScriptReloadDiagnostic",
+                GetID() ? GetID() : "", diagnostic, GetReloadAttemptId());
         }
         return finishFailure(FormatScriptDiagnostic(diagnostic), &diagnostic, &fields);
     };
@@ -1741,14 +1738,10 @@ std::unique_ptr<ScriptModReloadCandidate> ScriptMod::PrepareReloadCandidate(cons
                             : std::string();
     SetReloadDiagnostic(std::string());
     if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
-        m_Context->GetModLoader().GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
-                                                     "ScriptReloadPrepared",
-                                                     GetID() ? GetID() : "",
-                                                     "reload",
-                                                     state.Snapshot.CommitEntryPathUtf8,
-                                                     "Script reload candidate prepared.",
-                                                     BuildReloadSnapshotEventFields(state.Snapshot),
-                                                     GetReloadAttemptId());
+        m_Context->GetModLoader().GetScriptDevTools()->PublishEvent(
+            ScriptDevEventSeverity::Info, "ScriptReloadPrepared", GetID() ? GetID() : "", "reload",
+            state.Snapshot.CommitEntryPathUtf8, "Script reload candidate prepared.",
+            BuildReloadSnapshotEventFields(state.Snapshot), GetReloadAttemptId());
     }
     return candidate;
 }
@@ -1793,11 +1786,9 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
         if (result.SourcePath.empty())
             result.SourcePath = diagnostic.EntryPath;
         if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
-            m_Context->GetModLoader().GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
-                                                              "ScriptReloadDiagnostic",
-                                                              GetID() ? GetID() : "",
-                                                              diagnostic,
-                                                              GetReloadAttemptId());
+            m_Context->GetModLoader().GetScriptDevTools()->PublishDiagnostic(
+                ScriptDevEventSeverity::Error, "ScriptReloadDiagnostic", GetID() ? GetID() : "",
+                diagnostic, GetReloadAttemptId());
         }
         return finish(false, FormatScriptDiagnostic(diagnostic), &diagnostic, &fields);
     };

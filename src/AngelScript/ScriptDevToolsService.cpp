@@ -16,7 +16,7 @@
 #endif
 
 #include "CKAngelScriptAdapter.h"
-#include "Loader/LegacyModVersion.h"
+#include "Loader/ModDefinitionValidation.h"
 #include "Loader/ModContext.h"
 #include "ScriptLibraryRegistry.h"
 #include "ScriptLibraryServices.h"
@@ -937,11 +937,14 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
         item.Id = dependency.Id;
         item.MinVersion = dependency.MinVersion.ToString();
         item.Optional = dependency.Optional;
-        ModRecord *target = m_Context ? m_Context->GetModLoader().FindMod(dependency.Id.c_str()) : nullptr;
+        ModRecord *target =
+            m_Context ? m_Context->GetModLoader().FindMod(dependency.Id.c_str()) : nullptr;
         item.Satisfied = dependency.Optional;
         if (!dependency.Optional && target && !IsFailedScriptMod(target)) {
-            item.Satisfied = ParseLegacyModVersion(target->GetVersion()) >=
-                             dependency.MinVersion;
+            BMLVersion version(0, 0, 0);
+            const char *text = target->GetVersion();
+            item.Satisfied =
+                text && ParseModVersion(text, version) && version >= dependency.MinVersion;
         }
         snapshot.Dependencies.push_back(std::move(item));
     }
