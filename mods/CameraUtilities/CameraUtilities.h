@@ -1,40 +1,33 @@
 #pragma once
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
+class CameraUtilities : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-class CameraUtilities : public IMod {
-public:
-    explicit CameraUtilities(IBML *bml) : IMod(bml) {}
+  public:
 
-    const char *GetID() override { return "CameraUtilities"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "Camera Utilities"; }
-    const char *GetAuthor() override { return "Gamepiaynmo & Kakuty"; }
-    const char *GetDescription() override { return "Camera utilities for Ballance."; }
-    DECLARE_BML_VERSION;
 
-    void OnLoad() override;
-    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                      XObjectArray *objArray, CKObject *masterObj) override;
-    void OnProcess() override;
+    void OnLoad(const BML::Mod::Context &) override;
+    void OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) override;
+    void OnProcess(const BML::Mod::Context &) override;
 
-private:
-    InputHook *m_InputHook = nullptr;
+  private:
     float m_DeltaTime = 0.0f;
 
-    IProperty *m_CamRot[2] = {};
-    IProperty *m_CamY[2] = {};
-    IProperty *m_CamZ[2] = {};
-    IProperty *m_Cam45 = nullptr;
-    IProperty *m_CamReset = nullptr;
-    IProperty *m_CamOn = nullptr;
+    BML::Config::Property m_CamRot[2] = {};
+    BML::Config::Property m_CamY[2] = {};
+    BML::Config::Property m_CamZ[2] = {};
+    BML::Config::Property m_Cam45 = {};
+    BML::Config::Property m_CamReset = {};
+    BML::Config::Property m_CamOn = {};
 
-    CK3dEntity *m_CamPos = nullptr;
-    CK3dEntity *m_CamOrient = nullptr;
-    CK3dEntity *m_CamOrientRef = nullptr;
-    CK3dEntity *m_CamTarget = nullptr;
+    ModSupport::Object<CK3dEntity> m_CamPos{};
+    ModSupport::Object<CK3dEntity> m_CamOrient{};
+    ModSupport::Object<CK3dEntity> m_CamOrientRef{};
+    ModSupport::Object<CK3dEntity> m_CamTarget{};
 };
