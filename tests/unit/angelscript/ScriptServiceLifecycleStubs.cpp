@@ -13,7 +13,7 @@ Logger *IMod::GetLogger() {
     return nullptr;
 }
 
-IConfig *IMod::GetConfig() {
+Config *IMod::GetConfig() {
     return nullptr;
 }
 

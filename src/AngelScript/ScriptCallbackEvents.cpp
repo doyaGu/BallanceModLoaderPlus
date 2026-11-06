@@ -1,4 +1,5 @@
 #include "ScriptCallbackEvents.h"
+#include "Config/Config.h"
 
 namespace BML {
 
@@ -192,11 +193,11 @@ bool ScriptCommandEventView::IsCheat() const {
     return m_IsCheat;
 }
 
-ScriptConfigEventView::ScriptConfigEventView(const char *modId, const char *category, const char *key, IProperty *property)
-    : m_ModId(SafeString(modId)),
-      m_Category(SafeString(category)),
-      m_Key(SafeString(key)),
-      m_Type(property ? static_cast<int>(property->GetType()) : static_cast<int>(IProperty::NONE)),
+ScriptConfigEventView::ScriptConfigEventView(const char *modId, const char *category,
+                                             const char *key, Property *property)
+    : m_ModId(SafeString(modId)), m_Category(SafeString(category)), m_Key(SafeString(key)),
+      m_Type(property ? static_cast<int>(property->GetType())
+                      : static_cast<int>(PropertyType::NONE)),
       m_HasProperty(property != nullptr) {}
 
 std::string ScriptConfigEventView::GetModId() const {

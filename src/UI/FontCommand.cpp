@@ -13,7 +13,7 @@
 #include <utility>
 
 #include "Loader/ModContext.h"
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 
 #include "StringUtils.h"
 

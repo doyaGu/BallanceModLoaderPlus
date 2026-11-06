@@ -5,7 +5,7 @@
 #include <optional>
 #include <string>
 
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 
 namespace CommandBarTheme {
 namespace {
@@ -41,10 +41,10 @@ constexpr std::array<RoleDefinition, Settings::RoleCount> Roles{{
 
 } // namespace
 
-void Settings::Define(IConfig &config) {
+void Settings::Define(Config &config) {
     for (std::size_t index = 0; index < Roles.size(); ++index) {
         const RoleDefinition &role = Roles[index];
-        IProperty *property = config.GetProperty(Category, role.key);
+        Property *property = config.GetProperty(Category, role.key);
         m_Properties[index] = property;
         if (!property)
             continue;
@@ -58,7 +58,7 @@ void Settings::Define(IConfig &config) {
 }
 
 bool Settings::Owns(const char *category, const char *key,
-                    const IProperty *property) const {
+                    const Property *property) const {
     if (!category || !key || !property || std::strcmp(category, Category) != 0)
         return false;
 
@@ -72,7 +72,7 @@ bool Settings::Owns(const char *category, const char *key,
 SyntaxPalette Settings::ReadPalette() const {
     SyntaxPalette palette = DefaultPalette;
     for (std::size_t index = 0; index < Roles.size(); ++index) {
-        IProperty *property = m_Properties[index];
+        Property *property = m_Properties[index];
         if (!property)
             continue;
         const std::optional<Color> parsed = UiColor::ParseHex(property->GetString());

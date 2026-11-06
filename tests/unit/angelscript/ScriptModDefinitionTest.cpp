@@ -7,7 +7,7 @@
 
 IMod::~IMod() = default;
 Logger *IMod::GetLogger() { return nullptr; }
-IConfig *IMod::GetConfig() { return nullptr; }
+Config *IMod::GetConfig() { return nullptr; }
 
 namespace {
 

@@ -13,7 +13,7 @@
 #include "UI/BuiHost.h"
 #include "BML/DataShare.h"
 #include "Loader/ModContext.h"
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 #include "Logging/Logger.h"
 
 #include "Api/ObjectRefs.h"
@@ -124,7 +124,7 @@ CustomMaps::~CustomMaps() {
     ReleaseDataShare();
 }
 
-void CustomMaps::InitConfig(IConfig &config) {
+void CustomMaps::InitConfig(Config &config) {
     m_LevelNumber = config.GetProperty("CustomMap", "LevelNumber");
     m_ShowTooltip = config.GetProperty("CustomMap", "ShowTooltip");
     m_MaxDepth = config.GetProperty("CustomMap", "MaxDepth");
@@ -150,7 +150,7 @@ void CustomMaps::ApplyConfig() {
         m_Menu.SetMaxDepth(m_MaxDepth->GetInteger());
 }
 
-bool CustomMaps::OnModifyConfig(const char *category, const char *key, IProperty *property) {
+bool CustomMaps::OnModifyConfig(const char *category, const char *key, Property *property) {
     if (!property || std::strcmp(category ? category : "", "CustomMap") != 0)
         return false;
 

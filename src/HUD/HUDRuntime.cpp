@@ -4,22 +4,22 @@
 #include <cstring>
 
 #include "Loader/ModContext.h"
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 #include "BML/Version.h"
 
 const HUDRuntime::Setting *HUDRuntime::GetSettings(size_t &count) {
     static const Setting settings[] = {
         {"ShowTitle", &HUDRuntime::m_ShowTitle,
-         [](HUDRuntime &hud, IProperty *property) { hud.ShowTitle(property->GetBoolean()); },
+         [](HUDRuntime &hud, Property *property) { hud.ShowTitle(property->GetBoolean()); },
          OnChange, false},
         {"ShowFPS", &HUDRuntime::m_ShowFPS,
-         [](HUDRuntime &hud, IProperty *property) { hud.ShowFPS(property->GetBoolean()); },
+         [](HUDRuntime &hud, Property *property) { hud.ShowFPS(property->GetBoolean()); },
          OnChange, false},
         {"ShowSRTimer", &HUDRuntime::m_ShowSRTimer,
-         [](HUDRuntime &hud, IProperty *property) { hud.ShowSRTimer(property->GetBoolean()); },
+         [](HUDRuntime &hud, Property *property) { hud.ShowSRTimer(property->GetBoolean()); },
          OnChange | OnLevelInit, true},
         {"FPSUpdateFrequency", &HUDRuntime::m_FPSUpdateFrequency,
-         [](HUDRuntime &hud, IProperty *property) {
+         [](HUDRuntime &hud, Property *property) {
              hud.SetFPSUpdateFrequency(static_cast<uint32_t>(std::max(1, property->GetInteger())));
          },
          Startup | OnChange, false},
@@ -31,7 +31,7 @@ const HUDRuntime::Setting *HUDRuntime::GetSettings(size_t &count) {
     return settings;
 }
 
-void HUDRuntime::InitConfig(IConfig &config) {
+void HUDRuntime::InitConfig(Config &config) {
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
@@ -58,7 +58,7 @@ void HUDRuntime::ApplyConfig() {
     ApplySettings(Startup);
 }
 
-bool HUDRuntime::OnModifyConfig(const char *category, const char *key, IProperty *property) {
+bool HUDRuntime::OnModifyConfig(const char *category, const char *key, Property *property) {
     if (!property || std::strcmp(category ? category : "", "HUD") != 0) {
         return false;
     }
@@ -91,7 +91,7 @@ void HUDRuntime::ApplySettings(ApplyWhen when) {
     }
 }
 
-void HUDRuntime::ApplySetting(const Setting &setting, IProperty *property, bool levelStarting) {
+void HUDRuntime::ApplySetting(const Setting &setting, Property *property, bool levelStarting) {
     if (!setting.apply || !property) {
         return;
     }

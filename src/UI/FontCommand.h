@@ -7,17 +7,17 @@
 #include "Console/ICommand.h"
 #include "UI/FontRuntime.h"
 
-class IProperty;
+class Property;
 
 struct FontCommandContext {
     using Profile = BML::UI::FontProfile;
 
     BML::UI::FontRuntime *Runtime = nullptr;
-    IProperty *PrimaryFace = nullptr;
-    IProperty *ReferenceSize = nullptr;
-    IProperty *FallbackFaces = nullptr;
-    IProperty *FallbackReferenceSize = nullptr;
-    IProperty *UseWindowsFallbacks = nullptr;
+    Property *PrimaryFace = nullptr;
+    Property *ReferenceSize = nullptr;
+    Property *FallbackFaces = nullptr;
+    Property *FallbackReferenceSize = nullptr;
+    Property *UseWindowsFallbacks = nullptr;
 
     bool IsComplete() const noexcept;
     Profile ReadProfile() const;

@@ -135,8 +135,7 @@ private:
 class ScriptCommandEventView {
 public:
     ScriptCommandEventView() = default;
-    ScriptCommandEventView(ScriptCommandEventPhase phase,
-                           ICommand *command,
+    ScriptCommandEventView(ScriptCommandEventPhase phase, ICommand *command,
                            const std::vector<std::string> *args);
 
     ScriptCommandEventPhase GetPhase() const { return m_Phase; }
@@ -160,7 +159,8 @@ private:
 class ScriptConfigEventView {
 public:
     ScriptConfigEventView() = default;
-    ScriptConfigEventView(const char *modId, const char *category, const char *key, IProperty *property);
+    ScriptConfigEventView(const char *modId, const char *category, const char *key,
+                          Property *property);
     std::string GetModId() const;
     std::string GetCategory() const;
     std::string GetKey() const;

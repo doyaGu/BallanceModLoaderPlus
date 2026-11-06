@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 #include "Loader/ModContext.h"
 #include "ScriptDevToolsService.h"
 #include "ScriptModReloadCandidateInternal.h"
@@ -492,7 +492,7 @@ void ScriptMod::OnLoadScript(const char *filename, CKBehavior *script) {
                           diagnostic);
 }
 
-void ScriptMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
+void ScriptMod::OnModifyConfig(const char *category, const char *key, Property *prop) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
@@ -855,28 +855,28 @@ void ScriptMod::LogError(const std::string &message) {
 bool ScriptMod::HasConfigCategory(const std::string &category) {
     if (!IsConfigKeyValid(category))
         return false;
-    IConfig *config = GetConfig();
+    Config *config = GetConfig();
     return config && config->HasCategory(category.c_str());
 }
 
 bool ScriptMod::HasConfigKey(const std::string &category, const std::string &key) {
     if (!IsConfigKeyValid(category) || !IsConfigKeyValid(key))
         return false;
-    IConfig *config = GetConfig();
+    Config *config = GetConfig();
     return config && config->HasKey(category.c_str(), key.c_str());
 }
 
-IProperty *ScriptMod::GetConfigProperty(const std::string &category, const std::string &key) {
+Property *ScriptMod::GetConfigProperty(const std::string &category, const std::string &key) {
     if (!IsConfigKeyValid(category) || !IsConfigKeyValid(key))
         return nullptr;
-    IConfig *config = GetConfig();
+    Config *config = GetConfig();
     return config ? config->GetProperty(category.c_str(), key.c_str()) : nullptr;
 }
 
 void ScriptMod::SetConfigCategoryComment(const std::string &category, const std::string &comment) {
     if (!IsConfigKeyValid(category))
         return;
-    IConfig *config = GetConfig();
+    Config *config = GetConfig();
     if (config)
         config->SetCategoryComment(category.c_str(), comment.c_str());
 }

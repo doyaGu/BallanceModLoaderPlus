@@ -1,6 +1,6 @@
 #include "ScriptApiSurface.h"
 
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 #include "Hooks/InputHook.h"
 #include "BML/ModMenu.h"
 #include "Timer/TimerScheduler.h"
@@ -187,12 +187,18 @@ static const ScriptEnumValueDescriptor kCommandEventPhaseValues[] = {
 };
 
 static const ScriptEnumValueDescriptor kConfigPropertyTypeValues[] = {
-    {"CONFIG_PROPERTY_STRING", IProperty::STRING, "ConfigPropertyType::CONFIG_PROPERTY_STRING"},
-    {"CONFIG_PROPERTY_BOOLEAN", IProperty::BOOLEAN, "ConfigPropertyType::CONFIG_PROPERTY_BOOLEAN"},
-    {"CONFIG_PROPERTY_INTEGER", IProperty::INTEGER, "ConfigPropertyType::CONFIG_PROPERTY_INTEGER"},
-    {"CONFIG_PROPERTY_KEY", IProperty::KEY, "ConfigPropertyType::CONFIG_PROPERTY_KEY"},
-    {"CONFIG_PROPERTY_FLOAT", IProperty::FLOAT, "ConfigPropertyType::CONFIG_PROPERTY_FLOAT"},
-    {"CONFIG_PROPERTY_NONE", IProperty::NONE, "ConfigPropertyType::CONFIG_PROPERTY_NONE"},
+    {"CONFIG_PROPERTY_STRING", static_cast<int>(PropertyType::STRING),
+     "Configstatic_cast<int>(PropertyType::CONFIG_PROPERTY_STRING)"},
+    {"CONFIG_PROPERTY_BOOLEAN", static_cast<int>(PropertyType::BOOLEAN),
+     "Configstatic_cast<int>(PropertyType::CONFIG_PROPERTY_BOOLEAN)"},
+    {"CONFIG_PROPERTY_INTEGER", static_cast<int>(PropertyType::INTEGER),
+     "Configstatic_cast<int>(PropertyType::CONFIG_PROPERTY_INTEGER)"},
+    {"CONFIG_PROPERTY_KEY", static_cast<int>(PropertyType::KEY),
+     "Configstatic_cast<int>(PropertyType::CONFIG_PROPERTY_KEY)"},
+    {"CONFIG_PROPERTY_FLOAT", static_cast<int>(PropertyType::FLOAT),
+     "Configstatic_cast<int>(PropertyType::CONFIG_PROPERTY_FLOAT)"},
+    {"CONFIG_PROPERTY_NONE", static_cast<int>(PropertyType::NONE),
+     "Configstatic_cast<int>(PropertyType::CONFIG_PROPERTY_NONE)"},
 };
 
 static const ScriptEnumValueDescriptor kConfigPropertyEditorValues[] = {

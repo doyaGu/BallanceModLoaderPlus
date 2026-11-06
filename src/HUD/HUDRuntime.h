@@ -10,8 +10,8 @@
 #include "HUD/SRTimer.h"
 
 class ModContext;
-class IConfig;
-class IProperty;
+class Config;
+class Property;
 class HUDCommand;
 
 enum HudTypes {
@@ -22,9 +22,9 @@ enum HudTypes {
 
 class HUDRuntime {
 public:
-    void InitConfig(IConfig &config);
+    void InitConfig(Config &config);
     void ApplyConfig();
-    bool OnModifyConfig(const char *category, const char *key, IProperty *property);
+    bool OnModifyConfig(const char *category, const char *key, Property *property);
 
     void OnLoad(ModContext &bml);
     void OnUnload();
@@ -60,15 +60,15 @@ private:
 
     struct Setting {
         const char *key;
-        IProperty *HUDRuntime::*property;
-        void (*apply)(HUDRuntime &hud, IProperty *property);
+        Property *HUDRuntime::*property;
+        void (*apply)(HUDRuntime &hud, Property *property);
         unsigned when;
         bool requiresIngame;
     };
 
     static const Setting *GetSettings(size_t &count);
     void ApplySettings(ApplyWhen when);
-    void ApplySetting(const Setting &setting, IProperty *property, bool levelStarting = false);
+    void ApplySetting(const Setting &setting, Property *property, bool levelStarting = false);
 
     void UpdateTimerDisplay();
     void UpdateCheatState(bool cheatEnabled);
@@ -84,10 +84,10 @@ private:
     std::shared_ptr<HUDElement> m_SRElement;
     std::shared_ptr<HUDElement> m_CheatElement;
 
-    IProperty *m_ShowTitle = nullptr;
-    IProperty *m_ShowFPS = nullptr;
-    IProperty *m_ShowSRTimer = nullptr;
-    IProperty *m_FPSUpdateFrequency = nullptr;
+    Property *m_ShowTitle = nullptr;
+    Property *m_ShowFPS = nullptr;
+    Property *m_ShowSRTimer = nullptr;
+    Property *m_FPSUpdateFrequency = nullptr;
 };
 
 #endif // BML_HUDRUNTIME_H

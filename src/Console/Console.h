@@ -9,9 +9,9 @@
 #include "Console/Shell/ShellHistory.h"
 
 class ModContext;
-class IConfig;
+class Config;
 class Logger;
-class IProperty;
+class Property;
 
 namespace BML {
     class CommandContext;
@@ -19,9 +19,9 @@ namespace BML {
 
 class Console {
 public:
-    void InitConfig(IConfig &config);
+    void InitConfig(Config &config);
     void ApplyConfig();
-    bool OnModifyConfig(const char *category, const char *key, IProperty *property);
+    bool OnModifyConfig(const char *category, const char *key, Property *property);
 
     void OnLoad(ModContext &bml, BML::CommandContext &commands, Logger &logger);
     void OnUnload();
@@ -43,15 +43,15 @@ private:
     struct Setting {
         const char *category;
         const char *key;
-        IProperty *Console::*property;
+        Property *Console::*property;
         SettingDefault defaultValue;
         const char *comment;
-        void (*apply)(Console &console, IProperty *property);
+        void (*apply)(Console &console, Property *property);
     };
 
     static const Setting *GetSettings(size_t &count);
-    static void DefineSetting(const Setting &setting, IProperty *property);
-    void ApplySetting(const Setting &setting, IProperty *property);
+    static void DefineSetting(const Setting &setting, Property *property);
+    void ApplySetting(const Setting &setting, Property *property);
     void ApplyCommandBarFeatures();
     void ApplyMessageBoardDisplayPolicy();
 
@@ -66,19 +66,19 @@ private:
     CommandBarTheme::Settings m_SyntaxThemeSettings;
     MessageBoard m_MessageBoard;
 
-    IProperty *m_MessageDuration = nullptr;
-    IProperty *m_TabColumns = nullptr;
-    IProperty *m_LineSpacing = nullptr;
-    IProperty *m_MessageBackgroundAlpha = nullptr;
-    IProperty *m_FadeMaxAlpha = nullptr;
-    IProperty *m_KeepOpen = nullptr;
-    IProperty *m_EnableSyntaxHighlighting = nullptr;
-    IProperty *m_EnableTabCompletion = nullptr;
-    IProperty *m_EnableHistorySuggestions = nullptr;
-    IProperty *m_EnableReverseHistorySearch = nullptr;
-    IProperty *m_EnableHistoryNavigation = nullptr;
-    IProperty *m_ShowNotifications = nullptr;
-    IProperty *m_ShowScrollback = nullptr;
+    Property *m_MessageDuration = nullptr;
+    Property *m_TabColumns = nullptr;
+    Property *m_LineSpacing = nullptr;
+    Property *m_MessageBackgroundAlpha = nullptr;
+    Property *m_FadeMaxAlpha = nullptr;
+    Property *m_KeepOpen = nullptr;
+    Property *m_EnableSyntaxHighlighting = nullptr;
+    Property *m_EnableTabCompletion = nullptr;
+    Property *m_EnableHistorySuggestions = nullptr;
+    Property *m_EnableReverseHistorySearch = nullptr;
+    Property *m_EnableHistoryNavigation = nullptr;
+    Property *m_ShowNotifications = nullptr;
+    Property *m_ShowScrollback = nullptr;
 };
 
 #endif // BML_CONSOLE_H

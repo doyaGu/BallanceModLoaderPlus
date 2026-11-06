@@ -3,7 +3,7 @@
 #include <algorithm>
 
 #include "Loader/ModContext.h"
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 #include "Logging/Logger.h"
 
 #include "UI/AnsiText.h"
@@ -24,55 +24,55 @@ const Console::Setting *Console::GetSettings(size_t &count) {
     static const Setting settings[] = {
         {CommandBarCategory, "MessageDuration", &Console::m_MessageDuration, 6.0f,
          "Maximum visible time of each notification message, in seconds (default: 6)",
-         [](Console &console, IProperty *property) {
+         [](Console &console, Property *property) {
              console.m_MessageBoard.SetMaxTimer(std::max(2000.0f, property->GetFloat() * 1000.0f));
          }},
         {CommandBarCategory, "TabColumns", &Console::m_TabColumns, 4,
          "Tab width in columns for message wrapping (1..64, default: 4)",
-         [](Console &console, IProperty *property) {
+         [](Console &console, Property *property) {
              console.m_MessageBoard.SetTabColumns(std::max(1, property->GetInteger()));
          }},
         {CommandBarCategory, "LineSpacing", &Console::m_LineSpacing, -1.0f,
          "Line spacing between wrapped lines in messages (-1 to follow ImGui style).",
-         [](Console &console, IProperty *property) {
+         [](Console &console, Property *property) {
              console.m_MessageBoard.SetLineSpacing(property->GetFloat());
          }},
         {CommandBarCategory, "MessageBackgroundAlpha", &Console::m_MessageBackgroundAlpha, 0.80f,
          "Alpha scale for message backgrounds (0..1, default: 0.80)",
-         [](Console &console, IProperty *property) {
+         [](Console &console, Property *property) {
              console.m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
          }},
         {CommandBarCategory, "FadeMaxAlpha", &Console::m_FadeMaxAlpha, 1.0f,
          "Maximum text/background alpha in notifications (0..1, default: 1.0)",
-         [](Console &console, IProperty *property) {
+         [](Console &console, Property *property) {
              console.m_MessageBoard.SetFadeMaxAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
          }},
         {CommandBarCategory, "KeepOpen", &Console::m_KeepOpen, false,
          "Keep the command bar open after a command runs (default: false)",
-         [](Console &console, IProperty *property) {
+         [](Console &console, Property *property) {
              console.m_CommandBar.SetKeepOpen(property->GetBoolean());
          }},
         {CommandBarCategory, "EnableSyntaxHighlighting", &Console::m_EnableSyntaxHighlighting, true,
          "Colour commands, strings, variables, operators, comments, and syntax errors.",
-         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+         [](Console &console, Property *) { console.ApplyCommandBarFeatures(); }},
         {CommandBarCategory, "EnableTabCompletion", &Console::m_EnableTabCompletion, true,
          "Enable Tab completion and the completion candidate rail.",
-         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+         [](Console &console, Property *) { console.ApplyCommandBarFeatures(); }},
         {CommandBarCategory, "EnableHistorySuggestions", &Console::m_EnableHistorySuggestions, true,
          "Show and accept inline suggestions from command history.",
-         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+         [](Console &console, Property *) { console.ApplyCommandBarFeatures(); }},
         {CommandBarCategory, "EnableReverseHistorySearch", &Console::m_EnableReverseHistorySearch, true,
          "Enable Ctrl+R reverse history search and its transient rail.",
-         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+         [](Console &console, Property *) { console.ApplyCommandBarFeatures(); }},
         {CommandBarCategory, "EnableHistoryNavigation", &Console::m_EnableHistoryNavigation, true,
          "Enable filtered command-history navigation with Up and Down.",
-         [](Console &console, IProperty *) { console.ApplyCommandBarFeatures(); }},
+         [](Console &console, Property *) { console.ApplyCommandBarFeatures(); }},
         {CommandBarCategory, "ShowNotifications", &Console::m_ShowNotifications, true,
          "Show timed notification messages while the command bar is closed.",
-         [](Console &console, IProperty *) { console.ApplyMessageBoardDisplayPolicy(); }},
+         [](Console &console, Property *) { console.ApplyMessageBoardDisplayPolicy(); }},
         {CommandBarCategory, "ShowScrollback", &Console::m_ShowScrollback, true,
          "Show stored message scrollback while the command bar is open.",
-         [](Console &console, IProperty *) { console.ApplyMessageBoardDisplayPolicy(); }},
+         [](Console &console, Property *) { console.ApplyMessageBoardDisplayPolicy(); }},
     };
     static_assert(sizeof(settings) / sizeof(settings[0]) == 13,
                   "Every built-in console config property must have one settings-table entry");
@@ -81,12 +81,12 @@ const Console::Setting *Console::GetSettings(size_t &count) {
     return settings;
 }
 
-void Console::InitConfig(IConfig &config) {
+void Console::InitConfig(Config &config) {
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
         const Setting &setting = settings[i];
-        IProperty *property = config.GetProperty(setting.category, setting.key);
+        Property *property = config.GetProperty(setting.category, setting.key);
         this->*setting.property = property;
         DefineSetting(setting, property);
     }
@@ -95,7 +95,7 @@ void Console::InitConfig(IConfig &config) {
     m_SyntaxThemeSettings.Define(config);
 }
 
-void Console::DefineSetting(const Setting &setting, IProperty *property) {
+void Console::DefineSetting(const Setting &setting, Property *property) {
     if (!property)
         return;
     property->SetComment(setting.comment);
@@ -118,7 +118,7 @@ void Console::ApplyConfig() {
     m_CommandBar.SetSyntaxPalette(m_SyntaxThemeSettings.ReadPalette());
 }
 
-bool Console::OnModifyConfig(const char *category, const char *key, IProperty *property) {
+bool Console::OnModifyConfig(const char *category, const char *key, Property *property) {
     if (!property || !category || !key) {
         return false;
     }
@@ -144,7 +144,7 @@ bool Console::OnModifyConfig(const char *category, const char *key, IProperty *p
     return false;
 }
 
-void Console::ApplySetting(const Setting &setting, IProperty *property) {
+void Console::ApplySetting(const Setting &setting, Property *property) {
     if (setting.apply && property) {
         setting.apply(*this, property);
     }

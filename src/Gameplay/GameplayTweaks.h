@@ -4,14 +4,14 @@
 #include "BML/Behavior.hpp"
 
 class ModContext;
-class IConfig;
+class Config;
 class Logger;
-class IProperty;
+class Property;
 
 class GameplayTweaks {
 public:
-    void InitConfig(IConfig &config);
-    bool OnModifyConfig(const char *category, const char *key, IProperty *property);
+    void InitConfig(Config &config);
+    bool OnModifyConfig(const char *category, const char *key, Property *property);
 
     void OnLoad(ModContext &bml, Logger &logger);
     void OnUnload();
@@ -28,9 +28,9 @@ private:
     ModContext *m_BML = nullptr;
     Logger *m_Logger = nullptr;
 
-    IProperty *m_LanternAlphaTest = nullptr;
-    IProperty *m_FixLifeBall = nullptr;
-    IProperty *m_Overclock = nullptr;
+    Property *m_LanternAlphaTest = nullptr;
+    Property *m_FixLifeBall = nullptr;
+    Property *m_Overclock = nullptr;
 
     BML::Behavior::Session m_Behavior;
     BML::Behavior::Plan m_LanternPlan;

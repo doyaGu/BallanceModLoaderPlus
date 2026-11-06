@@ -154,7 +154,7 @@ public:
         BroadcastCallback(callback);
     }
 
-    void DispatchConfigChange(IMod *mod, const char *category, const char *key, IProperty *property);
+    void DispatchConfigChange(IMod *mod, const char *category, const char *key, Property *property);
 
 private:
     class ModInvocation final {

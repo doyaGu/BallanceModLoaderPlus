@@ -16,9 +16,9 @@ class CKBehavior;
 class CKContext;
 class CKDataArray;
 class ModContext;
-class IConfig;
+class Config;
 class Logger;
-class IProperty;
+class Property;
 struct BML_DataShare;
 
 namespace CustomMap {
@@ -34,9 +34,9 @@ public:
     CustomMaps(const CustomMaps &) = delete;
     CustomMaps &operator=(const CustomMaps &) = delete;
 
-    void InitConfig(IConfig &config);
+    void InitConfig(Config &config);
     void ApplyConfig();
-    bool OnModifyConfig(const char *category, const char *key, IProperty *property);
+    bool OnModifyConfig(const char *category, const char *key, Property *property);
 
     void OnLoad(ModContext &bml, Logger &logger,
                 const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
@@ -93,9 +93,9 @@ private:
     std::unique_ptr<CustomMap::MapCommand> m_Command;
     std::unique_ptr<CustomMap::LevelLoader> m_LevelLoader;
 
-    IProperty *m_LevelNumber = nullptr;
-    IProperty *m_ShowTooltip = nullptr;
-    IProperty *m_MaxDepth = nullptr;
+    Property *m_LevelNumber = nullptr;
+    Property *m_ShowTooltip = nullptr;
+    Property *m_MaxDepth = nullptr;
 
     CK2dEntity *m_LevelButton = nullptr;
     CKBehavior *m_ExitStart = nullptr;

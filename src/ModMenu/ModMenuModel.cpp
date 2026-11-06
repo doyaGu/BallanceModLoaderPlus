@@ -334,7 +334,7 @@ ModMenuDocument ModMenuModel::BuildDocument(IMod *mod, const ModMenuOwner &owner
             for (std::size_t settingIndex = 0;
                  settingIndex < settingCount; ++settingIndex) {
                 Property *sourceSetting = sourceCategory->GetProperty(settingIndex);
-                if (!sourceSetting || sourceSetting->GetType() == IProperty::NONE)
+                if (!sourceSetting || sourceSetting->GetType() == PropertyType::NONE)
                     continue;
 
                 ModMenuSettingDocument setting;
@@ -345,7 +345,7 @@ ModMenuDocument ModMenuModel::BuildDocument(IMod *mod, const ModMenuOwner &owner
                 setting.value = sourceSetting->GetValue();
                 setting.editor = BML::ConfigMetadata::GetEditor(sourceSetting);
                 if (setting.editor == BML_CONFIG_EDITOR_CHOICE &&
-                    setting.type == IProperty::STRING) {
+                    setting.type == PropertyType::STRING) {
                     const std::size_t choiceCount =
                         BML::ConfigMetadata::ChoiceCount(sourceSetting);
                     setting.choices.reserve(choiceCount + 1);

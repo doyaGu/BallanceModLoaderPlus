@@ -117,7 +117,8 @@ ConfigApi::Record *ConfigApi::Resolve(ModContext &ctx, IMod &owner,
                : nullptr;
 }
 
-int ConfigApi::Declare(ModContext &ctx, IMod &owner, const BML_ConfigPropertyDefinition *definition,
+int ConfigApi::Declare(ModContext &ctx, IMod &owner,
+                       const BML_ConfigPropertyDefinition *definition,
                        BML_ConfigPropertyHandle *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -176,9 +177,9 @@ int ConfigApi::Declare(ModContext &ctx, IMod &owner, const BML_ConfigPropertyDef
         r.Target = property;
         r.TargetGeneration = property->m_Identity;
         if (r.Type != BML_CONFIG_TYPE_NONE &&
-            property->m_Type != static_cast<IProperty::PropertyType>(r.Type)) {
+            property->m_Type != static_cast<PropertyType>(r.Type)) {
             property->m_Value.swap(initial);
-            property->m_Type = static_cast<IProperty::PropertyType>(r.Type);
+            property->m_Type = static_cast<PropertyType>(r.Type);
             if (r.Type == BML_CONFIG_TYPE_STRING)
                 property->m_Hash =
                     utils::HashString(std::get<std::string>(property->m_Value).c_str());
@@ -234,7 +235,7 @@ int ConfigApi::Read(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handl
     auto &property = *r->Target;
     const ConfigValue currentValue = property.m_Value;
     const auto initial = Encode(r->Type, r->Default),
-               current = Encode(property.m_Type, currentValue);
+               current = Encode(static_cast<uint32_t>(property.m_Type), currentValue);
     const BML_ConfigPropertyDefinition definition{sizeof(BML_ConfigPropertyDefinition),
                                                   r->Category.c_str(),
                                                   r->Key.c_str(),
@@ -264,9 +265,9 @@ int ConfigApi::Set(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handle
         auto next = std::make_shared<Record>(*r);
         next->BindChoices();
         ConfigValue initial = decoded;
-        if (property.m_Type != static_cast<IProperty::PropertyType>(value->Type)) {
+        if (property.m_Type != static_cast<PropertyType>(value->Type)) {
             property.m_Value.swap(initial);
-            property.m_Type = static_cast<IProperty::PropertyType>(value->Type);
+            property.m_Type = static_cast<PropertyType>(value->Type);
             if (value->Type == BML_CONFIG_TYPE_STRING)
                 property.m_Hash =
                     utils::HashString(std::get<std::string>(property.m_Value).c_str());

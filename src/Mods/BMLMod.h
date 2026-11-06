@@ -43,7 +43,7 @@ public:
                       CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
     void OnProcess() override;
-    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
+    void OnModifyConfig(const char *category, const char *key, Property *prop) override;
 
 
     void OnPreStartMenu() override;
@@ -99,8 +99,8 @@ private:
     struct Setting {
         const char *category;
         const char *key;
-        IProperty *BMLMod::*property;
-        void (*apply)(BMLMod &mod, IProperty *property);
+        Property *BMLMod::*property;
+        void (*apply)(BMLMod &mod, Property *property);
         unsigned when;
         bool requiresIngame;
     };
@@ -108,17 +108,17 @@ private:
     static const Setting *GetSettings(std::size_t &count);
     void BindSettings();
     void ApplySettings(ApplyWhen when);
-    void ApplySetting(const Setting &setting, IProperty *property);
+    void ApplySetting(const Setting &setting, Property *property);
 
     void InitConfigs();
     void InitGUI();
     FontCommandContext GetFontCommandContext() const;
     void ConfigureUiFonts();
     void RefreshFontChoices();
-    static void ApplyUiFontSetting(BMLMod &mod, IProperty *property);
-    static void ApplyUnlockFrameRateSetting(BMLMod &mod, IProperty *property);
-    static void ApplyFrameRateLimitSetting(BMLMod &mod, IProperty *property);
-    static void ApplyWidescreenSetting(BMLMod &mod, IProperty *property);
+    static void ApplyUiFontSetting(BMLMod &mod, Property *property);
+    static void ApplyUnlockFrameRateSetting(BMLMod &mod, Property *property);
+    static void ApplyFrameRateLimitSetting(BMLMod &mod, Property *property);
+    static void ApplyWidescreenSetting(BMLMod &mod, Property *property);
 
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
     void AcquireGameFonts();
@@ -144,16 +144,16 @@ private:
     bool m_ShowImGuiDemo = false;
 #endif
 
-    IProperty *m_FontFilename = nullptr;
-    IProperty *m_FontSize = nullptr;
-    IProperty *m_FontFallbacks = nullptr;
-    IProperty *m_FontFallbackSize = nullptr;
-    IProperty *m_UseSystemFontFallbacks = nullptr;
-    IProperty *m_EnableIniSettings = nullptr;
+    Property *m_FontFilename = nullptr;
+    Property *m_FontSize = nullptr;
+    Property *m_FontFallbacks = nullptr;
+    Property *m_FontFallbackSize = nullptr;
+    Property *m_UseSystemFontFallbacks = nullptr;
+    Property *m_EnableIniSettings = nullptr;
 
-    IProperty *m_UnlockFPS = nullptr;
-    IProperty *m_FPSLimit = nullptr;
-    IProperty *m_WidescreenFix = nullptr;
+    Property *m_UnlockFPS = nullptr;
+    Property *m_FPSLimit = nullptr;
+    Property *m_WidescreenFix = nullptr;
 
 };
 

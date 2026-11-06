@@ -330,7 +330,7 @@ void ModLoader::ProcessFailedNativeMods() {
     }
 }
 
-void ModLoader::DispatchConfigChange(IMod *mod, const char *category, const char *key, IProperty *property) {
+void ModLoader::DispatchConfigChange(IMod *mod, const char *category, const char *key, Property *property) {
     try {
         ModInvocation invocation(this, mod);
         if (auto *native = FindNativeMod(mod)) {
@@ -343,7 +343,7 @@ void ModLoader::DispatchConfigChange(IMod *mod, const char *category, const char
                 category,
                 key,
                 property ? static_cast<uint32_t>(property->GetType()) : BML_CONFIG_TYPE_NONE,
-                m_Context.GetConfigApi().HandleFor(*mod, dynamic_cast<Property *>(property))};
+                m_Context.GetConfigApi().HandleFor(*mod, property)};
             if (auto callback = native->Callbacks().OnModifyConfig) {
                 const int code = callback(native->Instance(), native->Context(), &event);
                 if (code != BML_OK) {

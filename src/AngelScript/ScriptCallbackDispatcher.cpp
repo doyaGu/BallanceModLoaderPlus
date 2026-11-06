@@ -254,7 +254,7 @@ bool ScriptCallbackDispatcher::CallCommandEvent(bool beforeCommand,
 bool ScriptCallbackDispatcher::CallModifyConfig(const char *modId,
                                                 const char *category,
                                                 const char *key,
-                                                IProperty *property,
+                                                Property *property,
                                                 ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnModifyConfig))
         return true;

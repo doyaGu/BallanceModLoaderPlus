@@ -197,7 +197,7 @@ ImVec2 GetButtonSizeInCoord(ButtonType type);
 float GetButtonIndentInCoord(ButtonType type);
 
 // Between the game's key numbering and ImGui's, which is what a Mod storing a key
-// in its config needs: an IProperty of type KEY holds a CKKEYBOARD while ImGui
+// in its config needs: an Property of type KEY holds a CKKEYBOARD while ImGui
 // reports an ImGuiKey. Only the keys both sides name are mapped; the rest come
 // back as ImGuiKey_None, or as the CKKEYBOARD 0, which is no key at all. Check the
 // result rather than passing it on.

@@ -5,7 +5,7 @@
 
 #include "BML/Guids/TT_ParticleSystems_RT.h"
 #include "Loader/ModContext.h"
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 #include "Logging/Logger.h"
 
 namespace {
@@ -51,7 +51,7 @@ Behavior::Edit OverclockEnergy() {
 }
 }
 
-void GameplayTweaks::InitConfig(IConfig &config) {
+void GameplayTweaks::InitConfig(Config &config) {
     m_LanternAlphaTest = config.GetProperty("Tweak", "LanternAlphaTest");
     m_FixLifeBall = config.GetProperty("Tweak", "FixLifeBallFreeze");
     m_Overclock = config.GetProperty("Tweak", "Overclock");
@@ -68,7 +68,7 @@ void GameplayTweaks::InitConfig(IConfig &config) {
 }
 
 bool GameplayTweaks::OnModifyConfig(const char *category, const char *key,
-                                    IProperty *property) {
+                                    Property *property) {
     if (!property || std::strcmp(category ? category : "", "Tweak") != 0)
         return false;
     if (property == m_LanternAlphaTest &&

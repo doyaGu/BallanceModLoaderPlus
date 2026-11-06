@@ -77,7 +77,7 @@ Logger *IMod::GetLogger() {
     return m_Logger;
 }
 
-IConfig *IMod::GetConfig() {
+Config *IMod::GetConfig() {
     if (m_Config == nullptr) {
         auto *config = new Config(this);
         m_Config = config;
@@ -117,7 +117,7 @@ public:
 
     BMLVersion GetBMLVersion() override { return {}; }
 
-    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override {
+    void OnModifyConfig(const char *category, const char *key, Property *prop) override {
         modifiedCount++;
         lastCategory = category ? category : "";
         lastKey = key ? key : "";
@@ -130,7 +130,7 @@ public:
     std::atomic<int> versionReadCount{0};
     std::string lastCategory;
     std::string lastKey;
-    IProperty *lastProp = nullptr;
+    Property *lastProp = nullptr;
 };
 
 // Test fixture for Config tests
@@ -252,7 +252,7 @@ TEST_F(ConfigTest, SuccessfulReloadReenablesPersistence) {
     ASSERT_TRUE(config->Load(configPath.c_str()));
     EXPECT_TRUE(config->CanSave());
     EXPECT_EQ(config->GetLoadError(), BML::Platform::FileError::Success);
-    IProperty *count = config->GetProperty("General", "Count");
+    Property *count = config->GetProperty("General", "Count");
     EXPECT_EQ(count->GetInteger(), 42);
     count->SetInteger(7);
     ASSERT_TRUE(config->Save(configPath.c_str()));
@@ -286,7 +286,7 @@ TEST_F(ConfigTest, FailedReplacementPreservesOriginalAndDirtyState) {
 
 #ifdef _WIN32
 TEST_F(ConfigTest, FailedAutomaticSaveDoesNotRetryWithoutAnotherChange) {
-    IProperty *count = config->GetProperty("General", "Count");
+    Property *count = config->GetProperty("General", "Count");
     count->SetInteger(7);
     ASSERT_TRUE(config->Save(configPath.c_str()));
     count->SetInteger(42);
@@ -355,7 +355,7 @@ TEST_F(ConfigTest, SaveRequestIsConsumedBeforeMetadataOrSerialization) {
 }
 
 TEST_F(ConfigTest, SaveFailureDoesNotSuppressConfigNotifications) {
-    IProperty *count = config->GetProperty("General", "Count");
+    Property *count = config->GetProperty("General", "Count");
     count->SetInteger(42);
     ASSERT_TRUE(config->TakeSaveRequest());
     EXPECT_FALSE(config->Save(nullptr));
@@ -382,7 +382,7 @@ TEST_F(ConfigTest, TruncatedDocumentDoesNotReplaceLoadedOrDeclaredValues) {
     ASSERT_TRUE(config->Save(configPath.c_str()));
     Config loaded(mockMod);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
-    IProperty *count = loaded.GetProperty("General", "Count");
+    Property *count = loaded.GetProperty("General", "Count");
     count->SetDefaultInteger(1);
     const std::uint64_t revision = loaded.GetValueRevision();
 
@@ -418,7 +418,7 @@ TEST_F(ConfigTest, NumericEntriesRequireCompleteFiniteValues) {
     EXPECT_FALSE(config->HasKey("General", "Flag"));
     EXPECT_FALSE(config->HasKey("General", "Huge"));
     EXPECT_FLOAT_EQ(config->GetProperty("General", "Scale")->GetFloat(), 2.5f);
-    EXPECT_EQ(config->GetProperty("General", "Key")->GetType(), IProperty::KEY);
+    EXPECT_EQ(config->GetProperty("General", "Key")->GetType(), PropertyType::KEY);
     EXPECT_EQ(config->GetProperty("General", "Count")->GetInteger(), -42);
 }
 
@@ -491,9 +491,9 @@ TEST_F(ConfigTest, UpdatingModKeepsOnlyDeclaredSettingsAndUsesDefaultsForNewOnes
     Config updated(mockMod);
     ASSERT_TRUE(updated.Load(configPath.c_str()));
     EXPECT_EQ(updated.GetCategoryCount(), 0u);
-    IProperty *retained = updated.GetProperty("General", "A");
+    Property *retained = updated.GetProperty("General", "A");
     retained->SetDefaultInteger(1);
-    IProperty *added = updated.GetProperty("General", "C");
+    Property *added = updated.GetProperty("General", "C");
     added->SetDefaultInteger(30);
 
     EXPECT_EQ(retained->GetInteger(), 10);
@@ -507,7 +507,7 @@ TEST_F(ConfigTest, UpdatingModKeepsOnlyDeclaredSettingsAndUsesDefaultsForNewOnes
     EXPECT_FALSE(category->HasKey("B"));
     EXPECT_TRUE(updated.TakePendingNotifications().empty());
     const Config::ApplyResult obsoleteEdit = updated.ApplyEdits(
-        mockMod, updated.GetSchemaRevision(), {{"General", "B", IProperty::INTEGER, 20, 21}});
+        mockMod, updated.GetSchemaRevision(), {{"General", "B", PropertyType::INTEGER, 20, 21}});
     EXPECT_EQ(obsoleteEdit.Error, Config::ApplyError::PropertyMissing);
     EXPECT_FALSE(category->HasKey("B"));
 
@@ -540,14 +540,14 @@ TEST_F(ConfigTest, SavedValueQueriesDoNotDeclareSettingsOrChangeSchema) {
     EXPECT_EQ(loaded.GetCategoryCount(), 0u);
     EXPECT_EQ(loaded.GetSchemaRevision(), schema);
     // A Mod may declare a setting later, even after an unrelated config save.
-    IProperty *property = loaded.GetProperty("General", "Value");
+    Property *property = loaded.GetProperty("General", "Value");
     property->SetDefaultInteger(1);
     EXPECT_EQ(property->GetInteger(), 42);
 }
 
 TEST_F(ConfigTest, SettingsFollowDeclarationOrderAndIgnoreSavedComments) {
     config->SetCategoryComment("General", "Old category description");
-    IProperty *first = config->GetProperty("General", "First");
+    Property *first = config->GetProperty("General", "First");
     first->SetComment("Old property description");
     first->SetDefaultInteger(10);
     config->GetProperty("General", "Second")->SetDefaultInteger(20);
@@ -556,7 +556,7 @@ TEST_F(ConfigTest, SettingsFollowDeclarationOrderAndIgnoreSavedComments) {
     Config loaded(mockMod);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     loaded.SetCategoryComment("General", "Current category description");
-    IProperty *second = loaded.GetProperty("General", "Second");
+    Property *second = loaded.GetProperty("General", "Second");
     first = loaded.GetProperty("General", "First");
     EXPECT_STREQ(static_cast<Property *>(first)->GetComment(), "");
     first->SetComment("Current property description");
@@ -582,18 +582,18 @@ TEST_F(ConfigTest, DeclaredTypesAndEditorMetadataSurviveReload) {
     ASSERT_TRUE(config->Save(configPath.c_str()));
 
     Config loaded(mockMod);
-    IProperty *text = loaded.GetProperty("Values", "Text");
+    Property *text = loaded.GetProperty("Values", "Text");
     text->SetDefaultString("default text");
     const char *choices[] = {"default text", "saved text"};
     ASSERT_EQ(BML::ConfigMetadata::SetChoices(text, choices, std::size(choices)), 1);
     ASSERT_EQ(BML::ConfigMetadata::SetEditor(text, BML_CONFIG_EDITOR_CHOICE), 1);
-    IProperty *flag = loaded.GetProperty("Values", "Flag");
+    Property *flag = loaded.GetProperty("Values", "Flag");
     flag->SetDefaultBoolean(false);
-    IProperty *count = loaded.GetProperty("Values", "Count");
+    Property *count = loaded.GetProperty("Values", "Count");
     count->SetDefaultInteger(1);
-    IProperty *scale = loaded.GetProperty("Values", "Scale");
+    Property *scale = loaded.GetProperty("Values", "Scale");
     scale->SetDefaultFloat(1.0f);
-    IProperty *key = loaded.GetProperty("Values", "Key");
+    Property *key = loaded.GetProperty("Values", "Key");
     key->SetDefaultKey(CKKEY_B);
     const std::uint64_t schema = loaded.GetSchemaRevision();
 
@@ -612,11 +612,11 @@ TEST_F(ConfigTest, DeclaredTypesAndEditorMetadataSurviveReload) {
 
     Config changedType(mockMod);
     ASSERT_TRUE(changedType.Load(configPath.c_str()));
-    IProperty *changed = changedType.GetProperty("Values", "Count");
+    Property *changed = changedType.GetProperty("Values", "Count");
     changed->SetDefaultString("new default");
     EXPECT_STREQ(changed->GetString(), "new default");
     ASSERT_TRUE(changedType.Load(configPath.c_str()));
-    EXPECT_EQ(changed->GetType(), IProperty::STRING);
+    EXPECT_EQ(changed->GetType(), PropertyType::STRING);
     EXPECT_STREQ(changed->GetString(), "new default");
     ASSERT_TRUE(changedType.Save(configPath.c_str()));
     Config reloaded(mockMod);
@@ -633,11 +633,11 @@ TEST_F(ConfigTest, AppliedSettingsSurviveShutdownAndStartupSaves) {
     ASSERT_TRUE(config->Save(configPath.c_str()));
 
     const std::vector<Config::Edit> edits = {
-        {"Values", "Text", IProperty::STRING, std::string("default text"), std::string("edited text")},
-        {"Values", "Flag", IProperty::BOOLEAN, false, true},
-        {"Values", "Count", IProperty::INTEGER, 1, 42},
-        {"Values", "Scale", IProperty::FLOAT, 1.0f, 2.5f},
-        {"Values", "Key", IProperty::KEY, static_cast<int>(CKKEY_A), static_cast<int>(CKKEY_B)},
+        {"Values", "Text", PropertyType::STRING, std::string("default text"), std::string("edited text")},
+        {"Values", "Flag", PropertyType::BOOLEAN, false, true},
+        {"Values", "Count", PropertyType::INTEGER, 1, 42},
+        {"Values", "Scale", PropertyType::FLOAT, 1.0f, 2.5f},
+        {"Values", "Key", PropertyType::KEY, static_cast<int>(CKKEY_A), static_cast<int>(CKKEY_B)},
     };
     const Config::ApplyResult result = config->ApplyEdits(
         mockMod, config->GetSchemaRevision(), edits);
@@ -676,7 +676,7 @@ TEST_F(ConfigTest, RemovingLoadedSettingPreventsLaterReimport) {
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     ASSERT_TRUE(loaded.RemoveProperty("General", "Old"));
     EXPECT_FALSE(loaded.HasKey("General", "Old"));
-    IProperty *replacement = loaded.GetProperty("General", "Old");
+    Property *replacement = loaded.GetProperty("General", "Old");
     replacement->SetDefaultInteger(1);
     EXPECT_EQ(replacement->GetInteger(), 1);
     ASSERT_TRUE(loaded.RemoveProperty("General", "Old"));
@@ -697,11 +697,11 @@ TEST_F(ConfigTest, Loaded013FontMigrationDoesNotDeclareObsoleteSettings) {
     ASSERT_TRUE(MigrateBMLConfig(updated.GetLoadedValues()));
     EXPECT_EQ(updated.GetCategoryCount(), 0u);
     EXPECT_FALSE(updated.HasKey("GUI", "SecondaryFontFilename"));
-    IProperty *primary = updated.GetProperty("GUI", "FontFilename");
+    Property *primary = updated.GetProperty("GUI", "FontFilename");
     primary->SetDefaultString("unifont.otf");
-    IProperty *fallbacks = updated.GetProperty("GUI", "FontFallbacks");
+    Property *fallbacks = updated.GetProperty("GUI", "FontFallbacks");
     fallbacks->SetDefaultString("");
-    IProperty *size = updated.GetProperty("GUI", "FontFallbackSize");
+    Property *size = updated.GetProperty("GUI", "FontFallbackSize");
     size->SetDefaultFloat(32.0f);
     EXPECT_STREQ(primary->GetString(), "primary.ttf");
     EXPECT_STREQ(fallbacks->GetString(), "secondary.ttf");
@@ -819,14 +819,14 @@ TEST_F(ConfigTest, PropertyManagement) {
     EXPECT_FALSE(config->HasKey(nullptr, nullptr));
 
     // Get non-existent property should create it
-    IProperty *prop = config->GetProperty("TestCategory", "TestKey");
+    Property *prop = config->GetProperty("TestCategory", "TestKey");
     ASSERT_NE(nullptr, prop);
 
     // Now HasKey should return true
     EXPECT_TRUE(config->HasKey("TestCategory", "TestKey"));
 
     // Get existing property should return same instance
-    IProperty *prop2 = config->GetProperty("TestCategory", "TestKey");
+    Property *prop2 = config->GetProperty("TestCategory", "TestKey");
     EXPECT_EQ(prop, prop2);
 
     // Test null parameters for GetProperty
@@ -836,8 +836,8 @@ TEST_F(ConfigTest, PropertyManagement) {
 }
 
 TEST_F(ConfigTest, RemovingPropertyClearsPendingNotificationAndInvalidatesSchema) {
-    IProperty *retained = config->GetProperty("TestCategory", "Retained");
-    IProperty *obsolete = config->GetProperty("TestCategory", "Obsolete");
+    Property *retained = config->GetProperty("TestCategory", "Retained");
+    Property *obsolete = config->GetProperty("TestCategory", "Obsolete");
     retained->SetDefaultString("retained");
     obsolete->SetString("old value");
 
@@ -990,9 +990,9 @@ TEST_F(ConfigTest, Unrepresentable013FallbackNameIsNotDeleted) {
 // Property types and values
 TEST_F(ConfigTest, PropertyValues) {
     // String property
-    IProperty *strProp = config->GetProperty("TestCategory", "StringProp");
+    Property *strProp = config->GetProperty("TestCategory", "StringProp");
     strProp->SetString("Test String");
-    EXPECT_EQ(IProperty::STRING, strProp->GetType());
+    EXPECT_EQ(PropertyType::STRING, strProp->GetType());
     EXPECT_STREQ("Test String", strProp->GetString());
 
     // Test null string
@@ -1000,27 +1000,27 @@ TEST_F(ConfigTest, PropertyValues) {
     EXPECT_STREQ("", strProp->GetString());
 
     // Boolean property
-    IProperty *boolProp = config->GetProperty("TestCategory", "BoolProp");
+    Property *boolProp = config->GetProperty("TestCategory", "BoolProp");
     boolProp->SetBoolean(true);
-    EXPECT_EQ(IProperty::BOOLEAN, boolProp->GetType());
+    EXPECT_EQ(PropertyType::BOOLEAN, boolProp->GetType());
     EXPECT_TRUE(boolProp->GetBoolean());
 
     // Integer property
-    IProperty *intProp = config->GetProperty("TestCategory", "IntProp");
+    Property *intProp = config->GetProperty("TestCategory", "IntProp");
     intProp->SetInteger(42);
-    EXPECT_EQ(IProperty::INTEGER, intProp->GetType());
+    EXPECT_EQ(PropertyType::INTEGER, intProp->GetType());
     EXPECT_EQ(42, intProp->GetInteger());
 
     // Float property
-    IProperty *floatProp = config->GetProperty("TestCategory", "FloatProp");
+    Property *floatProp = config->GetProperty("TestCategory", "FloatProp");
     floatProp->SetFloat(3.14f);
-    EXPECT_EQ(IProperty::FLOAT, floatProp->GetType());
+    EXPECT_EQ(PropertyType::FLOAT, floatProp->GetType());
     EXPECT_FLOAT_EQ(3.14f, floatProp->GetFloat());
 
     // Key property
-    IProperty *keyProp = config->GetProperty("TestCategory", "KeyProp");
+    Property *keyProp = config->GetProperty("TestCategory", "KeyProp");
     keyProp->SetKey(static_cast<CKKEYBOARD>(123));
-    EXPECT_EQ(IProperty::KEY, keyProp->GetType());
+    EXPECT_EQ(PropertyType::KEY, keyProp->GetType());
     EXPECT_EQ(static_cast<CKKEYBOARD>(123), keyProp->GetKey());
 
     // Test cross-type access returns default values
@@ -1032,7 +1032,7 @@ TEST_F(ConfigTest, PropertyValues) {
 }
 
 TEST_F(ConfigTest, PropertyEditorIsSchemaMetadata) {
-    IProperty *property = config->GetProperty("Appearance", "Accent");
+    Property *property = config->GetProperty("Appearance", "Accent");
     property->SetDefaultString("#61AFEF");
     EXPECT_EQ(BML_CONFIG_EDITOR_DEFAULT, BML::ConfigMetadata::GetEditor(nullptr));
     EXPECT_EQ(0, BML::ConfigMetadata::SetEditor(nullptr, BML_CONFIG_EDITOR_COLOR));
@@ -1059,7 +1059,7 @@ TEST_F(ConfigTest, PropertyEditorIsSchemaMetadata) {
 }
 
 TEST_F(ConfigTest, PropertyChoicesAreSchemaMetadata) {
-    IProperty *property = config->GetProperty("Appearance", "Font");
+    Property *property = config->GetProperty("Appearance", "Font");
     property->SetDefaultString("unifont.otf");
     EXPECT_EQ(0U, BML::ConfigMetadata::ChoiceCount(nullptr));
     EXPECT_EQ(nullptr, BML::ConfigMetadata::Choice(nullptr, 0));
@@ -1098,7 +1098,7 @@ TEST_F(ConfigTest, VariantValueKeepsIntegerAndKeySemanticsDistinct) {
     EXPECT_EQ(Property::Value{10}, intProp->GetValue());
 
     intProp->SetValue(Property::Value{20});
-    EXPECT_EQ(IProperty::INTEGER, intProp->GetType());
+    EXPECT_EQ(PropertyType::INTEGER, intProp->GetType());
     EXPECT_EQ(20, intProp->GetInteger());
 
     auto *keyProp = static_cast<Property *>(config->GetProperty("TestCategory", "KeyProp"));
@@ -1106,46 +1106,46 @@ TEST_F(ConfigTest, VariantValueKeepsIntegerAndKeySemanticsDistinct) {
     EXPECT_EQ(Property::Value{30}, keyProp->GetValue());
 
     keyProp->SetValue(Property::Value{40});
-    EXPECT_EQ(IProperty::KEY, keyProp->GetType());
+    EXPECT_EQ(PropertyType::KEY, keyProp->GetType());
     EXPECT_EQ(static_cast<CKKEYBOARD>(40), keyProp->GetKey());
 }
 
 // Default values
 TEST_F(ConfigTest, DefaultValues) {
     // String default
-    IProperty *strProp = config->GetProperty("DefaultCategory", "StringProp");
+    Property *strProp = config->GetProperty("DefaultCategory", "StringProp");
     strProp->SetDefaultString("Default String");
-    EXPECT_EQ(IProperty::STRING, strProp->GetType());
+    EXPECT_EQ(PropertyType::STRING, strProp->GetType());
     EXPECT_STREQ("Default String", strProp->GetString());
 
     // Test null default string
-    IProperty *nullStrProp = config->GetProperty("DefaultCategory", "NullStringProp");
+    Property *nullStrProp = config->GetProperty("DefaultCategory", "NullStringProp");
     nullStrProp->SetDefaultString(nullptr);
-    EXPECT_EQ(IProperty::STRING, nullStrProp->GetType());
+    EXPECT_EQ(PropertyType::STRING, nullStrProp->GetType());
     EXPECT_STREQ("", nullStrProp->GetString());
 
     // Boolean default
-    IProperty *boolProp = config->GetProperty("DefaultCategory", "BoolProp");
+    Property *boolProp = config->GetProperty("DefaultCategory", "BoolProp");
     boolProp->SetDefaultBoolean(true);
-    EXPECT_EQ(IProperty::BOOLEAN, boolProp->GetType());
+    EXPECT_EQ(PropertyType::BOOLEAN, boolProp->GetType());
     EXPECT_TRUE(boolProp->GetBoolean());
 
     // Integer default
-    IProperty *intProp = config->GetProperty("DefaultCategory", "IntProp");
+    Property *intProp = config->GetProperty("DefaultCategory", "IntProp");
     intProp->SetDefaultInteger(42);
-    EXPECT_EQ(IProperty::INTEGER, intProp->GetType());
+    EXPECT_EQ(PropertyType::INTEGER, intProp->GetType());
     EXPECT_EQ(42, intProp->GetInteger());
 
     // Float default
-    IProperty *floatProp = config->GetProperty("DefaultCategory", "FloatProp");
+    Property *floatProp = config->GetProperty("DefaultCategory", "FloatProp");
     floatProp->SetDefaultFloat(3.14f);
-    EXPECT_EQ(IProperty::FLOAT, floatProp->GetType());
+    EXPECT_EQ(PropertyType::FLOAT, floatProp->GetType());
     EXPECT_FLOAT_EQ(3.14f, floatProp->GetFloat());
 
     // Key default
-    IProperty *keyProp = config->GetProperty("DefaultCategory", "KeyProp");
+    Property *keyProp = config->GetProperty("DefaultCategory", "KeyProp");
     keyProp->SetDefaultKey(static_cast<CKKEYBOARD>(123));
-    EXPECT_EQ(IProperty::KEY, keyProp->GetType());
+    EXPECT_EQ(PropertyType::KEY, keyProp->GetType());
     EXPECT_EQ(static_cast<CKKEYBOARD>(123), keyProp->GetKey());
 
     // Test setting value after default
@@ -1219,8 +1219,8 @@ TEST_F(ConfigTest, ApplyEditsCommitsInCallerOrderAndCoalescesNotifications) {
     const std::uint64_t schemaRevision = config->GetSchemaRevision();
     const std::uint64_t valueRevision = config->GetValueRevision();
     const std::vector<Config::Edit> edits = {
-        {"Batch", "Second", IProperty::INTEGER, 2, 20},
-        {"Batch", "First", IProperty::INTEGER, 1, 10},
+        {"Batch", "Second", PropertyType::INTEGER, 2, 20},
+        {"Batch", "First", PropertyType::INTEGER, 1, 10},
     };
 
     const Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, edits);
@@ -1241,7 +1241,7 @@ TEST_F(ConfigTest, ApplyEditsCommitsInCallerOrderAndCoalescesNotifications) {
 
     second->SetInteger(21);
     const std::vector<Config::Edit> coalesced = {
-        {"Batch", "Second", IProperty::INTEGER, 21, 22},
+        {"Batch", "Second", PropertyType::INTEGER, 21, 22},
     };
     const Config::ApplyResult coalescedResult = config->ApplyEdits(mockMod, schemaRevision, coalesced);
     ASSERT_TRUE(coalescedResult.Succeeded());
@@ -1257,7 +1257,7 @@ TEST_F(ConfigTest, ApplyEditsRejectsStaleOwnerAndSchema) {
     property->SetDefaultInteger(1);
     const std::uint64_t schemaRevision = config->GetSchemaRevision();
     const std::vector<Config::Edit> edits = {
-        {"Batch", "Value", IProperty::INTEGER, 1, 2},
+        {"Batch", "Value", PropertyType::INTEGER, 1, 2},
     };
 
     MockMod otherOwner(nullptr);
@@ -1284,7 +1284,7 @@ TEST_F(ConfigTest, ApplyEditsUsesPerPropertyBaselinesInsteadOfGlobalValueRevisio
     ASSERT_EQ(1u, config->GetValueRevision());
 
     const Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "Edited", IProperty::INTEGER, 1, 10},
+        {"Batch", "Edited", PropertyType::INTEGER, 1, 10},
     });
 
     EXPECT_TRUE(result.Succeeded());
@@ -1299,18 +1299,18 @@ TEST_F(ConfigTest, ApplyEditsRejectsTypeBaseAndDuplicateConflicts) {
     const std::uint64_t schemaRevision = config->GetSchemaRevision();
 
     Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "Value", IProperty::STRING, std::string("1"), std::string("2")},
+        {"Batch", "Value", PropertyType::STRING, std::string("1"), std::string("2")},
     });
     EXPECT_EQ(Config::ApplyError::TypeChanged, result.Error);
 
     result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "Value", IProperty::INTEGER, 0, 2},
+        {"Batch", "Value", PropertyType::INTEGER, 0, 2},
     });
     EXPECT_EQ(Config::ApplyError::BaseChanged, result.Error);
 
     result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "Value", IProperty::INTEGER, 1, 2},
-        {"Batch", "Value", IProperty::INTEGER, 1, 3},
+        {"Batch", "Value", PropertyType::INTEGER, 1, 2},
+        {"Batch", "Value", PropertyType::INTEGER, 1, 3},
     });
     EXPECT_EQ(Config::ApplyError::DuplicateTarget, result.Error);
     EXPECT_EQ(1u, result.EditIndex);
@@ -1327,8 +1327,8 @@ TEST_F(ConfigTest, ApplyEditsValidatesEntireBatchBeforeWriting) {
     const std::uint64_t schemaRevision = config->GetSchemaRevision();
 
     const Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "First", IProperty::INTEGER, 1, 10},
-        {"Batch", "Second", IProperty::INTEGER, 99, 20},
+        {"Batch", "First", PropertyType::INTEGER, 1, 10},
+        {"Batch", "Second", PropertyType::INTEGER, 99, 20},
     });
 
     EXPECT_EQ(Config::ApplyError::BaseChanged, result.Error);
@@ -1342,7 +1342,7 @@ TEST_F(ConfigTest, ApplyEditsValidatesEntireBatchBeforeWriting) {
 // Modification notification
 TEST_F(ConfigTest, ModificationNotification) {
     mockMod->modifiedCount = 0;
-    IProperty *prop = config->GetProperty("TestCategory", "TestProp");
+    Property *prop = config->GetProperty("TestCategory", "TestProp");
 
     // Set initial value
     prop->SetString("Initial");
@@ -1378,7 +1378,7 @@ TEST_F(ConfigTest, ModificationNotification) {
 
     // Test with null mod (shouldn't crash)
     Config *nullModConfig = new Config(nullptr);
-    IProperty *nullModProp = nullModConfig->GetProperty("TestCategory", "TestProp");
+    Property *nullModProp = nullModConfig->GetProperty("TestCategory", "TestProp");
     nullModProp->SetString("Test"); // Shouldn't crash
     delete nullModConfig;
 }
@@ -1415,18 +1415,18 @@ TEST_F(ConfigTest, PropertyCopy) {
     // Test string copy
     srcProp->SetString("Test String");
     destProp->CopyValue(srcProp);
-    EXPECT_EQ(IProperty::STRING, destProp->GetType());
+    EXPECT_EQ(PropertyType::STRING, destProp->GetType());
     EXPECT_STREQ("Test String", destProp->GetString());
 
     // Test boolean copy
     srcProp->SetBoolean(true);
     destProp->CopyValue(srcProp);
-    EXPECT_EQ(IProperty::BOOLEAN, destProp->GetType());
+    EXPECT_EQ(PropertyType::BOOLEAN, destProp->GetType());
     EXPECT_TRUE(destProp->GetBoolean());
 
     // Test null copy (should not crash)
     destProp->CopyValue(nullptr);
-    EXPECT_EQ(IProperty::BOOLEAN, destProp->GetType()); // Should remain unchanged
+    EXPECT_EQ(PropertyType::BOOLEAN, destProp->GetType()); // Should remain unchanged
 }
 
 // File I/O
@@ -1435,11 +1435,11 @@ TEST_F(ConfigTest, FileIO) {
     const wchar_t *filename = configPath.c_str();
 
     // Set up some properties
-    IProperty *strProp = config->GetProperty("TestCategory", "StringProp");
+    Property *strProp = config->GetProperty("TestCategory", "StringProp");
     strProp->SetString("Test String");
     strProp->SetComment("String Property Comment");
 
-    IProperty *boolProp = config->GetProperty("TestCategory", "BoolProp");
+    Property *boolProp = config->GetProperty("TestCategory", "BoolProp");
     boolProp->SetBoolean(true);
 
     config->SetCategoryComment("TestCategory", "Test Category Comment");
@@ -1457,13 +1457,13 @@ TEST_F(ConfigTest, FileIO) {
     EXPECT_TRUE(newConfig->HasKey("TestCategory", "StringProp"));
     EXPECT_TRUE(newConfig->HasKey("TestCategory", "BoolProp"));
 
-    IProperty *loadedStrProp = newConfig->GetProperty("TestCategory", "StringProp");
-    EXPECT_EQ(IProperty::STRING, loadedStrProp->GetType());
+    Property *loadedStrProp = newConfig->GetProperty("TestCategory", "StringProp");
+    EXPECT_EQ(PropertyType::STRING, loadedStrProp->GetType());
     EXPECT_STREQ("Test String", loadedStrProp->GetString());
     EXPECT_STREQ("", static_cast<Property*>(loadedStrProp)->GetComment());
 
-    IProperty *loadedBoolProp = newConfig->GetProperty("TestCategory", "BoolProp");
-    EXPECT_EQ(IProperty::BOOLEAN, loadedBoolProp->GetType());
+    Property *loadedBoolProp = newConfig->GetProperty("TestCategory", "BoolProp");
+    EXPECT_EQ(PropertyType::BOOLEAN, loadedBoolProp->GetType());
     EXPECT_TRUE(loadedBoolProp->GetBoolean());
 
     EXPECT_STREQ("", newConfig->GetCategoryComment("TestCategory"));
@@ -1500,7 +1500,7 @@ TEST_F(ConfigTest, LoadingDuplicateEntriesUpdatesOneStableProperty) {
 
     ASSERT_TRUE(config->Load(filename));
     ASSERT_EQ(config->GetCategoryCount(), 0U);
-    IProperty *declared = config->GetProperty("General", "Count");
+    Property *declared = config->GetProperty("General", "Count");
     declared->SetDefaultInteger(0);
     ASSERT_EQ(config->GetCategoryCount(), 1U);
     Category *category = config->GetCategory(static_cast<std::size_t>(0));
@@ -1549,7 +1549,7 @@ TEST_F(ConfigTest, PropertyLookupPerformance) {
         std::string category = "PerfCategory" + std::to_string(c);
         for (int p = 0; p < PROPS_PER_CATEGORY; p++) {
             std::string key = "Prop" + std::to_string(p);
-            IProperty *prop = config->GetProperty(category.c_str(), key.c_str());
+            Property *prop = config->GetProperty(category.c_str(), key.c_str());
             prop->SetInteger(c * 1000 + p);
         }
     }
@@ -1562,7 +1562,7 @@ TEST_F(ConfigTest, PropertyLookupPerformance) {
         int p = i % PROPS_PER_CATEGORY;
         std::string category = "PerfCategory" + std::to_string(c);
         std::string key = "Prop" + std::to_string(p);
-        IProperty *prop = config->GetProperty(category.c_str(), key.c_str());
+        Property *prop = config->GetProperty(category.c_str(), key.c_str());
         int expected = c * 1000 + p;
         EXPECT_EQ(expected, prop->GetInteger());
     }

@@ -15,7 +15,8 @@ class Property;
 namespace BML::Api {
 class ConfigApi {
 public:
-    int Declare(ModContext &context, IMod &owner, const BML_ConfigPropertyDefinition *definition,
+    int Declare(ModContext &context, IMod &owner,
+                const BML_ConfigPropertyDefinition *definition,
                 BML_ConfigPropertyHandle *outProperty);
     int Find(ModContext &context, IMod &owner, const char *category, const char *key,
              BML_ConfigPropertyHandle *outProperty);

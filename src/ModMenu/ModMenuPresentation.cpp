@@ -492,7 +492,7 @@ struct ModMenuPresentation::State {
             ImGui::Dummy(BuiHost::GetButtonSize(BuiHost::BUTTON_OPTION));
         } else {
             switch (setting.type) {
-            case IProperty::STRING: {
+            case PropertyType::STRING: {
                 std::string next = std::get<std::string>(*source);
                 bool changed = false;
                 if (setting.editor == BML_CONFIG_EDITOR_CHOICE &&
@@ -518,7 +518,7 @@ struct ModMenuPresentation::State {
                     model.EditSetting(setting.key, std::move(next));
                 break;
             }
-            case IProperty::BOOLEAN: {
+            case PropertyType::BOOLEAN: {
                 bool next = std::get<bool>(*source);
                 const bool previous = next;
                 BuiHost::YesNoButton(setting.label.c_str(), &next);
@@ -526,22 +526,22 @@ struct ModMenuPresentation::State {
                     model.EditSetting(setting.key, next);
                 break;
             }
-            case IProperty::INTEGER: {
+            case PropertyType::INTEGER: {
                 int next = std::get<int>(*source);
                 if (BuiHost::InputIntButton(setting.label.c_str(), &next))
                     model.EditSetting(setting.key, next);
                 break;
             }
-            case IProperty::KEY:
+            case PropertyType::KEY:
                 DrawKeySetting(model, setting.key, setting.label.c_str(), std::get<int>(*source));
                 break;
-            case IProperty::FLOAT: {
+            case PropertyType::FLOAT: {
                 float next = std::get<float>(*source);
                 if (BuiHost::InputFloatButton(setting.label.c_str(), &next))
                     model.EditSetting(setting.key, next);
                 break;
             }
-            case IProperty::NONE:
+            case PropertyType::NONE:
             default:
                 ImGui::Dummy(BuiHost::GetButtonSize(BuiHost::BUTTON_OPTION));
                 break;

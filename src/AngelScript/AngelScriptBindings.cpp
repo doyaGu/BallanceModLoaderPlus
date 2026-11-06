@@ -8,7 +8,7 @@
 #include "BML/BML.h"
 #include "UI/BuiHost.h"
 #include "BML/DataShare.h"
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 #include "BML/Types.h"
 #include "Hooks/InputHook.h"
 #include "Logging/Logger.h"
@@ -968,80 +968,80 @@ public:
     bool IsValid() const { return ResolveProperty() != nullptr; }
 
     int GetType() const {
-        IProperty *property = ResolveProperty();
-        return property ? static_cast<int>(property->GetType()) : static_cast<int>(IProperty::NONE);
+        Property *property = ResolveProperty();
+        return property ? static_cast<int>(property->GetType()) : static_cast<int>(PropertyType::NONE);
     }
 
     int GetEditor() const {
-        IProperty *property = ResolveProperty();
+        Property *property = ResolveProperty();
         return static_cast<int>(BML::ConfigMetadata::GetEditor(property));
     }
 
     std::string GetString(const std::string &defaultValue) const {
-        IProperty *property = ResolveProperty();
-        if (!property || property->GetType() != IProperty::STRING)
+        Property *property = ResolveProperty();
+        if (!property || property->GetType() != PropertyType::STRING)
             return defaultValue;
         const char *value = property->GetString();
         return value ? value : "";
     }
 
     bool GetBoolean(bool defaultValue) const {
-        IProperty *property = ResolveProperty();
-        return property && property->GetType() == IProperty::BOOLEAN ? property->GetBoolean() : defaultValue;
+        Property *property = ResolveProperty();
+        return property && property->GetType() == PropertyType::BOOLEAN ? property->GetBoolean() : defaultValue;
     }
 
     int GetInteger(int defaultValue) const {
-        IProperty *property = ResolveProperty();
-        return property && property->GetType() == IProperty::INTEGER ? property->GetInteger() : defaultValue;
+        Property *property = ResolveProperty();
+        return property && property->GetType() == PropertyType::INTEGER ? property->GetInteger() : defaultValue;
     }
 
     float GetFloat(float defaultValue) const {
-        IProperty *property = ResolveProperty();
-        return property && property->GetType() == IProperty::FLOAT ? property->GetFloat() : defaultValue;
+        Property *property = ResolveProperty();
+        return property && property->GetType() == PropertyType::FLOAT ? property->GetFloat() : defaultValue;
     }
 
     CKKEYBOARD GetKey(CKKEYBOARD defaultValue) const {
-        IProperty *property = ResolveProperty();
-        return property && property->GetType() == IProperty::KEY ? property->GetKey() : defaultValue;
+        Property *property = ResolveProperty();
+        return property && property->GetType() == PropertyType::KEY ? property->GetKey() : defaultValue;
     }
 
     void SetString(const std::string &value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetString(value.c_str());
     }
 
     void SetBoolean(bool value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetBoolean(value);
     }
 
     void SetInteger(int value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetInteger(value);
     }
 
     void SetFloat(float value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetFloat(value);
     }
 
     void SetKey(CKKEYBOARD value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetKey(value);
     }
 
     void SetComment(const std::string &comment) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetComment(comment.c_str());
     }
 
     void SetEditor(int editor) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             BML::ConfigMetadata::SetEditor(property, static_cast<BML_ConfigPropertyEditor>(editor));
     }
 
     bool SetChoices(const void *array) const {
-        IProperty *property = ResolveProperty();
+        Property *property = ResolveProperty();
         BML::ScriptMod *owner = BMLAS_ResolveScriptModOwner(m_ModId);
         if (!property || !owner || !array)
             return false;
@@ -1085,32 +1085,32 @@ public:
     }
 
     void SetDefaultString(const std::string &value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetDefaultString(value.c_str());
     }
 
     void SetDefaultBoolean(bool value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetDefaultBoolean(value);
     }
 
     void SetDefaultInteger(int value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetDefaultInteger(value);
     }
 
     void SetDefaultFloat(float value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetDefaultFloat(value);
     }
 
     void SetDefaultKey(CKKEYBOARD value) const {
-        if (IProperty *property = ResolveProperty())
+        if (Property *property = ResolveProperty())
             property->SetDefaultKey(value);
     }
 
 private:
-    IProperty *ResolveProperty() const {
+    Property *ResolveProperty() const {
         BML::ScriptMod *owner = BMLAS_ResolveScriptModOwner(m_ModId);
         return owner ? owner->GetConfigProperty(m_Category, m_Key) : nullptr;
     }

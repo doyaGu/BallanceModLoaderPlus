@@ -7,20 +7,30 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Config/IConfig.h"
-#include "Loader/IMod.h"
+#include "CKEnums.h"
 
 #include "Config/ConfigValue.h"
 
+class Property;
+
+namespace BML::ConfigMetadata {
+BML_ConfigPropertyEditor GetEditor(const Property *property);
+int SetEditor(Property *property, BML_ConfigPropertyEditor editor);
+std::size_t ChoiceCount(const Property *property);
+const char *Choice(const Property *property, std::size_t index);
+int SetChoices(Property *property, const char *const choices[], std::size_t count);
+} // namespace BML::ConfigMetadata
+
 namespace BML::Api { class ConfigApi; }
 
+class IMod;
 class Config;
 
 // Persisted values have no Mod owner, callbacks, revisions, or editor metadata.
 class ConfigData {
 public:
     struct Entry {
-        IProperty::PropertyType Type = IProperty::NONE;
+        PropertyType Type = PropertyType::NONE;
         ConfigValue Value = 0;
     };
 
@@ -28,22 +38,22 @@ public:
     const Entry *Find(const char *category, const char *key) const;
     bool HasCategory(const char *category) const;
     bool HasKey(const char *category, const char *key) const;
-    bool Set(const char *category, const char *key, IProperty::PropertyType type, ConfigValue value);
+    bool Set(const char *category, const char *key, PropertyType type, ConfigValue value);
     bool Remove(const char *category, const char *key);
 
 private:
     std::unordered_map<std::string, std::unordered_map<std::string, Entry>> m_Categories;
 };
 
-class Property : public IProperty {
+class Property {
     friend class BML::Api::ConfigApi;
     friend class Config;
     friend class Category;
-    friend BML_ConfigPropertyEditor BML::ConfigMetadata::GetEditor(const IProperty *property);
-    friend int BML::ConfigMetadata::SetEditor(IProperty *property, BML_ConfigPropertyEditor editor);
-    friend std::size_t BML::ConfigMetadata::ChoiceCount(const IProperty *property);
-    friend const char *BML::ConfigMetadata::Choice(const IProperty *property, std::size_t index);
-    friend int BML::ConfigMetadata::SetChoices(IProperty *property, const char *const choices[],
+    friend BML_ConfigPropertyEditor BML::ConfigMetadata::GetEditor(const Property *property);
+    friend int BML::ConfigMetadata::SetEditor(Property *property, BML_ConfigPropertyEditor editor);
+    friend std::size_t BML::ConfigMetadata::ChoiceCount(const Property *property);
+    friend const char *BML::ConfigMetadata::Choice(const Property *property, std::size_t index);
+    friend int BML::ConfigMetadata::SetChoices(Property *property, const char *const choices[],
                                                std::size_t count);
 
 public:
@@ -55,29 +65,30 @@ public:
 
     const char *GetName() const { return m_Key.c_str(); }
 
-    const char *GetString() override;
+    const char *GetString();
     std::size_t GetStringSize();
-    bool GetBoolean() override;
-    int GetInteger() override;
-    float GetFloat() override;
-    CKKEYBOARD GetKey() override;
+    bool GetBoolean();
+    int GetInteger();
+    float GetFloat();
+    CKKEYBOARD GetKey();
 
-    void SetString(const char *value) override;
-    void SetBoolean(bool value) override;
-    void SetInteger(int value) override;
-    void SetFloat(float value) override;
-    void SetKey(CKKEYBOARD value) override;
+    void SetString(const char *value);
+    void SetBoolean(bool value);
+    void SetInteger(int value);
+    void SetFloat(float value);
+    void SetKey(CKKEYBOARD value);
 
     const char *GetComment() const { return m_Comment.c_str(); }
-    void SetComment(const char *comment) override;
 
-    void SetDefaultString(const char *value) override;
-    void SetDefaultBoolean(bool value) override;
-    void SetDefaultInteger(int value) override;
-    void SetDefaultFloat(float value) override;
-    void SetDefaultKey(CKKEYBOARD value) override;
+    void SetComment(const char *comment);
 
-    PropertyType GetType() override { return m_Type; }
+    void SetDefaultString(const char *value);
+    void SetDefaultBoolean(bool value);
+    void SetDefaultInteger(int value);
+    void SetDefaultFloat(float value);
+    void SetDefaultKey(CKKEYBOARD value);
+
+    PropertyType GetType() { return m_Type; }
     const Value &GetValue() const { return m_Value; }
     void SetValue(const Value &value);
     std::size_t GetHash() const;
@@ -87,13 +98,12 @@ public:
     void SetModified(PropertyType previousType);
 
 private:
-    BML_ConfigPropertyEditor GetEditorMetadata() const;
     bool SetEditorMetadata(BML_ConfigPropertyEditor editor);
     bool SetChoiceMetadata(const char *const choices[], std::size_t count);
 
     uint64_t m_Identity = 0;
     Value m_Value = 0;
-    PropertyType m_Type = INTEGER;
+    PropertyType m_Type = PropertyType::INTEGER;
     BML_ConfigPropertyEditor m_Editor = BML_CONFIG_EDITOR_DEFAULT;
     std::vector<std::string> m_Choices;
     std::size_t m_Hash = 0;
@@ -132,7 +142,7 @@ private:
     std::unordered_map<std::string, Property *> m_PropertyMap;
 };
 
-class Config : public IConfig {
+class Config {
     friend class BML::Api::ConfigApi;
     friend class Category;
     friend class Property;
@@ -148,7 +158,7 @@ public:
     struct Edit {
         std::string Category;
         std::string Key;
-        IProperty::PropertyType ExpectedType = IProperty::NONE;
+        PropertyType ExpectedType = PropertyType::NONE;
         Property::Value BaseValue = 0;
         Property::Value NewValue = 0;
     };
@@ -182,25 +192,30 @@ public:
     };
 
     explicit Config(IMod *mod);
-    ~Config() override;
+    ~Config();
 
     IMod *GetMod() const { return m_Mod; }
     const std::string &GetModID() const { return m_ModID; }
     void SnapshotModMetadata();
-    void DetachMod() noexcept { m_Mod = nullptr; m_PendingNotifications.clear(); }
+
+    void DetachMod() noexcept {
+        m_Mod = nullptr;
+        m_PendingNotifications.clear();
+    }
+
     void AttachMod(IMod *mod);
 
     std::size_t GetCategoryCount() const { return m_Categories.size(); }
     Category *GetCategory(std::size_t i);
     Category *GetCategory(const char *name);
 
-    bool HasCategory(const char *category) override;
-    bool HasKey(const char *category, const char *key) override;
+    bool HasCategory(const char *category);
+    bool HasKey(const char *category, const char *key);
     bool RemoveProperty(const char *category, const char *key);
 
-    IProperty *GetProperty(const char *category, const char *key) override;
+    Property *GetProperty(const char *category, const char *key);
     const char *GetCategoryComment(const char *category);
-    void SetCategoryComment(const char *category, const char *comment) override;
+    void SetCategoryComment(const char *category, const char *comment);
 
     bool Load(const wchar_t *path);
     bool Save(const wchar_t *path);

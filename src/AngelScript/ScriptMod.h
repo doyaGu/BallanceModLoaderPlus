@@ -118,7 +118,7 @@ public:
                       XObjectArray *objArray,
                       CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
-    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
+    void OnModifyConfig(const char *category, const char *key, Property *prop) override;
     void OnPreStartMenu() override;
     void OnPostStartMenu() override;
     void OnExitGame() override;
@@ -202,7 +202,7 @@ public:
     void LogError(const std::string &message);
     bool HasConfigCategory(const std::string &category);
     bool HasConfigKey(const std::string &category, const std::string &key);
-    IProperty *GetConfigProperty(const std::string &category, const std::string &key);
+    Property *GetConfigProperty(const std::string &category, const std::string &key);
     void SetConfigCategoryComment(const std::string &category, const std::string &comment);
     void SetLoadFailure(const std::string &diagnostic);
     void SetLoadFailure(const ScriptDiagnostic &diagnostic);

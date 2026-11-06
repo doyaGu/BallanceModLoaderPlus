@@ -13,8 +13,11 @@ add_bml_test(CommandInputTest
 add_bml_test(CommandBarThemeTest
         SOURCES
         CommandBarThemeTest.cpp
+        ${PROJECT_SOURCE_DIR}/tests/support/Logger.cpp
+        ${BML_SOURCE_DIR}/Config/Config.cpp
         ${BML_SOURCE_DIR}/Console/CommandBarTheme.cpp
         ${BML_SOURCE_DIR}/UI/ColorCodec.cpp
+        DEPENDENCIES BMLUtils
 )
 
 add_bml_test(ModMenuSessionTest

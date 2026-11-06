@@ -7,7 +7,7 @@ extern "C" void BML_CDECL BML_Free(void *pointer) { std::free(pointer); }
 
 IMod::~IMod() = default;
 Logger *IMod::GetLogger() { return nullptr; }
-IConfig *IMod::GetConfig() { return nullptr; }
+Config *IMod::GetConfig() { return nullptr; }
 namespace {
 int creates, loads, unloads, destroys;
 int unloadCode = BML_OK, loadCode = BML_OK;

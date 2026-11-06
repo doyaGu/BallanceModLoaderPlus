@@ -12,7 +12,7 @@ Logger *IMod::GetLogger() {
     return m_Logger;
 }
 
-IConfig *IMod::GetConfig() {
+Config *IMod::GetConfig() {
     if (m_Config == nullptr) {
         auto config = std::make_unique<Config>(this);
         ModContextLease context;

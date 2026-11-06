@@ -39,7 +39,7 @@ constexpr unsigned long GameFontAcquireDelay = 1;
 
 using BoundGameFontRoles = std::bitset<GameFontRoleCount>;
 
-void SetChoiceEditor(IProperty *property,
+void SetChoiceEditor(Property *property,
                      const std::vector<std::string> &choices) {
     if (!property)
         return;
@@ -55,7 +55,7 @@ void SetChoiceEditor(IProperty *property,
                                   : BML_CONFIG_EDITOR_CHOICE);
 }
 
-void ConfigureFontChoiceEditors(IProperty *primary, IProperty *fallbacks,
+void ConfigureFontChoiceEditors(Property *primary, Property *fallbacks,
                                 const Ui::FontRuntime *runtime) {
     std::vector<std::string> catalog = runtime
         ? runtime->ListLoaderFaces()
@@ -131,12 +131,12 @@ const BMLMod::Setting *BMLMod::GetSettings(std::size_t &count) {
 void BMLMod::BindSettings() {
     std::size_t count = 0;
     const Setting *settings = GetSettings(count);
-    IConfig *config = GetConfig();
+    Config *config = GetConfig();
     for (std::size_t i = 0; i < count; ++i)
         this->*settings[i].property = config->GetProperty(settings[i].category, settings[i].key);
 }
 
-void BMLMod::ApplySetting(const Setting &setting, IProperty *property) {
+void BMLMod::ApplySetting(const Setting &setting, Property *property) {
     if (!setting.apply || !property)
         return;
     if (setting.requiresIngame && (!m_BML || !m_BML->IsIngame()))
@@ -269,7 +269,7 @@ void BMLMod::OnProcess() {
 
 }
 
-void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
+void BMLMod::OnModifyConfig(const char *category, const char *key, Property *prop) {
     if (!prop)
         return;
 
@@ -511,15 +511,15 @@ FontCommandContext BMLMod::GetFontCommandContext() const {
     return commandContext;
 }
 
-void BMLMod::ApplyUiFontSetting(BMLMod &mod, IProperty *) {
+void BMLMod::ApplyUiFontSetting(BMLMod &mod, Property *) {
     mod.ConfigureUiFonts();
 }
 
-void BMLMod::ApplyUnlockFrameRateSetting(BMLMod &mod, IProperty *) {
+void BMLMod::ApplyUnlockFrameRateSetting(BMLMod &mod, Property *) {
     mod.ApplyFrameRateSettings();
 }
 
-void BMLMod::ApplyFrameRateLimitSetting(BMLMod &mod, IProperty *property) {
+void BMLMod::ApplyFrameRateLimitSetting(BMLMod &mod, Property *property) {
     if (mod.m_UnlockFPS->GetBoolean())
         return;
 
@@ -530,7 +530,7 @@ void BMLMod::ApplyFrameRateLimitSetting(BMLMod &mod, IProperty *property) {
         mod.AdjustFrameRate(true);
 }
 
-void BMLMod::ApplyWidescreenSetting(BMLMod &, IProperty *property) {
+void BMLMod::ApplyWidescreenSetting(BMLMod &, Property *property) {
     RenderHook::EnableWidescreenFix(property->GetBoolean());
 }
 

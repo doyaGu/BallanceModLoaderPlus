@@ -52,7 +52,7 @@ public:
     bool CallModifyConfig(const char *modId,
                           const char *category,
                           const char *key,
-                          IProperty *property,
+                          Property *property,
                           ScriptDiagnostic &diagnostic);
     bool CallPhysicalize(CK3dEntity *target,
                          CKBOOL fixed,

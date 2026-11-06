@@ -12,7 +12,7 @@
 #include "Console/ICommand.h"
 #include "Loader/IMessageReceiver.h"
 #include "Logging/Logger.h"
-#include "Config/IConfig.h"
+#include "Config/Config.h"
 
 class ModContext;
 
@@ -178,7 +178,7 @@ public:
     // are detached before the Mod DLL is released.
     virtual void OnUnload() {}
 
-    // Runs during the loader's config flush after IProperty::SetString or one of its
+    // Runs during the loader's config flush after Property::SetString or one of its
     // siblings changes a value or its type. The in-memory value changes immediately,
     // but writes to the same property in one frame are coalesced into one callback
     // carrying the latest value. A write made from this callback is queued for a
@@ -187,7 +187,7 @@ public:
     // persisted without another callback because OnUnload is the final callback.
     // Loading a config file uses the SetDefault functions and does not queue this
     // callback. prop is the property that changed and already carries the new value.
-    virtual void OnModifyConfig(const char *category, const char *key, IProperty *prop) {}
+    virtual void OnModifyConfig(const char *category, const char *key, Property *prop) {}
 
     // Every time one of the game's scripts runs the Object Load building block,
     // reported after the file has been read, with the arguments that block was
@@ -263,7 +263,7 @@ protected:
     // so call it from OnLoad or later, and reach for the SetDefault functions on the
     // properties rather than the Set ones, which would overwrite what the player saved.
     virtual Logger *GetLogger() final;
-    virtual IConfig *GetConfig() final;
+    virtual Config *GetConfig() final;
 
     // The loader, handed to the constructor. It stays valid for as long as the Mod
     // does, and is never null for an adapter constructed by this loader.
@@ -273,7 +273,7 @@ private:
     friend class ModContext;
 
     Logger *m_Logger = nullptr;
-    IConfig *m_Config = nullptr;
+    Config *m_Config = nullptr;
 };
 
 #endif // BML_IMOD_H
