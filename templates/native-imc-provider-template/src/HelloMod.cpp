@@ -15,14 +15,14 @@ int Increment(const Service::IncrementRequestValue &request, Service::IncrementR
 }
 
 class HelloMod final : public BML::Mod::Instance {
-  public:
+public:
     void OnLoad(const BML::Mod::Context &ctx) override {
         Service::Provider::Handlers handlers{};
         handlers.Increment = &Increment;
         const int status = m_Provider.Start(handlers);
         if (status != BML_OK)
             throw std::runtime_error("IMC registration failed: " + std::to_string(status));
-        ctx.LogInfo(std::string("Native profile IMC provider: start_status=") +
+        (void)ctx.LogInfo(std::string("Native profile IMC provider: start_status=") +
                     std::to_string(status));
     }
 
@@ -30,11 +30,11 @@ class HelloMod final : public BML::Mod::Instance {
         const int status = m_Provider.Close();
         if (status != BML_OK && status != BML_ERROR_NOT_FOUND)
             throw std::runtime_error("Registration cleanup failed: " + std::to_string(status));
-        ctx.LogInfo(std::string("Native profile IMC provider: cleanup_status=") +
+        (void)ctx.LogInfo(std::string("Native profile IMC provider: cleanup_status=") +
                     std::to_string(status));
     }
 
-  private:
+private:
     Service::Provider m_Provider;
 };
 

@@ -2,7 +2,7 @@
 
 // The common authoring surface needs only Mod.hpp and the core BML::BML target.
 class MyMod final : public BML::Mod::Instance {
-  public:
+public:
     void OnLoad(const BML::Mod::Context &ctx) override {
         m_Enabled =
             ctx.Config().DeclareProperty({"General", "Enabled", true, "Enable the example"}).Take();
@@ -14,7 +14,7 @@ class MyMod final : public BML::Mod::Instance {
             ctx.Commands()
                 .Register({.Name = "native-example", .Description = "Print the configured message"},
                           [this](const BML::Command::Invocation &call) {
-                              return call.Write(m_Message.Get<std::string>()) == BML_OK
+                              return call.Write(m_Message.Get<std::string>())
                                          ? BML_COMMAND_STATUS_SUCCESS
                                          : BML_COMMAND_STATUS_FAILURE;
                           })
@@ -26,6 +26,7 @@ class MyMod final : public BML::Mod::Instance {
                     [ctx] { (void)ctx.LogInfo("Press F3 or run native-example in the console"); })
                 .Take();
     }
+
     void OnProcess(const BML::Mod::Context &ctx) override {
         if (!m_Enabled.Get<bool>())
             return;
@@ -34,7 +35,7 @@ class MyMod final : public BML::Mod::Instance {
             (void)ctx.LogInfo(m_Message.Get<std::string>());
     }
 
-  private:
+private:
     BML::Config::Property m_Enabled, m_Message;
     BML::Command::Registration m_Command;
     BML::Timer::Registration m_Startup;

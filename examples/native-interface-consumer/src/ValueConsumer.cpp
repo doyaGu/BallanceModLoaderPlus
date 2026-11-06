@@ -15,7 +15,7 @@ class ValueConsumer final : public BML::Mod::Instance {
                                      std::to_string(openStatus));
         int value = 0;
         const int readStatus = m_Value->ReadValue(35, &value);
-        ctx.LogInfo("Value interface: open_status=" + std::to_string(openStatus) + " read_status=" +
+        (void)ctx.LogInfo("Value interface: open_status=" + std::to_string(openStatus) + " read_status=" +
                     std::to_string(readStatus) + " value=" + std::to_string(value));
         if (readStatus != BML_OK)
             throw std::runtime_error("Value interface read failed");

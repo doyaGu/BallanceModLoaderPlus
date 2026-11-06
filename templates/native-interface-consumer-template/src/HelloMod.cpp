@@ -7,7 +7,7 @@
 namespace {
 
 class HelloMod final : public BML::Mod::Instance {
-  public:
+public:
     void OnLoad(const BML::Mod::Context &ctx) override {
         const int openStatus = m_Value.Open();
         if (openStatus != BML_OK)
@@ -15,7 +15,7 @@ class HelloMod final : public BML::Mod::Instance {
                                      std::to_string(openStatus));
         int value = 0;
         const int readStatus = m_Value->ReadValue(35, &value);
-        ctx.LogInfo("Native profile interface consumer: open_status=" + std::to_string(openStatus) +
+        (void)ctx.LogInfo("Native profile interface consumer: open_status=" + std::to_string(openStatus) +
                     " read_status=" + std::to_string(readStatus) +
                     " value=" + std::to_string(value));
         if (readStatus != BML_OK)
@@ -24,10 +24,10 @@ class HelloMod final : public BML::Mod::Instance {
 
     void OnUnload(const BML::Mod::Context &ctx) override {
         m_Value.Reset();
-        ctx.LogInfo("Native profile interface consumer: reset=true");
+        (void)ctx.LogInfo("Native profile interface consumer: reset=true");
     }
 
-  private:
+private:
     BML::Interfaces::Reference<__PROVIDER_CLASS__Traits> m_Value;
 };
 

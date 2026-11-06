@@ -17,12 +17,12 @@ constexpr auto kValueInterface =
     BML::Interfaces::MakeInterface<HelloModTraits>(BML_HELLOMOD_INTERFACE_MINOR, &ReadValue);
 
 class HelloMod final : public BML::Mod::Instance {
-  public:
+public:
     void OnLoad(const BML::Mod::Context &ctx) override {
         const int status = m_Value.Open(kValueInterface);
         if (status != BML_OK)
             throw std::runtime_error("Interface publication failed: " + std::to_string(status));
-        ctx.LogInfo(std::string("Native profile interface provider: publication_status=") +
+        (void)ctx.LogInfo(std::string("Native profile interface provider: publication_status=") +
                     std::to_string(status));
     }
 
@@ -30,11 +30,11 @@ class HelloMod final : public BML::Mod::Instance {
         const int status = m_Value.Close();
         if (status != BML_OK && status != BML_ERROR_NOT_FOUND)
             throw std::runtime_error("Registration cleanup failed: " + std::to_string(status));
-        ctx.LogInfo(std::string("Native profile interface provider: cleanup_status=") +
+        (void)ctx.LogInfo(std::string("Native profile interface provider: cleanup_status=") +
                     std::to_string(status));
     }
 
-  private:
+private:
     BML::Interfaces::Publication<HelloModTraits> m_Value;
 };
 

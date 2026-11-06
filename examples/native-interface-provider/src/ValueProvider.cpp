@@ -22,14 +22,14 @@ class ValueProvider final : public BML::Mod::Instance {
         const int status = m_Value.Open(kValueInterface);
         if (status != BML_OK)
             throw std::runtime_error("Interface publication failed: " + std::to_string(status));
-        ctx.LogInfo(std::string("Value interface publication status: ") + std::to_string(status));
+        (void)ctx.LogInfo(std::string("Value interface publication status: ") + std::to_string(status));
     }
 
     void OnUnload(const BML::Mod::Context &ctx) override {
         const int status = m_Value.Close();
         if (status != BML_OK && status != BML_ERROR_NOT_FOUND)
             throw std::runtime_error("Registration cleanup failed: " + std::to_string(status));
-        ctx.LogInfo(std::string("Value interface cleanup status: ") + std::to_string(status));
+        (void)ctx.LogInfo(std::string("Value interface cleanup status: ") + std::to_string(status));
     }
 
   private:
