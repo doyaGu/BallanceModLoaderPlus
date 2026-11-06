@@ -19,7 +19,7 @@ public:
     void OnPostStartMenu(const BML::Mod::Context &) override { m_MenuReady = true; }
     void OnRender(const BML::Mod::Context &,const BML::Mod::RenderEvent &) override { ++m_Renders; }
     void OnUnload(const BML::Mod::Context &) override {
-        (void)m_Block.Release();
+        (void)m_Block.Release().Code();
         Write(m_ResultPath + ".unloaded", "unloaded\n");
     }
 
@@ -103,7 +103,7 @@ public:
             passed = raw.IsKeyReleased(CKKEY_A) && !filtered.IsKeyReleased(CKKEY_A) &&
                      !native->IsKeyToggled(CKKEY_A) && (mouse.ToggledMask & 1u) &&
                      !native->IsMouseToggled(CK_MOUSEBUTTON_LEFT);
-            passed = passed && m_Block.Release()==BML_OK;
+            passed = passed && m_Block.Release().Code()==BML_OK;
             break;
         case 6:
             passed = !raw.IsKeyReleased(CKKEY_A) && !native->IsKeyDown(CKKEY_A) &&
@@ -138,7 +138,7 @@ private:
         auto config = m_Context.Config();
         auto value = config.DeclareProperty({"Contract", "Count", int32_t(42)}).Take();
         Require(value.Get<int32_t>() == 42, "numeric configuration read");
-        Require(value.Set(int32_t(43)) == BML_OK, "configuration write");
+        Require(value.Set(int32_t(43)).Code() == BML_OK, "configuration write");
         auto same = config.DeclareProperty({"Contract", "Count", int32_t(7)}).Take();
         Require(same.Read().Value().Handle == value.Read().Value().Handle && same.Get<int32_t>() == 43, "idempotent declaration");
         Require(config.DeclareProperty({"Contract", "Count", std::string("wrong")}).Code() == BML_ERROR_TYPE_MISMATCH, "configuration type conflict");
@@ -151,7 +151,7 @@ private:
             BML::Detail::Cdecl<[](void *data, const BML_ConfigPropertyInfo *info) {
                 auto &state = *static_cast<Visitor *>(data);
                 const char *borrowed = info->Value->Data.String;
-                if (state.Property.Set(std::string(128, 'y')) != BML_OK) return BML_ERROR_FAIL;
+                if (state.Property.Set(std::string(128, 'y')).Code() != BML_OK) return BML_ERROR_FAIL;
                 state.Preserved = std::string_view(borrowed) == std::string(128, 'x');
                 return BML_OK;
             }>::Call, &visitor);
@@ -161,12 +161,12 @@ private:
         m_Self = m_Context.Timers().SetIntervalTicks(1,
             [this, retained](const auto &, const auto &) {
                 ++m_SelfCalls;
-                Require(m_Self.Cancel() == BML_OK, "self cancellation");
+                Require(m_Self.Cancel().Code() == BML_OK, "self cancellation");
                 return true;
             }).Take();
         m_NoArgs = m_Context.Timers().SetTimeoutTicks(1, [this] { ++m_NoArgCalls; }).Take();
         m_VoidLoop = m_Context.Timers().SetIntervalTicks(1, [this] {
-            if (++m_VoidCalls == 2) Require(m_VoidLoop.Cancel() == BML_OK, "void interval cancellation");
+            if (++m_VoidCalls == 2) Require(m_VoidLoop.Cancel().Code() == BML_OK, "void interval cancellation");
         }).Take();
         std::function<void()> empty;
         Require(m_Context.Timers().SetTimeoutTicks(1, empty).Code() == BML_ERROR_INVALID_PARAMETER, "empty timer callback");
@@ -176,7 +176,7 @@ private:
         Require(m_Repeat.Register(m_Context, repeat, [this](const auto &, const auto &event) {
             Require(event.CompletedIterations == uint64_t(m_RepeatCalls), "timer event count");
             ++m_RepeatCalls; return true;
-        }) == BML_OK, "finite timer registration");
+        }).Code() == BML_OK, "finite timer registration");
 
         Require(BML_GetInterface(BML_INPUT_INTERFACE_ID, 1, &raw) == BML_OK, "input C binding");
         const auto *input = static_cast<const BML_InputInterface *>(raw);
