@@ -4,29 +4,50 @@
 
 std::default_random_engine g_RandomEngine;
 
-IMod *BMLEntry(IBML *bml) {
-    return new DeformedWB(bml);
+BML_DEFINE_MOD(DeformedWB, {
+    .Id = "DeformedWB",
+    .Name = "Deformed Wooden Ball",
+    .Version = BML_VERSION,
+    .Author = "Gamepiaynmo",
+    .Description = "Randomly deform the player wooden ball. This does not affect the physical volume.",
+    .MinimumLoaderVersion = BML_VERSION,
+})
+
+void DeformedWB::OnLoad(const BML::Mod::Context &context) {
+    m_Context = context;
+    m_Timers = ModSupport::Timers(context);
+    m_Enabled =
+        m_Context.Config()
+            .DeclareProperty({"Misc", "Enable", bool(false), "Enable deforming player wooden ball"})
+            .Take();
+
+    m_Extent =
+        m_Context.Config()
+            .DeclareProperty({"Misc", "Extent", float(0.25),
+                              "A float ranged from 0 to 1 representing the extent of deformation"})
+            .Take();
 }
 
-void BMLExit(IMod *mod) {
-    delete mod;
-}
+void DeformedWB::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) {
+    const char *filename = event.Filename.data();
+    const bool isMap = event.IsMap;
+    const char *masterName = event.MasterName.data();
+    const auto filterClass = static_cast<CK_CLASSID>(event.FilterClass);
+    const bool addToScene = event.AddToScene, addtoscene = event.AddToScene,
+               reuseMeshes = event.ReuseMeshes, reuseMaterials = event.ReuseMaterials,
+               dynamic = event.Dynamic;
+    XObjectArray objects;
+    for (auto ref : event.Objects) {
+        auto p = BML::Engine::BorrowObject<CKObject>(m_Context, ref);
+        if (p)
+            objects.PushBack(p.Value()->GetID());
+    }
+    auto *objArray = &objects;
+    auto master = BML::Engine::BorrowObject<CKObject>(m_Context, event.MasterObject);
+    CKObject *masterObj = master ? master.Value() : nullptr;
 
-void DeformedWB::OnLoad() {
-    m_Enabled = GetConfig()->GetProperty("Misc", "Enable");
-    m_Enabled->SetComment("Enable deforming player wooden ball");
-    m_Enabled->SetDefaultBoolean(false);
-
-    m_Extent = GetConfig()->GetProperty("Misc", "Extent");
-    m_Extent->SetComment("A float ranged from 0 to 1 representing the extent of deformation");
-    m_Extent->SetDefaultFloat(0.25);
-}
-
-void DeformedWB::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                              CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                              XObjectArray *objArray, CKObject *masterObj) {
-    if (!strcmp(filename, "3D Entities\\Balls.nmo")) {
-        m_BallMesh = m_BML->GetMeshByName("Ball_Wood_Mesh");
+    if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
+        m_BallMesh = ModSupport::Find<CKMesh>(m_Context, "Ball_Wood_Mesh");
         m_Vertices.resize(m_BallMesh->GetVertexCount());
         m_Normals.resize(m_BallMesh->GetVertexCount());
         for (int i = 0; i < m_BallMesh->GetVertexCount(); i++) {
@@ -36,8 +57,8 @@ void DeformedWB::OnLoadObject(const char *filename, CKBOOL isMap, const char *ma
     }
 }
 
-void DeformedWB::OnStartLevel() {
-    if (m_Enabled->GetBoolean()) {
+void DeformedWB::OnStartLevel(const BML::Mod::Context &) {
+    if (m_Enabled.Get<bool>()) {
         std::uniform_real_distribution<float> rnd(-1, 1);
         VxMatrix proj, invp, scale, invs;
         proj.SetIdentity();
@@ -49,7 +70,7 @@ void DeformedWB::OnStartLevel() {
             for (int j = 0; j < i; j++)
                 proj[i] -= DotProduct(proj[i], proj[j]) * proj[j];
             proj[i] = Normalize(proj[i]);
-            scale[i][i] = rnd(g_RandomEngine) * m_Extent->GetFloat() + 1;
+            scale[i][i] = rnd(g_RandomEngine) * m_Extent.Get<float>() + 1;
         }
 
         float slen = scale[0][0] + scale[1][1] + scale[2][2];

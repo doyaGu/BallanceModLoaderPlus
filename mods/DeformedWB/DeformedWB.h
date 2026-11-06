@@ -1,31 +1,25 @@
 #pragma once
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
+class DeformedWB : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-class DeformedWB : public IMod {
-public:
-    explicit DeformedWB(IBML *bml) : IMod(bml) {}
+  public:
 
-    const char *GetID() override { return "DeformedWB"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "Deformed Wooden Ball"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
-    const char *GetDescription() override { return "Randomly deform the player wooden ball. This does not affect the physical volume."; }
-    DECLARE_BML_VERSION;
 
-    void OnLoad() override;
-    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                      XObjectArray *objArray, CKObject *masterObj) override;
-    void OnStartLevel() override;
+    void OnLoad(const BML::Mod::Context &) override;
+    void OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) override;
+    void OnStartLevel(const BML::Mod::Context &) override;
 
-private:
-    CKMesh *m_BallMesh = nullptr;
+  private:
+    ModSupport::Object<CKMesh> m_BallMesh{};
     std::vector<VxVector> m_Vertices;
     std::vector<VxVector> m_Normals;
-    IProperty *m_Enabled = nullptr;
-    IProperty *m_Extent = nullptr;
+    BML::Config::Property m_Enabled = {};
+    BML::Config::Property m_Extent = {};
 };
