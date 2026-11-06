@@ -848,7 +848,7 @@ TEST_F(ImcRuntimeTest, CleanupOwnerRevokesRegistrationsBeforeDispatch) {
     BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
     message.Data = &byte;
     message.DataSize = sizeof(byte);
-    std::uint32_t recipients = 1;
+    std::size_t recipients = 1;
     EXPECT_EQ(m_Runtime.Publish(m_Consumer, topic, &message, &recipients), BML_OK);
     EXPECT_EQ(recipients, 0u);
     EXPECT_EQ(delivered.load(std::memory_order_relaxed), 0);
