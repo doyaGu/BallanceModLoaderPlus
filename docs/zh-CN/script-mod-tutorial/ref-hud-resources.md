@@ -83,7 +83,7 @@ ModLoader/Mods/
 
 ```angelscript
 BML::ObjectLoadOptions options;
-options.File = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), "3D Entities\\PH\\P_Ball_Wood.nmo");
+options.File = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), "3D Entities/PH/P_Ball_Wood.nmo");
 options.Rename = true;
 options.MasterName = "UniqueObjectName";
 options.AddToScene = true;

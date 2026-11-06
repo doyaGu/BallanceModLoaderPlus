@@ -357,7 +357,9 @@ void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
 
 **常见原因**：
 
-1. **OnProcess 中每帧查找对象**：`Borrow3dEntityByName` 每次调用都要遍历对象表。应当在 `OnGameEvent` 中查找一次，结果保存到成员变量
+1. **OnProcess 中反复全表查找**：优先在关卡事件中解析稳定身份并保存 CKAS 可验证引用，
+   每次操作前重新解析局部借用；不能为省查找而长期保存可能失效的裸 CK 句柄。活动球等
+   会变化的对象从已有状态表读取，不缓存成永远不变的对象。
 2. **每帧写日志**：日志涉及文件 I/O，每秒 60 次写入会拖慢帧率。调试完后移除频繁日志
 3. **ImGui 控件过多**：数百个 `TextUnformatted` 调用会累积渲染开销
 4. **每帧创建大量临时字符串**：字符串拼接如果在 OnProcess 中频繁执行，会产生内存压力

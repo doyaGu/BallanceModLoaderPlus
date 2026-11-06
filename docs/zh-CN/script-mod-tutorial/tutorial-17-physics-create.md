@@ -179,7 +179,7 @@ class SpawnBall {
         }
 
         // 1. 加载资源
-        string relativePath = "3D Entities\\PH\\P_Ball_Wood.nmo";
+        string relativePath = "3D Entities/PH/P_Ball_Wood.nmo";
         string resourcePath = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), relativePath);
         if (!BML::Path::IsFile(resourcePath)) {
             ctx.LogWarn("Resource missing: " + relativePath);

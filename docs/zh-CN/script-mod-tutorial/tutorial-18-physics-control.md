@@ -237,7 +237,7 @@ class ControlBall {
             CleanupBall(ctx);
         }
 
-        string relativePath = "3D Entities\\PH\\P_Ball_Wood.nmo";
+        string relativePath = "3D Entities/PH/P_Ball_Wood.nmo";
         string resourcePath = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), relativePath);
         if (!BML::Path::IsFile(resourcePath)) { ctx.LogWarn("Resource missing"); return; }
 

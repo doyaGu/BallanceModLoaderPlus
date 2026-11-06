@@ -179,7 +179,7 @@ class CompleteMod {
             CleanupBall(ctx, "respawn");
         }
 
-        string relativePath = "3D Entities\\PH\\P_Ball_Wood.nmo";
+        string relativePath = "3D Entities/PH/P_Ball_Wood.nmo";
         string resourcePath = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), relativePath);
         if (!BML::Path::IsFile(resourcePath)) {
             SetLast(ctx, "resource missing");

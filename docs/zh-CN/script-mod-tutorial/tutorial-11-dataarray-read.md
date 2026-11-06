@@ -253,7 +253,9 @@ if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL) {
 }
 ```
 
-为什么要缓存？因为 `BorrowDataArrayByName` 每次调用都要在场景中搜索。对于每帧都要读的表（如 CurrentLevel），缓存句柄后直接用省去了搜索开销。
+缓存可省去重复查找，但只适用于寿命明确、关卡内稳定的表；上例按关卡事件清空。
+需要跨世界或允许其他 Mod 删除/替换对象时，保存 CKAS 可验证引用，每次使用前重新解析。
+不要以 `!is null` 代替存活检查，详见[借用规则](ref-modcontext.md#borrow)。
 
 对于偶尔读一次的表（如 AllLevel，你可能只在关卡开始时读一次），临时获取也可以接受。
 
@@ -275,7 +277,9 @@ int cols = BML::CK::GetColumnCount(table);
 
 **"BorrowDataArrayByName 返回 null"**
 
-你可能还在菜单里。DataArray 是关卡对象，只在关卡运行时存在。确保你在 `GAME_EVENT_START_LEVEL` 之后才读取。
+表可能尚未装入、名字不符或当前世界没有该资源。基础 DataArray 可能在菜单中已存在，
+但当前关卡的数据还未就绪。关卡相关读取放在 `GAME_EVENT_START_LEVEL` 之后，
+并分别检查对象、行列和列类型。
 
 **"读出来的值是默认值（-1 或 '?'）"**
 
