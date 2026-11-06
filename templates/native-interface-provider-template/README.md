@@ -7,17 +7,19 @@ version constants, and provider metadata. The project publishes
 `HelloModInterface::Interface` for consumers.
 
 The sample `ReadValue` method returns `input + 7`. Replace it with your real API.
-Add methods to the definition file and run `.\bml interface update`; the lock
+Add methods to the definition file and run `python bml.py interface update`; the lock
 file rejects reordered or changed methods unless you deliberately bump the major
 version. Do not link consumers to this Mod binary.
 
-Use the SDL SDK matching Player's platform, architecture, compiler ABI and build
-configuration. On POSIX run `./bml`; on Windows run `bml.cmd`.
+Use the SDL SDK matching Player’s platform, architecture, dynamic host and
+protocol ABI. Core API calls cross a C seam; direct engine/ImGui extensions also
+require a matching compiler, C++ runtime and build configuration.
+On POSIX run `./bml`; on Windows run `bml.cmd`.
 
 ```sh
-./bml build
-./bml run --ballance-root /path/to/game
-./bml pack
+python bml.py build
+python bml.py run --ballance-root "/path/to/game"
+python bml.py pack
 ```
 
 For additional interface or engine development packages, pass
@@ -33,5 +35,5 @@ cmake --build build --config Release
 cmake --install build --config Release --prefix /path/to/game/ModLoader
 ```
 
-Choose the configuration shipped by the SDK. On Windows choose the matching
-MSVC toolchain and runtime. On macOS select the SDK's architecture.
+Choose the configuration shipped by the SDK and its target architecture.
+Match the full compiler/runtime ABI when opting into engine or ImGui extensions.

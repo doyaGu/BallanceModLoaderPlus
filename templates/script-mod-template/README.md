@@ -12,12 +12,13 @@ Read the SDK's `share/BML/docs/en/modding.md`, then
 
 From this project directory, run:
 
-```bat
-.\bml run
+```sh
+python bml.py run
 ```
 
 The first run asks for the Ballance folder, verifies the matching
-`BuildingBlocks/AngelScript.dll`, deploys a managed copy, and starts Player.
+CKAngelScript plugin in `BuildingBlocks` (`AngelScript.dll`,
+`libAngelScript.so`, or `libAngelScript.dylib`), deploys a managed copy, and starts Player.
 Look for the greeting in game and `Hello Script loaded` in
 `ModLoader/ModLoader.log`.
 
@@ -41,8 +42,8 @@ script logs error
 
 Run the same project-local workflow:
 
-```bat
-.\bml pack
+```sh
+python bml.py pack
 ```
 
 The package is written to `dist/HelloScript.zip`. Pass `--project` or `--output`
@@ -51,7 +52,7 @@ omits its own files, local settings, editor settings, version-control metadata,
 `as.predefined`, Python cache files, and the `dist` directory.
 
 Test the zip without the development directory installed; two packages with
-the same Mod id conflict. `.bmodp` is reserved for native DLL mods.
+the same Mod id conflict. `.bmodp` is reserved for native shared modules.
 
 This mod proves discovery, compilation, lifecycle entry, logging, and
 in-game output. After it works, use the SDK's `examples/script-mod` directory

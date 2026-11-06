@@ -22,7 +22,7 @@ Use these only when two Mods need to communicate:
 - `native-interface-provider-template`: publishes a typed, versioned native
   interface and installs its independent header package.
 - `native-interface-consumer-template`: consumes that header package without
-  linking the provider DLL.
+  linking the provider module.
 - `native-imc-provider-template`: defines and implements a generated IMC RPC API.
 
 Select one with `scripts/bml.py new native <id> --profile ...`.

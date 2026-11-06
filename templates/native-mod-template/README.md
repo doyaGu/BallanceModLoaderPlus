@@ -2,20 +2,22 @@
 
 This is a working starter Mod. Edit `src/HelloMod.cpp`, then run:
 
-```bat
-.\bml run
+```sh
+python bml.py run
 ```
 
 The generated Mod already logs a load message and adds a `hello` command, so
 you can verify the toolchain before changing any code.
 
-Use the SDL SDK matching Player's platform, architecture, compiler ABI and build
-configuration. On POSIX run `./bml`; on Windows run `bml.cmd`.
+Use the SDL SDK matching Player’s platform, architecture, dynamic host and
+protocol ABI. Core API calls cross a C seam; direct engine/ImGui extensions also
+require a matching compiler, C++ runtime and build configuration.
+On POSIX run `./bml`; on Windows run `bml.cmd`.
 
 ```sh
-./bml build
-./bml run --ballance-root /path/to/game
-./bml pack
+python bml.py build
+python bml.py run --ballance-root "/path/to/game"
+python bml.py pack
 ```
 
 For additional interface or engine development packages, pass
@@ -31,8 +33,8 @@ cmake --build build --config Release
 cmake --install build --config Release --prefix /path/to/game/ModLoader
 ```
 
-Choose the configuration shipped by the SDK. On Windows choose the matching
-MSVC toolchain and runtime. On macOS select the SDK's architecture.
+Choose the configuration shipped by the SDK and its target architecture.
+Match the full compiler/runtime ABI when opting into engine or ImGui extensions.
 
 `BML_DEFINE_MOD` at the end of the source holds the metadata in named fields.
 Edit it directly; no separate factory or identity methods are needed. Keep the
