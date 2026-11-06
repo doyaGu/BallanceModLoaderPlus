@@ -15,6 +15,43 @@
 
 namespace BML {
 
+namespace Detail {
+template <class TStatus> class ResultAccessError final : public std::bad_optional_access {
+private:
+    template <class Status>
+    static auto DiagnosticText(const Status &status, int) noexcept
+        -> decltype(status.Message.c_str()) {
+        return status.Message.c_str();
+    }
+
+    template <class Status>
+    static auto DiagnosticText(const Status &status, long) noexcept
+        -> decltype(status.message.c_str()) {
+        return status.message.c_str();
+    }
+
+    template <class Status> static const char *DiagnosticText(const Status &, ...) noexcept {
+        return "";
+    }
+
+public:
+    ResultAccessError(int code, const TStatus &status) noexcept {
+        const char *detail = DiagnosticText(status, 0);
+        if (code == BML_OK)
+            std::snprintf(m_Message, sizeof m_Message, "BML Result value was already consumed");
+        else
+            std::snprintf(m_Message, sizeof m_Message, "BML operation failed (status %d)%s%s", code,
+                          *detail ? ": " : "", detail);
+    }
+
+    const char *what() const noexcept override { return m_Message; }
+
+private:
+    char m_Message[384]{};
+};
+
+} // namespace Detail
+
 template <class T, class TStatus = std::monostate> class Result {
 public:
     Result() = default;
@@ -92,42 +129,9 @@ public:
     }
 
 private:
-    template <class Status>
-    static auto DiagnosticText(const Status &status, int) noexcept
-        -> decltype(status.Message.c_str()) {
-        return status.Message.c_str();
-    }
-
-    template <class Status>
-    static auto DiagnosticText(const Status &status, long) noexcept
-        -> decltype(status.message.c_str()) {
-        return status.message.c_str();
-    }
-
-    template <class Status> static const char *DiagnosticText(const Status &, ...) noexcept {
-        return "";
-    }
-
-    class AccessError final : public std::bad_optional_access {
-    public:
-        AccessError(int code, const TStatus &status) noexcept {
-            const char *detail = DiagnosticText(status, 0);
-            if (code == BML_OK)
-                std::snprintf(m_Message, sizeof m_Message, "BML Result value was already consumed");
-            else
-                std::snprintf(m_Message, sizeof m_Message, "BML operation failed (status %d)%s%s",
-                              code, *detail ? ": " : "", detail);
-        }
-
-        const char *what() const noexcept override { return m_Message; }
-
-    private:
-        char m_Message[384]{};
-    };
-
     void RequireValue() const {
         if (!m_Value)
-            throw AccessError(m_Code, m_Status);
+            throw Detail::ResultAccessError<TStatus>(m_Code, m_Status);
     }
 
     int m_Code = BML_ERROR_FAIL;
@@ -144,6 +148,15 @@ public:
     [[nodiscard]] int Code() const noexcept { return m_Code; }
 
     [[nodiscard]] const TStatus &GetStatus() const noexcept { return m_Status; }
+
+    [[nodiscard]] bool HasValue() const noexcept { return m_Code == BML_OK; }
+
+    void Value() const {
+        if (m_Code != BML_OK)
+            throw Detail::ResultAccessError<TStatus>(m_Code, m_Status);
+    }
+
+    void Take() const { Value(); }
 
     static Result Success(TStatus status = {}) {
         Result result;

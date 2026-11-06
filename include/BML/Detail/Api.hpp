@@ -47,6 +47,11 @@ template <class Body> int Guard(Body &&body) noexcept {
     }
 }
 
+// Status-only C operations have the same Result contract as value-producing calls.
+inline Result<void> ToResult(int code) noexcept {
+    return code == BML_OK ? Result<void>::Success() : Result<void>::Failure(code);
+}
+
 // Adapt module-local visitors to an explicit cdecl function pointer even when
 // the consumer changes its compiler's default calling convention.
 template <auto Function, class Signature = decltype(+Function)> struct Cdecl;

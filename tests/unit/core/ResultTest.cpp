@@ -16,14 +16,14 @@ struct Diagnostic {
 
 struct CopyOnly {
     explicit CopyOnly(int value) : value(value) {}
+
     CopyOnly(const CopyOnly &) = default;
     CopyOnly(CopyOnly &&) = delete;
 
     int value;
 };
 
-static_assert(std::is_same_v<decltype(BML::Result<int>().GetStatus()),
-                             const std::monostate &>);
+static_assert(std::is_same_v<decltype(BML::Result<int>().GetStatus()), const std::monostate &>);
 
 TEST(Result, PlainValueAndFailure) {
     auto success = BML::Result<int>::Success(42);
@@ -36,7 +36,7 @@ TEST(Result, PlainValueAndFailure) {
     EXPECT_FALSE(failure);
     EXPECT_FALSE(failure.HasValue());
     EXPECT_EQ(failure.Code(), BML_ERROR_NOT_FOUND);
-    EXPECT_THROW((void) failure.Value(), std::bad_optional_access);
+    EXPECT_THROW((void)failure.Value(), std::bad_optional_access);
 }
 
 TEST(Result, DiagnosticSurvivesValueConsumption) {
@@ -51,7 +51,7 @@ TEST(Result, DiagnosticSurvivesValueConsumption) {
     EXPECT_FALSE(result.HasValue());
     EXPECT_EQ(result.Code(), BML_OK);
     EXPECT_EQ(result.GetStatus().message, "retained");
-    EXPECT_THROW((void) result.Take(), std::bad_optional_access);
+    EXPECT_THROW((void)result.Take(), std::bad_optional_access);
 
     auto failure = DetailedResult::Failure(BML_ERROR_FAIL, {"failed"});
     EXPECT_EQ(failure.Code(), BML_ERROR_FAIL);
@@ -74,8 +74,7 @@ TEST(Result, VoidUsesTheSameStatusRules) {
     EXPECT_TRUE(success);
     EXPECT_EQ(success.Code(), BML_OK);
 
-    auto failure = BML::Result<void, Diagnostic>::Failure(
-        BML_ERROR_INVALID_PARAMETER, {"invalid"});
+    auto failure = BML::Result<void, Diagnostic>::Failure(BML_ERROR_INVALID_PARAMETER, {"invalid"});
     EXPECT_FALSE(failure);
     EXPECT_EQ(failure.Code(), BML_ERROR_INVALID_PARAMETER);
     EXPECT_EQ(failure.GetStatus().message, "invalid");
@@ -95,7 +94,8 @@ TEST(Result, FailureRequiresAnErrorCode) {
 }
 
 TEST(Result, FailedValueAccessPreservesTheExceptionFamilyAndExplainsTheError) {
-    auto result = BML::Result<int, Diagnostic>::Failure(BML_ERROR_NOT_FOUND, {"Requested item is absent"});
+    auto result =
+        BML::Result<int, Diagnostic>::Failure(BML_ERROR_NOT_FOUND, {"Requested item is absent"});
     try {
         (void)result.Take();
         FAIL() << "A failed result must not produce a value";
@@ -104,6 +104,30 @@ TEST(Result, FailedValueAccessPreservesTheExceptionFamilyAndExplainsTheError) {
         EXPECT_NE(message.find("-3"), std::string::npos);
         EXPECT_NE(message.find("Requested item is absent"), std::string::npos);
     }
+}
+
+TEST(Result, VoidValueAndTakeUseTheSameCheckedAccessContract) {
+    auto success = BML::Result<void, Diagnostic>::Success({"operation finished"});
+    ASSERT_TRUE(success);
+    EXPECT_TRUE(success.HasValue());
+    EXPECT_NO_THROW(success.Value());
+    EXPECT_NO_THROW(success.Take());
+    EXPECT_EQ(success.Code(), BML_OK);
+    EXPECT_EQ(success.GetStatus().message, "operation finished");
+
+    auto failure = BML::Result<void, Diagnostic>::Failure(BML_ERROR_BUSY, {"still in use"});
+    EXPECT_FALSE(failure);
+    EXPECT_FALSE(failure.HasValue());
+    try {
+        failure.Take();
+        FAIL() << "A failed action must not be silently accepted";
+    } catch (const std::bad_optional_access &error) {
+        const std::string message(error.what());
+        EXPECT_NE(message.find(std::to_string(BML_ERROR_BUSY)), std::string::npos);
+        EXPECT_NE(message.find("still in use"), std::string::npos);
+    }
+    EXPECT_EQ(failure.Code(), BML_ERROR_BUSY);
+    EXPECT_EQ(failure.GetStatus().message, "still in use");
 }
 
 } // namespace
