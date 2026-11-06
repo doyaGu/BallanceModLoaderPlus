@@ -1,489 +1,280 @@
-# BML+ native mod API overview
+# Native Mod API
 
-This page groups the public headers installed by the BML+ SDK by purpose. The
-installed `include/BML` directory defines the supported native API.
+SDL Native Mods use the versioned `bml.mod` C protocol. The C++ SDK is a
+header-only authoring layer: its classes, STL values, virtual calls and callback
+captures stay inside the Mod module. The loader receives C records, handles and
+function pointers. The original Windows backend is maintained on its own branch.
 
-## Minimal entry point
-
-A native mod is a dynamic library that exports `BMLEntry` and normally uses the
-`.bmodp` extension:
+## Entry and events
 
 ```cpp
-#include <BML/IMod.h>
+#include <BML/Mod.hpp>
 
-class MyMod final : public IMod {
+class MyMod final : public BML::Mod::Instance {
 public:
-    explicit MyMod(IBML *bml) : IMod(bml) {}
-
-    const char *GetID() override { return "MyMod"; }
-    const char *GetVersion() override { return "1.0.0"; }
-    const char *GetName() override { return "My Mod"; }
-    const char *GetAuthor() override { return "Author"; }
-    const char *GetDescription() override { return "Example"; }
-    DECLARE_BML_VERSION;
+    void OnLoad(const BML::Mod::Context &ctx) override {
+        (void)ctx.LogInfo("My Mod loaded");
+    }
+    void OnStartLevel(const BML::Mod::Context &ctx) override {
+        (void)ctx.LogInfo("Level started");
+    }
 };
 
-BML_MOD_ENTRY(IMod *) BMLEntry(IBML *bml) { return new MyMod(bml); }
-BML_MOD_ENTRY(void) BMLExit(IMod *mod) { delete mod; }
+BML_DEFINE_MOD(MyMod, {
+    .Id = "example.my-mod",
+    .Name = "My Mod",
+    .Version = "1.0.0",
+})
 ```
 
-The object returned by `BMLEntry` is allocated by the Mod DLL. Export
-`BMLExit` and destroy that same object there so allocation and deallocation use
-the same C++ runtime. BML calls `BMLExit` when registration fails after object
-creation and when a loaded native Mod is unloaded. For compatibility, BML can
-still load an older DLL without `BMLExit`, but it logs a warning and cannot
-destroy that Mod instance safely.
+`BML_DEFINE_MOD` exports `BML_GetModInterface`. Querying it repeatedly returns
+immutable metadata and never constructs a Mod. The loader copies that metadata,
+validates the protocol and dependencies, then calls Create and OnLoad. Keep
+registration in OnLoad; an Instance must be default constructible. Its destructor
+must not throw or start new host work. The module that allocates the Instance
+also destroys it. `examples/native-c-mod` shows the same protocol in C11.
 
-Use `BML_MOD_ENTRY` for both exports. It fixes their C linkage and calling
-convention even when the Mod project changes the compiler defaults.
+Use named fields directly in `BML_DEFINE_MOD`; optional fields may be omitted.
+Dependencies fit in the same declaration:
 
-Use the CMake helper installed with the SDK:
+```cpp
+.Dependencies = {{"example.provider", "1.2.0"}, {"example.optional", "", true}},
+```
+
+No separate Define function, identity getters, entry function, constructor or
+empty lifecycle callbacks are needed. The macro supplies the existing C entry,
+local Create/Destroy and only the callbacks you override. Owned registrations
+stay in Instance members and are cleaned by the host before Instance destruction;
+OnUnload remains available for work such as joining your own threads.
+`BML_DEFINE_MOD(MyMod, DefineMyMod)` remains supported for computed metadata.
+Both forms evaluate metadata once at the first successful query, inside the
+exception-safe entry. They do not add initialization at DLL load or a new C ABI.
+
+Id, Name and Version are required. Author and Description may be empty.
+Versions use `MAJOR.MINOR.PATCH` with no leading zeroes or suffixes. Declare
+required and optional dependencies in `Definition::Dependencies`; an empty
+minimum version imposes no version floor. Do not register dependencies from
+OnProcess. The SDK does not silently raise the minimum loader version.
+
+Override only the callbacks needed. Their existing names remain available:
+
+- OnLoad, OnUnload, OnProcess and OnRender;
+- OnLoadObject, OnLoadScript, OnPhysicalize and OnUnphysicalize;
+- OnModifyConfig, OnCheatEnabled, OnPreCommandExecute and OnPostCommandExecute;
+- the existing menu, level, checkpoint, ball, navigation, counter and life
+  callbacks, including OnStartLevel, OnDead, OnPauseLevel and OnUnpauseLevel.
+
+Each receives `const Mod::Context &` first. Engine notifications carry the named
+records in `Mod.hpp`, using checked ObjectRefs and borrowed spans/string_views.
+The C protocol combines game notifications in OnGameEvent and command phases
+in OnCommandEvent. The C++ default dispatch preserves the individual names; an
+override of the combined callback should call the base implementation when it
+also wants those convenience overrides.
+
+OnProcess runs inside the active ImGui frame, after the engine managers'
+PostProcess and the Behavior safe point. Timer/IMC/script pumps retain their
+existing order. BML then finishes deferred input cleanup and updates snapshots.
+This occurs inside CKContext::Process, before it returns. OnRender does not
+create an ImGui frame or advance timers. Render and Process may run separately;
+`UI::SkipNextRender(ctx)` consumes its request at the next Render, not at
+the next Process.
+
+Context binds the common services as `ctx.Config()`, `ctx.Input()`,
+`ctx.Timers()` and `ctx.Commands()`. These are cheap non-owning views over the
+existing wrappers. `<BML/Mod.hpp>` supplies this common surface without engine
+or ImGui headers. See the complete `examples/native-mod/Mod.cpp`: declarations
+include defaults/comments together, commands return an owned Registration, and
+timers accept either a no-argument lambda or the full Context/Event callback.
+Void interval callbacks continue until cancellation; bool callbacks may return
+false to finish. Result access failures retain `std::bad_optional_access` as
+the exception family and report the status and any supplied diagnostic.
+
+## Pick a service
+
+| Headers | Authoring surface |
+| --- | --- |
+| `Mod.h/.hpp` | Protocol, Context, metadata, Mod queries, events, logging and resources |
+| `Config.h/.hpp` | Typed declarations and non-owning Property views |
+| `Timer.h/.hpp` | Owned registrations, timeouts, intervals and finite repeats |
+| `Input.h/.hpp` | Raw/filtered snapshots, device blocks, cursor and repetition |
+| `Command.h/.hpp` | Console registration, arguments, completion, shell status and pipelines |
+| `Behavior.h/.hpp`, `Behavior/Blocks/` | Prototypes, execution, Frames, scripts and reversible graph editing |
+| `Scene.h`, `Gameplay.h`, `Time.h/.hpp`, `Speedrun.h`, `UI.h` | Scene/game state, clocks, game registration, render options, HUD and loader menus |
+| `ModMenu.h/.hpp` | Owner-scoped visible/hidden pages with Push/Replace/Back/Close navigation |
+| `Bui.h/.hpp` | Ballance-styled immediate controls and local Window/Page/Menu helpers |
+| `Gui.h/.hpp`, `Gui/*.h` | Local BGui controllers backed by owned engine UI elements |
+| `DataShare.h/.hpp` | Named bytes with the existing request/cleanup contract |
+| `Imc.h/.hpp`, `ImcWire.hpp` | Generated inter-Mod RPC, futures and Topics |
+| `Interface.h/.hpp` | Required-provider process-local C tables |
+| `BML.h` | Existing allocation, encoding, path, file and ZIP utilities |
+| `Engine.h/.hpp`, `ImGui.h/.hpp` | Explicit optional CK2/VxMath and host ImGui interoperability |
+
+`.h` service tables compile as C11. `.hpp` files provide module-local C++20
+wrappers. `BMLAll.h` collects the core surface and does not include engine or
+ImGui headers. `IMod`, `IBML`, `IConfig`, `ICommand`, `InputHook` and ExecuteBB
+remain private implementation adapters; they are not an installed SDL authoring
+protocol. See the [migration guide](native-mod-migration.md).
+
+## Configuration
+
+```cpp
+#include <BML/Config.hpp>
+
+auto config = ctx.Config();
+auto enabled = config.DeclareProperty({"General", "Enabled", true}).Take();
+const bool value = enabled.Get<bool>();
+const int status = enabled.Set(false);
+```
+
+A declaration copies its metadata. Repeating the same category/key/type returns
+the existing property without overwriting it; another type reports TYPE_MISMATCH.
+`SetDefault` declares a default rather than resetting a user value. The stepwise
+style is supported: declare a property without a default, then call SetDefault.
+Read returns owning Info; Get reads a typed value and supports an explicit
+fallback. Property views do not own the configuration and become invalid with
+the owner or declaration generation.
+
+Only declared keys are persisted. The existing store supplies loaded values,
+notifications, migration, choice/colour editors and atomic UTF-8 saves. A failed
+save retains dirty values for explicit retry or reattachment on the next load;
+it does not require keeping a Mod DLL loaded solely for file I/O.
+
+## Timers and callbacks
+
+```cpp
+#include <BML/Timer.hpp>
+
+// Keep this as an Instance member; discarding the returned registration cancels.
+auto result = ctx.Timers().SetTimeoutTicks(1, [ctx] {
+    (void)ctx.LogInfo("Next timer pump");
+});
+BML::Timer::Registration timer = result.Take();
+```
+
+Timeout/interval methods use milliseconds or explicitly named ticks. TIME and
+REALTIME definitions also use milliseconds. Finite REPEAT accepts 1..INT32_MAX;
+infinite RemainingIterations is -1. Counts saturate at INT32_MAX. A zero delay
+runs in a later pump. DEBOUNCE/THROTTLE enum values remain reserved and creation
+reports NOT_IMPLEMENTED. Priority is clamped to -128..127.
+
+Registration is move-only RAII. Cancel inside its callback prevents later calls;
+returning true cannot resurrect it. Cancellation, natural completion and owner
+cleanup share one release path with the script adapter. Script TimerRef retains
+its VM semantics: dropping the reference does not cancel the registration.
+
+At the new C seam, successful Register transfers exactly one userdata Release
+responsibility. Failure leaves it with the caller. Release waits for active
+callbacks and borrows. Explicit cancellation failure preserves the wrapper for
+retry; a destructor that cannot cancel abandons further business calls and leaves
+release to host cleanup. Existing DataShare/Behavior retain their own documented
+cleanup/Retain rules; do not apply Timer ownership to those protocols.
+
+## Input
+
+```cpp
+#include <BML/Input.hpp>
+
+auto input = ctx.Input();
+auto raw = input.ReadKeyboard(BML_INPUT_RAW).Take();
+auto filtered = input.ReadKeyboard().Take();
+auto block = input.AcquireBlock(BML_INPUT_BLOCK_KEYBOARD).Take();
+const bool down = raw.IsKeyDown(30); // CK keyboard code; no engine header needed.
+```
+
+The engine acquires devices. BML's existing InputHook supplies filtered queries
+and saved original queries for RAW. RAW bypasses BML blocks, not the input
+manager's Pause. Reading never pumps events or advances input. Counted blocks
+are owner-scoped, independent and move-only; Release/owner cleanup removes only
+that share. Original mouse/controller, cursor, repetition and keyboard edge
+behaviour are retained.
+
+Keyboard spans are borrowed for the enclosing Mod/service callback. Repeated or
+nested reads and same-frame block changes do not invalidate an earlier view;
+new reads reflect the current block state. Copying the span does not extend its
+lifetime. Store an owning copy only when work must outlive the callback.
+
+## UI and engine access
+
+Draw Bui and ImGui in OnProcess. `Bui::Window`, Page and Menu remain module-local;
+construct them with Context. Bui::At restores its cursor and propagates local
+C++ exceptions after returning from the C seam. Begin/End must pair even for a
+collapsed window. Another owner or nested drawing scope cannot end your window.
+
+`BGui::Gui`, Element, Panel, Text, Label, Button, Input and KeyInput also take
+Context. Their callbacks stay in the Mod. The host owns their main and auxiliary
+CK objects and invalidates them on deletion/reset. A failed composite Add rolls
+back its temporary elements. Keep the three font domains separate: retail game
+fonts for Label, CKSpriteText fonts for Text, ImGui fonts for the overlay.
+
+`UI.h` controls the loader's HUD/messages/menus; it is separate from Bui and BGui.
+`ModMenu::Page` adds an entry under the owning Mod. Keep the Page alive until
+unregistered, pass an owning Context to your Page subclass for Bui drawing, and
+register/unregister it in OnLoad/OnUnload. Visible and hidden routes, generation
+checks and existing C Page callbacks remain unchanged.
+
+For direct engine access, include `Engine.hpp` and link `BML::Engine`.
+`Engine::BorrowContext`, BorrowRenderContext and BorrowObject return checked,
+non-owning CK pointers. ReferenceObject produces the existing ObjectRef. Retain
+ObjectRefs or CKObjectHandles, not raw pointers across world changes. Managers
+come from CKContext's existing methods. `Behavior/Blocks`, ScriptHelper, Guids
+and TypeConvert are engine-dependent conveniences; ScriptHelper executes locally.
+
+Direct ImGui additionally requires `BML::ImGui` and `ImGui.hpp`. Use the host
+context; never compile a second ImGui instance. `Bui/ImGui.hpp` retains advanced
+ImGui flags/callback overloads, and `Gui/Engine.hpp` supplies Vx/CK conveniences.
+Textures reuse CKTexture/CKSprite and existing object references. No rasterizer
+ABI or second texture-handle family is exposed. Own draw callbacks, userdata and
+textures must remain alive until that frame's backend submission or discard.
+
+## ABI, errors and teardown
+
+All new C function pointers use explicit cdecl and fixed-width scalar values.
+Records use pack(8), restore caller packing and expose frozen 1.0 prefix sizes.
+Unknown tails are ignored; short required prefixes are rejected without writing
+beyond the caller's capacity. Use BML_IFACE_HAS before optional appended slots.
+C strings are UTF-8; capacity/required includes NUL for text, not binary data.
+A too-small buffer reports the required size and does not publish partial text.
+
+Context is a copyable, non-owning owner capability. Store its value, never the
+reference passed to a callback. A ModHandle is an observation identity, not a
+capability or instance pointer. Default service calls require the game thread;
+copying Context does not authorize worker-thread calls. DataShare/IMC keep their
+existing thread contracts.
+
+`Result<T>` owns explicitly requested values in the caller module. Failed
+results have no value; check before Value/Take. Ordinary service errors remain
+caller-handled. A failed main notification or Timer callback stops that owner's
+ordinary dispatch and cleans up at a safe point; remaining Mods still receive
+the event. C++ trampolines contain exceptions inside the module.
+
+Unload completes consumers before their providers. It stops admission, drains
+active callbacks, calls OnUnload, cleans owned resources and calls Destroy.
+Successful stages are not replayed on retry. Failed OnUnload/restoration retains
+the necessary instance and module. An owner must stop and join its own threads
+and unregister direct system/engine callbacks in OnUnload; report failure if it
+cannot. Destroy/Release must not throw or request new host work.
+
+## Build and package
 
 ```cmake
+cmake_minimum_required(VERSION 3.25)
+project(MyMod LANGUAGES CXX)
 find_package(BML CONFIG REQUIRED)
 bml_add_mod(MyMod MyMod.cpp)
+# Only when used:
+# target_link_libraries(MyMod PRIVATE BML::Engine BML::ImGui)
 bml_install_mod(MyMod)
 ```
 
-`bml_add_mod` links `BML::BML`, enables C++20, disables compiler extensions,
-and produces `MyMod.bmodp`. It requires an MSVC-compatible 32-bit target and
-makes the linker require the exact C symbols `BMLEntry` and `BMLExit`. A missing
-or C++-mangled entry point therefore fails the build instead of producing a Mod
-that the loader cannot use safely.
-
-`bml_install_mod` adds the standard install rule. Set `CMAKE_INSTALL_PREFIX` to
-the Ballance `ModLoader` directory, then use CMake's `install` target to build
-and deploy the Mod under `ModLoader/Mods`.
-
-## Public headers
-
-| Header | Purpose |
-| --- | --- |
-| `Version.h`, `Defines.h` | Version macros, export macros, status codes, and base definitions |
-| `Result.hpp` | Reusable C++ result carrying a BML status code, an optional value, and an optional module-specific diagnostic |
-| `BML.h` | C ABI for version, loader and mod directories, command unregistration, command status and piped input, memory, encoding, path, file, and Zip utilities |
-| `BMLAll.h` | Convenience header that includes the complete native SDK surface |
-| `IMod.h`, `IMessageReceiver.h` | Mod metadata, lifecycle, gameplay, and engine callbacks |
-| `IBML.h` | Loader services, CK managers, lookup, commands, timers, and dependencies |
-| `ICommand.h` | Command execution, completion, and basic argument parsing |
-| `IConfig.h` | Typed configuration properties |
-| `ILogger.h` | Info, Warn, and Error logging |
-| `DataShare.h` / `DataShare.hpp` | Named in-process byte sharing through the C ABI or the RAII C++ facade |
-| `Types.h`, `TypeConvert.h` | Object references, vectors, and matrices, plus conversions to and from the Virtools types |
-| `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
-| `Behavior.h`, `Behavior.hpp` | Virtools Building Block discovery, authoring, execution, graph inspection, and editing |
-| `Command.h/.hpp`, `Time.h/.hpp`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with C++ facades |
-| `ModMenu.h`, `ModMenu.hpp` | Pure C Mods-menu page interface and its type-safe C++ authoring layer |
-| `Imc.h`, `Imc.hpp`, `ImcWire.hpp` | IMC C/C++ runtime and wire format |
-| `Bui.h` | Ballance-style ImGui widgets |
-| `Gui.h`, `Gui/*.h` | `BGui` wrappers around Virtools entities and behaviours |
-| `InputHook.h` | Keyboard, mouse, controller state, and paired input-block tokens |
-| `ExecuteBB.h` | v0.3 compatibility interface for executing or creating common Building Blocks |
-| `ScriptHelper.h` | Find, connect, insert, and remove behaviour nodes and parameters |
-| `Guids.h`, `Guids/*.h` | Virtools and Ballance Building Block GUIDs |
-
-On `sdl`, BML's `InputHook` intercepts the existing input manager's query slots.
-Game Building Blocks and ordinary BML readers respect the counted device blocks;
-the `o`-prefixed readers call saved original methods. The engine owns input
-acquisition and physics scheduling. BML's `PostProcess` runs after the current
-built-in managers, then processes its Behavior safe point and Mod callbacks.
-While the loader is running, InputHook defers the scheduled input cleanup until
-those callbacks finish, preserving release edges, and then updates BML's input
-snapshots. Stopping the loader flushes pending cleanup and restores normal input
-scheduling. This runs inside `CKContext::Process()`, before it returns. No CK2,
-Building Block, or Player API changes are needed. If another hook takes over a
-slot, BML defers removal and keeps its saved functions alive until the later
-owner releases it.
-
-`BML::Result<T>` combines a BML status code with an optional value. Modules that
-need structured diagnostics can use `BML::Result<T, ModuleStatus>`; for example,
-`Behavior::Result<T>` supplies `Behavior::Status` without changing the shared
-container or the C ABI. `Failure()` normalizes a non-error code to
-`BML_ERROR_FAIL`, so a failed `Result<void>` cannot appear successful.
-
-## Custom Mods menu pages
-
-A Native Mod can append Ballance-styled entries to its own details page with
-`BML::ModMenu::Page`. Config categories remain first; custom entries follow in
-registration order and share the same four-item pagination. Selecting an entry
-opens the Mod's fully custom page:
-
-```cpp
-#include <BML/Bui.h>
-#include <BML/ModMenu.hpp>
-
-class DiagnosticsPage final : public BML::ModMenu::Page {
-public:
-    DiagnosticsPage()
-        : Page("diagnostics", "Diagnostics", "Show live runtime details") {}
-
-protected:
-    BML::ModMenu::PageAction OnFrame() override {
-        Bui::Title("Diagnostics");
-        // Draw ImGui or Bui widgets directly into the active page here.
-        if (Bui::MainButton("More details"))
-            return BML::ModMenu::PageAction::Push("diagnostics-details");
-        return BML::ModMenu::PageAction::None();
-    }
-};
-
-class DiagnosticsDetailsPage final : public BML::ModMenu::Page {
-public:
-    DiagnosticsDetailsPage()
-        : Page("diagnostics-details", "Details", {},
-               BML::ModMenu::PageVisibility::Hidden) {}
-
-protected:
-    BML::ModMenu::PageAction OnFrame() override {
-        Bui::Title("Details");
-        return BML::ModMenu::PageAction::None();
-    }
-};
-
-// Keep this object alive as part of the Mod.
-DiagnosticsPage diagnostics;
-DiagnosticsDetailsPage diagnosticsDetails;
-
-void RegisterMenuPages() {
-    (void) diagnostics.Register();
-    (void) diagnosticsDetails.Register();
-}
-void UnregisterMenuPages() {
-    (void) diagnosticsDetails.Unregister();
-    (void) diagnostics.Unregister();
-}
-```
-
-The loader has already opened a scrollable content region in the centre of the
-Mods menu when `OnFrame` runs. Regular ImGui widgets flow within that region;
-do not call `ImGui::NewFrame` or `ImGui::Render`. The loader draws the native
-Back button outside this region; pages should not call `Bui::NavBack` themselves.
-`Hidden` pages are absent from the details list but can be reached through
-`Push` or `Replace` from another page of the same Mod. `Back` restores the
-previous route; `Close` leaves the Mods menu. `OnEnter` and `OnLeave` receive
-the navigation reason. A failed target or full history leaves the current page
-open and shows an error.
-The loader copies the id, label, and description, but the page object and callbacks
-must remain alive until unregistration. Remaining registrations are removed before
-the owner DLL unloads. Native and Script Mods use the same page registry.
-Call the two registration helpers from the owning Mod's `OnLoad` and `OnUnload`.
-`ModMenu.h` remains usable from C and contains no C++ standard-library or class
-surface; `ModMenu.hpp` is a one-way authoring facade over that C interface. At
-the C seam, `BML_ModMenuPageDraw` returns a `BML_OK`/error status and writes a
-deferred navigation request to `BML_ModMenuPageFrame::Action` and, for Push or
-Replace, copies the target id into its 256-byte `TargetPageId` buffer. Page ids
-are local to the registering Mod. Old alpha page descriptors are rejected by
-`StructSize`; they are not called through the revised 1.0 callbacks.
-
-## Mod lifecycle and events
-
-`IMod` inherits `IMessageReceiver`. A mod supplies its ID, version, name,
-author, description, and required BML version, then overrides only the
-callbacks it needs:
-
-- lifecycle: `OnLoad`, `OnUnload`, `OnProcess`, and `OnRender`;
-- configuration and commands: `OnModifyConfig`, `OnPreCommandExecute`,
-  `OnPostCommandExecute`, and `OnCheatEnabled`;
-- engine objects: `OnLoadObject`, `OnLoadScript`, `OnPhysicalize`, and
-  `OnUnphysicalize`;
-- game flow: menu, load, start, reset, pause, exit, next-level, death, finish,
-  checkpoint, life, and navigation callbacks from `IMessageReceiver`.
-
-`OnProcess` is the only callback that runs inside the active ImGui frame. Draw
-every ImGui and `Bui` control from it, and never from `OnRender`. See
-[Three UI surfaces](#three-ui-surfaces).
-
-`OnRender` receives one `CK_RENDER_FLAGS` value. The native API does not expose
-separately named before-render and after-render callbacks. Loader notifications
-arrive synchronously through the `IMod` and `IMessageReceiver` virtuals listed
-above. A mod that needs deferred handling should copy the data it needs into a
-queue it owns.
-
-## `IBML` services
-
-`IBML` is the main loader service passed to a mod. It provides:
-
-- the CK context and Attribute, Behavior, Collision, Input, Message, Path,
-  Parameter, Render, Sound, and Time managers;
-- `AddTimer` and `AddTimerLoop` scheduling by frames or by milliseconds;
-- game state, cheat control, in-game messages, and command registration,
-  lookup, and execution;
-- named lookup for DataArrays, Groups, Materials, Meshes, 2D/3D Entities,
-  Cameras, Lights, Sounds, Textures, and Behaviors;
-- Initial Condition and visibility changes, plus skipping the next render tick;
-- ball, floor, module, and transformation type registration and SR/HS scores;
-- mod enumeration and lookup, plus dependency registration and queries.
-
-Create timers through `IBML`. The SDK does not publish a standalone `Timer.h`;
-the loader owns scheduling and callback processing.
-
-`AddTimer` and `AddTimerLoop` are each overloaded on `CKDWORD` and `float`. The
-`CKDWORD` overloads count frames, the `float` overloads count milliseconds, and
-both units share one name, so an unsuffixed integer literal is ambiguous and
-fails to compile. Write the suffix explicitly:
-
-```cpp
-bml->AddTimer(1ul, [] { /* next frame */ });
-bml->AddTimer(1000.0f, [] { /* one second later */ });
-bml->AddTimerLoop(1.0f, [] { return KeepRunning(); });
-```
-
-The loop callbacks keep running while they return `true`. Neither overload
-returns a handle, so a scheduled timer cannot be cancelled; make the loop
-callback return `false` instead.
-
-## Native mod dependencies
-
-Register dependencies before BML initializes mods. The constructor is the
-usual place because it runs while `BMLEntry` creates the mod and before any
-`OnLoad` callback:
-
-```cpp
-explicit MyMod(IBML *bml) : IMod(bml) {
-    AddDependency("RequiredMod", BMLVersion(1, 2, 0));
-    AddOptionalDependency("OptionalMod", BMLVersion(1, 0, 0));
-}
-```
-
-BML orders mods so installed dependencies receive `OnLoad` before their
-dependents. A missing optional dependency is ignored. A missing required
-dependency or a dependency cycle prevents the mod initialization phase from
-starting; the log identifies the requesting mod, required id and version, or
-the mods affected by the cycle. If an installed dependency is older than the
-requested version, BML skips the dependent mod's `OnLoad` and reports both
-versions while continuing with other mods.
-
-## Configuration, commands, and logging
-
-`IConfig` retrieves an `IProperty` by category and key. Properties can be
-String, Boolean, Integer, Float, or Keyboard Key and support current values,
-defaults, comments, and category comments. There is no separate UTF-16
-property API; use the explicit conversion functions in `BML.h` when needed.
-The frozen `IProperty` vtable is not extended for presentation hints. Instead,
-call the `IConfig.h` C extension
-`BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR)` after
-`SetDefaultString` to present a `#RRGGBB` or `#RRGGBBAA` string with the Mod
-Menu colour picker. For a finite string setting, copy its values with
-`BML_SetConfigPropertyChoices` and select `BML_CONFIG_EDITOR_CHOICE` to show a
-RadioButton instead of a text field; an empty value is shown as `None`.
-The current stored value remains selectable even when it is not in the list.
-`BML_GetConfigPropertyEditor` and the choice accessors read this non-persisted
-metadata.
-
-New Native Mods author commands through `Command.hpp`. Its
-`BML::Command::Registration` is a one-way C++ facade over the stable
-`bml.command` table in `Command.h`: registration copies name, alias,
-description, usage, category, and policy flags, then returns an owner-scoped
-handle. The execution callback receives the canonical name, the word actually
-typed, arguments without the command word, pipeline input, and an output
-writer; its non-negative return value is the shell status. Completion writes
-candidates through a bounded collector and receives a separate cursor request
-with the active argument and prefix, so it cannot emit command output or read
-pipeline input. No STL object crosses the DLL ABI.
-Commands may be hidden or disabled, can be inspected through `Visit` and
-`Find`, and are removed before their owner DLL is released. A `Registration`
-may also be unregistered or destroyed during command dispatch: lookup stops
-immediately, while the acquired command and callback state stay alive until
-that dispatch returns. C callers that supply `BML_CommandDefinition::Release`
-transfer ownership of `UserData` after successful registration; the loader
-calls it once after removal and the last in-progress dispatch.
-
-`ICommand` is the compatible legacy adapter. It still provides command
-metadata, execution, Tab completion, and basic Integer, Float, and Boolean
-parsers. `ILogger` provides three log levels.
-
-For legacy `ICommand`, the command bar parses a line before `Execute` runs.
-Each call receives one command with quoting removed; `args[0]` preserves the
-command name or alias that the player typed. `IBML::ExecuteCommand` uses the
-same parser. See the [command-line guide](using-bml.md#command-line) for the
-user-facing syntax.
-
-`Execute` returns `void`, so two C exports in `BML.h` carry the rest of the
-shell behavior. `BML_SetCommandStatus(int)` marks the running command failed
-for `&&`, `||`, and `$?`; without it a command counts as succeeded unless it
-throws or cannot be found. Negative API error values are recorded as the
-generic failure status `1`. `BML_GetCommandInput(size_t *)` returns the text
-piped into the running command by `other | this`, or null when nothing was
-piped; the pointer belongs to the loader and lives until `Execute` returns.
-Output written with `SendIngameMessage` during a pipeline stage goes to the
-next stage rather than to the board.
-
-`IBML::RegisterCommand` takes a raw `ICommand *` and the loader never deletes
-it. Registration returns `void` and only writes to the log when it fails, which
-happens for a null command, an invalid name or alias, and an already registered
-name.
-
-`IBML` has no unregister function, so removing a command goes through
-`BML_UnregisterCommand` in `BML.h`:
-
-```cpp
-void MyMod::OnUnload() {
-    if (BML_UnregisterCommand("mycmd") == BML_OK)
-        delete m_Command;  // only now is deleting it safe
-}
-```
-
-Only the DLL that registered a command may remove it, which the loader decides
-by remembering which module called `RegisterCommand`. Asking about someone else's
-command answers `BML_ERROR_ACCESS_DENIED`, an unknown name answers
-`BML_ERROR_NOT_FOUND`, and the name is matched the way the console matches it, so
-the alias names the command too. Call it from the game thread.
-
-Without that call, a legacy command stays in the command table until the
-process ends. In particular, do not delete an `ICommand` in `OnUnload` while it is
-still registered: unloading a mod does not remove its commands by itself, so a
-deleted command leaves a dangling entry that the console will still try to run.
-
-`ParseFloat` clamps to the whole finite float range by default. Earlier releases
-defaulted its lower bound to `FLT_MIN`, the smallest positive normal value, so
-negative input was silently clamped to about `1.17e-38`. Pass explicit bounds
-when a command needs a narrower range.
-
-## Loader capabilities
-
-Capability added after the legacy C++ interfaces were frozen is published as a
-versioned interface struct, fetched by id and major version through
-`BML_GetInterface`. Each has its own header under `include/BML`, and each header
-also declares an inline C++ namespace that folds the lookup and the argument
-checks in:
-
-- `BML::Time` for CK time and the raw tick counter;
-- `BML::Command` for owner-scoped command registration, discovery, and shell execution;
-- `BML::Scene` for object information, transforms, and named lookup;
-- `BML::Gameplay` for cheat status, highscore, level, energy, catalog, checkpoint, and reset data;
-- `BML::UI` for the message board, mod/map menus, and HUD;
-- `BML::Speedrun` for the shared speedrun timer;
-- `BML::Behavior` for Virtools Building Block discovery, configured Runs,
-  copied Frames, graph inspection, Watches, Patches, Plans, and revisioned
-  installation bindings for installed Edit Nodes and parameter Ports.
-
-`Interface.h` documents the version rules: a struct grows only by appending a
-member and bumping its minor version, and `BML_IFACE_HAS` asks whether the
-running loader has a member added after the header the mod was built against.
-
-`bml.behavior` deliberately uses Virtools' own Prototype, Layout, Setting, Pin,
-Local, In, Out, Pout, Graph, Patch, and Plan vocabulary. Its C interface is the
-stable transport seam; Native C++ Mods should normally use `Behavior.hpp`, which
-owns strings, arrays, callbacks, handles, and Frame bytes. See
-[Behavior authoring](behavior-authoring.md) for the complete ownership, thread,
-world-reset, error-handling, and hot-path rules.
-
-The native `BML::Gameplay` collection reads return complete snapshots in a
-caller-owned `std::vector`. Read the catalog during setup and refresh level
-checkpoints or reset points when the level changes; these calls transfer the
-complete collection and are not intended for per-frame polling.
-
-The inline C++ operations return a BML status and are marked `[[nodiscard]]`.
-Handle the returned status, or use an explicit `(void)` cast when deliberately
-discarding the result of best-effort cleanup.
-
-## Inter-mod communication
-
-Choose the smallest interface that matches the data crossing between Mods:
-
-| Need | Use |
-| --- | --- |
-| Typed RPC or notifications between independently shipped native/script Mods | IMC |
-| Direct function pointers or borrowed engine objects between native Mods | A versioned plain-C table through `BML_RegisterInterface` |
-| A small named byte value with a known lifetime | `DataShare` |
-
-For IMC, define a `.imc` file, generate the C++ or AngelScript bindings with
-`bml_target_imc_api`, and commit its lock file. A missing provider is a runtime
-status, not a load failure. See [IMC overview](imc.md) and
-[IMC authoring](imc-author-guide.md).
-
-A plain-C table must have static storage in its provider DLL. Consumers declare
-the provider as a required Mod dependency and obtain the table through
-`BML_GetInterface`; they do not link against the provider DLL. Prefer
-`bml_add_generated_interface_package` for its header-only package and version
-checks. The independent provider and consumer projects in
-`examples/native-interface-provider` and `examples/native-interface-consumer` show
-the complete setup. Use `BML::Interfaces::RequiredInterface` or
-`OptionalInterface` for typed C++ lookup; the latter may return
-`BML_ERROR_NOT_FOUND`.
-
-`DataShare` transfers small named byte values, not an evolving callable API.
-Observe its reference-count and borrowed-pointer lifetime rules.
-
-## Three UI surfaces
-
-- `Bui` draws Ballance-style ImGui widgets for native overlays.
-- `BGui` creates in-game UI from Virtools 2D Entities and Behaviors.
-- `BML::UI` does not draw widgets; it controls loader-owned messages, menus,
-  and HUD state. Every one of its calls has to be made from the game thread.
-
-These surfaces solve different problems and are not interchangeable.
-
-### Draw ImGui from `OnProcess`
-
-The loader owns the ImGui frame. It opens the frame before mod callbacks run and
-ends it immediately after `OnProcess` returns:
-
-1. the loader calls `ImGui::NewFrame` before the per-frame mod callbacks;
-2. every mod's `OnProcess` runs inside that frame;
-3. the loader calls `ImGui::Render`, which ends the frame;
-4. `OnRender` runs;
-5. the loader submits the recorded draw data.
-
-So `ImGui` and `Bui` calls belong in `OnProcess`. The same calls made from
-`OnRender` happen after the frame has ended: they draw nothing and may trip an
-ImGui assertion. `BML::UI` message, menu, and HUD calls are not affected,
-because they change loader state instead of recording draw commands.
-
-## C API ownership
-
-`BML.h` and `DataShare.h` are callable through the C ABI. C++ Mods can include
-`DataShare.hpp` for owning handles and cancellable requests without depending on
-loader implementation types. Release strings,
-wide strings, string arrays, wide-string arrays, and binary buffers allocated
-by BML with the matching `BML_Free*` function. Do not call CRT `free` across a
-DLL boundary.
-
-`BML_DataShare_Get` returns a borrowed pointer. It becomes invalid when the
-same key is set or removed or when the instance is destroyed. Use
-`BML_DataShare_CopyEx` when a stable copy is required. A queued
-`BML_DataShare_Request` returns an owner-scoped request handle; cancel it with
-`BML_DataShare_CancelRequest` when its own lifetime ends. The loader cancels any
-remaining requests before releasing the owning Mod DLL. Worker threads and
-DLLs that host more than one Mod should use `BML_DataShare_RequestForOwner` and
-`BML_DataShare_CancelRequestForOwner`. Stop worker threads before `OnUnload`
-returns; no public API call may race release of its calling DLL.
-
-## Where the loader and your mod live
-
-`BML.h` answers both questions a mod has about the file system:
-
-```cpp
-// The loader's own directories. Borrowed, valid for the process, never freed.
-const char *loaderDir = BML_GetLoaderPathUtf8(BML_DIR_LOADER);
-
-// Your own installation directory. Allocated, so release it.
-char *modRoot = BML_GetModRootUtf8(nullptr);
-// ... use modRoot ...
-BML_FreeString(modRoot);
-```
-
-`BML_GetLoaderPathW` and `BML_GetLoaderPathUtf8` take a `BML_LoaderDirectory`:
-`BML_DIR_WORKING`, `BML_DIR_TEMP`, `BML_DIR_GAME`, `BML_DIR_LOADER`, or
-`BML_DIR_CONFIG`. They return a pointer the loader owns, so do not free it. Do
-not confuse them with `BML_GetDirectoryA/W/Utf8`, which parse a path string and
-return its directory part.
-
-`BML_GetModRootW` and `BML_GetModRootUtf8` answer with the directory a mod is
-installed in. Pass `nullptr` for your own: it resolves the calling DLL, needs no
-registration, and therefore works from your constructor. Pass a mod id to ask
-about another mod, which answers with its DLL's directory for a native mod and
-with its script root for a script mod. Both allocate, so release the result with
-`BML_FreeWString` or `BML_FreeString`.
-
-Both return null while the loader is still initializing and when the directory
-cannot be resolved. `BML_GetModRoot` also takes the loader's mod-registry lock,
-so call it from your mod rather than from `DllMain`.
-
-## Further reading
-
-- [Which native API to use](native-api-routes.md)
-- [Choose a mod development route](modding.md)
-- [Inter-mod communication](imc.md)
-- [Create a typed IMC API](imc-author-guide.md)
-- [Native mod template](https://github.com/doyaGu/BallanceModLoaderPlus/tree/main/templates/native-mod-template)
+Core C ABI modules do not require the host's C++ compiler/standard library.
+Optional engine/ImGui modules require matching compiler, runtime, headers and
+public compile settings. The SDK resolves those dependencies only for targets
+that use them, including intermediate interface libraries.
+
+`bml_add_mod` creates a `.bmodp` plus `.bmodp.abi.json`. Schema 2 checks runtime,
+platform, architecture, host linkage, `bml.mod` major and required extension ABI
+ids. The SDK content hash is diagnostic. Older SDL C++-entry modules require
+recompilation and receive a migration error. Distribute both files or their ZIP;
+never distribute user configuration. Static-host integration is still pending.
+macOS/ELF modules resolve the Player-supplied dependencies using SDK link rules;
+the test runner does not relocate consumer binaries.

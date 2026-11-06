@@ -1,141 +1,53 @@
 # Which native API to use
 
-A native mod reaches the loader in three ways, and for some capabilities more
-than one of them works. This page says which spelling exists for each
-capability, which one to prefer, and why there is more than one to choose from.
-IMC is not one of the three: it carries no loader capability and is the normal
-transport for services one Mod publishes to other Mods. A native base Mod may
-instead publish a process-local ABI interface through BML when consumers need
-direct function pointers or borrowed engine objects. See
-[Inter-mod communication](imc.md) for the general transport.
+Use the C++ wrappers over the versioned C tables for native authoring. They are
+local to your Mod, so normal C++ values and virtual overrides do not cross the
+module boundary. C11 callers use the same `.h` tables directly. There is one
+loader state and one set of host services shared with scripts.
 
-If you are writing a new mod and want a single rule: use the legacy `IBML` and
-`IMod` interfaces for everything that hands you an engine object or that only
-they offer, use the interface structs for reading game state, for loader events,
-for driving the loader's own UI, and for Behavior authoring, and use IMC for
-ordinary services published to other Mods. Reserve a provider interface for
-native-only base infrastructure whose ABI and lifetime follow its provider DLL.
+| Need | Use |
+| --- | --- |
+| Identity, lifecycle, existing game event names | Mod.h/.hpp, Instance, immutable Definition |
+| Log, directory, Mod query, packaged resource | Mod::Context |
+| Typed configuration and menu editor metadata | Config::View / Property |
+| One-shot/loop/finite timer | Timer::Registration; explicit ms/ticks |
+| Keyboard, mouse, controller, counted blocking | Input::View / Block, RAW for original queries |
+| Console command and completion | Command::Registration |
+| Checked object identity and scene state | Scene.h and existing ObjectRef |
+| Game, cheat, highscore, energy, level data | Gameplay.h |
+| CK clock/tick and speedrun timer | Time.h/.hpp and Speedrun.h |
+| Load-time ball/floor/module registration | Gameplay registration definitions with Context |
+| One pending Render skip / widescreen correction | UI::SkipNextRender / SetWidescreenAdjustment |
+| Initial conditions / object visibility | Scene::SetIC / RestoreIC / Show |
+| Messages, built-in HUD and menus | UI.h |
+| Add an entry to your Mod details | ModMenu::Page |
+| Ballance-style immediate UI | Bui.hpp; local Window/Page/Menu |
+| Engine-backed 2D UI | Gui.hpp and local BGui controllers |
+| Prototypes, Blocks, execution and graph editing | Behavior.hpp and Behavior/Blocks |
+| Direct CK objects/managers | Engine.hpp + BML::Engine, then existing CK2 APIs |
+| Direct host ImGui | ImGui.hpp + BML::ImGui |
+| Advanced widget flags/callbacks | Bui/ImGui.hpp (Engine + ImGui) |
+| Vx/CK conveniences for BGui | Gui/Engine.hpp (Engine) |
+| Small named bytes shared by Mods | DataShare |
+| Typed services between native and scripts | Generated IMC RPC/Topics/futures |
+| Native provider's process-local C table | Interface.hpp and a declared provider dependency |
+| Existing filesystem/ZIP/encoding/allocation utility | BML.h; release with the documented BML_Free family |
 
-If you maintain an existing Mod, no migration is required. Keep its `IBML`,
-`IMod`, raw CK SDK, and direct CMake code. Use a newer facade only when it solves
-a new requirement; old and new calls may coexist in the same Mod.
+`BMLAll.h` is a core aggregate. Engine-dependent Blocks, ScriptHelper, Guids,
+TypeConvert and raw CK/ImGui access require explicit optional targets. IMod,
+IBML and their old service vtables are private loader adapters on this branch.
+Do not start a second public compatibility layer around them.
 
-## Why there is more than one spelling
+Use IMC for ordinary inter-Mod services. A provider C table is appropriate for
+native base infrastructure whose consumers can declare and retain that provider
+dependency. The loader retires consumers first; caching an undeclared provider's
+pointer does not establish ownership.
 
-`IBML`, `IMod`, `IMessageReceiver`, `IConfig`, and `ICommand` are C++ classes
-with virtual functions, and a mod calls them across a DLL boundary. A call
-through a virtual function is a jump to a slot number that was fixed when the
-mod was compiled, so adding, removing, or reordering a virtual function moves
-every slot after it and every already built `.bmodp` calls the wrong one. The
-loader pins those slot numbers with static assertions in `src/Loader/ModContext.cpp`
-and compares its exported symbol set against
-the matching SDL SDK ABI descriptor on every build. These interfaces
-are therefore frozen for the current release line: nothing new can be added to
-them.
+New calls normally return BML_OK or a negative status. C++ Result values own only
+explicitly requested snapshots; event views remain borrowed. Main notification
+failure stops the owner; an ordinary service error or shell exit status remains
+the caller's responsibility. The old BML.h utilities retain their documented
+0/1 conventions. Default engine/service operations remain game-thread-only.
 
-The interface structs have no such problem. The BML registry hands out a struct of
-function pointers, a mod asks for one by id and major version through the single
-export `BML_GetInterface`, and the struct only ever grows by appending a member
-and bumping its minor version. An older mod keeps calling the members it was
-built against, and a newer mod asks `BML_IFACE_HAS` whether the running loader
-has a member added after it. That is why capability added after the freeze
-arrives as an interface struct, and each one ships with an inline C++ namespace
-over it, so using one looks like calling a function.
-
-The `BML_*` functions of `BML.h` are the third spelling. They are plain C with
-no vtable involved. New entries there are process-independent utilities:
-strings, paths, files, encoding, allocation, and directory queries. A few older
-exports complete frozen C++ operations; `BML_UnregisterCommand`,
-`BML_SetCommandStatus`, and `BML_GetCommandInput` remain supported for legacy
-`ICommand`, but that split API is not the growth path. The complete modern
-Command capability is the versioned `bml.command` interface.
-
-One question decides which of the three a new loader capability belongs to: who
-serves it. The loader serving something a Mod reads or drives is a built-in
-interface struct. A utility that touches neither the game nor loader state is a
-C export. A Mod service normally
-uses IMC; a native-only base Mod may call `BML_RegisterInterface` when it must
-return process-local pointers without encoding and can impose a required Mod
-dependency on every consumer.
-
-Frozen does not mean deprecated. The legacy interfaces are supported, are still
-the only way to reach most of what the loader does, and are the only way to get
-at an engine object.
-
-The script side exposes gameplay and UI reads, speedrun controls, and state
-and time through `ModContext`. Scene lookup is supplied by CKAngelScript.
-The script `BML::Speedrun` is not the interface projected as it
-stands: it is spelled `SetTimerVisible`, `StartTimer`, `PauseTimer`,
-`ResetTimer`, and `GetElapsedTime`, and it returns the value or nothing rather
-than a status. The script projection is written by hand and nothing checks it
-against the interface structs, so neither the missing capability nor the
-spelling difference closes by itself.
-
-## Capability by capability
-
-`Frozen C++` names are members of `IBML` unless said otherwise. A `Newer route`
-name spelled `Namespace::Function` is the inline C++ over an interface struct,
-declared in the header of the same name under `include/BML/`; the rest are the
-`BML_*` C exports of `BML.h`.
-
-| Capability | Frozen C++ | Newer route | Which to use |
-| --- | --- | --- | --- |
-| CK context, render context, and the engine managers | `GetCKContext`, `GetRenderContext`, `GetInputManager`, `GetTimeManager`, and the rest | none | Frozen C++ only. The interface structs do not hand out engine pointers, by design: a pointer cannot be given a lifetime the other side can check. |
-| Game state | `IsIngame`, `IsPaused`, `IsPlaying` | none | Use the existing native getters; the loader's phase model is private. |
-| CK time and tick count | `GetTimeManager()` and the CK clocks | `Time::ReadClock` | Either. `MainTickCount` is the raw wrapping 32-bit CK counter. |
-| Speedrun elapsed time | `GetSRScore` | `Speedrun::ReadTimerState` | Either; the value is in milliseconds, not a score. |
-| Highscore value | `GetHSScore` | `Gameplay::ReadHighScore` | The latter validates Energy and reports unavailable outside an active or paused level. |
-| Start, pause, reset, or show the speedrun timer | none | `Speedrun::StartTimer`, `PauseTimer`, `ResetTimer`, `SetTimerVisible` | The interface struct only. |
-| Find an object by name | `Get3dObjectByName`, `GetGroupByName`, `GetMaterialByName`, and the rest of the family | `Scene::FindObject`, with or without a class id | Frozen C++ when you then have to touch the object with the CK SDK, since it hands back the pointer. `Scene::FindObject` hands back a `BML_ObjectRef`, which is what to use when the object is only being identified or passed on. |
-| Read an object's class, name, or transform | the CK SDK, through the pointer | `Scene::ReadObject`, `Scene::ReadEntityTransform` | Either. |
-| Level state, energy, checkpoints, reset points, level catalog | `GetArrayByName` plus `CKDataArray` column reads | `Gameplay::ReadLevel`, `ReadEnergy`, `ReadCheckpoints`, `ReadResetpoints`, `ReadCatalog` | The interface struct. It already knows the column order of the game's arrays, which is the part that is easy to get wrong. The collection reads copy the whole collection, so they belong in setup or a level change rather than in a frame. |
-| In-game message board | `SendIngameMessage` | `UI::AddMessage`, `UI::ClearMessages` | Either. Only the facade can clear the board. |
-| HUD parts, mods menu, map menu | none | `UI::SetHUDMode`, `ShowTitle`, `ShowFPS`, `OpenModsMenu`, `CloseModsMenu`, `OpenMapMenu`, `CloseMapMenu` | The interface struct only. |
-| Add pages to your own entry in the Mods menu | none | `BML::ModMenu::Page` from `ModMenu.hpp` | `ModMenu.h` is the pure C interface; the C++ facade is one-way over it. Visible pages add a native-styled details action; hidden pages are reached through same-Mod Push or Replace navigation. Script Mods can register pages through `ModContext.RegisterMenuPage`. |
-| Loader events | the `IMessageReceiver` virtuals on `IMod` | none | Handle the synchronous callback. Copy the required data into mod-owned storage if work must be deferred. |
-| Cheat mode | `EnableCheat` to set, `IsCheatEnabled` to read | `Gameplay::ReadCheatEnabled` | Read either, set through the frozen C++. |
-| Console commands | `RegisterCommand` plus an `ICommand` subclass | `BML::Command::Registration` from `Command.hpp`, backed by `bml.command` | New Native Mods should use the versioned Command interface. It copies metadata, returns an owner-scoped handle, auto-cleans before DLL unload, returns shell status directly, and passes pipeline input and output explicitly. The three `BML.h` exports remain legacy adapters only. |
-| Configuration | `IMod::GetConfig` plus `IConfig` and `IProperty` | `BML_GetConfigPropertyEditor`, `BML_SetConfigPropertyEditor`, and the choice metadata functions | Values stay on the frozen C++ interface; the additive C exports attach non-persisted Mod Menu editor metadata without changing its vtable. |
-| Timers | `AddTimer`, `AddTimerLoop` | none | Frozen C++ only. |
-| Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |
-| Which mods are loaded, and dependencies | `GetModCount`, `GetMod`, `FindMod`, `RegisterDependency`, `CheckDependencies` | none | Frozen C++ only. |
-| Discover, configure, and execute Virtools Building Blocks; inspect or edit Behavior graphs | raw CK SDK and `ExecuteBB` compatibility helpers | `BML::Behavior` from `Behavior.hpp` | Use `BML::Behavior` for new authoring. It gives Prototype/Layout validation, owned Frames, checked object references, reversible Patch/Plan lifetimes, and revisioned bindings to installed Edit symbols. Use raw CK only when implementing engine-level infrastructure that intentionally owns those invariants itself. |
-| Publishing an API of your own to other mods | none | IMC, or a BML provider interface for a native base Mod | Prefer generated IMC for ordinary RPC/Topic services. For a plain-C, process-local function table that must expose direct or borrowed native objects, C++ Mods should use `Interface.hpp` plus `ModInterface.hpp`; these retain the C ABI while owning publication, typed lookup, status, and provider dependency lifetime. Publish the shared header with `bml_add_interface_package`, and never import a provider symbol. Script Mods cannot publish or consume provider interfaces. |
-| Drawing your own UI | `Bui` for ImGui widgets, `BGui` for in-game 2D entities | none | Neither of these is `BML::UI`, which controls the loader's own UI and draws nothing of yours. |
-| Strings, paths, files, allocation | none | the `BML_*` functions of `BML.h` | The C exports. Release what they return with the matching `BML_Free*`, never with the CRT `free`. |
-| The loader's directories, and where your mod is installed | none | `BML_GetLoaderPathW`, `BML_GetLoaderPathUtf8`, `BML_GetModRootW`, `BML_GetModRootUtf8`, also C exports of `BML.h` | The C exports. `IBML` never offered these. The loader path is borrowed and the mod root is allocated, so only the second needs freeing. |
-
-## Mixing them
-
-Mixing is expected, and a Mod can use all three in the same function. Built-in
-interface structs are served by the loader itself, reading the same state `IBML`
-reads, so there is no second copy of anything and nothing to keep in sync. A
-provider interface is served by its owning native Mod and is valid only while
-that dependency remains loaded.
-
-Three differences do show through:
-
-- **How failure is reported.** The frozen C++ functions mostly return the value
-  or nothing at all, and a failed `RegisterCommand` only writes to the log. Every
-  interface struct function returns a status: `BML_OK`, or one of the negative
-  codes in `Defines.h`. Their inline C++ wrappers are `[[nodiscard]]`, so handle
-  the status or cast it away on purpose.
-- **What you get back.** The frozen C++ lookups hand you an engine pointer,
-  which is only good while the object lives and only usable on the game thread.
-  The facades hand you a value, either a plain struct or a `BML_ObjectRef` that
-  the loader can check before it resolves.
-- **Threading.** The frozen C++ interfaces are game-thread only. An interface
-  struct call is a direct call into the loader on the calling thread, so nothing
-  is queued and there is nothing to wait for. Gameplay, Time, Command,
-  Speedrun, Scene, and UI calls answer `BML_ERROR_WRONG_THREAD` when called
-  from another thread. Mod menu
-  page registration is also game-thread only, and its draw callback runs inside
-  the loader's active ImGui frame. Before the
-  loader has loaded its mods every one of them answers `BML_ERROR_FAIL`.
-
-## Further reading
-
-- [Native mod API overview](native-mod-api.md)
-- [Behavior authoring](behavior-authoring.md)
-- [Inter-mod communication](imc.md)
-- [Create a typed IMC API](imc-author-guide.md)
+See [Native API](native-mod-api.md), [migration](native-mod-migration.md),
+[Behavior authoring](behavior-authoring.md), and [IMC](imc.md).
