@@ -1,5 +1,6 @@
 #ifndef BML_TIMER_HPP
 #define BML_TIMER_HPP
+
 #include "BML/Timer.h"
 #include "BML/Mod.hpp"
 #include <atomic>
@@ -8,17 +9,21 @@
 namespace BML::Timer {
 struct Definition {
     std::string Name;
-    uint32_t Type = BML_TIMER_ONCE, TimeBase = BML_TIMER_TIMEBASE_TIME;
+    uint32_t Type = BML_TIMER_ONCE;
+    uint32_t TimeBase = BML_TIMER_TIMEBASE_TIME;
     bool StartPaused = false;
     int32_t Priority = 0;
     double DelayMs = 0;
-    uint64_t DelayTicks = 0, RepeatCount = 0;
+    uint64_t DelayTicks = 0;
+    uint64_t RepeatCount = 0;
 };
 
 struct Event {
     BML_TimerHandle Handle = 0;
     std::string_view Name;
-    uint32_t State = 0, Type = 0, TimeBase = 0;
+    uint32_t State = 0;
+    uint32_t Type = 0;
+    uint32_t TimeBase = 0;
     uint64_t CompletedIterations = 0;
     int64_t RemainingIterations = 0;
     float Progress = 0;
@@ -27,7 +32,9 @@ struct Event {
 struct Info {
     BML_TimerHandle Handle = 0;
     std::string Name;
-    uint32_t State = 0, Type = 0, TimeBase = 0;
+    uint32_t State = 0;
+    uint32_t Type = 0;
+    uint32_t TimeBase = 0;
     uint64_t CompletedIterations = 0;
     int64_t RemainingIterations = 0;
     float Progress = 0;
@@ -55,13 +62,13 @@ public:
         return *this;
     }
 
-    int Register(const Mod::Context &context, const Definition &definition,
-                 Callback callback) noexcept {
+    [[nodiscard]] Result<void> Register(const Mod::Context &context, const Definition &definition,
+                                        Callback callback) noexcept {
         if (IsValid())
-            return BML_ERROR_ALREADY_EXISTS;
+            return BML::Detail::ToResult(BML_ERROR_ALREADY_EXISTS);
         if (!callback || !BML::Detail::IsText(definition.Name))
-            return BML_ERROR_INVALID_PARAMETER;
-        return BML::Detail::Guard([&] {
+            return BML::Detail::ToResult(BML_ERROR_INVALID_PARAMETER);
+        return BML::Detail::ToResult(BML::Detail::Guard([&] {
             const auto *api = BML::Detail::Bind<BML_TimerInterface>(
                 BML_TIMER_INTERFACE_ID, 1, BML_TIMER_INTERFACE_1_0_SIZE,
                 +[](const BML_TimerInterface *table) {
@@ -96,7 +103,7 @@ public:
             m_Handle = handle;
             m_State = std::move(state);
             return BML_OK;
-        });
+        }));
     }
 
     [[nodiscard]] bool IsValid() const noexcept {
@@ -130,26 +137,28 @@ public:
         return Result<Info>::Failure(BML_ERROR_FAIL);
     }
 
-    int Pause() noexcept {
-        return IsValid() ? m_Api->Pause(m_Context.Handle(), m_Handle) : BML_ERROR_INVALID_HANDLE;
+    [[nodiscard]] Result<void> Pause() noexcept {
+        return BML::Detail::ToResult(IsValid() ? m_Api->Pause(m_Context.Handle(), m_Handle)
+                                               : BML_ERROR_INVALID_HANDLE);
     }
 
-    int Resume() noexcept {
-        return IsValid() ? m_Api->Resume(m_Context.Handle(), m_Handle) : BML_ERROR_INVALID_HANDLE;
+    [[nodiscard]] Result<void> Resume() noexcept {
+        return BML::Detail::ToResult(IsValid() ? m_Api->Resume(m_Context.Handle(), m_Handle)
+                                               : BML_ERROR_INVALID_HANDLE);
     }
 
-    int Cancel() noexcept {
+    [[nodiscard]] Result<void> Cancel() noexcept {
         if (!IsValid()) {
             m_Handle = 0;
             m_State.reset();
-            return BML_OK;
+            return BML::Detail::ToResult(BML_OK);
         }
         const int code = m_Api->Cancel(m_Context.Handle(), m_Handle);
         if (code == BML_OK) {
             m_Handle = 0;
             m_State.reset();
         }
-        return code;
+        return BML::Detail::ToResult(code);
     }
 
 private:
@@ -158,25 +167,26 @@ private:
         std::atomic<bool> Abandoned{false}, Released{false};
     };
 
-    static int BML_CDECL Invoke(void *data, BML_ModContextHandle h, const BML_TimerEvent *e,
-                                uint32_t *keep) noexcept {
-        if (!data || !e || !keep || e->StructSize < BML_TIMER_EVENT_1_0_SIZE)
+    static int BML_CDECL Invoke(void *data, BML_ModContextHandle contextHandle,
+                                const BML_TimerEvent *record, uint32_t *continueLoop) noexcept {
+        if (!data || !record || !continueLoop || record->StructSize < BML_TIMER_EVENT_1_0_SIZE)
             return BML_ERROR_INVALID_PARAMETER;
         const auto &state = *static_cast<std::shared_ptr<State> *>(data);
         if (state->Abandoned.load(std::memory_order_acquire)) {
-            *keep = 0;
+            *continueLoop = 0;
             return BML_OK;
         }
         return BML::Detail::Guard([&] {
-            const Event event{e->Handle,
-                              e->Name ? e->Name : "",
-                              e->State,
-                              e->Type,
-                              e->TimeBase,
-                              e->CompletedIterations,
-                              e->RemainingIterations,
-                              e->Progress};
-            *keep = state->Function(Mod::Detail::ContextAccess::Make(h), event) ? 1u : 0u;
+            const Event event{record->Handle,
+                              record->Name ? record->Name : "",
+                              record->State,
+                              record->Type,
+                              record->TimeBase,
+                              record->CompletedIterations,
+                              record->RemainingIterations,
+                              record->Progress};
+            *continueLoop =
+                state->Function(Mod::Detail::ContextAccess::Make(contextHandle), event) ? 1u : 0u;
             return BML_OK;
         });
     }
@@ -188,12 +198,13 @@ private:
     }
 
     void Dispose() noexcept {
-        if (Cancel() != BML_OK) {
+        if (!Cancel()) {
             // We still hold a local reference, even if the host released its own
             // reference concurrently. Never delete transferred callback storage.
             if (m_State)
                 m_State->Abandoned.store(true, std::memory_order_release);
-            m_Context.LogError("Timer cancellation failed; callback abandoned until owner cleanup");
+            (void)m_Context.LogError(
+                "Timer cancellation failed; callback abandoned until owner cleanup");
             m_Handle = 0;
             m_State.reset();
         }
@@ -216,7 +227,7 @@ namespace Detail {
 inline Result<Registration> Register(const Mod::Context &ctx, Definition definition,
                                      Callback callback) try {
     Registration value;
-    const int code = value.Register(ctx, definition, std::move(callback));
+    const int code = value.Register(ctx, definition, std::move(callback)).Code();
     return code == BML_OK ? Result<Registration>::Success(std::move(value))
                           : Result<Registration>::Failure(code);
 } catch (const std::bad_alloc &) {
