@@ -3,8 +3,10 @@
  * See docs/design/native-mod-api.md for ownership and evolution rules. */
 #ifndef BML_MOD_H
 #define BML_MOD_H
+
 #include "BML/Interface.h"
 #include "BML/Types.h"
+
 BML_BEGIN_CDECLS
 #define BML_MOD_DEPENDENCY_1_0_SIZE                                                                \
     (offsetof(BML_ModDependency, Optional) + sizeof(((BML_ModDependency *)0)->Optional))
@@ -149,10 +151,12 @@ typedef struct BML_RenderEvent {
     size_t StructSize;
     uint32_t Flags;
 } BML_RenderEvent;
+
 typedef struct BML_CheatEvent {
     size_t StructSize;
     uint32_t Enabled;
 } BML_CheatEvent;
+
 typedef struct BML_LoadObjectEvent {
     size_t StructSize;
     const char *Filename;
@@ -167,11 +171,13 @@ typedef struct BML_LoadObjectEvent {
     size_t ObjectCount;
     BML_ObjectRef MasterObject;
 } BML_LoadObjectEvent;
+
 typedef struct BML_LoadScriptEvent {
     size_t StructSize;
     const char *Filename;
     BML_ObjectRef Script;
 } BML_LoadScriptEvent;
+
 typedef struct BML_CommandEvent {
     size_t StructSize;
     BML_CommandEventPhase Phase;
@@ -181,6 +187,7 @@ typedef struct BML_CommandEvent {
     size_t ArgumentCount;
     uint32_t Cheat;
 } BML_CommandEvent;
+
 typedef struct BML_ConfigEvent {
     size_t StructSize;
     BML_ModHandle Mod;
@@ -190,6 +197,7 @@ typedef struct BML_ConfigEvent {
     uint32_t Type;
     BML_ConfigPropertyHandle Property;
 } BML_ConfigEvent;
+
 typedef struct BML_PhysicalizeEvent {
     size_t StructSize;
     BML_ObjectRef Target;
@@ -213,6 +221,7 @@ typedef struct BML_PhysicalizeEvent {
     const BML_ObjectRef *ConcaveMeshes;
     size_t ConcaveCount;
 } BML_PhysicalizeEvent;
+
 typedef struct BML_ObjectEvent {
     size_t StructSize;
     BML_ObjectRef Object;
@@ -220,18 +229,26 @@ typedef struct BML_ObjectEvent {
 
 struct BML_ModCallbacks {
     size_t StructSize;
-    int(BML_CDECL *OnLoad)(void *, BML_ModContextHandle);
-    int(BML_CDECL *OnUnload)(void *, BML_ModContextHandle);
-    int(BML_CDECL *OnProcess)(void *, BML_ModContextHandle);
-    int(BML_CDECL *OnRender)(void *, BML_ModContextHandle, const BML_RenderEvent *);
-    int(BML_CDECL *OnGameEvent)(void *, BML_ModContextHandle, BML_GameEvent);
-    int(BML_CDECL *OnCheatEnabled)(void *, BML_ModContextHandle, const BML_CheatEvent *);
-    int(BML_CDECL *OnLoadObject)(void *, BML_ModContextHandle, const BML_LoadObjectEvent *);
-    int(BML_CDECL *OnLoadScript)(void *, BML_ModContextHandle, const BML_LoadScriptEvent *);
-    int(BML_CDECL *OnCommandEvent)(void *, BML_ModContextHandle, const BML_CommandEvent *);
-    int(BML_CDECL *OnModifyConfig)(void *, BML_ModContextHandle, const BML_ConfigEvent *);
-    int(BML_CDECL *OnPhysicalize)(void *, BML_ModContextHandle, const BML_PhysicalizeEvent *);
-    int(BML_CDECL *OnUnphysicalize)(void *, BML_ModContextHandle, const BML_ObjectEvent *);
+    int(BML_CDECL *OnLoad)(void *instance, BML_ModContextHandle context);
+    int(BML_CDECL *OnUnload)(void *instance, BML_ModContextHandle context);
+    int(BML_CDECL *OnProcess)(void *instance, BML_ModContextHandle context);
+    int(BML_CDECL *OnRender)(void *instance, BML_ModContextHandle context,
+                             const BML_RenderEvent *event);
+    int(BML_CDECL *OnGameEvent)(void *instance, BML_ModContextHandle context, BML_GameEvent event);
+    int(BML_CDECL *OnCheatEnabled)(void *instance, BML_ModContextHandle context,
+                                   const BML_CheatEvent *event);
+    int(BML_CDECL *OnLoadObject)(void *instance, BML_ModContextHandle context,
+                                 const BML_LoadObjectEvent *event);
+    int(BML_CDECL *OnLoadScript)(void *instance, BML_ModContextHandle context,
+                                 const BML_LoadScriptEvent *event);
+    int(BML_CDECL *OnCommandEvent)(void *instance, BML_ModContextHandle context,
+                                   const BML_CommandEvent *event);
+    int(BML_CDECL *OnModifyConfig)(void *instance, BML_ModContextHandle context,
+                                   const BML_ConfigEvent *event);
+    int(BML_CDECL *OnPhysicalize)(void *instance, BML_ModContextHandle context,
+                                  const BML_PhysicalizeEvent *event);
+    int(BML_CDECL *OnUnphysicalize)(void *instance, BML_ModContextHandle context,
+                                    const BML_ObjectEvent *event);
 };
 
 typedef struct BML_ModInfo {
@@ -242,6 +259,7 @@ typedef struct BML_ModInfo {
     const BML_ModDefinition *Definition;
     const char *Diagnostic;
 } BML_ModInfo;
+
 typedef int(BML_CDECL *BML_ModVisitor)(void *userData, const BML_ModInfo *info);
 
 typedef struct BML_ModContextInterface {
@@ -265,4 +283,5 @@ typedef struct BML_ModContextInterface {
 
 #pragma pack(pop)
 BML_END_CDECLS
+
 #endif

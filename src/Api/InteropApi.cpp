@@ -15,6 +15,7 @@ int BML_CDECL Context(BML_ModContextHandle h, void **out) {
         return *out ? BML_OK : BML_ERROR_UNAVAILABLE;
     });
 }
+
 int BML_CDECL Reference(BML_ModContextHandle h, const void *object, BML_ObjectRef *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -25,6 +26,7 @@ int BML_CDECL Reference(BML_ModContextHandle h, const void *object, BML_ObjectRe
         return !object || out->Domain ? BML_OK : BML_ERROR_OBJECT_INVALID;
     });
 }
+
 int BML_CDECL Object(BML_ModContextHandle h, BML_ObjectRef object, uint32_t expectedClass,
                      void **out) {
     if (!out)
@@ -39,6 +41,7 @@ int BML_CDECL Object(BML_ModContextHandle h, BML_ObjectRef object, uint32_t expe
         return BML_OK;
     });
 }
+
 int BML_CDECL ImGuiContext(BML_ModContextHandle h, void **out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -48,6 +51,7 @@ int BML_CDECL ImGuiContext(BML_ModContextHandle h, void **out) {
         return *out ? BML_OK : BML_ERROR_UNAVAILABLE;
     });
 }
+
 int BML_CDECL Image(BML_ModContextHandle h, void *drawList, BML_Vec2 position, uint32_t kind,
                     int32_t state, const char *text, BML_Vec2 alignment) {
     if (!drawList || !text || kind > static_cast<uint32_t>(BuiHost::BUTTON_MINUS))
@@ -66,12 +70,19 @@ int BML_CDECL Image(BML_ModContextHandle h, void *drawList, BML_Vec2 position, u
         return BML_OK;
     });
 }
+
 const BML_EngineInterface engine{
     BML_IFACE_HEADER(BML_EngineInterface, BML_ENGINE_INTERFACE_ID, 1, 0), Context, Reference,
     Object};
 const BML_ImGuiInterface imgui{BML_IFACE_HEADER(BML_ImGuiInterface, BML_IMGUI_INTERFACE_ID, 1, 0),
                                ImGuiContext, Image};
 } // namespace
-const BML_EngineInterface &EngineInterface() { return engine; }
-const BML_ImGuiInterface &ImGuiInterface() { return imgui; }
+
+const BML_EngineInterface &EngineInterface() {
+    return engine;
+}
+
+const BML_ImGuiInterface &ImGuiInterface() {
+    return imgui;
+}
 } // namespace BML::Api

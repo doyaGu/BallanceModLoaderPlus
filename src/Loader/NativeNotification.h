@@ -1,12 +1,14 @@
 #ifndef BML_NATIVENOTIFICATION_H
 #define BML_NATIVENOTIFICATION_H
+
 #include "Loader/NativeMod.h"
+
 class ModContext;
 
 // One immutable payload per broadcast, shared by all native subscribers. Nested
 // broadcasts borrow another frame so they cannot overwrite an outer payload.
 class NativeNotification {
-  public:
+public:
     explicit NativeNotification(ModContext &context);
     ~NativeNotification();
     NativeNotification(const NativeNotification &) = delete;
@@ -33,7 +35,7 @@ class NativeNotification {
     const char *Name() const noexcept;
     struct Storage;
 
-  private:
+private:
     ModContext &m_Context;
     Storage *m_Storage;
 };

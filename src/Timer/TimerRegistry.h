@@ -11,9 +11,10 @@ namespace BML {
 // Shared registration lifetime for the C and script adapters. Scheduler ids stay
 // private; published handles never recycle, and release waits for active borrows.
 class TimerRegistry {
-  public:
+public:
     using Callback = std::function<int(const BML_TimerEvent &, uint32_t &)>;
     using Release = std::function<void()>;
+
     ~TimerRegistry() {
         while (!m_Records.empty())
             CleanupOwner(m_Records.begin()->second->Owner);
@@ -88,6 +89,7 @@ class TimerRegistry {
                    ? it->second->Timer
                    : nullptr;
     }
+
     template <class Visitor>
     int Read(const void *owner, BML_TimerHandle handle, Visitor &&visitor) {
         const auto it = m_Records.find(handle);
@@ -95,16 +97,20 @@ class TimerRegistry {
             return BML_ERROR_INVALID_HANDLE;
         const auto record = it->second;
         ++record->Calls;
+
         struct Borrow {
             TimerRegistry &Registry;
             std::shared_ptr<Record> Value;
+
             ~Borrow() {
                 --Value->Calls;
                 Registry.Retire(Value->Handle);
             }
         } borrow{*this, record};
+
         return visitor(Event(*record));
     }
+
     int Control(const void *owner, BML_TimerHandle handle, uint32_t operation) {
         const auto it = m_Records.find(handle);
         if (it == m_Records.end() || it->second->Owner != owner || it->second->Terminal)
@@ -122,6 +128,7 @@ class TimerRegistry {
             return BML_ERROR_INVALID_PARAMETER;
         return BML_OK;
     }
+
     void FinishProcess() {
         for (auto it = m_Records.begin(); it != m_Records.end();) {
             const auto record = it->second;
@@ -135,6 +142,7 @@ class TimerRegistry {
             }
         }
     }
+
     void CleanupOwner(const void *owner) {
         for (auto it = m_Records.begin(); it != m_Records.end();) {
             const auto record = it->second;
@@ -149,9 +157,10 @@ class TimerRegistry {
             }
         }
     }
+
     size_t Size() const noexcept { return m_Records.size(); }
 
-  private:
+private:
     struct Record {
         const void *Owner = nullptr;
         BML_TimerHandle Handle = 0;
@@ -160,8 +169,10 @@ class TimerRegistry {
         Callback Invoke;
         Release Dispose;
         size_t Calls = 0;
-        bool Terminal = false, Committed = false;
+        bool Terminal = false;
+        bool Committed = false;
     };
+
     static BML_TimerEvent Event(const Record &record) {
         const auto &timer = *record.Timer;
         return {sizeof(BML_TimerEvent),
@@ -174,6 +185,7 @@ class TimerRegistry {
                 timer.GetRemainingIterations(),
                 timer.GetProgress()};
     }
+
     bool Fire(BML_TimerHandle handle, TimerScheduler &timer) {
         const auto it = m_Records.find(handle);
         if (it == m_Records.end() || it->second->Terminal)
@@ -199,6 +211,7 @@ class TimerRegistry {
         Retire(handle);
         return active;
     }
+
     void Retire(BML_TimerHandle handle) {
         const auto it = m_Records.find(handle);
         if (it == m_Records.end() || !it->second->Terminal || it->second->Calls)
@@ -211,6 +224,7 @@ class TimerRegistry {
                 record->Dispose();
         }
     }
+
     std::unordered_map<BML_TimerHandle, std::shared_ptr<Record>> m_Records;
 };
 } // namespace BML

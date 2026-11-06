@@ -27,7 +27,7 @@
 
 namespace BML {
 class TimerScheduler : public std::enable_shared_from_this<TimerScheduler> {
-  public:
+public:
     // Type definitions
     typedef uint32_t TimerId;
     static const TimerId InvalidId = 0;
@@ -73,9 +73,11 @@ class TimerScheduler : public std::enable_shared_from_this<TimerScheduler> {
     };
 
     class TimeValue {
-      public:
+    public:
         TimeValue() : m_IsTickBased(true) { m_Value.tick = 0; }
+
         explicit TimeValue(size_t ticks) : m_IsTickBased(true) { m_Value.tick = ticks; }
+
         explicit TimeValue(float seconds) : m_IsTickBased(false) { m_Value.time = seconds; }
 
         void SetTicks(size_t ticks) {
@@ -89,14 +91,16 @@ class TimerScheduler : public std::enable_shared_from_this<TimerScheduler> {
         }
 
         bool IsTickBased() const { return m_IsTickBased; }
+
         size_t GetTicks() const {
             return m_IsTickBased ? m_Value.tick : static_cast<size_t>(m_Value.time);
         }
+
         float GetSeconds() const {
             return m_IsTickBased ? static_cast<float>(m_Value.tick) : m_Value.time;
         }
 
-      private:
+    private:
         union {
             size_t tick;
             float time;
@@ -109,7 +113,7 @@ class TimerScheduler : public std::enable_shared_from_this<TimerScheduler> {
      * Builder class for creating TimerScheduler instances with a fluent interface.
      */
     class Builder {
-      public:
+    public:
         Builder()
             : m_Delay(TimeValue(static_cast<size_t>(0))), m_Type(ONCE), m_TimeBase(TICK),
               m_RepeatCount(1), m_RepeatCountExplicit(false), m_Easing(LINEAR), m_Priority(0),
@@ -219,7 +223,7 @@ class TimerScheduler : public std::enable_shared_from_this<TimerScheduler> {
             return timer;
         }
 
-      private:
+    private:
         friend class TimerScheduler;
 
         Builder &SetDelay(TimeValue value, TimeBase base) {
@@ -428,12 +432,19 @@ class TimerScheduler : public std::enable_shared_from_this<TimerScheduler> {
 
     // Getter methods
     TimerId GetId() const { return m_Id; }
+
     const std::string &GetName() const { return m_Name; }
+
     State GetState() const { return m_State; }
+
     Type GetType() const { return m_Type; }
+
     TimeBase GetTimeBase() const { return m_TimeBase; }
+
     int8_t GetPriority() const { return m_Priority; }
+
     int GetRemainingIterations() const { return m_RemainingIterations; }
+
     int GetCompletedIterations() const { return m_CompletedIterations; }
 
     float GetProgress() const {
@@ -567,15 +578,19 @@ class TimerScheduler : public std::enable_shared_from_this<TimerScheduler> {
             std::vector<std::shared_ptr<TimerScheduler>> Timers, Merge, Start;
             std::vector<TimerId> Remove;
         };
+
         static thread_local std::deque<Buffers> slots;
         static thread_local size_t depth = 0;
         if (depth == slots.size())
             slots.emplace_back();
         Buffers &buffers = slots[depth];
+
         struct Scope {
             size_t &Depth;
             Buffers &Data;
+
             Scope(size_t &d, Buffers &b) : Depth(d), Data(b) { ++Depth; }
+
             ~Scope() {
                 Data.Timers.clear();
                 Data.Merge.clear();
@@ -584,6 +599,7 @@ class TimerScheduler : public std::enable_shared_from_this<TimerScheduler> {
                 --Depth;
             }
         } scope(depth, buffers);
+
         auto &timersToProcess = buffers.Timers;
         auto &toRemove = buffers.Remove;
 
@@ -715,7 +731,7 @@ class TimerScheduler : public std::enable_shared_from_this<TimerScheduler> {
         return second;
     }
 
-  private:
+private:
     // Private constructor - use Builder to create timers
     TimerScheduler(const Builder &builder, size_t tick, float time)
         : m_Id(GetNextTimerId().fetch_add(1)),

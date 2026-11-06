@@ -1,5 +1,6 @@
 #ifndef BML_API_MODAPI_H
 #define BML_API_MODAPI_H
+
 #include "BML/Mod.h"
 #include "Loader/ModContext.h"
 #include <new>

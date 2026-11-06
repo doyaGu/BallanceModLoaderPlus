@@ -237,12 +237,19 @@ ModContext::ModContext(CKContext *context)
     assert(context != nullptr);
     m_CommandApi = std::make_unique<BML::Api::CommandApi>(*this);
     m_ImcRuntime.SetInvocationGate(&m_Loader.InvocationGate());
-    m_ImcRuntime.SetOwnerAdmission([](void *data,const std::string &id,bool callback) noexcept {
-        try {auto &ctx=*static_cast<ModContext *>(data);auto *owner=ctx.FindMod(id.c_str());
-            if(callback)return ctx.GetModLoader().CanDispatchOwner(owner);
-            return owner&&BML::Api::AcceptsModWork(ctx,*owner);
-        }catch(...){return false;}
-    },this);
+    m_ImcRuntime.SetOwnerAdmission(
+        [](void *data, const std::string &id, bool callback) noexcept {
+            try {
+                auto &ctx = *static_cast<ModContext *>(data);
+                auto *owner = ctx.FindMod(id.c_str());
+                if (callback)
+                    return ctx.GetModLoader().CanDispatchOwner(owner);
+                return owner && BML::Api::AcceptsModWork(ctx, *owner);
+            } catch (...) {
+                return false;
+            }
+        },
+        this);
     m_CKContext = context;
     m_Hooks = std::make_unique<HookLifecycle>(*this);
     m_DataShare = DataShareStore::GetInstance("BML");
@@ -254,11 +261,18 @@ ModContext::ModContext(CKContext *context)
         g_ContextClosing.store(false, std::memory_order_release);
         g_ModContext.store(this, std::memory_order_release);
     }
-    DataShareStore::SetOwnerAdmission([](const std::string &id,bool callback) noexcept {
-        try {ModContextLease ctx;if(!ctx)return false;auto *owner=ctx->FindMod(id.c_str());
-            if(callback)return ctx->GetModLoader().CanDispatchOwner(owner);
-            return owner&&BML::Api::AcceptsModWork(*ctx,*owner);
-        }catch(...){return false;}
+    DataShareStore::SetOwnerAdmission([](const std::string &id, bool callback) noexcept {
+        try {
+            ModContextLease ctx;
+            if (!ctx)
+                return false;
+            auto *owner = ctx->FindMod(id.c_str());
+            if (callback)
+                return ctx->GetModLoader().CanDispatchOwner(owner);
+            return owner && BML::Api::AcceptsModWork(*ctx, *owner);
+        } catch (...) {
+            return false;
+        }
     });
     DataShareStore::SetOwnerResolver(&ResolveDataShareOwner);
     DataShareStore::SetInvocationGate(&m_Loader.InvocationGate());
@@ -981,7 +995,7 @@ bool ModContext::RemoveConfig(Config *config) {
         return false;
 
     const std::string modId = mod->GetID();
-    m_DetachedConfigs.reserve(m_DetachedConfigs.size()+1);
+    m_DetachedConfigs.reserve(m_DetachedConfigs.size() + 1);
     std::unique_ptr<Config> removed;
     {
         std::lock_guard<std::mutex> lock(m_ConfigMutex);
@@ -1007,7 +1021,7 @@ bool ModContext::RemoveConfig(Config *config) {
                             modId.c_str());
     }
 
-    if(removed->IsDirty()) {
+    if (removed->IsDirty()) {
         // All data is host-owned. Keep unsaved values without keeping a Mod's
         // code or callbacks alive, and retry only at an explicit save point.
         removed->DetachMod();
@@ -1088,11 +1102,17 @@ void ModContext::SnapshotConfigMetadata() {
 
 void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
     auto invocationLock = LockModInvocation();
-    if(saveAll) {
-        for(auto it=m_DetachedConfigs.begin();it!=m_DetachedConfigs.end();) {
-            bool saved=false;
-            try {saved=(*it)->CanSave()&&SaveConfig(it->get(),false);}catch(...){}
-            if(saved)it=m_DetachedConfigs.erase(it);else ++it;
+    if (saveAll) {
+        for (auto it = m_DetachedConfigs.begin(); it != m_DetachedConfigs.end();) {
+            bool saved = false;
+            try {
+                saved = (*it)->CanSave() && SaveConfig(it->get(), false);
+            } catch (...) {
+            }
+            if (saved)
+                it = m_DetachedConfigs.erase(it);
+            else
+                ++it;
         }
     }
     std::vector<Config *> configs;
@@ -1431,27 +1451,31 @@ void ModContext::SkipRenderForNextTick() {
 void ModContext::RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
                                   float friction, float elasticity, float mass, const char *collGroup,
                                   float linearDamp, float rotDamp, float force, float radius) {
-    m_Loader.GetBallTypeMod()->RegisterBallType(m_Loader.InvokedOwnerId(), ballFile, ballId, ballName, objName, friction, elasticity,
-                                    mass, collGroup, linearDamp, rotDamp, force, radius);
+    m_Loader.GetBallTypeMod()->RegisterBallType(m_Loader.InvokedOwnerId(), ballFile, ballId,
+                                                ballName, objName, friction, elasticity, mass,
+                                                collGroup, linearDamp, rotDamp, force, radius);
 }
 
 void ModContext::RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
                                    const char *collGroup, bool enableColl) {
-    m_Loader.GetBallTypeMod()->RegisterFloorType(m_Loader.InvokedOwnerId(), floorName, friction, elasticity, mass, collGroup, enableColl);
+    m_Loader.GetBallTypeMod()->RegisterFloorType(m_Loader.InvokedOwnerId(), floorName, friction,
+                                                 elasticity, mass, collGroup, enableColl);
 }
 
 void ModContext::RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
                                    const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
                                    float linearDamp, float rotDamp, float radius) {
-    m_Loader.GetBallTypeMod()->RegisterModulBall(m_Loader.InvokedOwnerId(), modulName, fixed, friction, elasticity, mass, collGroup,
-                                     frozen, enableColl, calcMassCenter, linearDamp, rotDamp, radius);
+    m_Loader.GetBallTypeMod()->RegisterModulBall(
+        m_Loader.InvokedOwnerId(), modulName, fixed, friction, elasticity, mass, collGroup, frozen,
+        enableColl, calcMassCenter, linearDamp, rotDamp, radius);
 }
 
 void ModContext::RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity, float mass,
                                      const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
                                      float linearDamp, float rotDamp) {
-    m_Loader.GetBallTypeMod()->RegisterModulConvex(m_Loader.InvokedOwnerId(), modulName, fixed, friction, elasticity, mass, collGroup,
-                                       frozen, enableColl, calcMassCenter, linearDamp, rotDamp);
+    m_Loader.GetBallTypeMod()->RegisterModulConvex(m_Loader.InvokedOwnerId(), modulName, fixed,
+                                                   friction, elasticity, mass, collGroup, frozen,
+                                                   enableColl, calcMassCenter, linearDamp, rotDamp);
 }
 
 void ModContext::RegisterTrafo(const char *modulName) {
@@ -1472,7 +1496,8 @@ void ModContext::OnProcess() {
 #endif
     m_GuiApi.Collect();
     m_ImcRuntime.Pump();
-    TimerScheduler::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
+    TimerScheduler::ProcessAll(m_TimeManager->GetMainTickCount(),
+                               m_TimeManager->GetAbsoluteTime() / 1000.0f);
     m_TimerApi.FinishProcess();
     BroadcastCallback(&IMod::OnProcess);
     FlushConfigChanges();
@@ -1853,7 +1878,11 @@ bool ModContext::RegisterModOwner(const std::string &ownerId) noexcept {
 }
 
 void ModContext::StopModWork(IMod *owner) noexcept {
-    try {if(owner)m_BehaviorSessions.StopOwnerAdmission(owner->GetID());}catch(...){}
+    try {
+        if (owner)
+            m_BehaviorSessions.StopOwnerAdmission(owner->GetID());
+    } catch (...) {
+    }
 }
 
 void ModContext::RetireFailedModOwner(const std::string &ownerId) noexcept {
@@ -1862,7 +1891,12 @@ void ModContext::RetireFailedModOwner(const std::string &ownerId) noexcept {
 }
 
 bool ModContext::PrepareModUnload(const std::string &ownerId) {
-    if (auto *owner = FindMod(ownerId.c_str())) { m_TimerApi.CleanupOwner(*owner); m_InputApi.CleanupOwner(*this, *owner); m_BuiApi.CleanupOwner(*owner); (void)m_GuiApi.CleanupOwner(*owner); }
+    if (auto *owner = FindMod(ownerId.c_str())) {
+        m_TimerApi.CleanupOwner(*owner);
+        m_InputApi.CleanupOwner(*this, *owner);
+        m_BuiApi.CleanupOwner(*owner);
+        (void)m_GuiApi.CleanupOwner(*owner);
+    }
     if (!RetireBehaviorState(ownerId, BehaviorRetirement::Unload))
         return false;
     return CleanupModRegistrations(ownerId);
@@ -1898,7 +1932,13 @@ bool ModContext::CleanupModRegistrations(const std::string &ownerId) noexcept {
         cleaned = false;
     }
 
-    if(auto *types=m_Loader.GetBallTypeMod()) {try{types->CleanupOwner(ownerId);}catch(...){cleaned=false;}}
+    if (auto *types = m_Loader.GetBallTypeMod()) {
+        try {
+            types->CleanupOwner(ownerId);
+        } catch (...) {
+            cleaned = false;
+        }
+    }
     BML::Api::UnregisterInterfacesForOwner(ownerId);
     return cleaned;
 }

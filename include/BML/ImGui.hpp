@@ -4,6 +4,7 @@
 #include "BML/ImGui.h"
 #include "BML/Mod.hpp"
 #include <imgui.h>
+
 namespace BML::ImGui {
 namespace Detail {
 inline const BML_ImGuiInterface *Api() noexcept {

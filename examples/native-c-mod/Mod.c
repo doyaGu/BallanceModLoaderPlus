@@ -5,6 +5,7 @@
 static struct {
     BML_ModContextHandle Context;
 } instance;
+
 static int BML_CDECL Create(BML_ModContextHandle context, void **out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -12,10 +13,12 @@ static int BML_CDECL Create(BML_ModContextHandle context, void **out) {
     *out = &instance;
     return BML_OK;
 }
+
 static void BML_CDECL Destroy(void *value) {
     (void)value;
     instance.Context = 0;
 }
+
 static int BML_CDECL OnLoad(void *value, BML_ModContextHandle context) {
     const void *found = NULL;
     const BML_ModContextInterface *host;
@@ -27,6 +30,7 @@ static int BML_CDECL OnLoad(void *value, BML_ModContextHandle context) {
     host = (const BML_ModContextInterface *)found;
     return host->Log(context, BML_LOG_INFO, "C Mod loaded", sizeof("C Mod loaded") - 1);
 }
+
 static const BML_ModDefinition definition = {sizeof(BML_ModDefinition),
                                              "BMLCExample",
                                              "C Mod Example",
@@ -41,6 +45,7 @@ static const BML_ModCallbacks callbacks = {.StructSize = sizeof(BML_ModCallbacks
                                            .OnLoad = OnLoad};
 static const BML_ModInterface mod = {BML_IFACE_HEADER(BML_ModInterface, BML_MOD_INTERFACE_ID, 1, 0),
                                      &definition, &callbacks, Create, Destroy};
+
 BML_MOD_ENTRY(int) BML_GetModInterface(uint16_t major, const BML_ModInterface **out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;

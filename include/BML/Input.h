@@ -1,6 +1,8 @@
 #ifndef BML_INPUT_H
 #define BML_INPUT_H
+
 #include "BML/Mod.h"
+
 BML_BEGIN_CDECLS
 #define BML_INPUT_KEYBOARD_STATE_1_0_SIZE                                                          \
     (offsetof(BML_InputKeyboardState, EventCount) +                                                \
@@ -163,62 +165,87 @@ BML_BEGIN_CDECLS
 #define BML_INPUTKEYSTATE_1_0_SIZE sizeof(BML_InputKeyState)
 #define BML_INPUTKEYEVENT_1_0_SIZE sizeof(BML_InputKeyEvent)
 typedef uint64_t BML_InputBlockHandle;
+
 typedef struct BML_InputKeyState {
     uint32_t Key;
-    uint32_t Down, Up, Toggled, Pressed, Released;
-    uint32_t DownTimestampMs, ToggledTimestampMs;
+    uint32_t Down;
+    uint32_t Up;
+    uint32_t Toggled;
+    uint32_t Pressed;
+    uint32_t Released;
+    uint32_t DownTimestampMs;
+    uint32_t ToggledTimestampMs;
 } BML_InputKeyState;
+
 typedef struct BML_InputKeyEvent {
-    uint32_t Key, State, TimestampMs;
+    uint32_t Key;
+    uint32_t State;
+    uint32_t TimestampMs;
 } BML_InputKeyEvent;
+
 typedef struct BML_InputKeyboardState {
     size_t StructSize;
-    uint32_t Attached, RepetitionEnabled;
+    uint32_t Attached;
+    uint32_t RepetitionEnabled;
     const BML_InputKeyState *Keys;
     size_t KeyCount;
     const BML_InputKeyEvent *Events;
     size_t EventCount;
 } BML_InputKeyboardState;
+
 typedef struct BML_InputMouseState {
     size_t StructSize;
     uint32_t Attached;
-    BML_Vec2 ScreenPosition, WindowPosition;
+    BML_Vec2 ScreenPosition;
+    BML_Vec2 WindowPosition;
     BML_Vec3 RelativePosition;
     BML_Vec2 LastPosition;
-    uint32_t DownMask, ClickedMask, ToggledMask;
+    uint32_t DownMask;
+    uint32_t ClickedMask;
+    uint32_t ToggledMask;
 } BML_InputMouseState;
+
 typedef struct BML_InputJoystickState {
     size_t StructSize;
     uint32_t Attached;
-    BML_Vec3 Position, Rotation;
+    BML_Vec3 Position;
+    BML_Vec3 Rotation;
     BML_Vec2 Sliders;
     float PointOfViewAngle;
     uint32_t Buttons;
 } BML_InputJoystickState;
+
 typedef struct BML_InputCursorState {
     size_t StructSize;
-    uint32_t Visible, Shape;
+    uint32_t Visible;
+    uint32_t Shape;
 } BML_InputCursorState;
+
 typedef struct BML_InputInterface {
     BML_InterfaceHeader Header;
-    int(BML_CDECL *ReadKeyboard)(BML_ModContextHandle, uint32_t flags, BML_InputKeyboardState *out);
-    int(BML_CDECL *ReadMouse)(BML_ModContextHandle, uint32_t flags, BML_InputMouseState *out);
-    int(BML_CDECL *ReadJoystick)(BML_ModContextHandle, uint32_t index, uint32_t flags,
+    int(BML_CDECL *ReadKeyboard)(BML_ModContextHandle context, uint32_t flags,
+                                 BML_InputKeyboardState *out);
+    int(BML_CDECL *ReadMouse)(BML_ModContextHandle context, uint32_t flags,
+                              BML_InputMouseState *out);
+    int(BML_CDECL *ReadJoystick)(BML_ModContextHandle context, uint32_t index, uint32_t flags,
                                  BML_InputJoystickState *out);
-    int(BML_CDECL *GetKeyName)(BML_ModContextHandle, uint32_t key, char *buffer, size_t capacity,
-                               size_t *required);
-    int(BML_CDECL *GetKeyFromName)(BML_ModContextHandle, const char *name, uint32_t *outKey);
-    int(BML_CDECL *EnableKeyboardRepetition)(BML_ModContextHandle, uint32_t enable);
-    int(BML_CDECL *AcquireBlock)(BML_ModContextHandle, uint32_t deviceMask,
+    int(BML_CDECL *GetKeyName)(BML_ModContextHandle context, uint32_t key, char *buffer,
+                               size_t capacity, size_t *required);
+    int(BML_CDECL *GetKeyFromName)(BML_ModContextHandle context, const char *name,
+                                   uint32_t *outKey);
+    int(BML_CDECL *EnableKeyboardRepetition)(BML_ModContextHandle context, uint32_t enable);
+    int(BML_CDECL *AcquireBlock)(BML_ModContextHandle context, uint32_t deviceMask,
                                  BML_InputBlockHandle *outBlock);
-    int(BML_CDECL *ReleaseBlock)(BML_ModContextHandle, BML_InputBlockHandle);
-    int(BML_CDECL *ReadBlockCount)(BML_ModContextHandle, uint32_t device, uint32_t *outCount);
-    int(BML_CDECL *Pause)(BML_ModContextHandle, uint32_t pause);
-    int(BML_CDECL *ReadCursor)(BML_ModContextHandle, BML_InputCursorState *out);
-    int(BML_CDECL *ShowCursor)(BML_ModContextHandle, uint32_t visible);
-    int(BML_CDECL *SetSystemCursor)(BML_ModContextHandle, uint32_t shape);
+    int(BML_CDECL *ReleaseBlock)(BML_ModContextHandle context, BML_InputBlockHandle block);
+    int(BML_CDECL *ReadBlockCount)(BML_ModContextHandle context, uint32_t device,
+                                   uint32_t *outCount);
+    int(BML_CDECL *Pause)(BML_ModContextHandle context, uint32_t pause);
+    int(BML_CDECL *ReadCursor)(BML_ModContextHandle context, BML_InputCursorState *out);
+    int(BML_CDECL *ShowCursor)(BML_ModContextHandle context, uint32_t visible);
+    int(BML_CDECL *SetSystemCursor)(BML_ModContextHandle context, uint32_t shape);
 } BML_InputInterface;
 
 #pragma pack(pop)
 BML_END_CDECLS
+
 #endif

@@ -1,12 +1,17 @@
 #ifndef BML_TIMER_H
 #define BML_TIMER_H
+
 #include "BML/Mod.h"
+
 BML_BEGIN_CDECLS
-#define BML_TIMER_DEFINITION_1_0_SIZE (offsetof(BML_TimerDefinition, RepeatCount) + sizeof(((BML_TimerDefinition *)0)->RepeatCount))
-#define BML_TIMER_DEFINITION_INIT { .StructSize = sizeof(BML_TimerDefinition) }
-#define BML_TIMER_EVENT_1_0_SIZE (offsetof(BML_TimerEvent, Progress) + sizeof(((BML_TimerEvent *)0)->Progress))
-#define BML_TIMER_EVENT_INIT { .StructSize = sizeof(BML_TimerEvent) }
-#define BML_TIMER_INTERFACE_1_0_SIZE (offsetof(BML_TimerInterface, Cancel) + sizeof(((BML_TimerInterface *)0)->Cancel))
+#define BML_TIMER_DEFINITION_1_0_SIZE                                                              \
+    (offsetof(BML_TimerDefinition, RepeatCount) + sizeof(((BML_TimerDefinition *)0)->RepeatCount))
+#define BML_TIMER_DEFINITION_INIT {.StructSize = sizeof(BML_TimerDefinition)}
+#define BML_TIMER_EVENT_1_0_SIZE                                                                   \
+    (offsetof(BML_TimerEvent, Progress) + sizeof(((BML_TimerEvent *)0)->Progress))
+#define BML_TIMER_EVENT_INIT {.StructSize = sizeof(BML_TimerEvent)}
+#define BML_TIMER_INTERFACE_1_0_SIZE                                                               \
+    (offsetof(BML_TimerInterface, Cancel) + sizeof(((BML_TimerInterface *)0)->Cancel))
 #pragma pack(push, 8)
 #define BML_TIMER_INTERFACE_ID "bml.timer"
 #define BML_TIMER_INTERFACE_MAJOR 1u
@@ -25,6 +30,7 @@ BML_BEGIN_CDECLS
 #define BML_TIMER_COMPLETED 3u
 #define BML_TIMER_CANCELLED 4u
 typedef uint64_t BML_TimerHandle;
+
 typedef struct BML_TimerDefinition {
     size_t StructSize;
     const char *Name;
@@ -36,6 +42,7 @@ typedef struct BML_TimerDefinition {
     uint64_t DelayTicks;
     uint64_t RepeatCount;
 } BML_TimerDefinition;
+
 typedef struct BML_TimerEvent {
     size_t StructSize;
     BML_TimerHandle Handle;
@@ -47,20 +54,25 @@ typedef struct BML_TimerEvent {
     int64_t RemainingIterations;
     float Progress;
 } BML_TimerEvent;
-typedef int (BML_CDECL *BML_TimerCallback)(void *userData,
-    BML_ModContextHandle context, const BML_TimerEvent *event, uint32_t *continueLoop);
-typedef void (BML_CDECL *BML_ReleaseCallback)(void *userData);
-typedef int (BML_CDECL *BML_TimerVisitor)(void *userData, const BML_TimerEvent *event);
+
+typedef int(BML_CDECL *BML_TimerCallback)(void *userData, BML_ModContextHandle context,
+                                          const BML_TimerEvent *event, uint32_t *continueLoop);
+typedef void(BML_CDECL *BML_ReleaseCallback)(void *userData);
+typedef int(BML_CDECL *BML_TimerVisitor)(void *userData, const BML_TimerEvent *event);
+
 typedef struct BML_TimerInterface {
     BML_InterfaceHeader Header;
-    int (BML_CDECL *Register)(BML_ModContextHandle, const BML_TimerDefinition *,
-        BML_TimerCallback, void *userData, BML_ReleaseCallback, BML_TimerHandle *outTimer);
-    int (BML_CDECL *Read)(BML_ModContextHandle, BML_TimerHandle, BML_TimerVisitor, void *userData);
-    int (BML_CDECL *Pause)(BML_ModContextHandle, BML_TimerHandle);
-    int (BML_CDECL *Resume)(BML_ModContextHandle, BML_TimerHandle);
-    int (BML_CDECL *Cancel)(BML_ModContextHandle, BML_TimerHandle);
+    int(BML_CDECL *Register)(BML_ModContextHandle context, const BML_TimerDefinition *definition,
+                             BML_TimerCallback callback, void *userData,
+                             BML_ReleaseCallback release, BML_TimerHandle *outTimer);
+    int(BML_CDECL *Read)(BML_ModContextHandle context, BML_TimerHandle timer,
+                         BML_TimerVisitor visitor, void *userData);
+    int(BML_CDECL *Pause)(BML_ModContextHandle context, BML_TimerHandle timer);
+    int(BML_CDECL *Resume)(BML_ModContextHandle context, BML_TimerHandle timer);
+    int(BML_CDECL *Cancel)(BML_ModContextHandle context, BML_TimerHandle timer);
 } BML_TimerInterface;
 
 #pragma pack(pop)
 BML_END_CDECLS
+
 #endif

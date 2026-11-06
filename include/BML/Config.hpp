@@ -6,6 +6,7 @@
 
 namespace BML::Config {
 using Value = std::variant<std::monostate, std::string, bool, int32_t, float, uint32_t>;
+
 struct PropertyDefinition {
     std::string Category, Key;
     Value DefaultValue;
@@ -13,11 +14,13 @@ struct PropertyDefinition {
     uint32_t Editor = 0;
     std::vector<std::string> Choices;
 };
+
 struct PropertyInfo {
     BML_ConfigPropertyHandle Handle = 0;
     PropertyDefinition Definition;
     Value CurrentValue;
 };
+
 namespace Detail {
 inline bool Encode(const Value &value, BML_ConfigValue &out) {
     out = {};
@@ -55,6 +58,7 @@ inline bool Encode(const Value &value, BML_ConfigValue &out) {
     }
     return true;
 }
+
 inline Value Decode(const BML_ConfigValue &value) {
     switch (value.Type) {
     case BML_CONFIG_TYPE_STRING:
@@ -71,6 +75,7 @@ inline Value Decode(const BML_ConfigValue &value) {
         return {};
     }
 }
+
 inline const BML_ConfigInterface *Api() noexcept {
     return BML::Detail::Bind<BML_ConfigInterface>(
         BML_CONFIG_INTERFACE_ID, 1, BML_CONFIG_INTERFACE_1_0_SIZE,
@@ -91,9 +96,11 @@ inline const BML_ConfigInterface *Api() noexcept {
 } // namespace Detail
 
 class View;
+
 class Property {
-  public:
+public:
     Property() noexcept = default;
+
     [[nodiscard]] bool IsValid() const noexcept {
         return m_Api && m_Api->ReadProperty(
                             m_Context.Handle(), m_Handle,
@@ -134,6 +141,7 @@ class Property {
     } catch (...) {
         return Result<PropertyInfo>::Failure(BML_ERROR_FAIL);
     }
+
     int Set(const Value &value) const {
         BML_ConfigValue record;
         if (!Detail::Encode(value, record))
@@ -141,6 +149,7 @@ class Property {
         return m_Api ? m_Api->SetValue(m_Context.Handle(), m_Handle, &record)
                      : BML_ERROR_UNAVAILABLE;
     }
+
     int SetDefault(const Value &value) const {
         BML_ConfigValue record;
         if (!Detail::Encode(value, record))
@@ -159,6 +168,7 @@ class Property {
     } catch (...) {
         return BML_ERROR_FAIL;
     }
+
     int SetEditor(uint32_t editor) const {
         return m_Api ? m_Api->SetEditor(m_Context.Handle(), m_Handle, editor)
                      : BML_ERROR_UNAVAILABLE;
@@ -178,6 +188,7 @@ class Property {
     } catch (...) {
         return BML_ERROR_FAIL;
     }
+
     template <class T> [[nodiscard]] T Get(T fallback = {}) const {
         static_assert(std::is_same_v<T, std::string> || std::is_same_v<T, bool> ||
                       std::is_same_v<T, int32_t> || std::is_same_v<T, float> ||
@@ -215,19 +226,22 @@ class Property {
         return value;
     }
 
-  private:
+private:
     friend class View;
+
     Property(Mod::Context ctx, BML_ConfigPropertyHandle handle) noexcept
         : m_Context(ctx), m_Handle(handle), m_Api(Detail::Api()) {}
+
     Mod::Context m_Context;
     BML_ConfigPropertyHandle m_Handle = 0;
     const BML_ConfigInterface *m_Api = nullptr;
 };
 
 class View {
-  public:
+public:
     explicit View(const Mod::Context &context) noexcept
         : m_Context(context), m_Api(Detail::Api()) {}
+
     [[nodiscard]] bool IsValid() const noexcept { return m_Api && m_Context.IsValid(); }
     [[nodiscard]] Result<Property> DeclareProperty(const PropertyDefinition &definition) const try {
         if (!BML::Detail::IsText(definition.Category) || !BML::Detail::IsText(definition.Key) ||
@@ -315,11 +329,12 @@ class View {
         return BML_ERROR_FAIL;
     }
 
-  private:
+private:
     Mod::Context m_Context;
     const BML_ConfigInterface *m_Api;
 };
 } // namespace BML::Config
+
 inline BML::Config::View BML::Mod::Context::Config() const noexcept {
     return BML::Config::View(*this);
 }

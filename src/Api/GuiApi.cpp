@@ -10,20 +10,30 @@
 
 namespace BML::Api {
 namespace Host = BGuiHost;
+
 namespace {
 bool Equal(BML_ObjectRef a, BML_ObjectRef b) {
     return a.Domain == b.Domain && a.Slot == b.Slot && a.Generation == b.Generation;
 }
-bool Finite(BML_Vec2 v) { return std::isfinite(v.x) && std::isfinite(v.y); }
+
+bool Finite(BML_Vec2 v) {
+    return std::isfinite(v.x) && std::isfinite(v.y);
+}
+
 bool Finite(BML_Color c) {
     return std::isfinite(c.r) && std::isfinite(c.g) && std::isfinite(c.b) && std::isfinite(c.a);
 }
-uint32_t Packed(BML_Color c) { return VxColor(c.r, c.g, c.b, c.a).GetRGBA(); }
+
+uint32_t Packed(BML_Color c) {
+    return VxColor(c.r, c.g, c.b, c.a).GetRGBA();
+}
+
 BML_Color Unpacked(uint32_t c) {
     VxColor v(c);
     return {v.r, v.g, v.b, v.a};
 }
 } // namespace
+
 struct GuiApi::Record {
     ModContext *Context = nullptr;
     IMod *Owner = nullptr;
@@ -42,16 +52,20 @@ struct GuiApi::Record {
     Host::KeyInput *KeyInput = nullptr;
     BML_GuiEvent Event = BML_GUI_EVENT_INIT;
     std::unique_ptr<Host::Element> Item;
+
     ~Record() {
         Sanitize(*this);
         Item.reset();
     }
 };
+
 struct GuiApi::Storage {
     std::unordered_map<uint32_t, std::unique_ptr<Record>> Elements;
 };
+
 GuiApi::GuiApi() = default;
 GuiApi::~GuiApi() = default;
+
 void GuiApi::Sanitize(Record &r, bool all) noexcept {
     if (!r.Item)
         return;
@@ -67,6 +81,7 @@ void GuiApi::Sanitize(Record &r, bool all) noexcept {
         r.SpriteText->m_Sprite = nullptr;
     }
 }
+
 GuiApi::Record *GuiApi::Find(ModContext &ctx, IMod &owner, BML_ObjectRef ref) {
     if (!m_Storage)
         return nullptr;
@@ -83,6 +98,7 @@ GuiApi::Record *GuiApi::Find(ModContext &ctx, IMod &owner, BML_ObjectRef ref) {
     }
     return &r;
 }
+
 int GuiApi::Create(ModContext &ctx, IMod &owner, uint32_t kind, const char *name,
                    BML_ObjectRef *out) {
     if (!AcceptsModWork(ctx, owner))
@@ -179,6 +195,7 @@ int GuiApi::Create(ModContext &ctx, IMod &owner, uint32_t kind, const char *name
     *out = ref;
     return BML_OK;
 }
+
 int GuiApi::Destroy(ModContext &, IMod &owner, BML_ObjectRef ref) {
     if (!m_Storage)
         return BML_ERROR_OBJECT_INVALID;
@@ -191,6 +208,7 @@ int GuiApi::Destroy(ModContext &, IMod &owner, BML_ObjectRef ref) {
     record.reset();
     return BML_OK;
 }
+
 int GuiApi::Read(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_GuiElementInfo *out) {
     auto *r = Find(ctx, owner, ref);
     if (!r)
@@ -229,18 +247,21 @@ int GuiApi::Read(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_GuiElement
     WriteOutput(out, v, BML_GUI_ELEMENT_INFO_1_0_SIZE);
     return BML_OK;
 }
+
 #define BML_GUI_FIND                                                                               \
     auto *r = Find(ctx, owner, ref);                                                               \
     if (!r)                                                                                        \
     return BML_ERROR_OBJECT_INVALID
-int GuiApi::Position(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
+
+int GuiApi::SetPosition(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
     BML_GUI_FIND;
     if (!Finite(v))
         return BML_ERROR_INVALID_PARAMETER;
     r->Item->SetPosition({v.x, v.y});
     return BML_OK;
 }
-int GuiApi::Size(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
+
+int GuiApi::SetSize(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
     BML_GUI_FIND;
     if (!Finite(v) || v.x < 0 || v.y < 0)
         return BML_ERROR_INVALID_PARAMETER;
@@ -254,19 +275,22 @@ int GuiApi::Size(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
     r->Item->SetSize({v.x, v.y});
     return BML_OK;
 }
-int GuiApi::ZOrder(ModContext &ctx, IMod &owner, BML_ObjectRef ref, int32_t v) {
+
+int GuiApi::SetZOrder(ModContext &ctx, IMod &owner, BML_ObjectRef ref, int32_t v) {
     BML_GUI_FIND;
     r->Item->SetZOrder(v);
     return BML_OK;
 }
-int GuiApi::Visible(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+
+int GuiApi::SetVisible(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (v > 1)
         return BML_ERROR_INVALID_PARAMETER;
     r->Item->SetVisible(v != 0);
     return BML_OK;
 }
-int GuiApi::Active(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+
+int GuiApi::SetActive(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Button)
         return BML_ERROR_TYPE_MISMATCH;
@@ -275,7 +299,8 @@ int GuiApi::Active(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) 
     r->Button->SetActive(v != 0);
     return BML_OK;
 }
-int GuiApi::Color(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Color v) {
+
+int GuiApi::SetColor(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Color v) {
     BML_GUI_FIND;
     if (!Finite(v))
         return BML_ERROR_INVALID_PARAMETER;
@@ -287,7 +312,8 @@ int GuiApi::Color(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Color v) 
         return BML_ERROR_TYPE_MISMATCH;
     return BML_OK;
 }
-int GuiApi::Text(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char *v) {
+
+int GuiApi::SetText(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char *v) {
     BML_GUI_FIND;
     if (r->SpriteText)
         r->SpriteText->SetText(v);
@@ -297,6 +323,7 @@ int GuiApi::Text(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char *v)
         return BML_ERROR_TYPE_MISMATCH;
     return BML_OK;
 }
+
 int GuiApi::GetText(ModContext &ctx, IMod &owner, BML_ObjectRef ref, char *b, size_t n,
                     size_t *required) {
     BML_GUI_FIND;
@@ -307,8 +334,9 @@ int GuiApi::GetText(ModContext &ctx, IMod &owner, BML_ObjectRef ref, char *b, si
         return BML_ERROR_TYPE_MISMATCH;
     return CopyText(s ? s : "", b, n, required);
 }
-int GuiApi::Font(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char *face, int32_t size,
-                 int32_t weight, uint32_t flags) {
+
+int GuiApi::SetFont(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char *face, int32_t size,
+                    int32_t weight, uint32_t flags) {
     BML_GUI_FIND;
     if (!r->SpriteText)
         return BML_ERROR_TYPE_MISMATCH;
@@ -317,7 +345,8 @@ int GuiApi::Font(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char *fa
     r->SpriteText->SetFont(face, size, weight, flags & 1, flags & 2);
     return BML_OK;
 }
-int GuiApi::Alignment(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+
+int GuiApi::SetAlignment(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (r->SpriteText) {
         if (v & ~127u)
@@ -332,7 +361,8 @@ int GuiApi::Alignment(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t 
         return BML_ERROR_TYPE_MISMATCH;
     return BML_OK;
 }
-int GuiApi::ButtonType(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+
+int GuiApi::SetButtonType(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Button)
         return BML_ERROR_TYPE_MISMATCH;
@@ -341,7 +371,8 @@ int GuiApi::ButtonType(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t
     r->Button->SetType(static_cast<Host::ButtonType>(v));
     return BML_OK;
 }
-int GuiApi::Hovered(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+
+int GuiApi::SetHovered(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Button)
         return BML_ERROR_TYPE_MISMATCH;
@@ -353,7 +384,8 @@ int GuiApi::Hovered(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v)
         r->Button->OnMouseLeave();
     return BML_OK;
 }
-int GuiApi::GameFont(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+
+int GuiApi::SetGameFont(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Label)
         return BML_ERROR_TYPE_MISMATCH;
@@ -362,7 +394,8 @@ int GuiApi::GameFont(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v
     r->Label->SetFont(static_cast<ExecuteBB::FontType>(v));
     return BML_OK;
 }
-int GuiApi::TextFlags(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+
+int GuiApi::SetTextFlags(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Label)
         return BML_ERROR_TYPE_MISMATCH;
@@ -371,7 +404,8 @@ int GuiApi::TextFlags(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t 
     r->Label->SetTextFlags(v);
     return BML_OK;
 }
-int GuiApi::Offset(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
+
+int GuiApi::SetOffset(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
     BML_GUI_FIND;
     if (!r->Label)
         return BML_ERROR_TYPE_MISMATCH;
@@ -381,7 +415,8 @@ int GuiApi::Offset(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) 
     r->Offset = v;
     return BML_OK;
 }
-int GuiApi::Focused(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+
+int GuiApi::SetFocused(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Input)
         return BML_ERROR_TYPE_MISMATCH;
@@ -394,7 +429,8 @@ int GuiApi::Focused(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v)
     r->Focus = v;
     return BML_OK;
 }
-int GuiApi::Key(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+
+int GuiApi::SetKey(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->KeyInput)
         return BML_ERROR_TYPE_MISMATCH;
@@ -403,6 +439,7 @@ int GuiApi::Key(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
     r->KeyInput->SetKey(static_cast<CKKEYBOARD>(v));
     return BML_OK;
 }
+
 int GuiApi::CharTyped(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t key,
                       BML_GuiEvent *out) {
     BML_GUI_FIND;
@@ -418,6 +455,7 @@ int GuiApi::CharTyped(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t 
     WriteOutput(out, r->Event, BML_GUI_EVENT_1_0_SIZE);
     return BML_OK;
 }
+
 int GuiApi::Process(ModContext &ctx, IMod &owner, BML_ObjectRef ref) {
     BML_GUI_FIND;
     if (r->SpriteText) {
@@ -433,7 +471,9 @@ int GuiApi::Process(ModContext &ctx, IMod &owner, BML_ObjectRef ref) {
         r->Item->Process();
     return BML_OK;
 }
+
 #undef BML_GUI_FIND
+
 void GuiApi::ObjectsToBeDeleted(const uint32_t *ids, int count) noexcept {
     if (!m_Storage || !ids || count <= 0)
         return;
@@ -464,6 +504,7 @@ void GuiApi::ObjectsToBeDeleted(const uint32_t *ids, int count) noexcept {
         }
     }
 }
+
 void GuiApi::ResetWorld() noexcept {
     if (!m_Storage)
         return;
@@ -471,6 +512,7 @@ void GuiApi::ResetWorld() noexcept {
         Sanitize(*r, true);
     m_Storage->Elements.clear();
 }
+
 void GuiApi::Collect() noexcept {
     if (!m_Storage)
         return;
@@ -482,6 +524,7 @@ void GuiApi::Collect() noexcept {
         } else
             ++it;
 }
+
 bool GuiApi::CleanupOwner(IMod &owner) noexcept {
     if (!m_Storage)
         return true;
@@ -494,6 +537,7 @@ bool GuiApi::CleanupOwner(IMod &owner) noexcept {
             ++it;
     return true;
 }
+
 namespace {
 #define BML_GUI_THUNK(Name, Method, Params, Args)                                                  \
     int BML_CDECL Name(BML_ModContextHandle h, BML_ObjectRef ref, Params) {                        \
@@ -501,6 +545,7 @@ namespace {
             return ctx.GetGuiApi().Method(ctx, owner, ref, Args);                                  \
         });                                                                                        \
     }
+
 int BML_CDECL Create(BML_ModContextHandle h, uint32_t kind, const char *name, BML_ObjectRef *out) {
     if (!name || !out || kind > BML_GUI_ELEMENT)
         return BML_ERROR_INVALID_PARAMETER;
@@ -509,10 +554,12 @@ int BML_CDECL Create(BML_ModContextHandle h, uint32_t kind, const char *name, BM
         return ctx.GetGuiApi().Create(ctx, owner, kind, name, out);
     });
 }
+
 int BML_CDECL Destroy(BML_ModContextHandle h, BML_ObjectRef ref) {
     return WithModContext(
         h, [&](ModContext &ctx, IMod &owner) { return ctx.GetGuiApi().Destroy(ctx, owner, ref); });
 }
+
 int BML_CDECL Read(BML_ModContextHandle h, BML_ObjectRef ref, BML_GuiElementInfo *out) {
     if (!out || out->StructSize < BML_GUI_ELEMENT_INFO_1_0_SIZE)
         return BML_ERROR_INVALID_PARAMETER;
@@ -520,18 +567,21 @@ int BML_CDECL Read(BML_ModContextHandle h, BML_ObjectRef ref, BML_GuiElementInfo
         return ctx.GetGuiApi().Read(ctx, owner, ref, out);
     });
 }
-BML_GUI_THUNK(Position, Position, BML_Vec2 v, v)
-BML_GUI_THUNK(Size, Size, BML_Vec2 v, v)
-BML_GUI_THUNK(ZOrder, ZOrder, int32_t v, v)
-BML_GUI_THUNK(Visible, Visible, uint32_t v, v)
-BML_GUI_THUNK(Active, Active, uint32_t v, v)
-BML_GUI_THUNK(Color, Color, BML_Color v, v)
-int BML_CDECL Text(BML_ModContextHandle h, BML_ObjectRef ref, const char *v) {
+BML_GUI_THUNK(SetPosition, SetPosition, BML_Vec2 v, v)
+BML_GUI_THUNK(SetSize, SetSize, BML_Vec2 v, v)
+BML_GUI_THUNK(SetZOrder, SetZOrder, int32_t v, v)
+BML_GUI_THUNK(SetVisible, SetVisible, uint32_t v, v)
+BML_GUI_THUNK(SetActive, SetActive, uint32_t v, v)
+BML_GUI_THUNK(SetColor, SetColor, BML_Color v, v)
+
+int BML_CDECL SetText(BML_ModContextHandle h, BML_ObjectRef ref, const char *v) {
     if (!v)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(
-        h, [&](ModContext &ctx, IMod &owner) { return ctx.GetGuiApi().Text(ctx, owner, ref, v); });
+    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+        return ctx.GetGuiApi().SetText(ctx, owner, ref, v);
+    });
 }
+
 int BML_CDECL GetText(BML_ModContextHandle h, BML_ObjectRef ref, char *b, size_t n,
                       size_t *required) {
     if (!required || (!b && n))
@@ -540,20 +590,22 @@ int BML_CDECL GetText(BML_ModContextHandle h, BML_ObjectRef ref, char *b, size_t
         return ctx.GetGuiApi().GetText(ctx, owner, ref, b, n, required);
     });
 }
-int BML_CDECL Font(BML_ModContextHandle h, BML_ObjectRef ref, const char *face, int32_t size,
-                   int32_t weight, uint32_t flags) {
+
+int BML_CDECL SetFont(BML_ModContextHandle h, BML_ObjectRef ref, const char *face, int32_t size,
+                      int32_t weight, uint32_t flags) {
     return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
-        return ctx.GetGuiApi().Font(ctx, owner, ref, face, size, weight, flags);
+        return ctx.GetGuiApi().SetFont(ctx, owner, ref, face, size, weight, flags);
     });
 }
-BML_GUI_THUNK(Alignment, Alignment, uint32_t v, v)
-BML_GUI_THUNK(ButtonType, ButtonType, uint32_t v, v)
-BML_GUI_THUNK(Hovered, Hovered, uint32_t v, v)
-BML_GUI_THUNK(GameFont, GameFont, uint32_t v, v)
-BML_GUI_THUNK(TextFlags, TextFlags, uint32_t v, v)
-BML_GUI_THUNK(Offset, Offset, BML_Vec2 v, v)
-BML_GUI_THUNK(Focused, Focused, uint32_t v, v)
-BML_GUI_THUNK(Key, Key, uint32_t v, v)
+BML_GUI_THUNK(SetAlignment, SetAlignment, uint32_t v, v)
+BML_GUI_THUNK(SetButtonType, SetButtonType, uint32_t v, v)
+BML_GUI_THUNK(SetHovered, SetHovered, uint32_t v, v)
+BML_GUI_THUNK(SetGameFont, SetGameFont, uint32_t v, v)
+BML_GUI_THUNK(SetTextFlags, SetTextFlags, uint32_t v, v)
+BML_GUI_THUNK(SetOffset, SetOffset, BML_Vec2 v, v)
+BML_GUI_THUNK(SetFocused, SetFocused, uint32_t v, v)
+BML_GUI_THUNK(SetKey, SetKey, uint32_t v, v)
+
 int BML_CDECL CharTyped(BML_ModContextHandle h, BML_ObjectRef ref, uint32_t key,
                         BML_GuiEvent *out) {
     if (!out || out->StructSize < BML_GUI_EVENT_1_0_SIZE)
@@ -562,34 +614,39 @@ int BML_CDECL CharTyped(BML_ModContextHandle h, BML_ObjectRef ref, uint32_t key,
         return ctx.GetGuiApi().CharTyped(ctx, owner, ref, key, out);
     });
 }
+
 int BML_CDECL Process(BML_ModContextHandle h, BML_ObjectRef ref) {
     return WithModContext(
         h, [&](ModContext &ctx, IMod &owner) { return ctx.GetGuiApi().Process(ctx, owner, ref); });
 }
+
 const BML_GuiInterface table{BML_IFACE_HEADER(BML_GuiInterface, BML_GUI_INTERFACE_ID, 1, 0),
                              Create,
                              Destroy,
                              Read,
-                             Position,
-                             Size,
-                             ZOrder,
-                             Visible,
-                             Active,
-                             Color,
-                             Text,
+                             SetPosition,
+                             SetSize,
+                             SetZOrder,
+                             SetVisible,
+                             SetActive,
+                             SetColor,
+                             SetText,
                              GetText,
-                             Font,
-                             Alignment,
-                             ButtonType,
-                             Hovered,
-                             GameFont,
-                             TextFlags,
-                             Offset,
-                             Focused,
-                             Key,
+                             SetFont,
+                             SetAlignment,
+                             SetButtonType,
+                             SetHovered,
+                             SetGameFont,
+                             SetTextFlags,
+                             SetOffset,
+                             SetFocused,
+                             SetKey,
                              CharTyped,
                              Process};
 #undef BML_GUI_THUNK
 } // namespace
-const BML_GuiInterface &GuiInterface() { return table; }
+
+const BML_GuiInterface &GuiInterface() {
+    return table;
+}
 } // namespace BML::Api

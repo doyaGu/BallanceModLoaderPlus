@@ -175,102 +175,158 @@ NativeMod *ModLoader::FindNativeMod(const IMod *mod) const {
 }
 
 BML_ModContextHandle ModLoader::IssueModContext(IMod *mod) {
-    for (const auto &entry : m_ModContexts) if (entry.second == mod) return entry.first;
+    for (const auto &entry : m_ModContexts)
+        if (entry.second == mod)
+            return entry.first;
     static std::atomic<uint64_t> next{UINT64_C(0x100000000)};
     const auto handle = BML::Api::NextHandle(next);
-    if (!handle) throw std::overflow_error("Mod context handles exhausted");
+    if (!handle)
+        throw std::overflow_error("Mod context handles exhausted");
     m_ModContexts.emplace(handle, mod);
     return handle;
 }
+
 IMod *ModLoader::ResolveModContext(BML_ModContextHandle context) const {
     const auto it = m_ModContexts.find(context);
     return it == m_ModContexts.end() ? nullptr : it->second;
 }
+
 IMod *ModLoader::ResolveModHandle(BML_ModHandle handle) const {
     std::shared_lock lock(m_ModRegistryMutex);
-    for (const auto &entry : m_ModGenerations) if (entry.second == handle) return const_cast<IMod *>(entry.first);
+    for (const auto &entry : m_ModGenerations)
+        if (entry.second == handle)
+            return const_cast<IMod *>(entry.first);
     return nullptr;
 }
+
 std::vector<ModLoader::DependencyInfo> ModLoader::ReadDependencies(const IMod *mod) const {
     std::lock_guard<std::mutex> lock(m_StateMutex);
     std::vector<DependencyInfo> result;
-    auto it=m_ModDependencies.find(const_cast<IMod *>(mod));
-    if(it!=m_ModDependencies.end()) {result.reserve(it->second.size());for(const auto &d:it->second)result.push_back({d.id?d.id:"",d.minVersion,d.optional != 0});}
+    auto it = m_ModDependencies.find(const_cast<IMod *>(mod));
+    if (it != m_ModDependencies.end()) {
+        result.reserve(it->second.size());
+        for (const auto &d : it->second)
+            result.push_back({d.id ? d.id : "", d.minVersion, d.optional != 0});
+    }
     return result;
 }
+
 std::string ModLoader::InvokedOwnerId() const {
-    IMod *owner=ModInvocation::Current(this);
+    IMod *owner = ModInvocation::Current(this);
 #if BML_ENABLE_ANGELSCRIPT
-    if(!owner)owner=BML::ScriptModRuntime::GetCurrentScriptMod();
+    if (!owner)
+        owner = BML::ScriptModRuntime::GetCurrentScriptMod();
 #endif
-    return owner?owner->GetID():"BML";
+    return owner ? owner->GetID() : "BML";
 }
+
 bool ModLoader::CanDispatchOwner(const IMod *mod) const {
-    if(!mod)return false;
-    if(auto *native=FindNativeMod(mod))return native->IsLoading()||native->IsLoaded();
+    if (!mod)
+        return false;
+    if (auto *native = FindNativeMod(mod))
+        return native->IsLoading() || native->IsLoaded();
 #if BML_ENABLE_ANGELSCRIPT
-    if(auto *script=dynamic_cast<const BML::ScriptMod *>(mod))return script->IsLoaded()&&!script->IsFailed();
+    if (auto *script = dynamic_cast<const BML::ScriptMod *>(mod))
+        return script->IsLoaded() && !script->IsFailed();
 #endif
     return !m_ShuttingDown.load(std::memory_order_acquire);
 }
-void ModLoader::FailOwner(IMod *mod,int code,const char *operation) {
+
+void ModLoader::FailOwner(IMod *mod, int code, const char *operation) {
     m_Context.StopModWork(mod);
-    if(auto *native=FindNativeMod(mod))native->Fail(code<0?code:BML_ERROR_FAIL,operation);
+    if (auto *native = FindNativeMod(mod))
+        native->Fail(code < 0 ? code : BML_ERROR_FAIL, operation);
 #if BML_ENABLE_ANGELSCRIPT
-    else if(auto *script=dynamic_cast<BML::ScriptMod *>(mod))script->SetLoadFailure(std::string(operation)+" returned "+std::to_string(code));
+    else if (auto *script = dynamic_cast<BML::ScriptMod *>(mod))
+        script->SetLoadFailure(std::string(operation) + " returned " + std::to_string(code));
 #endif
 }
-bool ModLoader::CanUseProvider(const IMod *consumer,const IMod *provider) const {
-    if(!consumer||!provider||!CanDispatchOwner(provider))return false;
-    if(consumer==provider)return true;
-    const auto id=const_cast<IMod *>(provider)->GetID();
+
+bool ModLoader::CanUseProvider(const IMod *consumer, const IMod *provider) const {
+    if (!consumer || !provider || !CanDispatchOwner(provider))
+        return false;
+    if (consumer == provider)
+        return true;
+    const auto id = const_cast<IMod *>(provider)->GetID();
     std::lock_guard<std::mutex> lock(m_StateMutex);
-    auto it=m_ModDependencies.find(const_cast<IMod *>(consumer));
-    if(it==m_ModDependencies.end())return false;
-    for(const auto &d:it->second)if(d.id&&std::strcmp(d.id,id)==0)return !(BML::ParseLegacyModVersion(const_cast<IMod *>(provider)->GetVersion()) < d.minVersion);
+    auto it = m_ModDependencies.find(const_cast<IMod *>(consumer));
+    if (it == m_ModDependencies.end())
+        return false;
+    for (const auto &d : it->second)
+        if (d.id && std::strcmp(d.id, id) == 0)
+            return !(BML::ParseLegacyModVersion(const_cast<IMod *>(provider)->GetVersion()) <
+                     d.minVersion);
     return false;
 }
+
 bool ModLoader::HasLiveDependents(const IMod *provider) const {
     const std::string id = const_cast<IMod *>(provider)->GetID();
     for (const auto &entry : m_CNativeMods) {
-        if (entry.first == provider || !entry.second->HasInstance()) continue;
-        if (provider == static_cast<IMod *>(m_BMLMod) || provider == static_cast<IMod *>(m_BallTypeMod)) return true;
-        for (const auto &dep : entry.second->Dependencies()) if (dep.id && id == dep.id) return true;
+        if (entry.first == provider || !entry.second->HasInstance())
+            continue;
+        if (provider == static_cast<IMod *>(m_BMLMod) ||
+            provider == static_cast<IMod *>(m_BallTypeMod))
+            return true;
+        for (const auto &dep : entry.second->Dependencies())
+            if (dep.id && id == dep.id)
+                return true;
     }
 #if BML_ENABLE_ANGELSCRIPT
-    for(IMod *candidate:m_Mods) {
-        if(candidate==provider)continue;
-        auto *script=dynamic_cast<BML::ScriptMod *>(candidate);
-        if(!script)continue;
-        if(!script->IsLoaded())continue;
-        if(provider==static_cast<IMod *>(m_BMLMod)||provider==static_cast<IMod *>(m_BallTypeMod))return true;
-        for(const auto &d:ReadDependencies(candidate))if(d.Id==id)return true;
+    for (IMod *candidate : m_Mods) {
+        if (candidate == provider)
+            continue;
+        auto *script = dynamic_cast<BML::ScriptMod *>(candidate);
+        if (!script)
+            continue;
+        if (!script->IsLoaded())
+            continue;
+        if (provider == static_cast<IMod *>(m_BMLMod) ||
+            provider == static_cast<IMod *>(m_BallTypeMod))
+            return true;
+        for (const auto &d : ReadDependencies(candidate))
+            if (d.Id == id)
+                return true;
     }
 #endif
     return false;
 }
 
 void ModLoader::ProcessFailedNativeMods() {
-    if (!m_Context.IsMainThread() || IsModInvocationActiveOnCurrentThread()) return;
+    if (!m_Context.IsMainThread() || IsModInvocationActiveOnCurrentThread())
+        return;
     bool pending = false;
-    for (const auto &entry : m_CNativeMods) if (entry.second->NeedsFailureCleanup()) { pending = true; break; }
-    if (!pending) return;
+    for (const auto &entry : m_CNativeMods)
+        if (entry.second->NeedsFailureCleanup()) {
+            pending = true;
+            break;
+        }
+    if (!pending)
+        return;
     auto mutation = m_ModInvocationGate.LockMutation();
     for (auto &entry : m_CNativeMods) {
         auto &native = *entry.second;
-        if (HasLiveDependents(&native) || !native.BeginFailureCleanup()) continue;
+        if (HasLiveDependents(&native) || !native.BeginFailureCleanup())
+            continue;
         {
             ModInvocation invocation(this, &native);
-            if (native.Unload() != BML_OK) continue;
+            if (native.Unload() != BML_OK)
+                continue;
         }
-        if (!m_Context.PrepareModUnload(native.GetID())) continue;
-        if (Config *config = m_Context.GetConfig(&native); config && !m_Context.RemoveConfig(config)) continue;
+        if (!m_Context.PrepareModUnload(native.GetID()))
+            continue;
+        if (Config *config = m_Context.GetConfig(&native);
+            config && !m_Context.RemoveConfig(config))
+            continue;
         m_Context.GetConfigApi().CleanupOwner(native);
         native.Destroy();
         for (auto it = m_ModContexts.begin(); it != m_ModContexts.end();) {
-            if (it->second == &native) it = m_ModContexts.erase(it); else ++it;
+            if (it->second == &native)
+                it = m_ModContexts.erase(it);
+            else
+                ++it;
         }
-        m_ActiveMods.erase(std::remove(m_ActiveMods.begin(), m_ActiveMods.end(), &native), m_ActiveMods.end());
+        m_ActiveMods.erase(std::remove(m_ActiveMods.begin(), m_ActiveMods.end(), &native),
+                           m_ActiveMods.end());
     }
 }
 
@@ -278,13 +334,22 @@ void ModLoader::DispatchConfigChange(IMod *mod, const char *category, const char
     try {
         ModInvocation invocation(this, mod);
         if (auto *native = FindNativeMod(mod)) {
-            if (native->IsFailed()) return;
-            const BML_ConfigEvent event{sizeof(BML_ConfigEvent), GetModGeneration(mod), mod->GetID(), category, key,
+            if (native->IsFailed())
+                return;
+            const BML_ConfigEvent event{
+                sizeof(BML_ConfigEvent),
+                GetModGeneration(mod),
+                mod->GetID(),
+                category,
+                key,
                 property ? static_cast<uint32_t>(property->GetType()) : BML_CONFIG_TYPE_NONE,
                 m_Context.GetConfigApi().HandleFor(*mod, dynamic_cast<Property *>(property))};
             if (auto callback = native->Callbacks().OnModifyConfig) {
                 const int code = callback(native->Instance(), native->Context(), &event);
-                if (code != BML_OK) { FailOwner(mod, code, "OnModifyConfig"); LogCallbackFailure(mod, native->Diagnostic().c_str()); }
+                if (code != BML_OK) {
+                    FailOwner(mod, code, "OnModifyConfig");
+                    LogCallbackFailure(mod, native->Diagnostic().c_str());
+                }
             }
         } else {
             mod->OnModifyConfig(category, key, property);
@@ -522,7 +587,8 @@ bool ModLoader::InitMods() {
                 if (auto *native = FindNativeMod(mod)) {
                     const int created = native->Create(IssueModContext(mod));
                     if (created != BML_OK || native->Load() != BML_OK) {
-                        m_Context.GetLogger()->Error("Cannot activate Mod %s: %s", activatingModId, native->Diagnostic().c_str());
+                        m_Context.GetLogger()->Error("Cannot activate Mod %s: %s", activatingModId,
+                                                     native->Diagnostic().c_str());
                         continue;
                     }
                 } else {
@@ -568,7 +634,8 @@ bool ModLoader::InitMods() {
         }
 #endif
 
-        if (!Overlay::IsImGuiFrameActive()) ProcessFailedNativeMods();
+        if (!Overlay::IsImGuiFrameActive())
+            ProcessFailedNativeMods();
         m_Context.FlushConfigChanges(true);
 
         m_Context.OnLoadGame();
@@ -650,16 +717,20 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
     m_UnloadedMods.reserve(m_Mods.size());
     for (auto rit = active.rbegin(); rit != active.rend(); ++rit) {
         IMod *mod = *rit;
-        if (!GetModGeneration(mod)) continue;
+        if (!GetModGeneration(mod))
+            continue;
         try {
-            if (HasLiveDependents(mod)) continue;
+            if (HasLiveDependents(mod))
+                continue;
             ModInvocation invocation(this, mod);
             if (auto *native = FindNativeMod(mod)) {
                 if (native->Unload() != BML_OK) {
-                    m_Context.GetLogger()->Error("Retaining Mod %s: %s", mod->GetID(), native->Diagnostic().c_str());
+                    m_Context.GetLogger()->Error("Retaining Mod %s: %s", mod->GetID(),
+                                                 native->Diagnostic().c_str());
                     continue;
                 }
-            } else if (std::find(m_UnloadedMods.begin(), m_UnloadedMods.end(), mod) == m_UnloadedMods.end()) {
+            } else if (std::find(m_UnloadedMods.begin(), m_UnloadedMods.end(), mod) ==
+                       m_UnloadedMods.end()) {
                 mod->OnUnload();
                 m_UnloadedMods.push_back(mod);
             }
@@ -674,7 +745,7 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
             // Finish this consumer (including resources and Destroy) while its
             // providers are still active. Failed cleanup keeps the instance and
             // makes HasLiveDependents retain those providers for the next Stop.
-            (void) UnregisterMod(mod);
+            (void)UnregisterMod(mod);
             continue;
         }
         try {
@@ -694,11 +765,16 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
 
     for (auto rit = active.rbegin(); rit != active.rend(); ++rit) {
         IMod *mod = *rit;
-        if (!GetModGeneration(mod)) continue;
+        if (!GetModGeneration(mod))
+            continue;
         try {
-            if (auto *native = FindNativeMod(mod); native && !native->CanDestroy()) continue;
-            if (std::find(m_UnloadedMods.begin(), m_UnloadedMods.end(), mod) == m_UnloadedMods.end()) continue;
-            if (HasLiveDependents(mod)) continue;
+            if (auto *native = FindNativeMod(mod); native && !native->CanDestroy())
+                continue;
+            if (std::find(m_UnloadedMods.begin(), m_UnloadedMods.end(), mod) ==
+                m_UnloadedMods.end())
+                continue;
+            if (HasLiveDependents(mod))
+                continue;
             const char *ownerId = mod ? mod->GetID() : nullptr;
             if (ownerId && ownerId[0] != '\0')
                 m_Context.CleanupModState(ownerId);
@@ -711,7 +787,8 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
     try {
         TimerScheduler::CancelAll();
         if (CKTimeManager *timeManager = m_Context.GetTimeManager()) {
-            TimerScheduler::ProcessAll(timeManager->GetMainTickCount(), timeManager->GetAbsoluteTime() / 1000.0f);
+            TimerScheduler::ProcessAll(timeManager->GetMainTickCount(),
+                                       timeManager->GetAbsoluteTime() / 1000.0f);
         } else {
             TimerScheduler::ProcessAll(0, 0.0f);
         }
@@ -726,9 +803,14 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
         m_CallbackMap.clear();
     }
     m_Context.ClearLegacyCommands();
-    m_ActiveMods.erase(std::remove_if(m_ActiveMods.begin(), m_ActiveMods.end(), [&](IMod *mod) {
-        return !GetModGeneration(mod) || std::find(m_UnloadedMods.begin(), m_UnloadedMods.end(), mod) != m_UnloadedMods.end();
-    }), m_ActiveMods.end());
+    m_ActiveMods.erase(std::remove_if(m_ActiveMods.begin(), m_ActiveMods.end(),
+                                      [&](IMod *mod) {
+                                          return !GetModGeneration(mod) ||
+                                                 std::find(m_UnloadedMods.begin(),
+                                                           m_UnloadedMods.end(),
+                                                           mod) != m_UnloadedMods.end();
+                                      }),
+                       m_ActiveMods.end());
 }
 
 void ModLoader::RollbackModActivation() {
@@ -1150,10 +1232,14 @@ void ModLoader::DestroyNativeMod(const std::shared_ptr<void> &dllHandle, IMod *m
         return;
 
     if (auto *native = FindNativeMod(mod)) {
-        if (!native->CanDestroy()) return;
+        if (!native->CanDestroy())
+            return;
         native->Destroy();
         for (auto it = m_ModContexts.begin(); it != m_ModContexts.end();) {
-            if (it->second == mod) it = m_ModContexts.erase(it); else ++it;
+            if (it->second == mod)
+                it = m_ModContexts.erase(it);
+            else
+                ++it;
         }
         m_CNativeMods.erase(mod);
         return;
@@ -1207,20 +1293,26 @@ void ModLoader::CleanupRejectedNativeEntry(const std::shared_ptr<void> &dllHandl
 IMod *ModLoader::LoadMod(const std::wstring &path) {
     const std::string modPath = utils::Utf16ToUtf8(path);
     auto dllHandle = LoadLib(path.c_str());
-    if (!dllHandle) return nullptr;
-    using Query = int (BML_CDECL *)(uint16_t, const BML_ModInterface **);
-    auto query = reinterpret_cast<Query>(BML::Platform::ModuleSymbol(dllHandle, "BML_GetModInterface"));
+    if (!dllHandle)
+        return nullptr;
+    using Query = int(BML_CDECL *)(uint16_t, const BML_ModInterface **);
+    auto query =
+        reinterpret_cast<Query>(BML::Platform::ModuleSymbol(dllHandle, "BML_GetModInterface"));
     if (!query || ModuleFromAddress(reinterpret_cast<const void *>(query)) != dllHandle.get()) {
-        m_Context.GetLogger()->Error("Native Mod %s requires migration: missing BML_GetModInterface C entry.", modPath.c_str());
+        m_Context.GetLogger()->Error(
+            "Native Mod %s requires migration: missing BML_GetModInterface C entry.",
+            modPath.c_str());
         return nullptr;
     }
     const BML_ModInterface *api = nullptr;
     const int code = query(BML_MOD_INTERFACE_MAJOR, &api);
     std::string diagnostic;
     std::unique_ptr<NativeMod> native;
-    if (code == BML_OK) native = NativeMod::Query(&m_Context, api, diagnostic);
+    if (code == BML_OK)
+        native = NativeMod::Query(&m_Context, api, diagnostic);
     if (!native) {
-        m_Context.GetLogger()->Error("Cannot query Native Mod %s: status=%d %s", modPath.c_str(), code, diagnostic.c_str());
+        m_Context.GetLogger()->Error("Cannot query Native Mod %s: status=%d %s", modPath.c_str(),
+                                     code, diagnostic.c_str());
         return nullptr;
     }
     auto *mod = native.get();
@@ -1228,14 +1320,25 @@ IMod *ModLoader::LoadMod(const std::wstring &path) {
     // have been resolved by InitMods.
     auto mutation = m_ModInvocationGate.LockMutation();
     m_CNativeMods.emplace(mod, std::move(native));
-    if (!RegisterMod(mod, dllHandle)) { m_CNativeMods.erase(mod); return nullptr; }
+    if (!RegisterMod(mod, dllHandle)) {
+        m_CNativeMods.erase(mod);
+        return nullptr;
+    }
     try {
         for (const auto &dep : mod->Dependencies()) {
-            const int result = dep.optional ? RegisterOptionalDependency(mod, dep.id, dep.minVersion.major, dep.minVersion.minor, dep.minVersion.patch)
-                                            : RegisterDependency(mod, dep.id, dep.minVersion.major, dep.minVersion.minor, dep.minVersion.patch);
-            if (result != BML_OK) throw std::runtime_error("cannot register declared dependency");
+            const int result =
+                dep.optional
+                    ? RegisterOptionalDependency(mod, dep.id, dep.minVersion.major,
+                                                 dep.minVersion.minor, dep.minVersion.patch)
+                    : RegisterDependency(mod, dep.id, dep.minVersion.major, dep.minVersion.minor,
+                                         dep.minVersion.patch);
+            if (result != BML_OK)
+                throw std::runtime_error("cannot register declared dependency");
         }
-    } catch (...) { UnregisterMod(mod); throw; }
+    } catch (...) {
+        UnregisterMod(mod);
+        throw;
+    }
     return mod;
 }
 
@@ -1891,10 +1994,12 @@ bool ModLoader::UnregisterMod(IMod *mod) {
                 return false;
             modIdCopy = id->first;
         }
-        if (HasLiveDependents(mod)) return false;
+        if (HasLiveDependents(mod))
+            return false;
         if (auto *native = FindNativeMod(mod); native && native->HasInstance()) {
             ModInvocation invocation(this, mod);
-            if (native->Unload() != BML_OK) return false;
+            if (native->Unload() != BML_OK)
+                return false;
         }
         if (!m_Context.PrepareModUnload(modIdCopy))
             return false;
@@ -1930,7 +2035,8 @@ bool ModLoader::UnregisterMod(IMod *mod) {
 
             // Remove from callback map to prevent dangling pointer in BroadcastCallback
             for (auto &kv : m_CallbackMap) {
-                if (!kv.second) continue;
+                if (!kv.second)
+                    continue;
                 auto next = std::make_shared<std::vector<IMod *>>(*kv.second);
                 next->erase(std::remove(next->begin(), next->end(), mod), next->end());
                 kv.second = std::move(next);
@@ -1954,7 +2060,8 @@ bool ModLoader::UnregisterMod(IMod *mod) {
             m_ActiveMods.erase(std::remove(m_ActiveMods.begin(), m_ActiveMods.end(), mod),
                                m_ActiveMods.end());
 
-            m_UnloadedMods.erase(std::remove(m_UnloadedMods.begin(), m_UnloadedMods.end(), mod), m_UnloadedMods.end());
+            m_UnloadedMods.erase(std::remove(m_UnloadedMods.begin(), m_UnloadedMods.end(), mod),
+                                 m_UnloadedMods.end());
             m_ModDependencies.erase(mod);
         }
 
@@ -2132,10 +2239,13 @@ void ModLoader::FillCallbackMap(IMod *mod) {
     // decoding C++ vtables would couple the SDL backend to a compiler ABI.
     const auto *native = FindNativeMod(mod);
     const auto subscribe = [&](auto callback) {
-        if (native && !Subscribed(*native, callback)) return;
+        if (native && !Subscribed(*native, callback))
+            return;
         auto &list = m_CallbackMap[utils::TypeErase(callback)];
-        auto next = list ? std::make_shared<std::vector<IMod *>>(*list) : std::make_shared<std::vector<IMod *>>();
-        next->push_back(mod); list = std::move(next);
+        auto next = list ? std::make_shared<std::vector<IMod *>>(*list)
+                         : std::make_shared<std::vector<IMod *>>();
+        next->push_back(mod);
+        list = std::move(next);
     };
 #define CHECK_V_FUNC(IDX, FUNC) subscribe(FUNC)
     CHECK_V_FUNC(index++, &IMessageReceiver::OnPreStartMenu);

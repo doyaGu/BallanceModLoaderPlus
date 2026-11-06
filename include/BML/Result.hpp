@@ -16,24 +16,29 @@
 namespace BML {
 
 template <class T, class TStatus = std::monostate> class Result {
-  public:
+public:
     Result() = default;
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return m_Code == BML_OK && m_Value.has_value();
     }
+
     [[nodiscard]] int Code() const noexcept { return m_Code; }
+
     [[nodiscard]] const TStatus &GetStatus() const noexcept { return m_Status; }
 
     [[nodiscard]] bool HasValue() const noexcept { return m_Value.has_value(); }
+
     [[nodiscard]] T &Value() & {
         RequireValue();
         return m_Value.value();
     }
+
     [[nodiscard]] const T &Value() const & {
         RequireValue();
         return m_Value.value();
     }
+
     template <class U = T, std::enable_if_t<std::is_copy_constructible_v<U>, int> = 0>
     [[nodiscard]] T Value() && {
         RequireValue();
@@ -59,9 +64,13 @@ template <class T, class TStatus = std::monostate> class Result {
             return static_cast<const T &>(value);
         }
     }
+
     [[nodiscard]] T *operator->() { return &Value(); }
+
     [[nodiscard]] const T *operator->() const { return &Value(); }
+
     [[nodiscard]] T &operator*() & { return Value(); }
+
     [[nodiscard]] const T &operator*() const & { return Value(); }
 
     static Result Success(T value, TStatus status = {}) {
@@ -82,22 +91,25 @@ template <class T, class TStatus = std::monostate> class Result {
         return result;
     }
 
-  private:
+private:
     template <class Status>
     static auto DiagnosticText(const Status &status, int) noexcept
         -> decltype(status.Message.c_str()) {
         return status.Message.c_str();
     }
+
     template <class Status>
     static auto DiagnosticText(const Status &status, long) noexcept
         -> decltype(status.message.c_str()) {
         return status.message.c_str();
     }
+
     template <class Status> static const char *DiagnosticText(const Status &, ...) noexcept {
         return "";
     }
+
     class AccessError final : public std::bad_optional_access {
-      public:
+    public:
         AccessError(int code, const TStatus &status) noexcept {
             const char *detail = DiagnosticText(status, 0);
             if (code == BML_OK)
@@ -106,26 +118,31 @@ template <class T, class TStatus = std::monostate> class Result {
                 std::snprintf(m_Message, sizeof m_Message, "BML operation failed (status %d)%s%s",
                               code, *detail ? ": " : "", detail);
         }
+
         const char *what() const noexcept override { return m_Message; }
 
-      private:
+    private:
         char m_Message[384]{};
     };
+
     void RequireValue() const {
         if (!m_Value)
             throw AccessError(m_Code, m_Status);
     }
+
     int m_Code = BML_ERROR_FAIL;
     TStatus m_Status;
     std::optional<T> m_Value;
 };
 
 template <class TStatus> class Result<void, TStatus> {
-  public:
+public:
     Result() = default;
 
     [[nodiscard]] explicit operator bool() const noexcept { return m_Code == BML_OK; }
+
     [[nodiscard]] int Code() const noexcept { return m_Code; }
+
     [[nodiscard]] const TStatus &GetStatus() const noexcept { return m_Status; }
 
     static Result Success(TStatus status = {}) {
@@ -142,7 +159,7 @@ template <class TStatus> class Result<void, TStatus> {
         return result;
     }
 
-  private:
+private:
     int m_Code = BML_ERROR_FAIL;
     TStatus m_Status;
 };

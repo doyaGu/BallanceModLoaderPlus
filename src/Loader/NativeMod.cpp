@@ -108,6 +108,7 @@ int NativeMod::Create(BML_ModContextHandle context) {
     m_Instance = instance;
     return BML_OK;
 }
+
 void NativeMod::Destroy() noexcept {
     if (m_Instance) {
         m_Destroy(m_Instance);
@@ -115,10 +116,12 @@ void NativeMod::Destroy() noexcept {
     }
     m_Context = 0;
 }
+
 void NativeMod::Fail(int code, const char *operation) {
     m_State.Fail();
     m_Diagnostic = std::string(operation) + " returned " + std::to_string(code);
 }
+
 int NativeMod::Load() {
     m_Loading = true;
     int code = BML_ERROR_FAIL;
@@ -139,6 +142,7 @@ int NativeMod::Load() {
     m_State.MarkLoaded(true);
     return BML_OK;
 }
+
 int NativeMod::Unload() {
     if (!m_Instance || m_Unloaded)
         return BML_OK;

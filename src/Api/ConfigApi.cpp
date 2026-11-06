@@ -16,6 +16,7 @@ bool Key(const char *text) {
             return false;
     return utils::IsValidUtf8(text);
 }
+
 bool Decode(const BML_ConfigValue *input, ConfigValue &out) {
     if (!input || input->StructSize < BML_CONFIG_VALUE_1_0_SIZE)
         return false;
@@ -50,6 +51,7 @@ bool Decode(const BML_ConfigValue *input, ConfigValue &out) {
         return false;
     }
 }
+
 BML_ConfigValue Encode(uint32_t type, const ConfigValue &value) {
     BML_ConfigValue out{};
     out.StructSize = sizeof(out);
@@ -75,11 +77,13 @@ BML_ConfigValue Encode(uint32_t type, const ConfigValue &value) {
     }
     return out;
 }
+
 Config *Ensure(ModContext &ctx, IMod &owner) {
     if (auto *config = ctx.GetConfig(&owner))
         return config;
     return ctx.AddConfig(std::make_unique<Config>(&owner));
 }
+
 bool CopyChoices(const char *const *input, size_t count, std::vector<std::string> &out) {
     if ((!input && count) || count > out.max_size())
         return false;
@@ -112,6 +116,7 @@ ConfigApi::Record *ConfigApi::Resolve(ModContext &ctx, IMod &owner,
                ? it->second.get()
                : nullptr;
 }
+
 int ConfigApi::Declare(ModContext &ctx, IMod &owner, const BML_ConfigPropertyDefinition *definition,
                        BML_ConfigPropertyHandle *out) {
     if (!out)
@@ -203,6 +208,7 @@ int ConfigApi::Declare(ModContext &ctx, IMod &owner, const BML_ConfigPropertyDef
         throw;
     }
 }
+
 int ConfigApi::Find(ModContext &ctx, IMod &owner, const char *category, const char *key,
                     BML_ConfigPropertyHandle *out) {
     if (!category || !key || !out)
@@ -216,6 +222,7 @@ int ConfigApi::Find(ModContext &ctx, IMod &owner, const char *category, const ch
         }
     return BML_ERROR_NOT_FOUND;
 }
+
 int ConfigApi::Read(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handle,
                     BML_ConfigPropertyVisitor visitor, void *data) {
     if (!visitor)
@@ -240,6 +247,7 @@ int ConfigApi::Read(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handl
                                       &current};
     return visitor(data, &info);
 }
+
 int ConfigApi::Set(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handle,
                    const BML_ConfigValue *value, bool isDefault) {
     auto *r = Resolve(ctx, owner, handle);
@@ -276,8 +284,9 @@ int ConfigApi::Set(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handle
                ? BML_OK
                : BML_ERROR_FAIL;
 }
-int ConfigApi::Comment(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
-                       const char *comment) {
+
+int ConfigApi::SetComment(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
+                          const char *comment) {
     if (!comment || !utils::IsValidUtf8(comment))
         return BML_ERROR_INVALID_PARAMETER;
     auto *r = Resolve(ctx, owner, h);
@@ -290,7 +299,9 @@ int ConfigApi::Comment(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
     m_Records.at(h) = std::move(next);
     return BML_OK;
 }
-int ConfigApi::Editor(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h, uint32_t editor) {
+
+int ConfigApi::SetEditor(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
+                         uint32_t editor) {
     if (editor > BML_CONFIG_EDITOR_CHOICE)
         return BML_ERROR_INVALID_PARAMETER;
     auto *r = Resolve(ctx, owner, h);
@@ -304,8 +315,9 @@ int ConfigApi::Editor(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h, 
     m_Records.at(h) = std::move(next);
     return BML_OK;
 }
-int ConfigApi::Choices(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
-                       const char *const *choices, size_t count) {
+
+int ConfigApi::SetChoices(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
+                          const char *const *choices, size_t count) {
     auto *r = Resolve(ctx, owner, h);
     if (!r)
         return BML_ERROR_INVALID_HANDLE;
@@ -320,12 +332,14 @@ int ConfigApi::Choices(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
     ctx.GetConfig(&owner)->TouchSchema();
     return BML_OK;
 }
+
 BML_ConfigPropertyHandle ConfigApi::HandleFor(IMod &owner, Property *property) const noexcept {
     for (const auto &entry : m_Records)
         if (entry.second->Owner == &owner && entry.second->Target == property)
             return entry.first;
     return 0;
 }
+
 void ConfigApi::CleanupOwner(IMod &owner) noexcept {
     for (auto it = m_Records.begin(); it != m_Records.end();)
         if (it->second->Owner == &owner)
@@ -333,41 +347,51 @@ void ConfigApi::CleanupOwner(IMod &owner) noexcept {
         else
             ++it;
 }
+
 namespace {
 template <auto Method, class... Args> int Serve(BML_ModContextHandle h, Args... args) {
     return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
         return (ctx.GetConfigApi().*Method)(ctx, owner, args...);
     });
 }
+
 int BML_CDECL Declare(BML_ModContextHandle h, const BML_ConfigPropertyDefinition *d,
                       BML_ConfigPropertyHandle *out) {
     return Serve<&ConfigApi::Declare>(h, d, out);
 }
+
 int BML_CDECL Find(BML_ModContextHandle h, const char *c, const char *k,
                    BML_ConfigPropertyHandle *out) {
     return Serve<&ConfigApi::Find>(h, c, k, out);
 }
+
 int BML_CDECL Read(BML_ModContextHandle h, BML_ConfigPropertyHandle p, BML_ConfigPropertyVisitor v,
                    void *d) {
     return Serve<&ConfigApi::Read>(h, p, v, d);
 }
+
 int BML_CDECL Set(BML_ModContextHandle h, BML_ConfigPropertyHandle p, const BML_ConfigValue *v) {
     return Serve<&ConfigApi::Set>(h, p, v, false);
 }
+
 int BML_CDECL Default(BML_ModContextHandle h, BML_ConfigPropertyHandle p,
                       const BML_ConfigValue *v) {
     return Serve<&ConfigApi::Set>(h, p, v, true);
 }
+
 int BML_CDECL Comment(BML_ModContextHandle h, BML_ConfigPropertyHandle p, const char *v) {
-    return Serve<&ConfigApi::Comment>(h, p, v);
+    return Serve<&ConfigApi::SetComment>(h, p, v);
 }
+
 int BML_CDECL Editor(BML_ModContextHandle h, BML_ConfigPropertyHandle p, uint32_t v) {
-    return Serve<&ConfigApi::Editor>(h, p, v);
+    return Serve<&ConfigApi::SetEditor>(h, p, v);
 }
+
 int BML_CDECL Choices(BML_ModContextHandle h, BML_ConfigPropertyHandle p, const char *const *v,
                       size_t n) {
-    return Serve<&ConfigApi::Choices>(h, p, v, n);
+    return Serve<&ConfigApi::SetChoices>(h, p, v, n);
 }
+
 int BML_CDECL CategoryComment(BML_ModContextHandle h, const char *c, const char *v) {
     if (!Key(c) || !v)
         return BML_ERROR_INVALID_PARAMETER;
@@ -379,6 +403,7 @@ int BML_CDECL CategoryComment(BML_ModContextHandle h, const char *c, const char 
         return BML_OK;
     });
 }
+
 int BML_CDECL HasCategory(BML_ModContextHandle h, const char *c, uint32_t *out) {
     if (!c || !out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -390,6 +415,7 @@ int BML_CDECL HasCategory(BML_ModContextHandle h, const char *c, uint32_t *out) 
         return BML_OK;
     });
 }
+
 int BML_CDECL HasKey(BML_ModContextHandle h, const char *c, const char *k, uint32_t *out) {
     if (!c || !k || !out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -401,6 +427,7 @@ int BML_CDECL HasKey(BML_ModContextHandle h, const char *c, const char *k, uint3
         return BML_OK;
     });
 }
+
 const BML_ConfigInterface table{
     BML_IFACE_HEADER(BML_ConfigInterface, BML_CONFIG_INTERFACE_ID, 1, 0),
     Declare,
@@ -415,5 +442,8 @@ const BML_ConfigInterface table{
     HasCategory,
     HasKey};
 } // namespace
-const BML_ConfigInterface &ConfigInterface() { return table; }
+
+const BML_ConfigInterface &ConfigInterface() {
+    return table;
+}
 } // namespace BML::Api

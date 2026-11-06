@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+
 namespace Bui {
 inline ImGuiKey CKKeyToImGuiKey(CKKEYBOARD key) {
     switch (key) {
@@ -440,14 +441,20 @@ namespace ImGuiDetail {
 struct ColorPickerArea {
     ImVec2 minimum{}, maximum{};
 };
+
 inline ImVec2 ButtonSize(const BML::Mod::Context &c, ButtonType kind) {
     auto s = Bui::GetButtonSize(c, kind);
     return {s.x, s.y};
 }
+
 inline float ButtonIndent(const BML::Mod::Context &c, ButtonType kind) {
     return Bui::GetButtonIndent(c, kind);
 }
-inline void ClickSound(const BML::Mod::Context &c) { Bui::PlayMenuClickSound(c); }
+
+inline void ClickSound(const BML::Mod::Context &c) {
+    Bui::PlayMenuClickSound(c);
+}
+
 inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const ImRect &bb,
                            ButtonType kind, int state) {
     auto *api = BML::ImGui::Detail::Api();
@@ -455,10 +462,12 @@ inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const I
         Bui::Detail::Report(c, api->AddButtonImage(c.Handle(), list, {bb.Min.x, bb.Min.y}, kind,
                                                    state, "", {.5f, .5f}));
 }
+
 inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const ImRect &bb,
                            ButtonType kind, bool selected) {
     AddButtonImage(c, list, bb, kind, selected ? 1 : 0);
 }
+
 inline bool KeyChordToString(const BML::Mod::Context &context, ImGuiKeyChord keyChord, char *buffer,
                              std::size_t bufferSize) {
     if (!buffer || bufferSize == 0)
@@ -664,7 +673,8 @@ static bool TextImageButton(const BML::Mod::Context &context, const char *label,
     if (!ImGui::ItemAdd(bb, id))
         return false;
 
-    bool hovered, held;
+    bool hovered;
+    bool held;
     bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, flags);
     if (pressed)
         ClickSound(context);
@@ -700,7 +710,8 @@ static bool SelectableTextImageButton(const BML::Mod::Context &context, const ch
     if (!ImGui::ItemAdd(bb, id))
         return false;
 
-    bool hovered, held;
+    bool hovered;
+    bool held;
     bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, flags);
     if (pressed)
         ClickSound(context);
@@ -743,7 +754,8 @@ static bool ImageButton(const BML::Mod::Context &context, const char *label, But
     if (!ImGui::ItemAdd(bb, id))
         return false;
 
-    bool hovered, held;
+    bool hovered;
+    bool held;
     bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, flags);
     if (pressed)
         ClickSound(context);
@@ -1189,65 +1201,83 @@ inline bool ColorButton(const BML::Mod::Context &context, const char *label, ImV
 }
 
 } // namespace ImGuiDetail
+
 inline bool KeyChordToString(const BML::Mod::Context &c, ImGuiKeyChord chord, char *b, size_t n) {
     return ImGuiDetail::KeyChordToString(c, chord, b, n);
 }
+
 inline bool SetKeyChordFromIO(const BML::Mod::Context &c, ImGuiKeyChord *chord) {
     return ImGuiDetail::SetKeyChordFromIO(c, chord);
 }
+
 inline bool KeyButton(const BML::Mod::Context &c, const char *label, bool *listening,
                       ImGuiKeyChord *chord) {
     return ImGuiDetail::KeyButton(c, label, listening, chord);
 }
+
 inline bool MainButton(const BML::Mod::Context &c, const char *label, ImGuiButtonFlags flags) {
     return ImGuiDetail::TextImageButton(c, label, label, BUTTON_MAIN, flags);
 }
+
 inline bool OkButton(const BML::Mod::Context &c, const char *label, ImGuiButtonFlags flags) {
     return ImGuiDetail::TextImageButton(c, label, "OK", BUTTON_BACK, flags);
 }
+
 inline bool BackButton(const BML::Mod::Context &c, const char *label, ImGuiButtonFlags flags) {
     return ImGuiDetail::TextImageButton(c, label, "Back", BUTTON_BACK, flags);
 }
+
 inline bool OptionButton(const BML::Mod::Context &c, const char *label, ImGuiButtonFlags flags) {
     return ImGuiDetail::TextImageButton(c, label, label, BUTTON_OPTION, flags);
 }
+
 inline bool LevelButton(const BML::Mod::Context &c, const char *label, bool *selected,
                         ImGuiButtonFlags flags) {
     return ImGuiDetail::SelectableTextImageButton(c, label, label, BUTTON_LEVEL, selected, flags);
 }
+
 inline bool SmallButton(const BML::Mod::Context &c, const char *label, bool *selected,
                         ImGuiButtonFlags flags) {
     return ImGuiDetail::SelectableTextImageButton(c, label, label, BUTTON_SMALL, selected, flags);
 }
+
 inline bool LeftButton(const BML::Mod::Context &c, const char *label, ImGuiButtonFlags flags) {
     return ImGuiDetail::ImageButton(c, label, BUTTON_LEFT, flags);
 }
+
 inline bool RightButton(const BML::Mod::Context &c, const char *label, ImGuiButtonFlags flags) {
     return ImGuiDetail::ImageButton(c, label, BUTTON_RIGHT, flags);
 }
+
 inline bool PlusButton(const BML::Mod::Context &c, const char *label, ImGuiButtonFlags flags) {
     return ImGuiDetail::ImageButton(c, label, BUTTON_PLUS, flags);
 }
+
 inline bool MinusButton(const BML::Mod::Context &c, const char *label, ImGuiButtonFlags flags) {
     return ImGuiDetail::ImageButton(c, label, BUTTON_MINUS, flags);
 }
+
 inline bool InputTextButton(const BML::Mod::Context &c, const char *label, char *b, size_t n,
                             ImGuiInputTextFlags flags, ImGuiInputTextCallback callback = nullptr,
                             void *userdata = nullptr) {
     return ImGuiDetail::InputTextButton(c, label, b, n, flags, callback, userdata);
 }
+
 inline bool InputFloatButton(const BML::Mod::Context &c, const char *label, float *v, float step,
                              float fast, const char *format, ImGuiInputTextFlags flags) {
     return ImGuiDetail::InputFloatButton(c, label, v, step, fast, format, flags);
 }
+
 inline bool InputIntButton(const BML::Mod::Context &c, const char *label, int *v, int step,
                            int fast, ImGuiInputTextFlags flags) {
     return ImGuiDetail::InputIntButton(c, label, v, step, fast, flags);
 }
+
 inline bool ColorButton(const BML::Mod::Context &c, const char *label, ImVec4 *v,
                         ImGuiColorEditFlags flags = ImGuiDetail::DefaultColorEditFlags) {
     return ImGuiDetail::ColorButton(c, label, v, flags);
 }
+
 inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const ImVec2 &p,
                            ButtonType t, int state, const char *text, const ImVec2 &align) {
     auto *api = BML::ImGui::Detail::Api();
@@ -1255,40 +1285,49 @@ inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const I
         Bui::Detail::Report(c, api->AddButtonImage(c.Handle(), list, {p.x, p.y}, t, state,
                                                    text ? text : "", {align.x, align.y}));
 }
+
 inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const ImVec2 &p,
                            ButtonType t, int state, const char *text) {
     AddButtonImage(c, list, p, t, state, text, ImGui::GetStyle().ButtonTextAlign);
 }
+
 inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const ImVec2 &p,
                            ButtonType t, int state) {
     AddButtonImage(c, list, p, t, state, "");
 }
+
 inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const ImVec2 &p,
                            ButtonType t, bool selected) {
     AddButtonImage(c, list, p, t, selected ? 1 : 0);
 }
+
 inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const ImVec2 &p,
                            ButtonType t, bool selected, const char *text) {
     AddButtonImage(c, list, p, t, selected ? 1 : 0, text);
 }
+
 inline void AddButtonImage(const BML::Mod::Context &c, ImDrawList *list, const ImVec2 &p,
                            ButtonType t, bool selected, const char *text, const ImVec2 &align) {
     AddButtonImage(c, list, p, t, selected ? 1 : 0, text, align);
 }
+
 class ImGuiContextScope {
-  public:
+public:
     explicit ImGuiContextScope(const BML::Mod::Context &c, ImGuiContext *context = nullptr)
         : m_Previous(ImGui::GetCurrentContext()) {
         auto r = BML::ImGui::BorrowContext(c);
         ImGui::SetCurrentContext(context ? context : r ? r.Value() : nullptr);
     }
+
     ~ImGuiContextScope() { ImGui::SetCurrentContext(m_Previous); }
+
     ImGuiContextScope(const ImGuiContextScope &) = delete;
     ImGuiContextScope &operator=(const ImGuiContextScope &) = delete;
 
-  private:
+private:
     ImGuiContext *m_Previous;
 };
+
 inline CKTexture *LoadTexture(CKContext *context, const char *id, const char *filename,
                               int slot = 0) {
     if (!context || !id || !filename)

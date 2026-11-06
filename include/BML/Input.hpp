@@ -8,26 +8,36 @@ struct KeyboardState {
     bool Attached = false, RepetitionEnabled = false;
     std::span<const BML_InputKeyState> Keys;
     std::span<const BML_InputKeyEvent> Events;
+
     bool IsKeyDown(uint32_t key) const noexcept { return key < Keys.size() && Keys[key].Down; }
+
     bool IsKeyUp(uint32_t key) const noexcept { return key >= Keys.size() || Keys[key].Up; }
+
     bool IsKeyPressed(uint32_t key) const noexcept {
         return key < Keys.size() && Keys[key].Pressed;
     }
+
     bool IsKeyReleased(uint32_t key) const noexcept {
         return key < Keys.size() && Keys[key].Released;
     }
+
     bool IsKeyToggled(uint32_t key) const noexcept {
         return key < Keys.size() && Keys[key].Toggled;
     }
 };
 class View;
+
 class Block {
-  public:
+public:
     Block() noexcept = default;
+
     ~Block() noexcept { Dispose(); }
+
     Block(const Block &) = delete;
     Block &operator=(const Block &) = delete;
+
     Block(Block &&other) noexcept { Move(other); }
+
     Block &operator=(Block &&other) noexcept {
         if (this != &other) {
             Dispose();
@@ -35,7 +45,9 @@ class Block {
         }
         return *this;
     }
+
     [[nodiscard]] bool IsValid() const noexcept { return m_Handle && m_Context.IsValid(); }
+
     int Release() noexcept {
         if (!m_Handle)
             return BML_OK;
@@ -49,27 +61,32 @@ class Block {
         return code;
     }
 
-  private:
+private:
     friend class View;
+
     Block(Mod::Context ctx, const BML_InputInterface *api, BML_InputBlockHandle handle) noexcept
         : m_Context(ctx), m_Api(api), m_Handle(handle) {}
+
     void Dispose() noexcept {
         if (Release() != BML_OK) {
             m_Context.LogError("Input block release failed; retained until owner cleanup");
             m_Handle = 0;
         }
     }
+
     void Move(Block &other) noexcept {
         m_Context = other.m_Context;
         m_Api = other.m_Api;
         m_Handle = std::exchange(other.m_Handle, 0);
     }
+
     Mod::Context m_Context;
     const BML_InputInterface *m_Api = nullptr;
     BML_InputBlockHandle m_Handle = 0;
 };
+
 class View {
-  public:
+public:
     explicit View(const Mod::Context &context) noexcept
         : m_Context(context),
           m_Api(BML::Detail::Bind<BML_InputInterface>(
@@ -152,6 +169,7 @@ class View {
     } catch (...) {
         return Result<uint32_t>::Failure(BML_ERROR_FAIL);
     }
+
     int EnableKeyboardRepetition(bool enable = true) const noexcept {
         return m_Api ? m_Api->EnableKeyboardRepetition(m_Context.Handle(), enable ? 1u : 0u)
                      : BML_ERROR_UNAVAILABLE;
@@ -177,6 +195,7 @@ class View {
     } catch (...) {
         return Result<uint32_t>::Failure(BML_ERROR_FAIL);
     }
+
     int Pause(bool pause) const noexcept {
         return m_Api ? m_Api->Pause(m_Context.Handle(), pause ? 1u : 0u) : BML_ERROR_UNAVAILABLE;
     }
@@ -192,19 +211,22 @@ class View {
     } catch (...) {
         return Result<BML_InputCursorState>::Failure(BML_ERROR_FAIL);
     }
+
     int ShowCursor(bool visible) const noexcept {
         return m_Api ? m_Api->ShowCursor(m_Context.Handle(), visible ? 1u : 0u)
                      : BML_ERROR_UNAVAILABLE;
     }
+
     int SetSystemCursor(uint32_t shape) const noexcept {
         return m_Api ? m_Api->SetSystemCursor(m_Context.Handle(), shape) : BML_ERROR_UNAVAILABLE;
     }
 
-  private:
+private:
     Mod::Context m_Context;
     const BML_InputInterface *m_Api;
 };
 } // namespace BML::Input
+
 inline BML::Input::View BML::Mod::Context::Input() const noexcept {
     return BML::Input::View(*this);
 }

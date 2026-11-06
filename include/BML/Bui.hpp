@@ -1,5 +1,6 @@
 #ifndef BML_BUI_HPP
 #define BML_BUI_HPP
+
 #include "BML/Bui.h"
 #include "BML/Mod.hpp"
 #include <algorithm>
@@ -14,6 +15,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
 namespace Bui {
 enum ButtonType {
     BUTTON_MAIN,
@@ -28,6 +30,7 @@ enum ButtonType {
     BUTTON_MINUS,
     BUTTON_COUNT
 };
+
 namespace Detail {
 inline const BML_BuiInterface *Api() noexcept {
     return BML::Detail::Bind<BML_BuiInterface>(
@@ -56,6 +59,7 @@ inline const BML_BuiInterface *Api() noexcept {
                    BML_IFACE_HAS(table, BML_BuiInterface, TransitionToScriptAndUnblock);
         });
 }
+
 inline int Report(const BML::Mod::Context &ctx, int code) noexcept {
     if (code != BML_OK) {
         char message[96];
@@ -64,20 +68,24 @@ inline int Report(const BML::Mod::Context &ctx, int code) noexcept {
     }
     return code;
 }
+
 template <class F> int Call(const BML::Mod::Context &ctx, F &&f) {
     auto *api = Api();
     return Report(ctx, api ? f(*api) : BML_ERROR_UNAVAILABLE);
 }
+
 template <class F> bool Changed(const BML::Mod::Context &ctx, F &&f) {
     uint32_t result = 0;
     return Call(ctx, [&](const auto &api) { return f(api, &result); }) == BML_OK && result != 0;
 }
+
 // Stable nesting slots retain their capacity; a label passed to ImGui is never
 // invalidated by a reentrant widget in another slot.
 struct Label {
     inline static thread_local std::deque<std::string> Slots;
     inline static thread_local size_t Depth = 0;
     size_t Index;
+
     Label(const char *text, const char *id) : Index(Depth) {
         if (Depth == Slots.size())
             Slots.emplace_back();
@@ -87,9 +95,12 @@ struct Label {
         s += id ? id : "";
         ++Depth;
     }
+
     ~Label() { --Depth; }
+
     const char *Get() const { return Slots[Index].c_str(); }
 };
+
 inline bool Button(const BML::Mod::Context &ctx, ButtonType kind, const char *label, bool *selected,
                    uint32_t flags) {
     uint32_t choice = selected && *selected;
@@ -101,10 +112,12 @@ inline bool Button(const BML::Mod::Context &ctx, ButtonType kind, const char *la
     return result;
 }
 template <class R, class F, bool Ref = std::is_reference_v<R>> struct DrawResult;
+
 template <class R, class F> struct DrawResult<R, F, false> {
     F &Function;
     std::exception_ptr Failure;
     std::optional<R> Value;
+
     static int BML_CDECL Run(void *data) noexcept {
         auto &s = *static_cast<DrawResult *>(data);
         try {
@@ -115,12 +128,15 @@ template <class R, class F> struct DrawResult<R, F, false> {
             return BML_ERROR_FAIL;
         }
     }
+
     R Take() { return std::move(*Value); }
 };
+
 template <class R, class F> struct DrawResult<R, F, true> {
     F &Function;
     std::exception_ptr Failure;
     std::remove_reference_t<R> *Value = nullptr;
+
     static int BML_CDECL Run(void *data) noexcept {
         auto &s = *static_cast<DrawResult *>(data);
         try {
@@ -132,11 +148,14 @@ template <class R, class F> struct DrawResult<R, F, true> {
             return BML_ERROR_FAIL;
         }
     }
+
     R Take() { return static_cast<R>(*Value); }
 };
+
 template <class F> struct DrawResult<void, F, false> {
     F &Function;
     std::exception_ptr Failure;
+
     static int BML_CDECL Run(void *data) noexcept {
         auto &s = *static_cast<DrawResult *>(data);
         try {
@@ -147,8 +166,10 @@ template <class F> struct DrawResult<void, F, false> {
             return BML_ERROR_FAIL;
         }
     }
+
     void Take() {}
 };
+
 template <class F>
 auto At(const BML::Mod::Context &ctx, BML_Vec2 p, bool pixels, F &&f) -> std::invoke_result_t<F> {
     using State = DrawResult<std::invoke_result_t<F>, std::remove_reference_t<F>>;
@@ -162,24 +183,28 @@ auto At(const BML::Mod::Context &ctx, BML_Vec2 p, bool pixels, F &&f) -> std::in
     return state.Take();
 }
 } // namespace Detail
+
 inline BML_Vec2 GetMenuPos(const BML::Mod::Context &ctx) {
     BML_Vec2 p{}, s{};
     BML_Color c{};
     Detail::Call(ctx, [&](const auto &a) { return a.ReadMenuStyle(ctx.Handle(), &p, &s, &c); });
     return p;
 }
+
 inline BML_Vec2 GetMenuSize(const BML::Mod::Context &ctx) {
     BML_Vec2 p{}, s{};
     BML_Color c{};
     Detail::Call(ctx, [&](const auto &a) { return a.ReadMenuStyle(ctx.Handle(), &p, &s, &c); });
     return s;
 }
+
 inline BML_Color GetMenuColor(const BML::Mod::Context &ctx) {
     BML_Vec2 p{}, s{};
     BML_Color c{};
     Detail::Call(ctx, [&](const auto &a) { return a.ReadMenuStyle(ctx.Handle(), &p, &s, &c); });
     return c;
 }
+
 inline BML_Vec2 GetButtonSize(const BML::Mod::Context &ctx, ButtonType t) {
     BML_Vec2 s{};
     float indent = 0;
@@ -187,6 +212,7 @@ inline BML_Vec2 GetButtonSize(const BML::Mod::Context &ctx, ButtonType t) {
                  [&](const auto &a) { return a.ReadButtonStyle(ctx.Handle(), t, &s, &indent); });
     return s;
 }
+
 inline float GetButtonIndent(const BML::Mod::Context &ctx, ButtonType t) {
     BML_Vec2 s{};
     float indent = 0;
@@ -194,52 +220,66 @@ inline float GetButtonIndent(const BML::Mod::Context &ctx, ButtonType t) {
                  [&](const auto &a) { return a.ReadButtonStyle(ctx.Handle(), t, &s, &indent); });
     return indent;
 }
+
 inline BML_Vec2 CoordToPixel(const BML::Mod::Context &ctx, BML_Vec2 p) {
     auto s = GetMenuSize(ctx);
     return {s.x * 2.5f * p.x, s.y * p.y};
 }
+
 inline BML_Vec2 GetButtonSizeInCoord(const BML::Mod::Context &ctx, ButtonType t) {
     auto s = GetButtonSize(ctx, t), vp = CoordToPixel(ctx, {1, 1});
     return {vp.x ? s.x / vp.x : 0, vp.y ? s.y / vp.y : 0};
 }
+
 inline float GetButtonIndentInCoord(const BML::Mod::Context &ctx, ButtonType t) {
     auto vp = CoordToPixel(ctx, {1, 1});
     return vp.x ? GetButtonIndent(ctx, t) / vp.x : 0;
 }
+
 inline bool MainButton(const BML::Mod::Context &c, const char *l, uint32_t f = 0) {
     return Detail::Button(c, BUTTON_MAIN, l, nullptr, f);
 }
+
 inline bool OkButton(const BML::Mod::Context &c, const char *l, uint32_t f = 0) {
     Detail::Label label("OK", l);
     return Detail::Button(c, BUTTON_BACK, label.Get(), nullptr, f);
 }
+
 inline bool BackButton(const BML::Mod::Context &c, const char *l, uint32_t f = 0) {
     Detail::Label label("Back", l);
     return Detail::Button(c, BUTTON_BACK, label.Get(), nullptr, f);
 }
+
 inline bool OptionButton(const BML::Mod::Context &c, const char *l, uint32_t f = 0) {
     return Detail::Button(c, BUTTON_OPTION, l, nullptr, f);
 }
+
 inline bool LevelButton(const BML::Mod::Context &c, const char *l, bool *v = nullptr,
                         uint32_t f = 0) {
     return Detail::Button(c, BUTTON_LEVEL, l, v, f);
 }
+
 inline bool SmallButton(const BML::Mod::Context &c, const char *l, bool *v = nullptr,
                         uint32_t f = 0) {
     return Detail::Button(c, BUTTON_SMALL, l, v, f);
 }
+
 inline bool LeftButton(const BML::Mod::Context &c, const char *l, uint32_t f = 0) {
     return Detail::Button(c, BUTTON_LEFT, l, nullptr, f);
 }
+
 inline bool RightButton(const BML::Mod::Context &c, const char *l, uint32_t f = 0) {
     return Detail::Button(c, BUTTON_RIGHT, l, nullptr, f);
 }
+
 inline bool PlusButton(const BML::Mod::Context &c, const char *l, uint32_t f = 0) {
     return Detail::Button(c, BUTTON_PLUS, l, nullptr, f);
 }
+
 inline bool MinusButton(const BML::Mod::Context &c, const char *l, uint32_t f = 0) {
     return Detail::Button(c, BUTTON_MINUS, l, nullptr, f);
 }
+
 inline bool KeyButton(const BML::Mod::Context &c, const char *l, bool *v, BML_KeyChord *key) {
     if (!v)
         return false;
@@ -250,6 +290,7 @@ inline bool KeyButton(const BML::Mod::Context &c, const char *l, bool *v, BML_Ke
     *v = active != 0;
     return changed;
 }
+
 inline bool YesNoButton(const BML::Mod::Context &c, const char *l, bool *v) {
     if (!v)
         return false;
@@ -259,90 +300,110 @@ inline bool YesNoButton(const BML::Mod::Context &c, const char *l, bool *v) {
     *v = value != 0;
     return changed;
 }
+
 inline bool RadioButton(const BML::Mod::Context &c, const char *l, int32_t *v,
                         const char *const *items, size_t n) {
     return Detail::Changed(c, [&](const auto &a, uint32_t *out) {
         return a.RadioButton(c.Handle(), l, v, items, n, out);
     });
 }
+
 inline bool InputTextButton(const BML::Mod::Context &c, const char *l, char *b, size_t n,
                             uint32_t f = 0) {
     return Detail::Changed(c, [&](const auto &a, uint32_t *out) {
         return a.InputTextButton(c.Handle(), l, b, n, f, out);
     });
 }
+
 inline bool InputFloatButton(const BML::Mod::Context &c, const char *l, float *v, float step = 0,
                              float fast = 0, const char *format = "%.3f", uint32_t f = 0) {
     return Detail::Changed(c, [&](const auto &a, uint32_t *out) {
         return a.InputFloatButton(c.Handle(), l, v, step, fast, format, f, out);
     });
 }
+
 inline bool InputIntButton(const BML::Mod::Context &c, const char *l, int32_t *v, int32_t step = 1,
                            int32_t fast = 100, uint32_t f = 0) {
     return Detail::Changed(c, [&](const auto &a, uint32_t *out) {
         return a.InputIntButton(c.Handle(), l, v, step, fast, f, out);
     });
 }
+
 inline bool ColorButton(const BML::Mod::Context &c, const char *l, BML_Color *v, uint32_t f = 0) {
     return Detail::Changed(
         c, [&](const auto &a, uint32_t *out) { return a.ColorButton(c.Handle(), l, v, f, out); });
 }
+
 inline void WrappedText(const BML::Mod::Context &c, const char *t, float w, float x = 0,
                         float s = 1) {
     Detail::Call(c, [&](const auto &a) { return a.WrappedText(c.Handle(), t, w, x, s); });
 }
+
 inline bool NavLeft(const BML::Mod::Context &c, float x = .36f, float y = .124f) {
     return Detail::Changed(c, [&](const auto &a, uint32_t *out) {
         return a.Navigate(c.Handle(), BUTTON_LEFT, {x, y}, out);
     });
 }
+
 inline bool NavRight(const BML::Mod::Context &c, float x = .6038f, float y = .124f) {
     return Detail::Changed(c, [&](const auto &a, uint32_t *out) {
         return a.Navigate(c.Handle(), BUTTON_RIGHT, {x, y}, out);
     });
 }
+
 inline bool NavBack(const BML::Mod::Context &c, float x = .4031f, float y = .85f) {
     return Detail::Changed(c, [&](const auto &a, uint32_t *out) {
         return a.Navigate(c.Handle(), BUTTON_BACK, {x, y}, out);
     });
 }
+
 inline void Title(const BML::Mod::Context &c, const char *t, float y = .13f, float s = 1.5f,
                   uint32_t color = 0xffffffffu) {
     Detail::Call(c, [&](const auto &a) { return a.Title(c.Handle(), t, y, s, color); });
 }
+
 inline bool SearchBar(const BML::Mod::Context &c, char *b, size_t n, float x = .4f, float y = .18f,
                       float w = .2f) {
     return Detail::Changed(c, [&](const auto &a, uint32_t *out) {
         return a.SearchBar(c.Handle(), b, n, {x, y}, w, out);
     });
 }
+
 inline void PlayMenuClickSound(const BML::Mod::Context &c) {
     Detail::Call(c, [&](const auto &a) { return a.PlayMenuClickSound(c.Handle()); });
 }
+
 inline void ActivateScript(const BML::Mod::Context &c, const char *n) {
     Detail::Call(c, [&](const auto &a) { return a.ActivateScript(c.Handle(), n); });
 }
+
 inline void BlockKeyboardInput(const BML::Mod::Context &c) {
     Detail::Call(c, [&](const auto &a) { return a.BlockKeyboardInput(c.Handle()); });
 }
+
 inline void UnblockKeyboardAfterRelease(const BML::Mod::Context &c) {
     Detail::Call(c, [&](const auto &a) { return a.UnblockKeyboardAfterRelease(c.Handle()); });
 }
+
 inline void TransitionToScriptAndUnblock(const BML::Mod::Context &c, const char *n) {
     Detail::Call(c, [&](const auto &a) { return a.TransitionToScriptAndUnblock(c.Handle(), n); });
 }
+
 template <class F>
 auto AtPixel(const BML::Mod::Context &c, BML_Vec2 p, F &&f) -> std::invoke_result_t<F> {
     return Detail::At(c, p, true, std::forward<F>(f));
 }
+
 template <class F>
 auto At(const BML::Mod::Context &c, BML_Vec2 p, F &&f) -> std::invoke_result_t<F> {
     return Detail::At(c, p, false, std::forward<F>(f));
 }
+
 template <class F>
 auto At(const BML::Mod::Context &c, float x, float y, F &&f) -> std::invoke_result_t<F> {
     return At(c, BML_Vec2{x, y}, std::forward<F>(f));
 }
+
 template <class F>
 void Entries(const BML::Mod::Context &c, F &&f, float x = .4031f, float y = .24f,
              float spacing = .06f, int maxCount = 10) {
@@ -350,15 +411,21 @@ void Entries(const BML::Mod::Context &c, F &&f, float x = .4031f, float y = .24f
         if (!At(c, x, y + spacing * i, [&] { return f(i); }))
             break;
 }
-inline bool CanPrevPage(int page) { return page > 0; }
+
+inline bool CanPrevPage(int page) {
+    return page > 0;
+}
+
 inline bool CanNextPage(int page, int count, int size) {
     return page >= 0 && size > 0 && int64_t(count) > (int64_t(page) + 1) * size;
 }
+
 inline int CalcPageCount(int count, int size) {
     return size > 0 && count > 0 ? 1 + (count - 1) / size : 0;
 }
+
 class Window {
-  public:
+public:
     explicit Window(const BML::Mod::Context &context, std::string name)
         : m_Context(context), m_Name(std::move(name)) {}
 
@@ -366,6 +433,7 @@ class Window {
 
     // Properties
     const std::string &GetName() const { return m_Name; }
+
     bool IsVisible() const { return m_Visible; }
 
     // Visibility control
@@ -392,7 +460,8 @@ class Window {
         }
         OnPreBegin();
         bool keepVisible = true;
-        uint32_t open = 1, draw = 0;
+        uint32_t open = 1;
+        uint32_t draw = 0;
         const int code = Detail::Call(m_Context, [&](const auto &api) {
             return api.BeginWindow(m_Context.Handle(), m_Name.c_str(), m_Name.c_str(), &open,
                                    GetFlags(), &draw);
@@ -457,22 +526,29 @@ class Window {
     virtual uint32_t GetFlags() { return 0; }
 
     virtual void OnPreBegin() {}
+
     virtual void OnPostBegin() {}
+
     virtual void OnDraw() = 0;
+
     virtual void OnPreEnd() {}
+
     virtual void OnPostEnd() {}
+
     virtual void OnShow() {}
+
     virtual void OnHide() {}
 
-  private:
+private:
     void EndNative() {
         if (std::exchange(m_Begun, false))
             Detail::Call(m_Context,
                          [&](const auto &api) { return api.EndWindow(m_Context.Handle()); });
     }
+
     bool m_Begun = false;
 
-  protected:
+protected:
     BML::Mod::Context m_Context;
     std::string m_Name;
     bool m_Visible = true;
@@ -483,7 +559,7 @@ class Window {
 // the number of pages and clamps the current index when a list changes. It invokes
 // no callback, so changing pages cannot mutate the Menu lifecycle reentrantly.
 class Pagination {
-  public:
+public:
     void Update(int itemCount, int pageSize) {
         m_PageSize = pageSize > 0 ? pageSize : 1;
         m_PageCount = pageSize > 0 ? CalcPageCount(itemCount, pageSize) : 0;
@@ -495,9 +571,13 @@ class Pagination {
     }
 
     int GetPage() const { return m_PageIndex; }
+
     int GetPageCount() const { return m_PageCount; }
+
     int GetFirstItem() const { return m_PageIndex * m_PageSize; }
+
     bool CanPrevious() const { return m_PageIndex > 0; }
+
     bool CanNext() const { return m_PageIndex + 1 < m_PageCount; }
 
     bool SetPage(int page) {
@@ -509,10 +589,12 @@ class Pagination {
     }
 
     bool Previous() { return SetPage(m_PageIndex - 1); }
+
     bool Next() { return SetPage(m_PageIndex + 1); }
+
     bool Reset() { return SetPage(0); }
 
-  private:
+private:
     int m_PageIndex = 0;
     int m_PageCount = 0;
     int m_PageSize = 1;
@@ -538,22 +620,28 @@ enum class PageLeaveReason {
 // interprets it only after OnFrame and ImGui::End have completed, so navigation
 // never destroys or re-enters a Page while that Page is drawing.
 class PageAction {
-  public:
+public:
     PageAction() = default;
 
     static PageAction None() { return {}; }
+
     static PageAction Open(std::string target) { return PageAction(Type::Open, std::move(target)); }
+
     static PageAction Push(std::string target) { return PageAction(Type::Push, std::move(target)); }
+
     static PageAction Replace(std::string target) {
         return PageAction(Type::Replace, std::move(target));
     }
+
     static PageAction Back() { return PageAction(Type::Back); }
+
     static PageAction Close() { return PageAction(Type::Close); }
+
     static PageAction RemoveSelf() { return PageAction(Type::RemoveSelf); }
 
     bool IsNone() const { return m_Type == Type::None; }
 
-  private:
+private:
     enum class Type {
         None,
         Open,
@@ -565,6 +653,7 @@ class PageAction {
     };
 
     explicit PageAction(Type type) : m_Type(type) {}
+
     PageAction(Type type, std::string target) : m_Type(type), m_Target(std::move(target)) {}
 
     Type m_Type = Type::None;
@@ -579,19 +668,21 @@ class PageAction {
 // current. A Page that needs application state receives that state through its
 // constructor rather than retrieving an untyped Menu owner from this base class.
 class Page {
-  public:
+public:
     Page() = default;
     virtual ~Page() = default;
 
     Page(const Page &) = delete;
     Page &operator=(const Page &) = delete;
 
-  protected:
+protected:
     virtual void OnEnter(PageEnterReason) {}
+
     virtual PageAction OnFrame() = 0;
+
     virtual void OnLeave(PageLeaveReason) {}
 
-  private:
+private:
     friend class Menu;
 };
 
@@ -610,7 +701,7 @@ class Page {
 // before that state. Destroying an open Menu sends OnLeave(Close) and then invokes
 // its close callback, preserving the same lifecycle pairing as an explicit Close.
 class Menu final {
-  public:
+public:
     using SessionCallback = std::function<void()>;
 
     explicit Menu(const BML::Mod::Context &context, SessionCallback onOpen = {},
@@ -618,6 +709,7 @@ class Menu final {
         : m_Context(context),
           m_WindowId("##BuiMenu/" + std::to_string(reinterpret_cast<std::uintptr_t>(this))),
           m_OnOpen(std::move(onOpen)), m_OnClose(std::move(onClose)) {}
+
     ~Menu() { Shutdown(); }
 
     Menu(const Menu &) = delete;
@@ -672,6 +764,7 @@ class Menu final {
     bool Back() {
         return Mutate([&]() { return NavigateBack(); });
     }
+
     bool Close() {
         return Mutate([&]() { return CloseMenu(); });
     }
@@ -723,10 +816,10 @@ class Menu final {
         return action.IsNone() || ApplyFrameAction(pageId, std::move(action));
     }
 
-  protected:
+protected:
     static constexpr std::size_t MAX_NAVIGATION_DEPTH = 32;
 
-  private:
+private:
     struct DispatchGuard {
         explicit DispatchGuard(bool &dispatching) : m_Dispatching(dispatching) {
             m_Dispatching = true;

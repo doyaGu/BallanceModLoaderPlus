@@ -10,12 +10,16 @@
 
 namespace BML::Api {
 namespace {
-bool Finite(BML_Vec2 p) { return std::isfinite(p.x) && std::isfinite(p.y); }
+bool Finite(BML_Vec2 p) {
+    return std::isfinite(p.x) && std::isfinite(p.y);
+}
+
 ImGuiInputTextFlags InputFlags(uint32_t flags) {
     return ((flags & BML_BUI_INPUT_READ_ONLY) ? ImGuiInputTextFlags_ReadOnly : 0) |
            ((flags & BML_BUI_INPUT_PASSWORD) ? ImGuiInputTextFlags_Password : 0) |
            ((flags & BML_BUI_INPUT_ENTER_RETURNS_TRUE) ? ImGuiInputTextFlags_EnterReturnsTrue : 0);
 }
+
 template <class F> int WithUi(BML_ModContextHandle h, F &&body) {
     return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
         auto *imgui = Overlay::GetImGuiContext();
@@ -25,6 +29,7 @@ template <class F> int WithUi(BML_ModContextHandle h, F &&body) {
         return body(ctx, owner);
     });
 }
+
 int BML_CDECL MenuStyle(BML_ModContextHandle h, BML_Vec2 *p, BML_Vec2 *s, BML_Color *c) {
     if (!p || !s || !c)
         return BML_ERROR_INVALID_PARAMETER;
@@ -38,6 +43,7 @@ int BML_CDECL MenuStyle(BML_ModContextHandle h, BML_Vec2 *p, BML_Vec2 *s, BML_Co
         return BML_OK;
     });
 }
+
 int BML_CDECL ButtonStyle(BML_ModContextHandle h, uint32_t kind, BML_Vec2 *s, float *indent) {
     if (!s || !indent || kind >= BuiHost::BUTTON_COUNT)
         return BML_ERROR_INVALID_PARAMETER;
@@ -49,6 +55,7 @@ int BML_CDECL ButtonStyle(BML_ModContextHandle h, uint32_t kind, BML_Vec2 *s, fl
         return BML_OK;
     });
 }
+
 int BML_CDECL Begin(BML_ModContextHandle h, const char *id, const char *title, uint32_t *open,
                     uint32_t flags, uint32_t *draw) {
     if (!id || !*id || !title || !draw || (open && *open > 1) || (flags & ~511u))
@@ -58,9 +65,11 @@ int BML_CDECL Begin(BML_ModContextHandle h, const char *id, const char *title, u
         return ctx.GetBuiApi().Begin(ctx, owner, id, title, open, flags, draw);
     });
 }
+
 int BML_CDECL End(BML_ModContextHandle h) {
     return WithUi(h, [&](ModContext &ctx, IMod &owner) { return ctx.GetBuiApi().End(ctx, owner); });
 }
+
 int BML_CDECL At(BML_ModContextHandle h, BML_Vec2 pos, uint32_t pixels, BML_BuiDrawCallback cb,
                  void *data) {
     if (!cb || pixels > 1 || !Finite(pos))
@@ -96,6 +105,7 @@ int BML_CDECL At(BML_ModContextHandle h, BML_Vec2 pos, uint32_t pixels, BML_BuiD
         return code;
     });
 }
+
 int BML_CDECL Button(BML_ModContextHandle h, uint32_t kind, const char *label, uint32_t flags,
                      uint32_t *selected, uint32_t *clicked) {
     if (!label || !clicked || kind >= BuiHost::BUTTON_COUNT || (flags & ~7u) ||
@@ -116,6 +126,7 @@ int BML_CDECL Button(BML_ModContextHandle h, uint32_t kind, const char *label, u
         return BML_OK;
     });
 }
+
 int BML_CDECL Navigate(BML_ModContextHandle h, uint32_t kind, BML_Vec2 p, uint32_t *clicked) {
     if (!clicked || !Finite(p) ||
         (kind != BML_BUI_LEFT && kind != BML_BUI_RIGHT && kind != BML_BUI_BACK))
@@ -128,6 +139,7 @@ int BML_CDECL Navigate(BML_ModContextHandle h, uint32_t kind, BML_Vec2 p, uint32
         return BML_OK;
     });
 }
+
 int BML_CDECL Key(BML_ModContextHandle h, const char *label, uint32_t *listening, BML_KeyChord *key,
                   uint32_t *changed) {
     if (!label || !listening || !key || !changed || *listening > 1 || key->Key > 255 ||
@@ -154,6 +166,7 @@ int BML_CDECL Key(BML_ModContextHandle h, const char *label, uint32_t *listening
         return BML_OK;
     });
 }
+
 int BML_CDECL YesNo(BML_ModContextHandle h, const char *label, uint32_t *v, uint32_t *changed) {
     if (!label || !v || *v > 1 || !changed)
         return BML_ERROR_INVALID_PARAMETER;
@@ -165,6 +178,7 @@ int BML_CDECL YesNo(BML_ModContextHandle h, const char *label, uint32_t *v, uint
         return BML_OK;
     });
 }
+
 int BML_CDECL Radio(BML_ModContextHandle h, const char *label, int32_t *v, const char *const *items,
                     size_t count, uint32_t *changed) {
     if (!label || !v || !changed || (!items && count) || count > INT_MAX)
@@ -175,6 +189,7 @@ int BML_CDECL Radio(BML_ModContextHandle h, const char *label, int32_t *v, const
         return BML_OK;
     });
 }
+
 int BML_CDECL Text(BML_ModContextHandle h, const char *label, char *b, size_t n, uint32_t flags,
                    uint32_t *changed) {
     if (!label || !b || !n || !changed || (flags & ~7u) || !std::memchr(b, 0, n))
@@ -185,6 +200,7 @@ int BML_CDECL Text(BML_ModContextHandle h, const char *label, char *b, size_t n,
         return BML_OK;
     });
 }
+
 int BML_CDECL Float(BML_ModContextHandle h, const char *label, float *v, float step, float fast,
                     const char *format, uint32_t flags, uint32_t *changed) {
     if (!label || !v || !format || !changed || (flags & ~5u) || !std::isfinite(*v) ||
@@ -196,6 +212,7 @@ int BML_CDECL Float(BML_ModContextHandle h, const char *label, float *v, float s
         return BML_OK;
     });
 }
+
 int BML_CDECL Int(BML_ModContextHandle h, const char *label, int32_t *v, int32_t step, int32_t fast,
                   uint32_t flags, uint32_t *changed) {
     if (!label || !v || !changed || (flags & ~5u))
@@ -206,6 +223,7 @@ int BML_CDECL Int(BML_ModContextHandle h, const char *label, int32_t *v, int32_t
         return BML_OK;
     });
 }
+
 int BML_CDECL Color(BML_ModContextHandle h, const char *label, BML_Color *v, uint32_t flags,
                     uint32_t *changed) {
     if (!label || !v || !changed || (flags & ~1u) || !std::isfinite(v->r) || !std::isfinite(v->g) ||
@@ -223,6 +241,7 @@ int BML_CDECL Color(BML_ModContextHandle h, const char *label, BML_Color *v, uin
         return BML_OK;
     });
 }
+
 int BML_CDECL Wrapped(BML_ModContextHandle h, const char *text, float width, float base,
                       float scale) {
     if (!text || !std::isfinite(width) || !std::isfinite(base) || !std::isfinite(scale))
@@ -232,6 +251,7 @@ int BML_CDECL Wrapped(BML_ModContextHandle h, const char *text, float width, flo
         return BML_OK;
     });
 }
+
 int BML_CDECL Title(BML_ModContextHandle h, const char *text, float y, float scale,
                     uint32_t color) {
     if (!text || !std::isfinite(y) || !std::isfinite(scale))
@@ -241,6 +261,7 @@ int BML_CDECL Title(BML_ModContextHandle h, const char *text, float y, float sca
         return BML_OK;
     });
 }
+
 int BML_CDECL Search(BML_ModContextHandle h, char *b, size_t n, BML_Vec2 p, float width,
                      uint32_t *changed) {
     if (!b || !n || !changed || !std::memchr(b, 0, n) || !Finite(p) || !std::isfinite(width))
@@ -251,12 +272,14 @@ int BML_CDECL Search(BML_ModContextHandle h, char *b, size_t n, BML_Vec2 p, floa
         return BML_OK;
     });
 }
+
 int BML_CDECL Sound(BML_ModContextHandle h) {
     return WithUi(h, [](ModContext &, IMod &) {
         BuiHost::PlayMenuClickSound();
         return BML_OK;
     });
 }
+
 int BML_CDECL Activate(BML_ModContextHandle h, const char *name) {
     if (!name || !*name)
         return BML_ERROR_INVALID_PARAMETER;
@@ -265,6 +288,7 @@ int BML_CDECL Activate(BML_ModContextHandle h, const char *name) {
         return BML_OK;
     });
 }
+
 int BML_CDECL Block(BML_ModContextHandle h) {
     return WithUi(h, [](ModContext &ctx, IMod &owner) {
         if (!AcceptsModWork(ctx, owner))
@@ -272,9 +296,11 @@ int BML_CDECL Block(BML_ModContextHandle h) {
         return ctx.GetBuiApi().Block(owner);
     });
 }
+
 int BML_CDECL Unblock(BML_ModContextHandle h) {
     return WithUi(h, [](ModContext &ctx, IMod &owner) { return ctx.GetBuiApi().Unblock(owner); });
 }
+
 int BML_CDECL Transition(BML_ModContextHandle h, const char *name) {
     if (!name || !*name)
         return BML_ERROR_INVALID_PARAMETER;
@@ -283,6 +309,7 @@ int BML_CDECL Transition(BML_ModContextHandle h, const char *name) {
         return ctx.GetBuiApi().Unblock(owner);
     });
 }
+
 const BML_BuiInterface table{BML_IFACE_HEADER(BML_BuiInterface, BML_BUI_INTERFACE_ID, 1, 0),
                              MenuStyle,
                              ButtonStyle,
@@ -307,7 +334,11 @@ const BML_BuiInterface table{BML_IFACE_HEADER(BML_BuiInterface, BML_BUI_INTERFAC
                              Unblock,
                              Transition};
 } // namespace
-const BML_BuiInterface &BuiInterface() { return table; }
+
+const BML_BuiInterface &BuiInterface() {
+    return table;
+}
+
 void BuiApi::Trim() {
     auto &g = *ImGui::GetCurrentContext();
     while (m_WindowCount) {
@@ -318,6 +349,7 @@ void BuiApi::Trim() {
         --m_WindowCount;
     }
 }
+
 int BuiApi::Begin(ModContext &ctx, IMod &owner, const char *id, const char *title, uint32_t *open,
                   uint32_t flags, uint32_t *draw) {
     Trim();
@@ -360,6 +392,7 @@ int BuiApi::Begin(ModContext &ctx, IMod &owner, const char *id, const char *titl
     }
     return BML_OK;
 }
+
 int BuiApi::End(ModContext &ctx, IMod &owner) {
     Trim();
     if (!m_WindowCount)
@@ -377,6 +410,7 @@ int BuiApi::End(ModContext &ctx, IMod &owner) {
     --m_WindowCount;
     return BML_OK;
 }
+
 int BuiApi::Block(IMod &owner) {
     auto &s = m_Blocks[&owner];
     if (!s)
@@ -388,6 +422,7 @@ int BuiApi::Block(IMod &owner) {
     ++s->Count;
     return BML_OK;
 }
+
 int BuiApi::Unblock(IMod &owner) {
     auto it = m_Blocks.find(&owner);
     if (it == m_Blocks.end() || !it->second->Count)
@@ -398,6 +433,7 @@ int BuiApi::Unblock(IMod &owner) {
     }
     return BML_OK;
 }
+
 void BuiApi::CleanupOwner(IMod &owner) noexcept {
     try {
         auto it = m_Blocks.find(&owner);
@@ -408,6 +444,7 @@ void BuiApi::CleanupOwner(IMod &owner) noexcept {
     } catch (...) {
     }
 }
+
 void BuiApi::Reset() noexcept {
     m_WindowCount = 0;
     for (const auto &[owner, share] : m_Blocks) {

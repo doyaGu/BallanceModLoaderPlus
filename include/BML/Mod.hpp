@@ -15,12 +15,15 @@
 namespace BML::Config {
 class View;
 }
+
 namespace BML::Input {
 class View;
 }
+
 namespace BML::Timer {
 class View;
 }
+
 namespace BML::Command {
 class View;
 }
@@ -31,10 +34,12 @@ struct Dependency {
     std::string Id, MinimumVersion;
     bool Optional = false;
 };
+
 struct Definition {
     std::string Id, Name, Version, Author, Description, MinimumLoaderVersion;
     std::vector<Dependency> Dependencies;
 };
+
 struct Info {
     BML_ModHandle Handle = 0;
     uint32_t Kind = 0, State = 0;
@@ -47,51 +52,65 @@ struct ContextAccess;
 const BML_ModContextInterface *ContextApi() noexcept;
 } // namespace Detail
 class View;
+
 class Context {
-  public:
+public:
     Context() noexcept = default;
     [[nodiscard]] BML::Config::View Config() const noexcept;
     [[nodiscard]] BML::Input::View Input() const noexcept;
     [[nodiscard]] BML::Timer::View Timers() const noexcept;
     [[nodiscard]] BML::Command::View Commands() const noexcept;
     [[nodiscard]] bool IsValid() const noexcept;
+
     [[nodiscard]] BML_ModContextHandle Handle() const noexcept { return m_Handle; }
+
     [[nodiscard]] Result<View> Owner() const;
     [[nodiscard]] Result<View> FindMod(std::string_view id) const;
     [[nodiscard]] Result<std::vector<Info>> ReadMods() const;
+
     int LogInfo(std::string_view message) const noexcept { return Log(BML_LOG_INFO, message); }
+
     int LogWarn(std::string_view message) const noexcept { return Log(BML_LOG_WARN, message); }
+
     int LogError(std::string_view message) const noexcept { return Log(BML_LOG_ERROR, message); }
+
     [[nodiscard]] Result<std::string> GetDirectory(uint32_t directory) const;
     [[nodiscard]] Result<std::string> GetResourcePath(std::string_view path) const;
     [[nodiscard]] Result<std::vector<uint8_t>> ReadResource(std::string_view path) const;
     [[nodiscard]] Result<bool> ResourceExists(std::string_view path) const;
 
-  private:
+private:
     friend class View;
     friend struct Detail::ContextAccess;
+
     explicit Context(BML_ModContextHandle handle) noexcept
         : m_Handle(handle), m_Api(Detail::ContextApi()) {}
+
     int Log(uint32_t level, std::string_view message) const noexcept {
         if (!BML::Detail::IsText(message))
             return BML_ERROR_INVALID_PARAMETER;
         return m_Api ? m_Api->Log(m_Handle, level, message.data(), message.size())
                      : BML_ERROR_UNAVAILABLE;
     }
+
     BML_ModContextHandle m_Handle = 0;
     const BML_ModContextInterface *m_Api = nullptr;
 };
 
 class View {
-  public:
+public:
     View() noexcept = default;
     [[nodiscard]] bool IsValid() const noexcept;
+
     [[nodiscard]] BML_ModHandle Handle() const noexcept { return m_Handle; }
+
     [[nodiscard]] Result<Info> Read() const;
 
-  private:
+private:
     friend class Context;
+
     View(Context context, BML_ModHandle handle) noexcept : m_Context(context), m_Handle(handle) {}
+
     Context m_Context;
     BML_ModHandle m_Handle = 0;
 };
@@ -100,7 +119,11 @@ namespace Detail {
 struct ContextAccess {
     static Context Make(BML_ModContextHandle handle) noexcept { return Context(handle); }
 };
-inline std::string_view Text(const char *value) noexcept { return value ? value : ""; }
+
+inline std::string_view Text(const char *value) noexcept {
+    return value ? value : "";
+}
+
 inline Definition CopyDefinition(const BML_ModDefinition &value) {
     Definition result{std::string(Text(value.Id)),
                       std::string(Text(value.Name)),
@@ -119,6 +142,7 @@ inline Definition CopyDefinition(const BML_ModDefinition &value) {
     }
     return result;
 }
+
 inline Info CopyInfo(const BML_ModInfo &value) {
     return {value.Handle, value.Kind, value.State, CopyDefinition(*value.Definition),
             std::string(Text(value.Diagnostic))};
@@ -219,6 +243,7 @@ inline Result<bool> Context::ResourceExists(std::string_view path) const try {
 } catch (...) {
     return Result<bool>::Failure(BML_ERROR_FAIL);
 }
+
 inline bool View::IsValid() const noexcept {
     return m_Context.m_Api &&
            m_Context.m_Api->ReadMod(
@@ -248,12 +273,15 @@ inline Result<Info> View::Read() const try {
 
 using GameEvent = BML_GameEvent;
 using CommandEventPhase = BML_CommandEventPhase;
+
 struct RenderEvent {
     uint32_t Flags;
 };
+
 struct CheatEvent {
     bool Enabled;
 };
+
 struct LoadObjectEvent {
     std::string_view Filename;
     bool IsMap;
@@ -263,22 +291,26 @@ struct LoadObjectEvent {
     std::span<const BML_ObjectRef> Objects;
     BML_ObjectRef MasterObject;
 };
+
 struct LoadScriptEvent {
     std::string_view Filename;
     BML_ObjectRef Script;
 };
+
 struct CommandEvent {
     CommandEventPhase Phase;
     std::string_view Name, InvokedAs;
     std::span<const char *const> Arguments;
     bool Cheat;
 };
+
 struct ConfigEvent {
     BML_ModHandle Mod;
     std::string_view ModId, Category, Key;
     uint32_t Type;
     BML_ConfigPropertyHandle Property;
 };
+
 struct PhysicalizeEvent {
     BML_ObjectRef Target;
     bool Fixed;
@@ -293,64 +325,112 @@ struct PhysicalizeEvent {
     std::span<const float> SphereRadii;
     std::span<const BML_ObjectRef> ConcaveMeshes;
 };
+
 struct ObjectEvent {
     BML_ObjectRef Object;
 };
 
 class Instance {
-  public:
+public:
     virtual ~Instance() noexcept = default;
+
     virtual void OnLoad(const Context &) {}
+
     virtual void OnUnload(const Context &) {}
+
     virtual void OnProcess(const Context &) {}
+
     virtual void OnRender(const Context &, const RenderEvent &) {}
+
     virtual void OnGameEvent(const Context &, GameEvent);
+
     virtual void OnCheatEnabled(const Context &, const CheatEvent &) {}
+
     virtual void OnLoadObject(const Context &, const LoadObjectEvent &) {}
+
     virtual void OnLoadScript(const Context &, const LoadScriptEvent &) {}
+
     virtual void OnCommandEvent(const Context &ctx, const CommandEvent &event) {
         if (event.Phase == BML_COMMAND_EVENT_PRE)
             OnPreCommandExecute(ctx, event);
         else if (event.Phase == BML_COMMAND_EVENT_POST)
             OnPostCommandExecute(ctx, event);
     }
+
     virtual void OnModifyConfig(const Context &, const ConfigEvent &) {}
+
     virtual void OnPhysicalize(const Context &, const PhysicalizeEvent &) {}
+
     virtual void OnUnphysicalize(const Context &, const ObjectEvent &) {}
+
     virtual void OnPreCommandExecute(const Context &, const CommandEvent &) {}
+
     virtual void OnPostCommandExecute(const Context &, const CommandEvent &) {}
+
     virtual void OnPreStartMenu(const Context &) {}
+
     virtual void OnPostStartMenu(const Context &) {}
+
     virtual void OnExitGame(const Context &) {}
+
     virtual void OnPreLoadLevel(const Context &) {}
+
     virtual void OnPostLoadLevel(const Context &) {}
+
     virtual void OnStartLevel(const Context &) {}
+
     virtual void OnPreResetLevel(const Context &) {}
+
     virtual void OnPostResetLevel(const Context &) {}
+
     virtual void OnPauseLevel(const Context &) {}
+
     virtual void OnUnpauseLevel(const Context &) {}
+
     virtual void OnPreExitLevel(const Context &) {}
+
     virtual void OnPostExitLevel(const Context &) {}
+
     virtual void OnPreNextLevel(const Context &) {}
+
     virtual void OnPostNextLevel(const Context &) {}
+
     virtual void OnDead(const Context &) {}
+
     virtual void OnPreEndLevel(const Context &) {}
+
     virtual void OnPostEndLevel(const Context &) {}
+
     virtual void OnCounterActive(const Context &) {}
+
     virtual void OnCounterInactive(const Context &) {}
+
     virtual void OnBallNavActive(const Context &) {}
+
     virtual void OnBallNavInactive(const Context &) {}
+
     virtual void OnCamNavActive(const Context &) {}
+
     virtual void OnCamNavInactive(const Context &) {}
+
     virtual void OnBallOff(const Context &) {}
+
     virtual void OnPreCheckpointReached(const Context &) {}
+
     virtual void OnPostCheckpointReached(const Context &) {}
+
     virtual void OnLevelFinish(const Context &) {}
+
     virtual void OnGameOver(const Context &) {}
+
     virtual void OnExtraPoint(const Context &) {}
+
     virtual void OnPreSubLife(const Context &) {}
+
     virtual void OnPostSubLife(const Context &) {}
+
     virtual void OnPreLifeUp(const Context &) {}
+
     virtual void OnPostLifeUp(const Context &) {}
 };
 
@@ -476,10 +556,12 @@ inline const BML_ModContextInterface *ContextApi() noexcept {
                    BML_IFACE_HAS(table, BML_ModContextInterface, ResourceExists);
         });
 }
+
 struct DefinitionStorage {
     const Definition Value;
     std::vector<BML_ModDependency> Dependencies;
     BML_ModDefinition Record{};
+
     explicit DefinitionStorage(Definition value) : Value(std::move(value)) {
         const auto valid = [](const std::string &text) {
             if (!BML::Detail::IsText(text))
@@ -509,12 +591,14 @@ struct DefinitionStorage {
                   Dependencies.size(),
                   sizeof(BML_ModDependency)};
     }
+
     DefinitionStorage(const DefinitionStorage &) = delete;
     DefinitionStorage &operator=(const DefinitionStorage &) = delete;
 };
 
 template <class T> struct Export {
     static_assert(std::is_base_of_v<Instance, T> && std::is_default_constructible_v<T>);
+
     static int BML_CDECL Create(BML_ModContextHandle, void **out) noexcept {
         if (!out)
             return BML_ERROR_INVALID_PARAMETER;
@@ -524,7 +608,9 @@ template <class T> struct Export {
             return BML_OK;
         });
     }
+
     static void BML_CDECL Destroy(void *instance) noexcept { delete static_cast<T *>(instance); }
+
     template <class Body> static int Callback(BML_ModContextHandle handle, Body &&body) noexcept {
         try {
             return body();
@@ -540,30 +626,35 @@ template <class T> struct Export {
             return BML_ERROR_FAIL;
         }
     }
+
     static int BML_CDECL OnLoad(void *p, BML_ModContextHandle h) noexcept {
         return Callback(h, [&] {
             static_cast<T *>(p)->OnLoad(ContextAccess::Make(h));
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnUnload(void *p, BML_ModContextHandle h) noexcept {
         return Callback(h, [&] {
             static_cast<T *>(p)->OnUnload(ContextAccess::Make(h));
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnProcess(void *p, BML_ModContextHandle h) noexcept {
         return Callback(h, [&] {
             static_cast<T *>(p)->OnProcess(ContextAccess::Make(h));
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnGameEvent(void *p, BML_ModContextHandle h, BML_GameEvent e) noexcept {
         return Callback(h, [&] {
             static_cast<T *>(p)->OnGameEvent(ContextAccess::Make(h), e);
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnRender(void *p, BML_ModContextHandle h,
                                   const BML_RenderEvent *e) noexcept {
         if (!e || e->StructSize < BML_RENDER_EVENT_1_0_SIZE)
@@ -574,6 +665,7 @@ template <class T> struct Export {
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnCheatEnabled(void *p, BML_ModContextHandle h,
                                         const BML_CheatEvent *e) noexcept {
         if (!e || e->StructSize < BML_CHEAT_EVENT_1_0_SIZE)
@@ -584,6 +676,7 @@ template <class T> struct Export {
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnLoadObject(void *p, BML_ModContextHandle h,
                                       const BML_LoadObjectEvent *e) noexcept {
         if (!e || e->StructSize < BML_LOAD_OBJECT_EVENT_1_0_SIZE)
@@ -598,6 +691,7 @@ template <class T> struct Export {
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnLoadScript(void *p, BML_ModContextHandle h,
                                       const BML_LoadScriptEvent *e) noexcept {
         if (!e || e->StructSize < BML_LOAD_SCRIPT_EVENT_1_0_SIZE)
@@ -608,6 +702,7 @@ template <class T> struct Export {
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnCommandEvent(void *p, BML_ModContextHandle h,
                                         const BML_CommandEvent *e) noexcept {
         if (!e || e->StructSize < BML_COMMAND_EVENT_1_0_SIZE)
@@ -622,6 +717,7 @@ template <class T> struct Export {
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnModifyConfig(void *p, BML_ModContextHandle h,
                                         const BML_ConfigEvent *e) noexcept {
         if (!e || e->StructSize < BML_CONFIG_EVENT_1_0_SIZE)
@@ -633,6 +729,7 @@ template <class T> struct Export {
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnPhysicalize(void *p, BML_ModContextHandle h,
                                        const BML_PhysicalizeEvent *e) noexcept {
         if (!e || e->StructSize < BML_PHYSICALIZE_EVENT_1_0_SIZE)
@@ -662,6 +759,7 @@ template <class T> struct Export {
             return BML_OK;
         });
     }
+
     static int BML_CDECL OnUnphysicalize(void *p, BML_ModContextHandle h,
                                          const BML_ObjectEvent *e) noexcept {
         if (!e || e->StructSize < BML_OBJECT_EVENT_1_0_SIZE)
@@ -672,6 +770,7 @@ template <class T> struct Export {
             return BML_OK;
         });
     }
+
     static constexpr BML_ModCallbacks Callbacks() noexcept {
         return {
             sizeof(BML_ModCallbacks),
@@ -753,7 +852,10 @@ template <class T> struct Export {
     }
 };
 
-inline Definition ResolveDefinition(Definition definition) { return definition; }
+inline Definition ResolveDefinition(Definition definition) {
+    return definition;
+}
+
 template <class Factory>
     requires std::is_invocable_r_v<Definition, Factory>
 Definition ResolveDefinition(Factory &&factory) {

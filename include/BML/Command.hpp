@@ -36,8 +36,7 @@ using Visitor = std::function<int(const Info &)>;
 
 [[nodiscard]] inline int Visit(const Visitor &visitor) noexcept;
 [[nodiscard]] inline int Find(std::string_view name, Info &out) noexcept;
-[[nodiscard]] inline int ExecuteLine(
-    std::string_view line, int &commandStatus) noexcept;
+[[nodiscard]] inline int ExecuteLine(std::string_view line, int &commandStatus) noexcept;
 
 struct Info {
     Info() = default;
@@ -54,12 +53,10 @@ struct Info {
 
 private:
     explicit Info(const BML_CommandInfo &value)
-        : Handle(value.Handle),
-          Name(value.Name ? value.Name : ""),
+        : Handle(value.Handle), Name(value.Name ? value.Name : ""),
           Alias(value.Alias ? value.Alias : ""),
           Description(value.Description ? value.Description : ""),
-          Usage(value.Usage ? value.Usage : ""),
-          Category(value.Category ? value.Category : ""),
+          Usage(value.Usage ? value.Usage : ""), Category(value.Category ? value.Category : ""),
           Cheat((value.Flags & BML_COMMAND_CHEAT) != 0),
           Hidden((value.Flags & BML_COMMAND_HIDDEN) != 0),
           Enabled((value.Flags & BML_COMMAND_DISABLED) == 0) {}
@@ -95,9 +92,7 @@ public:
         return {m_Value->Input, m_Value->InputLength};
     }
 
-    [[nodiscard]] bool HasInput() const noexcept {
-        return m_Value && m_Value->Input;
-    }
+    [[nodiscard]] bool HasInput() const noexcept { return m_Value && m_Value->Input; }
 
     [[nodiscard]] int Write(std::string_view text) const noexcept {
         if (!m_Value || !m_Value->Write)
@@ -107,7 +102,9 @@ public:
 
 private:
     friend class Registration;
+
     explicit Invocation(const BML_CommandInvocation *value) noexcept : m_Value(value) {}
+
     const BML_CommandInvocation *m_Value = nullptr;
 };
 
@@ -121,7 +118,9 @@ public:
 
 private:
     friend class Registration;
+
     explicit Completion(const BML_CommandCompletion *value) noexcept : m_Value(value) {}
+
     const BML_CommandCompletion *m_Value = nullptr;
 };
 
@@ -156,16 +155,17 @@ public:
 
 private:
     friend class Registration;
-    explicit CompletionRequest(
-        const BML_CommandCompletionRequest *value) noexcept : m_Value(value) {}
+
+    explicit CompletionRequest(const BML_CommandCompletionRequest *value) noexcept
+        : m_Value(value) {}
+
     const BML_CommandCompletionRequest *m_Value = nullptr;
 };
 
 using ExecuteCallback = std::function<int(const Invocation &)>;
 // Return BML_OK after adding every candidate, or a BML error to discard this
 // completion result.
-using CompleteCallback =
-    std::function<int(const CompletionRequest &, const Completion &)>;
+using CompleteCallback = std::function<int(const CompletionRequest &, const Completion &)>;
 
 // Register, Unregister, SetEnabled, and destruction belong on the game thread.
 // Keep a Registration alive while it is registered. Destruction requests
@@ -173,17 +173,14 @@ using CompleteCallback =
 // keeps it alive until every in-progress command dispatch has finished.
 class Registration final {
 private:
-    BML_DECLARE_INTERFACE_TRAITS(
-        InterfaceTraits, BML_CommandInterface, BML_COMMAND_INTERFACE_ID,
-        BML_COMMAND_INTERFACE_MAJOR, ExecuteLine);
+    BML_DECLARE_INTERFACE_TRAITS(InterfaceTraits, BML_CommandInterface, BML_COMMAND_INTERFACE_ID,
+                                 BML_COMMAND_INTERFACE_MAJOR, ExecuteLine);
 
     struct CallbackState {
         CallbackState(ExecuteCallback execute, CompleteCallback complete) noexcept
             : Execute(std::move(execute)), Complete(std::move(complete)) {}
 
-        void Retain() noexcept {
-            References.fetch_add(1, std::memory_order_relaxed);
-        }
+        void Retain() noexcept { References.fetch_add(1, std::memory_order_relaxed); }
 
         void Release() noexcept {
             if (References.fetch_sub(1, std::memory_order_acq_rel) == 1)
@@ -200,9 +197,8 @@ private:
     class CallbackReference {
     public:
         explicit CallbackReference(CallbackState *state) noexcept : m_State(state) {}
-        ~CallbackReference() {
-            m_State->Release();
-        }
+
+        ~CallbackReference() { m_State->Release(); }
 
         CallbackReference(const CallbackReference &) = delete;
         CallbackReference &operator=(const CallbackReference &) = delete;
@@ -213,19 +209,16 @@ private:
 
 public:
     Registration() noexcept = default;
-    ~Registration() {
-        Dispose();
-    }
+
+    ~Registration() { Dispose(); }
 
     Registration(const Registration &) = delete;
     Registration &operator=(const Registration &) = delete;
 
     Registration(Registration &&other) noexcept
-        : m_Interface(std::move(other.m_Interface)),
-          m_OwnerId(std::move(other.m_OwnerId)),
+        : m_Interface(std::move(other.m_Interface)), m_OwnerId(std::move(other.m_OwnerId)),
           m_State(std::exchange(other.m_State, nullptr)),
-          m_Handle(std::exchange(
-              other.m_Handle, BML_COMMAND_INVALID_HANDLE)) {}
+          m_Handle(std::exchange(other.m_Handle, BML_COMMAND_INVALID_HANDLE)) {}
 
     Registration &operator=(Registration &&other) noexcept {
         if (this != &other) {
@@ -233,23 +226,20 @@ public:
             m_Interface = std::move(other.m_Interface);
             m_OwnerId = std::move(other.m_OwnerId);
             m_State = std::exchange(other.m_State, nullptr);
-            m_Handle = std::exchange(
-                other.m_Handle, BML_COMMAND_INVALID_HANDLE);
+            m_Handle = std::exchange(other.m_Handle, BML_COMMAND_INVALID_HANDLE);
         }
         return *this;
     }
 
-    [[nodiscard]] int Register(const Definition &definition,
-                               ExecuteCallback execute,
+    [[nodiscard]] int Register(const Definition &definition, ExecuteCallback execute,
                                CompleteCallback complete = {},
                                const char *ownerId = nullptr) noexcept {
         if (m_Handle != BML_COMMAND_INVALID_HANDLE)
             return BML_ERROR_ALREADY_EXISTS;
         if (!execute || definition.Name.empty() ||
             definition.Name.size() > BML_COMMAND_MAX_NAME_BYTES ||
-            definition.Alias.size() > BML_COMMAND_MAX_NAME_BYTES ||
-            ContainsNull(definition.Name) || ContainsNull(definition.Alias) ||
-            ContainsNull(definition.Description) ||
+            definition.Alias.size() > BML_COMMAND_MAX_NAME_BYTES || ContainsNull(definition.Name) ||
+            ContainsNull(definition.Alias) || ContainsNull(definition.Description) ||
             ContainsNull(definition.Usage) || ContainsNull(definition.Category))
             return BML_ERROR_INVALID_PARAMETER;
 
@@ -274,10 +264,9 @@ public:
                 definition.Description.c_str(),
                 definition.Usage.c_str(),
                 definition.Category.c_str(),
-                static_cast<BML_CommandFlags>(
-                    (definition.Cheat ? BML_COMMAND_CHEAT : 0) |
-                    (definition.Hidden ? BML_COMMAND_HIDDEN : 0) |
-                    (definition.Enabled ? 0 : BML_COMMAND_DISABLED)),
+                static_cast<BML_CommandFlags>((definition.Cheat ? BML_COMMAND_CHEAT : 0) |
+                                              (definition.Hidden ? BML_COMMAND_HIDDEN : 0) |
+                                              (definition.Enabled ? 0 : BML_COMMAND_DISABLED)),
                 state,
                 &Execute,
                 state->Complete ? &CompleteCandidates : nullptr,
@@ -315,7 +304,10 @@ public:
     }
 
     [[nodiscard]] int Unregister() noexcept {
-        if (m_State && m_State->HostReleased.load(std::memory_order_acquire)) { Reset(); return BML_OK; }
+        if (m_State && m_State->HostReleased.load(std::memory_order_acquire)) {
+            Reset();
+            return BML_OK;
+        }
         if (m_Handle == BML_COMMAND_INVALID_HANDLE)
             return BML_OK;
         if (!m_Interface)
@@ -325,14 +317,14 @@ public:
 
         const char *ownerId = m_OwnerId.empty() ? nullptr : m_OwnerId.c_str();
         const int status = m_Interface->Unregister(ownerId, m_Handle);
-        if (status == BML_OK || status == BML_ERROR_NOT_FOUND ||
-            status == BML_ERROR_INVALID_HANDLE)
+        if (status == BML_OK || status == BML_ERROR_NOT_FOUND || status == BML_ERROR_INVALID_HANDLE)
             Reset();
         return status;
     }
 
     [[nodiscard]] bool IsRegistered() const noexcept {
-        return m_Handle != BML_COMMAND_INVALID_HANDLE && m_State && !m_State->HostReleased.load(std::memory_order_acquire);
+        return m_Handle != BML_COMMAND_INVALID_HANDLE && m_State &&
+               !m_State->HostReleased.load(std::memory_order_acquire);
     }
 
     [[nodiscard]] BML_CommandHandle Handle() const noexcept { return m_Handle; }
@@ -347,10 +339,8 @@ public:
     }
 
 private:
-    static int BML_CDECL Execute(
-        void *userData, const BML_CommandInvocation *invocation) noexcept {
-        if (!userData || !invocation ||
-            invocation->StructSize < BML_COMMAND_INVOCATION_1_0_SIZE)
+    static int BML_CDECL Execute(void *userData, const BML_CommandInvocation *invocation) noexcept {
+        if (!userData || !invocation || invocation->StructSize < BML_COMMAND_INVOCATION_1_0_SIZE)
             return 1;
         CallbackState *state = static_cast<CallbackState *>(userData);
         state->Retain();
@@ -358,17 +348,16 @@ private:
         if (state->Abandoned.load(std::memory_order_acquire))
             return BML_COMMAND_STATUS_FAILURE;
         try {
-            return state->Execute
-                ? state->Execute(Invocation(invocation))
-                : BML_COMMAND_STATUS_FAILURE;
+            return state->Execute ? state->Execute(Invocation(invocation))
+                                  : BML_COMMAND_STATUS_FAILURE;
         } catch (...) {
             return BML_COMMAND_STATUS_FAILURE;
         }
     }
 
-    static int BML_CDECL CompleteCandidates(
-        void *userData, const BML_CommandCompletionRequest *request,
-        const BML_CommandCompletion *completion) noexcept {
+    static int BML_CDECL CompleteCandidates(void *userData,
+                                            const BML_CommandCompletionRequest *request,
+                                            const BML_CommandCompletion *completion) noexcept {
         if (!userData || !request || !completion ||
             request->StructSize < BML_COMMAND_COMPLETION_REQUEST_1_0_SIZE ||
             completion->StructSize < BML_COMMAND_COMPLETION_1_0_SIZE)
@@ -380,8 +369,8 @@ private:
             return BML_ERROR_COMMAND_EXECUTION;
         try {
             return state->Complete
-                ? state->Complete(CompletionRequest(request), Completion(completion))
-                : BML_OK;
+                       ? state->Complete(CompletionRequest(request), Completion(completion))
+                       : BML_OK;
         } catch (const std::bad_alloc &) {
             return BML_ERROR_OUT_OF_MEMORY;
         } catch (...) {
@@ -390,21 +379,27 @@ private:
     }
 
     static void BML_CDECL ReleaseState(void *userData) noexcept {
-        if (auto *state=static_cast<CallbackState *>(userData)) { state->HostReleased.store(true,std::memory_order_release);state->Release(); }
+        if (auto *state = static_cast<CallbackState *>(userData)) {
+            state->HostReleased.store(true, std::memory_order_release);
+            state->Release();
+        }
     }
 
     void Reset() noexcept {
-        if (auto *state=std::exchange(m_State,nullptr)) state->Release();
+        if (auto *state = std::exchange(m_State, nullptr))
+            state->Release();
         m_Interface.Reset();
         m_OwnerId.clear();
         m_Handle = BML_COMMAND_INVALID_HANDLE;
     }
 
     void Abandon() noexcept {
-        if(m_State)m_State->Abandoned.store(true,std::memory_order_release);
-        if(IsRegistered() && m_Interface && BML_IFACE_HAS(m_Interface.Get(), BML_CommandInterface, SetEnabled)) {
-            const char *ownerId=m_OwnerId.empty()?nullptr:m_OwnerId.c_str();
-            (void)m_Interface->SetEnabled(ownerId,m_Handle,0);
+        if (m_State)
+            m_State->Abandoned.store(true, std::memory_order_release);
+        if (IsRegistered() && m_Interface &&
+            BML_IFACE_HAS(m_Interface.Get(), BML_CommandInterface, SetEnabled)) {
+            const char *ownerId = m_OwnerId.empty() ? nullptr : m_OwnerId.c_str();
+            (void)m_Interface->SetEnabled(ownerId, m_Handle, 0);
         }
         Reset();
     }
@@ -420,8 +415,7 @@ private:
 
     friend int Visit(const Visitor &visitor) noexcept;
     friend int Find(std::string_view name, Info &out) noexcept;
-    friend int ExecuteLine(
-        std::string_view line, int &commandStatus) noexcept;
+    friend int ExecuteLine(std::string_view line, int &commandStatus) noexcept;
 
     Interfaces::Reference<InterfaceTraits> m_Interface;
     std::string m_OwnerId;
@@ -442,9 +436,9 @@ private:
     struct State {
         const Visitor *Callback;
     } state = {&visitor};
+
     const auto visit = [](void *userData, const BML_CommandInfo *wire) noexcept {
-        if (!userData || !wire ||
-            wire->StructSize < BML_COMMAND_INFO_1_0_SIZE)
+        if (!userData || !wire || wire->StructSize < BML_COMMAND_INFO_1_0_SIZE)
             return BML_ERROR_MALFORMED_MESSAGE;
         State *state = static_cast<State *>(userData);
         try {
@@ -473,10 +467,8 @@ private:
 
     try {
         const std::string terminated(name);
-        const auto store = [](void *userData,
-                              const BML_CommandInfo *wire) noexcept {
-            if (!userData || !wire ||
-                wire->StructSize < BML_COMMAND_INFO_1_0_SIZE)
+        const auto store = [](void *userData, const BML_CommandInfo *wire) noexcept {
+            if (!userData || !wire || wire->StructSize < BML_COMMAND_INFO_1_0_SIZE)
                 return BML_ERROR_MALFORMED_MESSAGE;
             try {
                 *static_cast<Info *>(userData) = Info(*wire);
@@ -495,11 +487,9 @@ private:
     }
 }
 
-[[nodiscard]] inline int ExecuteLine(std::string_view line,
-                                     int &commandStatus) noexcept {
+[[nodiscard]] inline int ExecuteLine(std::string_view line, int &commandStatus) noexcept {
     commandStatus = BML_COMMAND_STATUS_FAILURE;
-    if (line.size() > BML_COMMAND_MAX_LINE_BYTES ||
-        line.find('\0') != std::string_view::npos)
+    if (line.size() > BML_COMMAND_MAX_LINE_BYTES || line.find('\0') != std::string_view::npos)
         return BML_ERROR_INVALID_PARAMETER;
 
     Interfaces::Reference<Registration::InterfaceTraits> interfaceReference;
@@ -525,22 +515,32 @@ class View {
 public:
     explicit View(const Mod::Context &context) noexcept : m_Context(context) {}
     [[nodiscard]] Result<Registration> Register(const Definition &definition,
-        ExecuteCallback execute, CompleteCallback complete = {}) const try {
+                                                ExecuteCallback execute,
+                                                CompleteCallback complete = {}) const try {
         auto owner = m_Context.Owner();
-        if (!owner) return Result<Registration>::Failure(owner.Code());
+        if (!owner)
+            return Result<Registration>::Failure(owner.Code());
         auto info = owner.Value().Read();
-        if (!info) return Result<Registration>::Failure(info.Code());
+        if (!info)
+            return Result<Registration>::Failure(info.Code());
         Registration registration;
         const int code = registration.Register(definition, std::move(execute), std::move(complete),
-                                                info.Value().Definition.Id.c_str());
-        return code == BML_OK ? Result<Registration>::Success(std::move(registration)) : Result<Registration>::Failure(code);
-    } catch (const std::bad_alloc &) { return Result<Registration>::Failure(BML_ERROR_OUT_OF_MEMORY); }
-      catch (...) { return Result<Registration>::Failure(BML_ERROR_FAIL); }
+                                               info.Value().Definition.Id.c_str());
+        return code == BML_OK ? Result<Registration>::Success(std::move(registration))
+                              : Result<Registration>::Failure(code);
+    } catch (const std::bad_alloc &) {
+        return Result<Registration>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Registration>::Failure(BML_ERROR_FAIL);
+    }
+
 private:
     Mod::Context m_Context;
 };
 
 } // namespace BML::Command
 
-inline BML::Command::View BML::Mod::Context::Commands() const noexcept { return BML::Command::View(*this); }
+inline BML::Command::View BML::Mod::Context::Commands() const noexcept {
+    return BML::Command::View(*this);
+}
 #endif // BML_COMMAND_HPP

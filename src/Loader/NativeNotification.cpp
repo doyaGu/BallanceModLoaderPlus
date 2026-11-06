@@ -16,6 +16,7 @@ struct NativeNotification::Storage {
         Physicalize,
         Unphysicalize
     } Type = None;
+
     BML_GameEvent GameValue{};
     BML_RenderEvent RenderValue{};
     BML_CheatEvent CheatValue{};
@@ -31,10 +32,12 @@ struct NativeNotification::Storage {
     std::vector<std::string> Arguments;
     std::vector<const char *> ArgumentViews;
 };
+
 namespace {
 struct Pool {
     std::vector<std::unique_ptr<NativeNotification::Storage>> Frames;
     size_t Depth = 0;
+
     NativeNotification::Storage *Acquire() {
         if (Depth == Frames.size())
             Frames.push_back(std::make_unique<NativeNotification::Storage>());
@@ -43,10 +46,13 @@ struct Pool {
         return frame;
     }
 };
+
 thread_local Pool s_Pool;
 } // namespace
+
 NativeNotification::NativeNotification(ModContext &context)
     : m_Context(context), m_Storage(s_Pool.Acquire()) {}
+
 NativeNotification::~NativeNotification() {
     assert(s_Pool.Depth);
     --s_Pool.Depth;
@@ -56,14 +62,17 @@ void NativeNotification::Prepare(void (IMod::*callback)()) {
     if (callback == &IMod::OnProcess)
         m_Storage->Type = Storage::Process;
 }
+
 void NativeNotification::Prepare(void (IMod::*)(CK_RENDER_FLAGS), CK_RENDER_FLAGS flags) {
     m_Storage->Type = Storage::Render;
     m_Storage->RenderValue = {sizeof(BML_RenderEvent), static_cast<uint32_t>(flags)};
 }
+
 void NativeNotification::Prepare(void (IMod::*)(bool), bool enabled) {
     m_Storage->Type = Storage::Cheat;
     m_Storage->CheatValue = {sizeof(BML_CheatEvent), enabled ? 1u : 0u};
 }
+
 void NativeNotification::Prepare(void (IMod::*)(const char *, CKBehavior *), const char *filename,
                                  CKBehavior *script) {
     auto &s = *m_Storage;
@@ -72,10 +81,12 @@ void NativeNotification::Prepare(void (IMod::*)(const char *, CKBehavior *), con
     s.LoadScriptValue = {sizeof(BML_LoadScriptEvent), s.Text[0].c_str(),
                          m_Context.ObjectRefs().Issue(script)};
 }
+
 void NativeNotification::Prepare(void (IMod::*)(CK3dEntity *), CK3dEntity *object) {
     m_Storage->Type = Storage::Unphysicalize;
     m_Storage->ObjectValue = {sizeof(BML_ObjectEvent), m_Context.ObjectRefs().Issue(object)};
 }
+
 void NativeNotification::Prepare(void (IMod::*callback)(ICommand *,
                                                         const std::vector<std::string> &),
                                  ICommand *command, const std::vector<std::string> &args) {
@@ -95,6 +106,7 @@ void NativeNotification::Prepare(void (IMod::*callback)(ICommand *,
                       s.ArgumentViews.size(),
                       command && command->IsCheat() ? 1u : 0u};
 }
+
 void NativeNotification::Prepare(void (IMod::*)(const char *, CKBOOL, const char *, CK_CLASSID,
                                                 CKBOOL, CKBOOL, CKBOOL, CKBOOL, XObjectArray *,
                                                 CKObject *),
@@ -124,6 +136,7 @@ void NativeNotification::Prepare(void (IMod::*)(const char *, CKBOOL, const char
                          s.Objects.size(),
                          m_Context.ObjectRefs().Issue(master)};
 }
+
 void NativeNotification::Prepare(void (IMod::*)(CK3dEntity *, CKBOOL, float, float, float,
                                                 const char *, CKBOOL, CKBOOL, CKBOOL, float, float,
                                                 const char *, VxVector, int, CKMesh **, int,
@@ -203,6 +216,7 @@ int NativeNotification::Dispatch(NativeMod &mod) const {
         return BML_OK;
     }
 }
+
 const char *NativeNotification::Name() const noexcept {
     static constexpr const char *names[] = {
         "none",         "OnProcess",    "OnRender",       "OnGameEvent",   "OnCheatEnabled",

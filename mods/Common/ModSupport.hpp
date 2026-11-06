@@ -1,5 +1,6 @@
 #ifndef BML_MODS_COMMON_MODSUPPORT_HPP
 #define BML_MODS_COMMON_MODSUPPORT_HPP
+
 #include <BML/BMLAll.h>
 #include <BML/Engine.hpp>
 #include <BML/ImGui.hpp>
@@ -16,33 +17,44 @@
 #include <memory>
 #include <string>
 #include <vector>
+
 namespace ModSupport {
 using Context = BML::Mod::Context;
+
 inline void Check(int code) {
     if (code != BML_OK)
         throw std::runtime_error("BML operation failed (" + std::to_string(code) + ")");
 }
-inline CKContext *Engine(const Context &c) { return BML::Engine::BorrowContext(c).Value(); }
+
+inline CKContext *Engine(const Context &c) {
+    return BML::Engine::BorrowContext(c).Value();
+}
+
 inline CKRenderContext *Render(const Context &c) {
     return BML::Engine::BorrowRenderContext(c).Value();
 }
+
 template <class T> T *Find(const Context &c, const char *name) {
     return static_cast<T *>(
         Engine(c)->GetObjectByNameAndClass((CKSTRING)name, BML::Engine::Detail::Class<T>::Value));
 }
+
 inline BML::Gameplay::State GameState() {
     BML::Gameplay::State state{};
     Check(BML::Gameplay::ReadState(state));
     return state;
 }
+
 inline bool CheatEnabled() {
     bool value = false;
     Check(BML::Gameplay::ReadCheatEnabled(value));
     return value;
 }
+
 inline BML::Input::KeyboardState Keyboard(const Context &c, uint32_t flags = 0) {
     return c.Input().ReadKeyboard(flags).Value();
 }
+
 inline void Log(const Context &c, uint32_t level, const char *format, ...) {
     va_list args;
     va_start(args, format);
@@ -68,23 +80,29 @@ inline void Log(const Context &c, uint32_t level, const char *format, ...) {
     else
         (void)c.LogInfo(value);
 }
+
 inline BML_ObjectRef Reference(const Context &c, CKObject *o) {
     return o ? BML::Engine::ReferenceObject(c, o).Value() : BML_ObjectRef{};
 }
+
 inline void SetIC(const Context &c, CKBeObject *o, bool hierarchy = false) {
     Check(BML::Scene::SetIC(c, Reference(c, o), hierarchy));
 }
+
 inline void RestoreIC(const Context &c, CKBeObject *o, bool hierarchy = false) {
     Check(BML::Scene::RestoreIC(c, Reference(c, o), hierarchy));
 }
+
 inline void Show(const Context &c, CKBeObject *o, CK_OBJECT_SHOWOPTION option = CKSHOW,
                  bool hierarchy = false) {
     Check(BML::Scene::Show(c, Reference(c, o), option, hierarchy));
 }
+
 inline void ExecuteCommand(const char *text) {
     int status = 0;
     Check(BML::Command::ExecuteLine(text, status));
 }
+
 inline bool ResourceIs(std::string_view path, std::string_view expected) {
     if (path.size() != expected.size())
         return false;
@@ -99,26 +117,31 @@ inline bool ResourceIs(std::string_view path, std::string_view expected) {
     }
     return true;
 }
+
 // Retain each registration, prune completed timers only when new work is added.
 class Timers {
-  public:
+public:
     Timers() = default;
+
     explicit Timers(Context c) : m_Context(c) {}
+
     template <class F> void AfterTicks(uint64_t ticks, F &&f) {
         Keep(BML::Timer::SetTimeoutTicks(
             m_Context, ticks, [fn = std::forward<F>(f)](const auto &, const auto &) { fn(); }));
     }
+
     template <class F> void After(double ms, F &&f) {
         Keep(BML::Timer::SetTimeout(
             m_Context, ms, [fn = std::forward<F>(f)](const auto &, const auto &) { fn(); }));
     }
+
     template <class F> void EveryTicks(uint64_t ticks, F &&f) {
         Keep(BML::Timer::SetIntervalTicks(
             m_Context, ticks,
             [fn = std::forward<F>(f)](const auto &, const auto &) { return fn(); }));
     }
 
-  private:
+private:
     void Keep(BML::Result<BML::Timer::Registration> r) {
         Check(r.Code());
         m_Values.erase(std::remove_if(m_Values.begin(), m_Values.end(),
@@ -126,9 +149,11 @@ class Timers {
                        m_Values.end());
         m_Values.push_back(r.Take());
     }
+
     Context m_Context;
     std::vector<BML::Timer::Registration> m_Values;
 };
+
 inline BML::Behavior::Session &Session(BML::Behavior::Session &s, const Context &c) {
     if (!s) {
         auto owner = c.Owner().Value().Read().Value();
@@ -139,6 +164,7 @@ inline BML::Behavior::Session &Session(BML::Behavior::Session &s, const Context 
     }
     return s;
 }
+
 inline BML::Behavior::Blocks::Physicalize::Options
 PhysicsOptions(CK3dEntity *target, bool fixed, float friction, float elasticity, float mass,
                const char *group, bool frozen, bool collision, bool massCenter, float linear,
@@ -159,6 +185,7 @@ PhysicsOptions(CK3dEntity *target, bool fixed, float friction, float elasticity,
     o.MassCenter = center;
     return o;
 }
+
 inline void RunPhysics(BML::Behavior::Session &s, const Context &c,
                        BML::Behavior::Blocks::Physicalize::Options o, int input = 0) {
     auto block = BML::Behavior::Blocks::Physicalize::Make(Session(s, c), o);
@@ -166,10 +193,12 @@ inline void RunPhysics(BML::Behavior::Session &s, const Context &c,
     auto result = block.Value().Call(BML::Behavior::Selector::At(input), BML::Behavior::Ignore());
     Check(result.Code());
 }
+
 inline void Unphysicalize(BML::Behavior::Session &s, const Context &c, CK3dEntity *o) {
     RunPhysics(s, c,
                PhysicsOptions(o, false, .7f, .4f, 1, "", false, true, false, .1f, .1f, "", {}), 1);
 }
+
 inline void PhysicalizeBall(BML::Behavior::Session &s, const Context &c, CK3dEntity *target,
                             bool fixed = false, float friction = .7f, float elasticity = .4f,
                             float mass = 1, const char *group = "", bool frozen = false,
@@ -183,6 +212,7 @@ inline void PhysicalizeBall(BML::Behavior::Session &s, const Context &c, CK3dEnt
     o.Radius = radius;
     RunPhysics(s, c, std::move(o));
 }
+
 inline void PhysicalizeConvex(BML::Behavior::Session &s, const Context &c, CK3dEntity *target,
                               bool fixed = false, float friction = .7f, float elasticity = .4f,
                               float mass = 1, const char *group = "", bool frozen = false,
@@ -194,6 +224,7 @@ inline void PhysicalizeConvex(BML::Behavior::Session &s, const Context &c, CK3dE
     o.Mesh = mesh;
     RunPhysics(s, c, std::move(o));
 }
+
 inline CKObject *LoadObject(BML::Behavior::Session &s, const Context &c, const char *file,
                             bool rename, const char *master) {
     BML::Behavior::Blocks::ObjectLoad::Options options;
@@ -233,33 +264,43 @@ inline CKObject *LoadObject(BML::Behavior::Session &s, const Context &c, const c
     }
     return o;
 }
+
 inline int ParseInteger(const std::string &v, int minimum = INT_MIN, int maximum = INT_MAX) {
     return std::clamp(std::atoi(v.c_str()), minimum, maximum);
 }
+
 inline float ParseFloat(const std::string &v, float minimum = -FLT_MAX, float maximum = FLT_MAX) {
     return std::clamp(float(std::atof(v.c_str())), minimum, maximum);
 }
+
 // CKObjectHandle supplies the engine's own lifetime generation. This local
 // convenience owns no CK object and invents no cross-module handle type.
 template <class T> class Object {
-  public:
+public:
     Object() = default;
+
     Object(std::nullptr_t) {}
+
     Object(T *p) { *this = p; }
+
     Object &operator=(T *p) {
         m_Context = p ? p->GetCKContext() : nullptr;
         m_Handle = p ? m_Context->GetObjectHandle(p->GetID()) : CKObjectHandle{};
         return *this;
     }
+
     Object &operator=(std::nullptr_t) {
         m_Context = nullptr;
         m_Handle = {};
         return *this;
     }
+
     T *Get() const {
         return m_Context ? static_cast<T *>(m_Context->GetObjectByHandle(m_Handle)) : nullptr;
     }
+
     operator T *() const { return Get(); }
+
     T *operator->() const {
         auto *p = Get();
         if (!p)
@@ -267,7 +308,7 @@ template <class T> class Object {
         return p;
     }
 
-  private:
+private:
     CKContext *m_Context = nullptr;
     CKObjectHandle m_Handle{};
 };

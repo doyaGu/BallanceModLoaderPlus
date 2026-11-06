@@ -14,6 +14,7 @@ struct Definition {
     double DelayMs = 0;
     uint64_t DelayTicks = 0, RepeatCount = 0;
 };
+
 struct Event {
     BML_TimerHandle Handle = 0;
     std::string_view Name;
@@ -22,6 +23,7 @@ struct Event {
     int64_t RemainingIterations = 0;
     float Progress = 0;
 };
+
 struct Info {
     BML_TimerHandle Handle = 0;
     std::string Name;
@@ -30,16 +32,21 @@ struct Info {
     int64_t RemainingIterations = 0;
     float Progress = 0;
 };
+
 using Callback = std::function<bool(const Mod::Context &, const Event &)>;
 using OnceCallback = std::function<void(const Mod::Context &, const Event &)>;
 
 class Registration {
-  public:
+public:
     Registration() noexcept = default;
+
     ~Registration() noexcept { Dispose(); }
+
     Registration(const Registration &) = delete;
     Registration &operator=(const Registration &) = delete;
+
     Registration(Registration &&other) noexcept { Move(other); }
+
     Registration &operator=(Registration &&other) noexcept {
         if (this != &other) {
             Dispose();
@@ -47,6 +54,7 @@ class Registration {
         }
         return *this;
     }
+
     int Register(const Mod::Context &context, const Definition &definition,
                  Callback callback) noexcept {
         if (IsValid())
@@ -90,6 +98,7 @@ class Registration {
             return BML_OK;
         });
     }
+
     [[nodiscard]] bool IsValid() const noexcept {
         return m_Handle && m_State && !m_State->Released.load(std::memory_order_acquire);
     }
@@ -120,12 +129,15 @@ class Registration {
     } catch (...) {
         return Result<Info>::Failure(BML_ERROR_FAIL);
     }
+
     int Pause() noexcept {
         return IsValid() ? m_Api->Pause(m_Context.Handle(), m_Handle) : BML_ERROR_INVALID_HANDLE;
     }
+
     int Resume() noexcept {
         return IsValid() ? m_Api->Resume(m_Context.Handle(), m_Handle) : BML_ERROR_INVALID_HANDLE;
     }
+
     int Cancel() noexcept {
         if (!IsValid()) {
             m_Handle = 0;
@@ -140,11 +152,12 @@ class Registration {
         return code;
     }
 
-  private:
+private:
     struct State {
         Callback Function;
         std::atomic<bool> Abandoned{false}, Released{false};
     };
+
     static int BML_CDECL Invoke(void *data, BML_ModContextHandle h, const BML_TimerEvent *e,
                                 uint32_t *keep) noexcept {
         if (!data || !e || !keep || e->StructSize < BML_TIMER_EVENT_1_0_SIZE)
@@ -167,11 +180,13 @@ class Registration {
             return BML_OK;
         });
     }
+
     static void BML_CDECL Release(void *data) noexcept {
         auto *holder = static_cast<std::shared_ptr<State> *>(data);
         (*holder)->Released.store(true, std::memory_order_release);
         delete holder;
     }
+
     void Dispose() noexcept {
         if (Cancel() != BML_OK) {
             // We still hold a local reference, even if the host released its own
@@ -183,17 +198,20 @@ class Registration {
             m_State.reset();
         }
     }
+
     void Move(Registration &other) noexcept {
         m_Context = other.m_Context;
         m_Api = other.m_Api;
         m_Handle = std::exchange(other.m_Handle, 0);
         m_State = std::move(other.m_State);
     }
+
     Mod::Context m_Context;
     const BML_TimerInterface *m_Api = nullptr;
     BML_TimerHandle m_Handle = 0;
     std::shared_ptr<State> m_State;
 };
+
 namespace Detail {
 inline Result<Registration> Register(const Mod::Context &ctx, Definition definition,
                                      Callback callback) try {
@@ -275,10 +293,11 @@ inline Result<Registration> Register(const Mod::Context &ctx, Definition definit
 } catch (...) {
     return Result<Registration>::Failure(BML_ERROR_FAIL);
 }
+
 // A non-owning service view. Registrations still make cancellation ownership
 // explicit; this view only binds Context and adapts ordinary author lambdas.
 class View {
-  public:
+public:
     explicit View(const Mod::Context &context) noexcept : m_Context(context) {}
     [[nodiscard]] Result<Registration> Register(const Definition &definition,
                                                 Callback callback) const try {
@@ -344,7 +363,7 @@ class View {
         return Result<Registration>::Failure(BML_ERROR_FAIL);
     }
 
-  private:
+private:
     template <class F>
     static decltype(auto) Invoke(F &function, const Mod::Context &context, const Event &event) {
         if constexpr (std::is_invocable_v<F &, const Mod::Context &, const Event &>)
@@ -356,12 +375,14 @@ class View {
             return std::invoke(function);
         }
     }
+
     template <class F> static OnceCallback Once(F &&function) {
         return [callback = std::forward<F>(function)](const Mod::Context &context,
                                                       const Event &event) mutable {
             (void)Invoke(callback, context, event);
         };
     }
+
     template <class F> static Callback Loop(F &&function) {
         return [callback = std::forward<F>(function)](const Mod::Context &context,
                                                       const Event &event) mutable {
@@ -377,9 +398,11 @@ class View {
             }
         };
     }
+
     Mod::Context m_Context;
 };
 } // namespace BML::Timer
+
 inline BML::Timer::View BML::Mod::Context::Timers() const noexcept {
     return BML::Timer::View(*this);
 }

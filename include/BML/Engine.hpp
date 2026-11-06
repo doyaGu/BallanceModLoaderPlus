@@ -78,6 +78,7 @@ BML_ENGINE_CLASS(CKLevel, CKCID_LEVEL);
 } catch (...) {
     return Result<BML_ObjectRef>::Failure(BML_ERROR_FAIL);
 }
+
 template <class T>
 [[nodiscard]] Result<T *> BorrowObject(const Mod::Context &ctx, BML_ObjectRef object) {
     static_assert(std::is_base_of_v<CKObject, T>);

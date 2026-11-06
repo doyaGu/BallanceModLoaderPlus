@@ -1,8 +1,10 @@
 #ifndef BML_API_GAMEPLAYREGISTRATIONAPI_H
 #define BML_API_GAMEPLAYREGISTRATIONAPI_H
+
 #include "BML/Gameplay.h"
 #include "BML/Scene.h"
 #include "BML/UI.h"
+
 namespace BML::Api {
 int BML_CDECL RegisterBallType(BML_ModContextHandle, const BML_BallTypeDefinition *);
 int BML_CDECL RegisterFloorType(BML_ModContextHandle, const BML_FloorTypeDefinition *);

@@ -1,5 +1,6 @@
 #ifndef BML_MODDEFINITIONVALIDATION_H
 #define BML_MODDEFINITIONVALIDATION_H
+
 #include "BML/IMod.h"
 #include <limits>
 #include <string_view>
@@ -14,6 +15,7 @@ inline bool IsModId(std::string_view value) noexcept {
             return false;
     return true;
 }
+
 // Native declarations and script metadata share the canonical version grammar.
 inline bool ParseModVersion(std::string_view value, BMLVersion &version) noexcept {
     size_t pos = 0;

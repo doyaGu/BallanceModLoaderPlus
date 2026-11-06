@@ -50,9 +50,11 @@ template <class Body> int Guard(Body &&body) noexcept {
 // Adapt module-local visitors to an explicit cdecl function pointer even when
 // the consumer changes its compiler's default calling convention.
 template <auto Function, class Signature = decltype(+Function)> struct Cdecl;
+
 template <auto Function, class R, class... Args> struct Cdecl<Function, R (*)(Args...)> {
     static R BML_CDECL Call(Args... args) noexcept { return Function(std::forward<Args>(args)...); }
 };
+
 template <auto Function, class R, class... Args> struct Cdecl<Function, R (*)(Args...) noexcept> {
     static R BML_CDECL Call(Args... args) noexcept { return Function(std::forward<Args>(args)...); }
 };

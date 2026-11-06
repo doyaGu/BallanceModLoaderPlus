@@ -1,7 +1,9 @@
 #ifndef BML_API_HANDLESEQUENCE_H
 #define BML_API_HANDLESEQUENCE_H
+
 #include <atomic>
 #include <cstdint>
+
 namespace BML::Api {
 // Zero is a permanent exhausted sentinel. Wrapping must never make an old
 // published handle designate a different object in the same loader run.

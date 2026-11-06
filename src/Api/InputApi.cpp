@@ -87,6 +87,7 @@ int InputApi::ReadKeyboard(ModContext &ctx, uint32_t flags, BML_InputKeyboardSta
     WriteOutput(out, value, BML_INPUT_KEYBOARD_STATE_1_0_SIZE);
     return BML_OK;
 }
+
 int InputApi::AcquireBlock(ModContext &ctx, IMod &owner, uint32_t mask, BML_InputBlockHandle *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -121,6 +122,7 @@ int InputApi::AcquireBlock(ModContext &ctx, IMod &owner, uint32_t mask, BML_Inpu
     *out = h;
     return BML_OK;
 }
+
 int InputApi::ReleaseBlock(ModContext &ctx, IMod &owner, BML_InputBlockHandle h) {
     const auto it = m_Blocks.find(h);
     if (it == m_Blocks.end())
@@ -134,6 +136,7 @@ int InputApi::ReleaseBlock(ModContext &ctx, IMod &owner, BML_InputBlockHandle h)
     m_Blocks.erase(it);
     return BML_OK;
 }
+
 void InputApi::CleanupOwner(ModContext &ctx, IMod &owner) noexcept {
     for (auto it = m_Blocks.begin(); it != m_Blocks.end();) {
         if (it->second.Owner != &owner) {
@@ -145,6 +148,7 @@ void InputApi::CleanupOwner(ModContext &ctx, IMod &owner) noexcept {
         it = m_Blocks.erase(it);
     }
 }
+
 namespace {
 template <class Body> int Serve(BML_ModContextHandle h, Body &&body) {
     return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
@@ -152,11 +156,13 @@ template <class Body> int Serve(BML_ModContextHandle h, Body &&body) {
         return input ? body(ctx, owner, *input) : BML_ERROR_UNAVAILABLE;
     });
 }
+
 int BML_CDECL ReadKeyboard(BML_ModContextHandle h, uint32_t flags, BML_InputKeyboardState *out) {
     return WithModContext(h, [&](ModContext &ctx, IMod &) {
         return ctx.GetInputApi().ReadKeyboard(ctx, flags, out);
     });
 }
+
 int BML_CDECL ReadMouse(BML_ModContextHandle h, uint32_t flags, BML_InputMouseState *out) {
     if (!out || out->StructSize < BML_INPUT_MOUSE_STATE_1_0_SIZE || (flags & ~BML_INPUT_RAW))
         return BML_ERROR_INVALID_PARAMETER;
@@ -192,6 +198,7 @@ int BML_CDECL ReadMouse(BML_ModContextHandle h, uint32_t flags, BML_InputMouseSt
         return BML_OK;
     });
 }
+
 int BML_CDECL ReadJoystick(BML_ModContextHandle h, uint32_t index, uint32_t flags,
                            BML_InputJoystickState *out) {
     if (!out || out->StructSize < BML_INPUT_JOYSTICK_STATE_1_0_SIZE || index >= CKMAX_JOY ||
@@ -219,6 +226,7 @@ int BML_CDECL ReadJoystick(BML_ModContextHandle h, uint32_t index, uint32_t flag
         return BML_OK;
     });
 }
+
 int BML_CDECL KeyName(BML_ModContextHandle h, uint32_t key, char *buffer, size_t capacity,
                       size_t *required) {
     if (key >= 256)
@@ -229,6 +237,7 @@ int BML_CDECL KeyName(BML_ModContextHandle h, uint32_t key, char *buffer, size_t
         return CopyText(name, buffer, capacity, required);
     });
 }
+
 int BML_CDECL KeyFromName(BML_ModContextHandle h, const char *name, uint32_t *out) {
     if (!name || !out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -237,6 +246,7 @@ int BML_CDECL KeyFromName(BML_ModContextHandle h, const char *name, uint32_t *ou
         return *out && *out < 256 ? BML_OK : BML_ERROR_NOT_FOUND;
     });
 }
+
 int BML_CDECL Repetition(BML_ModContextHandle h, uint32_t enable) {
     if (enable > 1)
         return BML_ERROR_INVALID_PARAMETER;
@@ -245,6 +255,7 @@ int BML_CDECL Repetition(BML_ModContextHandle h, uint32_t enable) {
         return BML_OK;
     });
 }
+
 int BML_CDECL Acquire(BML_ModContextHandle h, uint32_t mask, BML_InputBlockHandle *out) {
     if (out)
         *out = 0;
@@ -252,11 +263,13 @@ int BML_CDECL Acquire(BML_ModContextHandle h, uint32_t mask, BML_InputBlockHandl
         return ctx.GetInputApi().AcquireBlock(ctx, owner, mask, out);
     });
 }
+
 int BML_CDECL Release(BML_ModContextHandle h, BML_InputBlockHandle block) {
     return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
         return ctx.GetInputApi().ReleaseBlock(ctx, owner, block);
     });
 }
+
 int BML_CDECL BlockCount(BML_ModContextHandle h, uint32_t device, uint32_t *out) {
     if (device >= 3 || !out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -265,6 +278,7 @@ int BML_CDECL BlockCount(BML_ModContextHandle h, uint32_t device, uint32_t *out)
         return BML_OK;
     });
 }
+
 int BML_CDECL Pause(BML_ModContextHandle h, uint32_t pause) {
     if (pause > 1)
         return BML_ERROR_INVALID_PARAMETER;
@@ -273,6 +287,7 @@ int BML_CDECL Pause(BML_ModContextHandle h, uint32_t pause) {
         return BML_OK;
     });
 }
+
 int BML_CDECL Cursor(BML_ModContextHandle h, BML_InputCursorState *out) {
     if (!out || out->StructSize < BML_INPUT_CURSOR_STATE_1_0_SIZE)
         return BML_ERROR_INVALID_PARAMETER;
@@ -283,6 +298,7 @@ int BML_CDECL Cursor(BML_ModContextHandle h, BML_InputCursorState *out) {
         return BML_OK;
     });
 }
+
 int BML_CDECL ShowCursor(BML_ModContextHandle h, uint32_t show) {
     if (show > 1)
         return BML_ERROR_INVALID_PARAMETER;
@@ -291,6 +307,7 @@ int BML_CDECL ShowCursor(BML_ModContextHandle h, uint32_t show) {
         return BML_OK;
     });
 }
+
 int BML_CDECL SystemCursor(BML_ModContextHandle h, uint32_t shape) {
     if (shape < static_cast<uint32_t>(VXCURSOR_NORMALSELECT) ||
         shape > static_cast<uint32_t>(VXCURSOR_LINKSELECT))
@@ -300,6 +317,7 @@ int BML_CDECL SystemCursor(BML_ModContextHandle h, uint32_t shape) {
         return BML_OK;
     });
 }
+
 const BML_InputInterface table{BML_IFACE_HEADER(BML_InputInterface, BML_INPUT_INTERFACE_ID, 1, 0),
                                ReadKeyboard,
                                ReadMouse,
@@ -315,5 +333,8 @@ const BML_InputInterface table{BML_IFACE_HEADER(BML_InputInterface, BML_INPUT_IN
                                ShowCursor,
                                SystemCursor};
 } // namespace
-const BML_InputInterface &InputInterface() { return table; }
+
+const BML_InputInterface &InputInterface() {
+    return table;
+}
 } // namespace BML::Api

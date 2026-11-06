@@ -75,20 +75,22 @@ int VisitOne(ModContext &ctx, IMod &mod, BML_ModVisitor visitor, void *data) {
     info.Definition = &definition;
     return visitor(data, &info);
 }
-int BML_CDECL ReadMod(BML_ModContextHandle h, BML_ModHandle mod, BML_ModVisitor visitor,
+
+int BML_CDECL ReadMod(BML_ModContextHandle contextHandle, BML_ModHandle mod, BML_ModVisitor visitor,
                       void *data) {
     if (!visitor)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &) {
+    return WithModContext(contextHandle, [&](ModContext &ctx, IMod &) {
         auto *found = ctx.GetModLoader().ResolveModHandle(mod);
         return found ? VisitOne(ctx, *found, visitor, data) : BML_ERROR_INVALID_HANDLE;
     });
 }
-int BML_CDECL FindMod(BML_ModContextHandle h, const char *id, BML_ModHandle *out) {
+
+int BML_CDECL FindMod(BML_ModContextHandle contextHandle, const char *id, BML_ModHandle *out) {
     if (!id || !*id || !out)
         return BML_ERROR_INVALID_PARAMETER;
     *out = 0;
-    return WithModContext(h, [&](ModContext &ctx, IMod &) {
+    return WithModContext(contextHandle, [&](ModContext &ctx, IMod &) {
         auto *found = ctx.FindMod(id);
         if (!found)
             return BML_ERROR_NOT_FOUND;
@@ -96,10 +98,11 @@ int BML_CDECL FindMod(BML_ModContextHandle h, const char *id, BML_ModHandle *out
         return BML_OK;
     });
 }
-int BML_CDECL VisitMods(BML_ModContextHandle h, BML_ModVisitor visitor, void *data) {
+
+int BML_CDECL VisitMods(BML_ModContextHandle contextHandle, BML_ModVisitor visitor, void *data) {
     if (!visitor)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &) {
+    return WithModContext(contextHandle, [&](ModContext &ctx, IMod &) {
         const int count = ctx.GetModCount();
         for (int i = 0; i < count; ++i) {
             const int code = VisitOne(ctx, *ctx.GetMod(i), visitor, data);
@@ -109,11 +112,13 @@ int BML_CDECL VisitMods(BML_ModContextHandle h, BML_ModVisitor visitor, void *da
         return BML_OK;
     });
 }
-int BML_CDECL Log(BML_ModContextHandle h, uint32_t level, const char *message, size_t length) {
+
+int BML_CDECL Log(BML_ModContextHandle contextHandle, uint32_t level, const char *message,
+                  size_t length) {
     if ((!message && length) || level > BML_LOG_ERROR || length > static_cast<size_t>(INT_MAX) ||
         (length && std::memchr(message, 0, length)))
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(contextHandle, [&](ModContext &ctx, IMod &owner) {
         auto *logger = ctx.GetLogger();
         if (!logger)
             return BML_ERROR_UNAVAILABLE;
@@ -127,11 +132,12 @@ int BML_CDECL Log(BML_ModContextHandle h, uint32_t level, const char *message, s
         return BML_OK;
     });
 }
-int BML_CDECL GetDirectory(BML_ModContextHandle h, uint32_t directory, char *buffer,
+
+int BML_CDECL GetDirectory(BML_ModContextHandle contextHandle, uint32_t directory, char *buffer,
                            size_t capacity, size_t *required) {
     if (directory > BML_MOD_DIRECTORY_ROOT)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(contextHandle, [&](ModContext &ctx, IMod &owner) {
         const std::string value =
             directory == BML_MOD_DIRECTORY_ROOT
                 ? utils::Utf16ToUtf8(ctx.GetModRootDirectory(nullptr, owner.GetID()))
@@ -139,6 +145,7 @@ int BML_CDECL GetDirectory(BML_ModContextHandle h, uint32_t directory, char *buf
         return CopyText(value, buffer, capacity, required);
     });
 }
+
 int ResolveResource(ModContext &ctx, IMod &owner, const char *relative, std::string &path) {
     if (!relative || !*relative || !utils::IsRelativePathUtf8(relative))
         return BML_ERROR_INVALID_PARAMETER;
@@ -151,6 +158,7 @@ int ResolveResource(ModContext &ctx, IMod &owner, const char *relative, std::str
     path = utils::Utf16ToUtf8(utils::ResolvePathW(candidate));
     return path.empty() ? BML_ERROR_UNAVAILABLE : BML_OK;
 }
+
 int FileFailure() {
     const auto error = Platform::LastFileError();
     if (error == Platform::FileError::NotFound)
@@ -159,9 +167,10 @@ int FileFailure() {
         return BML_ERROR_ACCESS_DENIED;
     return BML_ERROR_FAIL;
 }
-int BML_CDECL GetResourcePath(BML_ModContextHandle h, const char *relative, char *buffer,
-                              size_t capacity, size_t *required) {
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+
+int BML_CDECL GetResourcePath(BML_ModContextHandle contextHandle, const char *relative,
+                              char *buffer, size_t capacity, size_t *required) {
+    return WithModContext(contextHandle, [&](ModContext &ctx, IMod &owner) {
         std::string path;
         const int code = ResolveResource(ctx, owner, relative, path);
         if (code != BML_OK)
@@ -174,11 +183,13 @@ int BML_CDECL GetResourcePath(BML_ModContextHandle h, const char *relative, char
         return CopyText(path, buffer, capacity, required);
     });
 }
-int BML_CDECL ResourceExists(BML_ModContextHandle h, const char *relative, uint32_t *out) {
+
+int BML_CDECL ResourceExists(BML_ModContextHandle contextHandle, const char *relative,
+                             uint32_t *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     *out = 0;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(contextHandle, [&](ModContext &ctx, IMod &owner) {
         std::string path;
         const int code = ResolveResource(ctx, owner, relative, path);
         if (code != BML_OK)
@@ -192,12 +203,13 @@ int BML_CDECL ResourceExists(BML_ModContextHandle h, const char *relative, uint3
         return BML_OK;
     });
 }
-int BML_CDECL ReadResource(BML_ModContextHandle h, const char *relative, void *buffer,
+
+int BML_CDECL ReadResource(BML_ModContextHandle contextHandle, const char *relative, void *buffer,
                            size_t capacity, size_t *required) {
     if (!required || (!buffer && capacity))
         return BML_ERROR_INVALID_PARAMETER;
     *required = 0;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(contextHandle, [&](ModContext &ctx, IMod &owner) {
         std::string path;
         const int code = ResolveResource(ctx, owner, relative, path);
         if (code != BML_OK)
@@ -217,6 +229,7 @@ int BML_CDECL ReadResource(BML_ModContextHandle h, const char *relative, void *b
         return SDL_ReadIO(stream.get(), buffer, *required) == *required ? BML_OK : BML_ERROR_FAIL;
     });
 }
+
 const BML_ModContextInterface kInterface{
     BML_IFACE_HEADER(BML_ModContextInterface, BML_MOD_CONTEXT_INTERFACE_ID, 1, 0),
     GetOwner,
@@ -229,5 +242,8 @@ const BML_ModContextInterface kInterface{
     ReadResource,
     ResourceExists};
 } // namespace
-const BML_ModContextInterface &ModContextInterface() { return kInterface; }
+
+const BML_ModContextInterface &ModContextInterface() {
+    return kInterface;
+}
 } // namespace BML::Api
