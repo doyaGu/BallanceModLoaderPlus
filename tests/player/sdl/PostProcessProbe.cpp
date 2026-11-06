@@ -206,6 +206,33 @@ private:
                 "removed command and alias no longer resolve");
     }
 
+    void CheckScriptAccess(CKContext *engine) {
+        auto helper = m_Context.FindMod("SdlScriptAccessProbe");
+        BML::Command::Info info;
+        Require(helper && helper.Value().Read().Value().State == BML_MOD_STATE_LOADED &&
+                    BML::Command::Find("bml_probe_script_access", info) == BML_OK,
+                "script access probe registration");
+        auto *entity = static_cast<CK3dEntity *>(
+            engine->CreateObject(CKCID_3DENTITY, const_cast<char *>("BML_ScriptAccess_借用"),
+                                 CK_OBJECTCREATION_DYNAMIC));
+        Require(entity != nullptr, "script access object creation");
+        const CK_ID id = entity->GetID();
+        entity->SetPriority(17);
+        entity->SetPosition3f(1.0f, 2.0f, 3.0f);
+        entity->SetScale3f(2.0f, 3.0f, 4.0f);
+        entity->Show(CKSHOW);
+        int status = 0;
+        const int executed = BML::Command::ExecuteLine("bml_probe_script_access live", status);
+        engine->DestroyObject(id);
+        Require(executed == BML_OK && status == 0 &&
+                    BML::Command::Find("bml_probe_script_access_live", info) == BML_OK,
+                "script CK values, time, input conversions and nested blocks");
+        Require(BML::Command::ExecuteLine("bml_probe_script_access deleted", status) == BML_OK &&
+                    status == 0 &&
+                    BML::Command::Find("bml_probe_script_access_deleted", info) == BML_OK,
+                "script borrowed object validity after engine deletion");
+    }
+
     void CheckNativeServices(CKContext *engine) {
         if (const char *expected = std::getenv("BML_EXPECT_MODS")) {
             std::istringstream ids(expected);
@@ -222,6 +249,7 @@ private:
             Require(helper && helper.Value().Read().Value().State == BML_MOD_STATE_LOADED &&
                         BML::Command::Find("bml_probe_dependencies", info) == BML_OK,
                     "script dependency values and invalid indices");
+            CheckScriptAccess(engine);
         }
 
         CheckCommandLifetime(true);

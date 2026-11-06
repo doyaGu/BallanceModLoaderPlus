@@ -23,7 +23,8 @@ def stage(source, probe, destination, mods_from=None, scripts=False):
     if mods_from:
         shutil.copytree(mods_from, mods, dirs_exist_ok=True, symlinks=False)
     if scripts:
-        shutil.copy2(Path(__file__).with_name("DependencyProbe.mod.as"), mods / "DependencyProbe.mod.as")
+        for name in ("DependencyProbe.mod.as", "ScriptAccessProbe.mod.as"):
+            shutil.copy2(Path(__file__).with_name(name), mods / name)
     installed = mods / probe.name
     shutil.copy2(probe, installed)
     shutil.copy2(Path(str(probe) + ".abi.json"), Path(str(installed) + ".abi.json"))
