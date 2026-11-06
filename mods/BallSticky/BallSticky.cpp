@@ -2,29 +2,37 @@
 
 using namespace ScriptHelper;
 
-IMod *BMLEntry(IBML *bml) {
-    return new BallSticky(bml);
-}
+BML_DEFINE_MOD(BallSticky, {
+    .Id = "BallSticky",
+    .Name = "Ball Sticky",
+    .Version = BML_VERSION,
+    .Author = "Gamepiaynmo",
+    .Description = "Add a new ball type that can climb walls.",
+    .MinimumLoaderVersion = BML_VERSION,
+})
 
-void BMLExit(IMod *mod) {
-    delete mod;
-}
-
-void BallSticky::OnLoad() {
+void BallSticky::OnLoad(const BML::Mod::Context &context) {
+    m_Context = context;
+    m_Timers = ModSupport::Timers(context);
     m_StickyImpulse = 90.0f;
-    m_BML->RegisterBallType("Ball_Sticky.nmo", "sticky", "Sticky", "Ball_Sticky", 10.0f, 0.0f, 1.4f, "Ball", 1.0f, 7.0f, 0.15f, 2.0f);
-    m_BML->RegisterModulBall("P_Ball_Sticky", false, 10.0f, 0.0f, 1.4f, "", false, true, false, 0.8f, 7.0f, 2.0f);
-    m_BML->RegisterTrafo("P_Trafo_Sticky");
+    ModSupport::Check(BML::Gameplay::RegisterBallType(
+        m_Context, {"Ball_Sticky.nmo", "sticky", "Sticky", "Ball_Sticky", 10.0f, 0.0f, 1.4f, "Ball",
+                    1.0f, 7.0f, 0.15f, 2.0f}));
+    ModSupport::Check(
+        BML::Gameplay::RegisterModuleBall(m_Context, {"P_Ball_Sticky", false, 10.0f, 0.0f, 1.4f, "",
+                                                      false, true, false, 0.8f, 7.0f, 2.0f}));
+    ModSupport::Check(BML::Gameplay::RegisterTrafo(m_Context, {"P_Trafo_Sticky"}));
 
     for (int i = 0; i < 2; i++) {
-        m_BallRef[i] = (CK3dEntity *) m_BML->GetCKContext()->CreateObject(CKCID_3DENTITY, "Ball_Sticky_Ref");
-        m_BML->GetCKContext()->GetCurrentScene()->AddObjectToScene(m_BallRef[i]);
+        m_BallRef[i] = (CK3dEntity *)ModSupport::Engine(m_Context)->CreateObject(CKCID_3DENTITY,
+                                                                                 "Ball_Sticky_Ref");
+        ModSupport::Engine(m_Context)->GetCurrentScene()->AddObjectToScene(m_BallRef[i]);
     }
 }
 
-void BallSticky::OnProcess() {
-    if (m_BML->IsIngame() && m_CurLevel) {
-        auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
+void BallSticky::OnProcess(const BML::Mod::Context &) {
+    if (ModSupport::GameState().Ingame && m_CurLevel) {
+        auto *curBall = (CK3dEntity *)m_CurLevel->GetElementObject(0, 1);
         if (curBall) {
             VxVector pos;
             curBall->GetPosition(&pos);
@@ -40,36 +48,55 @@ void BallSticky::OnProcess() {
     }
 }
 
-void BallSticky::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName,
-                              CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials,
-                              CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) {
-    if (!strcmp(filename, "3D Entities\\Levelinit.nmo"))
+void BallSticky::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) {
+    const char *filename = event.Filename.data();
+    const bool isMap = event.IsMap;
+    const char *masterName = event.MasterName.data();
+    const auto filterClass = static_cast<CK_CLASSID>(event.FilterClass);
+    const bool addToScene = event.AddToScene, addtoscene = event.AddToScene,
+               reuseMeshes = event.ReuseMeshes, reuseMaterials = event.ReuseMaterials,
+               dynamic = event.Dynamic;
+    XObjectArray objects;
+    for (auto ref : event.Objects) {
+        auto p = BML::Engine::BorrowObject<CKObject>(m_Context, ref);
+        if (p)
+            objects.PushBack(p.Value()->GetID());
+    }
+    auto *objArray = &objects;
+    auto master = BML::Engine::BorrowObject<CKObject>(m_Context, event.MasterObject);
+    CKObject *masterObj = master ? master.Value() : nullptr;
+
+    if (ModSupport::ResourceIs(filename, "3D Entities\\Levelinit.nmo"))
         OnLoadLevelinit(objArray);
 }
 
-void BallSticky::OnLoadScript(const char *filename, CKBehavior *script) {
+void BallSticky::OnLoadScript(const BML::Mod::Context &, const BML::Mod::LoadScriptEvent &event) {
+    const char *filename = event.Filename.data();
+    auto borrowed = BML::Engine::BorrowObject<CKBehavior>(m_Context, event.Script);
+    if (!borrowed)
+        return;
+    auto *script = borrowed.Value();
+
     if (!strcmp(script->GetName(), "Gameplay_Ingame"))
         OnEditScript_Gameplay_Ingame(script);
 }
 
 void BallSticky::OnLoadLevelinit(XObjectArray *objArray) {
-    // CKDataArray* allLevel = m_BML->GetArrayByName("AllLevel");
+    // CKDataArray* allLevel = ModSupport::Find<CKDataArray>(m_Context, "AllLevel");
     // for (int i = 0; i < allLevel->GetRowCount(); i++)
     // 	allLevel->SetElementStringValue(i, 1, "Ball_Sticky");
 }
 
 void BallSticky::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
-    m_CurLevel = m_BML->GetArrayByName("CurrentLevel");
+    m_CurLevel = ModSupport::Find<CKDataArray>(m_Context, "CurrentLevel");
 
     CKBehavior *ballNav = FindFirstBB(script, "Ball Navigation");
     CKBehavior *oForce = FindFirstBB(ballNav, "SetPhysicsForce");
     CKBehavior *forces[8], *keepActive[8], *perSecond[8];
     m_StickyForce[0] = CreateParamValue(ballNav, "Force", CKPGUID_FLOAT, m_StickyImpulse);
     m_StickyForce[1] = CreateParamValue(ballNav, "Force", CKPGUID_FLOAT, -m_StickyImpulse);
-    CKParameter *posRef[2] = {
-        CreateParamObject(ballNav, "PosRef", CKPGUID_3DENTITY, m_BallRef[0]),
-        CreateParamObject(ballNav, "PosRef", CKPGUID_3DENTITY, m_BallRef[1])
-    };
+    CKParameter *posRef[2] = {CreateParamObject(ballNav, "PosRef", CKPGUID_3DENTITY, m_BallRef[0]),
+                              CreateParamObject(ballNav, "PosRef", CKPGUID_3DENTITY, m_BallRef[1])};
     for (int i = 0; i < 8; i++) {
         keepActive[i] = CreateBB(ballNav, VT_LOGICS_KEEPACTIVE);
         perSecond[i] = CreateBB(ballNav, VT_LOGICS_PERSECOND);
@@ -85,22 +112,29 @@ void BallSticky::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
     }
 
     int cnt = 0;
-    FindBB(ballNav, [ballNav, &forces, &keepActive, &cnt](CKBehavior *beh) {
-        VxVector dir;
-        beh->GetInputParameterValue(2, &dir);
-        int idx = -1;
-        if (dir.x == 1) idx = 0;
-        if (dir.x == -1) idx = 2;
-        if (dir.z == 1) idx = 4;
-        if (dir.z == -1) idx = 6;
-        if (idx >= 0) {
-            cnt++;
-            for (int i = idx; i < idx + 2; i++) {
-                forces[i]->GetInputParameter(2)->ShareSourceWith(beh->GetInputParameter(2));
-                CreateLink(ballNav, beh, keepActive[i], 0, 1);
-                CreateLink(ballNav, beh, keepActive[i], 1, 0);
+    FindBB(
+        ballNav,
+        [ballNav, &forces, &keepActive, &cnt](CKBehavior *beh) {
+            VxVector dir;
+            beh->GetInputParameterValue(2, &dir);
+            int idx = -1;
+            if (dir.x == 1)
+                idx = 0;
+            if (dir.x == -1)
+                idx = 2;
+            if (dir.z == 1)
+                idx = 4;
+            if (dir.z == -1)
+                idx = 6;
+            if (idx >= 0) {
+                cnt++;
+                for (int i = idx; i < idx + 2; i++) {
+                    forces[i]->GetInputParameter(2)->ShareSourceWith(beh->GetInputParameter(2));
+                    CreateLink(ballNav, beh, keepActive[i], 0, 1);
+                    CreateLink(ballNav, beh, keepActive[i], 1, 0);
+                }
             }
-        }
-        return cnt < 4;
-    }, "SetPhysicsForce");
+            return cnt < 4;
+        },
+        "SetPhysicsForce");
 }
