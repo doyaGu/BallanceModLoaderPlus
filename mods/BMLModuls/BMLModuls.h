@@ -1,20 +1,16 @@
 #pragma once
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
+class BMLModuls : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-class BMLModuls : public IMod {
-public:
-    explicit BMLModuls(IBML *bml) : IMod(bml) {}
+  public:
 
-    const char *GetID() override { return "BMLModuls"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "BML Moduls"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
-    const char *GetDescription() override { return "Add some new moduls to the game."; }
-    DECLARE_BML_VERSION;
 
-    void OnLoad() override;
+    void OnLoad(const BML::Mod::Context &) override;
 };
