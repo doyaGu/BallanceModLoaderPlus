@@ -42,11 +42,11 @@ namespace {
 // being repeated in every thunk. Before that point the interface is still handed
 // out, because the table is static, and answers BML_ERROR_FAIL.
 template <typename Body>
-int Serve(Body &&body) {
-    ModContextLease context;
-    if (!context || !context->AreModsLoaded())
-        return BML_ERROR_FAIL;
+int Serve(Body &&body) noexcept {
     try {
+        ModContextLease context;
+        if (!context || !context->AreModsLoaded())
+            return BML_ERROR_FAIL;
         return body(*context);
     } catch (...) {
         return BML_ERROR_FAIL;
@@ -57,7 +57,7 @@ int Serve(Body &&body) {
 // the game thread, so they refuse calls from anywhere else rather than racing a
 // frame. Keeping one rule per interface also makes reads and writes predictable.
 template <typename Body>
-int ServeOnMainThread(Body &&body) {
+int ServeOnMainThread(Body &&body) noexcept {
     return Serve([&body](ModContext &context) {
         if (!context.IsMainThread())
             return BML_ERROR_WRONG_THREAD;
