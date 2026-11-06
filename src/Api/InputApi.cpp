@@ -14,56 +14,10 @@ int InputApi::ReadKeyboard(ModContext &ctx, uint32_t flags, BML_InputKeyboardSta
         return BML_ERROR_UNAVAILABLE;
     const bool attached = input->IsKeyboardAttached() != 0,
                repetition = input->IsKeyboardRepetitionEnabled() != 0;
-    const auto *bytes = input->oGetKeyboardState();
     const int count = input->oGetNumberOfKeyInBuffer();
-    bool same = m_Raw && m_Raw->Revision == InputHookAccess::Revision(*input) &&
-                m_Raw->Attached == attached && m_Raw->Repetition == repetition && count >= 0 &&
-                m_Raw->Events.size() == static_cast<size_t>(count) &&
-                (!bytes || std::memcmp(m_Raw->Bytes.data(), bytes, 256) == 0);
-    for (int i = 0; same && i < count; ++i) {
-        CKDWORD key = 0, stamp = 0;
-        const int state = input->oGetKeyFromBuffer(i, key, &stamp);
-        const auto &e = m_Raw->Events[i];
-        same = e.Key == key && e.TimestampMs == stamp && e.State == static_cast<uint32_t>(state);
-    }
-    if (!same) {
-        auto next = m_Raw && m_Raw.use_count() == 1 ? m_Raw : std::make_shared<Keyboard>();
-        next->Revision = InputHookAccess::Revision(*input);
-        next->Attached = attached;
-        next->Repetition = repetition;
-        if (bytes)
-            std::memcpy(next->Bytes.data(), bytes, 256);
-        else
-            next->Bytes.fill(0);
-        for (uint32_t key = 0; key < 256; ++key) {
-            CKDWORD downStamp = 0, toggleStamp = 0;
-            auto &k = next->Keys[key];
-            k = {};
-            k.Key = key;
-            if (!attached) {
-                k.Up = 1;
-                continue;
-            }
-            k.Down = input->oIsKeyDown(key, &downStamp) ? 1u : 0u;
-            k.Up = input->oIsKeyUp(key) ? 1u : 0u;
-            k.Toggled = input->oIsKeyToggled(key, &toggleStamp) ? 1u : 0u;
-            k.Pressed = input->oIsKeyPressed(key) ? 1u : 0u;
-            k.Released = input->oIsKeyReleased(key) ? 1u : 0u;
-            k.DownTimestampMs = downStamp;
-            k.ToggledTimestampMs = toggleStamp;
-        }
-        if (count < 0)
-            return BML_ERROR_FAIL;
-        next->Events.clear();
-        next->Events.reserve(static_cast<size_t>(count));
-        for (int i = 0; i < count; ++i) {
-            CKDWORD key = 0, stamp = 0;
-            const int state = input->oGetKeyFromBuffer(i, key, &stamp);
-            next->Events.push_back({key, static_cast<uint32_t>(state), stamp});
-        }
-        m_Raw = std::move(next);
-    }
-    std::shared_ptr<Keyboard> result = m_Raw;
+    if (count < 0)
+        return BML_ERROR_FAIL;
+    std::shared_ptr<Keyboard> result;
     if (!(flags & BML_INPUT_RAW) && input->IsBlocked(CK_INPUT_DEVICE_KEYBOARD)) {
         if (!m_Filtered || m_Filtered->Attached != attached ||
             m_Filtered->Repetition != repetition) {
@@ -78,6 +32,55 @@ int InputApi::ReadKeyboard(ModContext &ctx, uint32_t flags, BML_InputKeyboardSta
             m_Filtered = std::move(next);
         }
         result = m_Filtered;
+    } else {
+        const auto *bytes = input->oGetKeyboardState();
+        bool same = m_Raw && m_Raw->Revision == InputHookAccess::Revision(*input) &&
+                    m_Raw->Attached == attached && m_Raw->Repetition == repetition && count >= 0 &&
+                    m_Raw->Events.size() == static_cast<size_t>(count) &&
+                    (!bytes || std::memcmp(m_Raw->Bytes.data(), bytes, 256) == 0);
+        for (int i = 0; same && i < count; ++i) {
+            CKDWORD key = 0, stamp = 0;
+            const int state = input->oGetKeyFromBuffer(i, key, &stamp);
+            const auto &e = m_Raw->Events[i];
+            same =
+                e.Key == key && e.TimestampMs == stamp && e.State == static_cast<uint32_t>(state);
+        }
+        if (!same) {
+            auto next = m_Raw && m_Raw.use_count() == 1 ? m_Raw : std::make_shared<Keyboard>();
+            next->Revision = InputHookAccess::Revision(*input);
+            next->Attached = attached;
+            next->Repetition = repetition;
+            if (bytes)
+                std::memcpy(next->Bytes.data(), bytes, 256);
+            else
+                next->Bytes.fill(0);
+            for (uint32_t key = 0; key < 256; ++key) {
+                CKDWORD downStamp = 0, toggleStamp = 0;
+                auto &k = next->Keys[key];
+                k = {};
+                k.Key = key;
+                if (!attached) {
+                    k.Up = 1;
+                    continue;
+                }
+                k.Down = input->oIsKeyDown(key, &downStamp) ? 1u : 0u;
+                k.Up = input->oIsKeyUp(key) ? 1u : 0u;
+                k.Toggled = input->oIsKeyToggled(key, &toggleStamp) ? 1u : 0u;
+                k.Pressed = input->oIsKeyPressed(key) ? 1u : 0u;
+                k.Released = input->oIsKeyReleased(key) ? 1u : 0u;
+                k.DownTimestampMs = downStamp;
+                k.ToggledTimestampMs = toggleStamp;
+            }
+            next->Events.clear();
+            next->Events.reserve(static_cast<size_t>(count));
+            for (int i = 0; i < count; ++i) {
+                CKDWORD key = 0, stamp = 0;
+                const int state = input->oGetKeyFromBuffer(i, key, &stamp);
+                next->Events.push_back({key, static_cast<uint32_t>(state), stamp});
+            }
+            m_Raw = std::move(next);
+        }
+        result = m_Raw;
     }
     ctx.GetModLoader().InvocationGate().HoldBorrow(result);
     const BML_InputKeyboardState value = {

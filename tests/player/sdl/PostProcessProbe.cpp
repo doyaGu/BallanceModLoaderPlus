@@ -72,9 +72,15 @@ public:
         auto *loader = context->GetManagerByGuid(CKGUID(0x32a40332, 0x3bf12a51));
         auto *native = static_cast<CKInputManager *>(context->GetManagerByGuid(INPUT_MANAGER_GUID));
         auto input = m_Context.Input();
-        const auto raw=input.ReadKeyboard(BML_INPUT_RAW).Value();
-        const auto filtered=input.ReadKeyboard().Value();
-        const auto mouse=input.ReadMouse(BML_INPUT_RAW).Value();
+        const auto firstFiltered = input.ReadKeyboard().Value();
+        const auto raw = input.ReadKeyboard(BML_INPUT_RAW).Value();
+        const auto filtered = input.ReadKeyboard().Value();
+        if (firstFiltered.Keys.data() != filtered.Keys.data() ||
+            firstFiltered.Events.data() != filtered.Events.data()) {
+            Finish(false, "filtered-snapshot-invalidated-by-raw-read");
+            return;
+        }
+        const auto mouse = input.ReadMouse(BML_INPUT_RAW).Value();
         if (!physics || !loader || !native) {
             Finish(false, "missing-manager");
             return;
