@@ -12,7 +12,7 @@ BML_DEFINE_MOD(CameraUtilities, {
 void CameraUtilities::OnLoad(const BML::Mod::Context &context) {
     m_Context = context;
     m_Timers = ModSupport::Timers(context);
-    m_Context.Config().SetCategoryComment("Camera", "Camera Utilities");
+    m_Context.Config().SetCategoryComment("Camera", "Camera Utilities").Take();
 
     m_CamOn = m_Context.Config()
                   .DeclareProperty({"Camera", "Enable", bool(false),

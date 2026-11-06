@@ -1,5 +1,6 @@
 #ifndef BML_CONFIG_HPP
 #define BML_CONFIG_HPP
+
 #include "BML/Config.h"
 #include "BML/Mod.hpp"
 #include <variant>
@@ -8,7 +9,8 @@ namespace BML::Config {
 using Value = std::variant<std::monostate, std::string, bool, int32_t, float, uint32_t>;
 
 struct PropertyDefinition {
-    std::string Category, Key;
+    std::string Category;
+    std::string Key;
     Value DefaultValue;
     std::string Comment;
     uint32_t Editor = 0;
@@ -142,51 +144,54 @@ public:
         return Result<PropertyInfo>::Failure(BML_ERROR_FAIL);
     }
 
-    int Set(const Value &value) const {
+    [[nodiscard]] Result<void> Set(const Value &value) const {
         BML_ConfigValue record;
         if (!Detail::Encode(value, record))
-            return BML_ERROR_INVALID_PARAMETER;
-        return m_Api ? m_Api->SetValue(m_Context.Handle(), m_Handle, &record)
-                     : BML_ERROR_UNAVAILABLE;
+            return BML::Detail::ToResult(BML_ERROR_INVALID_PARAMETER);
+        return BML::Detail::ToResult(m_Api ? m_Api->SetValue(m_Context.Handle(), m_Handle, &record)
+                                           : BML_ERROR_UNAVAILABLE);
     }
 
-    int SetDefault(const Value &value) const {
+    [[nodiscard]] Result<void> SetDefault(const Value &value) const {
         BML_ConfigValue record;
         if (!Detail::Encode(value, record))
-            return BML_ERROR_INVALID_PARAMETER;
-        return m_Api ? m_Api->SetDefaultValue(m_Context.Handle(), m_Handle, &record)
-                     : BML_ERROR_UNAVAILABLE;
+            return BML::Detail::ToResult(BML_ERROR_INVALID_PARAMETER);
+        return BML::Detail::ToResult(
+            m_Api ? m_Api->SetDefaultValue(m_Context.Handle(), m_Handle, &record)
+                  : BML_ERROR_UNAVAILABLE);
     }
-    int SetComment(std::string_view comment) const try {
+    [[nodiscard]] Result<void> SetComment(std::string_view comment) const try {
         if (!BML::Detail::IsText(comment))
-            return BML_ERROR_INVALID_PARAMETER;
+            return BML::Detail::ToResult(BML_ERROR_INVALID_PARAMETER);
         const std::string text(comment);
-        return m_Api ? m_Api->SetComment(m_Context.Handle(), m_Handle, text.c_str())
-                     : BML_ERROR_UNAVAILABLE;
+        return BML::Detail::ToResult(
+            m_Api ? m_Api->SetComment(m_Context.Handle(), m_Handle, text.c_str())
+                  : BML_ERROR_UNAVAILABLE);
     } catch (const std::bad_alloc &) {
-        return BML_ERROR_OUT_OF_MEMORY;
+        return BML::Detail::ToResult(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
-        return BML_ERROR_FAIL;
+        return BML::Detail::ToResult(BML_ERROR_FAIL);
     }
 
-    int SetEditor(uint32_t editor) const {
-        return m_Api ? m_Api->SetEditor(m_Context.Handle(), m_Handle, editor)
-                     : BML_ERROR_UNAVAILABLE;
+    [[nodiscard]] Result<void> SetEditor(uint32_t editor) const {
+        return BML::Detail::ToResult(m_Api ? m_Api->SetEditor(m_Context.Handle(), m_Handle, editor)
+                                           : BML_ERROR_UNAVAILABLE);
     }
-    int SetChoices(std::span<const std::string> choices) const try {
+    [[nodiscard]] Result<void> SetChoices(std::span<const std::string> choices) const try {
         std::vector<const char *> views;
         views.reserve(choices.size());
         for (const auto &text : choices) {
             if (!BML::Detail::IsText(text))
-                return BML_ERROR_INVALID_PARAMETER;
+                return BML::Detail::ToResult(BML_ERROR_INVALID_PARAMETER);
             views.push_back(text.c_str());
         }
-        return m_Api ? m_Api->SetChoices(m_Context.Handle(), m_Handle, views.data(), views.size())
-                     : BML_ERROR_UNAVAILABLE;
+        return BML::Detail::ToResult(
+            m_Api ? m_Api->SetChoices(m_Context.Handle(), m_Handle, views.data(), views.size())
+                  : BML_ERROR_UNAVAILABLE);
     } catch (const std::bad_alloc &) {
-        return BML_ERROR_OUT_OF_MEMORY;
+        return BML::Detail::ToResult(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
-        return BML_ERROR_FAIL;
+        return BML::Detail::ToResult(BML_ERROR_FAIL);
     }
 
     template <class T> [[nodiscard]] T Get(T fallback = {}) const {
@@ -317,16 +322,18 @@ public:
     } catch (...) {
         return Result<bool>::Failure(BML_ERROR_FAIL);
     }
-    int SetCategoryComment(std::string_view category, std::string_view comment) const try {
+    [[nodiscard]] Result<void> SetCategoryComment(std::string_view category,
+                                                  std::string_view comment) const try {
         if (!BML::Detail::IsText(category) || !BML::Detail::IsText(comment))
-            return BML_ERROR_INVALID_PARAMETER;
+            return BML::Detail::ToResult(BML_ERROR_INVALID_PARAMETER);
         const std::string c(category), text(comment);
-        return m_Api ? m_Api->SetCategoryComment(m_Context.Handle(), c.c_str(), text.c_str())
-                     : BML_ERROR_UNAVAILABLE;
+        return BML::Detail::ToResult(
+            m_Api ? m_Api->SetCategoryComment(m_Context.Handle(), c.c_str(), text.c_str())
+                  : BML_ERROR_UNAVAILABLE);
     } catch (const std::bad_alloc &) {
-        return BML_ERROR_OUT_OF_MEMORY;
+        return BML::Detail::ToResult(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
-        return BML_ERROR_FAIL;
+        return BML::Detail::ToResult(BML_ERROR_FAIL);
     }
 
 private:

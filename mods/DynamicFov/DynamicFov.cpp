@@ -12,7 +12,7 @@ BML_DEFINE_MOD(DynamicFov, {
 void DynamicFov::OnLoad(const BML::Mod::Context &context) {
     m_Context = context;
     m_Timers = ModSupport::Timers(context);
-    m_Context.Config().SetCategoryComment("Misc", "Miscellaneous");
+    m_Context.Config().SetCategoryComment("Misc", "Miscellaneous").Take();
     m_Enabled = m_Context.Config()
                     .DeclareProperty({"Misc", "Enable", bool(false), "Enable Dynamic Fov"})
                     .Take();

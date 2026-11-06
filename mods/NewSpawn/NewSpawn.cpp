@@ -16,32 +16,32 @@ void NewSpawn::OnLoad(const BML::Mod::Context &context) {
     auto spawnCommand = std::make_shared<CommandNewSpawn>(this);
     cmdspawnp_ptr = spawnCommand.get();
     ModSupport::RegisterCommand(m_Context, m_Commands, std::move(spawnCommand));
-    m_Context.Config().SetCategoryComment("Main", "Main settings.");
+    m_Context.Config().SetCategoryComment("Main", "Main settings.").Take();
 
     prop_enabled = m_Context.Config().DeclareProperty({"Main", "Enabled"}).Value();
-    prop_enabled.SetDefault(bool(true));
-    prop_enabled.SetComment("Enabled to use this mod");
+    prop_enabled.SetDefault(bool(true)).Take();
+    prop_enabled.SetComment("Enabled to use this mod").Take();
     enabled = prop_enabled.Get<bool>();
 
     reset_prop_enabled = m_Context.Config().DeclareProperty({"Main", "Prop_Reset"}).Value();
-    reset_prop_enabled.SetDefault(bool(false));
-    reset_prop_enabled.SetComment("Enable to reset prop when press Transport shortcut key.");
+    reset_prop_enabled.SetDefault(bool(false)).Take();
+    reset_prop_enabled.SetComment("Enable to reset prop when press Transport shortcut key.").Take();
     reset_enabled = reset_prop_enabled.Get<bool>();
 
     reset_spirit_enabled = m_Context.Config().DeclareProperty({"Main", "Spirit_Record"}).Value();
-    reset_spirit_enabled.SetDefault(bool(true));
+    reset_spirit_enabled.SetDefault(bool(true)).Take();
     reset_spirit_enabled.SetComment(
-        "Enable to record and play spirit ball when press Record shortcut key.");
+        "Enable to record and play spirit ball when press Record shortcut key.").Take();
     spirit_enabled = reset_spirit_enabled.Get<bool>();
 
     prop_key = m_Context.Config().DeclareProperty({"Main", "Transport"}).Value();
-    prop_key.SetDefault(uint32_t(CKKEY_C));
-    prop_key.SetComment("Set your shortcut key for transporting your ball");
+    prop_key.SetDefault(uint32_t(CKKEY_C)).Take();
+    prop_key.SetComment("Set your shortcut key for transporting your ball").Take();
     key_prop = prop_key.Get<uint32_t>();
 
     prop_key_record = m_Context.Config().DeclareProperty({"Main", "Record"}).Value();
-    prop_key_record.SetDefault(uint32_t(CKKEY_V));
-    prop_key_record.SetComment("Set your shortcut key for saving the spirit record");
+    prop_key_record.SetDefault(uint32_t(CKKEY_V)).Take();
+    prop_key_record.SetComment("Set your shortcut key for saving the spirit record").Take();
     key_record = prop_key_record.Get<uint32_t>();
 }
 

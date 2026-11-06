@@ -12,7 +12,7 @@ BML_DEFINE_MOD(DualBallControl, {
 void DualBallControl::OnLoad(const BML::Mod::Context &context) {
     m_Context = context;
     m_Timers = ModSupport::Timers(context);
-    m_Context.Config().SetCategoryComment("Misc", "Miscellaneous");
+    m_Context.Config().SetCategoryComment("Misc", "Miscellaneous").Take();
 
     m_SwitchKey =
         m_Context.Config()

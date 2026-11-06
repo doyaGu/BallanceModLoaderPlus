@@ -15,7 +15,7 @@ BML_DEFINE_MOD(DebugUtilities, {
 void DebugUtilities::OnLoad(const BML::Mod::Context &context) {
     m_Context = context;
     m_Timers = ModSupport::Timers(context);
-    m_Context.Config().SetCategoryComment("Debug", "Debug Utilities");
+    m_Context.Config().SetCategoryComment("Debug", "Debug Utilities").Take();
 
     m_EnableSuicideKey =
         m_Context.Config()
@@ -66,43 +66,43 @@ void DebugUtilities::OnLoad(const BML::Mod::Context &context) {
                         .Take();
 
     m_EnableSuicideKey = m_Context.Config().FindProperty("Debug", "EnableSuicideKey").Value();
-    m_EnableSuicideKey.SetComment("Enable the Suicide Hotkey");
-    m_EnableSuicideKey.SetDefault(bool(true));
+    m_EnableSuicideKey.SetComment("Enable the Suicide Hotkey").Take();
+    m_EnableSuicideKey.SetDefault(bool(true)).Take();
     m_Suicide = m_Context.Config().FindProperty("Debug", "Suicide").Value();
-    m_Suicide.SetComment("Suicide");
-    m_Suicide.SetDefault(uint32_t(CKKEY_R));
+    m_Suicide.SetComment("Suicide").Take();
+    m_Suicide.SetDefault(uint32_t(CKKEY_R)).Take();
 
     m_BallCheat[0] = m_Context.Config().FindProperty("Debug", "BallUp").Value();
-    m_BallCheat[0].SetComment("Apply an upward force to the ball");
-    m_BallCheat[0].SetDefault(uint32_t(CKKEY_F1));
+    m_BallCheat[0].SetComment("Apply an upward force to the ball").Take();
+    m_BallCheat[0].SetDefault(uint32_t(CKKEY_F1)).Take();
 
     m_BallCheat[1] = m_Context.Config().FindProperty("Debug", "BallDown").Value();
-    m_BallCheat[1].SetComment("Apply a downward force to the ball");
-    m_BallCheat[1].SetDefault(uint32_t(CKKEY_F2));
+    m_BallCheat[1].SetComment("Apply a downward force to the ball").Take();
+    m_BallCheat[1].SetDefault(uint32_t(CKKEY_F2)).Take();
 
     m_ChangeBall[0] = m_Context.Config().FindProperty("Debug", "TurnPaper").Value();
-    m_ChangeBall[0].SetComment("Turn into paper ball");
-    m_ChangeBall[0].SetDefault(uint32_t(CKKEY_I));
+    m_ChangeBall[0].SetComment("Turn into paper ball").Take();
+    m_ChangeBall[0].SetDefault(uint32_t(CKKEY_I)).Take();
 
     m_ChangeBall[1] = m_Context.Config().FindProperty("Debug", "TurnWood").Value();
-    m_ChangeBall[1].SetComment("Turn into wood ball");
-    m_ChangeBall[1].SetDefault(uint32_t(CKKEY_O));
+    m_ChangeBall[1].SetComment("Turn into wood ball").Take();
+    m_ChangeBall[1].SetDefault(uint32_t(CKKEY_O)).Take();
 
     m_ChangeBall[2] = m_Context.Config().FindProperty("Debug", "TurnStone").Value();
-    m_ChangeBall[2].SetComment("Turn into stone ball");
-    m_ChangeBall[2].SetDefault(uint32_t(CKKEY_P));
+    m_ChangeBall[2].SetComment("Turn into stone ball").Take();
+    m_ChangeBall[2].SetDefault(uint32_t(CKKEY_P)).Take();
 
     m_ResetBall = m_Context.Config().FindProperty("Debug", "ResetBall").Value();
-    m_ResetBall.SetComment("Reset ball and all moduls");
-    m_ResetBall.SetDefault(uint32_t(CKKEY_BACK));
+    m_ResetBall.SetComment("Reset ball and all moduls").Take();
+    m_ResetBall.SetDefault(uint32_t(CKKEY_BACK)).Take();
 
     m_AddLife = m_Context.Config().FindProperty("Debug", "AddLife").Value();
-    m_AddLife.SetComment("Add one extra Life");
-    m_AddLife.SetDefault(uint32_t(CKKEY_L));
+    m_AddLife.SetComment("Add one extra Life").Take();
+    m_AddLife.SetDefault(uint32_t(CKKEY_L)).Take();
 
     m_SpeedupBall = m_Context.Config().FindProperty("Debug", "BallSpeedUp").Value();
-    m_SpeedupBall.SetComment("Change to 3 times ball speed");
-    m_SpeedupBall.SetDefault(uint32_t(CKKEY_LCONTROL));
+    m_SpeedupBall.SetComment("Change to 3 times ball speed").Take();
+    m_SpeedupBall.SetDefault(uint32_t(CKKEY_LCONTROL)).Take();
 
     m_SpeedNotification =
         m_Context.Config()
@@ -115,7 +115,7 @@ void DebugUtilities::OnLoad(const BML::Mod::Context &context) {
                                             "Skip rendering of current frames while holding."})
                           .Take();
 
-    m_Context.Config().SetCategoryComment("Auxiliaries", "Temporal Auxiliary Moduls");
+    m_Context.Config().SetCategoryComment("Auxiliaries", "Temporal Auxiliary Moduls").Take();
 
     m_AddBall[0] =
         m_Context.Config()

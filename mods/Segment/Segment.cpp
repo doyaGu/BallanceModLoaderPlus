@@ -16,7 +16,7 @@ Segment::Segment() = default;
 void Segment::OnLoad(const BML::Mod::Context &context) {
     m_Context = context;
     m_Timers = ModSupport::Timers(context);
-    m_Context.Config().SetCategoryComment("GUI", "GUI Settings");
+    m_Context.Config().SetCategoryComment("GUI", "GUI Settings").Take();
 
     font_scale_ = m_Context.Config()
                       .DeclareProperty({"GUI", "FontScale", float(0.7f), "The font scale"})

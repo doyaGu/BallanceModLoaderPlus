@@ -98,7 +98,7 @@ void SpiritTrail::OnLoad(const BML::Mod::Context &context) {
     if (!BML_CreateFileTreeUtf8(m_TrailsRoot.c_str()))
         throw std::runtime_error("Cannot create Spirit Trail directory");
 
-    m_Context.Config().SetCategoryComment("Misc", "Miscellaneous");
+    m_Context.Config().SetCategoryComment("Misc", "Miscellaneous").Take();
     m_Enabled = m_Context.Config()
                     .DeclareProperty({"Misc", "Enable", bool(false), "Enable Spirit Trail"})
                     .Take();
