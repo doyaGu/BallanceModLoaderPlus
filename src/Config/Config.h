@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 #include "BML/IMod.h"
 
 #include "Config/ConfigValue.h"
@@ -39,15 +39,12 @@ class Property : public IProperty {
     friend class BML::Api::ConfigApi;
     friend class Config;
     friend class Category;
-    friend BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property);
-    friend int BML_SetConfigPropertyEditor(IProperty *property,
-                                           BML_ConfigPropertyEditor editor);
-    friend std::size_t BML_GetConfigPropertyChoiceCount(const IProperty *property);
-    friend const char *BML_GetConfigPropertyChoice(const IProperty *property,
-                                                   std::size_t index);
-    friend int BML_SetConfigPropertyChoices(IProperty *property,
-                                            const char *const choices[],
-                                            std::size_t count);
+    friend BML_ConfigPropertyEditor BML::ConfigMetadata::GetEditor(const IProperty *property);
+    friend int BML::ConfigMetadata::SetEditor(IProperty *property, BML_ConfigPropertyEditor editor);
+    friend std::size_t BML::ConfigMetadata::ChoiceCount(const IProperty *property);
+    friend const char *BML::ConfigMetadata::Choice(const IProperty *property, std::size_t index);
+    friend int BML::ConfigMetadata::SetChoices(IProperty *property, const char *const choices[],
+                                               std::size_t count);
 
 public:
     using Value = ConfigValue;

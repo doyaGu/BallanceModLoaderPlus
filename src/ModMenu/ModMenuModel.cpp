@@ -343,15 +343,15 @@ ModMenuDocument ModMenuModel::BuildDocument(IMod *mod, const ModMenuOwner &owner
                 setting.description = SafeText(sourceSetting->GetComment());
                 setting.type = sourceSetting->GetType();
                 setting.value = sourceSetting->GetValue();
-                setting.editor = BML_GetConfigPropertyEditor(sourceSetting);
+                setting.editor = BML::ConfigMetadata::GetEditor(sourceSetting);
                 if (setting.editor == BML_CONFIG_EDITOR_CHOICE &&
                     setting.type == IProperty::STRING) {
                     const std::size_t choiceCount =
-                        BML_GetConfigPropertyChoiceCount(sourceSetting);
+                        BML::ConfigMetadata::ChoiceCount(sourceSetting);
                     setting.choices.reserve(choiceCount + 1);
                     for (std::size_t choiceIndex = 0;
                          choiceIndex < choiceCount; ++choiceIndex) {
-                        const char *choice = BML_GetConfigPropertyChoice(
+                        const char *choice = BML::ConfigMetadata::Choice(
                             sourceSetting, choiceIndex);
                         if (choice)
                             setting.choices.emplace_back(choice);

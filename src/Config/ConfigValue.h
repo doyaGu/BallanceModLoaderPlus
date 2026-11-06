@@ -5,7 +5,7 @@
 #include <string>
 #include <variant>
 
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 
 using ConfigValue = std::variant<bool, int, float, std::string>;
 

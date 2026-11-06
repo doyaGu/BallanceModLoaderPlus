@@ -1,6 +1,6 @@
 #include "ScriptApiSurface.h"
 
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 #include "BML/InputHook.h"
 #include "BML/ModMenu.h"
 #include "Timer/TimerScheduler.h"

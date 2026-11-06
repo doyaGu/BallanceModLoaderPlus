@@ -5,7 +5,7 @@
 
 #include "BML/Guids/TT_ParticleSystems_RT.h"
 #include "BML/IBML.h"
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 #include "Logging/ILogger.h"
 
 namespace {

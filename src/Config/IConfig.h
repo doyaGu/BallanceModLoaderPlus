@@ -1,34 +1,5 @@
-// A Mod's settings, persisted as Configs\<mod id>.cfg under the loader directory
-// and editable by the player from the loader's mod menu. Get the one instance from
-// IMod::GetConfig; the loader owns it and reads the file on that first call.
-//
-// The usual shape of a Mod's setup, in OnLoad:
-//
-//     IProperty *prop = GetConfig()->GetProperty("Misc", "ShowHud");
-//     prop->SetComment("Draw the HUD.");
-//     prop->SetDefaultBoolean(true);
-//     m_ShowHud = prop->GetBoolean();
-//
-// SetDefaultBoolean is what makes that work: the SetDefault functions write only
-// when the property does not yet have their type, so they establish the type and
-// the starting value on a first run and leave the saved value alone afterwards. The
-// plain Set functions always write, so using one where a default was meant
-// overwrites what the player chose.
-//
-// Only settings requested by the current Mod become menu entries and are written
-// on save. Reading the file does not register settings: removed keys disappear,
-// and newly declared keys use their defaults. File comments do not override the
-// descriptions declared by the current Mod.
-//
-// A property has one type, and the getters do not convert between them: GetFloat on
-// a property holding an integer returns 0.0f rather than that number. Read with the
-// getter that matches the type the Mod declared.
-//
-// Everything here is for the game thread. Nothing is locked. A write changes the
-// in-memory value immediately, then queues the owning Mod's OnModifyConfig callback
-// and persistence for the end of the current frame. Repeated writes to one property
-// in a frame produce one callback with the latest value, and each dirty config is
-// written once after its callbacks run.
+// Private configuration storage interface used by loader features and script bindings.
+// Native Mods use BML/Config.h and BML/Config.hpp.
 #ifndef BML_ICONFIG_H
 #define BML_ICONFIG_H
 
@@ -36,20 +7,11 @@
 
 #include "BML/Defines.h"
 
-// Optional presentation semantic for loader-owned configuration UIs. It is
-// schema metadata rather than part of the persisted value or PropertyType.
-#ifndef BML_CONFIG_EDITOR_DEFINED
-#define BML_CONFIG_EDITOR_DEFINED
-typedef enum BML_ConfigPropertyEditor {
-    BML_CONFIG_EDITOR_DEFAULT = 0,
-    BML_CONFIG_EDITOR_COLOR = 1,
-    BML_CONFIG_EDITOR_CHOICE = 2,
-} BML_ConfigPropertyEditor;
-#endif
+#include "BML/Config.h"
 
 // One setting. The loader owns it, it lives as long as the config does, and a Mod
 // may keep the pointer.
-class BML_EXPORT IProperty {
+class IProperty {
 public:
     // Each of these returns the stored value when GetType matches, and an empty
     // value otherwise: an empty string, false, 0, 0.0f, or key 0. So a property
@@ -99,31 +61,17 @@ public:
     // because no SetDefault call has run on it. The mod menu shows such a property
     // as a blank row and the file records it as the integer 0, so do not leave a
     // property that a Mod created at NONE.
-    enum PropertyType {
-        STRING,
-        BOOLEAN,
-        INTEGER,
-        KEY,
-        FLOAT,
-        NONE
-    };
+    enum PropertyType { STRING, BOOLEAN, INTEGER, KEY, FLOAT, NONE };
 
     virtual PropertyType GetType() = 0;
 };
 
-BML_BEGIN_CDECLS
+namespace BML::ConfigMetadata {
 
-// Additive helpers for the legacy C++ IProperty interface. These exports still
-// exchange IProperty pointers and therefore require the same C++ ABI as the
-// legacy Native Mod SDK; they are not a language-neutral C interface. COLOR is
-// meaningful for STRING properties containing #RRGGBB or #RRGGBBAA. CHOICE presents a
-// STRING property's ordered finite choices. Metadata is not
-// persisted. Get returns DEFAULT for null or unsupported property objects; Set
-// returns 1 on success and 0 for null, unsupported, or invalid input.
-BML_EXPORT BML_ConfigPropertyEditor BML_CDECL BML_GetConfigPropertyEditor(
-    const IProperty *property);
-BML_EXPORT int BML_CDECL BML_SetConfigPropertyEditor(
-    IProperty *property, BML_ConfigPropertyEditor editor);
+// Metadata for loader-owned properties. COLOR and CHOICE apply to strings.
+// Get returns DEFAULT for null/unsupported properties; Set returns 1 or 0.
+BML_ConfigPropertyEditor GetEditor(const IProperty *property);
+int SetEditor(IProperty *property, BML_ConfigPropertyEditor editor);
 
 // Replaces the copied choice metadata in display order. An empty string is a
 // valid choice; its presentation is chosen by the editor. Passing a null
@@ -133,17 +81,13 @@ BML_EXPORT int BML_CDECL BML_SetConfigPropertyEditor(
 // return 0/null for a null or unsupported property or an out-of-range index;
 // Set returns 0 for those properties, invalid input, duplicates, or allocation
 // failure.
-BML_EXPORT size_t BML_CDECL BML_GetConfigPropertyChoiceCount(
-    const IProperty *property);
-BML_EXPORT const char *BML_CDECL BML_GetConfigPropertyChoice(
-    const IProperty *property, size_t index);
-BML_EXPORT int BML_CDECL BML_SetConfigPropertyChoices(IProperty *property,
-                                                       const char *const choices[],
-                                                       size_t count);
+size_t ChoiceCount(const IProperty *property);
+const char *Choice(const IProperty *property, size_t index);
+int SetChoices(IProperty *property, const char *const choices[], size_t count);
 
-BML_END_CDECLS
+} // namespace BML::ConfigMetadata
 
-class BML_EXPORT IConfig {
+class IConfig {
 public:
     // Whether the initially loaded values or the current Mod declarations hold
     // this category or key. Both answer false for a null argument. These queries

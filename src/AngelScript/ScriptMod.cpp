@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 #include "Loader/ModContext.h"
 #include "ScriptDevToolsService.h"
 #include "ScriptModReloadCandidateInternal.h"

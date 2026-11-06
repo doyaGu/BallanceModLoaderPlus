@@ -5,7 +5,7 @@
 #include <optional>
 #include <string>
 
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 
 namespace CommandBarTheme {
 namespace {
@@ -52,7 +52,7 @@ void Settings::Define(IConfig &config) {
         const std::string defaultValue = UiColor::FormatHex(role.defaultColor);
         property->SetComment(role.comment);
         property->SetDefaultString(defaultValue.c_str());
-        BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR);
+        BML::ConfigMetadata::SetEditor(property, BML_CONFIG_EDITOR_COLOR);
     }
     config.SetCategoryComment(Category, "Command Bar Syntax Theme");
 }

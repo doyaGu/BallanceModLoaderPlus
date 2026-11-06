@@ -13,7 +13,7 @@
 #include "UI/BuiHost.h"
 #include "BML/DataShare.h"
 #include "BML/IBML.h"
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 #include "Logging/ILogger.h"
 
 #include "Api/ObjectRefs.h"

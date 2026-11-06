@@ -4,19 +4,19 @@
 #include <string>
 #include <unordered_map>
 
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 #include "Console/CommandBarTheme.h"
 
 namespace {
 std::unordered_map<const IProperty *, BML_ConfigPropertyEditor> g_PropertyEditors;
 }
 
-BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property) {
+BML_ConfigPropertyEditor BML::ConfigMetadata::GetEditor(const IProperty *property) {
     const auto entry = g_PropertyEditors.find(property);
     return entry == g_PropertyEditors.end() ? BML_CONFIG_EDITOR_DEFAULT : entry->second;
 }
 
-int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor) {
+int BML::ConfigMetadata::SetEditor(IProperty *property, BML_ConfigPropertyEditor editor) {
     if (!property || (editor != BML_CONFIG_EDITOR_DEFAULT &&
                       editor != BML_CONFIG_EDITOR_COLOR &&
                       editor != BML_CONFIG_EDITOR_CHOICE))
@@ -131,7 +131,7 @@ TEST(CommandBarTheme, SettingsOwnRoleSchemaAndReadPalette) {
     EXPECT_EQ(CommandBarTheme::Settings::RoleCount, config.PropertyCount());
     ASSERT_NE(nullptr, config.Property("Plain"));
     EXPECT_EQ(BML_CONFIG_EDITOR_COLOR,
-              BML_GetConfigPropertyEditor(config.Property("Plain")));
+              BML::ConfigMetadata::GetEditor(config.Property("Plain")));
     EXPECT_EQ(CommandBarTheme::OneDark(), settings.ReadPalette());
     EXPECT_TRUE(settings.Owns("CommandBarTheme", "Plain", config.Property("Plain")));
     EXPECT_FALSE(settings.Owns("CommandBar", "Plain", config.Property("Plain")));

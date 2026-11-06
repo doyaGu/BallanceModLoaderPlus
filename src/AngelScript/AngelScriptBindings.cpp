@@ -8,7 +8,7 @@
 #include "BML/BML.h"
 #include "UI/BuiHost.h"
 #include "BML/DataShare.h"
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 #include "BML/Types.h"
 #include "BML/InputHook.h"
 #include "Logging/ILogger.h"
@@ -974,7 +974,7 @@ public:
 
     int GetEditor() const {
         IProperty *property = ResolveProperty();
-        return static_cast<int>(BML_GetConfigPropertyEditor(property));
+        return static_cast<int>(BML::ConfigMetadata::GetEditor(property));
     }
 
     std::string GetString(const std::string &defaultValue) const {
@@ -1037,7 +1037,7 @@ public:
 
     void SetEditor(int editor) const {
         if (IProperty *property = ResolveProperty())
-            BML_SetConfigPropertyEditor(property, static_cast<BML_ConfigPropertyEditor>(editor));
+            BML::ConfigMetadata::SetEditor(property, static_cast<BML_ConfigPropertyEditor>(editor));
     }
 
     bool SetChoices(const void *array) const {
@@ -1071,7 +1071,7 @@ public:
             values.reserve(choices.size());
             for (const std::string &choice : choices)
                 values.push_back(choice.c_str());
-            return BML_SetConfigPropertyChoices(
+            return BML::ConfigMetadata::SetChoices(
                        property, values.data(), values.size()) != 0;
         } catch (const std::bad_alloc &) {
             BMLAS_SetActiveContextException(

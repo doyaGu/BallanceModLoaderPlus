@@ -585,8 +585,8 @@ TEST_F(ConfigTest, DeclaredTypesAndEditorMetadataSurviveReload) {
     IProperty *text = loaded.GetProperty("Values", "Text");
     text->SetDefaultString("default text");
     const char *choices[] = {"default text", "saved text"};
-    ASSERT_EQ(BML_SetConfigPropertyChoices(text, choices, std::size(choices)), 1);
-    ASSERT_EQ(BML_SetConfigPropertyEditor(text, BML_CONFIG_EDITOR_CHOICE), 1);
+    ASSERT_EQ(BML::ConfigMetadata::SetChoices(text, choices, std::size(choices)), 1);
+    ASSERT_EQ(BML::ConfigMetadata::SetEditor(text, BML_CONFIG_EDITOR_CHOICE), 1);
     IProperty *flag = loaded.GetProperty("Values", "Flag");
     flag->SetDefaultBoolean(false);
     IProperty *count = loaded.GetProperty("Values", "Count");
@@ -603,8 +603,8 @@ TEST_F(ConfigTest, DeclaredTypesAndEditorMetadataSurviveReload) {
     EXPECT_EQ(count->GetInteger(), 42);
     EXPECT_FLOAT_EQ(scale->GetFloat(), 2.5f);
     EXPECT_EQ(key->GetKey(), CKKEY_A);
-    EXPECT_EQ(BML_GetConfigPropertyEditor(text), BML_CONFIG_EDITOR_CHOICE);
-    EXPECT_EQ(BML_GetConfigPropertyChoiceCount(text), std::size(choices));
+    EXPECT_EQ(BML::ConfigMetadata::GetEditor(text), BML_CONFIG_EDITOR_CHOICE);
+    EXPECT_EQ(BML::ConfigMetadata::ChoiceCount(text), std::size(choices));
     EXPECT_EQ(loaded.GetSchemaRevision(), schema);
     EXPECT_EQ(loaded.GetValueRevision(), 5u);
     EXPECT_TRUE(loaded.TakePendingNotifications().empty());
@@ -1034,62 +1034,62 @@ TEST_F(ConfigTest, PropertyValues) {
 TEST_F(ConfigTest, PropertyEditorIsSchemaMetadata) {
     IProperty *property = config->GetProperty("Appearance", "Accent");
     property->SetDefaultString("#61AFEF");
-    EXPECT_EQ(BML_CONFIG_EDITOR_DEFAULT, BML_GetConfigPropertyEditor(nullptr));
-    EXPECT_EQ(0, BML_SetConfigPropertyEditor(nullptr, BML_CONFIG_EDITOR_COLOR));
-    EXPECT_EQ(BML_CONFIG_EDITOR_DEFAULT, BML_GetConfigPropertyEditor(property));
+    EXPECT_EQ(BML_CONFIG_EDITOR_DEFAULT, BML::ConfigMetadata::GetEditor(nullptr));
+    EXPECT_EQ(0, BML::ConfigMetadata::SetEditor(nullptr, BML_CONFIG_EDITOR_COLOR));
+    EXPECT_EQ(BML_CONFIG_EDITOR_DEFAULT, BML::ConfigMetadata::GetEditor(property));
 
     const std::uint64_t schemaBeforeEditor = config->GetSchemaRevision();
     const std::uint64_t valueBeforeEditor = config->GetValueRevision();
-    EXPECT_EQ(1, BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR));
-    EXPECT_EQ(BML_CONFIG_EDITOR_COLOR, BML_GetConfigPropertyEditor(property));
+    EXPECT_EQ(1, BML::ConfigMetadata::SetEditor(property, BML_CONFIG_EDITOR_COLOR));
+    EXPECT_EQ(BML_CONFIG_EDITOR_COLOR, BML::ConfigMetadata::GetEditor(property));
     EXPECT_GT(config->GetSchemaRevision(), schemaBeforeEditor);
     EXPECT_EQ(valueBeforeEditor, config->GetValueRevision());
     EXPECT_STREQ("#61AFEF", property->GetString());
 
-    EXPECT_EQ(1, BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_CHOICE));
-    EXPECT_EQ(BML_CONFIG_EDITOR_CHOICE, BML_GetConfigPropertyEditor(property));
+    EXPECT_EQ(1, BML::ConfigMetadata::SetEditor(property, BML_CONFIG_EDITOR_CHOICE));
+    EXPECT_EQ(BML_CONFIG_EDITOR_CHOICE, BML::ConfigMetadata::GetEditor(property));
 
-    EXPECT_EQ(0, BML_SetConfigPropertyEditor(
+    EXPECT_EQ(0, BML::ConfigMetadata::SetEditor(
                      property, static_cast<BML_ConfigPropertyEditor>(99)));
-    EXPECT_EQ(BML_CONFIG_EDITOR_CHOICE, BML_GetConfigPropertyEditor(property));
+    EXPECT_EQ(BML_CONFIG_EDITOR_CHOICE, BML::ConfigMetadata::GetEditor(property));
 
     const std::uint64_t stableSchema = config->GetSchemaRevision();
-    EXPECT_EQ(1, BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_CHOICE));
+    EXPECT_EQ(1, BML::ConfigMetadata::SetEditor(property, BML_CONFIG_EDITOR_CHOICE));
     EXPECT_EQ(stableSchema, config->GetSchemaRevision());
 }
 
 TEST_F(ConfigTest, PropertyChoicesAreSchemaMetadata) {
     IProperty *property = config->GetProperty("Appearance", "Font");
     property->SetDefaultString("unifont.otf");
-    EXPECT_EQ(0U, BML_GetConfigPropertyChoiceCount(nullptr));
-    EXPECT_EQ(nullptr, BML_GetConfigPropertyChoice(nullptr, 0));
-    EXPECT_EQ(0, BML_SetConfigPropertyChoices(property, nullptr, 1));
+    EXPECT_EQ(0U, BML::ConfigMetadata::ChoiceCount(nullptr));
+    EXPECT_EQ(nullptr, BML::ConfigMetadata::Choice(nullptr, 0));
+    EXPECT_EQ(0, BML::ConfigMetadata::SetChoices(property, nullptr, 1));
     const char *nullChoice[] = {nullptr};
-    EXPECT_EQ(0, BML_SetConfigPropertyChoices(property, nullChoice, 1));
+    EXPECT_EQ(0, BML::ConfigMetadata::SetChoices(property, nullChoice, 1));
 
     const char *choices[] = {"", "unifont.otf", "symbols.ttf"};
     const std::uint64_t schemaBeforeChoices = config->GetSchemaRevision();
     const std::uint64_t valueBeforeChoices = config->GetValueRevision();
-    EXPECT_EQ(1, BML_SetConfigPropertyChoices(property, choices, 3));
+    EXPECT_EQ(1, BML::ConfigMetadata::SetChoices(property, choices, 3));
     EXPECT_GT(config->GetSchemaRevision(), schemaBeforeChoices);
     EXPECT_EQ(valueBeforeChoices, config->GetValueRevision());
-    ASSERT_EQ(3U, BML_GetConfigPropertyChoiceCount(property));
-    EXPECT_STREQ("", BML_GetConfigPropertyChoice(property, 0));
-    EXPECT_STREQ("unifont.otf", BML_GetConfigPropertyChoice(property, 1));
-    EXPECT_STREQ("symbols.ttf", BML_GetConfigPropertyChoice(property, 2));
-    EXPECT_EQ(nullptr, BML_GetConfigPropertyChoice(property, 3));
+    ASSERT_EQ(3U, BML::ConfigMetadata::ChoiceCount(property));
+    EXPECT_STREQ("", BML::ConfigMetadata::Choice(property, 0));
+    EXPECT_STREQ("unifont.otf", BML::ConfigMetadata::Choice(property, 1));
+    EXPECT_STREQ("symbols.ttf", BML::ConfigMetadata::Choice(property, 2));
+    EXPECT_EQ(nullptr, BML::ConfigMetadata::Choice(property, 3));
     EXPECT_STREQ("unifont.otf", property->GetString());
 
     const std::uint64_t stableSchema = config->GetSchemaRevision();
-    EXPECT_EQ(1, BML_SetConfigPropertyChoices(property, choices, 3));
+    EXPECT_EQ(1, BML::ConfigMetadata::SetChoices(property, choices, 3));
     EXPECT_EQ(stableSchema, config->GetSchemaRevision());
 
     const char *duplicates[] = {"same", "same"};
-    EXPECT_EQ(0, BML_SetConfigPropertyChoices(property, duplicates, 2));
-    EXPECT_EQ(3U, BML_GetConfigPropertyChoiceCount(property));
+    EXPECT_EQ(0, BML::ConfigMetadata::SetChoices(property, duplicates, 2));
+    EXPECT_EQ(3U, BML::ConfigMetadata::ChoiceCount(property));
 
-    EXPECT_EQ(1, BML_SetConfigPropertyChoices(property, nullptr, 0));
-    EXPECT_EQ(0U, BML_GetConfigPropertyChoiceCount(property));
+    EXPECT_EQ(1, BML::ConfigMetadata::SetChoices(property, nullptr, 0));
+    EXPECT_EQ(0U, BML::ConfigMetadata::ChoiceCount(property));
 }
 
 TEST_F(ConfigTest, VariantValueKeepsIntegerAndKeySemanticsDistinct) {

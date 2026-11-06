@@ -9,7 +9,7 @@
 #include <variant>
 #include <vector>
 
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 
 #include "Config/ConfigValue.h"
 #include "ModMenu/ModMenuPages.h"

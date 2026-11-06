@@ -4,7 +4,7 @@
 #include <cstring>
 
 #include "BML/IBML.h"
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 #include "BML/Version.h"
 
 const HUDRuntime::Setting *HUDRuntime::GetSettings(size_t &count) {

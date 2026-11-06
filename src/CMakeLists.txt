@@ -159,6 +159,7 @@ set(BML_MODS_SOURCES
 )
 
 set(BML_LOADER_PRIVATE_HEADERS
+        Config/IConfig.h
         Logging/ILogger.h
         Loader/LegacyModVersion.h
         Loader/ModContext.h

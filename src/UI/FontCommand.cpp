@@ -13,7 +13,7 @@
 #include <utility>
 
 #include "BML/IBML.h"
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 
 #include "StringUtils.h"
 

@@ -48,9 +48,9 @@ void SetChoiceEditor(IProperty *property,
     values.reserve(choices.size());
     for (const std::string &choice : choices)
         values.push_back(choice.c_str());
-    if (!BML_SetConfigPropertyChoices(property, values.data(), values.size()))
+    if (!BML::ConfigMetadata::SetChoices(property, values.data(), values.size()))
         return;
-    BML_SetConfigPropertyEditor(
+    BML::ConfigMetadata::SetEditor(
         property, choices.empty() ? BML_CONFIG_EDITOR_DEFAULT
                                   : BML_CONFIG_EDITOR_CHOICE);
 }

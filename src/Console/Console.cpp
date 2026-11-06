@@ -3,7 +3,7 @@
 #include <algorithm>
 
 #include "BML/IBML.h"
-#include "BML/IConfig.h"
+#include "Config/IConfig.h"
 #include "Logging/ILogger.h"
 
 #include "UI/AnsiText.h"
