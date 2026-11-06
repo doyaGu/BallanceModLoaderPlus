@@ -52,14 +52,11 @@ drafts, and reconciliation; Presentation owns the native-looking menu layout.
 Bui::Menu owns route and Page lifecycle. An unregistered Mod still gets its
 standard details and Config presentation.
 
-**Config Property Editor** — Optional, non-persisted schema metadata attached
-through `BML_GetConfigPropertyEditor` / `BML_SetConfigPropertyEditor`, keeping
-the frozen IProperty vtable unchanged. It selects a Built-in Mod Menu editor
-without changing the stored value type. The default follows PropertyType; the
-colour editor keeps STRING storage while presenting `#RRGGBB` or `#RRGGBBAA`
-through Bui. The choice editor copies an ordered set of STRING values through
-the additive C interface and presents it through Bui::RadioButton; a stored
-value outside that set remains available until the player chooses another.
+**Config Property Editor** — Optional, non-persisted schema metadata shared by
+native and script configuration through the Config Module. It selects the
+Built-in Mod Menu editor without changing the stored value type. Colour and
+ordered choice editors retain STRING storage; a saved value outside the choice
+set remains available until the player chooses another.
 
 **Config Values** — File values are a source for settings declared by the current
 Mod, not a second runtime schema. Only declared categories and properties appear
@@ -101,13 +98,14 @@ surfaces.
 **Command Authoring** — The public versioned `bml.command` C Interface and its
 header-only C++ facade. A registration copies descriptive metadata, retains
 owner callbacks behind a checked handle, and supplies execution with explicit
-arguments, pipeline input, output, and shell status. Legacy `ICommand` remains
-a compatibility adapter rather than the growth path for Native Mods.
+arguments, pipeline input, output, and shell status. Console and script
+registrations use concrete command records containing copied metadata,
+execution/completion callbacks, and retained implementation lifetimes.
 
 **Command Registry** — The private Built-in Console Module shared by Native C,
-legacy C++, and AngelScript command adapters. It owns lookup, canonical
+built-in C++, and AngelScript command adapters. It owns lookup, canonical
 metadata, and enabled and hidden policy. An acquired command retains the
-lifetime token supplied by its adapter through pre-callbacks, execution,
+entire callback record and its lifetime token through pre-callbacks, execution,
 post-callbacks, or completion; removal only stops new lookup. Each adapter owns
 the final release of its foreign callback state. The Shell Executor owns
 parsing, expansion, pipelines, and conditional execution. Console owns shell
