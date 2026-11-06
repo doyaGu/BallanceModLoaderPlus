@@ -31,6 +31,7 @@ target_compile_options(BuiAutomationTest PRIVATE
         $<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->
 )
 target_compile_features(BuiAutomationTest PRIVATE cxx_std_20)
+target_link_libraries(BuiAutomationTest PRIVATE CK2 VxMath)
 set_target_properties(BuiAutomationTest PROPERTIES FOLDER "Tests/UI")
 
 add_test(NAME BuiAutomationTest COMMAND $<TARGET_FILE:BuiAutomationTest>)
