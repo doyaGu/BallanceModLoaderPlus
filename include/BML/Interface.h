@@ -40,8 +40,8 @@
 // thread unless their own header says otherwise.
 //
 // C++ provider and consumer Mods should include Interface.hpp instead of writing
-// these calls directly. ModInterface.hpp additionally binds a required or optional
-// provider dependency to its typed lookup without changing this C ABI.
+// these calls directly. Declare provider dependencies in Mod::Definition and
+// use Interface.hpp for typed lookups without changing this C ABI.
 #ifndef BML_INTERFACE_H
 #define BML_INTERFACE_H
 

@@ -360,6 +360,23 @@ TEST(CommandAuthoringTest, FailedDestructorCleanupDisablesRegistration) {
     ReleaseHostRegistration();
 }
 
+TEST(CommandAuthoringTest, HostCleanupBeforeWrapperDestructionReleasesCapturedStateOnce) {
+    ResetHost();
+    auto alive = std::make_shared<int>(0);
+    {
+        BML::Command::Definition definition;
+        definition.Name = "host-cleanup";
+        BML::Command::Registration registration;
+        ASSERT_EQ(registration.Register(definition,
+            [hold = alive](const BML::Command::Invocation &) { return *hold; }), BML_OK);
+        EXPECT_EQ(alive.use_count(), 2);
+        ReleaseHostRegistration();
+        EXPECT_FALSE(registration.IsRegistered());
+        EXPECT_EQ(registration.Unregister(), BML_OK);
+    }
+    EXPECT_EQ(alive.use_count(), 1);
+}
+
 TEST(CommandAuthoringTest, RejectsAProviderThatReturnsAnInvalidHandle) {
     ResetHost();
     g_Host.ReturnInvalidHandle = true;

@@ -3,9 +3,9 @@
 // MOD_EXPORT and for the error codes rather than for its own sake.
 //
 // BML_EXPORT marks what the loader exports and turns into an import when a Mod compiles,
-// which is why a Mod must not define BML_EXPORTS. MOD_EXPORT is what the Mod's own
-// BMLEntry and BMLExit are marked with, since those two are what the loader looks for in
-// the .bmodp file. BML_BEGIN_CDECLS and BML_END_CDECLS wrap the plain C parts so the same
+// which is why a Mod must not define BML_EXPORTS. BML_MOD_ENTRY marks the Mod's
+// BML_GetModInterface entry with C linkage, export visibility and explicit cdecl.
+// MOD_EXPORT remains for older entries. BML_BEGIN_CDECLS and BML_END_CDECLS wrap the plain C parts so the same
 // header compiles as C and as C++.
 //
 // The error codes are one numbering shared by everything that answers with an int: 0 is
@@ -23,6 +23,19 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <float.h>
+#ifdef __cplusplus
+static_assert(sizeof(int) == 4 && sizeof(float) == 4 && sizeof(double) == 8,
+              "BML requires 32-bit int/float and 64-bit double");
+static_assert(FLT_RADIX == 2 && FLT_MANT_DIG == 24 && DBL_MANT_DIG == 53,
+              "BML requires IEEE binary32/binary64 floating point");
+#else
+_Static_assert(sizeof(int) == 4 && sizeof(float) == 4 && sizeof(double) == 8,
+               "BML requires 32-bit int/float and 64-bit double");
+_Static_assert(FLT_RADIX == 2 && FLT_MANT_DIG == 24 && DBL_MANT_DIG == 53,
+               "BML requires IEEE binary32/binary64 floating point");
+#endif
 
 #ifndef BML_BEGIN_CDECLS
 #ifdef __cplusplus
@@ -53,6 +66,8 @@
 #ifndef BML_CDECL
 #if defined(_MSC_VER)
 #define BML_CDECL __cdecl
+#elif defined(_WIN32) && defined(__i386__)
+#define BML_CDECL __attribute__((cdecl))
 #else
 #define BML_CDECL
 #endif
@@ -65,9 +80,14 @@
 #else
 #define BML_MOD_EXPORT __attribute__((visibility("default")))
 #endif
-#define MOD_EXPORT extern "C" BML_MOD_EXPORT
+#ifdef __cplusplus
+#define BML_EXTERN_C extern "C"
+#else
+#define BML_EXTERN_C
+#endif
+#define MOD_EXPORT BML_EXTERN_C BML_MOD_EXPORT
 #define BML_MOD_ENTRY(return_type) \
-    extern "C" BML_MOD_EXPORT return_type BML_CDECL
+    BML_EXTERN_C BML_MOD_EXPORT return_type BML_CDECL
 
 #ifndef MAX_PATH
 #define MAX_PATH 260

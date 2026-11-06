@@ -5,7 +5,9 @@
 #define BML_COMMAND_HPP
 
 #include "BML/Command.h"
+#include "BML/Mod.hpp"
 #include "BML/Interface.hpp"
+#include "BML/Detail/Api.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -190,6 +192,7 @@ private:
 
         std::atomic<std::size_t> References{1};
         std::atomic_bool Abandoned{false};
+        std::atomic_bool HostReleased{false};
         ExecuteCallback Execute;
         CompleteCallback Complete;
     };
@@ -220,6 +223,7 @@ public:
     Registration(Registration &&other) noexcept
         : m_Interface(std::move(other.m_Interface)),
           m_OwnerId(std::move(other.m_OwnerId)),
+          m_State(std::exchange(other.m_State, nullptr)),
           m_Handle(std::exchange(
               other.m_Handle, BML_COMMAND_INVALID_HANDLE)) {}
 
@@ -228,6 +232,7 @@ public:
             Dispose();
             m_Interface = std::move(other.m_Interface);
             m_OwnerId = std::move(other.m_OwnerId);
+            m_State = std::exchange(other.m_State, nullptr);
             m_Handle = std::exchange(
                 other.m_Handle, BML_COMMAND_INVALID_HANDLE);
         }
@@ -260,6 +265,8 @@ public:
         try {
             std::string owner = ownerId ? ownerId : "";
             state = new CallbackState(std::move(execute), std::move(complete));
+            state->Retain();
+            m_State = state; // Local reference; the provisional host reference is separate.
             const BML_CommandDefinition wire = {
                 sizeof(BML_CommandDefinition),
                 definition.Name.c_str(),
@@ -308,6 +315,7 @@ public:
     }
 
     [[nodiscard]] int Unregister() noexcept {
+        if (m_State && m_State->HostReleased.load(std::memory_order_acquire)) { Reset(); return BML_OK; }
         if (m_Handle == BML_COMMAND_INVALID_HANDLE)
             return BML_OK;
         if (!m_Interface)
@@ -324,13 +332,13 @@ public:
     }
 
     [[nodiscard]] bool IsRegistered() const noexcept {
-        return m_Handle != BML_COMMAND_INVALID_HANDLE;
+        return m_Handle != BML_COMMAND_INVALID_HANDLE && m_State && !m_State->HostReleased.load(std::memory_order_acquire);
     }
 
     [[nodiscard]] BML_CommandHandle Handle() const noexcept { return m_Handle; }
 
     [[nodiscard]] int SetEnabled(bool enabled) noexcept {
-        if (m_Handle == BML_COMMAND_INVALID_HANDLE || !m_Interface)
+        if (!IsRegistered() || !m_Interface)
             return BML_ERROR_INVALID_HANDLE;
         if (!BML_IFACE_HAS(m_Interface.Get(), BML_CommandInterface, SetEnabled))
             return BML_ERROR_NOT_FOUND;
@@ -382,25 +390,23 @@ private:
     }
 
     static void BML_CDECL ReleaseState(void *userData) noexcept {
-        if (userData)
-            static_cast<CallbackState *>(userData)->Release();
+        if (auto *state=static_cast<CallbackState *>(userData)) { state->HostReleased.store(true,std::memory_order_release);state->Release(); }
     }
 
     void Reset() noexcept {
+        if (auto *state=std::exchange(m_State,nullptr)) state->Release();
         m_Interface.Reset();
         m_OwnerId.clear();
         m_Handle = BML_COMMAND_INVALID_HANDLE;
     }
 
     void Abandon() noexcept {
-        if (m_Handle != BML_COMMAND_INVALID_HANDLE && m_Interface &&
-            BML_IFACE_HAS(m_Interface.Get(), BML_CommandInterface, SetEnabled)) {
-            const char *ownerId = m_OwnerId.empty() ? nullptr : m_OwnerId.c_str();
-            (void) m_Interface->SetEnabled(ownerId, m_Handle, 0);
+        if(m_State)m_State->Abandoned.store(true,std::memory_order_release);
+        if(IsRegistered() && m_Interface && BML_IFACE_HAS(m_Interface.Get(), BML_CommandInterface, SetEnabled)) {
+            const char *ownerId=m_OwnerId.empty()?nullptr:m_OwnerId.c_str();
+            (void)m_Interface->SetEnabled(ownerId,m_Handle,0);
         }
-        m_Interface.Reset();
-        m_OwnerId.clear();
-        m_Handle = BML_COMMAND_INVALID_HANDLE;
+        Reset();
     }
 
     void Dispose() noexcept {
@@ -419,6 +425,7 @@ private:
 
     Interfaces::Reference<InterfaceTraits> m_Interface;
     std::string m_OwnerId;
+    CallbackState *m_State = nullptr;
     BML_CommandHandle m_Handle = BML_COMMAND_INVALID_HANDLE;
 };
 
@@ -449,7 +456,7 @@ private:
             return BML_ERROR_FAIL;
         }
     };
-    return interfaceReference->Visit(visit, &state);
+    return interfaceReference->Visit(BML::Detail::Cdecl<visit>::Call, &state);
 }
 
 [[nodiscard]] inline int Find(std::string_view name, Info &out) noexcept {
@@ -480,7 +487,7 @@ private:
                 return BML_ERROR_FAIL;
             }
         };
-        return interfaceReference->Find(terminated.c_str(), store, &out);
+        return interfaceReference->Find(terminated.c_str(), BML::Detail::Cdecl<store>::Call, &out);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -512,6 +519,28 @@ private:
     }
 }
 
+// Binds the explicit owner for registration. Existing command operations and
+// callback/RAII types remain the same; no second command implementation exists.
+class View {
+public:
+    explicit View(const Mod::Context &context) noexcept : m_Context(context) {}
+    [[nodiscard]] Result<Registration> Register(const Definition &definition,
+        ExecuteCallback execute, CompleteCallback complete = {}) const try {
+        auto owner = m_Context.Owner();
+        if (!owner) return Result<Registration>::Failure(owner.Code());
+        auto info = owner.Value().Read();
+        if (!info) return Result<Registration>::Failure(info.Code());
+        Registration registration;
+        const int code = registration.Register(definition, std::move(execute), std::move(complete),
+                                                info.Value().Definition.Id.c_str());
+        return code == BML_OK ? Result<Registration>::Success(std::move(registration)) : Result<Registration>::Failure(code);
+    } catch (const std::bad_alloc &) { return Result<Registration>::Failure(BML_ERROR_OUT_OF_MEMORY); }
+      catch (...) { return Result<Registration>::Failure(BML_ERROR_FAIL); }
+private:
+    Mod::Context m_Context;
+};
+
 } // namespace BML::Command
 
+inline BML::Command::View BML::Mod::Context::Commands() const noexcept { return BML::Command::View(*this); }
 #endif // BML_COMMAND_HPP

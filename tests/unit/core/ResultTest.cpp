@@ -94,4 +94,16 @@ TEST(Result, FailureRequiresAnErrorCode) {
     EXPECT_EQ(positive.Code(), BML_ERROR_FAIL);
 }
 
+TEST(Result, FailedValueAccessPreservesTheExceptionFamilyAndExplainsTheError) {
+    auto result = BML::Result<int, Diagnostic>::Failure(BML_ERROR_NOT_FOUND, {"Requested item is absent"});
+    try {
+        (void)result.Take();
+        FAIL() << "A failed result must not produce a value";
+    } catch (const std::bad_optional_access &error) {
+        const std::string message(error.what());
+        EXPECT_NE(message.find("-3"), std::string::npos);
+        EXPECT_NE(message.find("Requested item is absent"), std::string::npos);
+    }
+}
+
 } // namespace
