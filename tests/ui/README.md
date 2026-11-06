@@ -1,12 +1,25 @@
 # SDL UI test infrastructure
 
-The current SDL build provides three optional test executables:
+The current SDL build provides two default framework tests and one optional
+ImGui component test:
 
 | Target / CTest name | What it validates |
 | --- | --- |
 | `BuiAutomationTest` | Headless ImGui/Bui controls using the pinned ImGui Test Engine |
-| `UiFrameworkTest` | Scenario catalog, source registrations, descriptors and result parsing |
-| `UiAutomationSessionTest` | Checkpoint ordering, atomic publication, waits and acknowledgements |
+| `UiFrameworkTest` | Default: scenario catalog, source registrations, descriptors and result parsing |
+| `UiAutomationSessionTest` | Default: checkpoint ordering, atomic publication, waits and acknowledgements |
+
+The framework tests need only CMake and a C++20 compiler. They also run in the
+standalone CI matrix without Ballanced, SDL or ImGui Test Engine:
+
+```sh
+cmake -S tests/ui -B build/ui-framework
+cmake --build build/ui-framework --config Release
+ctest --test-dir build/ui-framework -C Release --output-on-failure
+```
+
+To additionally build Bui automation and the test-instrumented Loader, configure
+from the project root with matching engine development packages:
 
 ```sh
 cmake -S . -B build/ui -DBML_RUNTIME=sdl \
@@ -20,8 +33,10 @@ ctest --test-dir build/ui -C Release \
 
 `BML_BUILD_UI_AUTOMATION` defaults to OFF and requires `BML_BUILD_TESTS`.
 Enabling it fetches the pinned dependency in `cmake/ImGuiTestEngine.cmake`.
-Ordinary builds do not fetch or compile that test engine. The headless checks
-can run without a desktop and do not demonstrate that real game UI works.
+Ordinary builds do not fetch or compile that test engine. The component and
+framework checks run without a desktop. They do not execute
+the retained Player journeys. Framework-only configurations do not fetch ImGui
+Test Engine, including when enabled through the normal `BML_BUILD_TESTS` suite.
 
 ## Scenario and Session boundaries
 

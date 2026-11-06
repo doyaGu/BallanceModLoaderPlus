@@ -7,7 +7,7 @@
 | `tests/platform` | SDL filesystem, module identity, ABI and script watching |
 | `tests/updater/sdl` | doctor, signatures, HTTPS, transactions, rollback and recovery |
 | `tests/player/sdl` | Installed-SDK Mod in disposable real Player runtimes |
-| `tests/ui` | Optional headless ImGui, scenario catalog and automation Session checks |
+| `tests/ui` | Default scenario/Session contracts; optional headless ImGui checks |
 
 The SDK contracts can run without engine development packages:
 
@@ -18,8 +18,10 @@ ctest --test-dir build/sdk-tests --output-on-failure
 
 For the full Loader suite, configure with `-DBML_BUILD_TESTS=ON`, build, then run
 `ctest --test-dir <build> -C Release --output-on-failure`. Use separate build
-directories for `BML_ENABLE_ANGELSCRIPT=ON` and `OFF`. Optional UI checks additionally
-require `-DBML_BUILD_UI_AUTOMATION=ON`; they are not real-game UI acceptance.
+directories for `BML_ENABLE_ANGELSCRIPT=ON` and `OFF`. Scenario/Session checks
+are included by default and can also run standalone with
+`cmake -S tests/ui -B build/ui-framework`. Headless Bui automation additionally requires
+`-DBML_BUILD_UI_AUTOMATION=ON`; these checks are not real-game UI acceptance.
 
 See [Player tests](player/README.md), [component tests](ck2/README.md),
 [UI infrastructure](ui/README.md), and the [dated validation record](../docs/en/validation.md).
