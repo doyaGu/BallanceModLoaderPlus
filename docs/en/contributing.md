@@ -100,10 +100,16 @@ There is no `ExecuteBBAdapter`, `ScriptFacadeAccess` or old I* compatibility lay
 ctest --test-dir build/sdl-release -C Release --output-on-failure --parallel 6
 cmake -S tests/sdk -B build/sdk-contracts
 ctest --test-dir build/sdk-contracts --output-on-failure
+cmake -S tests/ui -B build/ui-framework
+cmake --build build/ui-framework --config Release
+ctest --test-dir build/ui-framework -C Release --output-on-failure
 ```
 
-The standalone SDK contracts need no engine. The full suite also builds installed
-SDK consumers when CK2/VxMath installation is available. Run the script-free
+The standalone SDK and UI framework contracts need no engine. The normal suite
+always includes the UI scenario/Session contracts; headless Bui and the
+test-instrumented Loader additionally require `BML_BUILD_UI_AUTOMATION=ON`.
+The full suite also builds installed SDK consumers when CK2/VxMath installation
+is available. Run the script-free
 configuration separately. Process-management and updater tests are serialized
 because they inspect running Player processes.
 

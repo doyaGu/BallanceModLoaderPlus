@@ -89,9 +89,14 @@ Render 独立调度，待处理跳帧在下一次 Render 消费；Player 不依�
 ctest --test-dir build/sdl-release -C Release --output-on-failure --parallel 6
 cmake -S tests/sdk -B build/sdk-contracts
 ctest --test-dir build/sdk-contracts --output-on-failure
+cmake -S tests/ui -B build/ui-framework
+cmake --build build/ui-framework --config Release
+ctest --test-dir build/ui-framework -C Release --output-on-failure
 ```
 
-独立 SDK 契约测试不需要引擎；完整测试在 CK2/VxMath 可安装时增加安装后 SDK 消费者。
+独立 SDK 和 UI 框架契约测试不需要引擎。默认测试包含 UI 场景目录和 Session 检查；
+无窗口 Bui 测试和带测试代码的 Loader 另需 `BML_BUILD_UI_AUTOMATION=ON`。
+完整测试在 CK2/VxMath 可安装时增加安装后 SDK 消费者。
 无脚本配置另行构建测试。进程管理与更新器测试会检查 Player 进程，使用串行调度。
 
 [Player 验收](https://github.com/doyaGu/BallanceModLoaderPlus/tree/sdl/tests/player/sdl)
