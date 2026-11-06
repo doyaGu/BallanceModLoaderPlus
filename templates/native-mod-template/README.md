@@ -33,3 +33,7 @@ cmake --install build --config Release --prefix /path/to/game/ModLoader
 
 Choose the configuration shipped by the SDK. On Windows choose the matching
 MSVC toolchain and runtime. On macOS select the SDK's architecture.
+
+`BML_DEFINE_MOD` at the end of the source holds the metadata in named fields.
+Edit it directly; no separate factory or identity methods are needed. Keep the
+command Registration as a member: the host and RAII handle its cleanup.

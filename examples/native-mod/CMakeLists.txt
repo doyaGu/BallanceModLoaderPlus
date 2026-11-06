@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25)
+project(BMLNativeExample VERSION 1.0.0 LANGUAGES CXX)
+find_package(BML CONFIG REQUIRED)
+bml_add_mod(BMLNativeExample Mod.cpp)
+bml_install_mod(BMLNativeExample)

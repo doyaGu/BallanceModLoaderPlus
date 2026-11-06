@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.19)
+project(BMLCExample VERSION 1.0.0 LANGUAGES C)
+find_package(BML CONFIG REQUIRED)
+bml_add_mod(BMLCExample Mod.c)
+bml_install_mod(BMLCExample)

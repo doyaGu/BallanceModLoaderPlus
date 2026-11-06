@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.19)
 project(BMLExampleValueProvider VERSION 1.0.0 LANGUAGES CXX)
 
 find_package(BML CONFIG REQUIRED)
