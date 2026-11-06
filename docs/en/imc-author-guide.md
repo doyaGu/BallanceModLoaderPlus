@@ -4,7 +4,7 @@ This guide shows how native and script mods expose one typed, in-process API to
 each other. Read [Inter-mod communication](imc.md) first for the transport,
 threading, compatibility, and lifetime model.
 
-The examples require an installed BML+ SDK, CMake 3.15 or newer, a C++20
+The examples require an installed BML+ SDK, CMake 3.19 or newer, a C++20
 compiler, and Python 3.10 or newer. New interfaces define RPCs and Topics.
 
 ## 1. Write the interface
@@ -32,7 +32,8 @@ write transport bookkeeping in the source interface.
 
 Inline request, response, and Topic payloads are preferred when used by one
 endpoint. The generator names the corresponding value types `EchoRequestValue`,
-`EchoReplyValue`, and `ChangedEventValue`. Use a named record when several
+`EchoReplyValue`, and `ChangedEventValue` in C++; AngelScript uses
+`EchoRequest`, `EchoReply`, and `ChangedEvent`. Use a named record when several
 endpoints share a payload:
 
 ```text
@@ -216,14 +217,14 @@ class EchoScript {
     Example::Echo::Provider provider;
     BML::ImcSubscriptionRef@ changed;
 
-    int HandleEcho(const Example::Echo::EchoRequestValue &in request,
-                   Example::Echo::EchoReplyValue &out response) {
+    int HandleEcho(const Example::Echo::EchoRequest &in request,
+                   Example::Echo::EchoReply &out response) {
         response.Text = request.Text;
         return BML::ERROR_OK;
     }
 
     void OnChanged(int status,
-                   const Example::Echo::ChangedEventValue &in event) {
+                   const Example::Echo::ChangedEvent &in event) {
         if (status == BML::ERROR_OK) {
             // Consume the typed event.
         }
@@ -315,8 +316,8 @@ Use caller-thread execution only for short, thread-safe code. A handler that
 touches Virtools, BML UI, or other game-thread state must use
 `BML_IMC_EXECUTION_GAME_THREAD` (the generated default).
 
-`Start()` with no owner ID resolves the native mod from the calling DLL. If one
-DLL contains multiple mods, pass that mod's explicit owner ID as the second
+`Start()` with no owner ID resolves the native mod from the calling module. If one
+module contains multiple mods, pass that mod's explicit owner ID as the second
 argument. `Provider::Close` also works from one of that Provider's callbacks:
 it prevents another dispatch immediately and completes removal after the
 outermost callback returns. A generated Provider may therefore be destroyed by
@@ -439,7 +440,7 @@ The common integration failures are:
   replacement would violate lifetime rules.
 
 Close subscriptions and providers before destroying callback userdata. Close
-clients before unloading the native DLL. Owner cleanup is the final safety net,
+clients before unloading the native module. Owner cleanup is the final safety net,
 not the normal lifecycle mechanism.
 
 ## 7. Release checklist

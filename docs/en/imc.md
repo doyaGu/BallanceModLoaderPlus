@@ -62,7 +62,7 @@ IMC has three public layers; the generated layer has one surface per language:
 | Generated `*_imc.hpp` | Typed payloads, codecs, clients, providers, futures, and subscriptions |
 | Generated `*_imc.as` | The same typed payloads and routes for ASMod Clients and Providers; transport details stay under `BML::Detail` |
 | `BML/Imc.hpp` | Generic C++ RAII wrappers, plus the client, subscription, and RPC machinery the generated bindings reuse |
-| `BML/Imc.h` | Fixed-layout C ABI used across DLL boundaries |
+| `BML/Imc.h` | Fixed-layout C ABI used across shared-module boundaries |
 
 The C ABI exports `BML_Imc_*` functions and uses only C scalars, fixed-layout
 structures, byte spans, callbacks, and opaque handles. C++ classes, exceptions,

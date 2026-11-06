@@ -3,7 +3,7 @@
 本文演示原生 Mod 和脚本 Mod 如何通过同一份接口定义互相提供类型化进程内 API。开始前先阅读
 [跨 Mod 通信](imc.md)，了解传输、线程、兼容性和生命周期模型。
 
-示例需要已安装的 BML+ SDK、CMake 3.15 或更新版本、C++20 编译器，以及
+示例需要已安装的 BML+ SDK、CMake 3.19 或更新版本、C++20 编译器，以及
 Python 3.10 或更新版本。新接口由 RPC 和 Topic 组成。
 
 ## 1. 编写接口
@@ -29,7 +29,8 @@ topic changed(int sequence, string text)
 
 只被一个端点使用时，优先使用内联 Request、Response 和 Topic 载荷。生成器会把
 对应值类型命名为 `EchoRequestValue`、`EchoReplyValue` 和
-`ChangedEventValue`。多个端点共享载荷时再使用命名 Record：
+`ChangedEventValue`（C++）；AngelScript 中对应 `EchoRequest`、`EchoReply`、
+`ChangedEvent`，没有 `Value` 后缀。多个端点共享载荷时再使用命名 Record：
 
 ```text
 record object_query {
@@ -174,14 +175,14 @@ class EchoScript {
     Example::Echo::Provider provider;
     BML::ImcSubscriptionRef@ changed;
 
-    int HandleEcho(const Example::Echo::EchoRequestValue &in request,
-                   Example::Echo::EchoReplyValue &out response) {
+    int HandleEcho(const Example::Echo::EchoRequest &in request,
+                   Example::Echo::EchoReply &out response) {
         response.Text = request.Text;
         return BML::ERROR_OK;
     }
 
     void OnChanged(int status,
-                   const Example::Echo::ChangedEventValue &in event) {
+                   const Example::Echo::ChangedEvent &in event) {
         if (status == BML::ERROR_OK) {
             // 使用类型化事件。
         }
@@ -264,7 +265,7 @@ Handler 在 `userdata` 前接收 `const RequestValue &`；两种形式都没有�
 调用线程模式只用于短小且线程安全的代码。访问 Virtools、BML UI 或其他游戏线程状态的
 Handler 必须使用 `BML_IMC_EXECUTION_GAME_THREAD`，这也是生成接口的默认值。
 
-不传 Owner ID 的 `Start()` 会从调用 DLL 解析原生 Mod。一个 DLL 包含多个 Mod 时，
+不传 Owner ID 的 `Start()` 会从调用模块 解析原生 Mod。一个模块 包含多个 Mod 时，
 将明确的 Owner ID 作为第二个参数传入。`Provider::Close` 可以从该 Provider 自己的
 回调中调用：它会立即阻止新的分派，并在最外层回调返回后完成删除。因此，生成的
 Provider 可以在自己的游戏线程 Handler 中销毁，无需维护重试状态。
@@ -372,7 +373,7 @@ int status = client.SubscribeChanged(subscription, &OnChanged, nullptr, 256,
 - `BML_ERROR_WOULD_BLOCK`：使用 FAIL 背压的有界队列已满；
 - `BML_ERROR_BUSY`：注销单个 Provider Route 或替换 Future 会违反生命周期规则。
 
-销毁 Callback Userdata 前先关闭 Subscription 和 Provider，卸载原生 DLL 前先关闭
+销毁 Callback Userdata 前先关闭 Subscription 和 Provider，卸载原生模块 前先关闭
 Client。Owner Cleanup 是最后的安全网，不是正常生命周期机制。
 
 ## 7. 发布检查清单
