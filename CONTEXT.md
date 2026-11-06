@@ -20,9 +20,9 @@ later stop attempt instead of releasing callable code.
 
 **Runtime Context** — The host-owned services reached through per-Mod native
 Context handles and private script/built-in adapters. It owns CK managers and
-services such as Config, Command, Behavior, IMC, DataShare, UI, directories, and logging. Its Mod queries and
-dependency methods delegate to the Mod Loader; it does not keep a second Mod
-registry.
+services such as Config, Command, Behavior, IMC, DataShare, UI, directories, and logging.
+Mod identity, dependency declarations, and module ownership belong to the Mod
+Loader; Runtime Context composes that owner without duplicating its query surface.
 Public C API calls borrow the Context for their duration. Shutdown first stops
 Mods, then refuses new borrows before releasing services; an in-flight borrow
 prevents final destruction.
