@@ -77,7 +77,7 @@ int BML_BEHAVIOR_CALL OpenSession(BML_BehaviorString requestedOwner,
             return BML_ERROR_INVALID_PARAMETER;
         if (!context.AreModsLoaded())
             return BML_ERROR_FROZEN;
-        const std::string owner = context.GetNativeModOwnerId(
+        const std::string owner = context.GetModLoader().GetNativeModOwnerId(
             caller, requested.empty() ? nullptr : requested.c_str());
         if (owner.empty() || (!requested.empty() && owner != requested))
             return BML_ERROR_ACCESS_DENIED;

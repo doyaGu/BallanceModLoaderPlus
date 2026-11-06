@@ -1850,11 +1850,6 @@ bool ModLoader::RegisterMod(ModRecord *mod, const std::shared_ptr<void> &dllHand
     return false;
 }
 
-std::string ModLoader::GetNativeImcOwnerId(
-    const void *callerAddress, const char *requestedOwnerId) const {
-    return GetNativeModOwnerId(callerAddress, requestedOwnerId);
-}
-
 std::string ModLoader::GetNativeModOwnerId(
     const void *callerAddress, const char *requestedOwnerId) const {
     if (!callerAddress)

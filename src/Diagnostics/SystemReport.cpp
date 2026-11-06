@@ -265,7 +265,7 @@ namespace BML::Diagnostics {
 
             data.Ime = Overlay::Ime::Runtime::GetDiagnostics();
             data.Hooks = context.InspectHooks();
-            data.Mods.Count = context.GetModCount();
+            data.Mods.Count = context.GetModLoader().GetModCount();
             data.Mods.Discovered = context.AreModsLoaded();
             data.Mods.Active = context.AreModsInited();
 #if BML_ENABLE_ANGELSCRIPT

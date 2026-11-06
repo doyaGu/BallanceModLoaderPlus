@@ -135,7 +135,7 @@ const ModMenuDetailsActionDocument *ModMenuModel::GetSelectedDetailsAction() con
 }
 
 bool ModMenuModel::IsCurrentOwner(const ModMenuOwner &owner) const {
-    ModRecord *mod = m_Context.FindMod(owner.id.c_str());
+    ModRecord *mod = m_Context.GetModLoader().FindMod(owner.id.c_str());
     return mod && MakeOwner(mod) == owner;
 }
 
@@ -165,7 +165,7 @@ int ModMenuModel::EnterPage(const ModMenuOwner &owner, const ModMenuPageKey &key
     try {
         if (!HasPage(owner, key))
             return BML_ERROR_NOT_FOUND;
-        auto invocation = m_Context.LockModInvocation();
+        auto invocation = m_Context.GetModLoader().LockModInvocation();
         return m_Context.GetModMenuPages().Enter(key, reason);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
@@ -179,7 +179,7 @@ int ModMenuModel::DrawPage(const ModMenuOwner &owner, const ModMenuPageKey &key,
     try {
         if (!HasPage(owner, key))
             return BML_ERROR_NOT_FOUND;
-        auto invocation = m_Context.LockModInvocation();
+        auto invocation = m_Context.GetModLoader().LockModInvocation();
         return m_Context.GetModMenuPages().Draw(key, navigation);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
@@ -193,7 +193,7 @@ int ModMenuModel::LeavePage(const ModMenuOwner &owner, const ModMenuPageKey &key
     try {
         if (!HasPage(owner, key))
             return BML_ERROR_NOT_FOUND;
-        auto invocation = m_Context.LockModInvocation();
+        auto invocation = m_Context.GetModLoader().LockModInvocation();
         return m_Context.GetModMenuPages().Leave(key, reason);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
@@ -207,7 +207,7 @@ void ModMenuModel::SynchronizeSelected(bool force) {
     if (!selected)
         return;
 
-    ModRecord *mod = m_Context.FindMod(selected->id.c_str());
+    ModRecord *mod = m_Context.GetModLoader().FindMod(selected->id.c_str());
     if (!mod) {
         m_SelectedStamp.reset();
         m_Session.Reconcile(std::nullopt);
@@ -292,7 +292,7 @@ ModMenuOwner ModMenuModel::MakeOwner(ModRecord *mod) const {
         return {};
 
     const char *id = mod->GetID();
-    const std::uint64_t registration = m_Context.GetModGeneration(mod);
+    const std::uint64_t registration = m_Context.GetModLoader().GetModGeneration(mod);
     if (!id || !*id || registration == 0)
         return {};
 
@@ -378,7 +378,7 @@ ModMenuDocument ModMenuModel::BuildDocument(ModRecord *mod, const ModMenuOwner &
 }
 
 void ModMenuModel::RefreshMods() {
-    const std::uint64_t registryRevision = m_Context.GetModRegistryRevision();
+    const std::uint64_t registryRevision = m_Context.GetModLoader().GetModRegistryRevision();
     bool changed = !m_ObservedModRegistryRevision ||
                    *m_ObservedModRegistryRevision != registryRevision;
 #if BML_ENABLE_ANGELSCRIPT
@@ -394,13 +394,13 @@ void ModMenuModel::RefreshMods() {
     if (!changed)
         return;
 
-    const int count = m_Context.GetModCount();
+    const int count = m_Context.GetModLoader().GetModCount();
     std::vector<ModMenuModSummary> mods;
     std::vector<ModListSource> sources;
     mods.reserve(static_cast<std::size_t>(std::max(count, 0)));
     sources.reserve(static_cast<std::size_t>(std::max(count, 0)));
     for (int index = 0; index < count; ++index) {
-        ModRecord *mod = m_Context.GetMod(index);
+        ModRecord *mod = m_Context.GetModLoader().GetMod(index);
         const ModMenuOwner owner = MakeOwner(mod);
         if (!mod || owner.id.empty() || owner.registration == 0)
             continue;
@@ -427,7 +427,7 @@ bool ModMenuModel::Apply() {
     }
     const ModMenuEditBatch &batch = prepared->GetBatch();
 
-    ModRecord *mod = m_Context.FindMod(batch.owner.id.c_str());
+    ModRecord *mod = m_Context.GetModLoader().FindMod(batch.owner.id.c_str());
     if (!mod || MakeOwner(mod) != batch.owner) {
         m_Error = "The Mod changed before its settings could be applied.";
         SynchronizeSelected(true);

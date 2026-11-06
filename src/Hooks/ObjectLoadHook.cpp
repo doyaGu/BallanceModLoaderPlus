@@ -112,7 +112,7 @@ int HookLifecycle::ObjectLoad(const CKBehaviorContext &behcontext) {
     CKObject *masterobject = beh->GetOutputParameterObject(1);
 
     CKContext *ckContext = modContext->GetCKContext();
-    modContext->BroadcastCallback<ModEvent::OnLoadObject>(
+    modContext->GetModLoader().BroadcastCallback<ModEvent::OnLoadObject>(
         callbackName.c_str(), isMap, mastername.c_str(), cid, addtoscene, reuseMeshes,
         reuseMaterials, dynamic, oarray, masterobject);
 
@@ -122,7 +122,7 @@ int HookLifecycle::ObjectLoad(const CKBehaviorContext &behcontext) {
             auto *behavior = static_cast<CKBehavior *>(obj);
             if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
                 modContext->BehaviorScriptLoaded(behavior);
-                modContext->BroadcastCallback<ModEvent::OnLoadScript>(callbackName.c_str(),
+                modContext->GetModLoader().BroadcastCallback<ModEvent::OnLoadScript>(callbackName.c_str(),
                                                                       behavior);
             }
         }

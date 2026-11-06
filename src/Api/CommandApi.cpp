@@ -196,17 +196,17 @@ int BML_CDECL RegisterCommand(
 
     return ServeOnMainThread([=](ModContext &context) {
         const std::string owner =
-            context.GetNativeModOwnerId(callerAddress, ownerId);
+            context.GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         if (!definition->Execute ||
-            !context.NativeModOwnsAddress(
+            !context.GetModLoader().NativeModOwnsAddress(
                 owner, reinterpret_cast<const void *>(definition->Execute)) ||
             (definition->Complete &&
-             !context.NativeModOwnsAddress(
+             !context.GetModLoader().NativeModOwnsAddress(
                  owner, reinterpret_cast<const void *>(definition->Complete))) ||
             (definition->Release &&
-             !context.NativeModOwnsAddress(
+             !context.GetModLoader().NativeModOwnsAddress(
                  owner, reinterpret_cast<const void *>(definition->Release))))
             return BML_ERROR_ACCESS_DENIED;
         return context.GetCommandApi().Register(owner, *definition, *outHandle);
@@ -221,7 +221,7 @@ int BML_CDECL UnregisterCommand(
 
     return ServeOnMainThread([=](ModContext &context) {
         const std::string owner =
-            context.GetNativeModOwnerId(callerAddress, ownerId);
+            context.GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         return context.GetCommandApi().Unregister(owner, handle);
@@ -236,7 +236,7 @@ int BML_CDECL SetCommandEnabled(
 
     return ServeOnMainThread([=](ModContext &context) {
         const std::string owner =
-            context.GetNativeModOwnerId(callerAddress, ownerId);
+            context.GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         return context.GetCommandApi().SetEnabled(owner, handle, enabled != 0);
@@ -351,7 +351,7 @@ BML_CommandCompletionRequest BuildCompletionRequest(
 
 void CallbackCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
     if (!m_Context.GetModLoader().CanDispatchOwner(m_Owner)) { Shell::SetStatus(Shell::Status::Failure);return; }
-    auto ownerCall=m_Context.LockModInvocation();
+    auto ownerCall=m_Context.GetModLoader().LockModInvocation();
     ActiveCall active(*this);
     int status = Shell::Status::Failure;
     try {
@@ -375,7 +375,7 @@ const std::vector<std::string>
 CallbackCommand::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
     if (!m_Complete || !m_Context.GetModLoader().CanDispatchOwner(m_Owner))
         return {};
-    auto ownerCall=m_Context.LockModInvocation();
+    auto ownerCall=m_Context.GetModLoader().LockModInvocation();
 
     ActiveCall active(*this);
     try {
@@ -407,7 +407,7 @@ CallbackCommand::GetTabCompletion(ModContext *, const std::vector<std::string> &
 
 struct CommandApi::Entry {
     Entry(ModContext &context, std::string owner, const BML_CommandDefinition &definition)
-        : Owner(std::move(owner)), Command(context, context.FindMod(Owner.c_str()), definition) {}
+        : Owner(std::move(owner)), Command(context, context.GetModLoader().FindMod(Owner.c_str()), definition) {}
 
     std::string Owner;
     CallbackCommand Command;
@@ -449,7 +449,7 @@ int CommandApi::Register(const std::string &owner,
         if (candidate == BML_COMMAND_INVALID_HANDLE)
             return BML_ERROR_BUSY;
 
-        auto *ownerMod=m_Context.FindMod(owner.c_str());
+        auto *ownerMod=m_Context.GetModLoader().FindMod(owner.c_str());
         if(!ownerMod||!AcceptsModWork(m_Context,*ownerMod))return BML_ERROR_FROZEN;
         auto entry = std::make_shared<Entry>(m_Context, owner, definition);
         Entry *registrar = entry.get();

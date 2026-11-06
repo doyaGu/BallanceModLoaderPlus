@@ -142,52 +142,13 @@ public:
     void SetAngelScriptExtensionRegistered(bool registered) { m_AngelScriptExtensionRegistered = registered; }
     bool AreAngelScriptBindingsRegistered() const { return m_AngelScriptBindingsRegistered; }
     void SetAngelScriptBindingsRegistered(bool registered) { m_AngelScriptBindingsRegistered = registered; }
-    bool ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
-                                             const BML::ScriptModDefinition &candidate,
-                                             std::string &diagnostic,
-                                             std::vector<BML::ScriptModReloadDiagnosticField> *fields = nullptr) const;
-    bool PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
-                                           const std::string &oldId,
-                                           const BML::ScriptModDefinition &candidate,
-                                           std::string &diagnostic);
-    void RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
-                                           const std::string &currentId,
-                                           const BML::ScriptModDefinition &oldDefinition);
-    BML::ScriptDevToolsService *GetScriptDevTools() const { return m_Loader.GetScriptDevTools(); }
 #endif
 
-    int GetModCount();
-    ModRecord *GetMod(int index);
-    std::uint64_t GetModGeneration(const ModRecord *mod) const;
-    std::uint64_t GetModRegistryRevision() const;
-    ModRecord *FindMod(const char *id) const;
-    std::string GetNativeImcOwnerId(
-        const void *callerAddress,
-        const char *requestedOwnerId = nullptr) const;
-    std::string GetNativeModOwnerId(
-        const void *callerAddress,
-        const char *requestedOwnerId = nullptr) const;
-    bool NativeModOwnsAddress(
-        const std::string &ownerId, const void *address) const;
-    BML::ModInvocationGate::CallLock LockModInvocation() const { return m_Loader.LockModInvocation(); }
-    bool IsModInvocationActiveOnCurrentThread() const {
-        return m_Loader.IsModInvocationActiveOnCurrentThread();
-    }
     bool IsMainThread() const { return std::this_thread::get_id() == m_MainThreadId; }
     BML::ImcRuntime &GetImcRuntime() { return m_ImcRuntime; }
     const BML::ImcRuntime &GetImcRuntime() const { return m_ImcRuntime; }
     ModMenuPages &GetModMenuPages() { return m_ModMenuPages; }
     const ModMenuPages &GetModMenuPages() const { return m_ModMenuPages; }
-
-    int RegisterDependency(ModRecord *mod, const char *dependencyId, int major, int minor,
-                           int patch);
-    int RegisterOptionalDependency(ModRecord *mod, const char *dependencyId, int major, int minor,
-                                   int patch);
-    int CheckDependencies(ModRecord *mod) const;
-    int GetDependencyCount(ModRecord *mod) const;
-    int GetDependencyInfo(ModRecord *mod, int index, char *dependencyId, int idSize, int *major,
-                          int *minor, int *patch, int *optional) const;
-    int ClearDependencies(ModRecord *mod);
 
     template <class T> void RegisterCommand(std::unique_ptr<T> command) {
         std::shared_ptr<T> owner(std::move(command));
@@ -207,7 +168,6 @@ public:
     }
 
     int GetCommandCount() const;
-    BML::CommandRecord *GetCommand(int index) const;
     BML::CommandRecord *FindCommand(const char *name) const;
     void ExecuteCommand(const char *cmd);
 
@@ -248,9 +208,6 @@ public:
 
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);
-
-    // Resolve the directory of a registered Mod by id.
-    std::wstring GetModRootDirectory(const char *modId) const;
 
     BML::CommandContext &GetCommandContext() { return m_CommandContext; }
     BML::Api::CommandApi &GetCommandApi() { return *m_CommandApi; }
@@ -428,13 +385,7 @@ public:
     void RegisterTrafo(const char *modulName);
     void RegisterModul(const char *modulName);
 
-    template <ModEvent Event, typename... Args> void BroadcastCallback(Args &&...args) {
-        m_Loader.BroadcastCallback<Event>(std::forward<Args>(args)...);
-    }
 
-    template <ModEvent Event> void BroadcastMessage(const char *msg) {
-        m_Loader.BroadcastMessage<Event>(msg);
-    }
 
     void OnProcess();
     void OnRender(CKRenderContext *dev);

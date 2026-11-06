@@ -255,7 +255,7 @@ void BMLMod::OnProcess() {
     m_Console.OnProcess();
 #if BML_ENABLE_ANGELSCRIPT
     if (auto *context = BML_GetModContext()) {
-        if (auto *devTools = context->GetScriptDevTools())
+        if (auto *devTools = context->GetModLoader().GetScriptDevTools())
             devTools->RenderPanel();
     }
 #endif

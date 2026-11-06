@@ -562,11 +562,11 @@ bool ScriptModContextView::IsCommandCheat(const std::string &name) const {
 }
 
 int ScriptModContextView::GetGlobalModCount() const {
-    return m_Context ? m_Context->GetModCount() : 0;
+    return m_Context ? m_Context->GetModLoader().GetModCount() : 0;
 }
 
 std::string ScriptModContextView::GetGlobalModId(int index) const {
-    ModRecord *mod = m_Context ? m_Context->GetMod(index) : nullptr;
+    ModRecord *mod = m_Context ? m_Context->GetModLoader().GetMod(index) : nullptr;
     return mod ? mod->GetID() : "";
 }
 

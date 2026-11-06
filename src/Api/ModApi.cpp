@@ -17,7 +17,7 @@ int BML_CDECL GetOwner(BML_ModContextHandle handle, BML_ModHandle *out) {
         return BML_ERROR_INVALID_PARAMETER;
     *out = 0;
     return WithModContext(handle, [&](ModContext &ctx, ModRecord &owner) {
-        *out = ctx.GetModGeneration(&owner);
+        *out = ctx.GetModLoader().GetModGeneration(&owner);
         return *out ? BML_OK : BML_ERROR_INVALID_HANDLE;
     });
 }
@@ -25,7 +25,7 @@ int BML_CDECL GetOwner(BML_ModContextHandle handle, BML_ModHandle *out) {
 int VisitOne(ModContext &ctx, ModRecord &mod, BML_ModVisitor visitor, void *data) {
     BML_ModInfo info{};
     info.StructSize = sizeof(info);
-    info.Handle = ctx.GetModGeneration(&mod);
+    info.Handle = ctx.GetModLoader().GetModGeneration(&mod);
     info.Kind = BML_MOD_KIND_NATIVE;
     info.State = ctx.AreModsInited() ? BML_MOD_STATE_LOADED : BML_MOD_STATE_REGISTERED;
     if (auto *native = ctx.GetModLoader().FindNativeMod(&mod)) {
@@ -91,10 +91,10 @@ int BML_CDECL FindMod(BML_ModContextHandle contextHandle, const char *id, BML_Mo
         return BML_ERROR_INVALID_PARAMETER;
     *out = 0;
     return WithModContext(contextHandle, [&](ModContext &ctx, ModRecord &) {
-        auto *found = ctx.FindMod(id);
+        auto *found = ctx.GetModLoader().FindMod(id);
         if (!found)
             return BML_ERROR_NOT_FOUND;
-        *out = ctx.GetModGeneration(found);
+        *out = ctx.GetModLoader().GetModGeneration(found);
         return BML_OK;
     });
 }
@@ -103,9 +103,9 @@ int BML_CDECL VisitMods(BML_ModContextHandle contextHandle, BML_ModVisitor visit
     if (!visitor)
         return BML_ERROR_INVALID_PARAMETER;
     return WithModContext(contextHandle, [&](ModContext &ctx, ModRecord &) {
-        const int count = ctx.GetModCount();
+        const int count = ctx.GetModLoader().GetModCount();
         for (int i = 0; i < count; ++i) {
-            const int code = VisitOne(ctx, *ctx.GetMod(i), visitor, data);
+            const int code = VisitOne(ctx, *ctx.GetModLoader().GetMod(i), visitor, data);
             if (code != BML_OK)
                 return code;
         }
@@ -140,7 +140,7 @@ int BML_CDECL GetDirectory(BML_ModContextHandle contextHandle, uint32_t director
     return WithModContext(contextHandle, [&](ModContext &ctx, ModRecord &owner) {
         const std::string value =
             directory == BML_MOD_DIRECTORY_ROOT
-                ? utils::Utf16ToUtf8(ctx.GetModRootDirectory(owner.GetID()))
+                ? utils::Utf16ToUtf8(ctx.GetModLoader().GetModRootDirectory(owner.GetID()))
                 : ctx.GetDirectoryUtf8(static_cast<BML_LoaderDirectory>(directory));
         return CopyText(value, buffer, capacity, required);
     });
@@ -149,7 +149,7 @@ int BML_CDECL GetDirectory(BML_ModContextHandle contextHandle, uint32_t director
 int ResolveResource(ModContext &ctx, ModRecord &owner, const char *relative, std::string &path) {
     if (!relative || !*relative || !utils::IsRelativePathUtf8(relative))
         return BML_ERROR_INVALID_PARAMETER;
-    const auto root = ctx.GetModRootDirectory(owner.GetID());
+    const auto root = ctx.GetModLoader().GetModRootDirectory(owner.GetID());
     if (root.empty())
         return BML_ERROR_UNAVAILABLE;
     const auto candidate = utils::CombinePathW(root, utils::Utf8ToUtf16(relative));

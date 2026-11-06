@@ -75,7 +75,7 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
 
 #if BML_ENABLE_ANGELSCRIPT
     if (ctx) {
-        if (auto *devTools = ctx->GetScriptDevTools())
+        if (auto *devTools = ctx->GetModLoader().GetScriptDevTools())
             devTools->PublishLogLine(level, m_ModName.c_str(), message);
     }
 #endif

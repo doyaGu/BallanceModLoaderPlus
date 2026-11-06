@@ -18,7 +18,7 @@ template <class Body> int WithModContext(BML_ModContextHandle handle, Body &&bod
         ModRecord *owner = context->GetModLoader().ResolveModContext(handle);
         if (!owner)
             return BML_ERROR_INVALID_HANDLE;
-        auto lock = context->LockModInvocation();
+        auto lock = context->GetModLoader().LockModInvocation();
         return context->GetModLoader().InvokeAs(owner, [&] { return body(*context, *owner); });
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;

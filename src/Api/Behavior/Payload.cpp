@@ -735,7 +735,7 @@ BML::Behavior::Internal::WatchBinding::Function WatchThunk(
         if (!WriteWatchValue(event.PreviousValue, wire.PreviousValue, previous) ||
             !WriteWatchValue(event.CurrentValue, wire.CurrentValue, current))
             return failed("A Behavior Watch value could not be represented.");
-        auto invocation = owner->LockModInvocation();
+        auto invocation = owner->GetModLoader().LockModInvocation();
         int result = BML_BEHAVIOR_WATCH_ERROR;
         try {
             result = function.Invoke(function.State, &wire);

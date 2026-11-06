@@ -914,7 +914,7 @@ static BML::ScriptMod *BMLAS_ResolveScriptModOwner(const std::string &modId) {
     ModContext *ctx = nullptr;
     if (!RequireContext(ctx))
         return nullptr;
-    ModRecord *mod = ctx->FindMod(modId.c_str());
+    ModRecord *mod = ctx->GetModLoader().FindMod(modId.c_str());
     return (mod ? mod->Script : nullptr);
 }
 
@@ -1810,13 +1810,13 @@ public:
     int CheckDependencies() const {
         ModContext *ctx = nullptr;
         ModRecord *mod = Resolve(&ctx);
-        return ctx && mod ? ctx->CheckDependencies(mod) : 0;
+        return ctx && mod ? ctx->GetModLoader().CheckDependencies(mod) : 0;
     }
 
     int GetDependencyCount() const {
         ModContext *ctx = nullptr;
         ModRecord *mod = Resolve(&ctx);
-        return ctx && mod ? ctx->GetDependencyCount(mod) : -1;
+        return ctx && mod ? ctx->GetModLoader().GetDependencyCount(mod) : -1;
     }
 
     std::string GetDependencyId(int index) const {
@@ -1869,7 +1869,7 @@ private:
             return nullptr;
         if (outContext)
             *outContext = ctx;
-        return ctx->FindMod(m_Id.c_str());
+        return ctx->GetModLoader().FindMod(m_Id.c_str());
     }
 
     DependencyInfo GetDependencyInfo(int index) const {
@@ -1884,7 +1884,7 @@ private:
         int minor = 0;
         int patch = 0;
         int optional = 0;
-        const int status = ctx->GetDependencyInfo(mod,
+        const int status = ctx->GetModLoader().GetDependencyInfo(mod,
                                                   index,
                                                   dependencyId,
                                                   static_cast<int>(sizeof(dependencyId)),
@@ -1912,7 +1912,7 @@ BMLAS_ModRef *BMLAS_FindMod(const std::string &id) {
     ModContext *ctx = nullptr;
     if (!RequireContext(ctx))
         return nullptr;
-    ModRecord *mod = ctx->FindMod(id.c_str());
+    ModRecord *mod = ctx->GetModLoader().FindMod(id.c_str());
     return mod ? BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ModRef(mod->GetID()),
                                          "Out of memory creating BML::ModRef.")
                : nullptr;
@@ -1920,14 +1920,14 @@ BMLAS_ModRef *BMLAS_FindMod(const std::string &id) {
 
 int BMLAS_GetModCount() {
     ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetModCount() : 0;
+    return RequireContext(ctx) ? ctx->GetModLoader().GetModCount() : 0;
 }
 
 std::string BMLAS_GetModId(int index) {
     ModContext *ctx = nullptr;
     if (!RequireContext(ctx))
         return "";
-    ModRecord *mod = ctx->GetMod(index);
+    ModRecord *mod = ctx->GetModLoader().GetMod(index);
     return mod ? mod->GetID() : "";
 }
 
@@ -1935,7 +1935,7 @@ BMLAS_ModRef *BMLAS_GetMod(int index) {
     ModContext *ctx = nullptr;
     if (!RequireContext(ctx))
         return nullptr;
-    ModRecord *mod = ctx->GetMod(index);
+    ModRecord *mod = ctx->GetModLoader().GetMod(index);
     return mod ? BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ModRef(mod->GetID()),
                                          "Out of memory creating BML::ModRef.")
                : nullptr;

@@ -89,8 +89,8 @@ bool ScriptModReloadTransaction::CaptureStateForCommit(ScriptStateBagHandle &sav
     }
 
     m_State.StateSaved = stateSaved;
-    if (stateSaved && savedState && m_Mod.m_Context && m_Mod.m_Context->GetScriptDevTools()) {
-        m_Mod.m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+    if (stateSaved && savedState && m_Mod.m_Context && m_Mod.m_Context->GetModLoader().GetScriptDevTools()) {
+        m_Mod.m_Context->GetModLoader().GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                            "ScriptReloadStateSaved",
                                                            m_Mod.GetID() ? m_Mod.GetID() : "",
                                                            "reload",
@@ -116,7 +116,7 @@ bool ScriptModReloadTransaction::PromoteFailedPlaceholder(Failure &failure) {
     }
 
     std::string recoveryDiagnostic;
-    if (!m_Mod.m_Context->PromoteFailedScriptModPlaceholder(&m_Mod,
+    if (!m_Mod.m_Context->GetModLoader().PromoteFailedScriptModPlaceholder(&m_Mod,
                                                             oldId,
                                                             m_State.CandidateDefinition,
                                                             recoveryDiagnostic)) {
@@ -188,7 +188,7 @@ void ScriptModReloadTransaction::RestoreRetainedRuntime() {
 void ScriptModReloadTransaction::RestoreFailedPlaceholderAfterRejectedRecovery(const std::string &candidateId) {
     RestoreRetainedRuntime();
     if (m_State.RecoveryPromoted && m_Mod.m_Context)
-        m_Mod.m_Context->RestoreFailedScriptModPlaceholder(&m_Mod, candidateId, m_Mod.m_Definition);
+        m_Mod.m_Context->GetModLoader().RestoreFailedScriptModPlaceholder(&m_Mod, candidateId, m_Mod.m_Definition);
 }
 
 void ScriptModReloadTransaction::InstallPreparedRuntimeForCommit() {

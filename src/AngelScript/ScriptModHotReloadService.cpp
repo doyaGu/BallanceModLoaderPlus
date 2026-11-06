@@ -634,8 +634,8 @@ void ScriptModHotReloadService::RefreshRegisteredModOrder() {
     std::unordered_set<std::string> orderedIds;
     orderedIds.reserve(m_Mods.size());
 
-    for (int i = 0; i < m_Context->GetModCount(); ++i) {
-        auto *registration = m_Context->GetMod(i);
+    for (int i = 0; i < m_Context->GetModLoader().GetModCount(); ++i) {
+        auto *registration = m_Context->GetModLoader().GetMod(i);
         auto *scriptMod = registration ? registration->Script : nullptr;
         if (!scriptMod || !scriptMod->GetID())
             continue;

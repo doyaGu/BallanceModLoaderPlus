@@ -129,14 +129,14 @@ namespace {
         if (!context)
             return false;
 
-        owner = context->GetNativeModOwnerId(callerAddress, ownerId);
+        owner = context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return false;
 
         if ((!callbackAddress ||
-             context->NativeModOwnsAddress(owner, callbackAddress)) &&
+             context->GetModLoader().NativeModOwnsAddress(owner, callbackAddress)) &&
             (!cleanupAddress ||
-             context->NativeModOwnsAddress(owner, cleanupAddress)))
+             context->GetModLoader().NativeModOwnsAddress(owner, cleanupAddress)))
             return true;
 
         const HMODULE loader = ModuleFromAddress(
@@ -241,7 +241,7 @@ ModContext::ModContext(CKContext *context)
         [](void *data, const std::string &id, bool callback) noexcept {
             try {
                 auto &ctx = *static_cast<ModContext *>(data);
-                auto *owner = ctx.FindMod(id.c_str());
+                auto *owner = ctx.GetModLoader().FindMod(id.c_str());
                 if (callback)
                     return ctx.GetModLoader().CanDispatchOwner(owner);
                 return owner && BML::Api::AcceptsModWork(ctx, *owner);
@@ -266,7 +266,7 @@ ModContext::ModContext(CKContext *context)
             ModContextLease ctx;
             if (!ctx)
                 return false;
-            auto *owner = ctx->FindMod(id.c_str());
+            auto *owner = ctx->GetModLoader().FindMod(id.c_str());
             if (callback)
                 return ctx->GetModLoader().CanDispatchOwner(owner);
             return owner && BML::Api::AcceptsModWork(*ctx, *owner);
@@ -435,8 +435,8 @@ bool ModContext::Shutdown() {
     m_GameFonts.Reset();
 
 #if BML_ENABLE_ANGELSCRIPT
-    if (GetScriptDevTools())
-        GetScriptDevTools()->Hide();
+    if (m_Loader.GetScriptDevTools())
+        m_Loader.GetScriptDevTools()->Hide();
     BML_UnregisterAngelScriptBindings(this);
 #endif
 
@@ -716,13 +716,6 @@ int ModContext::GetCommandCount() const {
     return static_cast<int>(m_CommandContext.GetCommandCount());
 }
 
-BML::CommandRecord *ModContext::GetCommand(int index) const {
-    if (!IsMainThread())
-        return nullptr;
-    std::lock_guard<std::mutex> lock(m_CommandMutex);
-    return m_CommandContext.GetCommandByIndex(index);
-}
-
 BML::CommandRecord *ModContext::FindCommand(const char *name) const {
     if (!IsMainThread())
         return nullptr;
@@ -833,13 +826,13 @@ int ModContext::InvokeCommandArgs(const std::vector<std::string> &args, const st
 
     int status = BML::Shell::Status::Failure;
     try {
-        BroadcastCallback<ModEvent::OnPreCommandExecute>(call.Command, args);
+        m_Loader.BroadcastCallback<ModEvent::OnPreCommandExecute>(call.Command, args);
         {
             BML::Shell::InvocationScope scope(input);
             call.Command->Execute(this, args);
             status = scope.Status();
         }
-        BroadcastCallback<ModEvent::OnPostCommandExecute>(call.Command, args);
+        m_Loader.BroadcastCallback<ModEvent::OnPostCommandExecute>(call.Command, args);
     } catch (const std::exception &e) {
         m_Logger->Error("Exception executing command '%s': %s", args[0].c_str(), e.what());
         WriteShellError(BML::Shell::FormatError("Error: Command failed - " + std::string(e.what())));
@@ -1024,7 +1017,7 @@ void ModContext::SnapshotConfigMetadata() {
 }
 
 void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
-    auto invocationLock = LockModInvocation();
+    auto invocationLock = m_Loader.LockModInvocation();
     if (saveAll) {
         for (auto it = m_DetachedConfigs.begin(); it != m_DetachedConfigs.end();) {
             bool saved = false;
@@ -1117,85 +1110,6 @@ const char *ModContext::GetDirectoryUtf8(DirectoryType type) {
     return nullptr;
 }
 
-std::wstring ModContext::GetModRootDirectory(const char *modId) const {
-    return m_Loader.GetModRootDirectory(modId);
-}
-
-#if BML_ENABLE_ANGELSCRIPT
-bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
-                                                       const BML::ScriptModDefinition &candidate,
-                                                       std::string &diagnostic,
-                                                       std::vector<BML::ScriptModReloadDiagnosticField> *fields) const {
-    return m_Loader.ValidateScriptModReloadDependencies(mod, candidate, diagnostic, fields);
-}
-
-bool ModContext::PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod, const std::string &oldId,
-                                                    const BML::ScriptModDefinition &candidate,
-                                                    std::string &diagnostic) {
-    return m_Loader.PromoteFailedScriptModPlaceholder(mod, oldId, candidate, diagnostic);
-}
-
-void ModContext::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod, const std::string &currentId,
-                                                    const BML::ScriptModDefinition &oldDefinition) {
-    m_Loader.RestoreFailedScriptModPlaceholder(mod, currentId, oldDefinition);
-}
-#endif
-
-int ModContext::GetModCount() {
-    return m_Loader.GetModCount();
-}
-
-ModRecord *ModContext::GetMod(int index) {
-    return m_Loader.GetMod(index);
-}
-
-std::uint64_t ModContext::GetModGeneration(const ModRecord *mod) const {
-    return m_Loader.GetModGeneration(mod);
-}
-
-std::uint64_t ModContext::GetModRegistryRevision() const {
-    return m_Loader.GetModRegistryRevision();
-}
-
-ModRecord *ModContext::FindMod(const char *id) const {
-    return m_Loader.FindMod(id);
-}
-std::string ModContext::GetNativeImcOwnerId(const void *callerAddress, const char *ownerId) const {
-    return m_Loader.GetNativeImcOwnerId(callerAddress, ownerId);
-}
-std::string ModContext::GetNativeModOwnerId(const void *callerAddress, const char *ownerId) const {
-    return m_Loader.GetNativeModOwnerId(callerAddress, ownerId);
-}
-bool ModContext::NativeModOwnsAddress(const std::string &ownerId, const void *address) const {
-    return m_Loader.NativeModOwnsAddress(ownerId, address);
-}
-
-int ModContext::RegisterDependency(ModRecord *mod, const char *id, int major, int minor,
-                                   int patch) {
-    return m_Loader.RegisterDependency(mod, id, major, minor, patch);
-}
-
-int ModContext::RegisterOptionalDependency(ModRecord *mod, const char *id, int major, int minor,
-                                           int patch) {
-    return m_Loader.RegisterOptionalDependency(mod, id, major, minor, patch);
-}
-
-int ModContext::CheckDependencies(ModRecord *mod) const {
-    return m_Loader.CheckDependencies(mod);
-}
-
-int ModContext::GetDependencyCount(ModRecord *mod) const {
-    return m_Loader.GetDependencyCount(mod);
-}
-
-int ModContext::GetDependencyInfo(ModRecord *mod, int index, char *id, int idSize, int *major,
-                                  int *minor, int *patch, int *optional) const {
-    return m_Loader.GetDependencyInfo(mod, index, id, idSize, major, minor, patch, optional);
-}
-
-int ModContext::ClearDependencies(ModRecord *mod) {
-    return m_Loader.ClearDependencies(mod);
-}
 
 BML_DataShare *ModContext::GetDataShare(const char *name) {
     if (!name || !*name)
@@ -1325,7 +1239,7 @@ void ModContext::CloseMapMenu() {
 
 void ModContext::EnableCheat(bool enable) {
     if (m_CommandContext.SetCheatEnabled(enable)) {
-        BroadcastCallback<ModEvent::OnCheatEnabled>(enable);
+        m_Loader.BroadcastCallback<ModEvent::OnCheatEnabled>(enable);
     }
 }
 
@@ -1450,7 +1364,7 @@ void ModContext::OnProcess() {
     TimerScheduler::ProcessAll(m_TimeManager->GetMainTickCount(),
                                m_TimeManager->GetAbsoluteTime() / 1000.0f);
     m_TimerApi.FinishProcess();
-    BroadcastCallback<ModEvent::OnProcess>();
+    m_Loader.BroadcastCallback<ModEvent::OnProcess>();
     FlushConfigChanges();
 }
 
@@ -1458,12 +1372,12 @@ void ModContext::OnRender(CKRenderContext *dev) {
     if (!IsInited() || !dev)
         return;
 
-    BroadcastCallback<ModEvent::OnRender>(
+    m_Loader.BroadcastCallback<ModEvent::OnRender>(
         static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
 }
 
 void ModContext::OnLoadGame() {
-    BroadcastCallback<ModEvent::OnLoadObject>("base.cmo", false, "", CKCID_3DOBJECT, true, true,
+    m_Loader.BroadcastCallback<ModEvent::OnLoadObject>("base.cmo", false, "", CKCID_3DOBJECT, true, true,
                                               true, false, nullptr, nullptr);
 
     int scriptCnt = m_CKContext->GetObjectsCountByClassID(CKCID_BEHAVIOR);
@@ -1472,152 +1386,152 @@ void ModContext::OnLoadGame() {
         auto *behavior = (CKBehavior *) m_CKContext->GetObject(scripts[i]);
         if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
             BehaviorScriptLoaded(behavior);
-            BroadcastCallback<ModEvent::OnLoadScript>("base.cmo", behavior);
+            m_Loader.BroadcastCallback<ModEvent::OnLoadScript>("base.cmo", behavior);
         }
     }
 }
 
 void ModContext::OnPreStartMenu() {
-    BroadcastMessage<ModEvent::OnPreStartMenu>("PreStartMenu");
+    m_Loader.BroadcastMessage<ModEvent::OnPreStartMenu>("PreStartMenu");
 }
 
 void ModContext::OnPostStartMenu() {
-    BroadcastMessage<ModEvent::OnPostStartMenu>("PostStartMenu");
+    m_Loader.BroadcastMessage<ModEvent::OnPostStartMenu>("PostStartMenu");
 }
 
 void ModContext::OnExitGame() {
-    BroadcastMessage<ModEvent::OnExitGame>("ExitGame");
+    m_Loader.BroadcastMessage<ModEvent::OnExitGame>("ExitGame");
 }
 
 void ModContext::OnPreLoadLevel() {
-    BroadcastMessage<ModEvent::OnPreLoadLevel>("PreLoadLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPreLoadLevel>("PreLoadLevel");
 }
 
 void ModContext::OnPostLoadLevel() {
-    BroadcastMessage<ModEvent::OnPostLoadLevel>("PostLoadLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPostLoadLevel>("PostLoadLevel");
 }
 
 void ModContext::OnStartLevel() {
     m_GamePhase = GamePhase::ActiveLevel;
-    BroadcastMessage<ModEvent::OnStartLevel>("StartLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnStartLevel>("StartLevel");
 }
 
 void ModContext::OnPreResetLevel() {
-    BroadcastMessage<ModEvent::OnPreResetLevel>("PreResetLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPreResetLevel>("PreResetLevel");
     m_GamePhase = GamePhase::Transitioning;
 }
 
 void ModContext::OnPostResetLevel() {
-    BroadcastMessage<ModEvent::OnPostResetLevel>("PostResetLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPostResetLevel>("PostResetLevel");
 }
 
 void ModContext::OnPauseLevel() {
     if (m_GamePhase == GamePhase::ActiveLevel)
         m_GamePhase = GamePhase::PausedLevel;
-    BroadcastMessage<ModEvent::OnPauseLevel>("PauseLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPauseLevel>("PauseLevel");
 }
 
 void ModContext::OnUnpauseLevel() {
     if (m_GamePhase == GamePhase::PausedLevel)
         m_GamePhase = GamePhase::ActiveLevel;
-    BroadcastMessage<ModEvent::OnUnpauseLevel>("UnpauseLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnUnpauseLevel>("UnpauseLevel");
 }
 
 void ModContext::OnPreExitLevel() {
-    BroadcastMessage<ModEvent::OnPreExitLevel>("PreExitLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPreExitLevel>("PreExitLevel");
 }
 
 void ModContext::OnPostExitLevel() {
     m_GamePhase = GamePhase::FrontEnd;
-    BroadcastMessage<ModEvent::OnPostExitLevel>("PostExitLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPostExitLevel>("PostExitLevel");
 }
 
 void ModContext::OnPreNextLevel() {
-    BroadcastMessage<ModEvent::OnPreNextLevel>("PreNextLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPreNextLevel>("PreNextLevel");
 }
 
 void ModContext::OnPostNextLevel() {
     m_GamePhase = GamePhase::Transitioning;
-    BroadcastMessage<ModEvent::OnPostNextLevel>("PostNextLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPostNextLevel>("PostNextLevel");
 }
 
 void ModContext::OnDead() {
     m_GamePhase = GamePhase::FrontEnd;
-    BroadcastMessage<ModEvent::OnDead>("Dead");
+    m_Loader.BroadcastMessage<ModEvent::OnDead>("Dead");
 }
 
 void ModContext::OnPreEndLevel() {
-    BroadcastMessage<ModEvent::OnPreEndLevel>("PreEndLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPreEndLevel>("PreEndLevel");
 }
 
 void ModContext::OnPostEndLevel() {
     m_GamePhase = GamePhase::FrontEnd;
-    BroadcastMessage<ModEvent::OnPostEndLevel>("PostEndLevel");
+    m_Loader.BroadcastMessage<ModEvent::OnPostEndLevel>("PostEndLevel");
 }
 
 void ModContext::OnCounterActive() {
-    BroadcastMessage<ModEvent::OnCounterActive>("CounterActive");
+    m_Loader.BroadcastMessage<ModEvent::OnCounterActive>("CounterActive");
 }
 
 void ModContext::OnCounterInactive() {
-    BroadcastMessage<ModEvent::OnCounterInactive>("CounterInactive");
+    m_Loader.BroadcastMessage<ModEvent::OnCounterInactive>("CounterInactive");
 }
 
 void ModContext::OnBallNavActive() {
-    BroadcastMessage<ModEvent::OnBallNavActive>("BallNavActive");
+    m_Loader.BroadcastMessage<ModEvent::OnBallNavActive>("BallNavActive");
 }
 
 void ModContext::OnBallNavInactive() {
-    BroadcastMessage<ModEvent::OnBallNavInactive>("BallNavInactive");
+    m_Loader.BroadcastMessage<ModEvent::OnBallNavInactive>("BallNavInactive");
 }
 
 void ModContext::OnCamNavActive() {
-    BroadcastMessage<ModEvent::OnCamNavActive>("CamNavActive");
+    m_Loader.BroadcastMessage<ModEvent::OnCamNavActive>("CamNavActive");
 }
 
 void ModContext::OnCamNavInactive() {
-    BroadcastMessage<ModEvent::OnCamNavInactive>("CamNavInactive");
+    m_Loader.BroadcastMessage<ModEvent::OnCamNavInactive>("CamNavInactive");
 }
 
 void ModContext::OnBallOff() {
-    BroadcastMessage<ModEvent::OnBallOff>("BallOff");
+    m_Loader.BroadcastMessage<ModEvent::OnBallOff>("BallOff");
 }
 
 void ModContext::OnPreCheckpointReached() {
-    BroadcastMessage<ModEvent::OnPreCheckpointReached>("PreCheckpoint");
+    m_Loader.BroadcastMessage<ModEvent::OnPreCheckpointReached>("PreCheckpoint");
 }
 
 void ModContext::OnPostCheckpointReached() {
-    BroadcastMessage<ModEvent::OnPostCheckpointReached>("PostCheckpoint");
+    m_Loader.BroadcastMessage<ModEvent::OnPostCheckpointReached>("PostCheckpoint");
 }
 
 void ModContext::OnLevelFinish() {
-    BroadcastMessage<ModEvent::OnLevelFinish>("LevelFinish");
+    m_Loader.BroadcastMessage<ModEvent::OnLevelFinish>("LevelFinish");
     m_GamePhase = GamePhase::Transitioning;
 }
 
 void ModContext::OnGameOver() {
-    BroadcastMessage<ModEvent::OnGameOver>("GameOver");
+    m_Loader.BroadcastMessage<ModEvent::OnGameOver>("GameOver");
 }
 
 void ModContext::OnExtraPoint() {
-    BroadcastMessage<ModEvent::OnExtraPoint>("ExtraPoint");
+    m_Loader.BroadcastMessage<ModEvent::OnExtraPoint>("ExtraPoint");
 }
 
 void ModContext::OnPreSubLife() {
-    BroadcastMessage<ModEvent::OnPreSubLife>("PreSubLife");
+    m_Loader.BroadcastMessage<ModEvent::OnPreSubLife>("PreSubLife");
 }
 
 void ModContext::OnPostSubLife() {
-    BroadcastMessage<ModEvent::OnPostSubLife>("PostSubLife");
+    m_Loader.BroadcastMessage<ModEvent::OnPostSubLife>("PostSubLife");
 }
 
 void ModContext::OnPreLifeUp() {
-    BroadcastMessage<ModEvent::OnPreLifeUp>("PreLifeUp");
+    m_Loader.BroadcastMessage<ModEvent::OnPreLifeUp>("PreLifeUp");
 }
 
 void ModContext::OnPostLifeUp() {
-    BroadcastMessage<ModEvent::OnPostLifeUp>("PostLifeUp");
+    m_Loader.BroadcastMessage<ModEvent::OnPostLifeUp>("PostLifeUp");
 }
 
 void ModContext::InitDirectories() {
@@ -1844,7 +1758,7 @@ void ModContext::RetireFailedModOwner(const std::string &ownerId) noexcept {
 }
 
 bool ModContext::PrepareModUnload(const std::string &ownerId) {
-    if (auto *owner = FindMod(ownerId.c_str())) {
+    if (auto *owner = m_Loader.FindMod(ownerId.c_str())) {
         m_TimerApi.CleanupOwner(*owner);
         m_InputApi.CleanupOwner(*this, *owner);
         m_BuiApi.CleanupOwner(*owner);

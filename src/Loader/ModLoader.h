@@ -88,7 +88,6 @@ public:
                           int *minor, int *patch, int *optional) const;
     int ClearDependencies(ModRecord *mod);
 
-    std::string GetNativeImcOwnerId(const void *callerAddress, const char *requestedOwnerId = nullptr) const;
     std::string GetNativeModOwnerId(const void *callerAddress, const char *requestedOwnerId = nullptr) const;
     bool NativeModOwnsAddress(const std::string &ownerId, const void *address) const;
     std::wstring GetModRootDirectory(const char *modId) const;

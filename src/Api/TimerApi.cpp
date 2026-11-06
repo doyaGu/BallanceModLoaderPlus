@@ -21,7 +21,7 @@ int TimerApi::Register(ModContext &ctx, ModRecord &owner, BML_ModContextHandle h
     return m_Registry.Register(
         &owner, definition,
         [&ctx, &owner, handle, callback, data](const BML_TimerEvent &event, uint32_t &keep) {
-            auto invocation = ctx.LockModInvocation();
+            auto invocation = ctx.GetModLoader().LockModInvocation();
             auto &loader = ctx.GetModLoader();
             if (!loader.CanDispatchOwner(&owner)) {
                 keep = 0;
@@ -43,7 +43,7 @@ int TimerApi::Register(ModContext &ctx, ModRecord &owner, BML_ModContextHandle h
         [&ctx, &owner, data, release] {
             if (!release)
                 return;
-            auto invocation = ctx.LockModInvocation();
+            auto invocation = ctx.GetModLoader().LockModInvocation();
             ctx.GetModLoader().InvokeAs(&owner, [&] { release(data); });
         },
         clock->GetMainTickCount(), clock->GetAbsoluteTime() / 1000.0f, out);

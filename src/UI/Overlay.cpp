@@ -183,7 +183,7 @@ namespace Overlay {
         if (!context) return;
         // Custom draw callbacks are module code too. A reentrant Stop may not
         // unload them while the backend is consuming their command list.
-        auto invocation = context->LockModInvocation();
+        auto invocation = context->GetModLoader().LockModInvocation();
         if (g_DrawDataReady) {
             ImGuiContextScope scope;
             ImGui_ImplCK2_RenderDrawData(ImGui::GetDrawData());

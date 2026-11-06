@@ -849,7 +849,7 @@ void ScriptDevToolsService::ClearEvents() {
 ScriptMod *ScriptDevToolsService::FindScriptMod(const std::string &id) const {
     if (!m_Context)
         return nullptr;
-    auto *record = m_Context->FindMod(id.c_str());
+    auto *record = m_Context->GetModLoader().FindMod(id.c_str());
     return record ? record->Script : nullptr;
 }
 
@@ -857,12 +857,12 @@ void ScriptDevToolsService::RefreshSnapshotsIfNeeded(bool force) {
     if (!m_Context)
         return;
 
-    uint64_t observed = static_cast<uint64_t>(m_Context->GetModCount());
+    uint64_t observed = static_cast<uint64_t>(m_Context->GetModLoader().GetModCount());
     auto mixObserved = [&](uint64_t value) {
         observed = observed * 1315423911u + value + 0x9e3779b97f4a7c15ull;
     };
-    for (int i = 0; i < m_Context->GetModCount(); ++i) {
-        auto *record = m_Context->GetMod(i);
+    for (int i = 0; i < m_Context->GetModLoader().GetModCount(); ++i) {
+        auto *record = m_Context->GetModLoader().GetMod(i);
         auto *mod = record ? record->Script : nullptr;
         if (!mod)
             continue;
@@ -880,8 +880,8 @@ void ScriptDevToolsService::RefreshSnapshotsIfNeeded(bool force) {
         return;
 
     std::vector<ScriptModSnapshot> snapshots;
-    for (int i = 0; i < m_Context->GetModCount(); ++i) {
-        auto *record = m_Context->GetMod(i);
+    for (int i = 0; i < m_Context->GetModLoader().GetModCount(); ++i) {
+        auto *record = m_Context->GetModLoader().GetMod(i);
         auto *mod = record ? record->Script : nullptr;
         if (mod) {
             ScriptModSnapshot snapshot = BuildSnapshot(mod);
@@ -937,7 +937,7 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
         item.Id = dependency.Id;
         item.MinVersion = dependency.MinVersion.ToString();
         item.Optional = dependency.Optional;
-        ModRecord *target = m_Context ? m_Context->FindMod(dependency.Id.c_str()) : nullptr;
+        ModRecord *target = m_Context ? m_Context->GetModLoader().FindMod(dependency.Id.c_str()) : nullptr;
         item.Satisfied = dependency.Optional;
         if (!dependency.Optional && target && !IsFailedScriptMod(target)) {
             item.Satisfied = ParseLegacyModVersion(target->GetVersion()) >=

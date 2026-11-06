@@ -328,21 +328,21 @@ int BML_CDECL ModMenuRegisterPage(
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
 
-        const std::string owner = context->GetNativeModOwnerId(callerAddress, ownerId);
+        const std::string owner = context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
-        if (!context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Draw)))
+        if (!context->GetModLoader().NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Draw)))
             return BML_ERROR_ACCESS_DENIED;
         if (page->Enter &&
-            !context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Enter))) {
+            !context->GetModLoader().NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Enter))) {
             return BML_ERROR_ACCESS_DENIED;
         }
         if (page->Leave &&
-            !context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Leave))) {
+            !context->GetModLoader().NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Leave))) {
             return BML_ERROR_ACCESS_DENIED;
         }
         if (page->Release &&
-            !context->NativeModOwnsAddress(
+            !context->GetModLoader().NativeModOwnsAddress(
                 owner, reinterpret_cast<const void *>(page->Release))) {
             return BML_ERROR_ACCESS_DENIED;
         }
@@ -366,7 +366,7 @@ int BML_CDECL ModMenuUnregisterPage(const char *ownerId, const char *pageId) {
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
 
-        const std::string owner = context->GetNativeModOwnerId(callerAddress, ownerId);
+        const std::string owner = context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         return context->GetModMenuPages().Unregister(owner, pageId);
@@ -530,9 +530,9 @@ int BML_CDECL BML_GetInterface(const char *interfaceId, uint16_t majorVersion, c
         if (code != BML_OK)
             return code;
         auto &loader = context->GetModLoader();
-        const auto consumerId = context->GetNativeModOwnerId(caller, nullptr);
-        auto *consumer = context->FindMod(consumerId.c_str());
-        auto *provider = context->FindMod(providerId.c_str());
+        const auto consumerId = context->GetModLoader().GetNativeModOwnerId(caller, nullptr);
+        auto *consumer = context->GetModLoader().FindMod(consumerId.c_str());
+        auto *provider = context->GetModLoader().FindMod(providerId.c_str());
         if (!loader.CanUseProvider(consumer, provider))
             return provider && !loader.CanDispatchOwner(provider) ? BML_ERROR_FROZEN
                                                                   : BML_ERROR_ACCESS_DENIED;
@@ -559,7 +559,7 @@ int BML_CDECL BML_RegisterInterface(
             return BML_ERROR_WRONG_THREAD;
 
         const std::string resolved =
-            context->GetNativeModOwnerId(callerAddress, ownerId);
+            context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (resolved.empty() || (ownerId && resolved != ownerId))
             return BML_ERROR_ACCESS_DENIED;
 
@@ -567,20 +567,20 @@ int BML_CDECL BML_RegisterInterface(
         // unknown interface struct. Requiring both the struct and its id to
         // live in the provider DLL rules out stack/heap registrations and
         // makes automatic cleanup before FreeLibrary a sound lifetime rule.
-        if (!context->NativeModOwnsAddress(resolved, interfacePtr))
+        if (!context->GetModLoader().NativeModOwnsAddress(resolved, interfacePtr))
             return BML_ERROR_INVALID_PARAMETER;
         const auto *header =
             static_cast<const BML_InterfaceHeader *>(interfacePtr);
         if (header->StructSize < sizeof(BML_InterfaceHeader) ||
             header->MajorVersion == 0 || !header->InterfaceId)
             return BML_ERROR_INVALID_PARAMETER;
-        if (!context->NativeModOwnsAddress(resolved, header->InterfaceId) ||
+        if (!context->GetModLoader().NativeModOwnsAddress(resolved, header->InterfaceId) ||
             header->InterfaceId[0] == '\0') {
             return BML_ERROR_INVALID_PARAMETER;
         }
         if (IsBuiltinInterfaceId(header->InterfaceId))
             return BML_ERROR_ALREADY_EXISTS;
-        auto *owner = context->FindMod(resolved.c_str());
+        auto *owner = context->GetModLoader().FindMod(resolved.c_str());
         if (!owner || !BML::Api::AcceptsModWork(*context, *owner))
             return BML_ERROR_FROZEN;
         return kModInterfaces.Register(resolved, interfacePtr);
@@ -607,10 +607,10 @@ int BML_CDECL BML_UnregisterInterface(
             return BML_ERROR_WRONG_THREAD;
 
         const std::string resolved =
-            context->GetNativeModOwnerId(callerAddress, ownerId);
+            context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (resolved.empty() || (ownerId && resolved != ownerId))
             return BML_ERROR_ACCESS_DENIED;
-        auto *owner = context->FindMod(resolved.c_str());
+        auto *owner = context->GetModLoader().FindMod(resolved.c_str());
         if (owner && context->GetModLoader().HasLiveDependents(owner))
             return BML_ERROR_BUSY;
         return kModInterfaces.Unregister(

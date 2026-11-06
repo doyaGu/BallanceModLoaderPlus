@@ -9,12 +9,12 @@
 void ScriptCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
 #if BML_ENABLE_ANGELSCRIPT
     auto *context = bml;
-    if (!context || !context->GetScriptDevTools()) {
+    if (!context || !context->GetModLoader().GetScriptDevTools()) {
         BML::Shell::Fail(bml, "Script developer tools unavailable.");
         return;
     }
 
-    for (const std::string &line : context->GetScriptDevTools()->HandleCommand(args))
+    for (const std::string &line : context->GetModLoader().GetScriptDevTools()->HandleCommand(args))
         bml->SendIngameMessage(line.c_str());
 #else
     if (bml)
@@ -26,8 +26,8 @@ const std::vector<std::string>
 ScriptCommand::GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) {
 #if BML_ENABLE_ANGELSCRIPT
     auto *context = bml;
-    if (context && context->GetScriptDevTools())
-        return context->GetScriptDevTools()->CompleteCommand(args);
+    if (context && context->GetModLoader().GetScriptDevTools())
+        return context->GetModLoader().GetScriptDevTools()->CompleteCommand(args);
 #endif
     if (args.size() == 2)
         return {"status", "list", "info", "diag", "logs"};

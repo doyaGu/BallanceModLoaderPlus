@@ -1156,7 +1156,7 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
         return false;
     }
 
-    if (!m_Context || !m_Context->ValidateScriptModReloadDependencies(this, candidate, diagnostic, fields))
+    if (!m_Context || !m_Context->GetModLoader().ValidateScriptModReloadDependencies(this, candidate, diagnostic, fields))
         return false;
 
     return true;
@@ -1450,7 +1450,7 @@ void ScriptMod::Record(const ScriptDiagnostic &diagnostic) {
     m_State.Record(rewritten);
     TouchModGeneration();
     if (m_Context && !rewritten.Message.empty() && rewritten.Message != "Export call succeeded.") {
-        if (auto *devTools = m_Context->GetScriptDevTools()) {
+        if (auto *devTools = m_Context->GetModLoader().GetScriptDevTools()) {
             devTools->PublishDiagnostic(ScriptDevEventSeverity::Info,
                                         "ScriptDiagnostic",
                                         GetID() ? GetID() : "",
@@ -1471,7 +1471,7 @@ void ScriptMod::Fail(const ScriptDiagnostic &diagnostic) {
         m_Context->StopModWork(&m_Record);
     TouchModGeneration();
     if (m_Context) {
-        if (auto *devTools = m_Context->GetScriptDevTools()) {
+        if (auto *devTools = m_Context->GetModLoader().GetScriptDevTools()) {
             devTools->PublishDiagnostic(ScriptDevEventSeverity::Error,
                                         rewritten.Phase == ScriptDiagnosticPhase::Callback
                                             ? "ScriptCallbackFailed"
@@ -1518,8 +1518,8 @@ void ScriptMod::ProcessFailureCleanup() {
     m_State.Fail(failure);
     TouchModGeneration();
 
-    if (m_Context && m_Context->GetScriptDevTools()) {
-        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+    if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
+        m_Context->GetModLoader().GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
                                                      "ScriptRuntimeResourcesReleased",
                                                      GetID() ? GetID() : "",
                                                      "runtime",
@@ -1653,8 +1653,8 @@ std::unique_ptr<ScriptModReloadCandidate> ScriptMod::PrepareReloadCandidate(cons
     auto finishWithDiagnostic = [&](const ScriptDiagnostic &diagnostic) {
         if (result.SourcePath.empty())
             result.SourcePath = diagnostic.EntryPath;
-        if (m_Context && m_Context->GetScriptDevTools()) {
-            m_Context->GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
+        if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
+            m_Context->GetModLoader().GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
                                                               options.DryRun ? "ScriptReloadDryRunDiagnostic" : "ScriptReloadDiagnostic",
                                                               GetID() ? GetID() : "",
                                                               diagnostic,
@@ -1666,8 +1666,8 @@ std::unique_ptr<ScriptModReloadCandidate> ScriptMod::PrepareReloadCandidate(cons
                                           const std::vector<ScriptModReloadDiagnosticField> &fields) {
         if (result.SourcePath.empty())
             result.SourcePath = diagnostic.EntryPath;
-        if (m_Context && m_Context->GetScriptDevTools()) {
-            m_Context->GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
+        if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
+            m_Context->GetModLoader().GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
                                                               options.DryRun ? "ScriptReloadDryRunDiagnostic" : "ScriptReloadDiagnostic",
                                                               GetID() ? GetID() : "",
                                                               diagnostic,
@@ -1740,8 +1740,8 @@ std::unique_ptr<ScriptModReloadCandidate> ScriptMod::PrepareReloadCandidate(cons
                                   : "Reload dry-run passed."
                             : std::string();
     SetReloadDiagnostic(std::string());
-    if (m_Context && m_Context->GetScriptDevTools()) {
-        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+    if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
+        m_Context->GetModLoader().GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                      "ScriptReloadPrepared",
                                                      GetID() ? GetID() : "",
                                                      "reload",
@@ -1792,8 +1792,8 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
                                           const std::vector<ScriptModReloadDiagnosticField> &fields) {
         if (result.SourcePath.empty())
             result.SourcePath = diagnostic.EntryPath;
-        if (m_Context && m_Context->GetScriptDevTools()) {
-            m_Context->GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
+        if (m_Context && m_Context->GetModLoader().GetScriptDevTools()) {
+            m_Context->GetModLoader().GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
                                                               "ScriptReloadDiagnostic",
                                                               GetID() ? GetID() : "",
                                                               diagnostic,
