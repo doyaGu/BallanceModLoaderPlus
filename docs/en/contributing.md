@@ -164,3 +164,8 @@ in separate commits when they can be reviewed independently.
 - Build both documentation sites with strict warnings.
 - Confirm that legacy native headers and exports were not changed accidentally.
 - Review the final diff for unrelated local files before staging it.
+
+C/C++ changes use the root `.clang-format`: four-space indentation, unindented
+access labels, one data member per declaration, and named parameters in public
+C tables. Format changed code; keep third-party sources and unrelated pending
+work out of formatting patches. Use descriptive names for callback plumbing.
