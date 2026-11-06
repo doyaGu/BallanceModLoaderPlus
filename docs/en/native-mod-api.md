@@ -115,6 +115,18 @@ ImGui headers. `IMod`, `IBML`, `IConfig`, `ICommand`, `InputHook` and ExecuteBB
 remain private implementation adapters; they are not an installed SDL authoring
 protocol. See the [migration guide](native-mod-migration.md).
 
+Status-only operations in the new Context/Config/Input/Timer/Command authoring
+layer return `Result<void>`, including Set, Pause, Cancel, Release and Unregister.
+Inspect the result or call `.Take()` to propagate its error through the existing
+Mod callback barrier. Value-producing reads/creation use `Result<T>`; local
+predicates remain bool. `Get<T>` is the existing checked value convenience.
+Completion callbacks return `Result<void>`; command execution callbacks still
+return the shell's business status. C tables keep integer error codes.
+
+UI is also available as `BML::Bui` and `BML::Gui`. These names refer to the existing
+`Bui`/`BGui` implementations and objects; both original namespaces and their GUI
+virtual signatures remain available for source compatibility.
+
 ## Configuration
 
 ```cpp
@@ -123,7 +135,7 @@ protocol. See the [migration guide](native-mod-migration.md).
 auto config = ctx.Config();
 auto enabled = config.DeclareProperty({"General", "Enabled", true}).Take();
 const bool value = enabled.Get<bool>();
-const int status = enabled.Set(false);
+enabled.Set(false).Take();
 ```
 
 A declaration copies its metadata. Repeating the same category/key/type returns
