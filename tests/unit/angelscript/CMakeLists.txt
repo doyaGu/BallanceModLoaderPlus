@@ -18,6 +18,7 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/ScriptTimerService.cpp
             ${BML_SOURCE_DIR}/Console/Shell/ShellIo.cpp
             ${BML_SOURCE_DIR}/DataShare/DataShare.cpp
+            ${BML_SOURCE_DIR}/Loader/ModInvocationGate.cpp
             DEPENDENCIES
             BML_StringUtils
     )

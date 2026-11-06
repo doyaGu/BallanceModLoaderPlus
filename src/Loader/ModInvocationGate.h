@@ -209,8 +209,8 @@ private:
         size_t Depth = 0;
         std::vector<std::shared_ptr<const void>> Borrows;
     };
-    inline static thread_local std::vector<CallEntry> s_CallEntries;
-    inline static thread_local std::vector<CallEntry> s_MutationEntries;
+    static thread_local std::vector<CallEntry> s_CallEntries;
+    static thread_local std::vector<CallEntry> s_MutationEntries;
     std::shared_mutex m_Mutex;
 };
 

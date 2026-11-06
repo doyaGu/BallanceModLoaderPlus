@@ -37,11 +37,13 @@ add_bml_test(DataShareTest
         SOURCES
         DataShareTest.cpp
         ${BML_SOURCE_DIR}/DataShare/DataShare.cpp
+        ${BML_SOURCE_DIR}/Loader/ModInvocationGate.cpp
 )
 
 add_bml_test(ModInvocationGateTest
         SOURCES
         ModInvocationGateTest.cpp
+        ${BML_SOURCE_DIR}/Loader/ModInvocationGate.cpp
 )
 
 add_bml_test(ModProtocolTest

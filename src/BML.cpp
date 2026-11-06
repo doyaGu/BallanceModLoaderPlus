@@ -1,6 +1,7 @@
 
 #include "CKContext.h"
 
+#include "BML/Defines.h"
 #include "Behavior/Blocks/HookBlock.h"
 #include "Loader/ModManager.h"
 
@@ -16,11 +17,11 @@ CKERROR RemoveModManager(CKContext *context) {
 
 CKPluginInfo g_PluginInfo[2];
 
-PLUGIN_EXPORT int CKGetPluginInfoCount() {
+extern "C" BML_EXPORT int BML_CDECL CKGetPluginInfoCount() {
     return 2;
 }
 
-PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
+extern "C" BML_EXPORT CKPluginInfo *BML_CDECL CKGetPluginInfo(int Index) {
     g_PluginInfo[0].m_Author = "Kakuty";
     g_PluginInfo[0].m_Description = "Building blocks for hooking";
     g_PluginInfo[0].m_Extension = "";
@@ -44,8 +45,6 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
     return &g_PluginInfo[Index];
 }
 
-PLUGIN_EXPORT void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg);
-
-void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
+extern "C" BML_EXPORT void BML_CDECL RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
     BML::Behavior::Internal::HookBlock::Register(reg);
 }

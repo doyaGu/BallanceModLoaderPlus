@@ -176,6 +176,7 @@ set(BML_LOADER_PRIVATE_HEADERS
 
 set(BML_LOADER_SOURCES
         Loader/ModContext.cpp
+        Loader/ModInvocationGate.cpp
         Loader/ModLoader.cpp
         Loader/ModManager.cpp
         Loader/NativeModRegistry.cpp
@@ -756,6 +757,14 @@ add_library(BML SHARED
         ${BML_ANGELSCRIPT_SOURCES}
         ${IMGUI_SOURCES} ${IMGUI_HEADERS}
         ${BML_BUILD_VERSION_HEADER}
+)
+
+# Only the declared C API, CK plugin entry and optional ImGui ABI are exported.
+# Private lifecycle/service vtables are implementation details of this module.
+set_target_properties(BML PROPERTIES
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN TRUE
 )
 
 if (BML_BUILD_UI_AUTOMATION)

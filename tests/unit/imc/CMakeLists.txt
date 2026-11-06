@@ -14,6 +14,7 @@ add_bml_test(ImcRuntimeTest
         SOURCES
         ImcRuntimeTest.cpp
         ${BML_SOURCE_DIR}/Imc/ImcRuntime.cpp
+        ${BML_SOURCE_DIR}/Loader/ModInvocationGate.cpp
 )
 
 add_bml_test(ImcWireTest
@@ -30,6 +31,7 @@ add_bml_test(ImcGeneratedRuntimeIntegrationTest
         SOURCES
         ImcGeneratedRuntimeIntegrationTest.cpp
         ${BML_SOURCE_DIR}/Imc/ImcRuntime.cpp
+        ${BML_SOURCE_DIR}/Loader/ModInvocationGate.cpp
 )
 target_include_directories(ImcGeneratedRuntimeIntegrationTest PRIVATE "${BML_IMC_SAMPLE_GENERATED_DIR}")
 add_dependencies(ImcGeneratedRuntimeIntegrationTest BML_ImcSampleApiGeneration)
