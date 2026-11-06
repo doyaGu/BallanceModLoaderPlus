@@ -1,8 +1,7 @@
 // Per-invocation state a command may reach while its Execute runs: the text
 // piped into it and the exit status it wants to report. ICommand::Execute is
-// frozen at returning void, so the loader wraps every call in an
-// InvocationScope and commands talk to it through SetStatus and GetInput, the
-// same functions the BML_SetCommandStatus and BML_GetCommandInput exports use.
+// adapted to the console's InvocationScope. SetStatus and GetInput supply the
+// invocation state shared by built-in commands and the native C command bridge.
 #ifndef BML_SHELL_IO_H
 #define BML_SHELL_IO_H
 

@@ -84,7 +84,7 @@ public:
     std::string GetNativeImcOwnerId(const void *callerAddress, const char *requestedOwnerId = nullptr) const;
     std::string GetNativeModOwnerId(const void *callerAddress, const char *requestedOwnerId = nullptr) const;
     bool NativeModOwnsAddress(const std::string &ownerId, const void *address) const;
-    std::wstring GetModRootDirectory(const void *callerAddress, const char *modId) const;
+    std::wstring GetModRootDirectory(const char *modId) const;
     std::shared_ptr<void> FindNativeDll(const std::string &ownerId) const;
     BML::ModInvocationGate::CallLock LockModInvocation() const { return m_ModInvocationGate.LockCall(); }
     bool IsModInvocationActiveOnCurrentThread() const {

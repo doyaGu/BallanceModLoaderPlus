@@ -1,15 +1,10 @@
-// The loader's side of BML.h: every BML_* C export the DLL ships, in one
-// translation unit. Mirrors Interfaces.cpp (the side of Interface.h) and
-// ImcApi.cpp (the side of Imc.h); BML.cpp keeps only the Virtools plugin entry
-// points and the process hooks.
+// Standalone BML.h utility exports. Runtime services use the versioned C tables;
+// BML.cpp keeps the CK plugin entries.
 #include <SDL3/SDL_stdinc.h>
 
-#include "Platform/Module.h"
 #include <limits>
 
 #include "BML/BML.h"
-#include "Console/Shell/ShellIo.h"
-#include "Loader/ModContext.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
 
@@ -123,79 +118,6 @@ void BML_CDECL BML_GetVersion(int *major, int *minor, int *patch) {
 
 const char *BML_CDECL BML_GetVersionString() {
     return BML_VERSION;
-}
-
-const wchar_t *BML_CDECL BML_GetLoaderPathW(BML_LoaderDirectory directory) {
-    ModContextLease context;
-    if (!context)
-        return nullptr;
-
-    const wchar_t *path = context->GetDirectory(directory);
-    return path && *path ? path : nullptr;
-}
-
-const char *BML_CDECL BML_GetLoaderPathUtf8(BML_LoaderDirectory directory) {
-    ModContextLease context;
-    if (!context)
-        return nullptr;
-
-    const char *path = context->GetDirectoryUtf8(directory);
-    return path && *path ? path : nullptr;
-}
-
-wchar_t *BML_CDECL BML_GetModRootW(const char *modId) {
-    try {
-        ModContextLease context;
-        if (!context)
-            return nullptr;
-
-        const std::wstring root = context->GetModRootDirectory(BML_CALLER_ADDRESS(), modId);
-        return root.empty() ? nullptr : CopyWString(root);
-    } catch (...) {
-        return nullptr;
-    }
-}
-
-char *BML_CDECL BML_GetModRootUtf8(const char *modId) {
-    try {
-        ModContextLease context;
-        if (!context)
-            return nullptr;
-
-        const std::wstring root = context->GetModRootDirectory(BML_CALLER_ADDRESS(), modId);
-        return root.empty() ? nullptr : BML_Strdup(utils::Utf16ToUtf8(root).c_str());
-    } catch (...) {
-        return nullptr;
-    }
-}
-
-int BML_CDECL BML_UnregisterCommand(const char *name) {
-    ModContextLease context;
-    if (!context)
-        return BML_ERROR_FAIL;
-
-    return context->UnregisterCommand(BML_CALLER_ADDRESS(), name);
-}
-
-int BML_CDECL BML_SetCommandStatus(int status) {
-    ModContextLease context;
-    if (!context || !context->IsMainThread())
-        return 0;
-    return BML::Shell::SetStatus(status) ? 1 : 0;
-}
-
-const char *BML_CDECL BML_GetCommandInput(size_t *length) {
-    if (length)
-        *length = 0;
-    ModContextLease context;
-    if (!context || !context->IsMainThread())
-        return nullptr;
-    const std::string *input = BML::Shell::GetInput();
-    if (!input)
-        return nullptr;
-    if (length)
-        *length = input->size();
-    return input->c_str();
 }
 
 void *BML_CDECL BML_Malloc(size_t size) {
@@ -597,7 +519,7 @@ int BML_CDECL BML_StartsWith(const char *str, const char *prefix, int caseSensit
     if (caseSensitive) {
         return strncmp(str, prefix, prefixLen) == 0 ? 1 : 0;
     } else {
-        return _strnicmp(str, prefix, prefixLen) == 0 ? 1 : 0;
+        return SDL_strncasecmp(str, prefix, prefixLen) == 0 ? 1 : 0;
     }
 }
 

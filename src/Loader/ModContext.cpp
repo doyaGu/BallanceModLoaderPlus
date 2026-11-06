@@ -749,43 +749,6 @@ bool ModContext::RetireCallbackCommands(const void *registrar) noexcept {
     }
 }
 
-BML::CommandContext::UnregisterResult ModContext::UnregisterOwnedCommand(
-    const void *registrar, const char *name) {
-    if (!IsMainThread() || m_CommandInvocationGate.IsCallActiveOnCurrentThread())
-        return BML::CommandContext::UnregisterResult::Busy;
-
-    auto invocationLock = m_CommandInvocationGate.LockMutation();
-    std::lock_guard<std::mutex> lock(m_CommandMutex);
-    return m_CommandContext.UnregisterCommand(registrar, name);
-}
-
-int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
-    if (!name || name[0] == '\0')
-        return BML_ERROR_INVALID_PARAMETER;
-    if (!IsMainThread())
-        return BML_ERROR_WRONG_THREAD;
-
-    void *const caller = ModuleFromAddress(callerAddress);
-
-    switch (UnregisterOwnedCommand(caller, name)) {
-        case BML::CommandContext::UnregisterResult::Success:
-            return BML_OK;
-        case BML::CommandContext::UnregisterResult::InvalidName:
-            return BML_ERROR_INVALID_PARAMETER;
-        case BML::CommandContext::UnregisterResult::NotFound:
-            return BML_ERROR_NOT_FOUND;
-        case BML::CommandContext::UnregisterResult::AccessDenied:
-            m_Logger->Error("Refused to unregister command '%s': it belongs to another module.", name);
-            return BML_ERROR_ACCESS_DENIED;
-        case BML::CommandContext::UnregisterResult::Busy:
-            return BML_ERROR_BUSY;
-        case BML::CommandContext::UnregisterResult::InternalError:
-            return BML_ERROR_FAIL;
-    }
-
-    return BML_ERROR_FAIL;
-}
-
 int ModContext::GetCommandCount() const {
     if (!IsMainThread())
         return 0;
@@ -1194,8 +1157,8 @@ const char *ModContext::GetDirectoryUtf8(DirectoryType type) {
     return nullptr;
 }
 
-std::wstring ModContext::GetModRootDirectory(const void *callerAddress, const char *modId) const {
-    return m_Loader.GetModRootDirectory(callerAddress, modId);
+std::wstring ModContext::GetModRootDirectory(const char *modId) const {
+    return m_Loader.GetModRootDirectory(modId);
 }
 
 #if BML_ENABLE_ANGELSCRIPT

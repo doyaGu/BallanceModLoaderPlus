@@ -140,7 +140,7 @@ int BML_CDECL GetDirectory(BML_ModContextHandle contextHandle, uint32_t director
     return WithModContext(contextHandle, [&](ModContext &ctx, IMod &owner) {
         const std::string value =
             directory == BML_MOD_DIRECTORY_ROOT
-                ? utils::Utf16ToUtf8(ctx.GetModRootDirectory(nullptr, owner.GetID()))
+                ? utils::Utf16ToUtf8(ctx.GetModRootDirectory(owner.GetID()))
                 : ctx.GetDirectoryUtf8(static_cast<BML_LoaderDirectory>(directory));
         return CopyText(value, buffer, capacity, required);
     });
@@ -149,7 +149,7 @@ int BML_CDECL GetDirectory(BML_ModContextHandle contextHandle, uint32_t director
 int ResolveResource(ModContext &ctx, IMod &owner, const char *relative, std::string &path) {
     if (!relative || !*relative || !utils::IsRelativePathUtf8(relative))
         return BML_ERROR_INVALID_PARAMETER;
-    const auto root = ctx.GetModRootDirectory(nullptr, owner.GetID());
+    const auto root = ctx.GetModRootDirectory(owner.GetID());
     if (root.empty())
         return BML_ERROR_UNAVAILABLE;
     const auto candidate = utils::CombinePathW(root, utils::Utf8ToUtf16(relative));

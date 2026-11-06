@@ -57,6 +57,17 @@ BML_BEGIN_CDECLS
 #define BML_MOD_INTERFACE_MAJOR 1u
 #define BML_MOD_CONTEXT_INTERFACE_MAJOR 1u
 #define BML_MOD_DIRECTORY_ROOT 5u
+
+// Directory ids for BML_ModContextInterface::GetDirectory. ROOT selects the
+// calling Mod's installation; the loader directories keep their existing ids.
+typedef enum BML_LoaderDirectory {
+    BML_DIR_WORKING = 0,
+    BML_DIR_TEMP = 1,
+    BML_DIR_GAME = 2,
+    BML_DIR_LOADER = 3,
+    BML_DIR_CONFIG = 4,
+} BML_LoaderDirectory;
+
 #define BML_MOD_KIND_UNKNOWN 0u
 #define BML_MOD_KIND_NATIVE 1u
 #define BML_MOD_KIND_SCRIPT 2u

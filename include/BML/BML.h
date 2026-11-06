@@ -1,40 +1,9 @@
-// The loader's exported C functions: its version, its heap, and the string, path,
-// and file helpers it already carries. They are plain C, so unlike the classes in
-// IBML.h and IMod.h they do not depend on the compiler or the standard library a
-// Mod is built with, and they can be called from a Mod written in any language that
-// can load a DLL.
-//
-// Three rules cover almost everything here.
-//
-// Whoever gets a pointer back frees it. Every char *, wchar_t *, and array returned
-// below was allocated on the loader's heap, and only the BML_Free family releases
-// it: BML_Free, BML_FreeString, and BML_FreeWString are the same operation, while
-// BML_FreeStringArray and BML_FreeWStringArray also free each element. The BML_MALLOC
-// macros in Defines.h are a different heap, the caller's own, and mixing the two
-// corrupts one of them.
-//
-// The int-returning functions answer 1 for success or true and 0 for failure or
-// false. They do not use BML_OK and the BML_ERROR_ codes, and they report nothing
-// beyond that 0, so a failed call and a null argument look alike. The functions
-// that return a pointer return null instead, and the size queries return -1.
-// BML_UnregisterCommand is the one exception: it answers BML_OK or one of the
-// BML_ERROR_ codes, because it refuses for more than one reason and the caller has
-// to be able to tell them apart.
-//
-// The A, W, and Utf8 spellings of one name differ only in how they read the strings
-// handed to them: A takes the process code page, W takes UTF-16, and Utf8 takes
-// UTF-8. Ballance itself is a code page program, so a path that came from the game
-// belongs in the A form and a path that came from a config file or the network
-// belongs in the Utf8 one.
-//
-// Almost nothing here touches loader or game state, so unlike the rest of the SDK
-// these may be called from any thread. There are four exceptions.
-// BML_SetCurrentDirectory moves the whole process and therefore the game with it.
-// BML_GetLoaderPath and BML_GetModRoot read what the loader resolved at startup,
-// so both answer null before it has initialized. BML_GetModRoot also takes the
-// lock that guards the Mod registry, which makes it safe beside a Mod being
-// loaded or unloaded but unsafe from inside DllMain. BML_UnregisterCommand changes
-// the command table the console reads, and belongs on the game thread.
+// Standalone C allocation, UTF-8/encoding, filesystem and string utilities.
+// Returned allocations are released by the matching BML_Free family. Utility
+// predicates return 0/1; versioned runtime services live in BML/Mod.h and the
+// related C tables and use BML_OK/negative error codes instead.
+// File operations may run on worker threads. Changing the process directory
+// affects the game and other threads; prefer absolute paths from Mod Context.
 #ifndef BML_H
 #define BML_H
 
@@ -49,98 +18,8 @@ BML_BEGIN_CDECLS
 BML_EXPORT void BML_CDECL BML_GetVersion(int *major, int *minor, int *patch);
 BML_EXPORT const char *BML_CDECL BML_GetVersionString(void);
 
-// Where the loader put its own directories, and where a Mod is installed. These
-// are the only functions here that ask the loader something; the rest work only on
-// the strings and files they are handed.
-//
-// BML_GetLoaderPath takes one of the five ids below rather than a path, and must
-// not be confused with BML_GetDirectory further down, which takes a path apart.
-// Its result is const because it is borrowed: the loader owns the string, resolves
-// it once at startup, and never changes it, so do not pass it to BML_Free. Only
-// the UTF-16 and UTF-8 spellings exist because those are the two forms the loader
-// keeps; for a code page copy pass the UTF-16 one through BML_Utf16ToAnsi.
-//
-// BML_GetModRoot answers with the directory a Mod is installed in, which is where
-// its own data files belong. A null or empty modId means the DLL that made the
-// call, which is what a Mod normally wants, and is also the only spelling that
-// works before the Mod is registered, so it can be used from a constructor. A
-// modId asks about another Mod instead: a native Mod answers with the directory of
-// the DLL it was loaded from, and a script Mod with its script root. Unlike
-// BML_GetLoaderPath these allocate, so release the result with BML_FreeWString or
-// BML_FreeString.
-//
-// Both answer null while the loader is still initializing, when the directory
-// could not be resolved, when modId names no loaded Mod, or when allocating or
-// converting the returned string fails.
-typedef enum BML_LoaderDirectory {
-    // Where the process was started, read once when the loader initialized. The
-    // game does not keep it there: BML_SetCurrentDirectory and the game itself
-    // both move the process, and this id keeps answering the original directory.
-    BML_DIR_WORKING = 0,
-    // A scratch directory of this one run, created empty at startup and deleted
-    // when the loader shuts down. Nothing written here survives the process.
-    BML_DIR_TEMP = 1,
-    // The Ballance installation root, the parent of Bin.
-    BML_DIR_GAME = 2,
-    // The ModLoader directory under it, which holds Mods, Configs, and
-    // ModLoader.log.
-    BML_DIR_LOADER = 3,
-    // The Configs directory under that, where the loader writes one .cfg per Mod.
-    BML_DIR_CONFIG = 4,
-} BML_LoaderDirectory;
-
-BML_EXPORT const wchar_t *BML_CDECL BML_GetLoaderPathW(BML_LoaderDirectory directory);
-BML_EXPORT const char *BML_CDECL BML_GetLoaderPathUtf8(BML_LoaderDirectory directory);
-
-BML_EXPORT wchar_t *BML_CDECL BML_GetModRootW(const char *modId);
-BML_EXPORT char *BML_CDECL BML_GetModRootUtf8(const char *modId);
-
-// Taking a console command back out of the command table. IBML::RegisterCommand has
-// no counterpart there, so without this a registered command has to stay until the
-// process ends: a Mod cannot drop its commands in OnUnload, and cannot register them
-// again if it is loaded a second time.
-//
-// Only the DLL that registered a command may take it away. The loader remembers
-// which module called IBML::RegisterCommand and compares it against the module this
-// call comes from, so one Mod cannot remove another Mod's command, nor one that a
-// script Mod registered, nor one of the loader's own. The name is matched the way
-// the console matches it, ignoring case and accepting the alias as well.
-//
-// Unlike the other int-returning functions in this header this one says why it
-// refused: BML_OK, BML_ERROR_INVALID_PARAMETER for a null or empty name,
-// BML_ERROR_NOT_FOUND when no command answers to that name, BML_ERROR_ACCESS_DENIED
-// when one does but belongs to another module, BML_ERROR_WRONG_THREAD outside the
-// game thread, BML_ERROR_BUSY while that command is being executed or asked for
-// completions, and BML_ERROR_FAIL before the loader has initialized.
-//
-// The command object stays the Mod's to delete, and deleting it is only safe once
-// this has answered BML_OK. Call it from the game thread, which is the thread
-// commands run on. A re-entrant attempt from the command itself is refused rather
-// than allowing the object to delete itself while one of its methods is active.
-BML_EXPORT int BML_CDECL BML_UnregisterCommand(const char *name);
-
-// The other half of ICommand::Execute, which is frozen at returning void. The
-// console shell runs command lists such as `a && b` and `a || b` and exposes the
-// status of the last command as $?, so a command that fails needs a way to say so:
-// call this from inside Execute with any non-zero value and the shell treats the
-// command as failed. Without a call the command counts as succeeded unless it
-// throws, names no known command, or is a cheat command refused with cheats off.
-// Negative values are reserved for API errors and are recorded as the generic
-// failure status 1.
-// Returns 1 when a command is running on the game thread and the status was
-// recorded, 0 anywhere else.
-BML_EXPORT int BML_CDECL BML_SetCommandStatus(int status);
-
-// The text piped into the running command by `other | this`, one line per
-// message the previous stage printed, newline-terminated. Null, and *length set
-// to 0, when nothing was piped or no command is running. The pointer belongs to
-// the loader and stays valid only until Execute returns; do not free it. length
-// may be null.
-BML_EXPORT const char *BML_CDECL BML_GetCommandInput(size_t *length);
-
 // The loader's heap. A Mod needs these only for memory that crosses the boundary,
-// which is what the ModDependency ids do, and for releasing what the functions
-// below return. BML_Malloc and BML_Calloc treat a zero size as a failure and return
+// and for releasing what the functions below return. BML_Malloc and BML_Calloc treat a zero size as a failure and return
 // null, and BML_Realloc with a zero size frees and returns null, so a null result
 // is not always an out-of-memory answer.
 BML_EXPORT void *BML_CDECL BML_Malloc(size_t size);
@@ -248,7 +127,7 @@ BML_EXPORT int BML_CDECL BML_ExtractZipUtf8(const char *path, const char *dest);
 // Path manipulation, meaning that all of these take apart or put together the path
 // string they are given and touch no file. In particular BML_GetDirectory does not
 // report a directory of the loader's: it returns the directory part of path. The
-// loader's own directories come from BML_GetLoaderPath near the top of this header.
+// loader's own directories come from the Mod Context GetDirectory operation.
 BML_EXPORT char *BML_CDECL BML_GetDriveA(const char *path);
 BML_EXPORT wchar_t *BML_CDECL BML_GetDriveW(const wchar_t *path);
 BML_EXPORT char *BML_CDECL BML_GetDriveUtf8(const char *path);

@@ -363,9 +363,9 @@ void ModLoader::DispatchConfigChange(IMod *mod, const char *category, const char
     }
 }
 
-std::wstring ModLoader::GetModRootDirectory(const void *callerAddress, const char *modId) const {
+std::wstring ModLoader::GetModRootDirectory(const char *modId) const {
     if (!modId || !*modId)
-        return ModuleDirectoryFromAddress(callerAddress);
+        return {};
 
     std::shared_lock<std::shared_mutex> lock(m_ModRegistryMutex);
     IMod *mod = FindModLocked(modId);

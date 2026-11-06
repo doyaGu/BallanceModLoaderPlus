@@ -19,6 +19,7 @@ struct SDL_IOStream;
 #include <vector>
 
 #include "BML/BML.h"
+#include "BML/Mod.h"
 #include "Loader/IBML.h"
 #include "Loader/IMod.h"
 
@@ -46,9 +47,8 @@ struct SDL_IOStream;
 #include "Behavior/Blocks/PhysicsForce.h"
 #include "Hooks/HookLifecycle.h"
 
-// The ids themselves are public, since BML_GetLoaderPath takes them. This name
-// stays for the loader's own call sites and for the script binding.
-typedef BML_LoaderDirectory DirectoryType;
+// Use the same directory ids as the public Mod Context table.
+using DirectoryType = BML_LoaderDirectory;
 
 class ModContext;
 
@@ -188,14 +188,6 @@ public:
 
     void RegisterCommand(ICommand *cmd) override;
 
-    // Removes a command again, but only for the module that registered it.
-    // callerAddress belongs to the DLL asking, and has to be the one that called
-    // RegisterCommand for this command. Answers BML_OK,
-    // BML_ERROR_INVALID_PARAMETER for a null or empty name, BML_ERROR_NOT_FOUND
-    // when no command answers to the name, or BML_ERROR_ACCESS_DENIED when one
-    // does but another module owns it.
-    int UnregisterCommand(const void *callerAddress, const char *name);
-
     // Retained callback commands may remove lookup during their own invocation;
     // the registry's lifetime token keeps the active callback alive.
     int RegisterCallbackCommand(const void *registrar, ICommand *command,
@@ -251,12 +243,8 @@ public:
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);
 
-    // The directory a Mod is installed in. A null or empty modId asks about the DLL
-    // that callerAddress belongs to, which needs no Mod registration and so answers
-    // during BMLEntry as well. A modId asks about that Mod: a native Mod answers
-    // with the directory of its DLL, a script Mod with its script root. Empty when
-    // nothing could be resolved.
-    std::wstring GetModRootDirectory(const void *callerAddress, const char *modId) const;
+    // Resolve the directory of a registered Mod by id.
+    std::wstring GetModRootDirectory(const char *modId) const;
 
     BML::CommandContext &GetCommandContext() { return m_CommandContext; }
     BML::Api::CommandApi &GetCommandApi() { return *m_CommandApi; }
@@ -485,8 +473,6 @@ private:
     bool GetManagers();
 
     bool RegisterOwnedCommand(const void *registrar, ICommand *command);
-    BML::CommandContext::UnregisterResult UnregisterOwnedCommand(
-        const void *registrar, const char *name);
 
     class ShellDispatcher;
     void WriteShellError(std::string_view message);
