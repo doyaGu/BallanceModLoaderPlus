@@ -1,6 +1,6 @@
 # Behavior 编写
 
-`BML/Behavior.hpp` 是 Native Mod 使用 Virtools Behavior 的稳定 C++ interface。它能创建和执行使用受支持参数类型的已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。`BML/Behavior.h` 是稳定的 `bml.behavior 1.0` C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。该 interface 只支持 Win32 Native C++ Mod，不支持 Win64。
+`BML/Behavior.hpp` 是 Native Mod 使用 Virtools Behavior 的稳定 C++ interface。它能创建和执行使用受支持参数类型的已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。`BML/Behavior.h` 是稳定的 `bml.behavior 1.0` C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。Native Mod 必须使用匹配宿主平台与 ABI 的 SDL SDK。
 
 `BML::Behavior` 中的领域类型和 `BML/Behavior.h` 中的 1.0 C function table 是公开接口。`BML::Behavior::Detail` 只承载 header-only 实现；Mod 不应直接引用其中的名称，其源码兼容性不作保证。
 

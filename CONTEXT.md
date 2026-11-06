@@ -19,8 +19,8 @@ If owner cleanup cannot complete, the Loader retains the instance and DLL for a
 later stop attempt instead of releasing callable code.
 
 **Runtime Context** — The host-owned services reached through per-Mod native
-Context handles and private script/built-in adapters. It owns CK managers and
-services such as Config, Command, Behavior, IMC, DataShare, UI, directories, and logging.
+Context handles and private script/built-in adapters. It borrows CK managers and
+owns Config, Command, Behavior, IMC, DataShare, UI, directories, and logging.
 Mod identity, dependency declarations, and module ownership belong to the Mod
 Loader; Runtime Context composes that owner without duplicating its query surface.
 Public C API calls borrow the Context for their duration. Shutdown first stops
@@ -321,9 +321,9 @@ BML_ObjectRef values across the C and script seams. It observes CK deletion and
 world reset, rejecting stale identities. Destruction without CK notification is
 outside what it can observe.
 
-**Script Behavior Adapter** — The private bridge from script convenience calls
-to Blocks running on the loader's Behavior Session. Native authoring uses the
-Behavior C table and module-local wrappers over the same Runtime.
+**Script Engine Calls** — The private script convenience calls that run Blocks
+on the built-in Mod's Behavior Session. They exist only with script support and
+share the Behavior Runtime used by the owner-scoped authoring projection.
 
 ## Source ownership
 
@@ -334,6 +334,8 @@ Behavior C table and module-local wrappers over the same Runtime.
 - src/Api/ adapts public BML interfaces to private implementations.
   src/Api/Behavior/ holds the Behavior C table and the Codec that reads and
   writes its records.
+- src/AngelScript/ owns script adapters, including Script Engine Calls;
+  per-owner Behavior authoring remains a client of the public facade.
 - src/Behavior/ owns Sessions, Prototypes, graph authoring, Runtime, and the
   legacy ScriptHelper implementation. Core/ holds Status, values, parameters,
   and layouts; Engine/ the CK2 primitives; Edit/ the Program, Ops, and
