@@ -26,7 +26,7 @@
 
 #include "BML/BML.h"
 #include "BML/IBML.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 #include "BML/IConfig.h"
 
 class ModContext;

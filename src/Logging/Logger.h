@@ -3,9 +3,9 @@
 
 #include <cstdarg>
 
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 
-class BML_EXPORT Logger : public ILogger
+class Logger : public ILogger
 {
 public:
 	static Logger *GetDefault();

@@ -11,7 +11,7 @@
 #include "BML/IConfig.h"
 #include "BML/Types.h"
 #include "BML/InputHook.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 
 #if BML_ENABLE_ANGELSCRIPT
 

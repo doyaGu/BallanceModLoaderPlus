@@ -3,7 +3,7 @@
 #include <angelscript.h>
 
 #include "BML/IMod.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 #include "Loader/ModContext.h"
 #include "ScriptFacadeAccess.h"
 #include "ScriptFunctionSupport.h"

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 #include "CustomMaps/CustomMapLoad.h"
 #include "Hooks/BehaviorFunctionPatch.h"
 #include "Hooks/HookLifecycle.h"

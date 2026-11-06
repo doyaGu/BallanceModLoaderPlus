@@ -4,7 +4,7 @@
 
 #include "BML/IBML.h"
 #include "BML/IConfig.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 
 #include "UI/AnsiText.h"
 #include "Console/CommandContext.h"

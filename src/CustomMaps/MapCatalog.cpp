@@ -8,7 +8,7 @@
 #include "Platform/FileSystemNative.h"
 #include "Platform/FileError.h"
 
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
 

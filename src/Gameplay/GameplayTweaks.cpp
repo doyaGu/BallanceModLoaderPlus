@@ -6,7 +6,7 @@
 #include "BML/Guids/TT_ParticleSystems_RT.h"
 #include "BML/IBML.h"
 #include "BML/IConfig.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 
 namespace {
 namespace Behavior = BML::Behavior;

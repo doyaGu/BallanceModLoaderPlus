@@ -10,7 +10,7 @@
 #include <oniguruma.h>
 
 #include "BML/InputHook.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 
 #include "StringUtils.h"
 

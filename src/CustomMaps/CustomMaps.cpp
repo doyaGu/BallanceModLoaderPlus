@@ -14,7 +14,7 @@
 #include "BML/DataShare.h"
 #include "BML/IBML.h"
 #include "BML/IConfig.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 
 #include "Api/ObjectRefs.h"
 #include "CustomMaps/CustomMapLoad.h"

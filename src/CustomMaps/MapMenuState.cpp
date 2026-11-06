@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 
 #include "PathUtils.h"
 #include "StringUtils.h"

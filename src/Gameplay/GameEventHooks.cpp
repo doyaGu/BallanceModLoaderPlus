@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "BML/IBML.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 #include "BML/IMessageReceiver.h"
 
 namespace {

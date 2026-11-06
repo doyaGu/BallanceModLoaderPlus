@@ -4,7 +4,7 @@
 
 #include "Platform/FileSystemNative.h"
 
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 

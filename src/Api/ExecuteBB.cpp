@@ -1,7 +1,7 @@
 #include "BML/ExecuteBB.h"
 
 #include "Loader/ModContext.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 #include "UI/GameFontCatalog.h"
 #include "Api/ExecuteBBAdapter.h"
 #include "Behavior/Blocks/HookBlock.h"

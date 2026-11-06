@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "UI/BuiHost.h"
-#include "BML/ILogger.h"
+#include "Logging/ILogger.h"
 #include "Loader/ModContext.h"
 #include "Mods/BMLMod.h"
 #include "player/UiTestFramework.h"
