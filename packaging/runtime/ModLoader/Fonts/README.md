@@ -1,7 +1,9 @@
 # Bundled UI fonts
 
 The default profile uses BML Mono at logical size 32, followed by BML Sans SC
-at size 30. Windows symbol and emoji fallbacks remain enabled. These sizes are
+at size 30. Platform outline fallbacks remain enabled: Windows system faces, macOS CJK/
+symbol candidates, and common Linux Noto/DejaVu paths. Missing candidates are
+diagnostic; color emoji is not supported by the current glyph loader. These sizes are
 scaled from a 1200-pixel viewport height; the `font` command can change them.
 Existing user settings are not replaced by these defaults.
 
@@ -18,7 +20,7 @@ Upstream sources:
 - [IBM Plex](https://github.com/IBM/plex)
 
 `unifont.otf` remains available as an alternative for existing profiles. This
-change does not alter the game menu fonts or install fonts into Windows.
+change does not alter the game menu fonts or install fonts into the operating system.
 
 To reproduce the renamed files, install Python fontTools and run
 `python scripts/Import-BMLFontPack.py <archive>` from the repository. The input
