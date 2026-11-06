@@ -2,67 +2,61 @@
 
 #include <vector>
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
+class DualBallControl : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-class DualBallControl : public IMod {
-public:
-    explicit DualBallControl(IBML *bml) : IMod(bml) {}
+  public:
 
-    const char *GetID() override { return "DualBallControl"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "Dual Ball Control"; }
-    const char *GetAuthor() override { return "Zzq_203 & Gamepiaynmo"; }
-    const char *GetDescription() override { return "Support loading dual ball maps."; }
-    DECLARE_BML_VERSION;
 
-    void OnLoad() override;
-    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                      XObjectArray *objArray, CKObject *masterObj) override;
-    void OnLoadScript(const char *filename, CKBehavior *script) override;
+    void OnLoad(const BML::Mod::Context &) override;
+    void OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) override;
+    void OnLoadScript(const BML::Mod::Context &, const BML::Mod::LoadScriptEvent &event) override;
 
-    void OnProcess() override;
+    void OnProcess(const BML::Mod::Context &) override;
 
-    void OnPostLoadLevel() override;
-    void OnStartLevel() override {
+    void OnPostLoadLevel(const BML::Mod::Context &) override;
+    void OnStartLevel(const BML::Mod::Context &) override {
         if (m_DualActive) {
-            m_BML->AddTimer(CKDWORD{1}, [this]() {
+            m_Timers.AfterTicks(1, [this]() {
                 ResetDualBallMatrix();
                 PhysicalizeDualBall();
             });
         }
     }
 
-    void OnBallNavActive() override { m_BallNavActive = true; }
-    void OnBallNavInactive() override { m_BallNavActive = false; }
+    void OnBallNavActive(const BML::Mod::Context &) override { m_BallNavActive = true; }
+    void OnBallNavInactive(const BML::Mod::Context &) override { m_BallNavActive = false; }
 
-    void OnPostResetLevel() override {
+    void OnPostResetLevel(const BML::Mod::Context &) override {
         if (m_DualActive) {
             ReleaseDualBall();
             m_DualBallType = 2;
         }
     }
-    void OnPostExitLevel() override {
+    void OnPostExitLevel(const BML::Mod::Context &) override {
         if (m_DualActive) {
             ReleaseDualBall();
             ReleaseLevel();
         }
     }
-    void OnPostNextLevel() override {
+    void OnPostNextLevel(const BML::Mod::Context &) override {
         if (m_DualActive) {
             ReleaseDualBall();
             ReleaseLevel();
         }
     }
 
-    void OnBallOff() override {
+    void OnBallOff(const BML::Mod::Context &) override {
         if (m_DualActive) {
             int lifes;
             m_Energy->GetElementValue(0, 1, &lifes);
-            m_BML->AddTimer(1000.0f, [this, lifes]() {
+            m_Timers.After(1000.0f, [this, lifes]() {
                 ReleaseDualBall();
                 if (lifes > 0) {
                     ResetDualBallMatrix();
@@ -72,7 +66,7 @@ public:
         }
     }
 
-private:
+  private:
     void OnEditScript_Gameplay_Ingame(CKBehavior *script);
 
     int GetCurrentSector();
@@ -83,7 +77,7 @@ private:
     void ResetDualBallMatrix();
     void ReleaseLevel();
 
-    IProperty *m_SwitchKey = nullptr;
+    BML::Config::Property m_SwitchKey = {};
     bool m_DualActive = false;
     bool m_BallNavActive = false;
     float m_SwitchProgress = 0.0f;
@@ -91,9 +85,9 @@ private:
     std::vector<CK3dObject *> m_Balls;
     std::vector<CK3dObject *> m_DualBalls;
     std::vector<std::string> m_TrafoTypes;
-    CKDataArray *m_Energy = nullptr;
-    CKDataArray *m_CurLevel = nullptr;
-    CKDataArray *m_IngameParam = nullptr;
+    ModSupport::Object<CKDataArray> m_Energy{};
+    ModSupport::Object<CKDataArray> m_CurLevel{};
+    ModSupport::Object<CKDataArray> m_IngameParam{};
 
     struct PhysicsBall {
         std::string surface;
@@ -104,16 +98,16 @@ private:
     std::vector<CK3dObject *> m_DualResets;
     std::vector<CK3dObject *> m_DualFlames;
     int m_DualBallType = 0;
-    CKGroup *m_DepthTestCubes = nullptr;
+    ModSupport::Object<CKGroup> m_DepthTestCubes{};
 
-    CK3dEntity *m_CamTarget = nullptr;
-    CK3dEntity *m_CamMF = nullptr;
-    CK3dEntity *m_CamPos = nullptr;
-    CKTargetCamera *m_InGameCam = nullptr;
+    ModSupport::Object<CK3dEntity> m_CamTarget{};
+    ModSupport::Object<CK3dEntity> m_CamMF{};
+    ModSupport::Object<CK3dEntity> m_CamPos{};
+    ModSupport::Object<CKTargetCamera> m_InGameCam{};
 
-    CKBehavior *m_SetNewBall = nullptr;
-    CKBehavior *m_DynamicPos = nullptr;
-    CKBehavior *m_DeactivateBall = nullptr;
-    CKParameter *m_CurTrafo = nullptr;
-    CKParameter *m_NearestTrafo = nullptr;
+    ModSupport::Object<CKBehavior> m_SetNewBall{};
+    ModSupport::Object<CKBehavior> m_DynamicPos{};
+    ModSupport::Object<CKBehavior> m_DeactivateBall{};
+    ModSupport::Object<CKParameter> m_CurTrafo{};
+    ModSupport::Object<CKParameter> m_NearestTrafo{};
 };

@@ -1,59 +1,80 @@
 #include "DualBallControl.h"
 
-IMod *BMLEntry(IBML *bml) {
-    return new DualBallControl(bml);
+BML_DEFINE_MOD(DualBallControl, {
+    .Id = "DualBallControl",
+    .Name = "Dual Ball Control",
+    .Version = BML_VERSION,
+    .Author = "Zzq_203 & Gamepiaynmo",
+    .Description = "Support loading dual ball maps.",
+    .MinimumLoaderVersion = BML_VERSION,
+})
+
+void DualBallControl::OnLoad(const BML::Mod::Context &context) {
+    m_Context = context;
+    m_Timers = ModSupport::Timers(context);
+    m_Context.Config().SetCategoryComment("Misc", "Miscellaneous");
+
+    m_SwitchKey =
+        m_Context.Config()
+            .DeclareProperty({"Misc", "SwitchKey", uint32_t(CKKEY_X), "Switch between two balls"})
+            .Take();
 }
 
-void BMLExit(IMod *mod) {
-    delete mod;
-}
+void DualBallControl::OnLoadObject(const BML::Mod::Context &,
+                                   const BML::Mod::LoadObjectEvent &event) {
+    const char *filename = event.Filename.data();
+    const bool isMap = event.IsMap;
+    const char *masterName = event.MasterName.data();
+    const auto filterClass = static_cast<CK_CLASSID>(event.FilterClass);
+    const bool addToScene = event.AddToScene, addtoscene = event.AddToScene,
+               reuseMeshes = event.ReuseMeshes, reuseMaterials = event.ReuseMaterials,
+               dynamic = event.Dynamic;
+    XObjectArray objects;
+    for (auto ref : event.Objects) {
+        auto p = BML::Engine::BorrowObject<CKObject>(m_Context, ref);
+        if (p)
+            objects.PushBack(p.Value()->GetID());
+    }
+    auto *objArray = &objects;
+    auto master = BML::Engine::BorrowObject<CKObject>(m_Context, event.MasterObject);
+    CKObject *masterObj = master ? master.Value() : nullptr;
 
-void DualBallControl::OnLoad() {
-    GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
-
-    m_SwitchKey = GetConfig()->GetProperty("Misc", "SwitchKey");
-    m_SwitchKey->SetComment("Switch between two balls");
-    m_SwitchKey->SetDefaultKey(CKKEY_X);
-}
-
-void DualBallControl::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                                   CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                                   XObjectArray *objArray, CKObject *masterObj) {
     if (isMap) {
         m_DualActive = false;
-        CK3dObject *ps = m_BML->Get3dObjectByName("PS_FourFlames_01_Dual");
-        CKGroup *pcs = m_BML->GetGroupByName("PC_Checkpoints");
-        CKGroup *prs = m_BML->GetGroupByName("PR_Resetpoints");
+        CK3dObject *ps = ModSupport::Find<CK3dObject>(m_Context, "PS_FourFlames_01_Dual");
+        CKGroup *pcs = ModSupport::Find<CKGroup>(m_Context, "PC_Checkpoints");
+        CKGroup *prs = ModSupport::Find<CKGroup>(m_Context, "PR_Resetpoints");
         if (ps != nullptr && pcs != nullptr && prs != nullptr) {
             m_DualFlames.push_back(ps);
             for (int i = 1; i <= pcs->GetObjectCount(); i++) {
                 std::string pcname = "PC_TwoFlames_0" + std::to_string(i) + "_Dual";
-                CK3dObject *pc = m_BML->Get3dObjectByName(pcname.c_str());
+                CK3dObject *pc = ModSupport::Find<CK3dObject>(m_Context, pcname.c_str());
                 if (pc != nullptr)
                     m_DualFlames.push_back(pc);
             }
 
             for (int i = 1; i <= prs->GetObjectCount(); i++) {
                 std::string prname = "PR_Resetpoint_0" + std::to_string(i) + "_Dual";
-                CK3dObject *pr = m_BML->Get3dObjectByName(prname.c_str());
+                CK3dObject *pr = ModSupport::Find<CK3dObject>(m_Context, prname.c_str());
                 if (pr != nullptr)
                     m_DualResets.push_back(pr);
             }
 
-            if (m_DualFlames.size() == pcs->GetObjectCount() + 1 && m_DualResets.size() == prs->GetObjectCount()) {
+            if (m_DualFlames.size() == pcs->GetObjectCount() + 1 &&
+                m_DualResets.size() == prs->GetObjectCount()) {
                 m_DualActive = true;
-                for (CK3dObject *obj: m_DualFlames)
+                for (CK3dObject *obj : m_DualFlames)
                     obj->Show(CKHIDE);
-                for (CK3dObject *obj: m_DualResets)
+                for (CK3dObject *obj : m_DualResets)
                     obj->Show(CKHIDE);
                 m_DualBallType = 2;
-                m_DepthTestCubes = m_BML->GetGroupByName("DepthTestCubes");
+                m_DepthTestCubes = ModSupport::Find<CKGroup>(m_Context, "DepthTestCubes");
             }
         }
     }
 
-    if (!strcmp(filename, "3D Entities\\Balls.nmo")) {
-        CKDataArray *physBall = m_BML->GetArrayByName("Physicalize_GameBall");
+    if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
+        CKDataArray *physBall = ModSupport::Find<CKDataArray>(m_Context, "Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
             const int nameSize = physBall->GetElementStringValue(i, 0, nullptr, 0);
             if (nameSize <= 1)
@@ -61,16 +82,18 @@ void DualBallControl::OnLoadObject(const char *filename, CKBOOL isMap, const cha
             std::string ballName(nameSize, '\0');
             physBall->GetElementStringValue(i, 0, ballName.data(), nameSize);
             ballName.pop_back();
-            CK3dObject *ballObj = m_BML->Get3dObjectByName(ballName.c_str());
+            CK3dObject *ballObj = ModSupport::Find<CK3dObject>(m_Context, ballName.c_str());
             m_Balls.push_back(ballObj);
 
             CKDependencies dep;
             dep.Resize(40);
             dep.Fill(0);
             dep.m_Flags = CK_DEPENDENCIES_CUSTOM;
-            dep[CKCID_OBJECT] = CK_DEPENDENCIES_COPY_OBJECT_NAME | CK_DEPENDENCIES_COPY_OBJECT_UNIQUENAME;
+            dep[CKCID_OBJECT] =
+                CK_DEPENDENCIES_COPY_OBJECT_NAME | CK_DEPENDENCIES_COPY_OBJECT_UNIQUENAME;
             dep[CKCID_SCENEOBJECT] = CK_DEPENDENCIES_COPY_SCENEOBJECT_SCENES;
-            ballObj = (CK3dObject *) m_BML->GetCKContext()->CopyObject(ballObj, &dep, "_Dual");
+            ballObj =
+                (CK3dObject *)ModSupport::Engine(m_Context)->CopyObject(ballObj, &dep, "_Dual");
             m_DualBalls.push_back(ballObj);
 
             PhysicsBall phys;
@@ -87,31 +110,38 @@ void DualBallControl::OnLoadObject(const char *filename, CKBOOL isMap, const cha
             m_TrafoTypes.push_back(trafoName);
         }
 
-        CKAttributeManager *am = m_BML->GetAttributeManager();
+        CKAttributeManager *am = ModSupport::Engine(m_Context)->GetAttributeManager();
         CKAttributeType collId = am->GetAttributeTypeByName("Coll Detection ID");
         m_DualBalls[1]->SetAttribute(collId);
         m_DualBalls[2]->SetAttribute(collId);
         ScriptHelper::SetParamValue(m_DualBalls[1]->GetAttributeParameter(collId), 1);
         ScriptHelper::SetParamValue(m_DualBalls[2]->GetAttributeParameter(collId), 2);
 
-        GetLogger()->Info("Created Dual Balls");
+        ModSupport::Log(m_Context, BML_LOG_INFO, "Created Dual Balls");
     }
 
-    if (!strcmp(filename, "3D Entities\\Gameplay.nmo")) {
-        m_Energy = m_BML->GetArrayByName("Energy");
-        m_CurLevel = m_BML->GetArrayByName("CurrentLevel");
-        m_IngameParam = m_BML->GetArrayByName("IngameParameter");
+    if (ModSupport::ResourceIs(filename, "3D Entities\\Gameplay.nmo")) {
+        m_Energy = ModSupport::Find<CKDataArray>(m_Context, "Energy");
+        m_CurLevel = ModSupport::Find<CKDataArray>(m_Context, "CurrentLevel");
+        m_IngameParam = ModSupport::Find<CKDataArray>(m_Context, "IngameParameter");
     }
 
-    if (!strcmp(filename, "3D Entities\\Camera.nmo")) {
-        m_CamMF = m_BML->Get3dEntityByName("Cam_MF");
-        m_CamTarget = m_BML->Get3dEntityByName("Cam_Target");
-        m_CamPos = m_BML->Get3dEntityByName("Cam_Pos");
-        m_InGameCam = m_BML->GetTargetCameraByName("InGameCam");
+    if (ModSupport::ResourceIs(filename, "3D Entities\\Camera.nmo")) {
+        m_CamMF = ModSupport::Find<CK3dEntity>(m_Context, "Cam_MF");
+        m_CamTarget = ModSupport::Find<CK3dEntity>(m_Context, "Cam_Target");
+        m_CamPos = ModSupport::Find<CK3dEntity>(m_Context, "Cam_Pos");
+        m_InGameCam = ModSupport::Find<CKTargetCamera>(m_Context, "InGameCam");
     }
 }
 
-void DualBallControl::OnLoadScript(const char *filename, CKBehavior *script) {
+void DualBallControl::OnLoadScript(const BML::Mod::Context &,
+                                   const BML::Mod::LoadScriptEvent &event) {
+    const char *filename = event.Filename.data();
+    auto borrowed = BML::Engine::BorrowObject<CKBehavior>(m_Context, event.Script);
+    if (!borrowed)
+        return;
+    auto *script = borrowed.Value();
+
     if (!strcmp(script->GetName(), "Gameplay_Ingame"))
         OnEditScript_Gameplay_Ingame(script);
 }
@@ -129,24 +159,25 @@ void DualBallControl::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
     m_NearestTrafo = gnig->GetOutputParameter(1);
 }
 
-void DualBallControl::OnProcess() {
-    if (m_BML->IsPlaying() && m_DualActive) {
-        if (m_BML->GetInputManager()->IsKeyPressed(m_SwitchKey->GetKey()) && m_SwitchProgress <= 0
-            && m_BallNavActive && ScriptHelper::GetParamValue<float>(m_NearestTrafo) > 4.3) {
-            CKMessageManager *mm = m_BML->GetMessageManager();
+void DualBallControl::OnProcess(const BML::Mod::Context &) {
+    if (ModSupport::GameState().Playing && m_DualActive) {
+        if (ModSupport::Keyboard(m_Context).IsKeyPressed(m_SwitchKey.Get<uint32_t>()) &&
+            m_SwitchProgress <= 0 && m_BallNavActive &&
+            ScriptHelper::GetParamValue<float>(m_NearestTrafo) > 4.3) {
+            CKMessageManager *mm = ModSupport::Engine(m_Context)->GetMessageManager();
             CKMessageType ballDeact = mm->AddMessageType("BallNav deactivate");
 
-            mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Gameplay"));
-            mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Sound"));
+            mm->SendMessageSingle(ballDeact, ModSupport::Find<CKGroup>(m_Context, "All_Gameplay"));
+            mm->SendMessageSingle(ballDeact, ModSupport::Find<CKGroup>(m_Context, "All_Sound"));
 
-            m_BML->AddTimer(CKDWORD{2}, [this]() {
-                auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
-                ExecuteBB::Unphysicalize(curBall);
+            m_Timers.AfterTicks(2, [this]() {
+                auto *curBall = (CK3dEntity *)m_CurLevel->GetElementObject(0, 1);
+                ModSupport::Unphysicalize(m_Behaviors, m_Context, curBall);
 
                 m_DynamicPos->ActivateInput(1);
                 m_DynamicPos->Activate();
 
-                m_BML->AddTimer(CKDWORD{1}, [this, curBall]() {
+                m_Timers.AfterTicks(1, [this, curBall = ModSupport::Object(curBall)]() {
                     ReleaseDualBall();
 
                     CK3dEntity *dualBall = m_DualBalls[m_DualBallType];
@@ -169,7 +200,7 @@ void DualBallControl::OnProcess() {
                     PhysicalizeDualBall();
                     m_SwitchProgress = 1.0f;
 
-                    m_BML->AddTimerLoop(CKDWORD{1}, [this, position, dualPosition, camPosition]() {
+                    m_Timers.EveryTicks(1, [this, position, dualPosition, camPosition]() {
                         if (m_SwitchProgress < 0) {
                             m_CamTarget->SetPosition(&position);
                             m_InGameCam->SetPosition(&camPosition, m_CamPos);
@@ -184,7 +215,9 @@ void DualBallControl::OnProcess() {
                             m_InGameCam->SetPosition(&camPosition, m_CamPos);
                         }
 
-                        m_SwitchProgress -= m_BML->GetTimeManager()->GetLastDeltaTime() / 200;
+                        m_SwitchProgress -=
+                            ModSupport::Engine(m_Context)->GetTimeManager()->GetLastDeltaTime() /
+                            200;
                         return true;
                     });
                 });
@@ -192,10 +225,11 @@ void DualBallControl::OnProcess() {
         }
 
         if (!m_DeactivateBall->IsActive()) {
-            CKCollisionManager *cm = m_BML->GetCollisionManager();
+            CKCollisionManager *cm = static_cast<CKCollisionManager *>(
+                ModSupport::Engine(m_Context)->GetManagerByGuid(COLLISION_MANAGER_GUID));
             for (int i = 0; i < m_DepthTestCubes->GetObjectCount(); i++) {
-                if (cm->BoxBoxIntersection((CK3dEntity *) m_DepthTestCubes->GetObject(i), false, true,
-                                           m_DualBalls[m_DualBallType], false, true)) {
+                if (cm->BoxBoxIntersection((CK3dEntity *)m_DepthTestCubes->GetObject(i), false,
+                                           true, m_DualBalls[m_DualBallType], false, true)) {
                     m_DeactivateBall->ActivateInput(0);
                     m_DeactivateBall->Activate();
                 }
@@ -211,7 +245,7 @@ int DualBallControl::GetCurrentSector() {
 }
 
 int DualBallControl::GetCurrentBallType() {
-    auto *ball = (CK3dObject *) m_CurLevel->GetElementObject(0, 1);
+    auto *ball = (CK3dObject *)m_CurLevel->GetElementObject(0, 1);
     for (auto i = 0u; i < m_Balls.size(); i++)
         if (m_Balls[i] == ball)
             return i;
@@ -221,15 +255,16 @@ int DualBallControl::GetCurrentBallType() {
 void DualBallControl::ReleaseDualBall() {
     CK3dObject *ball = m_DualBalls[m_DualBallType];
     ball->Show(CKHIDE);
-    ExecuteBB::Unphysicalize(ball);
+    ModSupport::Unphysicalize(m_Behaviors, m_Context, ball);
 }
 
 void DualBallControl::PhysicalizeDualBall() {
     CK3dObject *ball = m_DualBalls[m_DualBallType];
     ball->Show();
     PhysicsBall &phys = m_PhysicsBalls[m_DualBallType];
-    ExecuteBB::PhysicalizeBall(ball, false, phys.friction, phys.elasticity, phys.mass, "",
-                               false, true, false, phys.linearDamp, phys.rotDamp, phys.surface.c_str());
+    ModSupport::PhysicalizeBall(m_Behaviors, m_Context, ball, false, phys.friction, phys.elasticity,
+                                phys.mass, "", false, true, false, phys.linearDamp, phys.rotDamp,
+                                phys.surface.c_str());
 }
 
 void DualBallControl::ResetDualBallMatrix() {
@@ -243,24 +278,27 @@ void DualBallControl::ReleaseLevel() {
     m_DualFlames.clear();
 }
 
-void DualBallControl::OnPostLoadLevel() {
+void DualBallControl::OnPostLoadLevel(const BML::Mod::Context &) {
     if (m_DualActive) {
         CKDependencies dep;
         dep.Resize(40);
         dep.Fill(0);
         dep.m_Flags = CK_DEPENDENCIES_CUSTOM;
-        dep[CKCID_OBJECT] = CK_DEPENDENCIES_COPY_OBJECT_NAME | CK_DEPENDENCIES_COPY_OBJECT_UNIQUENAME;
+        dep[CKCID_OBJECT] =
+            CK_DEPENDENCIES_COPY_OBJECT_NAME | CK_DEPENDENCIES_COPY_OBJECT_UNIQUENAME;
         dep[CKCID_SCENEOBJECT] = CK_DEPENDENCIES_COPY_SCENEOBJECT_SCENES;
         dep[CKCID_BEOBJECT] = CK_DEPENDENCIES_COPY_BEOBJECT_SCRIPTS;
 
-        CK3dEntity *flame = m_BML->Get3dEntityByName("PS_FourFlames_Flame_A");
-        CKGroup *allLevel = m_BML->GetGroupByName("All_Level");
-        CKScene *scene = m_BML->GetCKContext()->GetCurrentScene();
+        CK3dEntity *flame = ModSupport::Find<CK3dEntity>(m_Context, "PS_FourFlames_Flame_A");
+        CKGroup *allLevel = ModSupport::Find<CKGroup>(m_Context, "All_Level");
+        CKScene *scene = ModSupport::Engine(m_Context)->GetCurrentScene();
 
         int counter = 0;
-        auto createFlame = [this, &counter, flame, &dep, allLevel, scene]() {
+        auto createFlame = [this, &counter, flame = ModSupport::Object(flame), &dep, allLevel,
+                            scene]() {
             std::string suffix = "_Dual_" + std::to_string(counter++);
-            auto *newFlame = (CK3dEntity *) m_BML->GetCKContext()->CopyObject(flame, &dep, (CKSTRING) suffix.c_str());
+            auto *newFlame = (CK3dEntity *)ModSupport::Engine(m_Context)->CopyObject(
+                flame, &dep, (CKSTRING)suffix.c_str());
             scene->Activate(newFlame, false);
             allLevel->AddObject(newFlame);
             for (int i = 0; i < newFlame->GetScriptCount(); i++)
