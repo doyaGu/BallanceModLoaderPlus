@@ -1,6 +1,6 @@
 // Loader-internal header. It is deliberately absent from BML_PUBLIC_HEADERS in
 // src/CMakeLists.txt and is not installed into the SDK, so a Mod cannot include
-// it. Mods schedule work through IBML::AddTimer and IBML::AddTimerLoop instead.
+// it. Mods schedule work through ModContext::AddTimer and ModContext::AddTimerLoop instead.
 //
 // The registry below lives in function-local statics, which means every binary
 // that expands this header owns a separate one. Only the copy inside BMLPlus.dll

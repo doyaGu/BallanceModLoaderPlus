@@ -12,7 +12,7 @@
 
 #include "UI/BuiHost.h"
 #include "BML/DataShare.h"
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Config/IConfig.h"
 #include "Logging/Logger.h"
 
@@ -165,7 +165,7 @@ bool CustomMaps::OnModifyConfig(const char *category, const char *key, IProperty
     return property == m_LevelNumber && std::strcmp(key ? key : "", "LevelNumber") == 0;
 }
 
-void CustomMaps::OnLoad(IBML &bml, Logger &logger,
+void CustomMaps::OnLoad(ModContext &bml, Logger &logger,
                         const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
                         const std::wstring &tempDirectory) {
     m_BML = &bml;
@@ -235,7 +235,7 @@ void CustomMaps::BindMenuEntry() {
             auto exit = menu->Find(Behavior::Named("Exit", 0));
             if (exit) {
                 m_ExitStart = Resolve<CKBehavior>(
-                    dynamic_cast<ModContext *>(m_BML), exit->Object());
+                    m_BML, exit->Object());
             }
         }
     }

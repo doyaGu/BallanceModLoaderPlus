@@ -1,6 +1,8 @@
 #include "Mods/NewBallTypeMod.h"
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
+
+#include "Loader/ModContext.h"
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/Narratives.h"
 #include "BML/Scene.h"

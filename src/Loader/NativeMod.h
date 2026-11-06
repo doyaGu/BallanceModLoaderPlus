@@ -12,7 +12,7 @@
 // table directly. No object of this class leaves BML's binary.
 class NativeMod final : public IMod {
 public:
-    static std::unique_ptr<NativeMod> Query(IBML *host, const BML_ModInterface *api,
+    static std::unique_ptr<NativeMod> Query(ModContext *host, const BML_ModInterface *api,
                                             std::string &diagnostic);
 
     const char *GetID() override { return m_Id.c_str(); }
@@ -67,7 +67,7 @@ public:
     void *Instance() const noexcept { return m_Instance; }
 
 private:
-    explicit NativeMod(IBML *host) : IMod(host) {}
+    explicit NativeMod(ModContext *host) : IMod(host) {}
 
     std::string m_Id;
     std::string m_Name;

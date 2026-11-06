@@ -5,6 +5,8 @@
 #include "Console/CommandContext.h"
 #include "Loader/ModContext.h"
 
+void ModContext::SendIngameMessage(const char *) {}
+
 IMod::~IMod() = default;
 
 Logger *IMod::GetLogger() {

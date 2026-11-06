@@ -24,8 +24,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "List, set, or erase shell variables ($NAME)."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override;
 
     private:
         Environment &m_Environment;
@@ -39,8 +39,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Define or list command aliases."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override;
 
     private:
         Environment &m_Environment;
@@ -54,8 +54,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Remove command aliases."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override;
 
     private:
         Environment &m_Environment;
@@ -67,8 +67,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Do nothing, successfully."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override {}
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &) override { return {}; }
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override {}
+        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &) override { return {}; }
     };
 
     class CommandFalse final : public ICommand {
@@ -77,8 +77,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Do nothing, unsuccessfully."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &) override { return {}; }
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &) override { return {}; }
     };
 
     class CommandXargs final : public ICommand {
@@ -89,8 +89,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Run a command with piped text as its arguments."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override;
 
         // Splits input into items: on delimiter when given, else on whitespace and
         // newlines with empty items dropped.

@@ -11,8 +11,8 @@ public:
     std::string GetAlias() override { return ""; }
     std::string GetDescription() override { return "Manage script mods."; }
     bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override;
 };
 
 #endif // BML_ANGELSCRIPT_SCRIPT_COMMAND_H

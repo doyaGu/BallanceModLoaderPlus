@@ -15,7 +15,7 @@ class CK2dEntity;
 class CKBehavior;
 class CKContext;
 class CKDataArray;
-class IBML;
+class ModContext;
 class IConfig;
 class Logger;
 class IProperty;
@@ -38,7 +38,7 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, Logger &logger,
+    void OnLoad(ModContext &bml, Logger &logger,
                 const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
                 const std::wstring &tempDirectory);
     void OnUnload();
@@ -79,7 +79,7 @@ private:
     void ReleaseDataShare();
     void ResetScriptBindings();
 
-    IBML *m_BML = nullptr;
+    ModContext *m_BML = nullptr;
     CKContext *m_CKContext = nullptr;
     Logger *m_Logger = nullptr;
     BML_DataShare *m_DataShare = nullptr;

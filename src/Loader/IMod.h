@@ -9,7 +9,8 @@
 #include "CKAll.h"
 
 #include "BML/BML.h"
-#include "Loader/IBML.h"
+#include "Console/ICommand.h"
+#include "Loader/IMessageReceiver.h"
 #include "Logging/Logger.h"
 #include "Config/IConfig.h"
 
@@ -47,7 +48,7 @@ struct BMLVersion {
     }
 };
 
-// One entry of a Mod's dependency list, which IBML::GetDependencyInfo reports a
+// One entry of a Mod's dependency list, which ModContext::GetDependencyInfo reports a
 // copy of. The loader builds entries from native or script declarations. The
 // comparison operators look at id alone and ignore minVersion and optional.
 struct ModDependency {
@@ -125,14 +126,14 @@ struct ModDependency {
 
 class IMod : public IMessageReceiver {
 public:
-    explicit IMod(IBML *bml) : m_BML(bml) {}
+    explicit IMod(ModContext *bml) : m_BML(bml) {}
 
     virtual ~IMod();
 
     // The identity of the Mod, and the key everything else files it under: the
     // config lives in Configs\<id>.cfg under the loader directory, log lines carry
     // it as their prefix, other Mods name it in their dependency list, and
-    // IBML::FindMod matches it exactly. Changing it in a later release orphans the
+    // ModContext::FindMod matches it exactly. Changing it in a later release orphans the
     // config file the earlier one wrote. It has to be non-empty and unlike every
     // other loaded Mod's, or the loader refuses to register this Mod. The loader
     // keeps the pointer rather than copying the string, so return a string literal
@@ -219,7 +220,7 @@ public:
 
     // The cheat flag changed, which is a single flag shared by every Mod. It is
     // only broadcast on a real change, so a Mod that keeps its own copy stays in
-    // step with IBML::IsCheatEnabled.
+    // step with ModContext::IsCheatEnabled.
     virtual void OnCheatEnabled(bool enable) {}
 
     // The game's Physicalize building block is about to run, on target. Both of
@@ -266,7 +267,7 @@ protected:
 
     // The loader, handed to the constructor. It stays valid for as long as the Mod
     // does, and is never null for an adapter constructed by this loader.
-    IBML *m_BML = nullptr;
+    ModContext *m_BML = nullptr;
 
 private:
     friend class ModContext;

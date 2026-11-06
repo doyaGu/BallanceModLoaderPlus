@@ -1,18 +1,18 @@
 #include "Mods/BMLCommand.h"
 
 #include "BML/BML.h"
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Loader/IMod.h"
 #include "Diagnostics/SystemReport.h"
 
 namespace {
-    void SendLine(IBML &bml, const std::string &line) {
+    void SendLine(ModContext &bml, const std::string &line) {
         const std::string message = line + '\n';
         bml.SendIngameMessage(message.c_str());
     }
 }
 
-void BMLCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+void BMLCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
     if (!bml)
         return;
 
@@ -39,7 +39,7 @@ void BMLCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
 }
 
 const std::vector<std::string> BMLCommand::GetTabCompletion(
-    IBML *, const std::vector<std::string> &args) {
+    ModContext *, const std::vector<std::string> &args) {
     if (args.size() == 2)
         return {"system"};
     return {};

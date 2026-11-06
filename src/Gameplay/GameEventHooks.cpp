@@ -3,13 +3,12 @@
 #include <cstdint>
 #include <utility>
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Logging/Logger.h"
-#include "Loader/IMessageReceiver.h"
 
 namespace {
 namespace Behavior = BML::Behavior;
-using Receiver = IMessageReceiver;
+using Receiver = ModContext;
 
 template<void (Receiver::*Method)()>
 Behavior::Hook Callback(Receiver *receiver) {
@@ -188,7 +187,7 @@ Behavior::Edit GameplayEvents(Receiver *receiver,
 }
 } // namespace
 
-void GameEventHooks::OnLoad(IBML &bml, Logger &logger) {
+void GameEventHooks::OnLoad(ModContext &bml, Logger &logger) {
     m_Receiver = &bml;
     m_Logger = &logger;
     CKMessageManager *messages = bml.GetMessageManager();

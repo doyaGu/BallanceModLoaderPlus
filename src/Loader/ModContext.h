@@ -20,7 +20,7 @@ struct SDL_IOStream;
 
 #include "BML/BML.h"
 #include "BML/Mod.h"
-#include "Loader/IBML.h"
+#include "Hooks/InputHook.h"
 #include "Loader/IMod.h"
 
 #include "Config/Config.h"
@@ -95,14 +95,14 @@ private:
     ModContext *m_Context = nullptr;
 };
 
-class ModContext final : public IBML {
+class ModContext final {
 public:
     explicit ModContext(CKContext *context);
 
     ModContext(const ModContext &rhs) = delete;
     ModContext(ModContext &&rhs) noexcept = delete;
 
-    ~ModContext() override;
+    ~ModContext();
 
     // A failed shutdown must leave the Context and its Mod DLLs alive.
     static void Destroy(ModContext *context) noexcept;
@@ -156,11 +156,11 @@ public:
     BML::ScriptDevToolsService *GetScriptDevTools() const { return m_Loader.GetScriptDevTools(); }
 #endif
 
-    int GetModCount() override;
-    IMod *GetMod(int index) override;
+    int GetModCount();
+    IMod *GetMod(int index);
     std::uint64_t GetModGeneration(const IMod *mod) const;
     std::uint64_t GetModRegistryRevision() const;
-    IMod *FindMod(const char *id) const override;
+    IMod *FindMod(const char *id) const;
     std::string GetNativeImcOwnerId(
         const void *callerAddress,
         const char *requestedOwnerId = nullptr) const;
@@ -178,15 +178,15 @@ public:
     const BML::ImcRuntime &GetImcRuntime() const { return m_ImcRuntime; }
     ModMenuPages &GetModMenuPages() { return m_ModMenuPages; }
     const ModMenuPages &GetModMenuPages() const { return m_ModMenuPages; }
-    int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
-    int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
-    int CheckDependencies(IMod *mod) const override;
-    int GetDependencyCount(IMod *mod) const override;
+    int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch);
+    int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch);
+    int CheckDependencies(IMod *mod) const;
+    int GetDependencyCount(IMod *mod) const;
     int GetDependencyInfo(IMod *mod, int index, char *dependencyId, int idSize,
-                          int *major, int *minor, int *patch, int *optional) const override;
-    int ClearDependencies(IMod *mod) override;
+                          int *major, int *minor, int *patch, int *optional) const;
+    int ClearDependencies(IMod *mod);
 
-    void RegisterCommand(ICommand *cmd) override;
+    void RegisterCommand(ICommand *cmd);
 
     // Retained callback commands may remove lookup during their own invocation;
     // the registry's lifetime token keeps the active callback alive.
@@ -200,10 +200,10 @@ public:
         return m_CommandInvocationGate.IsCallActiveOnCurrentThread();
     }
 
-    int GetCommandCount() const override;
-    ICommand *GetCommand(int index) const override;
-    ICommand *FindCommand(const char *name) const override;
-    void ExecuteCommand(const char *cmd) override;
+    int GetCommandCount() const;
+    ICommand *GetCommand(int index) const;
+    ICommand *FindCommand(const char *name) const;
+    void ExecuteCommand(const char *cmd);
 
     // Runs one line through the console shell (quoting, ; && || and |, $NAME,
     // $(...), aliases) and returns the status of its last pipeline. Diagnostics go
@@ -250,73 +250,73 @@ public:
     BML::Api::CommandApi &GetCommandApi() { return *m_CommandApi; }
     BML_DataShare *GetDataShare(const char *name = nullptr);
 
-    CKContext *GetCKContext() override { return m_CKContext; }
-    CKRenderContext *GetRenderContext() override { return m_CKContext->GetPlayerRenderContext(); }
+    CKContext *GetCKContext() { return m_CKContext; }
+    CKRenderContext *GetRenderContext() { return m_CKContext->GetPlayerRenderContext(); }
 
-    CKAttributeManager *GetAttributeManager() override { return m_AttributeManager; }
-    CKBehaviorManager *GetBehaviorManager() override { return m_BehaviorManager; }
-    CKCollisionManager *GetCollisionManager() override { return m_CollisionManager; }
-    InputHook *GetInputManager() override { return m_Hooks ? m_Hooks->GetInput() : nullptr; }
-    CKMessageManager *GetMessageManager() override { return m_MessageManager; }
-    CKPathManager *GetPathManager() override { return m_PathManager; }
-    CKParameterManager *GetParameterManager() override { return m_ParameterManager; }
-    CKRenderManager *GetRenderManager() override { return m_RenderManager; }
-    CKSoundManager *GetSoundManager() override { return m_SoundManager; }
-    CKTimeManager *GetTimeManager() override { return m_TimeManager; }
+    CKAttributeManager *GetAttributeManager() { return m_AttributeManager; }
+    CKBehaviorManager *GetBehaviorManager() { return m_BehaviorManager; }
+    CKCollisionManager *GetCollisionManager() { return m_CollisionManager; }
+    InputHook *GetInputManager() { return m_Hooks ? m_Hooks->GetInput() : nullptr; }
+    CKMessageManager *GetMessageManager() { return m_MessageManager; }
+    CKPathManager *GetPathManager() { return m_PathManager; }
+    CKParameterManager *GetParameterManager() { return m_ParameterManager; }
+    CKRenderManager *GetRenderManager() { return m_RenderManager; }
+    CKSoundManager *GetSoundManager() { return m_SoundManager; }
+    CKTimeManager *GetTimeManager() { return m_TimeManager; }
 
-    CKDataArray *GetArrayByName(const char *name) override {
+    CKDataArray *GetArrayByName(const char *name) {
         return (CKDataArray *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_DATAARRAY);
     }
-    CKGroup *GetGroupByName(const char *name) override {
+    CKGroup *GetGroupByName(const char *name) {
         return (CKGroup *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_GROUP);
     }
-    CKMaterial *GetMaterialByName(const char *name) override {
+    CKMaterial *GetMaterialByName(const char *name) {
         return (CKMaterial *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_MATERIAL);
     }
-    CKMesh *GetMeshByName(const char *name) override {
+    CKMesh *GetMeshByName(const char *name) {
         return (CKMesh *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_MESH);
     }
-    CK2dEntity *Get2dEntityByName(const char *name) override {
+    CK2dEntity *Get2dEntityByName(const char *name) {
         return (CK2dEntity *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_2DENTITY);
     }
-    CK3dEntity *Get3dEntityByName(const char *name) override {
+    CK3dEntity *Get3dEntityByName(const char *name) {
         return (CK3dEntity *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_3DENTITY);
     }
-    CK3dObject *Get3dObjectByName(const char *name) override {
+    CK3dObject *Get3dObjectByName(const char *name) {
         return (CK3dObject *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_3DOBJECT);
     }
-    CKCamera *GetCameraByName(const char *name) override {
+    CKCamera *GetCameraByName(const char *name) {
         return (CKCamera *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_CAMERA);
     }
-    CKTargetCamera *GetTargetCameraByName(const char *name) override {
+    CKTargetCamera *GetTargetCameraByName(const char *name) {
         return (CKTargetCamera *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_TARGETCAMERA);
     }
-    CKLight *GetLightByName(const char *name) override {
+    CKLight *GetLightByName(const char *name) {
         return (CKLight *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_LIGHT);
     }
-    CKTargetLight *GetTargetLightByName(const char *name) override {
+    CKTargetLight *GetTargetLightByName(const char *name) {
         return (CKTargetLight *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_TARGETLIGHT);
     }
-    CKSound *GetSoundByName(const char *name) override {
+    CKSound *GetSoundByName(const char *name) {
         return (CKSound *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_SOUND);
     }
-    CKTexture *GetTextureByName(const char *name) override {
+    CKTexture *GetTextureByName(const char *name) {
         return (CKTexture *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_TEXTURE);
     }
-    CKBehavior *GetScriptByName(const char *name) override {
+    CKBehavior *GetScriptByName(const char *name) {
         return (CKBehavior *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_BEHAVIOR);
     }
 
-    void SetIC(CKBeObject *obj, bool hierarchy) override;
-    void RestoreIC(CKBeObject *obj, bool hierarchy) override;
-    void Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy) override;
+    void SetIC(CKBeObject *obj, bool hierarchy = false);
+    void RestoreIC(CKBeObject *obj, bool hierarchy = false);
+    void Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy = false);
 
-    void AddTimer(CKDWORD delay, std::function<void()> callback) override;
-    void AddTimerLoop(CKDWORD delay, std::function<bool()> callback) override;
-    void AddTimer(float delay, std::function<void()> callback) override;
-    void AddTimerLoop(float delay, std::function<bool()> callback) override;
+    void AddTimer(CKDWORD delay, std::function<void()> callback);
+    void AddTimerLoop(CKDWORD delay, std::function<bool()> callback);
+    void AddTimer(float delay, std::function<void()> callback);
+    void AddTimerLoop(float delay, std::function<bool()> callback);
 
-    void ExitGame() override;
+    void ExitGame();
 
     BML::ObjectRefs &ObjectRefs() noexcept { return m_ObjectRefs; }
     BML::Behavior::Internal::Sessions &BehaviorSessions() noexcept {
@@ -349,24 +349,24 @@ public:
     const BML::UI::FontRuntime *GetUiFontRuntime() const noexcept {
         return m_UiFonts.get();
     }
-    bool IsIngame() override { return m_GamePhase != GamePhase::FrontEnd; }
+    bool IsIngame() { return m_GamePhase != GamePhase::FrontEnd; }
     bool IsInLevel() const { return m_GamePhase == GamePhase::ActiveLevel || m_GamePhase == GamePhase::PausedLevel; }
-    bool IsPaused() override { return m_GamePhase == GamePhase::PausedLevel; }
-    bool IsPlaying() override { return m_GamePhase == GamePhase::ActiveLevel; }
+    bool IsPaused() { return m_GamePhase == GamePhase::PausedLevel; }
+    bool IsPlaying() { return m_GamePhase == GamePhase::ActiveLevel; }
 
     void OpenModsMenu();
     void CloseModsMenu();
     void OpenMapMenu();
     void CloseMapMenu();
 
-    bool IsCheatEnabled() override { return m_CommandContext.IsCheatEnabled(); }
-    void EnableCheat(bool enable) override;
+    bool IsCheatEnabled() { return m_CommandContext.IsCheatEnabled(); }
+    void EnableCheat(bool enable);
 
-    void SendIngameMessage(const char *msg) override;
+    void SendIngameMessage(const char *msg);
     void ClearIngameMessages();
 
-    float GetSRScore() override;
-    int GetHSScore() override;
+    float GetSRScore();
+    int GetHSScore();
     int GetHUD();
     void SetHUD(int mode);
     void ShowTitle(bool show);
@@ -377,22 +377,22 @@ public:
     void ResetSRTimer();
     float GetSRTime();
 
-    void SkipRenderForNextTick() override;
+    void SkipRenderForNextTick();
 
     void RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
                           float friction, float elasticity,
                           float mass, const char *collGroup, float linearDamp, float rotDamp, float force,
-                          float radius) override;
+                          float radius);
     void RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
-                           const char *collGroup, bool enableColl) override;
+                           const char *collGroup, bool enableColl);
     void RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
                            const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
-                           float linearDamp, float rotDamp, float radius) override;
+                           float linearDamp, float rotDamp, float radius);
     void RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity, float mass,
                              const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
-                             float linearDamp, float rotDamp) override;
-    void RegisterTrafo(const char *modulName) override;
-    void RegisterModul(const char *modulName) override;
+                             float linearDamp, float rotDamp);
+    void RegisterTrafo(const char *modulName);
+    void RegisterModul(const char *modulName);
 
     template<typename T, typename... Args>
     std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
@@ -409,58 +409,58 @@ public:
 
     void OnLoadGame();
 
-    void OnPreStartMenu() override;
-    void OnPostStartMenu() override;
+    void OnPreStartMenu();
+    void OnPostStartMenu();
 
-    void OnExitGame() override;
+    void OnExitGame();
 
-    void OnPreLoadLevel() override;
-    void OnPostLoadLevel() override;
+    void OnPreLoadLevel();
+    void OnPostLoadLevel();
 
-    void OnStartLevel() override;
+    void OnStartLevel();
 
-    void OnPreResetLevel() override;
-    void OnPostResetLevel() override;
+    void OnPreResetLevel();
+    void OnPostResetLevel();
 
-    void OnPauseLevel() override;
-    void OnUnpauseLevel() override;
+    void OnPauseLevel();
+    void OnUnpauseLevel();
 
-    void OnPreExitLevel() override;
-    void OnPostExitLevel() override;
+    void OnPreExitLevel();
+    void OnPostExitLevel();
 
-    void OnPreNextLevel() override;
-    void OnPostNextLevel() override;
+    void OnPreNextLevel();
+    void OnPostNextLevel();
 
-    void OnDead() override;
+    void OnDead();
 
-    void OnPreEndLevel() override;
-    void OnPostEndLevel() override;
+    void OnPreEndLevel();
+    void OnPostEndLevel();
 
-    void OnCounterActive() override;
-    void OnCounterInactive() override;
+    void OnCounterActive();
+    void OnCounterInactive();
 
-    void OnBallNavActive() override;
-    void OnBallNavInactive() override;
+    void OnBallNavActive();
+    void OnBallNavInactive();
 
-    void OnCamNavActive() override;
-    void OnCamNavInactive() override;
+    void OnCamNavActive();
+    void OnCamNavInactive();
 
-    void OnBallOff() override;
+    void OnBallOff();
 
-    void OnPreCheckpointReached() override;
-    void OnPostCheckpointReached() override;
+    void OnPreCheckpointReached();
+    void OnPostCheckpointReached();
 
-    void OnLevelFinish() override;
+    void OnLevelFinish();
 
-    void OnGameOver() override;
+    void OnGameOver();
 
-    void OnExtraPoint() override;
+    void OnExtraPoint();
 
-    void OnPreSubLife() override;
-    void OnPostSubLife() override;
+    void OnPreSubLife();
+    void OnPostSubLife();
 
-    void OnPreLifeUp() override;
-    void OnPostLifeUp() override;
+    void OnPreLifeUp();
+    void OnPostLifeUp();
 
 private:
     void Abandon() noexcept;

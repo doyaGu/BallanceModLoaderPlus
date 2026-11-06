@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <sstream>
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Console/Shell/ShellIo.h"
 #include "HUD/HUDRuntime.h"
 #include "UI/AnsiPalette.h"
@@ -68,7 +68,7 @@ static std::string JoinArguments(const std::vector<std::string> &args, size_t st
     return utils::JoinString(args, ' ', start);
 }
 
-void HUDCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+void HUDCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
     // Basic toggles preserved
     if (args.size() == 2 && (args[1] == "on" || args[1] == "off")) {
         if (ParseBoolean(args[1])) {
@@ -452,7 +452,7 @@ void HUDCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
     BML::Shell::Fail(bml, "Usage: hud <action>; use 'hud help' for commands.\n");
 }
 
-const std::vector<std::string> HUDCommand::GetTabCompletion(IBML *bml, const std::vector<std::string> &args) {
+const std::vector<std::string> HUDCommand::GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) {
     if (args.size() == 2)
         return {"on", "off", "title", "fps", "sr", "add", "text", "set", "del", "list", "get", "vstack", "hstack", "grid", "child", "page", "help", "mv", "rename", "cp", "clone"};
     if (args.size() >= 3 && args[1] == std::string("set"))

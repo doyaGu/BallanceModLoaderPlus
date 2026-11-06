@@ -10,6 +10,10 @@
 #include "Console/Shell/ShellIo.h"
 #include "Console/Shell/ShellTypes.h"
 #include "Logging/Logger.h"
+#include "Loader/ModContext.h"
+
+void ModContext::SendIngameMessage(const char *) {}
+ICommand *ModContext::FindCommand(const char *) const { return nullptr; }
 
 // Stub Logger: CommandContext.cpp is linked for its name validation only.
 Logger *Logger::m_DefaultLogger = nullptr;

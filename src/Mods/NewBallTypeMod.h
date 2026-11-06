@@ -67,7 +67,7 @@ struct ModulInfo : TypeRegistration {
 
 class NewBallTypeMod : public IMod {
 public:
-    explicit NewBallTypeMod(IBML *bml) : IMod(bml) {}
+    explicit NewBallTypeMod(ModContext *bml) : IMod(bml) {}
 
     const char *GetID() override { return "NewBallType"; }
     const char *GetVersion() override { return BML_VERSION; }

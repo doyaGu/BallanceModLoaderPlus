@@ -104,7 +104,7 @@ void CollectGameFontRoles(const Behavior::Graph &graph,
 BMLMod::BMLMod(ModContext *context) : IMod(context), m_ModMenu(*context) {}
 
 ModContext *BMLMod::GetRuntimeContext() const {
-    return dynamic_cast<ModContext *>(m_BML);
+    return m_BML;
 }
 
 const BMLMod::Setting *BMLMod::GetSettings(std::size_t &count) {

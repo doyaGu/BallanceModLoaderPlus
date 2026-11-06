@@ -9,7 +9,7 @@
 #include "HUD/HUD.h"
 #include "HUD/SRTimer.h"
 
-class IBML;
+class ModContext;
 class IConfig;
 class IProperty;
 class HUDCommand;
@@ -26,7 +26,7 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml);
+    void OnLoad(ModContext &bml);
     void OnUnload();
     void OnProcess(float frameDeltaSeconds, float gameDeltaMilliseconds);
 
@@ -73,7 +73,7 @@ private:
     void UpdateTimerDisplay();
     void UpdateCheatState(bool cheatEnabled);
 
-    IBML *m_BML = nullptr;
+    ModContext *m_BML = nullptr;
     HUD m_Window;
     FpsCounter m_FPSCounter;
     SRTimer m_SRTimer;

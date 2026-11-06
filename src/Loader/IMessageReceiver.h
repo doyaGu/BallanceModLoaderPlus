@@ -17,7 +17,7 @@ public:
     virtual void OnPostStartMenu() {};
 
     // The player is quitting. The game closes right after the game's own handling of
-    // this, so it is the last chance to write anything out. IBML::ExitGame produces
+    // this, so it is the last chance to write anything out. ModContext::ExitGame produces
     // the same event.
     virtual void OnExitGame() {};
 
@@ -67,7 +67,7 @@ public:
     // The BallNav activate and deactivate messages, which is the player gaining and
     // losing control of the ball. Between an active and the next inactive is the part
     // of a level where the player is actually steering, which is narrower than
-    // IBML::IsPlaying.
+    // ModContext::IsPlaying.
     virtual void OnBallNavActive() {};
     virtual void OnBallNavInactive() {};
 

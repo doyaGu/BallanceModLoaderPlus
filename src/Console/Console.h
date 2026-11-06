@@ -8,7 +8,7 @@
 #include "Console/MessageBoard.h"
 #include "Console/Shell/ShellHistory.h"
 
-class IBML;
+class ModContext;
 class IConfig;
 class Logger;
 class IProperty;
@@ -23,7 +23,7 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, BML::CommandContext &commands, Logger &logger);
+    void OnLoad(ModContext &bml, BML::CommandContext &commands, Logger &logger);
     void OnUnload();
     void OnProcess();
     void CloseCommandBar();
@@ -56,7 +56,7 @@ private:
     void ApplyMessageBoardDisplayPolicy();
 
     static void OnCommandOutput(const char *message, void *userdata);
-    void RegisterCommands(IBML &bml);
+    void RegisterCommands(ModContext &bml);
 
     BML::CommandContext *m_Commands = nullptr;
     Logger *m_Logger = nullptr;

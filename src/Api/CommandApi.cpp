@@ -9,7 +9,7 @@
 
 #include "Platform/Module.h"
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Console/ICommand.h"
 #include "Console/CommandContext.h"
 #include "Console/Shell/ShellIo.h"
@@ -71,9 +71,9 @@ public:
     }
     void AdoptUserData() noexcept { m_OwnsUserData = true; }
 
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
     const std::vector<std::string> GetTabCompletion(
-        IBML *bml, const std::vector<std::string> &args) override;
+        ModContext *bml, const std::vector<std::string> &args) override;
 
 private:
     class ActiveCall {
@@ -109,7 +109,7 @@ private:
 };
 
 struct OutputContext {
-    IBML *Bml = nullptr;
+    ModContext *Bml = nullptr;
 };
 
 struct CompletionContext {
@@ -348,7 +348,7 @@ BML_CommandCompletionRequest BuildCompletionRequest(
     };
 }
 
-void CallbackCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CallbackCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
     if (!m_Context.GetModLoader().CanDispatchOwner(m_Owner)) { Shell::SetStatus(Shell::Status::Failure);return; }
     auto ownerCall=m_Context.LockModInvocation();
     ActiveCall active(*this);
@@ -371,7 +371,7 @@ void CallbackCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
 }
 
 const std::vector<std::string> CallbackCommand::GetTabCompletion(
-    IBML *, const std::vector<std::string> &args) {
+    ModContext *, const std::vector<std::string> &args) {
     if (!m_Complete || !m_Context.GetModLoader().CanDispatchOwner(m_Owner))
         return {};
     auto ownerCall=m_Context.LockModInvocation();

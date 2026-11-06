@@ -95,7 +95,7 @@ IMod::~IMod() {
 // Mock implementation of IMod for testing
 class MockMod : public IMod {
 public:
-    explicit MockMod(IBML *bml) : IMod(bml) {}
+    explicit MockMod(ModContext *bml) : IMod(bml) {}
 
     const char *GetID() override {
         ++idReadCount;

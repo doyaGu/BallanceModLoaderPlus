@@ -3,7 +3,7 @@
 
 #include "BML/Behavior.hpp"
 
-class IBML;
+class ModContext;
 class IConfig;
 class Logger;
 class IProperty;
@@ -13,7 +13,7 @@ public:
     void InitConfig(IConfig &config);
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, Logger &logger);
+    void OnLoad(ModContext &bml, Logger &logger);
     void OnUnload();
     void OnExitGame();
 
@@ -25,7 +25,7 @@ private:
                         const char *name, bool warnIfUnavailable);
     void ClosePlan(BML::Behavior::Plan &plan, const char *name);
 
-    IBML *m_BML = nullptr;
+    ModContext *m_BML = nullptr;
     Logger *m_Logger = nullptr;
 
     IProperty *m_LanternAlphaTest = nullptr;

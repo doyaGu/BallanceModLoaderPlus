@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstring>
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Config/IConfig.h"
 #include "BML/Version.h"
 
@@ -102,7 +102,7 @@ void HUDRuntime::ApplySetting(const Setting &setting, IProperty *property, bool 
     setting.apply(*this, property);
 }
 
-void HUDRuntime::OnLoad(IBML &bml) {
+void HUDRuntime::OnLoad(ModContext &bml) {
     m_BML = &bml;
     m_LastCheatState = false;
 

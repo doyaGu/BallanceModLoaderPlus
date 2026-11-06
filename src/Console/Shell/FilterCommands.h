@@ -58,8 +58,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Print piped lines matching a pattern."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
     };
 
     class CommandHead final : public ICommand {
@@ -68,8 +68,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Print the first lines of piped text."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
     };
 
     class CommandTail final : public ICommand {
@@ -78,8 +78,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Print the last lines of piped text."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
     };
 
     class CommandWc final : public ICommand {
@@ -88,8 +88,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Count lines, words, and bytes of piped text."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
     };
 
     class CommandSort final : public ICommand {
@@ -98,8 +98,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Sort piped lines."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
     };
 
     class CommandUniq final : public ICommand {
@@ -108,8 +108,8 @@ namespace BML::Shell {
         std::string GetAlias() override { return ""; }
         std::string GetDescription() override { return "Drop repeated adjacent piped lines."; }
         bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &args) override;
+        void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+        const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override;
     };
 }
 

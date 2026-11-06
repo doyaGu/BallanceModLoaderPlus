@@ -13,8 +13,8 @@ public:
     std::string GetAlias() override { return "?"; }
     std::string GetDescription() override { return "Show Help Information about Existing Commands."; }
     bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override { return {}; }
 };
 
 class CommandEcho : public ICommand {
@@ -25,8 +25,8 @@ public:
     std::string GetAlias() override { return ""; }
     std::string GetDescription() override { return "Output a line of string."; }
     bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override {
         if (args.size() == 2)
             return {"-e", "-n"};
         return {};
@@ -50,8 +50,8 @@ public:
     std::string GetAlias() override { return ""; }
     std::string GetDescription() override { return "Clear the Console."; }
     bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override { return {}; }
 
 private:
     Console *m_Console;
@@ -65,8 +65,8 @@ public:
     std::string GetAlias() override { return ""; }
     std::string GetDescription() override { return "Show or edit the command history; rerun entries with !n."; }
     bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override {
         if (args.size() == 2)
             return {"clear", "-c", "-d"};
         return {};
@@ -84,8 +84,8 @@ public:
     std::string GetAlias() override { return ""; }
     std::string GetDescription() override { return "Exit the game."; }
     bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override { return {}; }
 };
 
 #endif // BML_CONSOLE_BUILTIN_COMMANDS_H

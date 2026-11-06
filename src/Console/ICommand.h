@@ -11,7 +11,7 @@
 
 #include "BML/Defines.h"
 
-class IBML;
+class ModContext;
 
 class ICommand {
 public:
@@ -39,7 +39,7 @@ public:
     // Whether this command needs cheats on. The loader checks it before running
     // anything: with cheats off it writes "Can not execute cheat command" as an
     // ingame message and neither Execute nor the Mods' OnPreCommandExecute and
-    // OnPostCommandExecute run. Do not check IBML::IsCheatEnabled again in Execute.
+    // OnPostCommandExecute run. Do not check ModContext::IsCheatEnabled again in Execute.
     virtual bool IsCheat() = 0;
 
     // Runs the command. args[0] is the word that named the command, so it is the
@@ -52,13 +52,13 @@ public:
     // clean argument text. A backslash outside quotes escapes only a shell
     // metacharacter; in front of any other character it stays, so a Windows path
     // needs no quoting. There is no word splitting after expansion: one word in the
-    // line is one element of args. Write output with IBML::SendIngameMessage; when
+    // line is one element of args. Write output with ModContext::SendIngameMessage; when
     // the command is a pipeline stage that output goes to the next stage instead
     // of the board. Report failure through BML::Shell::SetStatus and read piped
     // text through BML::Shell::GetInput. An exception thrown
     // here is caught by the loader, logged, shown to the player, counts as a
     // failure, and skips the OnPostCommandExecute broadcast.
-    virtual void Execute(IBML *bml, const std::vector<std::string> &args) = 0;
+    virtual void Execute(ModContext *bml, const std::vector<std::string> &args) = 0;
 
     // Asked when the player presses Tab. args is the line up to the caret split the
     // same way, with args[0] the command word, and a caret sitting after an unquoted
@@ -69,7 +69,7 @@ public:
     // for a position with nothing to offer. This runs inside the loader's ImGui
     // frame while the player waits, so do not read files or block here.
     virtual const std::vector<std::string>
-    GetTabCompletion(IBML *bml, const std::vector<std::string> &args) = 0;
+    GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) = 0;
 
     // Argument helpers, all of them silent about a bad argument. ParseInteger and
     // ParseFloat go through atoi and atof, which yield 0 for text that is not a

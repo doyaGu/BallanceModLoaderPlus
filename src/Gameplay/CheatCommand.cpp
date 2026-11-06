@@ -1,8 +1,8 @@
 #include "Gameplay/CheatCommand.h"
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 
-void CheatCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CheatCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
     if (args.size() == 1) {
         bml->EnableCheat(!bml->IsCheatEnabled());
     } else {

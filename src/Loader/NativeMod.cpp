@@ -3,7 +3,7 @@
 #include <limits>
 #include <unordered_set>
 
-std::unique_ptr<NativeMod> NativeMod::Query(IBML *host, const BML_ModInterface *api,
+std::unique_ptr<NativeMod> NativeMod::Query(ModContext *host, const BML_ModInterface *api,
                                             std::string &diagnostic) {
     const auto reject = [&](const char *reason) -> std::unique_ptr<NativeMod> {
         diagnostic = reason;

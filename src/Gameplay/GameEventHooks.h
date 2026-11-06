@@ -3,13 +3,13 @@
 
 #include "BML/Behavior.hpp"
 
-class IBML;
+class ModContext;
 class Logger;
-class IMessageReceiver;
+class ModContext;
 
 class GameEventHooks {
 public:
-    void OnLoad(IBML &bml, Logger &logger);
+    void OnLoad(ModContext &bml, Logger &logger);
     void OnUnload();
 
 private:
@@ -17,7 +17,7 @@ private:
 
     BML::Behavior::Session m_Behavior;
     BML::Behavior::Plan m_Plan;
-    IMessageReceiver *m_Receiver = nullptr;
+    ModContext *m_Receiver = nullptr;
     Logger *m_Logger = nullptr;
 };
 

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Console/Shell/ShellIo.h"
 #include "CustomMaps/CustomMaps.h"
 #include "StringUtils.h"
@@ -11,17 +11,17 @@
 namespace CustomMap {
 namespace {
 
-void Report(IBML &bml, const std::string &message) {
+void Report(ModContext &bml, const std::string &message) {
     bml.SendIngameMessage(message.c_str());
 }
 
-void ReportFailure(IBML &bml, const std::string &message) {
+void ReportFailure(ModContext &bml, const std::string &message) {
     BML::Shell::Fail(&bml, message);
 }
 
 } // namespace
 
-void MapCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+void MapCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
     if (!bml)
         return;
 
@@ -60,7 +60,7 @@ void MapCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
 }
 
 const std::vector<std::string> MapCommand::GetTabCompletion(
-    IBML *, const std::vector<std::string> &args) {
+    ModContext *, const std::vector<std::string> &args) {
     return args.size() == 2 ? std::vector<std::string>{"list", "load"}
                             : std::vector<std::string>{};
 }

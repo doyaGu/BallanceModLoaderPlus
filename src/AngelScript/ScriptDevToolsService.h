@@ -11,7 +11,7 @@
 #include "ScriptDevEvents.h"
 #include "ScriptMod.h"
 
-class IBML;
+class ModContext;
 class ModContext;
 
 namespace BML {

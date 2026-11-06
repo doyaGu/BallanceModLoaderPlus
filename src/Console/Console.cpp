@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Config/IConfig.h"
 #include "Logging/Logger.h"
 
@@ -173,7 +173,7 @@ void Console::ApplyMessageBoardDisplayPolicy() {
     });
 }
 
-void Console::OnLoad(IBML &bml, BML::CommandContext &commands, Logger &logger) {
+void Console::OnLoad(ModContext &bml, BML::CommandContext &commands, Logger &logger) {
     m_Commands = &commands;
     m_Logger = &logger;
 
@@ -290,7 +290,7 @@ void Console::OnCommandOutput(const char *message, void *userdata) {
     }
 }
 
-void Console::RegisterCommands(IBML &bml) {
+void Console::RegisterCommands(ModContext &bml) {
     ModContext *context = BML_GetModContext();
     BML::Shell::Environment &environment = context->GetShellEnvironment();
     bml.RegisterCommand(new BML::Shell::CommandSet(environment));

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Console/CommandContext.h"
 #include "Console/Shell/ShellEnvironment.h"
 #include "Console/Shell/ShellIo.h"
@@ -13,12 +13,12 @@
 
 namespace BML::Shell {
     namespace {
-        void Print(IBML *bml, const std::string &text) {
+        void Print(ModContext *bml, const std::string &text) {
             if (bml)
                 bml->SendIngameMessage(text.c_str());
         }
 
-        void Warn(IBML *bml, const std::string &text) {
+        void Warn(ModContext *bml, const std::string &text) {
             Print(bml, "\x1b[33m" + text + "\x1b[0m");
         }
 
@@ -37,7 +37,7 @@ namespace BML::Shell {
     // set -U NAME VALUE         universal variable, kept across sessions
     // set -e NAME...            erase
     // set -q NAME...            succeed only when every NAME is set, print nothing
-    void CommandSet::Execute(IBML *bml, const std::vector<std::string> &args) {
+    void CommandSet::Execute(ModContext *bml, const std::vector<std::string> &args) {
         if (args.size() == 1) {
             for (const auto &[name, value] : m_Environment.Variables(Environment::Scope::Universal))
                 Print(bml, "set -U " + name + " " + SingleQuoted(value));
@@ -123,7 +123,7 @@ namespace BML::Shell {
                                   universal ? Environment::Scope::Universal : Environment::Scope::Session);
     }
 
-    const std::vector<std::string> CommandSet::GetTabCompletion(IBML *, const std::vector<std::string> &args) {
+    const std::vector<std::string> CommandSet::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         if (args.size() < 2)
             return {};
         const std::string &current = args.back();
@@ -142,7 +142,7 @@ namespace BML::Shell {
     // alias NAME                show one
     // alias NAME=BODY           define
     // alias NAME BODY...        define, body joined by spaces
-    void CommandAlias::Execute(IBML *bml, const std::vector<std::string> &args) {
+    void CommandAlias::Execute(ModContext *bml, const std::vector<std::string> &args) {
         if (args.size() == 1) {
             for (const auto &[name, body] : m_Environment.Aliases())
                 Print(bml, "alias " + name + "=" + SingleQuoted(body));
@@ -187,13 +187,13 @@ namespace BML::Shell {
         m_Environment.SetAlias(name, body);
     }
 
-    const std::vector<std::string> CommandAlias::GetTabCompletion(IBML *, const std::vector<std::string> &args) {
+    const std::vector<std::string> CommandAlias::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         if (args.size() == 2)
             return FilterByPrefix(m_Environment.AliasNames(), args.back());
         return {};
     }
 
-    void CommandUnalias::Execute(IBML *bml, const std::vector<std::string> &args) {
+    void CommandUnalias::Execute(ModContext *bml, const std::vector<std::string> &args) {
         if (args.size() < 2) {
             Fail(bml, "usage: unalias NAME... | unalias -a");
             return;
@@ -213,7 +213,7 @@ namespace BML::Shell {
             SetStatus(Status::Failure);
     }
 
-    const std::vector<std::string> CommandUnalias::GetTabCompletion(IBML *, const std::vector<std::string> &args) {
+    const std::vector<std::string> CommandUnalias::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         if (args.size() < 2)
             return {};
         std::vector<std::string> names = FilterByPrefix(m_Environment.AliasNames(), args.back());
@@ -222,7 +222,7 @@ namespace BML::Shell {
         return names;
     }
 
-    void CommandFalse::Execute(IBML *, const std::vector<std::string> &) {
+    void CommandFalse::Execute(ModContext *, const std::vector<std::string> &) {
         SetStatus(Status::Failure);
     }
 
@@ -265,7 +265,7 @@ namespace BML::Shell {
     }
 
     // xargs [-n N] [-d DELIM] COMMAND [ARG...]
-    void CommandXargs::Execute(IBML *bml, const std::vector<std::string> &args) {
+    void CommandXargs::Execute(ModContext *bml, const std::vector<std::string> &args) {
         std::size_t index = 1;
         std::size_t perCall = 0;
         std::string delimiter;
@@ -337,7 +337,7 @@ namespace BML::Shell {
             SetStatus(123);
     }
 
-    const std::vector<std::string> CommandXargs::GetTabCompletion(IBML *, const std::vector<std::string> &args) {
+    const std::vector<std::string> CommandXargs::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
         if (args.size() == 2)
             return {"-n", "-d"};
         return {};

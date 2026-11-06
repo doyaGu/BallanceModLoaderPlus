@@ -1,15 +1,15 @@
 #include "AngelScript/ScriptCommand.h"
 
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Console/Shell/ShellIo.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScript/ScriptDevToolsService.h"
 #include "Loader/ModContext.h"
 #endif
 
-void ScriptCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+void ScriptCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
 #if BML_ENABLE_ANGELSCRIPT
-    auto *context = dynamic_cast<ModContext *>(bml);
+    auto *context = bml;
     if (!context || !context->GetScriptDevTools()) {
         BML::Shell::Fail(bml, "Script developer tools unavailable.");
         return;
@@ -23,9 +23,9 @@ void ScriptCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
 #endif
 }
 
-const std::vector<std::string> ScriptCommand::GetTabCompletion(IBML *bml, const std::vector<std::string> &args) {
+const std::vector<std::string> ScriptCommand::GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) {
 #if BML_ENABLE_ANGELSCRIPT
-    auto *context = dynamic_cast<ModContext *>(bml);
+    auto *context = bml;
     if (context && context->GetScriptDevTools())
         return context->GetScriptDevTools()->CompleteCommand(args);
 #endif

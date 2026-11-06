@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "BML/Guids/TT_ParticleSystems_RT.h"
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "Config/IConfig.h"
 #include "Logging/Logger.h"
 
@@ -97,7 +97,7 @@ bool GameplayTweaks::OnModifyConfig(const char *category, const char *key,
     return false;
 }
 
-void GameplayTweaks::OnLoad(IBML &bml, Logger &logger) {
+void GameplayTweaks::OnLoad(ModContext &bml, Logger &logger) {
     m_BML = &bml;
     m_Logger = &logger;
 

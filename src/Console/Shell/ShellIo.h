@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-class IBML;
+class ModContext;
 
 namespace BML::Shell {
     // Covers an entire command dispatch, including pre/post callbacks. Nested
@@ -55,7 +55,7 @@ namespace BML::Shell {
     const std::string *GetInput();
 
     // Prints message in red through bml and marks the current command failed.
-    void Fail(IBML *bml, std::string_view message);
+    void Fail(ModContext *bml, std::string_view message);
 }
 
 #endif // BML_SHELL_IO_H

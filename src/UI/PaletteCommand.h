@@ -11,8 +11,8 @@ public:
     std::string GetAlias() override { return "pal"; }
     std::string GetDescription() override { return "Manage ANSI 256-color palette."; }
     bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override;
 };
 
 #endif // BML_UI_PALETTE_COMMAND_H

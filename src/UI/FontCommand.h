@@ -36,23 +36,23 @@ public:
     }
     bool IsCheat() override { return false; }
 
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(ModContext *bml, const std::vector<std::string> &args) override;
 
 private:
-    void ExecutePrimary(IBML &bml, const std::vector<std::string> &args);
-    void ExecuteSize(IBML &bml, const std::vector<std::string> &args);
-    void ExecuteFallback(IBML &bml, const std::vector<std::string> &args);
-    void ExecuteSystemFallbacks(IBML &bml, const std::vector<std::string> &args);
-    void ShowStatus(IBML &bml, bool includeHint) const;
-    void ShowSources(IBML &bml) const;
-    void ShowCatalog(IBML &bml);
-    void ShowSample(IBML &bml) const;
-    void CheckText(IBML &bml, const std::string &text) const;
-    void ShowFallbacks(IBML &bml) const;
-    void ShowHelp(IBML &bml) const;
-    bool EnsureAvailable(IBML &bml) const;
-    void ScheduleConfiguredProfile(IBML &bml, const std::string &message);
+    void ExecutePrimary(ModContext &bml, const std::vector<std::string> &args);
+    void ExecuteSize(ModContext &bml, const std::vector<std::string> &args);
+    void ExecuteFallback(ModContext &bml, const std::vector<std::string> &args);
+    void ExecuteSystemFallbacks(ModContext &bml, const std::vector<std::string> &args);
+    void ShowStatus(ModContext &bml, bool includeHint) const;
+    void ShowSources(ModContext &bml) const;
+    void ShowCatalog(ModContext &bml);
+    void ShowSample(ModContext &bml) const;
+    void CheckText(ModContext &bml, const std::string &text) const;
+    void ShowFallbacks(ModContext &bml) const;
+    void ShowHelp(ModContext &bml) const;
+    bool EnsureAvailable(ModContext &bml) const;
+    void ScheduleConfiguredProfile(ModContext &bml, const std::string &message);
 
     FontCommandContext m_Context;
     std::vector<std::string> m_KnownFaces;

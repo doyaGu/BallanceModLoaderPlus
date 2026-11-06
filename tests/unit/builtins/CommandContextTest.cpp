@@ -35,11 +35,11 @@ public:
     std::string GetDescription() override { return "Test command"; }
     bool IsCheat() override { return m_Cheat; }
     void SetCheat(bool cheat) { m_Cheat = cheat; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override {
+    void Execute(ModContext *bml, const std::vector<std::string> &args) override {
         m_LastArgs = args;
         m_ExecuteCount++;
     }
-    const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &) override {
+    const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &) override {
         return {};
     }
 

@@ -445,7 +445,7 @@ public:
     std::string GetDescription() override { return m_Description; }
     bool IsCheat() override { return m_Cheat; }
 
-    void Execute(IBML *, const std::vector<std::string> &args) override {
+    void Execute(ModContext *, const std::vector<std::string> &args) override {
         std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
         if (!state || !state->Active || !state->ContextView)
             return;
@@ -472,7 +472,7 @@ public:
         }
     }
 
-    const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &args) override {
+    const std::vector<std::string> GetTabCompletion(ModContext *, const std::vector<std::string> &args) override {
         std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
         if (!state || !state->Active || !state->ContextView)
             return {};

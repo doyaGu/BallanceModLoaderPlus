@@ -4,7 +4,7 @@
 #include <cstddef>
 
 #include "Loader/IMod.h"
-#include "Loader/IBML.h"
+#include "Loader/ModContext.h"
 #include "BML/Behavior.hpp"
 
 #include "Console/Console.h"
