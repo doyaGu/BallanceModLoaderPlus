@@ -67,8 +67,7 @@ void GameplayTweaks::InitConfig(Config &config) {
     m_Overclock->SetDefaultBoolean(false);
 }
 
-bool GameplayTweaks::OnModifyConfig(const char *category, const char *key,
-                                    Property *property) {
+bool GameplayTweaks::OnModifyConfig(const char *category, const char *key, Property *property) {
     if (!property || std::strcmp(category ? category : "", "Tweak") != 0)
         return false;
     if (property == m_LanternAlphaTest &&

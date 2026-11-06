@@ -5,18 +5,18 @@
 #include "Timer/TimerRegistry.h"
 
 class ModContext;
-class IMod;
+class ModRecord;
 
 namespace BML::Api {
 class TimerApi {
 public:
-    int Register(ModContext &context, IMod &owner, BML_ModContextHandle contextHandle,
+    int Register(ModContext &context, ModRecord &owner, BML_ModContextHandle contextHandle,
                  const BML_TimerDefinition *definition, BML_TimerCallback callback, void *userData,
                  BML_ReleaseCallback release, BML_TimerHandle *outTimer);
-    int Read(IMod &owner, BML_TimerHandle timer, BML_TimerVisitor visitor, void *userData);
-    int Control(IMod &owner, BML_TimerHandle timer, uint32_t operation);
+    int Read(ModRecord &owner, BML_TimerHandle timer, BML_TimerVisitor visitor, void *userData);
+    int Control(ModRecord &owner, BML_TimerHandle timer, uint32_t operation);
     void FinishProcess();
-    void CleanupOwner(IMod &owner);
+    void CleanupOwner(ModRecord &owner);
 
     TimerRegistry &Registry() noexcept { return m_Registry; }
 

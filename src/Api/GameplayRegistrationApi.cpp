@@ -10,7 +10,7 @@ template <class... Values> bool Finite(Values... values) {
 }
 
 template <class Body> int Register(BML_ModContextHandle h, Body &&body) {
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         if (ctx.GetModLoader().IsShuttingDown())
             return BML_ERROR_FROZEN;
         if (const auto *native = ctx.GetModLoader().FindNativeMod(&owner);
@@ -25,7 +25,7 @@ template <class Body>
 int Mutate(BML_ModContextHandle h, BML_ObjectRef ref, uint32_t hierarchy, Body &&body) {
     if (hierarchy > 1)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &) {
         if (!ref.Domain)
             return BML_OK;
         auto *object = ctx.ObjectRefs().Resolve(ref);
@@ -119,14 +119,14 @@ int BML_CDECL ReadGameplayState(BML_GameplayState *out) {
 int BML_CDECL EnableCheat(BML_ModContextHandle h, uint32_t enabled) {
     if (enabled > 1)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &) {
         ctx.EnableCheat(enabled != 0);
         return BML_OK;
     });
 }
 
 int BML_CDECL ExitGame(BML_ModContextHandle h) {
-    return WithModContext(h, [&](ModContext &ctx, IMod &) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &) {
         ctx.ExitGame();
         return BML_OK;
     });
@@ -151,7 +151,7 @@ int BML_CDECL Show(BML_ModContextHandle h, BML_ObjectRef ref, uint32_t option, u
 }
 
 int BML_CDECL SkipNextRender(BML_ModContextHandle h) {
-    return WithModContext(h, [&](ModContext &, IMod &) {
+    return WithModContext(h, [&](ModContext &, ModRecord &) {
         if (!RenderHook::IsSkipRenderAvailable())
             return BML_ERROR_UNAVAILABLE;
         RenderHook::SkipNextRender();
@@ -162,7 +162,7 @@ int BML_CDECL SkipNextRender(BML_ModContextHandle h) {
 int BML_CDECL SetWidescreenAdjustment(BML_ModContextHandle h, uint32_t enabled) {
     if (enabled > 1)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &, IMod &) {
+    return WithModContext(h, [&](ModContext &, ModRecord &) {
         if (!RenderHook::IsWidescreenFixAvailable())
             return BML_ERROR_UNAVAILABLE;
         RenderHook::EnableWidescreenFix(enabled != 0);

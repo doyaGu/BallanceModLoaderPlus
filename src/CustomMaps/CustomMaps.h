@@ -38,9 +38,8 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, Property *property);
 
-    void OnLoad(ModContext &bml, Logger &logger,
-                const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
-                const std::wstring &tempDirectory);
+    void OnLoad(ModContext &bml, Logger &logger, const std::wstring &gameDirectory,
+                const std::wstring &loaderDirectory, const std::wstring &tempDirectory);
     void OnUnload();
     void OnLoadObject(const char *filename);
     void OnLoadScript(CKBehavior *script);

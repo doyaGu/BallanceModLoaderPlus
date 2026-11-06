@@ -3,11 +3,11 @@
 
 #include <limits>
 
-#include "Loader/IMod.h"
+#include "Loader/ModVersion.h"
 
 namespace BML {
 
-// IMod::GetVersion() historically accepted arbitrary text around the first
+// ModRecord::GetVersion() historically accepted arbitrary text around the first
 // three digit runs. Preserve that parsing rule at the frozen facade boundary.
 inline BMLVersion ParseLegacyModVersion(const char *text) noexcept {
     int parts[3] = {};

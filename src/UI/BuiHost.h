@@ -4,7 +4,7 @@
 // alongside it, since this is the same ImGui the loader draws its own windows with,
 // linked out of the loader rather than built into the Mod.
 //
-// Call all of it from IMod::OnProcess, the one callback that runs inside the loader's
+// Call all of it from ModRecord::OnProcess, the one callback that runs inside the loader's
 // ImGui frame. From anywhere else, OnRender included, there is no frame to add to and
 // these functions walk ImGui state that is not set up. Leave the ImGui stacks as they
 // were found: a PushStyleColor or a Begin left open here breaks the loader's own
@@ -446,7 +446,7 @@ bool SearchBar(char *buffer, std::size_t bufferSize, float x = 0.4f, float y = 0
 // so a Mod using them compiles their code into itself rather than calling into the
 // loader, and none of them is needed to use the drawing functions above.
 //
-// All of them are only touched from IMod::OnProcess, like the rest of the header:
+// All of them are only touched from ModRecord::OnProcess, like the rest of the header:
 // Window::Render or Menu::Render is what a Mod calls there; they run OnDraw or the
 // current Page's OnFrame respectively.
 
@@ -762,7 +762,7 @@ class Menu final {
         return Mutate([&]() { return CloseMenu(); });
     }
 
-    // Draw the current route once during IMod::OnProcess. A closed Menu is a
+    // Draw the current route once during ModRecord::OnProcess. A closed Menu is a
     // successful no-op. False means rendering was re-entered, the registry was
     // inconsistent, or OnFrame returned an action that could not be applied.
     bool Render() {

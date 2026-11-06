@@ -239,8 +239,7 @@ bool ScriptCallbackDispatcher::CallCheatEnabled(bool enable, ScriptDiagnostic &d
     return CallWithEvent(ScriptCallbackOnCheatEnabled, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallCommandEvent(bool beforeCommand,
-                                                BML::CommandRecord *command,
+bool ScriptCallbackDispatcher::CallCommandEvent(bool beforeCommand, BML::CommandRecord *command,
                                                 const std::vector<std::string> &args,
                                                 ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnCommandEvent))
@@ -251,10 +250,8 @@ bool ScriptCallbackDispatcher::CallCommandEvent(bool beforeCommand,
     return CallWithEvent(ScriptCallbackOnCommandEvent, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallModifyConfig(const char *modId,
-                                                const char *category,
-                                                const char *key,
-                                                Property *property,
+bool ScriptCallbackDispatcher::CallModifyConfig(const char *modId, const char *category,
+                                                const char *key, Property *property,
                                                 ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnModifyConfig))
         return true;

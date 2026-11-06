@@ -1,7 +1,7 @@
 #ifndef BML_MODDEFINITIONVALIDATION_H
 #define BML_MODDEFINITIONVALIDATION_H
 
-#include "Loader/IMod.h"
+#include "Loader/ModVersion.h"
 #include <limits>
 #include <string_view>
 

@@ -5,6 +5,7 @@
 
 #include "Loader/ModContext.h"
 #include "Logging/Logger.h"
+#include "Loader/ModCallbacks.h"
 
 namespace {
 namespace Behavior = BML::Behavior;

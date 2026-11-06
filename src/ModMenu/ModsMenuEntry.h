@@ -15,7 +15,8 @@ class Logger;
 // the Patch is active, and is removed before the Patch is retired.
 class ModsMenuEntry {
 public:
-    void Load(BML::Behavior::Session &behavior, CKBehavior *script, ModContext &bml, Logger &logger);
+    void Load(BML::Behavior::Session &behavior, CKBehavior *script, ModContext &bml,
+              Logger &logger);
     void OnProcess();
     void Unload();
 
@@ -27,8 +28,8 @@ private:
         Logger *Logger = nullptr;
     };
 
-    void BeginLoad(BML::Behavior::Session &behavior, CKBehavior *script,
-                   ModContext &bml, Logger &logger);
+    void BeginLoad(BML::Behavior::Session &behavior, CKBehavior *script, ModContext &bml,
+                   Logger &logger);
     void ResumePendingLoad();
     void Publish();
     void Restore();

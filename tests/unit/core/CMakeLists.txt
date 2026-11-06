@@ -57,3 +57,7 @@ add_bml_test(ModDefinitionTest
 add_bml_test(NativeModTest
     SOURCES NativeModTest.cpp ${BML_SOURCE_DIR}/Loader/NativeMod.cpp
     DEPENDENCIES CK2 VxMath)
+
+add_bml_test(ModRecordTest
+    SOURCES ModRecordTest.cpp
+    DEPENDENCIES CK2 VxMath)

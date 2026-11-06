@@ -42,6 +42,7 @@ public:
     MapCatalog();
 
     MapEntry *GetRoot() const { return m_Root.get(); }
+
     bool Refresh(const std::wstring &path, int maxDepth, Logger *logger);
     std::vector<std::string> ListFiles(std::string_view fragment, std::size_t limit) const;
     static bool ResolveFile(const std::wstring &mapsDirectory, std::string_view relativePath,

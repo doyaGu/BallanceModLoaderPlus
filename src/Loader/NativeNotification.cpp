@@ -58,23 +58,26 @@ NativeNotification::~NativeNotification() {
     --s_Pool.Depth;
 }
 
-void NativeNotification::Prepare(void (IMod::*callback)()) {
-    if (callback == &IMod::OnProcess)
+void NativeNotification::Prepare(ModEvent event) {
+    if (event == ModEvent::OnProcess) {
         m_Storage->Type = Storage::Process;
+    } else if (event < ModEvent::OnLoad) {
+        m_Storage->Type = Storage::Game;
+        m_Storage->GameValue = static_cast<BML_GameEvent>(event);
+    }
 }
 
-void NativeNotification::Prepare(void (IMod::*)(CK_RENDER_FLAGS), CK_RENDER_FLAGS flags) {
+void NativeNotification::Prepare(ModEvent event, CK_RENDER_FLAGS flags) {
     m_Storage->Type = Storage::Render;
     m_Storage->RenderValue = {sizeof(BML_RenderEvent), static_cast<uint32_t>(flags)};
 }
 
-void NativeNotification::Prepare(void (IMod::*)(bool), bool enabled) {
+void NativeNotification::Prepare(ModEvent event, bool enabled) {
     m_Storage->Type = Storage::Cheat;
     m_Storage->CheatValue = {sizeof(BML_CheatEvent), enabled ? 1u : 0u};
 }
 
-void NativeNotification::Prepare(void (IMod::*)(const char *, CKBehavior *), const char *filename,
-                                 CKBehavior *script) {
+void NativeNotification::Prepare(ModEvent event, const char *filename, CKBehavior *script) {
     auto &s = *m_Storage;
     s.Type = Storage::LoadScript;
     s.Text[0] = filename ? filename : "";
@@ -82,14 +85,13 @@ void NativeNotification::Prepare(void (IMod::*)(const char *, CKBehavior *), con
                          m_Context.ObjectRefs().Issue(script)};
 }
 
-void NativeNotification::Prepare(void (IMod::*)(CK3dEntity *), CK3dEntity *object) {
+void NativeNotification::Prepare(ModEvent event, CK3dEntity *object) {
     m_Storage->Type = Storage::Unphysicalize;
     m_Storage->ObjectValue = {sizeof(BML_ObjectEvent), m_Context.ObjectRefs().Issue(object)};
 }
 
-void NativeNotification::Prepare(void (IMod::*callback)(BML::CommandRecord *,
-                                                        const std::vector<std::string> &),
-                                 BML::CommandRecord *command, const std::vector<std::string> &args) {
+void NativeNotification::Prepare(ModEvent event, BML::CommandRecord *command,
+                                 const std::vector<std::string> &args) {
     auto &s = *m_Storage;
     s.Type = Storage::Command;
     s.Text[0] = command ? command->Info.Name : "";
@@ -98,7 +100,7 @@ void NativeNotification::Prepare(void (IMod::*callback)(BML::CommandRecord *,
     for (size_t i = 1; i < s.Arguments.size(); ++i)
         s.ArgumentViews.push_back(s.Arguments[i].c_str());
     s.CommandValue = {sizeof(BML_CommandEvent),
-                      callback == &IMod::OnPreCommandExecute ? BML_COMMAND_EVENT_PRE
+                      event == ModEvent::OnPreCommandExecute ? BML_COMMAND_EVENT_PRE
                                                              : BML_COMMAND_EVENT_POST,
                       s.Text[0].c_str(),
                       s.Arguments.empty() ? "" : s.Arguments[0].c_str(),
@@ -107,13 +109,10 @@ void NativeNotification::Prepare(void (IMod::*callback)(BML::CommandRecord *,
                       command && command->Info.Cheat ? 1u : 0u};
 }
 
-void NativeNotification::Prepare(void (IMod::*)(const char *, CKBOOL, const char *, CK_CLASSID,
-                                                CKBOOL, CKBOOL, CKBOOL, CKBOOL, XObjectArray *,
-                                                CKObject *),
-                                 const char *filename, CKBOOL isMap, const char *masterName,
-                                 CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes,
-                                 CKBOOL reuseMaterials, CKBOOL dynamic, XObjectArray *objects,
-                                 CKObject *master) {
+void NativeNotification::Prepare(ModEvent event, const char *filename, CKBOOL isMap,
+                                 const char *masterName, CK_CLASSID filterClass, CKBOOL addToScene,
+                                 CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
+                                 XObjectArray *objects, CKObject *master) {
     auto &s = *m_Storage;
     s.Type = Storage::LoadObject;
     s.Text[0] = filename ? filename : "";
@@ -137,16 +136,12 @@ void NativeNotification::Prepare(void (IMod::*)(const char *, CKBOOL, const char
                          m_Context.ObjectRefs().Issue(master)};
 }
 
-void NativeNotification::Prepare(void (IMod::*)(CK3dEntity *, CKBOOL, float, float, float,
-                                                const char *, CKBOOL, CKBOOL, CKBOOL, float, float,
-                                                const char *, VxVector, int, CKMesh **, int,
-                                                VxVector *, float *, int, CKMesh **),
-                                 CK3dEntity *target, CKBOOL fixed, float friction, float elasticity,
-                                 float mass, const char *group, CKBOOL frozen, CKBOOL collision,
-                                 CKBOOL center, float linear, float rot, const char *surface,
-                                 VxVector massCenter, int convexCount, CKMesh **convex,
-                                 int sphereCount, VxVector *centers, float *radii, int concaveCount,
-                                 CKMesh **concave) {
+void NativeNotification::Prepare(ModEvent event, CK3dEntity *target, CKBOOL fixed, float friction,
+                                 float elasticity, float mass, const char *group, CKBOOL frozen,
+                                 CKBOOL collision, CKBOOL center, float linear, float rot,
+                                 const char *surface, VxVector massCenter, int convexCount,
+                                 CKMesh **convex, int sphereCount, VxVector *centers, float *radii,
+                                 int concaveCount, CKMesh **concave) {
     auto &s = *m_Storage;
     s.Type = Storage::Physicalize;
     s.Text[0] = group ? group : "";
@@ -222,172 +217,4 @@ const char *NativeNotification::Name() const noexcept {
         "none",         "OnProcess",    "OnRender",       "OnGameEvent",   "OnCheatEnabled",
         "OnLoadObject", "OnLoadScript", "OnCommandEvent", "OnPhysicalize", "OnUnphysicalize"};
     return names[m_Storage->Type];
-}
-
-void NativeNotification::Prepare(void (IMessageReceiver::*callback)()) {
-    if (callback == &IMessageReceiver::OnPreStartMenu) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 0;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPostStartMenu) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 1;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnExitGame) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 2;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPreLoadLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 3;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPostLoadLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 4;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnStartLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 5;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPreResetLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 6;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPostResetLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 7;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPauseLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 8;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnUnpauseLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 9;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPreExitLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 10;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPostExitLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 11;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPreNextLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 12;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPostNextLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 13;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnDead) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 14;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPreEndLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 15;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPostEndLevel) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 16;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnCounterActive) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 17;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnCounterInactive) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 18;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnBallNavActive) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 19;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnBallNavInactive) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 20;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnCamNavActive) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 21;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnCamNavInactive) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 22;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnBallOff) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 23;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPreCheckpointReached) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 24;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPostCheckpointReached) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 25;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnLevelFinish) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 26;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnGameOver) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 27;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnExtraPoint) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 28;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPreSubLife) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 29;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPostSubLife) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 30;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPreLifeUp) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 31;
-        return;
-    }
-    if (callback == &IMessageReceiver::OnPostLifeUp) {
-        m_Storage->Type = Storage::Game;
-        m_Storage->GameValue = 32;
-        return;
-    }
 }

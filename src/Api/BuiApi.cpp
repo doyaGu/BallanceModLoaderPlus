@@ -21,7 +21,7 @@ ImGuiInputTextFlags InputFlags(uint32_t flags) {
 }
 
 template <class F> int WithUi(BML_ModContextHandle h, F &&body) {
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         auto *imgui = Overlay::GetImGuiContext();
         if (!imgui || !imgui->WithinFrameScope)
             return BML_ERROR_FROZEN;
@@ -33,7 +33,7 @@ template <class F> int WithUi(BML_ModContextHandle h, F &&body) {
 int BML_CDECL MenuStyle(BML_ModContextHandle h, BML_Vec2 *p, BML_Vec2 *s, BML_Color *c) {
     if (!p || !s || !c)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         auto pos = BuiHost::GetMenuPos();
         auto size = BuiHost::GetMenuSize();
         auto color = BuiHost::GetMenuColor();
@@ -47,7 +47,7 @@ int BML_CDECL MenuStyle(BML_ModContextHandle h, BML_Vec2 *p, BML_Vec2 *s, BML_Co
 int BML_CDECL ButtonStyle(BML_ModContextHandle h, uint32_t kind, BML_Vec2 *s, float *indent) {
     if (!s || !indent || kind >= BuiHost::BUTTON_COUNT)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         auto type = static_cast<BuiHost::ButtonType>(kind);
         auto size = BuiHost::GetButtonSize(type);
         *s = {size.x, size.y};
@@ -61,20 +61,21 @@ int BML_CDECL Begin(BML_ModContextHandle h, const char *id, const char *title, u
     if (!id || !*id || !title || !draw || (open && *open > 1) || (flags & ~511u))
         return BML_ERROR_INVALID_PARAMETER;
     *draw = 0;
-    return WithUi(h, [&](ModContext &ctx, IMod &owner) {
+    return WithUi(h, [&](ModContext &ctx, ModRecord &owner) {
         return ctx.GetBuiApi().Begin(ctx, owner, id, title, open, flags, draw);
     });
 }
 
 int BML_CDECL End(BML_ModContextHandle h) {
-    return WithUi(h, [&](ModContext &ctx, IMod &owner) { return ctx.GetBuiApi().End(ctx, owner); });
+    return WithUi(
+        h, [&](ModContext &ctx, ModRecord &owner) { return ctx.GetBuiApi().End(ctx, owner); });
 }
 
 int BML_CDECL At(BML_ModContextHandle h, BML_Vec2 pos, uint32_t pixels, BML_BuiDrawCallback cb,
                  void *data) {
     if (!cb || pixels > 1 || !Finite(pos))
         return BML_ERROR_INVALID_PARAMETER;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         auto *g = ImGui::GetCurrentContext();
         auto *window = ImGui::GetCurrentWindow();
         const auto saved = ImGui::GetCursorScreenPos();
@@ -112,7 +113,7 @@ int BML_CDECL Button(BML_ModContextHandle h, uint32_t kind, const char *label, u
         (flags & 3u) == 3u || (selected && *selected > 1))
         return BML_ERROR_INVALID_PARAMETER;
     *clicked = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         ImGuiButtonFlags f = ((flags & 1u) ? ImGuiButtonFlags_PressedOnClick : 0) |
                              ((flags & 2u) ? ImGuiButtonFlags_PressedOnRelease : 0);
         bool choice = selected && *selected;
@@ -132,7 +133,7 @@ int BML_CDECL Navigate(BML_ModContextHandle h, uint32_t kind, BML_Vec2 p, uint32
         (kind != BML_BUI_LEFT && kind != BML_BUI_RIGHT && kind != BML_BUI_BACK))
         return BML_ERROR_INVALID_PARAMETER;
     *clicked = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         *clicked = kind == BML_BUI_LEFT    ? BuiHost::NavLeft(p.x, p.y)
                    : kind == BML_BUI_RIGHT ? BuiHost::NavRight(p.x, p.y)
                                            : BuiHost::NavBack(p.x, p.y);
@@ -146,7 +147,7 @@ int BML_CDECL Key(BML_ModContextHandle h, const char *label, uint32_t *listening
         (key->Modifiers & ~15u))
         return BML_ERROR_INVALID_PARAMETER;
     *changed = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         bool active = *listening != 0;
         ImGuiKeyChord chord = BuiHost::CKKeyToImGuiKey(static_cast<CKKEYBOARD>(key->Key));
         if (key->Modifiers & 1)
@@ -171,7 +172,7 @@ int BML_CDECL YesNo(BML_ModContextHandle h, const char *label, uint32_t *v, uint
     if (!label || !v || *v > 1 || !changed)
         return BML_ERROR_INVALID_PARAMETER;
     *changed = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         bool value = *v != 0;
         *changed = BuiHost::YesNoButton(label, &value);
         *v = value;
@@ -184,7 +185,7 @@ int BML_CDECL Radio(BML_ModContextHandle h, const char *label, int32_t *v, const
     if (!label || !v || !changed || (!items && count) || count > INT_MAX)
         return BML_ERROR_INVALID_PARAMETER;
     *changed = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         *changed = BuiHost::RadioButton(label, v, items, static_cast<int>(count));
         return BML_OK;
     });
@@ -195,7 +196,7 @@ int BML_CDECL Text(BML_ModContextHandle h, const char *label, char *b, size_t n,
     if (!label || !b || !n || !changed || (flags & ~7u) || !std::memchr(b, 0, n))
         return BML_ERROR_INVALID_PARAMETER;
     *changed = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         *changed = BuiHost::InputTextButton(label, b, n, InputFlags(flags));
         return BML_OK;
     });
@@ -207,7 +208,7 @@ int BML_CDECL Float(BML_ModContextHandle h, const char *label, float *v, float s
         !std::isfinite(step) || !std::isfinite(fast))
         return BML_ERROR_INVALID_PARAMETER;
     *changed = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         *changed = BuiHost::InputFloatButton(label, v, step, fast, format, InputFlags(flags));
         return BML_OK;
     });
@@ -218,7 +219,7 @@ int BML_CDECL Int(BML_ModContextHandle h, const char *label, int32_t *v, int32_t
     if (!label || !v || !changed || (flags & ~5u))
         return BML_ERROR_INVALID_PARAMETER;
     *changed = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         *changed = BuiHost::InputIntButton(label, v, step, fast, InputFlags(flags));
         return BML_OK;
     });
@@ -230,7 +231,7 @@ int BML_CDECL Color(BML_ModContextHandle h, const char *label, BML_Color *v, uin
         !std::isfinite(v->b) || !std::isfinite(v->a))
         return BML_ERROR_INVALID_PARAMETER;
     *changed = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         ImVec4 color(v->r, v->g, v->b, v->a);
         const int f = ImGuiColorEditFlags_DisplayHex | ImGuiColorEditFlags_Uint8 |
                       ImGuiColorEditFlags_PickerHueBar | ImGuiColorEditFlags_AlphaBar |
@@ -246,7 +247,7 @@ int BML_CDECL Wrapped(BML_ModContextHandle h, const char *text, float width, flo
                       float scale) {
     if (!text || !std::isfinite(width) || !std::isfinite(base) || !std::isfinite(scale))
         return BML_ERROR_INVALID_PARAMETER;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         BuiHost::WrappedText(text, width, base, scale);
         return BML_OK;
     });
@@ -256,7 +257,7 @@ int BML_CDECL Title(BML_ModContextHandle h, const char *text, float y, float sca
                     uint32_t color) {
     if (!text || !std::isfinite(y) || !std::isfinite(scale))
         return BML_ERROR_INVALID_PARAMETER;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         BuiHost::Title(text, y, scale, color);
         return BML_OK;
     });
@@ -267,14 +268,14 @@ int BML_CDECL Search(BML_ModContextHandle h, char *b, size_t n, BML_Vec2 p, floa
     if (!b || !n || !changed || !std::memchr(b, 0, n) || !Finite(p) || !std::isfinite(width))
         return BML_ERROR_INVALID_PARAMETER;
     *changed = 0;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         *changed = BuiHost::SearchBar(b, n, p.x, p.y, width);
         return BML_OK;
     });
 }
 
 int BML_CDECL Sound(BML_ModContextHandle h) {
-    return WithUi(h, [](ModContext &, IMod &) {
+    return WithUi(h, [](ModContext &, ModRecord &) {
         BuiHost::PlayMenuClickSound();
         return BML_OK;
     });
@@ -283,14 +284,14 @@ int BML_CDECL Sound(BML_ModContextHandle h) {
 int BML_CDECL Activate(BML_ModContextHandle h, const char *name) {
     if (!name || !*name)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithUi(h, [&](ModContext &, IMod &) {
+    return WithUi(h, [&](ModContext &, ModRecord &) {
         BuiHost::ActivateScript(name);
         return BML_OK;
     });
 }
 
 int BML_CDECL Block(BML_ModContextHandle h) {
-    return WithUi(h, [](ModContext &ctx, IMod &owner) {
+    return WithUi(h, [](ModContext &ctx, ModRecord &owner) {
         if (!AcceptsModWork(ctx, owner))
             return BML_ERROR_FROZEN;
         return ctx.GetBuiApi().Block(owner);
@@ -298,13 +299,14 @@ int BML_CDECL Block(BML_ModContextHandle h) {
 }
 
 int BML_CDECL Unblock(BML_ModContextHandle h) {
-    return WithUi(h, [](ModContext &ctx, IMod &owner) { return ctx.GetBuiApi().Unblock(owner); });
+    return WithUi(h,
+                  [](ModContext &ctx, ModRecord &owner) { return ctx.GetBuiApi().Unblock(owner); });
 }
 
 int BML_CDECL Transition(BML_ModContextHandle h, const char *name) {
     if (!name || !*name)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithUi(h, [&](ModContext &ctx, IMod &owner) {
+    return WithUi(h, [&](ModContext &ctx, ModRecord &owner) {
         BuiHost::ActivateScript(name);
         return ctx.GetBuiApi().Unblock(owner);
     });
@@ -350,8 +352,8 @@ void BuiApi::Trim() {
     }
 }
 
-int BuiApi::Begin(ModContext &ctx, IMod &owner, const char *id, const char *title, uint32_t *open,
-                  uint32_t flags, uint32_t *draw) {
+int BuiApi::Begin(ModContext &ctx, ModRecord &owner, const char *id, const char *title,
+                  uint32_t *open, uint32_t flags, uint32_t *draw) {
     Trim();
     if (m_WindowCount == m_Windows.size())
         m_Windows.emplace_back();
@@ -393,7 +395,7 @@ int BuiApi::Begin(ModContext &ctx, IMod &owner, const char *id, const char *titl
     return BML_OK;
 }
 
-int BuiApi::End(ModContext &ctx, IMod &owner) {
+int BuiApi::End(ModContext &ctx, ModRecord &owner) {
     Trim();
     if (!m_WindowCount)
         return BML_ERROR_INVALID_PARAMETER;
@@ -411,7 +413,7 @@ int BuiApi::End(ModContext &ctx, IMod &owner) {
     return BML_OK;
 }
 
-int BuiApi::Block(IMod &owner) {
+int BuiApi::Block(ModRecord &owner) {
     auto &s = m_Blocks[&owner];
     if (!s)
         s = std::make_unique<BlockShare>();
@@ -423,7 +425,7 @@ int BuiApi::Block(IMod &owner) {
     return BML_OK;
 }
 
-int BuiApi::Unblock(IMod &owner) {
+int BuiApi::Unblock(ModRecord &owner) {
     auto it = m_Blocks.find(&owner);
     if (it == m_Blocks.end() || !it->second->Count)
         return BML_ERROR_INVALID_PARAMETER;
@@ -434,7 +436,7 @@ int BuiApi::Unblock(IMod &owner) {
     return BML_OK;
 }
 
-void BuiApi::CleanupOwner(IMod &owner) noexcept {
+void BuiApi::CleanupOwner(ModRecord &owner) noexcept {
     try {
         auto it = m_Blocks.find(&owner);
         if (it != m_Blocks.end()) {

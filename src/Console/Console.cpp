@@ -12,7 +12,6 @@
 #include "Console/BuiltinCommands.h"
 #include "Console/Shell/FilterCommands.h"
 #include "Console/Shell/ShellBuiltins.h"
-#include "Loader/ModContext.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
 #include "UI/Ime/Presentation.h"
@@ -61,8 +60,8 @@ const Console::Setting *Console::GetSettings(size_t &count) {
         {CommandBarCategory, "EnableHistorySuggestions", &Console::m_EnableHistorySuggestions, true,
          "Show and accept inline suggestions from command history.",
          [](Console &console, Property *) { console.ApplyCommandBarFeatures(); }},
-        {CommandBarCategory, "EnableReverseHistorySearch", &Console::m_EnableReverseHistorySearch, true,
-         "Enable Ctrl+R reverse history search and its transient rail.",
+        {CommandBarCategory, "EnableReverseHistorySearch", &Console::m_EnableReverseHistorySearch,
+         true, "Enable Ctrl+R reverse history search and its transient rail.",
          [](Console &console, Property *) { console.ApplyCommandBarFeatures(); }},
         {CommandBarCategory, "EnableHistoryNavigation", &Console::m_EnableHistoryNavigation, true,
          "Enable filtered command-history navigation with Up and Down.",

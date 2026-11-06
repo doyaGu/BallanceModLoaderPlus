@@ -1,7 +1,7 @@
 #include "Api/HandleSequence.h"
 #include <atomic>
 #include "Config/Config.h"
-#include "Loader/IMod.h"
+#include "Loader/ModRecord.h"
 
 #include <algorithm>
 #include <cstring>
@@ -172,7 +172,7 @@ bool ConfigData::Remove(const char *category, const char *key) {
     return group != m_Categories.end() && group->second.erase(key) != 0;
 }
 
-Config::Config(IMod *mod) : m_Mod(mod) {
+Config::Config(ModRecord *mod) : m_Mod(mod) {
     if (mod) {
         const char *id = mod->GetID();
         if (id)
@@ -197,7 +197,7 @@ Config::~Config() {
     m_CategoryMap.clear();
 }
 
-void Config::AttachMod(IMod *mod) {
+void Config::AttachMod(ModRecord *mod) {
     // Retain values, not the retired owner's declaration schema. Prepare the
     // source document before changing anything so allocation failure keeps the
     // detached data available for another attempt.
@@ -352,7 +352,7 @@ std::vector<Config::PendingNotification> Config::TakePendingNotifications() {
     return pending;
 }
 
-Config::ApplyResult Config::ApplyEdits(const IMod *expectedOwner,
+Config::ApplyResult Config::ApplyEdits(const ModRecord *expectedOwner,
                                        std::uint64_t expectedSchemaRevision,
                                        const std::vector<Edit> &edits) {
     if (expectedOwner != m_Mod)

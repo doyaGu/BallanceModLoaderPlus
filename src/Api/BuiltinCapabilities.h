@@ -16,8 +16,7 @@ class ObjectRefs;
 }
 
 /* Registers the reads behind the loader's own interface structs. */
-void RegisterBuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects,
-                                  Logger *logger);
+void RegisterBuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects, Logger *logger);
 void UnregisterBuiltinCapabilities(BMLMod &mod);
 
 /* The scene interface in Scene.h answers out of these. Opaque CK references

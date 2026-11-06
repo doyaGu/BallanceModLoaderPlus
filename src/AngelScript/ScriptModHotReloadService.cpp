@@ -635,7 +635,8 @@ void ScriptModHotReloadService::RefreshRegisteredModOrder() {
     orderedIds.reserve(m_Mods.size());
 
     for (int i = 0; i < m_Context->GetModCount(); ++i) {
-        auto *scriptMod = dynamic_cast<ScriptMod *>(m_Context->GetMod(i));
+        auto *registration = m_Context->GetMod(i);
+        auto *scriptMod = registration ? registration->Script : nullptr;
         if (!scriptMod || !scriptMod->GetID())
             continue;
 

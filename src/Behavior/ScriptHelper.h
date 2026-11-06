@@ -5,7 +5,7 @@
 // the short way to write it.
 //
 // A Mod gets the script to work on from ModContext::GetScriptByName or from
-// IMod::OnLoadScript, which is the moment the loader offers a script before the game has
+// ModRecord::OnLoadScript, which is the moment the loader offers a script before the game has
 // run it and the only safe place to rewrite one. The names to look for are the ones
 // Virtools Dev shows, and the GUIDs for CreateBB are in BML/Guids.
 //

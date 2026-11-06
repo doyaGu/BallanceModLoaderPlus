@@ -5,10 +5,6 @@
 #include "Console/CommandContext.h"
 #include "Loader/ModContext.h"
 
-IMod::~IMod() = default;
-Logger *IMod::GetLogger() { return nullptr; }
-Config *IMod::GetConfig() { return nullptr; }
-
 void ModContext::SendIngameMessage(const char *) {}
 
 BML::CommandRecord *ModContext::FindCommand(const char *) const {

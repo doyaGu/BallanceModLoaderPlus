@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "BML/Behavior.hpp"
-#include "Loader/IMod.h"
+#include "Loader/ModRecord.h"
 #include "BML/Version.h"
 
 struct TypeRegistration { std::string m_Owner; bool m_Applied = false; };
@@ -65,25 +65,35 @@ struct ModulInfo : TypeRegistration {
     int m_Type;
 };
 
-class NewBallTypeMod : public IMod {
+class NewBallTypeMod {
 public:
-    explicit NewBallTypeMod(ModContext *bml) : IMod(bml) {}
+    ModRecord &Registration() noexcept { return m_Record; }
 
-    const char *GetID() override { return "NewBallType"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "New Ball Type"; }
-    const char *GetAuthor() override { return "doyaGu & Gamepiaynmo"; }
-    const char *GetDescription() override { return "Implementation of registering new ball types."; }
-    BMLVersion GetBMLVersion() override { return {}; }
+    const ModRecord &Registration() const noexcept { return m_Record; }
 
-    void OnLoad() override;
-    void OnUnload() override;
+    explicit NewBallTypeMod(ModContext *bml) : m_BML(bml), m_Record(bml) { m_Record.Bind(*this); }
+
+    const char *GetID() { return "NewBallType"; }
+
+    const char *GetVersion() { return BML_VERSION; }
+
+    const char *GetName() { return "New Ball Type"; }
+
+    const char *GetAuthor() { return "doyaGu & Gamepiaynmo"; }
+
+    const char *GetDescription() { return "Implementation of registering new ball types."; }
+
+    BMLVersion GetBMLVersion() { return {}; }
+
+    void OnLoad();
+    void OnUnload();
     void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName,
-                              CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials,
-                              CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) override;
-    void OnLoadScript(const char *filename, CKBehavior *script) override;
-    void OnProcess() override;
-    void OnExitGame() override;
+                      CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes,
+                      CKBOOL reuseMaterials, CKBOOL dynamic, XObjectArray *objArray,
+                      CKObject *masterObj);
+    void OnLoadScript(const char *filename, CKBehavior *script);
+    void OnProcess();
+    void OnExitGame();
 
     void CleanupOwner(const std::string &owner);
     void RegisterBallType(const std::string &owner, const char *ballFile, const char *ballId, const char *ballName, const char *objName,
@@ -103,6 +113,9 @@ public:
     void RegisterModul(const std::string &owner, const char *modulName);
 
 private:
+    ModContext *m_BML;
+    ModRecord m_Record;
+
     CKDataArray *m_PhysicsBall = nullptr;
     CKGroup *m_AllBalls = nullptr;
 

@@ -10,7 +10,7 @@ int BML_CDECL Context(BML_ModContextHandle h, void **out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     *out = nullptr;
-    return WithModContext(h, [&](ModContext &ctx, IMod &) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &) {
         *out = ctx.GetCKContext();
         return *out ? BML_OK : BML_ERROR_UNAVAILABLE;
     });
@@ -20,7 +20,7 @@ int BML_CDECL Reference(BML_ModContextHandle h, const void *object, BML_ObjectRe
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     *out = {};
-    return WithModContext(h, [&](ModContext &ctx, IMod &) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &) {
         *out =
             ctx.ObjectRefs().Issue(const_cast<CKObject *>(static_cast<const CKObject *>(object)));
         return !object || out->Domain ? BML_OK : BML_ERROR_OBJECT_INVALID;
@@ -32,7 +32,7 @@ int BML_CDECL Object(BML_ModContextHandle h, BML_ObjectRef object, uint32_t expe
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     *out = nullptr;
-    return WithModContext(h, [&](ModContext &ctx, IMod &) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &) {
         auto *value = ctx.ObjectRefs().Resolve(object);
         if (!value ||
             !CKIsChildClassOf(value->GetClassID(), static_cast<CK_CLASSID>(expectedClass)))
@@ -46,7 +46,7 @@ int BML_CDECL ImGuiContext(BML_ModContextHandle h, void **out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     *out = nullptr;
-    return WithModContext(h, [&](ModContext &, IMod &) {
+    return WithModContext(h, [&](ModContext &, ModRecord &) {
         *out = Overlay::GetImGuiContext();
         return *out ? BML_OK : BML_ERROR_UNAVAILABLE;
     });
@@ -56,7 +56,7 @@ int BML_CDECL Image(BML_ModContextHandle h, void *drawList, BML_Vec2 position, u
                     int32_t state, const char *text, BML_Vec2 alignment) {
     if (!drawList || !text || kind > static_cast<uint32_t>(BuiHost::BUTTON_MINUS))
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &, IMod &) {
+    return WithModContext(h, [&](ModContext &, ModRecord &) {
         auto *context = Overlay::GetImGuiContext();
         if (!context || !context->WithinFrameScope)
             return BML_ERROR_FROZEN;

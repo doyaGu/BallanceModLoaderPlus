@@ -39,8 +39,7 @@ constexpr unsigned long GameFontAcquireDelay = 1;
 
 using BoundGameFontRoles = std::bitset<GameFontRoleCount>;
 
-void SetChoiceEditor(Property *property,
-                     const std::vector<std::string> &choices) {
+void SetChoiceEditor(Property *property, const std::vector<std::string> &choices) {
     if (!property)
         return;
 
@@ -101,7 +100,9 @@ void CollectGameFontRoles(const Behavior::Graph &graph,
 
 } // namespace
 
-BMLMod::BMLMod(ModContext *context) : IMod(context), m_ModMenu(*context) {}
+BMLMod::BMLMod(ModContext *context) : m_BML(context), m_Record(context), m_ModMenu(*context) {
+    m_Record.Bind(*this);
+}
 
 ModContext *BMLMod::GetRuntimeContext() const {
     return m_BML;
@@ -131,7 +132,7 @@ const BMLMod::Setting *BMLMod::GetSettings(std::size_t &count) {
 void BMLMod::BindSettings() {
     std::size_t count = 0;
     const Setting *settings = GetSettings(count);
-    Config *config = GetConfig();
+    Config *config = m_Record.GetConfig();
     for (std::size_t i = 0; i < count; ++i)
         this->*settings[i].property = config->GetProperty(settings[i].category, settings[i].key);
 }
@@ -163,10 +164,10 @@ void BMLMod::OnLoad() {
     if (behavior)
         m_Behavior = behavior.Take();
     else
-        GetLogger()->Warn("Behavior authoring is unavailable to the built-in Mod: %s",
-                          behavior.GetStatus().Message.empty()
-                              ? "could not open the BML session"
-                              : behavior.GetStatus().Message.c_str());
+        m_Record.GetLogger()->Warn("Behavior authoring is unavailable to the built-in Mod: %s",
+                                   behavior.GetStatus().Message.empty()
+                                       ? "could not open the BML session"
+                                       : behavior.GetStatus().Message.c_str());
 
     // Configure AnsiPalette to use the ModLoader directory for config/themes
     AnsiPalette::SetLoaderDirProvider([]() -> std::wstring {
@@ -180,16 +181,15 @@ void BMLMod::OnLoad() {
     m_CustomMaps.ApplyConfig();
     InitGUI();
     if (ModContext *context = GetRuntimeContext()) {
-        m_CustomMaps.OnLoad(*m_BML, *GetLogger(),
-                            context->GetDirectory(BML_DIR_GAME),
+        m_CustomMaps.OnLoad(*m_BML, *m_Record.GetLogger(), context->GetDirectory(BML_DIR_GAME),
                             context->GetDirectory(BML_DIR_LOADER),
                             context->GetDirectory(BML_DIR_TEMP));
     } else {
-        GetLogger()->Error("Built-in Custom Maps requires the loader runtime context");
+        m_Record.GetLogger()->Error("Built-in Custom Maps requires the loader runtime context");
     }
-    m_GameEventHooks.OnLoad(*m_BML, *GetLogger());
-    m_GameplayTweaks.OnLoad(*m_BML, *GetLogger());
-    m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger());
+    m_GameEventHooks.OnLoad(*m_BML, *m_Record.GetLogger());
+    m_GameplayTweaks.OnLoad(*m_BML, *m_Record.GetLogger());
+    m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *m_Record.GetLogger());
     m_HUD.OnLoad(*m_BML);
     m_BML->RegisterCommand(std::make_unique<BMLCommand>(GetRuntimeContext()));
     m_BML->RegisterCommand(std::make_unique<FontCommand>(GetFontCommandContext()));
@@ -199,7 +199,7 @@ void BMLMod::OnLoad() {
     m_BML->RegisterCommand(std::make_unique<ScriptCommand>());
 
     if (ModContext *context = GetRuntimeContext())
-        RegisterBuiltinCapabilities(*this, context->ObjectRefs(), GetLogger());
+        RegisterBuiltinCapabilities(*this, context->ObjectRefs(), m_Record.GetLogger());
 }
 
 void BMLMod::OnUnload() {
@@ -245,7 +245,7 @@ void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
         OnEditScript_Menu_MenuInit(script);
 
     if (!strcmp(script->GetName(), "Menu_Options"))
-        m_ModsMenuEntry.Load(m_Behavior, script, *m_BML, *GetLogger());
+        m_ModsMenuEntry.Load(m_Behavior, script, *m_BML, *m_Record.GetLogger());
 }
 
 void BMLMod::OnProcess() {
@@ -375,7 +375,7 @@ void BMLMod::OpenModsMenu() {
     if (!m_ModMenu.IsOpen())
         RefreshFontChoices();
     if (!m_ModMenu.Open())
-        GetLogger()->Error("Cannot open the Mods menu route");
+        m_Record.GetLogger()->Error("Cannot open the Mods menu route");
 }
 
 void BMLMod::CloseModsMenu() {
@@ -435,17 +435,18 @@ void BMLMod::SetHUD(int mode) {
 }
 
 void BMLMod::InitConfigs() {
-    auto *config = dynamic_cast<Config *>(GetConfig());
+    auto *config = m_Record.GetConfig();
     if (config && !MigrateBMLConfig(config->GetLoadedValues()))
-        GetLogger()->Warn("Some 0.3.13 font paths need manual selection; use the font command to choose fonts.");
+        m_Record.GetLogger()->Warn(
+            "Some 0.3.13 font paths need manual selection; use the font command to choose fonts.");
 
     BindSettings();
-    m_HUD.InitConfig(*GetConfig());
-    m_Console.InitConfig(*GetConfig());
-    m_CustomMaps.InitConfig(*GetConfig());
-    m_GameplayTweaks.InitConfig(*GetConfig());
+    m_HUD.InitConfig(*m_Record.GetConfig());
+    m_Console.InitConfig(*m_Record.GetConfig());
+    m_CustomMaps.InitConfig(*m_Record.GetConfig());
+    m_GameplayTweaks.InitConfig(*m_Record.GetConfig());
 
-    GetConfig()->SetCategoryComment("GUI", "GUI Settings");
+    m_Record.GetConfig()->SetCategoryComment("GUI", "GUI Settings");
 
     m_FontFilename->SetComment(
         "Primary UI font. Add TTF/OTF/TTC files to ModLoader\\Fonts; use the font command for explicit paths.");
@@ -468,7 +469,7 @@ void BMLMod::InitConfigs() {
     m_EnableIniSettings->SetComment("Enable loading and saving ImGui settings.");
     m_EnableIniSettings->SetDefaultBoolean(true);
 
-    GetConfig()->SetCategoryComment("Graphics", "Graphics Settings");
+    m_Record.GetConfig()->SetCategoryComment("Graphics", "Graphics Settings");
 
     m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
     m_UnlockFPS->SetDefaultBoolean(false);
@@ -561,10 +562,10 @@ void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {
 }
 
 void BMLMod::AcquireGameFonts() {
-    GetLogger()->Info("Acquire Game Fonts");
+    m_Record.GetLogger()->Info("Acquire Game Fonts");
     ModContext *context = GetRuntimeContext();
     if (!context) {
-        GetLogger()->Warn("Cannot acquire Game Fonts without the loader runtime context");
+        m_Record.GetLogger()->Warn("Cannot acquire Game Fonts without the loader runtime context");
         return;
     }
 
@@ -573,30 +574,30 @@ void BMLMod::AcquireGameFonts() {
 
     CKBehavior *menuInit = m_BML->GetScriptByName("Menu_Init");
     if (!menuInit) {
-        GetLogger()->Warn("Cannot acquire Game Fonts: Menu_Init was not found");
+        m_Record.GetLogger()->Warn("Cannot acquire Game Fonts: Menu_Init was not found");
         return;
     }
 
     if (!m_Behavior) {
-        GetLogger()->Warn("Cannot acquire Game Fonts: Behavior authoring is unavailable");
+        m_Record.GetLogger()->Warn("Cannot acquire Game Fonts: Behavior authoring is unavailable");
         return;
     }
 
     auto menu = m_Behavior.Inspect(menuInit, Behavior::View::Live);
     if (!menu) {
-        GetLogger()->Warn("Cannot inspect Menu_Init while acquiring Game Fonts: %s",
-                          menu.GetStatus().Message.c_str());
+        m_Record.GetLogger()->Warn("Cannot inspect Menu_Init while acquiring Game Fonts: %s",
+                                   menu.GetStatus().Message.c_str());
         return;
     }
     auto fontsNode = menu->Find(Behavior::Named("Fonts", 0));
     if (!fontsNode) {
-        GetLogger()->Warn("Cannot acquire Game Fonts: Menu_Init/Fonts was not found");
+        m_Record.GetLogger()->Warn("Cannot acquire Game Fonts: Menu_Init/Fonts was not found");
         return;
     }
     auto fonts = menu->Inspect(fontsNode.Value());
     if (!fonts) {
-        GetLogger()->Warn("Cannot inspect Menu_Init/Fonts while acquiring Game Fonts: %s",
-                          fonts.GetStatus().Message.c_str());
+        m_Record.GetLogger()->Warn("Cannot inspect Menu_Init/Fonts while acquiring Game Fonts: %s",
+                                   fonts.GetStatus().Message.c_str());
         return;
     }
 
@@ -606,10 +607,9 @@ void BMLMod::AcquireGameFonts() {
     constexpr std::size_t ExpectedFontCount = GameFontRoleCount - 1;
     const std::size_t boundCount = boundRoles.count();
     if (boundCount != ExpectedFontCount) {
-        GetLogger()->Warn(
-            "Acquired %d of %d Game Fonts; missing roles use legacy indices",
-            static_cast<int>(boundCount),
-            static_cast<int>(ExpectedFontCount));
+        m_Record.GetLogger()->Warn("Acquired %d of %d Game Fonts; missing roles use legacy indices",
+                                   static_cast<int>(boundCount),
+                                   static_cast<int>(ExpectedFontCount));
     }
 }
 

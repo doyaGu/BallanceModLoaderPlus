@@ -8,16 +8,16 @@
 #include <vector>
 
 class ModContext;
-class IMod;
+class ModRecord;
 
 namespace BML::Api {
 class InputApi {
 public:
     int ReadKeyboard(ModContext &context, uint32_t flags, BML_InputKeyboardState *outState);
-    int AcquireBlock(ModContext &context, IMod &owner, uint32_t deviceMask,
+    int AcquireBlock(ModContext &context, ModRecord &owner, uint32_t deviceMask,
                      BML_InputBlockHandle *outBlock);
-    int ReleaseBlock(ModContext &context, IMod &owner, BML_InputBlockHandle block);
-    void CleanupOwner(ModContext &context, IMod &owner) noexcept;
+    int ReleaseBlock(ModContext &context, ModRecord &owner, BML_InputBlockHandle block);
+    void CleanupOwner(ModContext &context, ModRecord &owner) noexcept;
 
 private:
     struct Keyboard {
@@ -30,7 +30,7 @@ private:
     };
 
     struct Block {
-        IMod *Owner = nullptr;
+        ModRecord *Owner = nullptr;
         uint64_t Token = 0;
     };
 

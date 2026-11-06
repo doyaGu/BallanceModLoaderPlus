@@ -8,7 +8,7 @@
 #include "ScriptModLifecycle.h"
 
 class ModContext;
-class IMod;
+class ModRecord;
 class asIScriptFunction;
 class asIScriptObject;
 

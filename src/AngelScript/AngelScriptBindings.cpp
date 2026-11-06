@@ -914,8 +914,8 @@ static BML::ScriptMod *BMLAS_ResolveScriptModOwner(const std::string &modId) {
     ModContext *ctx = nullptr;
     if (!RequireContext(ctx))
         return nullptr;
-    IMod *mod = ctx->FindMod(modId.c_str());
-    return dynamic_cast<BML::ScriptMod *>(mod);
+    ModRecord *mod = ctx->FindMod(modId.c_str());
+    return (mod ? mod->Script : nullptr);
 }
 
 class BMLAS_LoggerRef {
@@ -969,7 +969,8 @@ public:
 
     int GetType() const {
         Property *property = ResolveProperty();
-        return property ? static_cast<int>(property->GetType()) : static_cast<int>(PropertyType::NONE);
+        return property ? static_cast<int>(property->GetType())
+                        : static_cast<int>(PropertyType::NONE);
     }
 
     int GetEditor() const {
@@ -987,22 +988,26 @@ public:
 
     bool GetBoolean(bool defaultValue) const {
         Property *property = ResolveProperty();
-        return property && property->GetType() == PropertyType::BOOLEAN ? property->GetBoolean() : defaultValue;
+        return property && property->GetType() == PropertyType::BOOLEAN ? property->GetBoolean()
+                                                                        : defaultValue;
     }
 
     int GetInteger(int defaultValue) const {
         Property *property = ResolveProperty();
-        return property && property->GetType() == PropertyType::INTEGER ? property->GetInteger() : defaultValue;
+        return property && property->GetType() == PropertyType::INTEGER ? property->GetInteger()
+                                                                        : defaultValue;
     }
 
     float GetFloat(float defaultValue) const {
         Property *property = ResolveProperty();
-        return property && property->GetType() == PropertyType::FLOAT ? property->GetFloat() : defaultValue;
+        return property && property->GetType() == PropertyType::FLOAT ? property->GetFloat()
+                                                                      : defaultValue;
     }
 
     CKKEYBOARD GetKey(CKKEYBOARD defaultValue) const {
         Property *property = ResolveProperty();
-        return property && property->GetType() == PropertyType::KEY ? property->GetKey() : defaultValue;
+        return property && property->GetType() == PropertyType::KEY ? property->GetKey()
+                                                                    : defaultValue;
     }
 
     void SetString(const std::string &value) const {
@@ -1730,57 +1735,57 @@ public:
     std::string GetId() const { return m_Id; }
 
     std::string GetName() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         return mod ? mod->GetName() : "";
     }
 
     std::string GetVersion() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         return mod ? mod->GetVersion() : "";
     }
 
     std::string GetAuthor() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         return mod ? mod->GetAuthor() : "";
     }
 
     std::string GetDescription() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         return mod ? mod->GetDescription() : "";
     }
 
     std::string GetBMLVersion() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         return mod ? mod->GetBMLVersion().ToString() : "";
     }
 
     int GetBMLVersionMajor() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         return mod ? mod->GetBMLVersion().major : 0;
     }
 
     int GetBMLVersionMinor() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         return mod ? mod->GetBMLVersion().minor : 0;
     }
 
     int GetBMLVersionPatch() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         return mod ? mod->GetBMLVersion().patch : 0;
     }
 
     int GetKind() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         if (!mod)
             return 0; // MOD_KIND_UNKNOWN
-        return dynamic_cast<BML::ScriptMod *>(mod) ? 2 : 1; // script : native
+        return mod->Script ? 2 : 1; // script : native
     }
 
     int GetState() const {
-        IMod *mod = Resolve();
+        ModRecord *mod = Resolve();
         if (!mod)
             return 0; // MOD_STATE_NOT_FOUND
-        if (const auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod)) {
+        if (const auto *scriptMod = (mod ? mod->Script : nullptr)) {
             if (scriptMod->IsFailed())
                 return 3; // MOD_STATE_FAILED
             return scriptMod->IsLoaded() ? 2 : 1; // loaded : registered
@@ -1804,13 +1809,13 @@ public:
 
     int CheckDependencies() const {
         ModContext *ctx = nullptr;
-        IMod *mod = Resolve(&ctx);
+        ModRecord *mod = Resolve(&ctx);
         return ctx && mod ? ctx->CheckDependencies(mod) : 0;
     }
 
     int GetDependencyCount() const {
         ModContext *ctx = nullptr;
-        IMod *mod = Resolve(&ctx);
+        ModRecord *mod = Resolve(&ctx);
         return ctx && mod ? ctx->GetDependencyCount(mod) : -1;
     }
 
@@ -1849,17 +1854,16 @@ public:
     }
 
     std::string GetDiagnostic() const {
-        if (const auto *scriptMod = dynamic_cast<BML::ScriptMod *>(Resolve()))
+        const auto *record = Resolve();
+        if (const auto *scriptMod = record ? record->Script : nullptr)
             return scriptMod->GetLastDiagnostic();
         return {};
     }
 
 private:
-    IMod *Resolve() const {
-        return Resolve(nullptr);
-    }
+    ModRecord *Resolve() const { return Resolve(nullptr); }
 
-    IMod *Resolve(ModContext **outContext) const {
+    ModRecord *Resolve(ModContext **outContext) const {
         ModContext *ctx = nullptr;
         if (!RequireContext(ctx))
             return nullptr;
@@ -1871,7 +1875,7 @@ private:
     DependencyInfo GetDependencyInfo(int index) const {
         DependencyInfo info;
         ModContext *ctx = nullptr;
-        IMod *mod = Resolve(&ctx);
+        ModRecord *mod = Resolve(&ctx);
         if (!ctx || !mod)
             return info;
 
@@ -1908,7 +1912,7 @@ BMLAS_ModRef *BMLAS_FindMod(const std::string &id) {
     ModContext *ctx = nullptr;
     if (!RequireContext(ctx))
         return nullptr;
-    IMod *mod = ctx->FindMod(id.c_str());
+    ModRecord *mod = ctx->FindMod(id.c_str());
     return mod ? BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ModRef(mod->GetID()),
                                          "Out of memory creating BML::ModRef.")
                : nullptr;
@@ -1923,7 +1927,7 @@ std::string BMLAS_GetModId(int index) {
     ModContext *ctx = nullptr;
     if (!RequireContext(ctx))
         return "";
-    IMod *mod = ctx->GetMod(index);
+    ModRecord *mod = ctx->GetMod(index);
     return mod ? mod->GetID() : "";
 }
 
@@ -1931,7 +1935,7 @@ BMLAS_ModRef *BMLAS_GetMod(int index) {
     ModContext *ctx = nullptr;
     if (!RequireContext(ctx))
         return nullptr;
-    IMod *mod = ctx->GetMod(index);
+    ModRecord *mod = ctx->GetMod(index);
     return mod ? BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ModRef(mod->GetID()),
                                          "Out of memory creating BML::ModRef.")
                : nullptr;

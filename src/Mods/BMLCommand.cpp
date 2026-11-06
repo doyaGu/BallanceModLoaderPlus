@@ -2,7 +2,7 @@
 
 #include "BML/BML.h"
 #include "Loader/ModContext.h"
-#include "Loader/IMod.h"
+#include "Loader/ModRecord.h"
 #include "Diagnostics/SystemReport.h"
 
 namespace {

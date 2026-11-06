@@ -21,7 +21,7 @@ struct SDL_IOStream;
 #include "BML/BML.h"
 #include "BML/Mod.h"
 #include "Hooks/InputHook.h"
-#include "Loader/IMod.h"
+#include "Loader/ModRecord.h"
 
 #include "Config/Config.h"
 #include "Config/ConfigStore.h"
@@ -120,7 +120,7 @@ public:
     // Loader lifecycle operations. These keep service cleanup inside Context;
     // the Loader controls when each stage runs.
     bool RegisterModOwner(const std::string &ownerId) noexcept;
-    void StopModWork(IMod *owner) noexcept;
+    void StopModWork(ModRecord *owner) noexcept;
     void RetireFailedModOwner(const std::string &ownerId) noexcept;
     bool PrepareModUnload(const std::string &ownerId);
     void RetireModBehaviorState(const std::string &ownerId) noexcept;
@@ -129,8 +129,8 @@ public:
     void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
     bool UnregisterNativeCommands(const void *module) noexcept;
     void ClearCommands();
-    void SetModDataPath(const IMod *mod, const std::wstring &root);
-    void RemoveModDataPath(const IMod *mod);
+    void SetModDataPath(const ModRecord *mod, const std::wstring &root);
+    void RemoveModDataPath(const ModRecord *mod);
 
     ModLoader &GetModLoader() { return m_Loader; }
     const ModLoader &GetModLoader() const { return m_Loader; }
@@ -157,10 +157,10 @@ public:
 #endif
 
     int GetModCount();
-    IMod *GetMod(int index);
-    std::uint64_t GetModGeneration(const IMod *mod) const;
+    ModRecord *GetMod(int index);
+    std::uint64_t GetModGeneration(const ModRecord *mod) const;
     std::uint64_t GetModRegistryRevision() const;
-    IMod *FindMod(const char *id) const;
+    ModRecord *FindMod(const char *id) const;
     std::string GetNativeImcOwnerId(
         const void *callerAddress,
         const char *requestedOwnerId = nullptr) const;
@@ -178,13 +178,16 @@ public:
     const BML::ImcRuntime &GetImcRuntime() const { return m_ImcRuntime; }
     ModMenuPages &GetModMenuPages() { return m_ModMenuPages; }
     const ModMenuPages &GetModMenuPages() const { return m_ModMenuPages; }
-    int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch);
-    int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch);
-    int CheckDependencies(IMod *mod) const;
-    int GetDependencyCount(IMod *mod) const;
-    int GetDependencyInfo(IMod *mod, int index, char *dependencyId, int idSize,
-                          int *major, int *minor, int *patch, int *optional) const;
-    int ClearDependencies(IMod *mod);
+
+    int RegisterDependency(ModRecord *mod, const char *dependencyId, int major, int minor,
+                           int patch);
+    int RegisterOptionalDependency(ModRecord *mod, const char *dependencyId, int major, int minor,
+                                   int patch);
+    int CheckDependencies(ModRecord *mod) const;
+    int GetDependencyCount(ModRecord *mod) const;
+    int GetDependencyInfo(ModRecord *mod, int index, char *dependencyId, int idSize, int *major,
+                          int *minor, int *patch, int *optional) const;
+    int ClearDependencies(ModRecord *mod);
 
     template <class T> void RegisterCommand(std::unique_ptr<T> command) {
         std::shared_ptr<T> owner(std::move(command));
@@ -231,7 +234,7 @@ public:
 
     Config *AddConfig(std::unique_ptr<Config> config);
     bool RemoveConfig(Config *config);
-    Config *GetConfig(IMod *mod);
+    Config *GetConfig(ModRecord *mod);
     BML::Api::GuiApi &GetGuiApi() noexcept { return m_GuiApi; }
     BML::Api::BuiApi &GetBuiApi() noexcept { return m_BuiApi; }
     BML::Api::InputApi &GetInputApi() noexcept { return m_InputApi; }
@@ -240,7 +243,7 @@ public:
     bool LoadConfig(Config *config);
     bool SaveConfig(Config *config, bool snapshotModMetadata = true);
 
-    Logger *GetLogger() const {return m_Logger; }
+    Logger *GetLogger() const { return m_Logger; }
     void WriteLogLine(const std::string &line);
 
     const wchar_t *GetDirectory(DirectoryType type);
@@ -254,58 +257,81 @@ public:
     BML_DataShare *GetDataShare(const char *name = nullptr);
 
     CKContext *GetCKContext() { return m_CKContext; }
+
     CKRenderContext *GetRenderContext() { return m_CKContext->GetPlayerRenderContext(); }
 
     CKAttributeManager *GetAttributeManager() { return m_AttributeManager; }
+
     CKBehaviorManager *GetBehaviorManager() { return m_BehaviorManager; }
+
     CKCollisionManager *GetCollisionManager() { return m_CollisionManager; }
+
     InputHook *GetInputManager() { return m_Hooks ? m_Hooks->GetInput() : nullptr; }
+
     CKMessageManager *GetMessageManager() { return m_MessageManager; }
+
     CKPathManager *GetPathManager() { return m_PathManager; }
+
     CKParameterManager *GetParameterManager() { return m_ParameterManager; }
+
     CKRenderManager *GetRenderManager() { return m_RenderManager; }
+
     CKSoundManager *GetSoundManager() { return m_SoundManager; }
+
     CKTimeManager *GetTimeManager() { return m_TimeManager; }
 
     CKDataArray *GetArrayByName(const char *name) {
         return (CKDataArray *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_DATAARRAY);
     }
+
     CKGroup *GetGroupByName(const char *name) {
         return (CKGroup *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_GROUP);
     }
+
     CKMaterial *GetMaterialByName(const char *name) {
         return (CKMaterial *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_MATERIAL);
     }
+
     CKMesh *GetMeshByName(const char *name) {
         return (CKMesh *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_MESH);
     }
+
     CK2dEntity *Get2dEntityByName(const char *name) {
         return (CK2dEntity *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_2DENTITY);
     }
+
     CK3dEntity *Get3dEntityByName(const char *name) {
         return (CK3dEntity *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_3DENTITY);
     }
+
     CK3dObject *Get3dObjectByName(const char *name) {
         return (CK3dObject *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_3DOBJECT);
     }
+
     CKCamera *GetCameraByName(const char *name) {
         return (CKCamera *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_CAMERA);
     }
+
     CKTargetCamera *GetTargetCameraByName(const char *name) {
         return (CKTargetCamera *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_TARGETCAMERA);
     }
+
     CKLight *GetLightByName(const char *name) {
         return (CKLight *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_LIGHT);
     }
+
     CKTargetLight *GetTargetLightByName(const char *name) {
         return (CKTargetLight *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_TARGETLIGHT);
     }
+
     CKSound *GetSoundByName(const char *name) {
         return (CKSound *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_SOUND);
     }
+
     CKTexture *GetTextureByName(const char *name) {
         return (CKTexture *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_TEXTURE);
     }
+
     CKBehavior *GetScriptByName(const char *name) {
         return (CKBehavior *)m_CKContext->GetObjectByNameAndClass((CKSTRING) name, CKCID_BEHAVIOR);
     }
@@ -346,15 +372,19 @@ public:
         const std::string &ownerId);
     BML::GameFontCatalog &GetGameFonts() noexcept { return m_GameFonts; }
     const BML::GameFontCatalog &GetGameFonts() const noexcept { return m_GameFonts; }
-    BML::UI::FontRuntime *GetUiFontRuntime() noexcept {
-        return m_UiFonts.get();
-    }
-    const BML::UI::FontRuntime *GetUiFontRuntime() const noexcept {
-        return m_UiFonts.get();
-    }
+
+    BML::UI::FontRuntime *GetUiFontRuntime() noexcept { return m_UiFonts.get(); }
+
+    const BML::UI::FontRuntime *GetUiFontRuntime() const noexcept { return m_UiFonts.get(); }
+
     bool IsIngame() { return m_GamePhase != GamePhase::FrontEnd; }
-    bool IsInLevel() const { return m_GamePhase == GamePhase::ActiveLevel || m_GamePhase == GamePhase::PausedLevel; }
+
+    bool IsInLevel() const {
+        return m_GamePhase == GamePhase::ActiveLevel || m_GamePhase == GamePhase::PausedLevel;
+    }
+
     bool IsPaused() { return m_GamePhase == GamePhase::PausedLevel; }
+
     bool IsPlaying() { return m_GamePhase == GamePhase::ActiveLevel; }
 
     void OpenModsMenu();
@@ -363,6 +393,7 @@ public:
     void CloseMapMenu();
 
     bool IsCheatEnabled() { return m_CommandContext.IsCheatEnabled(); }
+
     void EnableCheat(bool enable);
 
     void SendIngameMessage(const char *msg);
@@ -382,29 +413,27 @@ public:
 
     void SkipRenderForNextTick();
 
-    void RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
-                          float friction, float elasticity,
-                          float mass, const char *collGroup, float linearDamp, float rotDamp, float force,
+    void RegisterBallType(const char *ballFile, const char *ballId, const char *ballName,
+                          const char *objName, float friction, float elasticity, float mass,
+                          const char *collGroup, float linearDamp, float rotDamp, float force,
                           float radius);
     void RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
                            const char *collGroup, bool enableColl);
-    void RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
-                           const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
-                           float linearDamp, float rotDamp, float radius);
-    void RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity, float mass,
-                             const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
-                             float linearDamp, float rotDamp);
+    void RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity,
+                           float mass, const char *collGroup, bool frozen, bool enableColl,
+                           bool calcMassCenter, float linearDamp, float rotDamp, float radius);
+    void RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity,
+                             float mass, const char *collGroup, bool frozen, bool enableColl,
+                             bool calcMassCenter, float linearDamp, float rotDamp);
     void RegisterTrafo(const char *modulName);
     void RegisterModul(const char *modulName);
 
-    template<typename T, typename... Args>
-    std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
-        m_Loader.BroadcastCallback(callback, std::forward<Args>(args)...);
+    template <ModEvent Event, typename... Args> void BroadcastCallback(Args &&...args) {
+        m_Loader.BroadcastCallback<Event>(std::forward<Args>(args)...);
     }
 
-    template<typename T>
-    std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastMessage(const char *msg, T func) {
-        m_Loader.BroadcastMessage(msg, func);
+    template <ModEvent Event> void BroadcastMessage(const char *msg) {
+        m_Loader.BroadcastMessage<Event>(msg);
     }
 
     void OnProcess();
@@ -501,7 +530,7 @@ private:
     };
     void ReleaseModDataPath(const ModDataPathKey &path);
     std::map<ModDataPathKey, ModDataPathRegistration> m_ModDataPathRegistrations;
-    std::unordered_map<const IMod *, std::array<ModDataPathKey, 5>> m_ModDataPaths;
+    std::unordered_map<const ModRecord *, std::array<ModDataPathKey, 5>> m_ModDataPaths;
     bool m_Inited = false;
     enum class GamePhase { FrontEnd, Transitioning, ActiveLevel, PausedLevel };
     GamePhase m_GamePhase = GamePhase::FrontEnd;

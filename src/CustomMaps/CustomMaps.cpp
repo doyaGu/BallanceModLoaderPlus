@@ -21,7 +21,6 @@
 #include "CustomMaps/LevelLoader.h"
 #include "CustomMaps/MapCatalog.h"
 #include "CustomMaps/MapCommand.h"
-#include "Loader/ModContext.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
 
@@ -165,9 +164,8 @@ bool CustomMaps::OnModifyConfig(const char *category, const char *key, Property 
     return property == m_LevelNumber && std::strcmp(key ? key : "", "LevelNumber") == 0;
 }
 
-void CustomMaps::OnLoad(ModContext &bml, Logger &logger,
-                        const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
-                        const std::wstring &tempDirectory) {
+void CustomMaps::OnLoad(ModContext &bml, Logger &logger, const std::wstring &gameDirectory,
+                        const std::wstring &loaderDirectory, const std::wstring &tempDirectory) {
     m_BML = &bml;
     m_CKContext = bml.GetCKContext();
     m_Logger = &logger;
@@ -235,8 +233,7 @@ void CustomMaps::BindMenuEntry() {
         if (menu) {
             auto exit = menu->Find(Behavior::Named("Exit", 0));
             if (exit) {
-                m_ExitStart = Resolve<CKBehavior>(
-                    m_BML, exit->Object());
+                m_ExitStart = Resolve<CKBehavior>(m_BML, exit->Object());
             }
         }
     }

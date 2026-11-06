@@ -15,7 +15,7 @@
 #endif
 #include "Platform/FileError.h"
 
-#include "Loader/IMod.h"
+#include "Loader/ModRecord.h"
 
 #include "Config/Config.h"
 #include "Config/ConfigStore.h"
@@ -71,59 +71,39 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
     }
 }
 
-Logger *IMod::GetLogger() {
-    if (m_Logger == nullptr)
-        m_Logger = new Logger(GetID());
-    return m_Logger;
-}
-
-Config *IMod::GetConfig() {
-    if (m_Config == nullptr) {
-        auto *config = new Config(this);
-        m_Config = config;
-    }
-    return m_Config;
-}
-
-IMod::~IMod() {
-    if (m_Logger)
-        delete m_Logger;
-    if (m_Config)
-        delete m_Config;
-}
-
-// Mock implementation of IMod for testing
-class MockMod : public IMod {
+class MockMod {
 public:
-    explicit MockMod(ModContext *bml) : IMod(bml) {}
+    explicit MockMod(ModContext *context) : Registration(context) { Registration.Bind(*this); }
 
-    const char *GetID() override {
+    const char *GetID() {
         ++idReadCount;
         return "MockMod";
     }
-    const char *GetName() override {
+
+    const char *GetName() {
         ++nameReadCount;
         return "MockModName";
     }
-    const char *GetVersion() override {
+
+    const char *GetVersion() {
         ++versionReadCount;
         return "1.0";
     }
-    const char *GetAuthor() override { return "Tester"; }
 
-    const char *GetDescription() override {
-        return "Test description for the mock mod.";
-    }
+    const char *GetAuthor() { return "Tester"; }
 
-    BMLVersion GetBMLVersion() override { return {}; }
+    const char *GetDescription() { return "Test description for the mock mod."; }
 
-    void OnModifyConfig(const char *category, const char *key, Property *prop) override {
+    BMLVersion GetBMLVersion() { return {}; }
+
+    void OnModifyConfig(const char *category, const char *key, Property *prop) {
         modifiedCount++;
         lastCategory = category ? category : "";
         lastKey = key ? key : "";
         lastProp = prop;
     }
 
+    ModRecord Registration;
     std::atomic<int> modifiedCount{0};
     std::atomic<int> idReadCount{0};
     std::atomic<int> nameReadCount{0};
@@ -140,7 +120,7 @@ protected:
         configPath = utils::CreateTempFileW(L"BML-config-");
         ASSERT_FALSE(configPath.empty());
         mockMod = new MockMod(nullptr);
-        config = new Config(mockMod);
+        config = new Config(&mockMod->Registration);
     }
 
     void TearDown() override {
@@ -162,7 +142,7 @@ protected:
 
     void ReloadConfig() {
         ASSERT_TRUE(config->Save(configPath.c_str()));
-        auto reloaded = std::make_unique<Config>(mockMod);
+        auto reloaded = std::make_unique<Config>(&mockMod->Registration);
         ASSERT_TRUE(reloaded->Load(configPath.c_str()));
         delete config;
         config = reloaded.release();
@@ -206,7 +186,7 @@ TEST_F(ConfigTest, MissingDocumentCanBeGeneratedFromCodeDefaults) {
     EXPECT_TRUE(config->CanSave());
     config->GetProperty("General", "Count")->SetDefaultInteger(7);
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 7);
 }
@@ -256,7 +236,7 @@ TEST_F(ConfigTest, SuccessfulReloadReenablesPersistence) {
     EXPECT_EQ(count->GetInteger(), 42);
     count->SetInteger(7);
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 7);
 }
@@ -278,7 +258,7 @@ TEST_F(ConfigTest, FailedReplacementPreservesOriginalAndDirtyState) {
     ASSERT_TRUE(utils::ReadFileBytesW(configPath, preserved));
     EXPECT_EQ(preserved, original);
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 42);
 }
@@ -304,7 +284,7 @@ TEST_F(ConfigTest, FailedAutomaticSaveDoesNotRetryWithoutAnotherChange) {
     count->SetInteger(43);
     EXPECT_TRUE(config->TakeSaveRequest());
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     EXPECT_EQ(loaded.GetProperty("General", "Count")->GetInteger(), 43);
 }
@@ -332,7 +312,7 @@ TEST_F(ConfigTest, DetachedDirtyValuesReattachWithoutRetiredDeclarationMetadata)
     ASSERT_TRUE(config->IsDirty());
     config->DetachMod();
     EXPECT_EQ(config->GetMod(), nullptr);
-    config->AttachMod(mockMod);
+    config->AttachMod(&mockMod->Registration);
     EXPECT_EQ(config->GetCategoryCount(), 0u);
     auto *newCount = config->GetProperty("General", "Count");
     newCount->SetDefaultInteger(9);
@@ -380,7 +360,7 @@ TEST_F(ConfigTest, ValidReloadRearmsAnUnsuccessfulSave) {
 TEST_F(ConfigTest, TruncatedDocumentDoesNotReplaceLoadedOrDeclaredValues) {
     config->GetProperty("General", "Count")->SetDefaultInteger(42);
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     Property *count = loaded.GetProperty("General", "Count");
     count->SetDefaultInteger(1);
@@ -403,7 +383,7 @@ TEST_F(ConfigTest, Utf8BomDoesNotBecomePartOfCategoryName) {
 TEST_F(ConfigTest, EmbeddedNullDoesNotReplaceLoadedValues) {
     config->GetProperty("General", "Count")->SetDefaultInteger(42);
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     const char invalid[] = "General {\nS Text before\0after\n}\n";
     WriteConfig(std::string(invalid, sizeof(invalid) - 1));
@@ -434,7 +414,7 @@ TEST_F(ConfigTest, SavingPreservesFloatPrecision) {
     const float value = std::nextafter(1.0f, 2.0f);
     config->GetProperty("General", "Scale")->SetDefaultFloat(value);
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config reloaded(mockMod);
+    Config reloaded(&mockMod->Registration);
     ASSERT_TRUE(reloaded.Load(configPath.c_str()));
     EXPECT_EQ(reloaded.GetProperty("General", "Scale")->GetFloat(), value);
 }
@@ -442,7 +422,7 @@ TEST_F(ConfigTest, SavingPreservesFloatPrecision) {
 TEST_F(ConfigTest, NumericPersistenceDoesNotDependOnGlobalLocale) {
     class DecimalComma : public std::numpunct<char> {
     protected:
-        char do_decimal_point() const override { return ','; }
+        char do_decimal_point() const { return ','; }
     };
     class ScopedLocale {
     public:
@@ -456,11 +436,11 @@ TEST_F(ConfigTest, NumericPersistenceDoesNotDependOnGlobalLocale) {
     {
         ScopedLocale locale;
         ASSERT_TRUE(config->Save(configPath.c_str()));
-        Config loaded(mockMod);
+        Config loaded(&mockMod->Registration);
         ASSERT_TRUE(loaded.Load(configPath.c_str()));
         EXPECT_FLOAT_EQ(loaded.GetProperty("General", "Scale")->GetFloat(), 2.5f);
     }
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     EXPECT_FLOAT_EQ(loaded.GetProperty("General", "Scale")->GetFloat(), 2.5f);
 }
@@ -468,7 +448,7 @@ TEST_F(ConfigTest, NumericPersistenceDoesNotDependOnGlobalLocale) {
 TEST_F(ConfigTest, InvalidStructureLeavesLoadedValuesUnchanged) {
     config->GetProperty("General", "Count")->SetDefaultInteger(42);
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     const char embeddedNull[] = "General {\nS Text abc\0def\n}\n";
     const std::string invalidDocuments[] = {
@@ -488,7 +468,7 @@ TEST_F(ConfigTest, UpdatingModKeepsOnlyDeclaredSettingsAndUsesDefaultsForNewOnes
     config->GetProperty("RemovedCategory", "Old")->SetBoolean(true);
     ASSERT_TRUE(config->Save(configPath.c_str()));
 
-    Config updated(mockMod);
+    Config updated(&mockMod->Registration);
     ASSERT_TRUE(updated.Load(configPath.c_str()));
     EXPECT_EQ(updated.GetCategoryCount(), 0u);
     Property *retained = updated.GetProperty("General", "A");
@@ -506,13 +486,14 @@ TEST_F(ConfigTest, UpdatingModKeepsOnlyDeclaredSettingsAndUsesDefaultsForNewOnes
     EXPECT_EQ(category->GetProperty(std::size_t{1}), added);
     EXPECT_FALSE(category->HasKey("B"));
     EXPECT_TRUE(updated.TakePendingNotifications().empty());
-    const Config::ApplyResult obsoleteEdit = updated.ApplyEdits(
-        mockMod, updated.GetSchemaRevision(), {{"General", "B", PropertyType::INTEGER, 20, 21}});
+    const Config::ApplyResult obsoleteEdit =
+        updated.ApplyEdits(&mockMod->Registration, updated.GetSchemaRevision(),
+                           {{"General", "B", PropertyType::INTEGER, 20, 21}});
     EXPECT_EQ(obsoleteEdit.Error, Config::ApplyError::PropertyMissing);
     EXPECT_FALSE(category->HasKey("B"));
 
     ASSERT_TRUE(updated.Save(configPath.c_str()));
-    Config reloaded(mockMod);
+    Config reloaded(&mockMod->Registration);
     ASSERT_TRUE(reloaded.Load(configPath.c_str()));
     EXPECT_FALSE(reloaded.HasKey("General", "B"));
     EXPECT_FALSE(reloaded.HasCategory("RemovedCategory"));
@@ -524,7 +505,7 @@ TEST_F(ConfigTest, SavedValueQueriesDoNotDeclareSettingsOrChangeSchema) {
     config->GetProperty("General", "Value")->SetDefaultInteger(42);
     ASSERT_TRUE(config->Save(configPath.c_str()));
 
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     const std::uint64_t schema = loaded.GetSchemaRevision();
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     EXPECT_TRUE(loaded.HasCategory("General"));
@@ -553,7 +534,7 @@ TEST_F(ConfigTest, SettingsFollowDeclarationOrderAndIgnoreSavedComments) {
     config->GetProperty("General", "Second")->SetDefaultInteger(20);
     ASSERT_TRUE(config->Save(configPath.c_str()));
 
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     loaded.SetCategoryComment("General", "Current category description");
     Property *second = loaded.GetProperty("General", "Second");
@@ -581,7 +562,7 @@ TEST_F(ConfigTest, DeclaredTypesAndEditorMetadataSurviveReload) {
     config->GetProperty("Values", "Key")->SetDefaultKey(CKKEY_A);
     ASSERT_TRUE(config->Save(configPath.c_str()));
 
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     Property *text = loaded.GetProperty("Values", "Text");
     text->SetDefaultString("default text");
     const char *choices[] = {"default text", "saved text"};
@@ -610,7 +591,7 @@ TEST_F(ConfigTest, DeclaredTypesAndEditorMetadataSurviveReload) {
     EXPECT_TRUE(loaded.TakePendingNotifications().empty());
     EXPECT_FALSE(loaded.IsDirty());
 
-    Config changedType(mockMod);
+    Config changedType(&mockMod->Registration);
     ASSERT_TRUE(changedType.Load(configPath.c_str()));
     Property *changed = changedType.GetProperty("Values", "Count");
     changed->SetDefaultString("new default");
@@ -619,7 +600,7 @@ TEST_F(ConfigTest, DeclaredTypesAndEditorMetadataSurviveReload) {
     EXPECT_EQ(changed->GetType(), PropertyType::STRING);
     EXPECT_STREQ(changed->GetString(), "new default");
     ASSERT_TRUE(changedType.Save(configPath.c_str()));
-    Config reloaded(mockMod);
+    Config reloaded(&mockMod->Registration);
     ASSERT_TRUE(reloaded.Load(configPath.c_str()));
     EXPECT_STREQ(reloaded.GetProperty("Values", "Count")->GetString(), "new default");
 }
@@ -633,14 +614,15 @@ TEST_F(ConfigTest, AppliedSettingsSurviveShutdownAndStartupSaves) {
     ASSERT_TRUE(config->Save(configPath.c_str()));
 
     const std::vector<Config::Edit> edits = {
-        {"Values", "Text", PropertyType::STRING, std::string("default text"), std::string("edited text")},
+        {"Values", "Text", PropertyType::STRING, std::string("default text"),
+         std::string("edited text")},
         {"Values", "Flag", PropertyType::BOOLEAN, false, true},
         {"Values", "Count", PropertyType::INTEGER, 1, 42},
         {"Values", "Scale", PropertyType::FLOAT, 1.0f, 2.5f},
         {"Values", "Key", PropertyType::KEY, static_cast<int>(CKKEY_A), static_cast<int>(CKKEY_B)},
     };
-    const Config::ApplyResult result = config->ApplyEdits(
-        mockMod, config->GetSchemaRevision(), edits);
+    const Config::ApplyResult result =
+        config->ApplyEdits(&mockMod->Registration, config->GetSchemaRevision(), edits);
     ASSERT_TRUE(result.Succeeded());
     ASSERT_EQ(result.ChangedCount, edits.size());
     EXPECT_TRUE(config->IsDirty());
@@ -653,7 +635,7 @@ TEST_F(ConfigTest, AppliedSettingsSurviveShutdownAndStartupSaves) {
 
     for (int restart = 0; restart < 2; ++restart) {
         MockMod owner(nullptr);
-        Config reloaded(&owner);
+        Config reloaded(&owner.Registration);
         ASSERT_TRUE(reloaded.Load(configPath.c_str()));
         reloaded.GetProperty("Values", "Text")->SetDefaultString("default text");
         reloaded.GetProperty("Values", "Flag")->SetDefaultBoolean(false);
@@ -672,7 +654,7 @@ TEST_F(ConfigTest, AppliedSettingsSurviveShutdownAndStartupSaves) {
 TEST_F(ConfigTest, RemovingLoadedSettingPreventsLaterReimport) {
     config->GetProperty("General", "Old")->SetDefaultInteger(42);
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config loaded(mockMod);
+    Config loaded(&mockMod->Registration);
     ASSERT_TRUE(loaded.Load(configPath.c_str()));
     ASSERT_TRUE(loaded.RemoveProperty("General", "Old"));
     EXPECT_FALSE(loaded.HasKey("General", "Old"));
@@ -692,7 +674,7 @@ TEST_F(ConfigTest, Loaded013FontMigrationDoesNotDeclareObsoleteSettings) {
     config->GetProperty("GUI", "SecondaryFontSize")->SetDefaultFloat(26.0f);
     ASSERT_TRUE(config->Save(configPath.c_str()));
 
-    Config updated(mockMod);
+    Config updated(&mockMod->Registration);
     ASSERT_TRUE(updated.Load(configPath.c_str()));
     ASSERT_TRUE(MigrateBMLConfig(updated.GetLoadedValues()));
     EXPECT_EQ(updated.GetCategoryCount(), 0u);
@@ -710,7 +692,7 @@ TEST_F(ConfigTest, Loaded013FontMigrationDoesNotDeclareObsoleteSettings) {
     EXPECT_TRUE(updated.TakePendingNotifications().empty());
     ASSERT_TRUE(updated.Save(configPath.c_str()));
 
-    Config reloaded(mockMod);
+    Config reloaded(&mockMod->Registration);
     ASSERT_TRUE(reloaded.Load(configPath.c_str()));
     EXPECT_FALSE(reloaded.HasKey("GUI", "EnableSecondaryFont"));
     EXPECT_FALSE(reloaded.HasKey("GUI", "SecondaryFontFilename"));
@@ -721,7 +703,7 @@ TEST_F(ConfigTest, Loaded013FontMigrationDoesNotDeclareObsoleteSettings) {
 // Basic creation and destruction
 TEST_F(ConfigTest, ConstructionDestruction) {
     ASSERT_NE(nullptr, config);
-    EXPECT_EQ(mockMod, config->GetMod());
+    EXPECT_EQ(&mockMod->Registration, config->GetMod());
 
     // Test with null mod
     Config *nullModConfig = new Config(nullptr);
@@ -734,26 +716,27 @@ TEST(ConfigStoreTest, FindRejectsDifferentOwnerWithSameModId) {
     MockMod duplicate(nullptr);
     ConfigStore store;
 
-    auto config = std::make_unique<Config>(&registered);
+    auto config = std::make_unique<Config>(&registered.Registration);
     Config *registeredConfig = config.get();
-    ASSERT_EQ(store.Add("MockMod", &registered, std::move(config)), registeredConfig);
+    ASSERT_EQ(store.Add("MockMod", &registered.Registration, std::move(config)), registeredConfig);
 
-    EXPECT_EQ(store.Find("MockMod", &registered), registeredConfig);
-    EXPECT_EQ(store.Find("MockMod", &duplicate), nullptr);
+    EXPECT_EQ(store.Find("MockMod", &registered.Registration), registeredConfig);
+    EXPECT_EQ(store.Find("MockMod", &duplicate.Registration), nullptr);
 }
 
-TEST(ConfigStoreTest, OwnerLookupDoesNotCallVirtualMetadataAndIsRemovedWithTheConfig) {
+TEST(ConfigStoreTest, OwnerLookupUsesRegistrationIdentityAndIsRemovedWithTheConfig) {
     MockMod owner(nullptr);
     ConfigStore store;
-    auto config = std::make_unique<Config>(&owner);
+    auto config = std::make_unique<Config>(&owner.Registration);
     auto *raw = config.get();
-    ASSERT_EQ(store.Add(std::string(160, 'x'), &owner, std::move(config)), raw);
+    ASSERT_EQ(store.Add(std::string(160, 'x'), &owner.Registration, std::move(config)), raw);
     owner.idReadCount = 0;
-    for (int i = 0; i < 1000; ++i) EXPECT_EQ(store.Find(&owner), raw);
+    for (int i = 0; i < 1000; ++i)
+        EXPECT_EQ(store.Find(&owner.Registration), raw);
     EXPECT_EQ(owner.idReadCount, 0);
-    auto removed = store.Remove(std::string(160, 'x'), &owner, raw);
+    auto removed = store.Remove(std::string(160, 'x'), &owner.Registration, raw);
     EXPECT_EQ(removed.get(), raw);
-    EXPECT_EQ(store.Find(&owner), nullptr);
+    EXPECT_EQ(store.Find(&owner.Registration), nullptr);
 }
 
 TEST(ConfigStoreTest, RemovalMaintainsOwnerIdentityAndRemainingIndices) {
@@ -761,20 +744,20 @@ TEST(ConfigStoreTest, RemovalMaintainsOwnerIdentityAndRemainingIndices) {
     MockMod second(nullptr);
     ConfigStore store;
 
-    auto firstConfig = std::make_unique<Config>(&first);
-    auto secondConfig = std::make_unique<Config>(&second);
+    auto firstConfig = std::make_unique<Config>(&first.Registration);
+    auto secondConfig = std::make_unique<Config>(&second.Registration);
     Config *firstRaw = firstConfig.get();
     Config *secondRaw = secondConfig.get();
-    ASSERT_EQ(store.Add("first", &first, std::move(firstConfig)), firstRaw);
-    ASSERT_EQ(store.Add("second", &second, std::move(secondConfig)), secondRaw);
+    ASSERT_EQ(store.Add("first", &first.Registration, std::move(firstConfig)), firstRaw);
+    ASSERT_EQ(store.Add("second", &second.Registration, std::move(secondConfig)), secondRaw);
 
-    EXPECT_EQ(store.Remove("first", &second, firstRaw), nullptr);
-    EXPECT_EQ(store.Find("first", &first), firstRaw);
+    EXPECT_EQ(store.Remove("first", &second.Registration, firstRaw), nullptr);
+    EXPECT_EQ(store.Find("first", &first.Registration), firstRaw);
 
-    std::unique_ptr<Config> removed = store.Remove("first", &first, firstRaw);
+    std::unique_ptr<Config> removed = store.Remove("first", &first.Registration, firstRaw);
     ASSERT_EQ(removed.get(), firstRaw);
-    EXPECT_EQ(store.Find("first", &first), nullptr);
-    EXPECT_EQ(store.Find("second", &second), secondRaw);
+    EXPECT_EQ(store.Find("first", &first.Registration), nullptr);
+    EXPECT_EQ(store.Find("second", &second.Registration), secondRaw);
 }
 
 // Category management
@@ -880,7 +863,7 @@ TEST_F(ConfigTest, Migrates013FontSettingsAndPersistsOnlyCurrentKeys) {
     EXPECT_FALSE(config->GetProperty("HUD", "ShowFPS")->GetBoolean());
 
     ASSERT_TRUE(config->Save(configPath.c_str()));
-    Config reloaded(mockMod);
+    Config reloaded(&mockMod->Registration);
     ASSERT_TRUE(reloaded.Load(configPath.c_str()));
 
     EXPECT_FALSE(reloaded.HasKey("GUI", "SecondaryFontFilename"));
@@ -1223,7 +1206,8 @@ TEST_F(ConfigTest, ApplyEditsCommitsInCallerOrderAndCoalescesNotifications) {
         {"Batch", "First", PropertyType::INTEGER, 1, 10},
     };
 
-    const Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, edits);
+    const Config::ApplyResult result =
+        config->ApplyEdits(&mockMod->Registration, schemaRevision, edits);
     ASSERT_TRUE(result.Succeeded());
     EXPECT_EQ(2u, result.ChangedCount);
     EXPECT_EQ(10, first->GetInteger());
@@ -1243,7 +1227,8 @@ TEST_F(ConfigTest, ApplyEditsCommitsInCallerOrderAndCoalescesNotifications) {
     const std::vector<Config::Edit> coalesced = {
         {"Batch", "Second", PropertyType::INTEGER, 21, 22},
     };
-    const Config::ApplyResult coalescedResult = config->ApplyEdits(mockMod, schemaRevision, coalesced);
+    const Config::ApplyResult coalescedResult =
+        config->ApplyEdits(&mockMod->Registration, schemaRevision, coalesced);
     ASSERT_TRUE(coalescedResult.Succeeded());
     EXPECT_EQ(22, second->GetInteger());
 
@@ -1261,12 +1246,13 @@ TEST_F(ConfigTest, ApplyEditsRejectsStaleOwnerAndSchema) {
     };
 
     MockMod otherOwner(nullptr);
-    Config::ApplyResult result = config->ApplyEdits(&otherOwner, schemaRevision, edits);
+    Config::ApplyResult result =
+        config->ApplyEdits(&otherOwner.Registration, schemaRevision, edits);
     EXPECT_EQ(Config::ApplyError::OwnerChanged, result.Error);
     EXPECT_EQ(1, property->GetInteger());
 
     config->GetProperty("Batch", "AddedAfterSnapshot")->SetDefaultBoolean(false);
-    result = config->ApplyEdits(mockMod, schemaRevision, edits);
+    result = config->ApplyEdits(&mockMod->Registration, schemaRevision, edits);
     EXPECT_EQ(Config::ApplyError::SchemaChanged, result.Error);
     EXPECT_EQ(1, property->GetInteger());
     EXPECT_EQ(0u, config->GetValueRevision());
@@ -1283,9 +1269,11 @@ TEST_F(ConfigTest, ApplyEditsUsesPerPropertyBaselinesInsteadOfGlobalValueRevisio
     external->SetInteger(3);
     ASSERT_EQ(1u, config->GetValueRevision());
 
-    const Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "Edited", PropertyType::INTEGER, 1, 10},
-    });
+    const Config::ApplyResult result =
+        config->ApplyEdits(&mockMod->Registration, schemaRevision,
+                           {
+                               {"Batch", "Edited", PropertyType::INTEGER, 1, 10},
+                           });
 
     EXPECT_TRUE(result.Succeeded());
     EXPECT_EQ(10, edited->GetInteger());
@@ -1298,20 +1286,24 @@ TEST_F(ConfigTest, ApplyEditsRejectsTypeBaseAndDuplicateConflicts) {
     property->SetDefaultInteger(1);
     const std::uint64_t schemaRevision = config->GetSchemaRevision();
 
-    Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "Value", PropertyType::STRING, std::string("1"), std::string("2")},
-    });
+    Config::ApplyResult result = config->ApplyEdits(
+        &mockMod->Registration, schemaRevision,
+        {
+            {"Batch", "Value", PropertyType::STRING, std::string("1"), std::string("2")},
+        });
     EXPECT_EQ(Config::ApplyError::TypeChanged, result.Error);
 
-    result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "Value", PropertyType::INTEGER, 0, 2},
-    });
+    result = config->ApplyEdits(&mockMod->Registration, schemaRevision,
+                                {
+                                    {"Batch", "Value", PropertyType::INTEGER, 0, 2},
+                                });
     EXPECT_EQ(Config::ApplyError::BaseChanged, result.Error);
 
-    result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "Value", PropertyType::INTEGER, 1, 2},
-        {"Batch", "Value", PropertyType::INTEGER, 1, 3},
-    });
+    result = config->ApplyEdits(&mockMod->Registration, schemaRevision,
+                                {
+                                    {"Batch", "Value", PropertyType::INTEGER, 1, 2},
+                                    {"Batch", "Value", PropertyType::INTEGER, 1, 3},
+                                });
     EXPECT_EQ(Config::ApplyError::DuplicateTarget, result.Error);
     EXPECT_EQ(1u, result.EditIndex);
     EXPECT_EQ(1, property->GetInteger());
@@ -1326,10 +1318,12 @@ TEST_F(ConfigTest, ApplyEditsValidatesEntireBatchBeforeWriting) {
     second->SetDefaultInteger(2);
     const std::uint64_t schemaRevision = config->GetSchemaRevision();
 
-    const Config::ApplyResult result = config->ApplyEdits(mockMod, schemaRevision, {
-        {"Batch", "First", PropertyType::INTEGER, 1, 10},
-        {"Batch", "Second", PropertyType::INTEGER, 99, 20},
-    });
+    const Config::ApplyResult result =
+        config->ApplyEdits(&mockMod->Registration, schemaRevision,
+                           {
+                               {"Batch", "First", PropertyType::INTEGER, 1, 10},
+                               {"Batch", "Second", PropertyType::INTEGER, 99, 20},
+                           });
 
     EXPECT_EQ(Config::ApplyError::BaseChanged, result.Error);
     EXPECT_EQ(1u, result.EditIndex);
@@ -1351,10 +1345,9 @@ TEST_F(ConfigTest, ModificationNotification) {
 
     auto notifications = config->TakePendingNotifications();
     ASSERT_EQ(1u, notifications.size());
-    mockMod->OnModifyConfig(
-        notifications[0].Category.c_str(),
-        notifications[0].Key.c_str(),
-        notifications[0].ChangedProperty);
+    mockMod->Registration.Notify<ModEvent::OnModifyConfig>(notifications[0].Category.c_str(),
+                                                           notifications[0].Key.c_str(),
+                                                           notifications[0].ChangedProperty);
     EXPECT_EQ(1, mockMod->modifiedCount);
     EXPECT_EQ("TestCategory", mockMod->lastCategory);
     EXPECT_EQ("TestProp", mockMod->lastKey);
@@ -1369,10 +1362,9 @@ TEST_F(ConfigTest, ModificationNotification) {
     prop->SetString("Changed Again");
     notifications = config->TakePendingNotifications();
     ASSERT_EQ(1u, notifications.size());
-    mockMod->OnModifyConfig(
-        notifications[0].Category.c_str(),
-        notifications[0].Key.c_str(),
-        notifications[0].ChangedProperty);
+    mockMod->Registration.Notify<ModEvent::OnModifyConfig>(notifications[0].Category.c_str(),
+                                                           notifications[0].Key.c_str(),
+                                                           notifications[0].ChangedProperty);
     EXPECT_EQ(2, mockMod->modifiedCount);
     EXPECT_STREQ("Changed Again", prop->GetString());
 
@@ -1449,7 +1441,7 @@ TEST_F(ConfigTest, FileIO) {
 
     // Create a new config and load the file
     MockMod *newMockMod = new MockMod(nullptr);
-    Config *newConfig = new Config(newMockMod);
+    Config *newConfig = new Config(&newMockMod->Registration);
     EXPECT_TRUE(newConfig->Load(filename));
 
     // Check that properties were loaded correctly
@@ -1523,8 +1515,8 @@ TEST_F(ConfigTest, SaveUsesSnapshottedModMetadata) {
     mockMod->nameReadCount = 0;
     mockMod->versionReadCount = 0;
     config->SnapshotModMetadata();
-    EXPECT_EQ(1, mockMod->nameReadCount);
-    EXPECT_EQ(1, mockMod->versionReadCount);
+    EXPECT_EQ(0, mockMod->nameReadCount);
+    EXPECT_EQ(0, mockMod->versionReadCount);
 
     mockMod->idReadCount = 0;
     mockMod->nameReadCount = 0;

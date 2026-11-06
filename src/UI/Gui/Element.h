@@ -5,7 +5,7 @@
 // here is what the render engine draws next frame.
 //
 // The entity belongs to the level, which is why an element cannot outlive it: destroy
-// the Gui that owns the element while the level is still there, from IMod::OnUnload at
+// the Gui that owns the element while the level is still there, from ModRecord::OnUnload at
 // the latest, and never keep one across a level being torn down. Deleting the element
 // destroys the entity.
 //

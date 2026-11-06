@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "Console/CommandRecord.h"
-#include "Loader/IMod.h"
+#include "Loader/ModRecord.h"
 #include "ScriptApiSurface.h"
 #include "ScriptDiagnostic.h"
 
@@ -45,15 +45,10 @@ public:
                         ScriptDiagnostic &diagnostic);
     bool CallLoadScript(const char *filename, CKBehavior *script, ScriptDiagnostic &diagnostic);
     bool CallCheatEnabled(bool enable, ScriptDiagnostic &diagnostic);
-    bool CallCommandEvent(bool beforeCommand,
-                          BML::CommandRecord *command,
-                          const std::vector<std::string> &args,
-                          ScriptDiagnostic &diagnostic);
-    bool CallModifyConfig(const char *modId,
-                          const char *category,
-                          const char *key,
-                          Property *property,
-                          ScriptDiagnostic &diagnostic);
+    bool CallCommandEvent(bool beforeCommand, BML::CommandRecord *command,
+                          const std::vector<std::string> &args, ScriptDiagnostic &diagnostic);
+    bool CallModifyConfig(const char *modId, const char *category, const char *key,
+                          Property *property, ScriptDiagnostic &diagnostic);
     bool CallPhysicalize(CK3dEntity *target,
                          CKBOOL fixed,
                          float friction,

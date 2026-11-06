@@ -11,7 +11,7 @@
 
 #include "ModMenu/ModMenuSession.h"
 
-class IMod;
+class ModRecord;
 class ModContext;
 
 struct ModMenuModSummary {
@@ -65,7 +65,7 @@ private:
     };
 
     struct ModListSource {
-        IMod *mod = nullptr;
+        ModRecord *mod = nullptr;
         std::uint64_t registration = 0;
         std::uint32_t contentGeneration = 0;
 
@@ -78,8 +78,8 @@ private:
         Revert,
     };
 
-    ModMenuOwner MakeOwner(IMod *mod) const;
-    ModMenuDocument BuildDocument(IMod *mod, const ModMenuOwner &owner) const;
+    ModMenuOwner MakeOwner(ModRecord *mod) const;
+    ModMenuDocument BuildDocument(ModRecord *mod, const ModMenuOwner &owner) const;
     void RefreshMods();
     bool Apply();
     void Revert();

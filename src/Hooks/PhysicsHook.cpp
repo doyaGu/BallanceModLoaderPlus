@@ -108,20 +108,17 @@ int HookLifecycle::Physicalize(const CKBehaviorContext &behcontext) {
         VxVector shiftMassCenter;
         beh->GetLocalParameterValue(3, &shiftMassCenter);
 
-        modContext->BroadcastCallback(&IMod::OnPhysicalize, target,
-                                               fixed, friction, elasticity, mass,
-                                               collisionGroup, startFrozen, enableCollision,
-                                               autoCalcMassCenter, linearSpeedDampening,
-                                               rotSpeedDampening,
-                                               collisionSurface, shiftMassCenter, convexCount,
-                                               convexMesh, ballCount, ballCenter,
-                                               ballRadius, concaveCount, concaveMesh);
+        modContext->BroadcastCallback<ModEvent::OnPhysicalize>(
+            target, fixed, friction, elasticity, mass, collisionGroup, startFrozen, enableCollision,
+            autoCalcMassCenter, linearSpeedDampening, rotSpeedDampening, collisionSurface,
+            shiftMassCenter, convexCount, convexMesh, ballCount, ballCenter, ballRadius,
+            concaveCount, concaveMesh);
         delete[] convexMesh;
         delete[] ballCenter;
         delete[] ballRadius;
         delete[] concaveMesh;
     } else {
-        modContext->BroadcastCallback(&IMod::OnUnphysicalize, target);
+        modContext->BroadcastCallback<ModEvent::OnUnphysicalize>(target);
     }
 
     return original(behcontext);

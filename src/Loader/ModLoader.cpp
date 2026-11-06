@@ -150,7 +150,7 @@ void ModLoader::Abandon() noexcept {
 #endif
 }
 
-void ModLoader::LogCallbackFailure(IMod *mod, const char *reason) const {
+void ModLoader::LogCallbackFailure(ModRecord *mod, const char *reason) const {
     if (!m_Context.GetLogger())
         return;
     if (reason)
@@ -159,7 +159,7 @@ void ModLoader::LogCallbackFailure(IMod *mod, const char *reason) const {
         m_Context.GetLogger()->Error("Unknown exception in mod %s callback", mod->GetID());
 }
 
-void ModLoader::LogImGuiRecovery(IMod *mod) const {
+void ModLoader::LogImGuiRecovery(ModRecord *mod) const {
     if (m_Context.GetLogger())
         m_Context.GetLogger()->Warn("Recovered unbalanced ImGui state after mod %s callback", mod->GetID());
 }
@@ -169,12 +169,12 @@ void ModLoader::LogMessage(const char *message) const {
         m_Context.GetLogger()->Info("On Message %s", message);
 }
 
-NativeMod *ModLoader::FindNativeMod(const IMod *mod) const {
-    const auto it = m_CNativeMods.find(const_cast<IMod *>(mod));
+NativeMod *ModLoader::FindNativeMod(const ModRecord *mod) const {
+    const auto it = m_CNativeMods.find(const_cast<ModRecord *>(mod));
     return it == m_CNativeMods.end() ? nullptr : it->second.get();
 }
 
-BML_ModContextHandle ModLoader::IssueModContext(IMod *mod) {
+BML_ModContextHandle ModLoader::IssueModContext(ModRecord *mod) {
     for (const auto &entry : m_ModContexts)
         if (entry.second == mod)
             return entry.first;
@@ -186,23 +186,23 @@ BML_ModContextHandle ModLoader::IssueModContext(IMod *mod) {
     return handle;
 }
 
-IMod *ModLoader::ResolveModContext(BML_ModContextHandle context) const {
+ModRecord *ModLoader::ResolveModContext(BML_ModContextHandle context) const {
     const auto it = m_ModContexts.find(context);
     return it == m_ModContexts.end() ? nullptr : it->second;
 }
 
-IMod *ModLoader::ResolveModHandle(BML_ModHandle handle) const {
+ModRecord *ModLoader::ResolveModHandle(BML_ModHandle handle) const {
     std::shared_lock lock(m_ModRegistryMutex);
     for (const auto &entry : m_ModGenerations)
         if (entry.second == handle)
-            return const_cast<IMod *>(entry.first);
+            return const_cast<ModRecord *>(entry.first);
     return nullptr;
 }
 
-std::vector<ModLoader::DependencyInfo> ModLoader::ReadDependencies(const IMod *mod) const {
+std::vector<ModLoader::DependencyInfo> ModLoader::ReadDependencies(const ModRecord *mod) const {
     std::lock_guard<std::mutex> lock(m_StateMutex);
     std::vector<DependencyInfo> result;
-    auto it = m_ModDependencies.find(const_cast<IMod *>(mod));
+    auto it = m_ModDependencies.find(const_cast<ModRecord *>(mod));
     if (it != m_ModDependencies.end()) {
         result.reserve(it->second.size());
         for (const auto &d : it->second)
@@ -212,76 +212,77 @@ std::vector<ModLoader::DependencyInfo> ModLoader::ReadDependencies(const IMod *m
 }
 
 std::string ModLoader::InvokedOwnerId() const {
-    IMod *owner = ModInvocation::Current(this);
+    ModRecord *owner = ModInvocation::Current(this);
 #if BML_ENABLE_ANGELSCRIPT
     if (!owner)
-        owner = BML::ScriptModRuntime::GetCurrentScriptMod();
+        if (auto *script = BML::ScriptModRuntime::GetCurrentScriptMod())
+            owner = &script->Registration();
 #endif
     return owner ? owner->GetID() : "BML";
 }
 
-bool ModLoader::CanDispatchOwner(const IMod *mod) const {
+bool ModLoader::CanDispatchOwner(const ModRecord *mod) const {
     if (!mod)
         return false;
     if (auto *native = FindNativeMod(mod))
         return native->IsLoading() || native->IsLoaded();
 #if BML_ENABLE_ANGELSCRIPT
-    if (auto *script = dynamic_cast<const BML::ScriptMod *>(mod))
+    if (auto *script = mod->Script)
         return script->IsLoaded() && !script->IsFailed();
 #endif
     return !m_ShuttingDown.load(std::memory_order_acquire);
 }
 
-void ModLoader::FailOwner(IMod *mod, int code, const char *operation) {
+void ModLoader::FailOwner(ModRecord *mod, int code, const char *operation) {
     m_Context.StopModWork(mod);
     if (auto *native = FindNativeMod(mod))
         native->Fail(code < 0 ? code : BML_ERROR_FAIL, operation);
 #if BML_ENABLE_ANGELSCRIPT
-    else if (auto *script = dynamic_cast<BML::ScriptMod *>(mod))
+    else if (auto *script = mod->Script)
         script->SetLoadFailure(std::string(operation) + " returned " + std::to_string(code));
 #endif
 }
 
-bool ModLoader::CanUseProvider(const IMod *consumer, const IMod *provider) const {
+bool ModLoader::CanUseProvider(const ModRecord *consumer, const ModRecord *provider) const {
     if (!consumer || !provider || !CanDispatchOwner(provider))
         return false;
     if (consumer == provider)
         return true;
-    const auto id = const_cast<IMod *>(provider)->GetID();
+    const auto id = const_cast<ModRecord *>(provider)->GetID();
     std::lock_guard<std::mutex> lock(m_StateMutex);
-    auto it = m_ModDependencies.find(const_cast<IMod *>(consumer));
+    auto it = m_ModDependencies.find(const_cast<ModRecord *>(consumer));
     if (it == m_ModDependencies.end())
         return false;
     for (const auto &d : it->second)
         if (d.id && std::strcmp(d.id, id) == 0)
-            return !(BML::ParseLegacyModVersion(const_cast<IMod *>(provider)->GetVersion()) <
+            return !(BML::ParseLegacyModVersion(const_cast<ModRecord *>(provider)->GetVersion()) <
                      d.minVersion);
     return false;
 }
 
-bool ModLoader::HasLiveDependents(const IMod *provider) const {
-    const std::string id = const_cast<IMod *>(provider)->GetID();
+bool ModLoader::HasLiveDependents(const ModRecord *provider) const {
+    const std::string id = const_cast<ModRecord *>(provider)->GetID();
     for (const auto &entry : m_CNativeMods) {
         if (entry.first == provider || !entry.second->HasInstance())
             continue;
-        if (provider == static_cast<IMod *>(m_BMLMod) ||
-            provider == static_cast<IMod *>(m_BallTypeMod))
+        if (provider == (m_BMLMod ? &m_BMLMod->Registration() : nullptr) ||
+            provider == (m_BallTypeMod ? &m_BallTypeMod->Registration() : nullptr))
             return true;
         for (const auto &dep : entry.second->Dependencies())
             if (dep.id && id == dep.id)
                 return true;
     }
 #if BML_ENABLE_ANGELSCRIPT
-    for (IMod *candidate : m_Mods) {
+    for (ModRecord *candidate : m_Mods) {
         if (candidate == provider)
             continue;
-        auto *script = dynamic_cast<BML::ScriptMod *>(candidate);
+        auto *script = candidate->Script;
         if (!script)
             continue;
         if (!script->IsLoaded())
             continue;
-        if (provider == static_cast<IMod *>(m_BMLMod) ||
-            provider == static_cast<IMod *>(m_BallTypeMod))
+        if (provider == (m_BMLMod ? &m_BMLMod->Registration() : nullptr) ||
+            provider == (m_BallTypeMod ? &m_BallTypeMod->Registration() : nullptr))
             return true;
         for (const auto &d : ReadDependencies(candidate))
             if (d.Id == id)
@@ -305,45 +306,47 @@ void ModLoader::ProcessFailedNativeMods() {
     auto mutation = m_ModInvocationGate.LockMutation();
     for (auto &entry : m_CNativeMods) {
         auto &native = *entry.second;
-        if (HasLiveDependents(&native) || !native.BeginFailureCleanup())
+        if (HasLiveDependents(&native.Registration()) || !native.BeginFailureCleanup())
             continue;
         {
-            ModInvocation invocation(this, &native);
+            ModInvocation invocation(this, &native.Registration());
             if (native.Unload() != BML_OK)
                 continue;
         }
         if (!m_Context.PrepareModUnload(native.GetID()))
             continue;
-        if (Config *config = m_Context.GetConfig(&native);
+        if (Config *config = m_Context.GetConfig(&native.Registration());
             config && !m_Context.RemoveConfig(config))
             continue;
-        m_Context.GetConfigApi().CleanupOwner(native);
+        m_Context.GetConfigApi().CleanupOwner(native.Registration());
         native.Destroy();
         for (auto it = m_ModContexts.begin(); it != m_ModContexts.end();) {
-            if (it->second == &native)
+            if (it->second == &native.Registration())
                 it = m_ModContexts.erase(it);
             else
                 ++it;
         }
-        m_ActiveMods.erase(std::remove(m_ActiveMods.begin(), m_ActiveMods.end(), &native),
-                           m_ActiveMods.end());
+        m_ActiveMods.erase(
+            std::remove(m_ActiveMods.begin(), m_ActiveMods.end(), &native.Registration()),
+            m_ActiveMods.end());
     }
 }
 
-void ModLoader::DispatchConfigChange(IMod *mod, const char *category, const char *key, Property *property) {
+void ModLoader::DispatchConfigChange(ModRecord *mod, const char *category, const char *key,
+                                     Property *property) {
     try {
         ModInvocation invocation(this, mod);
         if (auto *native = FindNativeMod(mod)) {
             if (native->IsFailed())
                 return;
-            const BML_ConfigEvent event{
-                sizeof(BML_ConfigEvent),
-                GetModGeneration(mod),
-                mod->GetID(),
-                category,
-                key,
-                property ? static_cast<uint32_t>(property->GetType()) : BML_CONFIG_TYPE_NONE,
-                m_Context.GetConfigApi().HandleFor(*mod, property)};
+            const BML_ConfigEvent event{sizeof(BML_ConfigEvent),
+                                        GetModGeneration(mod),
+                                        mod->GetID(),
+                                        category,
+                                        key,
+                                        property ? static_cast<uint32_t>(property->GetType())
+                                                 : BML_CONFIG_TYPE_NONE,
+                                        m_Context.GetConfigApi().HandleFor(*mod, property)};
             if (auto callback = native->Callbacks().OnModifyConfig) {
                 const int code = callback(native->Instance(), native->Context(), &event);
                 if (code != BML_OK) {
@@ -352,7 +355,7 @@ void ModLoader::DispatchConfigChange(IMod *mod, const char *category, const char
                 }
             }
         } else {
-            mod->OnModifyConfig(category, key, property);
+            mod->Notify<ModEvent::OnModifyConfig>(category, key, property);
         }
     } catch (const std::exception &e) {
         if (m_Context.GetLogger())
@@ -368,7 +371,7 @@ std::wstring ModLoader::GetModRootDirectory(const char *modId) const {
         return {};
 
     std::shared_lock<std::shared_mutex> lock(m_ModRegistryMutex);
-    IMod *mod = FindModLocked(modId);
+    ModRecord *mod = FindModLocked(modId);
     if (!mod)
         return {};
 
@@ -378,12 +381,13 @@ std::wstring ModLoader::GetModRootDirectory(const char *modId) const {
 
 #if BML_ENABLE_ANGELSCRIPT
     for (const auto &scriptMod : m_ScriptMods) {
-        if (scriptMod.get() == mod)
+        if (&scriptMod->Registration() == mod)
             return scriptMod->GetEntry().RootDirectory;
     }
 #endif
 
-    if (mod == static_cast<IMod *>(m_BMLMod) || mod == static_cast<IMod *>(m_BallTypeMod))
+    if (mod == (m_BMLMod ? &m_BMLMod->Registration() : nullptr) ||
+        mod == (m_BallTypeMod ? &m_BallTypeMod->Registration() : nullptr))
         return ModuleDirectoryFromAddress(reinterpret_cast<const void *>(&BML_GetModContext));
     return {};
 }
@@ -425,7 +429,7 @@ bool ModLoader::LoadMods() {
             ExploreMods(path, modPaths, packages, nextPackage);
 
             for (auto &modPath : modPaths) {
-                IMod *mod = LoadMod(modPath);
+                ModRecord *mod = LoadMod(modPath);
                 if (mod) {
                     const char *id = mod->GetID();
                     if (modSet.find(id) != modSet.end()) {
@@ -444,7 +448,7 @@ bool ModLoader::LoadMods() {
             if (m_Context.AreAngelScriptBindingsRegistered()) {
                 ExploreScriptMods(path, scriptModCandidates, packages);
                 for (auto &scriptCandidate : scriptModCandidates) {
-                    IMod *mod = LoadScriptMod(scriptCandidate);
+                    ModRecord *mod = LoadScriptMod(scriptCandidate);
                     if (mod) {
                         const char *id = mod->GetID();
                         if (modSet.find(id) != modSet.end()) {
@@ -557,7 +561,7 @@ bool ModLoader::InitMods() {
         if (!ResolveDependencies())
             return false;
 
-        for (IMod *mod : m_Mods) {
+        for (ModRecord *mod : m_Mods) {
             activatingModId = mod->GetID();
             m_Context.GetLogger()->Info("Loading Mod %s[%s] v%s by %s",
                            activatingModId, mod->GetName(), mod->GetVersion(), mod->GetAuthor());
@@ -586,7 +590,7 @@ bool ModLoader::InitMods() {
                         continue;
                     }
                 } else {
-                    mod->OnLoad();
+                    mod->Notify<ModEvent::OnLoad>();
                 }
             }
             // Capacity was reserved before activation, so recording success
@@ -599,8 +603,8 @@ bool ModLoader::InitMods() {
         int scriptLoadedCount = 0;
         int scriptFailedCount = 0;
         BML::ScriptMod *firstFailedScript = nullptr;
-        for (IMod *mod : m_Mods) {
-            auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod);
+        for (ModRecord *mod : m_Mods) {
+            auto *scriptMod = mod->Script;
             if (!scriptMod)
                 continue;
             if (scriptMod->IsFailed()) {
@@ -710,7 +714,7 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
     const auto active = m_ActiveMods;
     m_UnloadedMods.reserve(m_Mods.size());
     for (auto rit = active.rbegin(); rit != active.rend(); ++rit) {
-        IMod *mod = *rit;
+        ModRecord *mod = *rit;
         if (!GetModGeneration(mod))
             continue;
         try {
@@ -725,7 +729,7 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
                 }
             } else if (std::find(m_UnloadedMods.begin(), m_UnloadedMods.end(), mod) ==
                        m_UnloadedMods.end()) {
-                mod->OnUnload();
+                mod->Notify<ModEvent::OnUnload>();
                 m_UnloadedMods.push_back(mod);
             }
         } catch (const std::exception &e) {
@@ -758,7 +762,7 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
     m_Context.FlushConfigChanges(true, false);
 
     for (auto rit = active.rbegin(); rit != active.rend(); ++rit) {
-        IMod *mod = *rit;
+        ModRecord *mod = *rit;
         if (!GetModGeneration(mod))
             continue;
         try {
@@ -798,7 +802,7 @@ void ModLoader::DeactivateActiveMods(bool dispatchPendingNotifications) {
     }
     m_Context.ClearCommands();
     m_ActiveMods.erase(std::remove_if(m_ActiveMods.begin(), m_ActiveMods.end(),
-                                      [&](IMod *mod) {
+                                      [&](ModRecord *mod) {
                                           return !GetModGeneration(mod) ||
                                                  std::find(m_UnloadedMods.begin(),
                                                            m_UnloadedMods.end(),
@@ -819,7 +823,7 @@ void ModLoader::RollbackModActivation() {
     // A throwing OnLoad may publish owner-scoped state before the Mod becomes
     // active. Retire every owner because only completed activations reached the
     // active list cleaned by DeactivateActiveMods.
-    for (IMod *mod : m_Mods) {
+    for (ModRecord *mod : m_Mods) {
         try {
             const char *ownerId = mod ? mod->GetID() : nullptr;
             if (ownerId && ownerId[0] != '\0')
@@ -837,14 +841,14 @@ int ModLoader::GetModCount() {
     return (int) m_Mods.size();
 }
 
-IMod *ModLoader::GetMod(int index) {
+ModRecord *ModLoader::GetMod(int index) {
     std::shared_lock<std::shared_mutex> lock(m_ModRegistryMutex);
     if (index < 0 || index >= (int) m_Mods.size())
         return nullptr;
     return m_Mods[index];
 }
 
-std::uint64_t ModLoader::GetModGeneration(const IMod *mod) const {
+std::uint64_t ModLoader::GetModGeneration(const ModRecord *mod) const {
     if (!mod)
         return 0;
 
@@ -858,7 +862,7 @@ std::uint64_t ModLoader::GetModRegistryRevision() const {
     return m_ModRegistryRevision;
 }
 
-IMod *ModLoader::FindMod(const char *id) const {
+ModRecord *ModLoader::FindMod(const char *id) const {
     if (!id)
         return nullptr;
 
@@ -866,14 +870,15 @@ IMod *ModLoader::FindMod(const char *id) const {
     return FindModLocked(id);
 }
 
-IMod *ModLoader::FindModLocked(const std::string &id) const {
+ModRecord *ModLoader::FindModLocked(const std::string &id) const {
     const auto entry = m_ModIndex.find(id);
     return entry != m_ModIndex.end() && entry->second < m_Mods.size()
         ? m_Mods[entry->second]
         : nullptr;
 }
 
-int ModLoader::RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) {
+int ModLoader::RegisterDependency(ModRecord *mod, const char *dependencyId, int major, int minor,
+                                  int patch) {
     if (!mod || !dependencyId) {
         return BML_ERROR_FAIL;
     }
@@ -892,7 +897,8 @@ int ModLoader::RegisterDependency(IMod *mod, const char *dependencyId, int major
     }
 }
 
-int ModLoader::RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) {
+int ModLoader::RegisterOptionalDependency(ModRecord *mod, const char *dependencyId, int major,
+                                          int minor, int patch) {
     if (!mod || !dependencyId) {
         return BML_ERROR_FAIL;
     }
@@ -911,11 +917,11 @@ int ModLoader::RegisterOptionalDependency(IMod *mod, const char *dependencyId, i
     }
 }
 
-int ModLoader::CheckDependencies(IMod *mod) const {
+int ModLoader::CheckDependencies(ModRecord *mod) const {
     return EvaluateDependencies(mod, nullptr);
 }
 
-int ModLoader::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
+int ModLoader::EvaluateDependencies(ModRecord *mod, std::string *diagnostic) const {
     if (diagnostic)
         diagnostic->clear();
     if (!mod) {
@@ -931,7 +937,7 @@ int ModLoader::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
             std::string Id;
             BMLVersion MinVersion;
             bool Optional = false;
-            IMod *Mod = nullptr;
+            ModRecord *Mod = nullptr;
         };
 
         std::vector<DependencySnapshot> dependencies;
@@ -958,7 +964,7 @@ int ModLoader::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
         }
 
         for (const auto &dependency : dependencies) {
-            IMod *depMod = dependency.Mod;
+            ModRecord *depMod = dependency.Mod;
             if (!depMod) {
                 if (!dependency.Optional) {
                     if (diagnostic)
@@ -1004,7 +1010,7 @@ int ModLoader::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
     }
 }
 
-int ModLoader::EvaluateActivationDependencies(IMod *mod, std::string *diagnostic) const {
+int ModLoader::EvaluateActivationDependencies(ModRecord *mod, std::string *diagnostic) const {
     if (EvaluateDependencies(mod, diagnostic) == 0)
         return 0;
 
@@ -1018,7 +1024,7 @@ int ModLoader::EvaluateActivationDependencies(IMod *mod, std::string *diagnostic
     for (const ModDependency &dependency : dependencies->second) {
         if (dependency.optional || !dependency.id || !*dependency.id)
             continue;
-        IMod *registered = FindModLocked(dependency.id);
+        ModRecord *registered = FindModLocked(dependency.id);
         if (!registered ||
             std::find(m_ActiveMods.begin(), m_ActiveMods.end(), registered) == m_ActiveMods.end()) {
             if (diagnostic)
@@ -1029,7 +1035,7 @@ int ModLoader::EvaluateActivationDependencies(IMod *mod, std::string *diagnostic
     return 1;
 }
 
-int ModLoader::GetDependencyCount(IMod *mod) const {
+int ModLoader::GetDependencyCount(ModRecord *mod) const {
     if (!mod) {
         return -1;
     }
@@ -1047,8 +1053,8 @@ int ModLoader::GetDependencyCount(IMod *mod) const {
     }
 }
 
-int ModLoader::GetDependencyInfo(IMod *mod, int index, char *dependencyId, int idSize,
-                                  int *major, int *minor, int *patch, int *optional) const {
+int ModLoader::GetDependencyInfo(ModRecord *mod, int index, char *dependencyId, int idSize,
+                                 int *major, int *minor, int *patch, int *optional) const {
     if (!mod || index < 0 || (dependencyId && idSize <= 0)) {
         return BML_ERROR_FAIL;
     }
@@ -1085,7 +1091,7 @@ int ModLoader::GetDependencyInfo(IMod *mod, int index, char *dependencyId, int i
     }
 }
 
-int ModLoader::ClearDependencies(IMod *mod) {
+int ModLoader::ClearDependencies(ModRecord *mod) {
     if (!mod) {
         return BML_ERROR_FAIL;
     }
@@ -1221,7 +1227,7 @@ bool ModLoader::UnloadLib(void *dllHandle) {
     return success;
 }
 
-void ModLoader::DestroyNativeMod(IMod *mod) noexcept {
+void ModLoader::DestroyNativeMod(ModRecord *mod) noexcept {
     auto *native = FindNativeMod(mod);
     if (!native || !native->CanDestroy())
         return;
@@ -1235,7 +1241,7 @@ void ModLoader::DestroyNativeMod(IMod *mod) noexcept {
     m_CNativeMods.erase(mod);
 }
 
-IMod *ModLoader::LoadMod(const std::wstring &path) {
+ModRecord *ModLoader::LoadMod(const std::wstring &path) {
     const std::string modPath = utils::Utf16ToUtf8(path);
     auto dllHandle = LoadLib(path.c_str());
     if (!dllHandle)
@@ -1260,7 +1266,7 @@ IMod *ModLoader::LoadMod(const std::wstring &path) {
                                      code, diagnostic.c_str());
         return nullptr;
     }
-    auto *mod = native.get();
+    auto *mod = &native->Registration();
     // Own metadata before publishing it. No Mod instance exists until dependencies
     // have been resolved by InitMods.
     auto mutation = m_ModInvocationGate.LockMutation();
@@ -1270,7 +1276,7 @@ IMod *ModLoader::LoadMod(const std::wstring &path) {
         return nullptr;
     }
     try {
-        for (const auto &dep : mod->Dependencies()) {
+        for (const auto &dep : FindNativeMod(mod)->Dependencies()) {
             const int result =
                 dep.optional
                     ? RegisterOptionalDependency(mod, dep.id, dep.minVersion.major,
@@ -1288,7 +1294,7 @@ IMod *ModLoader::LoadMod(const std::wstring &path) {
 }
 
 #if BML_ENABLE_ANGELSCRIPT
-IMod *ModLoader::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
+ModRecord *ModLoader::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
     BML::ScriptModLoadResult loadResult = BML::LoadScriptMod(&m_Context, m_Context.GetCKContext(), candidate);
     auto &scriptMod = loadResult.Mod;
     if (!scriptMod) {
@@ -1297,7 +1303,7 @@ IMod *ModLoader::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
     }
 
     m_ScriptMods.push_back(std::move(scriptMod));
-    IMod *mod = m_ScriptMods.back().get();
+    ModRecord *mod = &m_ScriptMods.back()->Registration();
     if (!RegisterMod(mod)) {
         if (Config *config = m_Context.GetConfig(mod))
             m_Context.RemoveConfig(config);
@@ -1307,13 +1313,14 @@ IMod *ModLoader::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
 
     RegisterScriptModDependencies(mod, loadResult.Definition);
     if (m_ScriptHotReload)
-        m_ScriptHotReload->RegisterMod(static_cast<BML::ScriptMod *>(mod));
+        m_ScriptHotReload->RegisterMod(mod->Script);
     return mod;
 }
 #endif
 
 #if BML_ENABLE_ANGELSCRIPT
-void ModLoader::RegisterScriptModDependencies(IMod *mod, const BML::ScriptModDefinition &definition) {
+void ModLoader::RegisterScriptModDependencies(ModRecord *mod,
+                                              const BML::ScriptModDefinition &definition) {
     if (!mod)
         return;
 
@@ -1359,7 +1366,7 @@ void ModLoader::ProcessScriptModQueuedCallbacks() {
 #if BML_ENABLE_ANGELSCRIPT
 std::vector<ModLoader::RegisteredModSnapshot> ModLoader::SnapshotModRegistry() const {
     struct PendingModSnapshot {
-        IMod *Mod = nullptr;
+        ModRecord *Mod = nullptr;
         std::vector<ModDependencySnapshot> Dependencies;
     };
 
@@ -1369,7 +1376,7 @@ std::vector<ModLoader::RegisteredModSnapshot> ModLoader::SnapshotModRegistry() c
         std::lock_guard<std::mutex> dependencyLock(m_StateMutex);
         std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
         pending.reserve(m_Mods.size());
-        for (IMod *registered : m_Mods) {
+        for (ModRecord *registered : m_Mods) {
             PendingModSnapshot item;
             item.Mod = registered;
 
@@ -1440,9 +1447,9 @@ bool ModLoader::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
             return entry.Id == id;
         });
     };
-    const auto current = std::find_if(
-        registry.begin(), registry.end(), [mod](const RegisteredModSnapshot &entry) {
-            return entry.Identity == mod;
+    const auto current =
+        std::find_if(registry.begin(), registry.end(), [mod](const RegisteredModSnapshot &entry) {
+            return entry.Identity == &mod->Registration();
         });
     if (current == registry.end()) {
         diagnostic = "Script mod reload target is not registered.";
@@ -1459,7 +1466,7 @@ bool ModLoader::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
     }
     if (candidate.Id != current->Id) {
         const auto existing = findById(candidate.Id);
-        if (existing != registry.end() && existing->Identity != mod) {
+        if (existing != registry.end() && existing->Identity != &mod->Registration()) {
             diagnostic = "Script mod failed-load recovery id '" + candidate.Id + "' conflicts with an already registered mod.";
             addField("boundary", "mod_identity");
             addField("conflict", candidate.Id);
@@ -1509,7 +1516,7 @@ bool ModLoader::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         return false;
     }
     for (const RegisteredModSnapshot &dependent : registry) {
-        if (dependent.Identity == mod)
+        if (dependent.Identity == &mod->Registration())
             continue;
 
         for (const ModDependencySnapshot &dependency : dependent.Dependencies) {
@@ -1560,7 +1567,7 @@ bool ModLoader::PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
         std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
         const auto oldIt = m_ModIndex.find(oldId);
         if (oldIt == m_ModIndex.end() || oldIt->second >= m_Mods.size() ||
-            m_Mods[oldIt->second] != mod) {
+            m_Mods[oldIt->second] != &mod->Registration()) {
             diagnostic = "Script mod failed-load recovery lost its placeholder registration.";
             return false;
         }
@@ -1580,7 +1587,7 @@ bool ModLoader::PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
         const auto oldIt = m_ModIndex.find(oldId);
         const auto newIt = m_ModIndex.find(candidate.Id);
         if (oldIt == m_ModIndex.end() || oldIt->second >= m_Mods.size() ||
-            m_Mods[oldIt->second] != mod) {
+            m_Mods[oldIt->second] != &mod->Registration()) {
             diagnostic = "Script mod failed-load recovery lost its placeholder registration.";
         } else if (changedId && newIt != m_ModIndex.end()) {
             diagnostic = "Script mod failed-load recovery id '" + candidate.Id + "' conflicts with an already registered mod.";
@@ -1607,8 +1614,8 @@ bool ModLoader::PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
     if (changedId)
         m_Context.RetireFailedModOwner(oldId);
 
-    ClearDependencies(mod);
-    RegisterScriptModDependencies(mod, candidate);
+    ClearDependencies(&mod->Registration());
+    RegisterScriptModDependencies(&mod->Registration(), candidate);
     return true;
 }
 #endif
@@ -1631,7 +1638,7 @@ void ModLoader::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
         std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
         const auto current = m_ModIndex.find(currentId);
         if (current == m_ModIndex.end() || current->second >= m_Mods.size() ||
-            m_Mods[current->second] != mod)
+            m_Mods[current->second] != &mod->Registration())
             return;
         const auto old = m_ModIndex.find(oldDefinition.Id);
         if (changedId && old != m_ModIndex.end())
@@ -1649,7 +1656,7 @@ void ModLoader::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
         std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
         const auto current = m_ModIndex.find(currentId);
         if (current != m_ModIndex.end() && current->second < m_Mods.size() &&
-            m_Mods[current->second] == mod) {
+            m_Mods[current->second] == &mod->Registration()) {
             if (changedId) {
                 const std::size_t index = current->second;
                 const auto inserted = m_ModIndex.emplace(oldDefinition.Id, index);
@@ -1675,8 +1682,8 @@ void ModLoader::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
     if (changedId)
         m_Context.RetireFailedModOwner(currentId);
 
-    ClearDependencies(mod);
-    RegisterScriptModDependencies(mod, oldDefinition);
+    ClearDependencies(&mod->Registration());
+    RegisterScriptModDependencies(&mod->Registration(), oldDefinition);
 }
 #endif
 
@@ -1686,7 +1693,7 @@ bool ModLoader::UnloadMod(const std::string &id) {
             m_Context.GetLogger()->Error("UnloadMod must run on the game thread.");
         return false;
     }
-    IMod *mod = nullptr;
+    ModRecord *mod = nullptr;
     {
         std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
         mod = FindModLocked(id);
@@ -1704,14 +1711,14 @@ bool ModLoader::UnloadMod(const std::string &id) {
 
 bool ModLoader::RegisterBuiltinMods() {
     m_BMLMod = new BMLMod(&m_Context);
-    if (!RegisterMod(m_BMLMod))
+    if (!RegisterMod(m_BMLMod ? &m_BMLMod->Registration() : nullptr))
         return false;
 
     m_BallTypeMod = new NewBallTypeMod(&m_Context);
-    return RegisterMod(m_BallTypeMod);
+    return RegisterMod(m_BallTypeMod ? &m_BallTypeMod->Registration() : nullptr);
 }
 
-bool ModLoader::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
+bool ModLoader::RegisterMod(ModRecord *mod, const std::shared_ptr<void> &dllHandle) {
     // Allow registering built-in mods that don't come from a DLL (dllHandle can be null).
     if (!mod) {
         m_Context.GetLogger()->Error("Mod registration failed: the Mod pointer is null.");
@@ -1867,17 +1874,18 @@ std::string ModLoader::GetNativeModOwnerId(
         if (requested == m_ModIndex.end() ||
             requested->second >= m_Mods.size())
             return {};
-        IMod *owner = m_Mods[requested->second];
-        IMod *invoked = ModInvocation::Current(this);
+        ModRecord *owner = m_Mods[requested->second];
+        ModRecord *invoked = ModInvocation::Current(this);
 #if BML_ENABLE_ANGELSCRIPT
         // Script calls enter through BMLPlus.dll too. Hot-reload and queued
         // service callbacks are not necessarily inside the Loader's native
         // Mod broadcast scope, but ScriptModRuntime still carries the exact
         // physical Script Mod whose code is executing.
         if (!invoked)
-            invoked = BML::ScriptModRuntime::GetCurrentScriptMod();
+            if (auto *script = BML::ScriptModRuntime::GetCurrentScriptMod())
+                invoked = &script->Registration();
 #endif
-        if (owner == invoked || (owner == m_BMLMod && !invoked))
+        if (owner == invoked || (owner == &m_BMLMod->Registration() && !invoked))
             return requested->first;
         return {};
     }
@@ -1913,7 +1921,7 @@ bool ModLoader::NativeModOwnsAddress(
     return m_NativeModRegistry.Owns(module, ownerId);
 }
 
-bool ModLoader::UnregisterMod(IMod *mod) {
+bool ModLoader::UnregisterMod(ModRecord *mod) {
     if (!mod) {
         return false;
     }
@@ -1950,7 +1958,7 @@ bool ModLoader::UnregisterMod(IMod *mod) {
             return false;
 #if BML_ENABLE_ANGELSCRIPT
         if (m_ScriptHotReload) {
-            if (auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod))
+            if (auto *scriptMod = mod->Script)
                 m_ScriptHotReload->UnregisterMod(scriptMod);
         }
 #endif
@@ -1982,7 +1990,7 @@ bool ModLoader::UnregisterMod(IMod *mod) {
             for (auto &kv : m_CallbackMap) {
                 if (!kv.second)
                     continue;
-                auto next = std::make_shared<std::vector<IMod *>>(*kv.second);
+                auto next = std::make_shared<std::vector<ModRecord *>>(*kv.second);
                 next->erase(std::remove(next->begin(), next->end(), mod), next->end());
                 kv.second = std::move(next);
             }
@@ -2028,8 +2036,8 @@ bool ModLoader::ResolveDependencies() {
     };
 
     auto invocationLock = LockModInvocation();
-    std::vector<IMod *> mods;
-    std::unordered_map<IMod *, std::vector<OrderDependency>> dependencies;
+    std::vector<ModRecord *> mods;
+    std::unordered_map<ModRecord *, std::vector<OrderDependency>> dependencies;
     {
         std::lock_guard<std::mutex> stateLock(m_StateMutex);
         std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
@@ -2047,14 +2055,14 @@ bool ModLoader::ResolveDependencies() {
 
     // Build a stable position map to keep deterministic ordering for nodes with the same in-degree
     std::unordered_map<std::string, size_t> pos;
-    std::unordered_map<std::string, IMod *> modMap;
-    std::unordered_map<IMod *, std::string> idsByMod;
+    std::unordered_map<std::string, ModRecord *> modMap;
+    std::unordered_map<ModRecord *, std::string> idsByMod;
     pos.reserve(mods.size());
     modMap.reserve(mods.size());
     idsByMod.reserve(mods.size());
 
     for (size_t i = 0; i < mods.size(); ++i) {
-        IMod *m = mods[i];
+        ModRecord *m = mods[i];
         const char *reportedId = m ? m->GetID() : nullptr;
         if (!reportedId || !*reportedId) {
             if (m_Context.GetLogger())
@@ -2075,7 +2083,7 @@ bool ModLoader::ResolveDependencies() {
     for (auto &kv : modMap) inDegree[kv.first] = 0;
 
     // Collect edges and compute in-degree as "number of (present) dependencies" for each mod
-    for (IMod *m : mods) {
+    for (ModRecord *m : mods) {
         const std::string &mid = idsByMod.at(m);
         auto it = dependencies.find(m);
         if (it == dependencies.end()) continue;
@@ -2114,12 +2122,12 @@ bool ModLoader::ResolveDependencies() {
     // Kahn's algorithm with stable seeding by original order
     std::queue<std::string> q;
     // Seed queue with all nodes with inDegree == 0 in original order
-    for (IMod *m : mods) {
+    for (ModRecord *m : mods) {
         const std::string &id = idsByMod.at(m);
         if (inDegree[id] == 0) q.push(id);
     }
 
-    std::vector<IMod *> sorted;
+    std::vector<ModRecord *> sorted;
     sorted.reserve(mods.size());
 
     while (!q.empty()) {
@@ -2139,7 +2147,7 @@ bool ModLoader::ResolveDependencies() {
     // non-zero in-degree either belong to the cycle or depend on one.
     if (sorted.size() != mods.size()) {
         std::string affected;
-        for (IMod *mod : mods) {
+        for (ModRecord *mod : mods) {
             const std::string &id = idsByMod.at(mod);
             const auto entry = inDegree.find(id);
             if (entry == inDegree.end() || entry->second == 0)
@@ -2176,73 +2184,54 @@ bool ModLoader::ResolveDependencies() {
     return true;
 }
 
-void ModLoader::FillCallbackMap(IMod *mod) {
-    std::lock_guard<std::mutex> lock(m_StateMutex);
+bool ModLoader::Subscribed(const NativeMod &mod, ModEvent event) {
+    const auto &callbacks = mod.Callbacks();
+    if (event < ModEvent::OnLoad)
+        return callbacks.OnGameEvent != nullptr;
+    switch (event) {
+    case ModEvent::OnLoad:
+        return callbacks.OnLoad != nullptr;
+    case ModEvent::OnUnload:
+        return callbacks.OnUnload != nullptr;
+    case ModEvent::OnModifyConfig:
+        return callbacks.OnModifyConfig != nullptr;
+    case ModEvent::OnLoadObject:
+        return callbacks.OnLoadObject != nullptr;
+    case ModEvent::OnLoadScript:
+        return callbacks.OnLoadScript != nullptr;
+    case ModEvent::OnProcess:
+        return callbacks.OnProcess != nullptr;
+    case ModEvent::OnRender:
+        return callbacks.OnRender != nullptr;
+    case ModEvent::OnCheatEnabled:
+        return callbacks.OnCheatEnabled != nullptr;
+    case ModEvent::OnPhysicalize:
+        return callbacks.OnPhysicalize != nullptr;
+    case ModEvent::OnUnphysicalize:
+        return callbacks.OnUnphysicalize != nullptr;
+    case ModEvent::OnPreCommandExecute:
+        return callbacks.OnCommandEvent != nullptr;
+    case ModEvent::OnPostCommandExecute:
+        return callbacks.OnCommandEvent != nullptr;
+    default:
+        return false;
+    }
+}
 
-    int index = 0;
-    // The frozen facade has no subscription API. Register its defaults too;
-    // decoding C++ vtables would couple the SDL backend to a compiler ABI.
+void ModLoader::FillCallbackMap(ModRecord *mod) {
+    std::lock_guard<std::mutex> lock(m_StateMutex);
     const auto *native = FindNativeMod(mod);
-    const auto subscribe = [&](auto callback) {
-        if (native && !Subscribed(*native, callback))
+    const auto subscribe = [&]<std::size_t Index>() {
+        constexpr auto event = static_cast<ModEvent>(Index);
+        if (native ? !Subscribed(*native, event) : !mod->Subscribed<event>())
             return;
-        auto &list = m_CallbackMap[utils::TypeErase(callback)];
-        auto next = list ? std::make_shared<std::vector<IMod *>>(*list)
-                         : std::make_shared<std::vector<IMod *>>();
+        auto &list = m_CallbackMap[event];
+        auto next = list ? std::make_shared<std::vector<ModRecord *>>(*list)
+                         : std::make_shared<std::vector<ModRecord *>>();
         next->push_back(mod);
         list = std::move(next);
     };
-#define CHECK_V_FUNC(IDX, FUNC) subscribe(FUNC)
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreStartMenu);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostStartMenu);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnExitGame);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreLoadLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostLoadLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnStartLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreResetLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostResetLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPauseLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnUnpauseLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreExitLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostExitLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreNextLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostNextLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnDead);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreEndLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostEndLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnCounterActive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnCounterInactive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnBallNavActive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnBallNavInactive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnCamNavActive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnCamNavInactive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnBallOff);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreCheckpointReached);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostCheckpointReached);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnLevelFinish);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnGameOver);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnExtraPoint);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreSubLife);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostSubLife);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreLifeUp);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostLifeUp);
-
-    index += 7;
-
-    CHECK_V_FUNC(index++, &IMod::OnLoad);
-    CHECK_V_FUNC(index++, &IMod::OnUnload);
-    CHECK_V_FUNC(index++, &IMod::OnModifyConfig);
-    CHECK_V_FUNC(index++, &IMod::OnLoadObject);
-    CHECK_V_FUNC(index++, &IMod::OnLoadScript);
-    CHECK_V_FUNC(index++, &IMod::OnProcess);
-    CHECK_V_FUNC(index++, &IMod::OnRender);
-    CHECK_V_FUNC(index++, &IMod::OnCheatEnabled);
-
-    CHECK_V_FUNC(index++, &IMod::OnPhysicalize);
-    CHECK_V_FUNC(index++, &IMod::OnUnphysicalize);
-
-    CHECK_V_FUNC(index++, &IMod::OnPreCommandExecute);
-    CHECK_V_FUNC(index++, &IMod::OnPostCommandExecute);
-
-#undef CHECK_V_FUNC
+    [&]<std::size_t... Index>(std::index_sequence<Index...>) {
+        (subscribe.template operator()<Index>(), ...);
+    }(std::make_index_sequence<static_cast<std::size_t>(ModEvent::Count)>{});
 }

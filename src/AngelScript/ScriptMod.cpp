@@ -249,16 +249,12 @@ private:
     bool m_Entered = false;
 };
 
-ScriptMod::ScriptMod(ModContext *context,
-                     ScriptModDefinition definition,
-                     ScriptModEntry entry,
+ScriptMod::ScriptMod(ModContext *context, ScriptModDefinition definition, ScriptModEntry entry,
                      ScriptModRuntime runtime)
-    : IMod(context),
-      m_Context(context),
-      m_Definition(std::move(definition)),
-      m_Entry(std::move(entry)),
-      m_ContextView(context, this),
-      m_Runtime(std::move(runtime)) {
+    : m_Context(context), m_Definition(std::move(definition)), m_Record(context),
+      m_Entry(std::move(entry)), m_ContextView(context, this), m_Runtime(std::move(runtime)) {
+    m_Record.Bind(*this);
+    m_Record.Script = this;
     m_Runtime.SetOwner(this);
 }
 
@@ -757,7 +753,8 @@ void ScriptMod::OnUnphysicalize(CK3dEntity *target) {
     FailIfEventCallFailed(m_Callbacks.CallUnphysicalize(target, diagnostic), diagnostic);
 }
 
-void ScriptMod::OnPreCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args) {
+void ScriptMod::OnPreCommandExecute(BML::CommandRecord *command,
+                                    const std::vector<std::string> &args) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
@@ -768,7 +765,8 @@ void ScriptMod::OnPreCommandExecute(BML::CommandRecord *command, const std::vect
     FailIfEventCallFailed(m_Callbacks.CallCommandEvent(true, command, args, diagnostic), diagnostic);
 }
 
-void ScriptMod::OnPostCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args) {
+void ScriptMod::OnPostCommandExecute(BML::CommandRecord *command,
+                                     const std::vector<std::string> &args) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
@@ -838,45 +836,45 @@ std::string ScriptMod::ReadModTextFileUtf8(const std::string &relativePath,
 }
 
 void ScriptMod::LogInfo(const std::string &message) {
-    if (Logger *logger = GetLogger())
+    if (Logger *logger = m_Record.GetLogger())
         logger->Info("%s", message.c_str());
 }
 
 void ScriptMod::LogWarn(const std::string &message) {
-    if (Logger *logger = GetLogger())
+    if (Logger *logger = m_Record.GetLogger())
         logger->Warn("%s", message.c_str());
 }
 
 void ScriptMod::LogError(const std::string &message) {
-    if (Logger *logger = GetLogger())
+    if (Logger *logger = m_Record.GetLogger())
         logger->Error("%s", message.c_str());
 }
 
 bool ScriptMod::HasConfigCategory(const std::string &category) {
     if (!IsConfigKeyValid(category))
         return false;
-    Config *config = GetConfig();
+    Config *config = m_Record.GetConfig();
     return config && config->HasCategory(category.c_str());
 }
 
 bool ScriptMod::HasConfigKey(const std::string &category, const std::string &key) {
     if (!IsConfigKeyValid(category) || !IsConfigKeyValid(key))
         return false;
-    Config *config = GetConfig();
+    Config *config = m_Record.GetConfig();
     return config && config->HasKey(category.c_str(), key.c_str());
 }
 
 Property *ScriptMod::GetConfigProperty(const std::string &category, const std::string &key) {
     if (!IsConfigKeyValid(category) || !IsConfigKeyValid(key))
         return nullptr;
-    Config *config = GetConfig();
+    Config *config = m_Record.GetConfig();
     return config ? config->GetProperty(category.c_str(), key.c_str()) : nullptr;
 }
 
 void ScriptMod::SetConfigCategoryComment(const std::string &category, const std::string &comment) {
     if (!IsConfigKeyValid(category))
         return;
-    Config *config = GetConfig();
+    Config *config = m_Record.GetConfig();
     if (config)
         config->SetCategoryComment(category.c_str(), comment.c_str());
 }
@@ -1469,7 +1467,8 @@ void ScriptMod::Fail(const ScriptDiagnostic &diagnostic) {
     ScriptDiagnostic rewritten = RewriteRuntimeDiagnosticPaths(diagnostic);
     m_State.MarkLoaded(false);
     m_State.Fail(rewritten);
-    if(m_Context)m_Context->StopModWork(this);
+    if (m_Context)
+        m_Context->StopModWork(&m_Record);
     TouchModGeneration();
     if (m_Context) {
         if (auto *devTools = m_Context->GetScriptDevTools()) {
@@ -2023,8 +2022,8 @@ std::wstring ScriptMod::GetEntryPath() const {
     return utils::ResolvePathW(m_Entry.EntryPath);
 }
 
-bool IsFailedScriptMod(const IMod *mod) {
-    auto *scriptMod = dynamic_cast<const ScriptMod *>(mod);
+bool IsFailedScriptMod(const ModRecord *mod) {
+    auto *scriptMod = (mod ? mod->Script : nullptr);
     return scriptMod && scriptMod->IsFailed();
 }
 

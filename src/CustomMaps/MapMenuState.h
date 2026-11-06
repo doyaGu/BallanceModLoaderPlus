@@ -34,6 +34,7 @@ public:
 
     bool ShouldShowTooltip() const { return m_ShowTooltip; }
     void SetShowTooltip(bool show) { m_ShowTooltip = show; }
+
     Logger *GetLogger() const { return m_Logger; }
     bool SetMaxDepth(int depth);
 

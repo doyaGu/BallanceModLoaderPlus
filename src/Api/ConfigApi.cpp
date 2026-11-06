@@ -78,7 +78,7 @@ BML_ConfigValue Encode(uint32_t type, const ConfigValue &value) {
     return out;
 }
 
-Config *Ensure(ModContext &ctx, IMod &owner) {
+Config *Ensure(ModContext &ctx, ModRecord &owner) {
     if (auto *config = ctx.GetConfig(&owner))
         return config;
     return ctx.AddConfig(std::make_unique<Config>(&owner));
@@ -98,7 +98,7 @@ bool CopyChoices(const char *const *input, size_t count, std::vector<std::string
 }
 } // namespace
 
-ConfigApi::Record *ConfigApi::Resolve(ModContext &ctx, IMod &owner,
+ConfigApi::Record *ConfigApi::Resolve(ModContext &ctx, ModRecord &owner,
                                       BML_ConfigPropertyHandle handle) {
     const auto it = m_Records.find(handle);
     if (it == m_Records.end() || it->second->Owner != &owner)
@@ -117,7 +117,7 @@ ConfigApi::Record *ConfigApi::Resolve(ModContext &ctx, IMod &owner,
                : nullptr;
 }
 
-int ConfigApi::Declare(ModContext &ctx, IMod &owner,
+int ConfigApi::Declare(ModContext &ctx, ModRecord &owner,
                        const BML_ConfigPropertyDefinition *definition,
                        BML_ConfigPropertyHandle *out) {
     if (!out)
@@ -210,7 +210,7 @@ int ConfigApi::Declare(ModContext &ctx, IMod &owner,
     }
 }
 
-int ConfigApi::Find(ModContext &ctx, IMod &owner, const char *category, const char *key,
+int ConfigApi::Find(ModContext &ctx, ModRecord &owner, const char *category, const char *key,
                     BML_ConfigPropertyHandle *out) {
     if (!category || !key || !out)
         return BML_ERROR_INVALID_PARAMETER;
@@ -224,7 +224,7 @@ int ConfigApi::Find(ModContext &ctx, IMod &owner, const char *category, const ch
     return BML_ERROR_NOT_FOUND;
 }
 
-int ConfigApi::Read(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handle,
+int ConfigApi::Read(ModContext &ctx, ModRecord &owner, BML_ConfigPropertyHandle handle,
                     BML_ConfigPropertyVisitor visitor, void *data) {
     if (!visitor)
         return BML_ERROR_INVALID_PARAMETER;
@@ -249,7 +249,7 @@ int ConfigApi::Read(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handl
     return visitor(data, &info);
 }
 
-int ConfigApi::Set(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handle,
+int ConfigApi::Set(ModContext &ctx, ModRecord &owner, BML_ConfigPropertyHandle handle,
                    const BML_ConfigValue *value, bool isDefault) {
     auto *r = Resolve(ctx, owner, handle);
     if (!r)
@@ -286,7 +286,7 @@ int ConfigApi::Set(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle handle
                : BML_ERROR_FAIL;
 }
 
-int ConfigApi::SetComment(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
+int ConfigApi::SetComment(ModContext &ctx, ModRecord &owner, BML_ConfigPropertyHandle h,
                           const char *comment) {
     if (!comment || !utils::IsValidUtf8(comment))
         return BML_ERROR_INVALID_PARAMETER;
@@ -301,7 +301,7 @@ int ConfigApi::SetComment(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle
     return BML_OK;
 }
 
-int ConfigApi::SetEditor(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
+int ConfigApi::SetEditor(ModContext &ctx, ModRecord &owner, BML_ConfigPropertyHandle h,
                          uint32_t editor) {
     if (editor > BML_CONFIG_EDITOR_CHOICE)
         return BML_ERROR_INVALID_PARAMETER;
@@ -317,7 +317,7 @@ int ConfigApi::SetEditor(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle 
     return BML_OK;
 }
 
-int ConfigApi::SetChoices(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle h,
+int ConfigApi::SetChoices(ModContext &ctx, ModRecord &owner, BML_ConfigPropertyHandle h,
                           const char *const *choices, size_t count) {
     auto *r = Resolve(ctx, owner, h);
     if (!r)
@@ -334,14 +334,14 @@ int ConfigApi::SetChoices(ModContext &ctx, IMod &owner, BML_ConfigPropertyHandle
     return BML_OK;
 }
 
-BML_ConfigPropertyHandle ConfigApi::HandleFor(IMod &owner, Property *property) const noexcept {
+BML_ConfigPropertyHandle ConfigApi::HandleFor(ModRecord &owner, Property *property) const noexcept {
     for (const auto &entry : m_Records)
         if (entry.second->Owner == &owner && entry.second->Target == property)
             return entry.first;
     return 0;
 }
 
-void ConfigApi::CleanupOwner(IMod &owner) noexcept {
+void ConfigApi::CleanupOwner(ModRecord &owner) noexcept {
     for (auto it = m_Records.begin(); it != m_Records.end();)
         if (it->second->Owner == &owner)
             it = m_Records.erase(it);
@@ -351,7 +351,7 @@ void ConfigApi::CleanupOwner(IMod &owner) noexcept {
 
 namespace {
 template <auto Method, class... Args> int Serve(BML_ModContextHandle h, Args... args) {
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         return (ctx.GetConfigApi().*Method)(ctx, owner, args...);
     });
 }
@@ -396,7 +396,7 @@ int BML_CDECL Choices(BML_ModContextHandle h, BML_ConfigPropertyHandle p, const 
 int BML_CDECL CategoryComment(BML_ModContextHandle h, const char *c, const char *v) {
     if (!Key(c) || !v)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         auto *config = Ensure(ctx, owner);
         if (!config)
             return BML_ERROR_UNAVAILABLE;
@@ -408,7 +408,7 @@ int BML_CDECL CategoryComment(BML_ModContextHandle h, const char *c, const char 
 int BML_CDECL HasCategory(BML_ModContextHandle h, const char *c, uint32_t *out) {
     if (!c || !out)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         auto *config = Ensure(ctx, owner);
         if (!config)
             return BML_ERROR_UNAVAILABLE;
@@ -420,7 +420,7 @@ int BML_CDECL HasCategory(BML_ModContextHandle h, const char *c, uint32_t *out) 
 int BML_CDECL HasKey(BML_ModContextHandle h, const char *c, const char *k, uint32_t *out) {
     if (!c || !k || !out)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         auto *config = Ensure(ctx, owner);
         if (!config)
             return BML_ERROR_UNAVAILABLE;

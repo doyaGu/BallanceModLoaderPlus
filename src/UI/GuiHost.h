@@ -12,7 +12,7 @@
 // 2D layer at a chosen Z order rather than on top of everything.
 //
 // Nothing here draws or reacts by itself. A Mod owns a BGuiHost::Gui, calls its Process
-// once a frame from IMod::OnProcess, and deletes it when its screen goes away; Process
+// once a frame from ModRecord::OnProcess, and deletes it when its screen goes away; Process
 // is what reads the keyboard and mouse, calls the buttons' callbacks, and re-executes
 // the text blocks. Miss it for a frame and the elements are still there but nothing
 // moves.

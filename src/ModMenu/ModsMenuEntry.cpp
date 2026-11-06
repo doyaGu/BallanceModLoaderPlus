@@ -5,7 +5,6 @@
 #include "Loader/ModContext.h"
 #include "Logging/Logger.h"
 
-#include "Loader/ModContext.h"
 
 namespace Behavior = BML::Behavior;
 
@@ -86,8 +85,8 @@ Behavior::Result<Behavior::Node> FindFirstNeighbor(
 
 } // namespace
 
-void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
-                         ModContext &bml, Logger &logger) {
+void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script, ModContext &bml,
+                         Logger &logger) {
     if (m_Patch || m_Retiring) {
         m_PendingLoad = {&behavior, script ? script->GetID() : 0,
                          &bml, &logger};
@@ -98,8 +97,7 @@ void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
     BeginLoad(behavior, script, bml, logger);
 }
 
-void ModsMenuEntry::BeginLoad(Behavior::Session &behavior,
-                              CKBehavior *script, ModContext &bml,
+void ModsMenuEntry::BeginLoad(Behavior::Session &behavior, CKBehavior *script, ModContext &bml,
                               Logger &logger) {
     m_Context = bml.GetCKContext();
     m_BML = &bml;

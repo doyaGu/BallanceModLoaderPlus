@@ -1,31 +1,34 @@
 #ifndef BML_LOADER_NATIVEMOD_H
 #define BML_LOADER_NATIVEMOD_H
 
-#include "Loader/IMod.h"
+#include "Loader/ModRecord.h"
 #include "BML/Mod.h"
 #include "Loader/ModState.h"
 #include <memory>
 #include <utility>
 
-// Host-owned metadata adapter for the existing registry and configuration UI.
-// Business callbacks never pass through its IMod vtable: ModLoader calls the C
-// table directly. No object of this class leaves BML's binary.
-class NativeMod final : public IMod {
+// Owns the native C definition, instance, and failure-cleanup state.
+// The loader registry borrows Record(); no C++ object crosses the module boundary.
+class NativeMod final {
 public:
+    ModRecord &Registration() noexcept { return m_Record; }
+
+    const ModRecord &Registration() const noexcept { return m_Record; }
+
     static std::unique_ptr<NativeMod> Query(ModContext *host, const BML_ModInterface *api,
                                             std::string &diagnostic);
 
-    const char *GetID() override { return m_Id.c_str(); }
+    const char *GetID() { return m_Id.c_str(); }
 
-    const char *GetName() override { return m_Name.c_str(); }
+    const char *GetName() { return m_Name.c_str(); }
 
-    const char *GetVersion() override { return m_Version.c_str(); }
+    const char *GetVersion() { return m_Version.c_str(); }
 
-    const char *GetAuthor() override { return m_Author.c_str(); }
+    const char *GetAuthor() { return m_Author.c_str(); }
 
-    const char *GetDescription() override { return m_Description.c_str(); }
+    const char *GetDescription() { return m_Description.c_str(); }
 
-    BMLVersion GetBMLVersion() override { return m_MinimumVersion; }
+    BMLVersion GetBMLVersion() { return m_MinimumVersion; }
 
     const BML_ModDefinition &Definition() const noexcept { return m_Definition; }
 
@@ -67,7 +70,7 @@ public:
     void *Instance() const noexcept { return m_Instance; }
 
 private:
-    explicit NativeMod(ModContext *host) : IMod(host) {}
+    explicit NativeMod(ModContext *host) : m_Record(host) {}
 
     std::string m_Id;
     std::string m_Name;
@@ -91,5 +94,6 @@ private:
     std::atomic<bool> m_Unloading{false};
     bool m_FailureCleanupAttempted = false;
     std::string m_Diagnostic;
+    ModRecord m_Record;
 };
 #endif

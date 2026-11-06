@@ -23,7 +23,7 @@ int SetChoices(Property *property, const char *const choices[], std::size_t coun
 
 namespace BML::Api { class ConfigApi; }
 
-class IMod;
+class ModRecord;
 class Config;
 
 // Persisted values have no Mod owner, callbacks, revisions, or editor metadata.
@@ -191,10 +191,10 @@ public:
         Property *ChangedProperty = nullptr;
     };
 
-    explicit Config(IMod *mod);
+    explicit Config(ModRecord *mod);
     ~Config();
 
-    IMod *GetMod() const { return m_Mod; }
+    ModRecord *GetMod() const { return m_Mod; }
     const std::string &GetModID() const { return m_ModID; }
     void SnapshotModMetadata();
 
@@ -203,7 +203,7 @@ public:
         m_PendingNotifications.clear();
     }
 
-    void AttachMod(IMod *mod);
+    void AttachMod(ModRecord *mod);
 
     std::size_t GetCategoryCount() const { return m_Categories.size(); }
     Category *GetCategory(std::size_t i);
@@ -238,7 +238,7 @@ public:
 
     // This is an implementation-only transaction boundary for loader-owned UI.
     // Every edit is validated before any property is changed.
-    ApplyResult ApplyEdits(const IMod *expectedOwner, std::uint64_t expectedSchemaRevision,
+    ApplyResult ApplyEdits(const ModRecord *expectedOwner, std::uint64_t expectedSchemaRevision,
                            const std::vector<Edit> &edits);
     std::vector<PendingNotification> TakePendingNotifications();
 
@@ -249,7 +249,7 @@ private:
     void TouchValue() { ++m_ValueRevision; }
     void QueueNotification(Property *property, const std::string &category, const std::string &key);
 
-    IMod *m_Mod;
+    ModRecord *m_Mod;
     std::string m_ModID;
     std::string m_ModName = "Unknown";
     std::string m_ModVersion = "Unknown";

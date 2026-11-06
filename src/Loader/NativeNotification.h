@@ -13,24 +13,17 @@ public:
     ~NativeNotification();
     NativeNotification(const NativeNotification &) = delete;
     NativeNotification &operator=(const NativeNotification &) = delete;
-    void Prepare(void (IMessageReceiver::*callback)());
-    void Prepare(void (IMod::*callback)());
-    void Prepare(void (IMod::*)(CK_RENDER_FLAGS), CK_RENDER_FLAGS flags);
-    void Prepare(void (IMod::*)(bool), bool enabled);
-    void Prepare(void (IMod::*)(const char *, CKBehavior *), const char *, CKBehavior *);
-    void Prepare(void (IMod::*)(CK3dEntity *), CK3dEntity *);
-    void Prepare(void (IMod::*)(BML::CommandRecord *, const std::vector<std::string> &), BML::CommandRecord *,
-                 const std::vector<std::string> &);
-    void Prepare(void (IMod::*)(const char *, CKBOOL, const char *, CK_CLASSID, CKBOOL, CKBOOL,
-                                CKBOOL, CKBOOL, XObjectArray *, CKObject *),
-                 const char *, CKBOOL, const char *, CK_CLASSID, CKBOOL, CKBOOL, CKBOOL, CKBOOL,
-                 XObjectArray *, CKObject *);
-    void Prepare(void (IMod::*)(CK3dEntity *, CKBOOL, float, float, float, const char *, CKBOOL,
-                                CKBOOL, CKBOOL, float, float, const char *, VxVector, int,
-                                CKMesh **, int, VxVector *, float *, int, CKMesh **),
-                 CK3dEntity *, CKBOOL, float, float, float, const char *, CKBOOL, CKBOOL, CKBOOL,
-                 float, float, const char *, VxVector, int, CKMesh **, int, VxVector *, float *,
-                 int, CKMesh **);
+    void Prepare(ModEvent event);
+    void Prepare(ModEvent event, CK_RENDER_FLAGS flags);
+    void Prepare(ModEvent event, bool enabled);
+    void Prepare(ModEvent event, const char *, CKBehavior *);
+    void Prepare(ModEvent event, CK3dEntity *);
+    void Prepare(ModEvent event, BML::CommandRecord *, const std::vector<std::string> &);
+    void Prepare(ModEvent event, const char *, CKBOOL, const char *, CK_CLASSID, CKBOOL, CKBOOL,
+                 CKBOOL, CKBOOL, XObjectArray *, CKObject *);
+    void Prepare(ModEvent event, CK3dEntity *, CKBOOL, float, float, float, const char *, CKBOOL,
+                 CKBOOL, CKBOOL, float, float, const char *, VxVector, int, CKMesh **, int,
+                 VxVector *, float *, int, CKMesh **);
     int Dispatch(NativeMod &mod) const;
     const char *Name() const noexcept;
     struct Storage;

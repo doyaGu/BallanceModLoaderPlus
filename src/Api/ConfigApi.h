@@ -8,34 +8,34 @@
 #include <unordered_map>
 
 class ModContext;
-class IMod;
+class ModRecord;
 class Config;
 class Property;
 
 namespace BML::Api {
 class ConfigApi {
 public:
-    int Declare(ModContext &context, IMod &owner,
+    int Declare(ModContext &context, ModRecord &owner,
                 const BML_ConfigPropertyDefinition *definition,
                 BML_ConfigPropertyHandle *outProperty);
-    int Find(ModContext &context, IMod &owner, const char *category, const char *key,
+    int Find(ModContext &context, ModRecord &owner, const char *category, const char *key,
              BML_ConfigPropertyHandle *outProperty);
-    int Read(ModContext &context, IMod &owner, BML_ConfigPropertyHandle property,
+    int Read(ModContext &context, ModRecord &owner, BML_ConfigPropertyHandle property,
              BML_ConfigPropertyVisitor visitor, void *userData);
-    int Set(ModContext &context, IMod &owner, BML_ConfigPropertyHandle property,
+    int Set(ModContext &context, ModRecord &owner, BML_ConfigPropertyHandle property,
             const BML_ConfigValue *value, bool isDefault);
-    int SetComment(ModContext &context, IMod &owner, BML_ConfigPropertyHandle property,
+    int SetComment(ModContext &context, ModRecord &owner, BML_ConfigPropertyHandle property,
                    const char *comment);
-    int SetEditor(ModContext &context, IMod &owner, BML_ConfigPropertyHandle property,
+    int SetEditor(ModContext &context, ModRecord &owner, BML_ConfigPropertyHandle property,
                   uint32_t editor);
-    int SetChoices(ModContext &context, IMod &owner, BML_ConfigPropertyHandle property,
+    int SetChoices(ModContext &context, ModRecord &owner, BML_ConfigPropertyHandle property,
                    const char *const *choices, size_t count);
-    BML_ConfigPropertyHandle HandleFor(IMod &owner, Property *property) const noexcept;
-    void CleanupOwner(IMod &owner) noexcept;
+    BML_ConfigPropertyHandle HandleFor(ModRecord &owner, Property *property) const noexcept;
+    void CleanupOwner(ModRecord &owner) noexcept;
 
 private:
     struct Record {
-        IMod *Owner = nullptr;
+        ModRecord *Owner = nullptr;
         Property *Target = nullptr;
         std::string Category;
         std::string Key;
@@ -54,7 +54,7 @@ private:
         }
     };
 
-    Record *Resolve(ModContext &context, IMod &owner, BML_ConfigPropertyHandle property);
+    Record *Resolve(ModContext &context, ModRecord &owner, BML_ConfigPropertyHandle property);
     std::unordered_map<BML_ConfigPropertyHandle, std::shared_ptr<Record>> m_Records;
 };
 

@@ -15,7 +15,7 @@ template <class Body> int WithModContext(BML_ModContextHandle handle, Body &&bod
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
-        IMod *owner = context->GetModLoader().ResolveModContext(handle);
+        ModRecord *owner = context->GetModLoader().ResolveModContext(handle);
         if (!owner)
             return BML_ERROR_INVALID_HANDLE;
         auto lock = context->LockModInvocation();
@@ -27,7 +27,7 @@ template <class Body> int WithModContext(BML_ModContextHandle handle, Body &&bod
     }
 }
 
-inline bool AcceptsModWork(ModContext &context, IMod &owner) noexcept {
+inline bool AcceptsModWork(ModContext &context, ModRecord &owner) noexcept {
     if (context.GetModLoader().IsShuttingDown())
         return false;
     const auto *native = context.GetModLoader().FindNativeMod(&owner);

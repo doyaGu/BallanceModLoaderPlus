@@ -26,9 +26,9 @@ namespace {
         return label[0] == '@' ? label + 1 : label;
     }
 
-    std::uint32_t ScriptContentGeneration(IMod *mod) {
+    std::uint32_t ScriptContentGeneration(ModRecord *mod) {
 #if BML_ENABLE_ANGELSCRIPT
-        const auto *scriptMod = dynamic_cast<const BML::ScriptMod *>(mod);
+        const auto *scriptMod = (mod ? mod->Script : nullptr);
         return scriptMod ? scriptMod->GetModGeneration() : 0;
 #else
         (void) mod;
@@ -36,9 +36,9 @@ namespace {
 #endif
     }
 
-    std::string ScriptStatus(IMod *mod) {
+    std::string ScriptStatus(ModRecord *mod) {
 #if BML_ENABLE_ANGELSCRIPT
-        const auto *scriptMod = dynamic_cast<const BML::ScriptMod *>(mod);
+        const auto *scriptMod = (mod ? mod->Script : nullptr);
         if (!scriptMod)
             return {};
         if (scriptMod->IsFailed())
@@ -50,9 +50,9 @@ namespace {
 #endif
     }
 
-    std::string ScriptDiagnostic(IMod *mod) {
+    std::string ScriptDiagnostic(ModRecord *mod) {
 #if BML_ENABLE_ANGELSCRIPT
-        const auto *scriptMod = dynamic_cast<const BML::ScriptMod *>(mod);
+        const auto *scriptMod = (mod ? mod->Script : nullptr);
         return scriptMod ? scriptMod->GetLastDiagnostic() : std::string();
 #else
         (void) mod;
@@ -135,7 +135,7 @@ const ModMenuDetailsActionDocument *ModMenuModel::GetSelectedDetailsAction() con
 }
 
 bool ModMenuModel::IsCurrentOwner(const ModMenuOwner &owner) const {
-    IMod *mod = m_Context.FindMod(owner.id.c_str());
+    ModRecord *mod = m_Context.FindMod(owner.id.c_str());
     return mod && MakeOwner(mod) == owner;
 }
 
@@ -207,7 +207,7 @@ void ModMenuModel::SynchronizeSelected(bool force) {
     if (!selected)
         return;
 
-    IMod *mod = m_Context.FindMod(selected->id.c_str());
+    ModRecord *mod = m_Context.FindMod(selected->id.c_str());
     if (!mod) {
         m_SelectedStamp.reset();
         m_Session.Reconcile(std::nullopt);
@@ -287,7 +287,7 @@ const std::string &ModMenuModel::GetError() const {
     return m_Error;
 }
 
-ModMenuOwner ModMenuModel::MakeOwner(IMod *mod) const {
+ModMenuOwner ModMenuModel::MakeOwner(ModRecord *mod) const {
     if (!mod)
         return {};
 
@@ -299,7 +299,7 @@ ModMenuOwner ModMenuModel::MakeOwner(IMod *mod) const {
     return {id, registration, ScriptContentGeneration(mod)};
 }
 
-ModMenuDocument ModMenuModel::BuildDocument(IMod *mod, const ModMenuOwner &owner) const {
+ModMenuDocument ModMenuModel::BuildDocument(ModRecord *mod, const ModMenuOwner &owner) const {
     ModMenuDocument document;
     document.owner = owner;
     document.name = SafeText(mod->GetName());
@@ -400,7 +400,7 @@ void ModMenuModel::RefreshMods() {
     mods.reserve(static_cast<std::size_t>(std::max(count, 0)));
     sources.reserve(static_cast<std::size_t>(std::max(count, 0)));
     for (int index = 0; index < count; ++index) {
-        IMod *mod = m_Context.GetMod(index);
+        ModRecord *mod = m_Context.GetMod(index);
         const ModMenuOwner owner = MakeOwner(mod);
         if (!mod || owner.id.empty() || owner.registration == 0)
             continue;
@@ -427,7 +427,7 @@ bool ModMenuModel::Apply() {
     }
     const ModMenuEditBatch &batch = prepared->GetBatch();
 
-    IMod *mod = m_Context.FindMod(batch.owner.id.c_str());
+    ModRecord *mod = m_Context.FindMod(batch.owner.id.c_str());
     if (!mod || MakeOwner(mod) != batch.owner) {
         m_Error = "The Mod changed before its settings could be applied.";
         SynchronizeSelected(true);

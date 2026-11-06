@@ -39,7 +39,7 @@ int ServeOnMainThread(Body &&body) {
 
 class CallbackCommand final {
 public:
-    explicit CallbackCommand(ModContext &context, IMod *owner,
+    explicit CallbackCommand(ModContext &context, ModRecord *owner,
                              const BML_CommandDefinition &definition)
         : m_Context(context), m_Owner(owner), m_Name(definition.Name),
           m_Alias(definition.Alias ? definition.Alias : ""),
@@ -96,7 +96,7 @@ private:
     };
 
     ModContext &m_Context;
-    IMod *m_Owner = nullptr;
+    ModRecord *m_Owner = nullptr;
     std::string m_Name;
     std::string m_Alias;
     std::string m_Description;

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "Console/CommandRecord.h"
-#include "Loader/IMod.h"
+#include "Loader/ModRecord.h"
 
 namespace BML {
 

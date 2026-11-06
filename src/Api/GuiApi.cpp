@@ -36,7 +36,7 @@ BML_Color Unpacked(uint32_t c) {
 
 struct GuiApi::Record {
     ModContext *Context = nullptr;
-    IMod *Owner = nullptr;
+    ModRecord *Owner = nullptr;
     uint32_t Kind = 0;
     BML_ObjectRef Primary{}, Base{}, Material{}, Behavior{}, Sprite{};
     bool Invalid = false;
@@ -82,7 +82,7 @@ void GuiApi::Sanitize(Record &r, bool all) noexcept {
     }
 }
 
-GuiApi::Record *GuiApi::Find(ModContext &ctx, IMod &owner, BML_ObjectRef ref) {
+GuiApi::Record *GuiApi::Find(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref) {
     if (!m_Storage)
         return nullptr;
     auto it = m_Storage->Elements.find(ref.Slot);
@@ -99,7 +99,7 @@ GuiApi::Record *GuiApi::Find(ModContext &ctx, IMod &owner, BML_ObjectRef ref) {
     return &r;
 }
 
-int GuiApi::Create(ModContext &ctx, IMod &owner, uint32_t kind, const char *name,
+int GuiApi::Create(ModContext &ctx, ModRecord &owner, uint32_t kind, const char *name,
                    BML_ObjectRef *out) {
     if (!AcceptsModWork(ctx, owner))
         return BML_ERROR_FROZEN;
@@ -196,7 +196,7 @@ int GuiApi::Create(ModContext &ctx, IMod &owner, uint32_t kind, const char *name
     return BML_OK;
 }
 
-int GuiApi::Destroy(ModContext &, IMod &owner, BML_ObjectRef ref) {
+int GuiApi::Destroy(ModContext &, ModRecord &owner, BML_ObjectRef ref) {
     if (!m_Storage)
         return BML_ERROR_OBJECT_INVALID;
     auto it = m_Storage->Elements.find(ref.Slot);
@@ -209,7 +209,7 @@ int GuiApi::Destroy(ModContext &, IMod &owner, BML_ObjectRef ref) {
     return BML_OK;
 }
 
-int GuiApi::Read(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_GuiElementInfo *out) {
+int GuiApi::Read(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, BML_GuiElementInfo *out) {
     auto *r = Find(ctx, owner, ref);
     if (!r)
         return BML_ERROR_OBJECT_INVALID;
@@ -253,7 +253,7 @@ int GuiApi::Read(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_GuiElement
     if (!r)                                                                                        \
     return BML_ERROR_OBJECT_INVALID
 
-int GuiApi::SetPosition(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
+int GuiApi::SetPosition(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, BML_Vec2 v) {
     BML_GUI_FIND;
     if (!Finite(v))
         return BML_ERROR_INVALID_PARAMETER;
@@ -261,7 +261,7 @@ int GuiApi::SetPosition(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec
     return BML_OK;
 }
 
-int GuiApi::SetSize(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
+int GuiApi::SetSize(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, BML_Vec2 v) {
     BML_GUI_FIND;
     if (!Finite(v) || v.x < 0 || v.y < 0)
         return BML_ERROR_INVALID_PARAMETER;
@@ -276,13 +276,13 @@ int GuiApi::SetSize(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v)
     return BML_OK;
 }
 
-int GuiApi::SetZOrder(ModContext &ctx, IMod &owner, BML_ObjectRef ref, int32_t v) {
+int GuiApi::SetZOrder(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, int32_t v) {
     BML_GUI_FIND;
     r->Item->SetZOrder(v);
     return BML_OK;
 }
 
-int GuiApi::SetVisible(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+int GuiApi::SetVisible(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (v > 1)
         return BML_ERROR_INVALID_PARAMETER;
@@ -290,7 +290,7 @@ int GuiApi::SetVisible(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t
     return BML_OK;
 }
 
-int GuiApi::SetActive(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+int GuiApi::SetActive(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Button)
         return BML_ERROR_TYPE_MISMATCH;
@@ -300,7 +300,7 @@ int GuiApi::SetActive(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t 
     return BML_OK;
 }
 
-int GuiApi::SetColor(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Color v) {
+int GuiApi::SetColor(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, BML_Color v) {
     BML_GUI_FIND;
     if (!Finite(v))
         return BML_ERROR_INVALID_PARAMETER;
@@ -313,7 +313,7 @@ int GuiApi::SetColor(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Color 
     return BML_OK;
 }
 
-int GuiApi::SetText(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char *v) {
+int GuiApi::SetText(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, const char *v) {
     BML_GUI_FIND;
     if (r->SpriteText)
         r->SpriteText->SetText(v);
@@ -324,7 +324,7 @@ int GuiApi::SetText(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char 
     return BML_OK;
 }
 
-int GuiApi::GetText(ModContext &ctx, IMod &owner, BML_ObjectRef ref, char *b, size_t n,
+int GuiApi::GetText(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, char *b, size_t n,
                     size_t *required) {
     BML_GUI_FIND;
     const char *s = r->SpriteText ? r->SpriteText->GetText()
@@ -335,8 +335,8 @@ int GuiApi::GetText(ModContext &ctx, IMod &owner, BML_ObjectRef ref, char *b, si
     return CopyText(s ? s : "", b, n, required);
 }
 
-int GuiApi::SetFont(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char *face, int32_t size,
-                    int32_t weight, uint32_t flags) {
+int GuiApi::SetFont(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, const char *face,
+                    int32_t size, int32_t weight, uint32_t flags) {
     BML_GUI_FIND;
     if (!r->SpriteText)
         return BML_ERROR_TYPE_MISMATCH;
@@ -346,7 +346,7 @@ int GuiApi::SetFont(ModContext &ctx, IMod &owner, BML_ObjectRef ref, const char 
     return BML_OK;
 }
 
-int GuiApi::SetAlignment(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+int GuiApi::SetAlignment(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (r->SpriteText) {
         if (v & ~127u)
@@ -362,7 +362,7 @@ int GuiApi::SetAlignment(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32
     return BML_OK;
 }
 
-int GuiApi::SetButtonType(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+int GuiApi::SetButtonType(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Button)
         return BML_ERROR_TYPE_MISMATCH;
@@ -372,7 +372,7 @@ int GuiApi::SetButtonType(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint3
     return BML_OK;
 }
 
-int GuiApi::SetHovered(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+int GuiApi::SetHovered(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Button)
         return BML_ERROR_TYPE_MISMATCH;
@@ -385,7 +385,7 @@ int GuiApi::SetHovered(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t
     return BML_OK;
 }
 
-int GuiApi::SetGameFont(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+int GuiApi::SetGameFont(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Label)
         return BML_ERROR_TYPE_MISMATCH;
@@ -395,7 +395,7 @@ int GuiApi::SetGameFont(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_
     return BML_OK;
 }
 
-int GuiApi::SetTextFlags(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+int GuiApi::SetTextFlags(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Label)
         return BML_ERROR_TYPE_MISMATCH;
@@ -405,7 +405,7 @@ int GuiApi::SetTextFlags(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32
     return BML_OK;
 }
 
-int GuiApi::SetOffset(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 v) {
+int GuiApi::SetOffset(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, BML_Vec2 v) {
     BML_GUI_FIND;
     if (!r->Label)
         return BML_ERROR_TYPE_MISMATCH;
@@ -416,7 +416,7 @@ int GuiApi::SetOffset(ModContext &ctx, IMod &owner, BML_ObjectRef ref, BML_Vec2 
     return BML_OK;
 }
 
-int GuiApi::SetFocused(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+int GuiApi::SetFocused(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->Input)
         return BML_ERROR_TYPE_MISMATCH;
@@ -430,7 +430,7 @@ int GuiApi::SetFocused(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t
     return BML_OK;
 }
 
-int GuiApi::SetKey(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) {
+int GuiApi::SetKey(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t v) {
     BML_GUI_FIND;
     if (!r->KeyInput)
         return BML_ERROR_TYPE_MISMATCH;
@@ -440,7 +440,7 @@ int GuiApi::SetKey(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t v) 
     return BML_OK;
 }
 
-int GuiApi::CharTyped(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t key,
+int GuiApi::CharTyped(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref, uint32_t key,
                       BML_GuiEvent *out) {
     BML_GUI_FIND;
     if (!r->Input)
@@ -456,7 +456,7 @@ int GuiApi::CharTyped(ModContext &ctx, IMod &owner, BML_ObjectRef ref, uint32_t 
     return BML_OK;
 }
 
-int GuiApi::Process(ModContext &ctx, IMod &owner, BML_ObjectRef ref) {
+int GuiApi::Process(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref) {
     BML_GUI_FIND;
     if (r->SpriteText) {
         r->SpriteText->UpdateFont();
@@ -525,7 +525,7 @@ void GuiApi::Collect() noexcept {
             ++it;
 }
 
-bool GuiApi::CleanupOwner(IMod &owner) noexcept {
+bool GuiApi::CleanupOwner(ModRecord &owner) noexcept {
     if (!m_Storage)
         return true;
     for (auto it = m_Storage->Elements.begin(); it != m_Storage->Elements.end();)
@@ -541,7 +541,7 @@ bool GuiApi::CleanupOwner(IMod &owner) noexcept {
 namespace {
 #define BML_GUI_THUNK(Name, Method, Params, Args)                                                  \
     int BML_CDECL Name(BML_ModContextHandle h, BML_ObjectRef ref, Params) {                        \
-        return WithModContext(h, [&](ModContext &ctx, IMod &owner) {                               \
+        return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {                          \
             return ctx.GetGuiApi().Method(ctx, owner, ref, Args);                                  \
         });                                                                                        \
     }
@@ -550,20 +550,21 @@ int BML_CDECL Create(BML_ModContextHandle h, uint32_t kind, const char *name, BM
     if (!name || !out || kind > BML_GUI_ELEMENT)
         return BML_ERROR_INVALID_PARAMETER;
     *out = {};
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         return ctx.GetGuiApi().Create(ctx, owner, kind, name, out);
     });
 }
 
 int BML_CDECL Destroy(BML_ModContextHandle h, BML_ObjectRef ref) {
-    return WithModContext(
-        h, [&](ModContext &ctx, IMod &owner) { return ctx.GetGuiApi().Destroy(ctx, owner, ref); });
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
+        return ctx.GetGuiApi().Destroy(ctx, owner, ref);
+    });
 }
 
 int BML_CDECL Read(BML_ModContextHandle h, BML_ObjectRef ref, BML_GuiElementInfo *out) {
     if (!out || out->StructSize < BML_GUI_ELEMENT_INFO_1_0_SIZE)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         return ctx.GetGuiApi().Read(ctx, owner, ref, out);
     });
 }
@@ -577,7 +578,7 @@ BML_GUI_THUNK(SetColor, SetColor, BML_Color v, v)
 int BML_CDECL SetText(BML_ModContextHandle h, BML_ObjectRef ref, const char *v) {
     if (!v)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         return ctx.GetGuiApi().SetText(ctx, owner, ref, v);
     });
 }
@@ -586,14 +587,14 @@ int BML_CDECL GetText(BML_ModContextHandle h, BML_ObjectRef ref, char *b, size_t
                       size_t *required) {
     if (!required || (!b && n))
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         return ctx.GetGuiApi().GetText(ctx, owner, ref, b, n, required);
     });
 }
 
 int BML_CDECL SetFont(BML_ModContextHandle h, BML_ObjectRef ref, const char *face, int32_t size,
                       int32_t weight, uint32_t flags) {
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         return ctx.GetGuiApi().SetFont(ctx, owner, ref, face, size, weight, flags);
     });
 }
@@ -610,14 +611,15 @@ int BML_CDECL CharTyped(BML_ModContextHandle h, BML_ObjectRef ref, uint32_t key,
                         BML_GuiEvent *out) {
     if (!out || out->StructSize < BML_GUI_EVENT_1_0_SIZE)
         return BML_ERROR_INVALID_PARAMETER;
-    return WithModContext(h, [&](ModContext &ctx, IMod &owner) {
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
         return ctx.GetGuiApi().CharTyped(ctx, owner, ref, key, out);
     });
 }
 
 int BML_CDECL Process(BML_ModContextHandle h, BML_ObjectRef ref) {
-    return WithModContext(
-        h, [&](ModContext &ctx, IMod &owner) { return ctx.GetGuiApi().Process(ctx, owner, ref); });
+    return WithModContext(h, [&](ModContext &ctx, ModRecord &owner) {
+        return ctx.GetGuiApi().Process(ctx, owner, ref);
+    });
 }
 
 const BML_GuiInterface table{BML_IFACE_HEADER(BML_GuiInterface, BML_GUI_INTERFACE_ID, 1, 0),

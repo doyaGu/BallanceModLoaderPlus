@@ -3,8 +3,7 @@
 
 #include <cstddef>
 
-#include "Loader/IMod.h"
-#include "Loader/ModContext.h"
+#include "Loader/ModRecord.h"
 #include "BML/Behavior.hpp"
 
 #include "Console/Console.h"
@@ -18,45 +17,54 @@
 class ModContext;
 struct FontCommandContext;
 
-class BMLMod : public IMod {
+class BMLMod {
 public:
+    ModRecord &Registration() noexcept { return m_Record; }
+
+    const ModRecord &Registration() const noexcept { return m_Record; }
+
     explicit BMLMod(ModContext *context);
 
     // The builtin capabilities read the BML mod's bound runtime, never the
     // ambient BML_GetModContext() singleton.
     ModContext *GetRuntimeContext() const;
 
-    const char *GetID() override { return "BML"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "Ballance Mod Loader"; }
-    const char *GetAuthor() override { return "doyaGu & Gamepiaynmo & YingChe"; }
-    const char *GetDescription() override {
+    const char *GetID() { return "BML"; }
+
+    const char *GetVersion() { return BML_VERSION; }
+
+    const char *GetName() { return "Ballance Mod Loader"; }
+
+    const char *GetAuthor() { return "doyaGu & Gamepiaynmo & YingChe"; }
+
+    const char *GetDescription() {
         return "Implementation of functions provided by Ballance Mod Loader."
                "\n\n https://github.com/doyaGu/BallanceModLoaderPlus";
     }
-    BMLVersion GetBMLVersion() override { return {}; }
 
-    void OnLoad() override;
-    void OnUnload() override;
+    BMLVersion GetBMLVersion() { return {}; }
+
+    void OnLoad();
+    void OnUnload();
     void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName,
-                      CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials,
-                      CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) override;
-    void OnLoadScript(const char *filename, CKBehavior *script) override;
-    void OnProcess() override;
-    void OnModifyConfig(const char *category, const char *key, Property *prop) override;
+                      CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes,
+                      CKBOOL reuseMaterials, CKBOOL dynamic, XObjectArray *objArray,
+                      CKObject *masterObj);
+    void OnLoadScript(const char *filename, CKBehavior *script);
+    void OnProcess();
+    void OnModifyConfig(const char *category, const char *key, Property *prop);
 
-
-    void OnPreStartMenu() override;
-    void OnPostStartMenu() override;
-    void OnExitGame() override;
-    void OnPreLoadLevel() override;
-    void OnStartLevel() override;
-    void OnPostExitLevel() override;
-    void OnPauseLevel() override;
-    void OnUnpauseLevel() override;
-    void OnBallNavActive() override;
-    void OnCounterActive() override;
-    void OnCounterInactive() override;
+    void OnPreStartMenu();
+    void OnPostStartMenu();
+    void OnExitGame();
+    void OnPreLoadLevel();
+    void OnStartLevel();
+    void OnPostExitLevel();
+    void OnPauseLevel();
+    void OnUnpauseLevel();
+    void OnBallNavActive();
+    void OnCounterActive();
+    void OnCounterInactive();
 
     void AddIngameMessage(const char *msg);
     void ClearIngameMessages();
@@ -89,6 +97,9 @@ public:
     float GetSRTime() const;
 
 private:
+    ModContext *m_BML;
+    ModRecord m_Record;
+
     enum ApplyWhen : unsigned {
         OnDemand = 0,
         Startup = 1U << 0,
@@ -154,7 +165,6 @@ private:
     Property *m_UnlockFPS = nullptr;
     Property *m_FPSLimit = nullptr;
     Property *m_WidescreenFix = nullptr;
-
 };
 
 #endif // BML_BMLMOD_H

@@ -2,7 +2,7 @@
 
 #include <angelscript.h>
 
-#include "Loader/IMod.h"
+#include "Loader/ModRecord.h"
 #include "Logging/Logger.h"
 #include "Loader/ModContext.h"
 #include "ScriptFacadeAccess.h"
@@ -566,7 +566,7 @@ int ScriptModContextView::GetGlobalModCount() const {
 }
 
 std::string ScriptModContextView::GetGlobalModId(int index) const {
-    IMod *mod = m_Context ? m_Context->GetMod(index) : nullptr;
+    ModRecord *mod = m_Context ? m_Context->GetMod(index) : nullptr;
     return mod ? mod->GetID() : "";
 }
 

@@ -4,9 +4,6 @@
 
 #include <gtest/gtest.h>
 
-IMod::~IMod() = default;
-Logger *IMod::GetLogger() { return nullptr; }
-Config *IMod::GetConfig() { return nullptr; }
 
 namespace {
 

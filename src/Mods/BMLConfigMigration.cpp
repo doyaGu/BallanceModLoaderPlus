@@ -17,7 +17,8 @@ namespace {
 
     const std::string *FindString(const ConfigData &values, const char *category, const char *key) {
         const ConfigData::Entry *entry = values.Find(category, key);
-        return entry && entry->Type == PropertyType::STRING ? &std::get<std::string>(entry->Value) : nullptr;
+        return entry && entry->Type == PropertyType::STRING ? &std::get<std::string>(entry->Value)
+                                                            : nullptr;
     }
 
     bool ReadFloat(const ConfigData &values, const char *category, const char *key, float &value) {
@@ -74,11 +75,13 @@ bool MigrateBMLConfig(ConfigData &values) {
     if (hasOldFontSettings && !hasFallbacks) {
         float oldPrimarySize = 0.0f;
         if (ReadFloat(values, "GUI", "FontSize", oldPrimarySize) && oldPrimarySize <= 0.0f)
-            values.Set("GUI", "FontSize", PropertyType::FLOAT, BML::UI::FontProfile{}.ReferenceSize);
+            values.Set("GUI", "FontSize", PropertyType::FLOAT,
+                       BML::UI::FontProfile{}.ReferenceSize);
     }
 
     const ConfigData::Entry *secondary = values.Find("GUI", "EnableSecondaryFont");
-    const bool secondaryEnabled = secondary && secondary->Type == PropertyType::BOOLEAN && std::get<bool>(secondary->Value);
+    const bool secondaryEnabled =
+        secondary && secondary->Type == PropertyType::BOOLEAN && std::get<bool>(secondary->Value);
     const std::string *secondaryFace = FindString(values, "GUI", "SecondaryFontFilename");
     if (!hasFallbacks && secondaryEnabled && secondaryFace) {
         const std::string requested = *secondaryFace;

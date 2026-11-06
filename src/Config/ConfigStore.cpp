@@ -6,7 +6,8 @@ bool ConfigStore::Contains(const std::string &modId) const {
     return m_Index.find(modId) != m_Index.end();
 }
 
-Config *ConfigStore::Add(const std::string &modId, IMod *owner, std::unique_ptr<Config> config) {
+Config *ConfigStore::Add(const std::string &modId, ModRecord *owner,
+                         std::unique_ptr<Config> config) {
     if (!owner || !config || config->GetMod() != owner || Contains(modId) ||
         m_Owners.contains(owner))
         return nullptr;
@@ -32,7 +33,8 @@ Config *ConfigStore::Add(const std::string &modId, IMod *owner, std::unique_ptr<
     return rawConfig;
 }
 
-std::unique_ptr<Config> ConfigStore::Remove(const std::string &modId, IMod *owner, Config *config) {
+std::unique_ptr<Config> ConfigStore::Remove(const std::string &modId, ModRecord *owner,
+                                            Config *config) {
     const auto it = m_Index.find(modId);
     if (it == m_Index.end() || it->second >= m_Configs.size() ||
         m_Configs[it->second].get() != config || m_Configs[it->second]->GetMod() != owner) {
@@ -51,7 +53,7 @@ std::unique_ptr<Config> ConfigStore::Remove(const std::string &modId, IMod *owne
     return removed;
 }
 
-Config *ConfigStore::Find(const std::string &modId, const IMod *owner) const {
+Config *ConfigStore::Find(const std::string &modId, const ModRecord *owner) const {
     const auto it = m_Index.find(modId);
     if (it == m_Index.end() || it->second >= m_Configs.size() ||
         m_Configs[it->second]->GetMod() != owner) {
@@ -60,7 +62,7 @@ Config *ConfigStore::Find(const std::string &modId, const IMod *owner) const {
     return m_Configs[it->second].get();
 }
 
-Config *ConfigStore::Find(const IMod *owner) const noexcept {
+Config *ConfigStore::Find(const ModRecord *owner) const noexcept {
     const auto found = m_Owners.find(owner);
     return found == m_Owners.end() ? nullptr : found->second;
 }

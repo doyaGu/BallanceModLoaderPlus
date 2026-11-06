@@ -92,6 +92,7 @@ std::unique_ptr<NativeMod> NativeMod::Query(ModContext *host, const BML_ModInter
     }
     result->m_Create = api->Create;
     result->m_Destroy = api->Destroy;
+    result->m_Record.RefreshMetadata(*result);
     return result;
 }
 

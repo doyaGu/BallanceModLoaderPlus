@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Loader/IMod.h"
+#include "Loader/ModVersion.h"
 #include "ScriptSourceSnapshot.h"
 
 namespace BML {

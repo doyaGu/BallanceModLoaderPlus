@@ -57,8 +57,7 @@ void Settings::Define(Config &config) {
     config.SetCategoryComment(Category, "Command Bar Syntax Theme");
 }
 
-bool Settings::Owns(const char *category, const char *key,
-                    const Property *property) const {
+bool Settings::Owns(const char *category, const char *key, const Property *property) const {
     if (!category || !key || !property || std::strcmp(category, Category) != 0)
         return false;
 
