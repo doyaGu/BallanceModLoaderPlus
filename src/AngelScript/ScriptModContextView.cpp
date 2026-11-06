@@ -5,7 +5,6 @@
 #include "Loader/ModRecord.h"
 #include "Logging/Logger.h"
 #include "Loader/ModContext.h"
-#include "ScriptFacadeAccess.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptMod.h"
 #include "ScriptModRuntime.h"
@@ -152,19 +151,23 @@ std::string ScriptModContextView::GetDirectoryUtf8(int type) const {
 }
 
 float ScriptModContextView::GetTimeMs() const {
-    return ScriptFacadeAccess::GetTimeMs(GetTimeManager());
+    CKTimeManager *time = GetTimeManager();
+    return time ? time->GetTime() : 0.0f;
 }
 
 float ScriptModContextView::GetAbsoluteTimeMs() const {
-    return ScriptFacadeAccess::GetAbsoluteTimeMs(GetTimeManager());
+    CKTimeManager *time = GetTimeManager();
+    return time ? time->GetAbsoluteTime() : 0.0f;
 }
 
 float ScriptModContextView::GetDeltaTimeMs() const {
-    return ScriptFacadeAccess::GetDeltaTimeMs(GetTimeManager());
+    CKTimeManager *time = GetTimeManager();
+    return time ? time->GetLastDeltaTime() : 0.0f;
 }
 
 unsigned int ScriptModContextView::GetFrameCount() const {
-    return ScriptFacadeAccess::GetFrameCount(GetTimeManager());
+    CKTimeManager *time = GetTimeManager();
+    return time ? static_cast<unsigned int>(time->GetMainTickCount()) : 0;
 }
 
 CKDataArray *ScriptModContextView::GetArrayByName(const std::string &name) const {

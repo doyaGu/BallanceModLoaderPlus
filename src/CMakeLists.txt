@@ -612,7 +612,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptDevEvents.h
             AngelScript/ScriptDevToolsService.h
             AngelScript/ScriptDiagnostic.h
-            AngelScript/ScriptFacadeAccess.h
             AngelScript/ScriptHookBlockService.h
             AngelScript/ScriptImcRecord.h
             AngelScript/ScriptImcService.h

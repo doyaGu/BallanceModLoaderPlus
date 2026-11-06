@@ -35,7 +35,6 @@
 #include "ScriptApiSurface.h"
 #include "ScriptAvailabilityLogLimiter.h"
 #include "ScriptCallbackEvents.h"
-#include "ScriptFacadeAccess.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptHookBlockService.h"
 #include "ScriptImcRecord.h"
@@ -218,145 +217,338 @@ float BMLAS_Speedrun_GetElapsedTime() {
     return RequireLoadedContext(ctx) ? ctx->GetSRTime() : 0.0f;
 }
 
-static bool BMLAS_InputHookIsValid(InputHook *input) { return BML::ScriptFacadeAccess::IsInputValid(input); }
+static bool BMLAS_IsJoystickIndexValid(int joystick) {
+    return joystick >= CKJOY_1 && joystick < CKMAX_JOY;
+}
+
+static bool BMLAS_IsJoystickButtonIndexValid(int button) {
+    return button >= 0 && button < 32;
+}
+
+static bool BMLAS_IsKeyboardKeyIndexValid(CKKEYBOARD key) {
+    const int code = static_cast<int>(key);
+    return code >= 0 && code < 256;
+}
+
+static bool BMLAS_InputHookIsValid(InputHook *input) {
+    return input != nullptr;
+}
+
 static void BMLAS_InputHookEnableKeyboardRepetition(InputHook *input, bool enable) {
-    BML::ScriptFacadeAccess::EnableKeyboardRepetition(input, enable);
+    if (input)
+        input->EnableKeyboardRepetition(enable ? TRUE : FALSE);
 }
-static bool BMLAS_InputHookIsKeyboardRepetitionEnabled(InputHook *input) { return BML::ScriptFacadeAccess::IsKeyboardRepetitionEnabled(input); }
-static bool BMLAS_InputHookIsKeyboardAttached(InputHook *input) { return BML::ScriptFacadeAccess::IsKeyboardAttached(input); }
-static bool BMLAS_InputHookIsMouseAttached(InputHook *input) { return BML::ScriptFacadeAccess::IsMouseAttached(input); }
-static bool BMLAS_InputHookIsJoystickAttached(InputHook *input, int joystick) { return BML::ScriptFacadeAccess::IsJoystickAttached(input, joystick); }
-static bool BMLAS_InputHookIsKeyDown(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyDown(input, key); }
-static bool BMLAS_InputHookIsKeyDownWithStamp(InputHook *input, CKKEYBOARD key, unsigned int &stamp) { return BML::ScriptFacadeAccess::IsKeyDown(input, key, stamp); }
-static bool BMLAS_InputHookIsKeyUp(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyUp(input, key); }
-static bool BMLAS_InputHookIsKeyPressed(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyPressed(input, key); }
-static bool BMLAS_InputHookIsKeyReleased(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyReleased(input, key); }
-static bool BMLAS_InputHookIsKeyToggled(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyToggled(input, key); }
-static bool BMLAS_InputHookIsKeyToggledWithStamp(InputHook *input, CKKEYBOARD key, unsigned int &stamp) { return BML::ScriptFacadeAccess::IsKeyToggled(input, key, stamp); }
+
+static bool BMLAS_InputHookIsKeyboardRepetitionEnabled(InputHook *input) {
+    return input && input->IsKeyboardRepetitionEnabled();
+}
+
+static bool BMLAS_InputHookIsKeyboardAttached(InputHook *input) {
+    return input && input->IsKeyboardAttached();
+}
+
+static bool BMLAS_InputHookIsMouseAttached(InputHook *input) {
+    return input && input->IsMouseAttached();
+}
+
+static bool BMLAS_InputHookIsJoystickAttached(InputHook *input, int joystick) {
+    return input && BMLAS_IsJoystickIndexValid(joystick) && input->IsJoystickAttached(joystick);
+}
+
+static bool BMLAS_InputHookIsKeyDown(InputHook *input, CKKEYBOARD key) {
+    return input && BMLAS_IsKeyboardKeyIndexValid(key) &&
+           input->IsKeyDown(static_cast<CKDWORD>(key));
+}
+
+static bool BMLAS_InputHookIsKeyDownWithStamp(InputHook *input, CKKEYBOARD key,
+                                              unsigned int &stamp) {
+    stamp = 0;
+    if (!input || !BMLAS_IsKeyboardKeyIndexValid(key))
+        return false;
+    CKDWORD nativeStamp = 0;
+    const bool result = input->IsKeyDown(static_cast<CKDWORD>(key), &nativeStamp) != FALSE;
+    stamp = static_cast<unsigned int>(nativeStamp);
+    return result;
+}
+
+static bool BMLAS_InputHookIsKeyUp(InputHook *input, CKKEYBOARD key) {
+    return input && BMLAS_IsKeyboardKeyIndexValid(key) && input->IsKeyUp(static_cast<CKDWORD>(key));
+}
+
+static bool BMLAS_InputHookIsKeyPressed(InputHook *input, CKKEYBOARD key) {
+    return input && BMLAS_IsKeyboardKeyIndexValid(key) &&
+           input->IsKeyPressed(static_cast<CKDWORD>(key));
+}
+
+static bool BMLAS_InputHookIsKeyReleased(InputHook *input, CKKEYBOARD key) {
+    return input && BMLAS_IsKeyboardKeyIndexValid(key) &&
+           input->IsKeyReleased(static_cast<CKDWORD>(key));
+}
+
+static bool BMLAS_InputHookIsKeyToggled(InputHook *input, CKKEYBOARD key) {
+    return input && BMLAS_IsKeyboardKeyIndexValid(key) &&
+           input->IsKeyToggled(static_cast<CKDWORD>(key));
+}
+
+static bool BMLAS_InputHookIsKeyToggledWithStamp(InputHook *input, CKKEYBOARD key,
+                                                 unsigned int &stamp) {
+    stamp = 0;
+    if (!input || !BMLAS_IsKeyboardKeyIndexValid(key))
+        return false;
+    CKDWORD nativeStamp = 0;
+    const bool result = input->IsKeyToggled(static_cast<CKDWORD>(key), &nativeStamp) != FALSE;
+    stamp = static_cast<unsigned int>(nativeStamp);
+    return result;
+}
+
 static std::string BMLAS_InputHookGetKeyName(InputHook *input, CKKEYBOARD key) {
-    return BML::ScriptFacadeAccess::GetKeyName(input, key);
+    if (!input || !BMLAS_IsKeyboardKeyIndexValid(key))
+        return {};
+    char buffer[128] = {};
+    input->GetKeyName(static_cast<CKDWORD>(key), buffer);
+    return buffer;
 }
+
 static int BMLAS_InputHookGetKeyFromName(InputHook *input, const std::string &name) {
-    return BML::ScriptFacadeAccess::GetKeyFromName(input, name);
+    return input ? static_cast<int>(input->GetKeyFromName(const_cast<char *>(name.c_str()))) : 0;
 }
-static int BMLAS_InputHookGetKeyboardState(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::GetKeyboardState(input, key); }
-static bool BMLAS_InputHookIsKeyboardStateDown(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyboardStateDown(input, key); }
-static int BMLAS_InputHookGetNumberOfKeyInBuffer(InputHook *input) { return BML::ScriptFacadeAccess::GetNumberOfKeyInBuffer(input); }
-static int BMLAS_InputHookGetKeyFromBuffer(InputHook *input, int index, CKKEYBOARD &key, unsigned int &timestamp) {
-    return BML::ScriptFacadeAccess::GetKeyFromBuffer(input, index, key, timestamp);
+
+static int BMLAS_InputHookGetKeyboardState(InputHook *input, CKKEYBOARD key) {
+    if (!input || !BMLAS_IsKeyboardKeyIndexValid(key))
+        return 0;
+    const int code = static_cast<int>(key);
+    const unsigned char *state = input->GetKeyboardState();
+    return state ? static_cast<int>(state[code]) : 0;
 }
-static bool BMLAS_InputHookIsMouseButtonDown(InputHook *input, CK_MOUSEBUTTON button) { return BML::ScriptFacadeAccess::IsMouseButtonDown(input, button); }
-static bool BMLAS_InputHookIsMouseClicked(InputHook *input, CK_MOUSEBUTTON button) { return BML::ScriptFacadeAccess::IsMouseClicked(input, button); }
-static bool BMLAS_InputHookIsMouseToggled(InputHook *input, CK_MOUSEBUTTON button) { return BML::ScriptFacadeAccess::IsMouseToggled(input, button); }
-static int BMLAS_InputHookGetMouseButtonState(InputHook *input, CK_MOUSEBUTTON button) { return BML::ScriptFacadeAccess::GetMouseButtonState(input, button); }
+
+static bool BMLAS_InputHookIsKeyboardStateDown(InputHook *input, CKKEYBOARD key) {
+    return (BMLAS_InputHookGetKeyboardState(input, key) & 0x80) != 0;
+}
+
+static int BMLAS_InputHookGetNumberOfKeyInBuffer(InputHook *input) {
+    return input ? input->GetNumberOfKeyInBuffer() : 0;
+}
+
+static int BMLAS_InputHookGetKeyFromBuffer(InputHook *input, int index, CKKEYBOARD &key,
+                                           unsigned int &timestamp) {
+    key = static_cast<CKKEYBOARD>(0);
+    timestamp = 0;
+    if (!input)
+        return 0;
+    CKDWORD nativeKey = 0;
+    CKDWORD nativeTimestamp = 0;
+    const int state = input->GetKeyFromBuffer(index, nativeKey, &nativeTimestamp);
+    key = static_cast<CKKEYBOARD>(nativeKey);
+    timestamp = static_cast<unsigned int>(nativeTimestamp);
+    return state;
+}
+
+static bool BMLAS_InputHookIsMouseButtonDown(InputHook *input, CK_MOUSEBUTTON button) {
+    return input && input->IsMouseButtonDown(button);
+}
+
+static bool BMLAS_InputHookIsMouseClicked(InputHook *input, CK_MOUSEBUTTON button) {
+    return input && input->IsMouseClicked(button);
+}
+
+static bool BMLAS_InputHookIsMouseToggled(InputHook *input, CK_MOUSEBUTTON button) {
+    return input && input->IsMouseToggled(button);
+}
+
+static int BMLAS_InputHookGetMouseButtonState(InputHook *input, CK_MOUSEBUTTON button) {
+    if (!input)
+        return 0;
+    const int index = static_cast<int>(button);
+    if (index < 0 || index >= 4)
+        return 0;
+    CKBYTE states[4] = {};
+    input->GetMouseButtonsState(states);
+    return static_cast<int>(states[index]);
+}
+
 static Vx2DVector BMLAS_InputHookGetMousePosition(InputHook *input, bool absolute) {
-    return BML::ScriptFacadeAccess::GetMousePosition(input, absolute);
+    Vx2DVector position = Vx2DVector(0.0f, 0.0f);
+    if (input)
+        input->GetMousePosition(position, absolute ? TRUE : FALSE);
+    return position;
 }
+
 static Vx2DVector BMLAS_InputHookGetLastMousePosition(InputHook *input) {
-    return BML::ScriptFacadeAccess::GetLastMousePosition(input);
+    Vx2DVector position = Vx2DVector(0.0f, 0.0f);
+    if (input)
+        input->GetLastMousePosition(position);
+    return position;
 }
+
 static VxVector BMLAS_InputHookGetMouseRelativePosition(InputHook *input) {
-    return BML::ScriptFacadeAccess::GetMouseRelativePosition(input);
+    VxVector position = VxVector(0.0f, 0.0f, 0.0f);
+    if (input)
+        input->GetMouseRelativePosition(position);
+    return position;
 }
+
 static VxVector BMLAS_InputHookGetJoystickPosition(InputHook *input, int joystick) {
-    return BML::ScriptFacadeAccess::GetJoystickPosition(input, joystick);
+    VxVector position = VxVector(0.0f, 0.0f, 0.0f);
+    if (input && BMLAS_IsJoystickIndexValid(joystick))
+        input->GetJoystickPosition(joystick, &position);
+    return position;
 }
+
 static VxVector BMLAS_InputHookGetJoystickRotation(InputHook *input, int joystick) {
-    return BML::ScriptFacadeAccess::GetJoystickRotation(input, joystick);
+    VxVector rotation = VxVector(0.0f, 0.0f, 0.0f);
+    if (input && BMLAS_IsJoystickIndexValid(joystick))
+        input->GetJoystickRotation(joystick, &rotation);
+    return rotation;
 }
+
 static Vx2DVector BMLAS_InputHookGetJoystickSliders(InputHook *input, int joystick) {
-    return BML::ScriptFacadeAccess::GetJoystickSliders(input, joystick);
+    Vx2DVector sliders = Vx2DVector(0.0f, 0.0f);
+    if (input && BMLAS_IsJoystickIndexValid(joystick))
+        input->GetJoystickSliders(joystick, &sliders);
+    return sliders;
 }
+
 static float BMLAS_InputHookGetJoystickPointOfViewAngle(InputHook *input, int joystick) {
-    return BML::ScriptFacadeAccess::GetJoystickPointOfViewAngle(input, joystick);
+    float angle = 0.0f;
+    if (input && BMLAS_IsJoystickIndexValid(joystick))
+        input->GetJoystickPointOfViewAngle(joystick, &angle);
+    return angle;
 }
+
 static unsigned int BMLAS_InputHookGetJoystickButtonsState(InputHook *input, int joystick) {
-    return BML::ScriptFacadeAccess::GetJoystickButtonsState(input, joystick);
+    return input && BMLAS_IsJoystickIndexValid(joystick)
+               ? static_cast<unsigned int>(input->GetJoystickButtonsState(joystick))
+               : 0;
 }
+
 static bool BMLAS_InputHookIsJoystickButtonDown(InputHook *input, int joystick, int button) {
-    return BML::ScriptFacadeAccess::IsJoystickButtonDown(input, joystick, button);
+    return input && BMLAS_IsJoystickIndexValid(joystick) &&
+           BMLAS_IsJoystickButtonIndexValid(button) &&
+           input->IsJoystickButtonDown(joystick, button);
 }
+
 static void BMLAS_InputHookPause(InputHook *input, bool pause) {
-    BML::ScriptFacadeAccess::PauseInput(input, pause);
+    if (input)
+        input->Pause(pause ? TRUE : FALSE);
 }
+
 static void BMLAS_InputHookShowCursor(InputHook *input, bool show) {
-    BML::ScriptFacadeAccess::ShowCursor(input, show);
+    if (input)
+        input->ShowCursor(show ? TRUE : FALSE);
 }
-static bool BMLAS_InputHookGetCursorVisibility(InputHook *input) { return BML::ScriptFacadeAccess::GetCursorVisibility(input); }
-static int BMLAS_InputHookGetSystemCursor(InputHook *input) { return BML::ScriptFacadeAccess::GetSystemCursor(input); }
+
+static bool BMLAS_InputHookGetCursorVisibility(InputHook *input) {
+    return input && input->GetCursorVisibility();
+}
+
+static int BMLAS_InputHookGetSystemCursor(InputHook *input) {
+    return input ? static_cast<int>(input->GetSystemCursor()) : 0;
+}
+
 static void BMLAS_InputHookSetSystemCursor(InputHook *input, int cursor) {
-    BML::ScriptFacadeAccess::SetSystemCursor(input, cursor);
+    if (input)
+        input->SetSystemCursor(static_cast<VXCURSOR_POINTER>(cursor));
 }
-static bool BMLAS_InputHookIsBlock(InputHook *input) { return BML::ScriptFacadeAccess::IsBlock(input); }
+
+static bool BMLAS_InputHookIsBlock(InputHook *input) {
+    return input && input->IsBlock();
+}
+
 static void BMLAS_InputHookSetBlock(InputHook *input, bool block) {
-    BML::ScriptFacadeAccess::SetBlock(input, block);
+    if (input)
+        input->SetBlock(block);
 }
-static int BMLAS_InputHookIsBlocked(InputHook *input, int device) { return BML::ScriptFacadeAccess::IsBlocked(input, device); }
+
+static int BMLAS_InputHookIsBlocked(InputHook *input, int device) {
+    return input ? input->IsBlocked(static_cast<CK_INPUT_DEVICE>(device)) : 0;
+}
+
 static void BMLAS_InputHookBlock(InputHook *input, int device) {
-    BML::ScriptFacadeAccess::Block(input, device);
+    if (input)
+        input->Block(static_cast<CK_INPUT_DEVICE>(device));
 }
+
 static void BMLAS_InputHookUnblock(InputHook *input, int device) {
-    BML::ScriptFacadeAccess::Unblock(input, device);
+    if (input)
+        input->Unblock(static_cast<CK_INPUT_DEVICE>(device));
 }
+
 static uint64_t BMLAS_InputHookAcquireBlock(InputHook *input, unsigned int mask) {
-    return BML::ScriptFacadeAccess::AcquireBlock(input, mask);
+    return input ? input->AcquireBlock(mask) : 0;
 }
+
 static void BMLAS_InputHookReleaseBlock(InputHook *input, uint64_t token) {
-    BML::ScriptFacadeAccess::ReleaseBlock(input, token);
+    if (input)
+        input->ReleaseBlock(token);
 }
 
-bool BMLAS_IsObjectValid(CKObject *object) {
+static bool BMLAS_IsObjectValid(CKObject *object) {
     ModContext *context = GetActiveContext();
-    return context &&
-           BML::ScriptFacadeAccess::IsObjectValid(context->GetCKContext(), object);
+    CKContext *engine = context ? context->GetCKContext() : nullptr;
+    if (!engine || !object)
+        return false;
+
+    const XObjectPointerArray &objects = engine->GetObjectListByType(CKCID_OBJECT, TRUE);
+    for (XObjectPointerArray::ConstIterator it = objects.Begin(); it != objects.End(); ++it) {
+        if (*it == object)
+            return !object->IsToBeDeleted();
+    }
+    return false;
 }
 
-int BMLAS_GetObjectId(CKObject *object) {
-    return BML::ScriptFacadeAccess::GetObjectId(object);
+static int BMLAS_GetObjectId(CKObject *object) {
+    return object ? static_cast<int>(object->GetID()) : 0;
 }
 
-std::string BMLAS_GetObjectName(CKObject *object) {
-    return BML::ScriptFacadeAccess::GetObjectName(object);
+static std::string BMLAS_GetObjectName(CKObject *object) {
+    CKSTRING name = object ? object->GetName() : nullptr;
+    return name ? name : "";
 }
 
-int BMLAS_GetObjectClassId(CKObject *object) {
-    return BML::ScriptFacadeAccess::GetObjectClassId(object);
+static int BMLAS_GetObjectClassId(CKObject *object) {
+    return object ? static_cast<int>(object->GetClassID()) : 0;
 }
 
-bool BMLAS_IsObjectVisible(CKObject *object) {
-    return BML::ScriptFacadeAccess::IsObjectVisible(object);
+static bool BMLAS_IsObjectVisible(CKObject *object) {
+    return object && object->IsVisible();
 }
 
-bool BMLAS_IsObjectDynamic(CKObject *object) {
-    return BML::ScriptFacadeAccess::IsObjectDynamic(object);
+static bool BMLAS_IsObjectDynamic(CKObject *object) {
+    return object && object->IsDynamic();
 }
 
-int BMLAS_GetBeObjectPriority(CKBeObject *object) {
-    return BML::ScriptFacadeAccess::GetBeObjectPriority(object);
+static int BMLAS_GetBeObjectPriority(CKBeObject *object) {
+    return object ? object->GetPriority() : 0;
 }
 
-int BMLAS_GetBeObjectScriptCount(CKBeObject *object) {
-    return BML::ScriptFacadeAccess::GetBeObjectScriptCount(object);
+static int BMLAS_GetBeObjectScriptCount(CKBeObject *object) {
+    return object ? object->GetScriptCount() : 0;
 }
 
-int BMLAS_GetBeObjectAttributeCount(CKBeObject *object) {
-    return BML::ScriptFacadeAccess::GetBeObjectAttributeCount(object);
+static int BMLAS_GetBeObjectAttributeCount(CKBeObject *object) {
+    return object ? object->GetAttributeCount() : 0;
 }
 
-VxVector BMLAS_Get3dEntityPosition(CK3dEntity *entity) {
-    return BML::ScriptFacadeAccess::Get3dEntityPosition(entity);
+static VxVector BMLAS_Get3dEntityPosition(CK3dEntity *entity) {
+    VxVector position = VxVector(0.0f, 0.0f, 0.0f);
+    if (entity)
+        entity->GetPosition(&position);
+    return position;
 }
 
-VxVector BMLAS_Get3dEntityScale(CK3dEntity *entity, bool local) {
-    return BML::ScriptFacadeAccess::Get3dEntityScale(entity, local);
+static VxVector BMLAS_Get3dEntityScale(CK3dEntity *entity, bool local) {
+    VxVector scale = VxVector(0.0f, 0.0f, 0.0f);
+    if (entity)
+        entity->GetScale(&scale, local ? TRUE : FALSE);
+    return scale;
 }
 
-int BMLAS_Get3dEntityChildCount(CK3dEntity *entity) {
-    return BML::ScriptFacadeAccess::Get3dEntityChildCount(entity);
+static int BMLAS_Get3dEntityChildCount(CK3dEntity *entity) {
+    return entity ? entity->GetChildrenCount() : 0;
 }
 
-CK3dEntity *BMLAS_Get3dEntityParent(CK3dEntity *entity) {
-    return BML::ScriptFacadeAccess::Get3dEntityParent(entity);
+static CK3dEntity *BMLAS_Get3dEntityParent(CK3dEntity *entity) {
+    return entity ? entity->GetParent() : nullptr;
 }
 
 void BMLAS_SetIC(CKBeObject *object, bool hierarchy) {
@@ -386,9 +578,15 @@ bool BMLAS_IsRelativePathUtf8(const std::string &path) { return BML_IsRelativePa
 std::string BMLAS_CombinePathUtf8(const std::string &left, const std::string &right) { return CopyAndFree(BML_CombinePathUtf8(left.c_str(), right.c_str())); }
 std::string BMLAS_NormalizePathUtf8(const std::string &path) { return CopyAndFree(BML_NormalizePathUtf8(path.c_str())); }
 std::string BMLAS_GetFileNameUtf8(const std::string &path) { return CopyAndFree(BML_GetFileNameUtf8(path.c_str())); }
-std::string BMLAS_GetExtensionUtf8(const std::string &path) { return CopyAndFree(BML_GetExtensionUtf8(path.c_str())); }
-std::string BMLAS_RemoveExtensionUtf8(const std::string &path) { return CopyAndFree(BML_RemoveExtensionUtf8(path.c_str())); }
-bool BMLAS_DataShareSetString(const std::string &key, const std::string &value, const std::string &name) {
+std::string BMLAS_GetExtensionUtf8(const std::string &path) { return CopyAndFree(BML_GetExtensionUtf8(path.c_str()));
+}
+
+std::string BMLAS_RemoveExtensionUtf8(const std::string &path) {
+    return CopyAndFree(BML_RemoveExtensionUtf8(path.c_str()));
+}
+
+bool BMLAS_DataShareSetString(const std::string &key, const std::string &value,
+                              const std::string &name) {
     BML_DataShare *share = BML_GetDataShare(name.empty() ? nullptr : name.c_str());
     if (!share)
         return false;
@@ -1352,11 +1550,10 @@ static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
             BML::Behavior::Blocks::PhysicsWakeUp::Options{target}));
 }
 
-static BML::ScriptCommandRef *BMLAS_ContextRegisterCommandDelegate(
-    const BML::ScriptModContextView *context,
-    const BMLAS_CommandDefinition &definition,
-    asIScriptFunction *execute,
-    asIScriptFunction *complete) {
+static BML::ScriptCommandRef *
+BMLAS_ContextRegisterCommandDelegate(const BML::ScriptModContextView *context,
+                                     const BMLAS_CommandDefinition &definition,
+                                     asIScriptFunction *execute, asIScriptFunction *complete) {
     return context ? context->RegisterCommand(definition, execute, complete) : nullptr;
 }
 
