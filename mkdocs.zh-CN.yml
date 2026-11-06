@@ -15,7 +15,10 @@ plugins:
 
 nav:
   - 首页: index.md
-  - 使用 BML+: using-bml.md
+  - 使用 BML+:
+      - 安装与使用: using-bml.md
+      - Updater 和 doctor: updater-sdl.md
+      - 支持与验证: validation.md
   - 开发 Mod:
       - 选择路线: modding.md
       - 原生 Mod: native-mod-api.md

@@ -44,9 +44,17 @@ extra:
       link: https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/
       lang: zh
 
+validation:
+  links:
+    anchors: warn
+    unrecognized_links: warn
+
 nav:
   - Home: index.md
-  - Use BML+: using-bml.md
+  - Use BML+:
+      - Install and use: using-bml.md
+      - Updater and doctor: updater-sdl.md
+      - Support and validation: validation.md
   - Create mods:
       - Choose a route: modding.md
       - Native mods: native-mod-api.md

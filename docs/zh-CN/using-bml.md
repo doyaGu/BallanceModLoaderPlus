@@ -1,86 +1,108 @@
-# 在 Ballanced 中使用 BML+
+# 安装和使用 BML+
 
-## 要求
+## 先核对运行时
 
-使用与 Ballanced SDL Player 的平台、架构、宿主链接方式和构建配置匹配的 BML+。
-原生 Mod 要匹配 C 协议与目标描述；直接 Engine/ImGui 扩展还须匹配依赖、编译器和运行库 ABI。当前支持动态宿主，静态宿主
-集成尚未完成。
+本文对应 **Ballanced SDL** 分支和动态 Player。配套包的 ABI 描述包含
+`runtime: "sdl"`，平台、架构、动态宿主链接方式必须匹配；直接使用 Engine/ImGui 的
+Mod 还需匹配依赖的编译器、运行库和配置 ABI。原版 Player 的旧归档不是 SDL 包。
+本分支尚未实现静态 Player 集成。
 
-## 安装
+使用匹配的完整运行时包；没有配套包时按[参与开发](contributing.md)从对应 Ballanced
+基线构建。[支持与验证](validation.md)区分已验收和未运行的目标。
 
-关闭 Player，将匹配的运行包解压到游戏根目录。BML+ 安装在 `Managers`，
-CKAngelScript 在 `BuildingBlocks`，Mod 在 `ModLoader/Mods`。CK2、VxMath、SDL
-由 Player 提供，进程中应只有一份引擎与 SDL。支持 `Bin/Player` 和扁平 `Player`
-布局，Windows 可执行文件名为 `Player.exe`。
+## 安装到游戏根目录
 
-`ModLoader/BML.abi.json` 记录运行时目标。启动后检查 `ModLoader/ModLoader.log`，
-并在 Mod 菜单核对版本。原生包须同时包含 `.bmodp` 与 `.bmodp.abi.json`；资源包和
-脚本包使用 ZIP，脚本项目也可作为目录放入 `ModLoader/Mods`。
+关闭 Player 并备份。根目录包含 `base.cmo`、游戏资源和 `Bin/Player` 或根目录的
+`Player`；Windows 使用 `Player.exe`。在这一层解压运行时并保留目录结构：
 
-## 配置与诊断
+| 位置 | 用途 |
+| --- | --- |
+| `Managers/BMLPlus.dll` | Windows Loader |
+| `Managers/libBMLPlus.so` / `Managers/libBMLPlus.dylib` | Linux / macOS Loader |
+| `BuildingBlocks/AngelScript.dll`、`libAngelScript.so`、`libAngelScript.dylib` | 启用脚本时的配套 CKAngelScript |
+| `ModLoader/BML.abi.json` | 运行时目标及扩展 ABI 标识 |
+| `ModLoader/Fonts`、`ModLoader/Licenses` | 字体和依赖许可 |
+| `ModLoader/Mods` | 用户安装的 Mod |
+| `ModLoader/Configs` | Loader 创建并保留的用户配置 |
 
-用户配置在 `ModLoader/Configs`，更新时应保留。游戏内控制台的 `bml system`
-与 Loader 日志用于实时诊断。字体位于 `ModLoader/Fonts`。中文组合输入由 SDL
-接入；Windows 的 IMM/TSF 实现保留，其他平台使用系统输入服务。
+按包内文件名安装，不要改名假装另一个平台。Loader 在 **Managers**，不是
+BuildingBlocks；移除 BuildingBlocks 中遗留的重复 Loader。CK2、VxMath、SDL 由
+Player 提供，不要把另一份 SDL 或 SDK 引擎库复制进游戏。
 
-## 命令行
+SDK 放在开发工作区，描述位于 `share/BML/BML.abi.json`，不能当运行时覆盖游戏。
+POSIX 保留 Player 和工具的可执行权限。macOS SDK/运行时 CMake 完成所需加载路径及
+临时签名修正；发行签名和系统安全许可仍需单独验证。
 
-按 `/` 打开命令栏。它支持下列 shell 风格语法：
+启动 Player 后检查 `ModLoader/ModLoader.log`，确认初始化、目标、版本和 Mod 列表。
+无脚本构建会报告脚本不可用；放入脚本文件不能启用未编译的功能。
 
-- 未加引号的空格分隔单词。`'...'` 按字面保留，`"..."` 保留空格并允许其中的
-  `$NAME`，`$'...'` 解析 `\n`、`\e` 之类的转义。反斜杠只转义 shell 字符，
-  因此 `map load C:\Maps\x.nmo` 不需要加引号。
-- `a; b` 依次运行两者，`a && b` 只在 `a` 成功时运行 `b`，`a || b` 只在失败时
-  运行，`a | b` 把 `a` 的输出交给 `b`。`$?` 是上一条命令的状态。`# ...` 是注释。
-- `set NAME VALUE` 定义本次会话的变量，`set -U NAME VALUE` 跨会话保留，
-  `set -e NAME` 删除，`$NAME` 或 `${NAME}` 插入其值。`$(cmd)` 插入 `cmd` 的输出。
-- `alias name='cmd args'` 为一行的第一个词定义缩写；`alias` 列出全部，
-  `unalias name` 删除一个。别名会持久保存。
-- `history` 给历史行编号；`!!`、`!n`、`!-n`、`!text` 重新执行它们。
-- 管道过滤器：`grep`、`head`、`tail`、`wc`、`sort`、`uniq`、`xargs`。`true`
-  和 `false` 只设置状态，不做别的。
+## 安装 Mod
 
-编辑按键：Tab 补全命令、别名、`$` 变量和命令自己的参数，在 `;` 或 `|` 之后同样
-有效。上下方向键遍历历史，保留正在输入的文字并按它过滤。光标后面会出现来自
-历史的灰色建议，按 Right 或 End 接受。Ctrl+R 搜索历史，Ctrl+A 与 Ctrl+E 跳到
-行首行尾，Ctrl+U、Ctrl+K、Ctrl+W 分别剪切到行首、到行尾或一个词，Ctrl+Y 粘贴
-剪切的内容，Ctrl+L 清空消息板。未写完的行（例如没有闭合的引号或末尾的 `&&`）
-会要求再输入一行，而不是直接运行。续行向上扩展，因此补全、搜索或输入法候选栏
-始终位于当前编辑行下方，消息板位于整条命令上方；这些物理行在历史中仍是一条命令。
+- 原生：把 `Name.bmodp` 与它自己的 `Name.bmodp.abi.json` 一起放进
+  `ModLoader/Mods`，或安装包含二者和资源的 ZIP。各平台统一使用 `.bmodp` 扩展名。
+- 脚本：安装单个 `Name.mod.as`、入口目录或 ZIP。目录/ZIP 须恰有一个
+  `*.mod.as` 入口；辅助源码使用普通 `.as`。需要脚本版 BML 和配套 CKAngelScript。
+- 保留资源相对目录与精确大小写，不安装补全声明、编译缓存、整份 SDK 或重复 Mod ID。
 
-变量、别名与历史保存在 `ModLoader/CommandBar.shell.json` 和
-`ModLoader/CommandBar.history`。在 `BML.cfg` 中设置 `CommandBar.KeepOpen`
-可以让命令运行后命令栏保持打开。输入 `help` 可以查看当前安装提供的命令。
+旧 SDL `BMLEntry`/`IMod` 产物需[迁移和重编译](native-mod-migration.md)。不要用别的
+Mod 的 JSON 绕过 ABI 校验。目标、协议、选择的扩展 ABI 是兼容门槛；SDK 内容哈希用于
+诊断，不表示可以混用引擎 ABI。
 
-`CommandBar` 配置分类还提供独立开关，可分别控制语法高亮、Tab 补全及候选栏、
-历史内联建议、Ctrl+R 反向搜索，以及上下方向键的历史导航。关闭命令栏时的定时通知
-和打开命令栏时的历史消息也可以通过 `ShowNotifications` 与 `ShowScrollback` 分别控制。
-这些设置可以在 Mod 菜单中修改，并会立即生效。
+## 配置、字体与输入
 
-命令栏打开时，输入框支持常规的鼠标框选、复制、剪切和粘贴。消息板为只读区域：
-拖动鼠标可以框选历史消息，按 Ctrl+C 会复制不含 ANSI 颜色控制码的纯文本；先点击
-消息板后按 Ctrl+A 可以选择全部历史消息。拖出消息板上边缘或下边缘后，会在继续
-框选的同时自动滚动。点击或框选消息板不会关闭当前命令会话。
+在 Mod 菜单编辑已声明配置，更新时保留 `ModLoader/Configs`。文本和路径使用 UTF-8。
+内建 ImGui 字体图集、游戏菜单字体和引擎 GUI 文字职责独立，`ModLoader/Fonts` 不是
+所有游戏文字的统一字体替换入口。
 
-语法高亮默认采用 Atom One Dark 配色。可以在 `CommandBarTheme` 分类中用
-`#RRGGBB` 或 `#RRGGBBAA` 分别修改每一种语法角色；格式无效时会回退到该角色的
-One Dark 默认颜色。有效的颜色值在 Mod 菜单中会使用调色盘按钮，主题修改同样会
-立即生效。
+SDL 平台后端负责文本组合与事件；Windows 保留 IMM/TSF，其他平台可使用系统原生
+候选窗。焦点、组合、全屏和手柄仍需各平台实机验收。用 `bml system` 和日志收集诊断。
 
-## 更新与卸载
+## 控制台
 
-更新流程见[跨平台更新器和 doctor（英文）](../en/updater-sdl.md)。签名通道区分运行时、平台、
-架构和链接方式；更新器保留用户配置、备份，并支持中断恢复。也可在关闭 Player 后
-手动安装匹配的完整运行包。
+按 `/` 打开命令栏，`help` 查看当前安装可用的命令。支持引号、变量、别名、历史、
+`;`、`&&`、`||` 和管道。`$?` 是上个命令的状态；不要把 shell 状态与 BML API 错误码
+混为一谈。
 
-卸载时删除 `Managers` 中的 BML+ 及其所属运行文件；可保留 `ModLoader` 以保存
-配置和 Mod。保留 Player 自身的引擎及 SDL 库。
+```text
+set NAME value
+set -U NAME value
+alias hi='echo hello'
+history
+bml system
+script status
+script diag your.mod.id
+```
 
-## 排查
+Tab 补全，Up/Down 回溯历史，Ctrl+R 搜索；Ctrl+A/E 到行首/行尾，Ctrl+U/K/W 剪切，
+Ctrl+Y 粘贴，Ctrl+L 清除消息板。不完整的引号或尾随 `&&` 会进入续行，整条逻辑命令保留
+物理行布局。消息板可选中和复制，点击消息板不会关闭当前输入。
 
-原生 Mod 缺少或不匹配 ABI 描述时会被拒绝，请使用匹配的 SDL SDK 重编译。
-缺少依赖时运行 `Updater doctor` 并检查日志。大小写敏感文件系统要求资源与脚本
-文件名精确匹配。交叉编译成功不等于该目标已通过真实游戏验收。
+变量、别名、历史保存在 `ModLoader/CommandBar.shell.json` 和
+`ModLoader/CommandBar.history`。`BML.cfg` 的 `CommandBar`、`CommandBarTheme`
+控制保留输入、补全、历史建议、滚动消息和配色；颜色使用 `#RRGGBB` / `#RRGGBBAA`。
+更多语法见[英文命令说明](https://doyagu.github.io/BallanceModLoaderPlus/using-bml/#command-line)。
 
-旧 SDL BMLEntry/IMod 产物需迁移并重编译；schema 2 包使用 C 协议。
-参见[原生迁移（英文）](../en/native-mod-migration.md)。
+## 更新、恢复和卸载
+
+按 [Updater 和 doctor](updater-sdl.md)执行更新、诊断、回滚。更新或回滚前关闭 Player。
+通道按目标区分并校验签名，保留用户 Mod 和配置；doctor 不能替代游戏启动验收。
+手动更新也必须使用匹配的完整运行时，不用 SDK 覆盖游戏。
+
+卸载时关闭 Player，移除 Managers 中的 Loader 和它拥有的运行时文件；保留
+`ModLoader` 可以保留 Mod/设置。其他游戏内容依赖脚本插件时不要删除它；不要删除
+Player 的 CK2、VxMath 或 SDL。
+
+## 排错
+
+| 现象 | 检查 |
+| --- | --- |
+| 没有 BML 启动日志 | 根目录、Managers 库、平台/架构、重复旧 Loader |
+| 原生模块被拒绝 | ABI 伴随文件、`bml.mod` 协议、provider 版本、扩展 ABI |
+| 缺库或镜像架构错误 | doctor、运行时包、可执行权限和宿主依赖 |
+| 脚本不可用 | 描述中的 `scripts`、BuildingBlocks 插件、`script status`/`diag` |
+| 找不到资源/include | 文件名大小写、相对路径、归档层级和实际打包资源 |
+| 输入异常或第二份 SDL | 恢复配套 Player/SDK 部署，不随 Mod 放入另一个 SDL |
+| 更新中断 | 保留事务状态，按更新器指南诊断和回滚 |
+
+反馈时提供目标描述、BML/Player 版本、日志、复现步骤、实际安装的包和实机运行范围。
+交叉编译成功不代表游戏功能验收成功。

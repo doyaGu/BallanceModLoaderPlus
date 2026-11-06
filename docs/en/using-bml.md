@@ -1,33 +1,76 @@
-# Use BML+ with Ballanced
+# Install and use BML+
 
-## Requirements
+## Match the runtime first
 
-Use a Ballanced SDL Player and a BML+ runtime matching its platform,
-architecture, host linkage and build configuration. Native Mods also require
-a matching SDK. Engine/ImGui extensions additionally require matching compiler
-ABI and C++ runtime. Dynamic hosts are supported;
-static-host integration remains pending.
+This guide is for the **Ballanced SDL** branch and a dynamic Player. A matching
+package has `runtime: "sdl"` in its ABI descriptor. Match platform, architecture
+and dynamic host linkage; direct engine/ImGui Mods also match the dependencies'
+compiler/runtime/configuration ABI. An old original-Player archive is not an SDL
+package. Static Player integration is not implemented in this branch.
 
-## Install BML+
+Use a complete matching runtime package. If none is available, follow
+[Contributing](contributing.md) to build one against the exact Ballanced baseline.
+See [Support and validation](validation.md) for tested and untested targets.
 
-Close Player and extract the matching runtime package into the game root.
-BML+ belongs in `Managers`, CKAngelScript in `BuildingBlocks`, and native Mods
-in `ModLoader/Mods`. CK2, VxMath and SDL are supplied by Player; keep one engine
-and one SDL instance in the process. Standard `Bin/Player` and flat `Player`
-layouts are supported. On Windows the executable is `Player.exe`.
+## Install into the game root
 
-The runtime's `ModLoader/BML.abi.json` identifies its target. Start Player and
-check `ModLoader/ModLoader.log`; open the in-game Mod menu to inspect versions.
-Native packages include both `.bmodp` and `.bmodp.abi.json`. Resource and script
-packages use ZIP. Extracted script projects may also live in `ModLoader/Mods`.
+Close Player and keep a backup. The root contains `base.cmo`, game resources and
+either `Bin/Player` or a flat `Player` executable (`Player.exe` on Windows).
+Extract the runtime at that root, preserving its directories:
 
-## Configuration and diagnostics
+| Location | Purpose |
+| --- | --- |
+| `Managers/BMLPlus.dll` | Windows Loader |
+| `Managers/libBMLPlus.so` / `Managers/libBMLPlus.dylib` | Linux / macOS Loader |
+| `BuildingBlocks/AngelScript.dll`, `libAngelScript.so` or `libAngelScript.dylib` | Matching CKAngelScript plugin, when enabled |
+| `ModLoader/BML.abi.json` | Installed runtime target and extension ABI identity |
+| `ModLoader/Fonts` and `ModLoader/Licenses` | Runtime fonts and dependency notices |
+| `ModLoader/Mods` | Your installed Mods |
+| `ModLoader/Configs` | User configuration, created and preserved by the Loader |
 
-User settings live under `ModLoader/Configs`; preserve them during updates.
-Use the in-game console's `bml system` command and `ModLoader/ModLoader.log` for
-live diagnostics. Fonts ship under `ModLoader/Fonts`. Chinese composition uses
-SDL text input. The Windows IMM/TSF implementation is retained; other platforms
-use their native input services.
+Install the files from the package rather than renaming a library to imitate
+another platform. The Loader belongs in **Managers**, not BuildingBlocks. Remove
+an obsolete duplicate Loader from BuildingBlocks. Keep Player's CK2, VxMath and
+SDL; never copy another SDL or SDK engine libraries into the game.
+
+An SDK goes in your development workspace. Its descriptor is
+`share/BML/BML.abi.json`; it is not a second runtime to extract over the game.
+On POSIX keep executable permissions on Player and the supplied tools. macOS
+SDK/runtime CMake performs the specified load-command and ad hoc signature
+fixups; distribution signing and system security approval are separate checks.
+
+Start Player and inspect `ModLoader/ModLoader.log`. Verify BML initialization,
+the intended version/target and the loaded Mod list. A native-only build reports
+script support unavailable; adding a script file cannot enable it.
+
+## Install Mods
+
+- Native: put `Name.bmodp` and **its** `Name.bmodp.abi.json` together in
+  `ModLoader/Mods`, or install a ZIP containing the pair and resources. The same
+  extension names native modules on all three OS families.
+- Script: install one `Name.mod.as`, an entry directory or a ZIP. A directory or ZIP
+  must contain exactly one `*.mod.as` entry; helper files use plain `.as`.
+  Script support and the matching CKAngelScript plugin must be present.
+- Preserve relative resource directories and exact filename case. Do not install
+  editor completion files, compiler caches, a whole SDK or duplicate copies of
+  the same Mod ID.
+
+Old SDL `BMLEntry`/`IMod` binaries require [migration](native-mod-migration.md)
+and rebuilding. Do not bypass a missing/mismatched sidecar by copying another
+Mod's JSON. The Loader checks target/protocol and opted-in extension identities;
+the SDK content hash is diagnostic, not a license to mix engine ABIs.
+
+## Settings, fonts and input
+
+Use the Mod Menu for declared configuration. Preserve `ModLoader/Configs` during
+updates. Text and paths are UTF-8. The built-in ImGui atlas, game menu fonts and
+engine-backed GUI text have separate responsibilities; fonts in `ModLoader/Fonts`
+do not replace every game text path.
+
+The SDL platform backend handles text composition and events. The Windows IME
+implementation retains IMM/TSF support; other platforms may use native candidate
+windows. Focus/composition/fullscreen/controller behavior still needs each
+platform's real acceptance. Use `bml system` and the log for diagnostics.
 
 ## Command line
 
@@ -36,7 +79,8 @@ Press `/` to open the command bar. It accepts shell-style syntax:
 - Words are separated by unquoted spaces. `'...'` is literal, `"..."` keeps
   spaces and allows `$NAME` inside, and `$'...'` resolves escapes such as `\n`
   and `\e`. A backslash escapes only shell characters, so
-  `map load C:\Maps\x.nmo` needs no quoting.
+  `echo C:\Maps\x.nmo` preserves the backslashes. Prefer `/` for portable
+  resource paths and quote paths containing spaces.
 - `a; b` runs both, `a && b` runs `b` only when `a` succeeded, `a || b` only
   when it failed, and `a | b` feeds what `a` printed into `b`. `$?` holds the
   status of the last command. `# ...` is a comment.
@@ -85,26 +129,34 @@ be customised independently in the `CommandBarTheme` category with a
 Dark default. Valid colour values use a palette button in the Mod Menu, and
 theme changes take effect immediately.
 
-## Update BML+
+## Updates and recovery
 
-Follow [Updater and doctor](updater-sdl.md). Signed channels distinguish runtime,
-platform, architecture and linkage. The updater preserves configuration, keeps
-backups and supports recovery after an interrupted transaction. Player must be
-closed. A matching full runtime package can also be installed manually.
+Use [Updater and doctor](updater-sdl.md). Close Player before update or rollback.
+Channels are target-specific, signed, and preserve user Mods/configuration.
+Doctor is a diagnostic tool, not a substitute for launching the game.
+
+A manual update also uses the matching complete runtime package. Preserve user
+configuration, keep Player's engine/SDL and do not overlay an unrelated SDK.
 
 ## Uninstall
 
-Close Player. Remove the BML+ library from `Managers` and its owned runtime
-files. Keep `ModLoader` if you want to retain configuration and installed Mods.
-Do not remove Player's engine or SDL libraries.
+Close Player. Remove the Loader from Managers and its owned runtime files.
+Keep `ModLoader` if you want to retain Mods and settings. Remove the script
+plugin only if it is not needed by other game content. Do not remove Player's
+CK2, VxMath or SDL.
 
 ## Troubleshooting
 
-A rejected native Mod usually has a missing or mismatched ABI descriptor.
-Rebuild it using the matching installed SDL SDK. For missing dependencies, run
-`Updater doctor` and inspect the loader log. Case-sensitive filesystems require
-exact resource and script filenames. A successful cross-build does not certify
-native game functionality on that target.
+| Symptom | Check |
+| --- | --- |
+| No BML startup log | Correct game root and Managers library; wrong OS/architecture; duplicate old Loader |
+| Module rejected | Matching `.bmodp.abi.json`, `bml.mod` protocol, required provider/version and extensions |
+| Missing library / wrong image | Run doctor; inspect the matching runtime, executable permissions and host dependencies |
+| Script unavailable | Runtime descriptor `scripts`, matching BuildingBlocks plugin, `script status` / `script diag <id>` |
+| Resource or include not found | Exact case, relative path, packaged resource and ZIP entry layout |
+| Two SDL instances or broken input | Restore matching Player/SDK deployment; do not bundle a second SDL with the Mod |
+| Interrupted update | Keep the transaction state and use doctor/rollback as described in the updater guide |
 
-Older SDL BMLEntry/IMod modules require migration and recompilation; schema 2
-packages use the C protocol. See [native migration](native-mod-migration.md).
+Report the target descriptor, BML/Player versions, log, reproduction steps and
+which package was installed. State what ran on real hardware; a successful
+cross-build alone is not gameplay acceptance.
