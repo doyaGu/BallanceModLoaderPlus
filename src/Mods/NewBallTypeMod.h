@@ -8,7 +8,9 @@
 #include "BML/IMod.h"
 #include "BML/Version.h"
 
-struct BallTypeInfo {
+struct TypeRegistration { std::string m_Owner; bool m_Applied = false; };
+
+struct BallTypeInfo : TypeRegistration {
     friend class NewBallTypeMod;
 
     std::string m_File;
@@ -37,7 +39,7 @@ struct BallTypeInfo {
 
 };
 
-struct FloorTypeInfo {
+struct FloorTypeInfo : TypeRegistration {
     std::string m_Name;
     std::string m_CollGroup;
     float m_Friction;
@@ -58,7 +60,7 @@ struct ModulBallInfo : public ModulConvexInfo {
     float m_Radius;
 };
 
-struct ModulInfo {
+struct ModulInfo : TypeRegistration {
     std::string m_Name;
     int m_Type;
 };
@@ -83,21 +85,22 @@ public:
     void OnProcess() override;
     void OnExitGame() override;
 
-    void RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
+    void CleanupOwner(const std::string &owner);
+    void RegisterBallType(const std::string &owner, const char *ballFile, const char *ballId, const char *ballName, const char *objName,
                           float friction, float elasticity,
                           float mass, const char *collGroup, float linearDamp, float rotDamp, float force,
                           float radius);
-    void RegisterFloorType(const char *floorName, float friction, float elasticity, float mass, const char *collGroup,
+    void RegisterFloorType(const std::string &owner, const char *floorName, float friction, float elasticity, float mass, const char *collGroup,
                            bool enableColl);
-    void RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
+    void RegisterModulBall(const std::string &owner, const char *modulName, bool fixed, float friction, float elasticity, float mass,
                            const char *collGroup,
                            bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp,
                            float radius);
-    void RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity, float mass,
+    void RegisterModulConvex(const std::string &owner, const char *modulName, bool fixed, float friction, float elasticity, float mass,
                              const char *collGroup,
                              bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp);
-    void RegisterTrafo(const char *modulName);
-    void RegisterModul(const char *modulName);
+    void RegisterTrafo(const std::string &owner, const char *modulName);
+    void RegisterModul(const std::string &owner, const char *modulName);
 
 private:
     CKDataArray *m_PhysicsBall = nullptr;

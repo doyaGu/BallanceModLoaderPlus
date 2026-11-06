@@ -22,6 +22,7 @@
 #define BML_UI_H
 
 #include "BML/Interface.h"
+#include "BML/Mod.h"
 
 BML_BEGIN_CDECLS
 
@@ -29,7 +30,7 @@ BML_BEGIN_CDECLS
 
 #define BML_UI_INTERFACE_ID "bml.ui"
 #define BML_UI_INTERFACE_MAJOR 1
-#define BML_UI_INTERFACE_MINOR 0
+#define BML_UI_INTERFACE_MINOR 1
 
 // Bits accepted by SetHUDMode and reported by ReadHUDState. These match the
 // HUD_TITLE, HUD_FPS, and HUD_SR values the script API exposes.
@@ -75,6 +76,8 @@ typedef struct BML_UIInterface {
     // change.
     int (BML_CDECL *ShowTitle)(int visible);
     int (BML_CDECL *ShowFPS)(int visible);
+    int (BML_CDECL *SkipNextRender)(BML_ModContextHandle);
+    int (BML_CDECL *SetWidescreenAdjustment)(BML_ModContextHandle, uint32_t enabled);
 } BML_UIInterface;
 
 #pragma pack(pop)
@@ -185,6 +188,19 @@ inline const BML_UIInterface *Interface() {
 }
 
 } // namespace BML::UI
+
+
+#include "BML/Mod.hpp"
+namespace BML::UI {
+[[nodiscard]] inline int SkipNextRender(const Mod::Context &ctx) {
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_UIInterface, SkipNextRender) ? api->SkipNextRender(ctx.Handle()) : BML_ERROR_UNAVAILABLE;
+}
+[[nodiscard]] inline int SetWidescreenAdjustment(const Mod::Context &ctx, bool enabled) {
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_UIInterface, SetWidescreenAdjustment) ? api->SetWidescreenAdjustment(ctx.Handle(), enabled ? 1u : 0u) : BML_ERROR_UNAVAILABLE;
+}
+}
 
 #endif // __cplusplus
 

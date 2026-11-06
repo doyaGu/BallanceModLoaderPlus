@@ -19,7 +19,7 @@ namespace Behavior = BML::Behavior;
 namespace {
 
 struct BallBehavior {
-    const BallTypeInfo *Info = nullptr;
+    BallTypeInfo Info;
     Behavior::ObjectRef Ball{};
     Behavior::ObjectRef Reset{};
     std::string Used;
@@ -49,26 +49,26 @@ Behavior::Result<void> AddPhysicalize(
     for (const BallBehavior &ball : balls) {
         const auto ballName = graph.AppendPin(
             switchOnBall, "Pin", CKPGUID_STRING);
-        graph.Bind(ballName, ball.Info->m_ObjName);
+        graph.Bind(ballName, ball.Info.m_ObjName);
         const auto route = graph.AppendOut(switchOnBall, "Out");
 
         Behavior::Blocks::Physicalize::Options options;
-        if (ball.Info->m_Radius > 0.0f) {
+        if (ball.Info.m_Radius > 0.0f) {
             options.Geometry = Behavior::Blocks::Physicalize::Shape::Ball;
-            options.Radius = ball.Info->m_Radius;
+            options.Radius = ball.Info.m_Radius;
         }
         auto made = Behavior::Blocks::Physicalize::Make(session, options);
         if (!made) {
             return Behavior::Result<void>::Failure(
                 made.Code(), AddContext(
                     made.GetStatus(), "Could not create Physicalize for " +
-                    ball.Info->m_Name));
+                    ball.Info.m_Name));
         }
         const auto added = graph.Add(made.Value());
         graph.Share(added.Target(), physicalize.Target());
         for (int pin = 0; pin != 11; ++pin)
             graph.Share(added.Pin(pin), physicalize.Pin(pin));
-        if (ball.Info->m_Radius <= 0.0f)
+        if (ball.Info.m_Radius <= 0.0f)
             graph.Bind(added.Pin(11, CKPGUID_MESH), source.Pout(0));
 
         graph.Flow(route, added.In(0));
@@ -94,7 +94,7 @@ void ExtendResetBallPieces(Behavior::Edit::Graph graph,
     for (const BallBehavior &ball : balls) {
         const auto script = graph.AppendPin(
             scripts, "Pin", CKPGUID_STRING);
-        graph.Bind(script, "Ball_ResetPieces_" + ball.Info->m_Name);
+        graph.Bind(script, "Ball_ResetPieces_" + ball.Info.m_Name);
         inputs.push_back(graph.AppendIn(scripts, "In"));
         outputs.push_back(graph.AppendOut(sequencer, "Out"));
     }
@@ -164,7 +164,7 @@ Behavior::Result<void> BuildGameplayEdit(
         const auto added = setTrafo.Add(set);
         const auto value = setTrafo.AppendPin(
             added, "Attribute Value", CKPGUID_STRING);
-        setTrafo.Bind(value, ball.Info->m_ID);
+        setTrafo.Bind(value, ball.Info.m_ID);
         setTrafo.Splice(setTrafoExit, added);
     }
 
@@ -189,7 +189,7 @@ Behavior::Result<void> BuildGameplayEdit(
         trafo.Push(pieceResult, used);
         const auto pieceInput = pieces.AppendPin(
             pieceSwitch, "Pin", CKPGUID_STRING);
-        pieces.Bind(pieceInput, ball.Info->m_ID);
+        pieces.Bind(pieceInput, ball.Info.m_ID);
         const auto pieceRoute = pieces.AppendOut(pieceSwitch, "Out");
         const auto setUsed = pieces.Add(boolIdentity);
         pieces.Bind(setUsed.Pin(0), true);
@@ -256,19 +256,19 @@ Behavior::Result<void> BuildGameplayEdit(
     for (const BallBehavior &ball : balls) {
         const auto explosionId = explosion.AppendPin(
             explosionSwitch, "Pin", CKPGUID_STRING);
-        explosion.Bind(explosionId, ball.Info->m_ID);
+        explosion.Bind(explosionId, ball.Info.m_ID);
         const auto explosionRoute = explosion.AppendOut(
             explosionSwitch, "Out");
         const auto explosionName = explosion.AppendPin(
             explosionScripts, "Pin", CKPGUID_STRING);
         explosion.Bind(
-            explosionName, "Ball_Explosion_" + ball.Info->m_Name);
+            explosionName, "Ball_Explosion_" + ball.Info.m_Name);
         const auto explosionIn = explosion.AppendIn(explosionScripts, "In");
         explosion.Flow(explosionRoute, explosionIn);
 
         const auto ballId = setBall.AppendPin(
             ballSwitch, "Pin", CKPGUID_STRING);
-        setBall.Bind(ballId, ball.Info->m_ID);
+        setBall.Bind(ballId, ball.Info.m_ID);
         const auto ballRoute = setBall.AppendOut(ballSwitch, "Out");
         const auto ballObject = setBall.AppendPin(
             ballObjects, "Pin", CKPGUID_3DENTITY);
@@ -352,12 +352,18 @@ void NewBallTypeMod::OnExitGame() {
     m_BallPatchPending = false;
 }
 
-void NewBallTypeMod::RegisterBallType(const char *ballFile, const char *ballId, const char *ballName,
+void NewBallTypeMod::CleanupOwner(const std::string &owner) {
+    auto pending=[&](const auto &info){return info.m_Owner==owner&&!info.m_Applied;};
+    std::erase_if(m_BallTypes,pending);std::erase_if(m_FloorTypes,pending);
+    std::erase_if(m_ModulBalls,pending);std::erase_if(m_ModulConvexes,pending);std::erase_if(m_Moduls,pending);
+}
+
+void NewBallTypeMod::RegisterBallType(const std::string &owner, const char *ballFile, const char *ballId, const char *ballName,
                                       const char *objName, float friction, float elasticity, float mass,
                                       const char *collGroup, float linearDamp, float rotDamp, float force,
                                       float radius) {
-    m_BallTypes.emplace_back();
-    BallTypeInfo &info = m_BallTypes.back();
+    BallTypeInfo info{};
+    info.m_Owner=owner;
 
     info.m_File = ballFile;
     info.m_ID = ballId;
@@ -374,13 +380,14 @@ void NewBallTypeMod::RegisterBallType(const char *ballFile, const char *ballId, 
     info.m_RotDamp = rotDamp;
     info.m_Force = force;
 
+    m_BallTypes.push_back(std::move(info));
     GetLogger()->Info("Registered New Ball Type: %s", ballName);
 }
 
-void NewBallTypeMod::RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
+void NewBallTypeMod::RegisterFloorType(const std::string &owner, const char *floorName, float friction, float elasticity, float mass,
                                        const char *collGroup, bool enableColl) {
-    m_FloorTypes.emplace_back();
-    FloorTypeInfo &info = m_FloorTypes.back();
+    FloorTypeInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = floorName;
 
@@ -390,14 +397,15 @@ void NewBallTypeMod::RegisterFloorType(const char *floorName, float friction, fl
     info.m_CollGroup = collGroup;
     info.m_EnableColl = enableColl;
 
+    m_FloorTypes.push_back(std::move(info));
     GetLogger()->Info("Registered New Floor Type: %s", floorName);
 }
 
-void NewBallTypeMod::RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
+void NewBallTypeMod::RegisterModulBall(const std::string &owner, const char *modulName, bool fixed, float friction, float elasticity, float mass,
                                        const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
                                        float linearDamp, float rotDamp, float radius) {
-    m_ModulBalls.emplace_back();
-    ModulBallInfo &info = m_ModulBalls.back();
+    ModulBallInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = modulName;
 
@@ -413,14 +421,15 @@ void NewBallTypeMod::RegisterModulBall(const char *modulName, bool fixed, float 
     info.m_RotDamp = rotDamp;
     info.m_Radius = radius;
 
+    m_ModulBalls.push_back(std::move(info));
     GetLogger()->Info("Registered New Modul Ball Type: %s", modulName);
 }
 
-void NewBallTypeMod::RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity,
+void NewBallTypeMod::RegisterModulConvex(const std::string &owner, const char *modulName, bool fixed, float friction, float elasticity,
                                          float mass, const char *collGroup, bool frozen, bool enableColl,
                                          bool calcMassCenter, float linearDamp, float rotDamp) {
-    m_ModulConvexes.emplace_back();
-    ModulConvexInfo &info = m_ModulConvexes.back();
+    ModulConvexInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = modulName;
 
@@ -435,26 +444,29 @@ void NewBallTypeMod::RegisterModulConvex(const char *modulName, bool fixed, floa
     info.m_LinearDamp = linearDamp;
     info.m_RotDamp = rotDamp;
 
+    m_ModulConvexes.push_back(std::move(info));
     GetLogger()->Info("Registered New Modul Convex Type: %s", modulName);
 }
 
-void NewBallTypeMod::RegisterTrafo(const char *modulName) {
-    m_Moduls.emplace_back();
-    ModulInfo &info = m_Moduls.back();
+void NewBallTypeMod::RegisterTrafo(const std::string &owner, const char *modulName) {
+    ModulInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = modulName;
     info.m_Type = 0;
 
+    m_Moduls.push_back(std::move(info));
     GetLogger()->Info("Registered New Ball Transformer Type: %s", modulName);
 }
 
-void NewBallTypeMod::RegisterModul(const char *modulName) {
-    m_Moduls.emplace_back();
-    ModulInfo &info = m_Moduls.back();
+void NewBallTypeMod::RegisterModul(const std::string &owner, const char *modulName) {
+    ModulInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = modulName;
     info.m_Type = 1;
 
+    m_Moduls.push_back(std::move(info));
     GetLogger()->Info("Registered New Modul Type: %s", modulName);
 }
 
@@ -471,6 +483,7 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
     }
 
     for (BallTypeInfo &info: m_BallTypes) {
+        info.m_Applied=true;
         Behavior::Blocks::ObjectLoad::Options options;
         // Ball files are registered in the active code page, and Behavior
         // values are UTF-8.
@@ -598,6 +611,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     CKDataArray *physFloors = m_BML->GetArrayByName("Physicalize_Floors");
 
     for (ModulInfo &info: m_Moduls) {
+        info.m_Applied=true;
         phGroups->AddRow();
         int row = phGroups->GetRowCount() - 1;
         phGroups->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
@@ -607,6 +621,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     }
 
     for (FloorTypeInfo &info: m_FloorTypes) {
+        info.m_Applied=true;
         physFloors->AddRow();
         int row = physFloors->GetRowCount() - 1;
         physFloors->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
@@ -618,6 +633,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     }
 
     for (ModulConvexInfo &info: m_ModulConvexes) {
+        info.m_Applied=true;
         physConvexs->AddRow();
         int row = physConvexs->GetRowCount() - 1;
         physConvexs->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
@@ -641,6 +657,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     }
 
     for (ModulBallInfo &info: m_ModulBalls) {
+        info.m_Applied=true;
         physBalls->AddRow();
         int row = physBalls->GetRowCount() - 1;
         physBalls->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
@@ -673,6 +690,7 @@ void NewBallTypeMod::OnLoadSounds(XObjectArray *objArray) {
     CKDataArray *ballSound = m_BML->GetArrayByName("BallSound");
 
     for (BallTypeInfo &info: m_BallTypes) {
+        info.m_Applied=true;
         std::string roll = "Roll_" + info.m_Name;
         std::string hit = "Hit_" + info.m_Name;
 
@@ -740,7 +758,7 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
             return;
         }
         balls.push_back(
-            {&info, ball.Value(), reset.Value(),
+            {info, ball.Value(), reset.Value(),
              "__BML_NewBall_Used_" + info.m_ID});
     }
 

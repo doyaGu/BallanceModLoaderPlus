@@ -30,14 +30,29 @@
 
 #include "BML/Interface.h"
 #include "BML/Types.h"
+#include "BML/Mod.h"
 
 BML_BEGIN_CDECLS
+#define BML_BALL_TYPE_DEFINITION_1_0_SIZE (offsetof(BML_BallTypeDefinition, Radius) + sizeof(((BML_BallTypeDefinition *)0)->Radius))
+#define BML_BALL_TYPE_DEFINITION_INIT { .StructSize = sizeof(BML_BallTypeDefinition) }
+#define BML_FLOOR_TYPE_DEFINITION_1_0_SIZE (offsetof(BML_FloorTypeDefinition, EnableCollision) + sizeof(((BML_FloorTypeDefinition *)0)->EnableCollision))
+#define BML_FLOOR_TYPE_DEFINITION_INIT { .StructSize = sizeof(BML_FloorTypeDefinition) }
+#define BML_MODULE_BALL_DEFINITION_1_0_SIZE (offsetof(BML_ModuleBallDefinition, Radius) + sizeof(((BML_ModuleBallDefinition *)0)->Radius))
+#define BML_MODULE_BALL_DEFINITION_INIT { .StructSize = sizeof(BML_ModuleBallDefinition) }
+#define BML_MODULE_CONVEX_DEFINITION_1_0_SIZE (offsetof(BML_ModuleConvexDefinition, RotDamp) + sizeof(((BML_ModuleConvexDefinition *)0)->RotDamp))
+#define BML_MODULE_CONVEX_DEFINITION_INIT { .StructSize = sizeof(BML_ModuleConvexDefinition) }
+#define BML_TRAFO_DEFINITION_1_0_SIZE (offsetof(BML_TrafoDefinition, Name) + sizeof(((BML_TrafoDefinition *)0)->Name))
+#define BML_TRAFO_DEFINITION_INIT { .StructSize = sizeof(BML_TrafoDefinition) }
+#define BML_MODULE_DEFINITION_1_0_SIZE (offsetof(BML_ModuleDefinition, Name) + sizeof(((BML_ModuleDefinition *)0)->Name))
+#define BML_MODULE_DEFINITION_INIT { .StructSize = sizeof(BML_ModuleDefinition) }
+#define BML_GAMEPLAY_STATE_1_0_SIZE (offsetof(BML_GameplayState, Playing) + sizeof(((BML_GameplayState *)0)->Playing))
+#define BML_GAMEPLAY_STATE_INIT { .StructSize = sizeof(BML_GameplayState) }
 
 #pragma pack(push, 8)
 
 #define BML_GAMEPLAY_INTERFACE_ID "bml.gameplay"
 #define BML_GAMEPLAY_INTERFACE_MAJOR 1
-#define BML_GAMEPLAY_INTERFACE_MINOR 1
+#define BML_GAMEPLAY_INTERFACE_MINOR 2
 
 // Capacity of each of the three name buffers below, terminator included.
 #define BML_GAMEPLAY_NAME_CAPACITY 128u
@@ -94,6 +109,52 @@ typedef struct BML_GameplayResetpoint {
     BML_ObjectRef Object;
 } BML_GameplayResetpoint;
 
+typedef struct BML_BallTypeDefinition {
+    size_t StructSize;
+    const char *BallFile, *BallId, *BallName, *ObjectName;
+    float Friction, Elasticity, Mass;
+    const char *CollisionGroup;
+    float LinearDamp, RotDamp, Force, Radius;
+} BML_BallTypeDefinition;
+typedef struct BML_FloorTypeDefinition {
+    size_t StructSize;
+    const char *Name;
+    float Friction, Elasticity, Mass;
+    const char *CollisionGroup;
+    uint32_t EnableCollision;
+} BML_FloorTypeDefinition;
+typedef struct BML_ModuleBallDefinition {
+    size_t StructSize;
+    const char *Name;
+    uint32_t Fixed;
+    float Friction, Elasticity, Mass;
+    const char *CollisionGroup;
+    uint32_t StartFrozen, EnableCollision, CalcMassCenter;
+    float LinearDamp, RotDamp, Radius;
+} BML_ModuleBallDefinition;
+typedef struct BML_ModuleConvexDefinition {
+    size_t StructSize;
+    const char *Name;
+    uint32_t Fixed;
+    float Friction, Elasticity, Mass;
+    const char *CollisionGroup;
+    uint32_t StartFrozen, EnableCollision, CalcMassCenter;
+    float LinearDamp, RotDamp;
+} BML_ModuleConvexDefinition;
+typedef struct BML_TrafoDefinition {
+    size_t StructSize;
+    const char *Name;
+} BML_TrafoDefinition;
+typedef struct BML_ModuleDefinition {
+    size_t StructSize;
+    const char *Name;
+} BML_ModuleDefinition;
+typedef struct BML_GameplayState {
+    size_t StructSize;
+    uint32_t Ingame, Paused, Playing;
+} BML_GameplayState;
+
+
 typedef struct BML_GameplayInterface {
     BML_InterfaceHeader Header;
 
@@ -116,6 +177,15 @@ typedef struct BML_GameplayInterface {
     // BML_ERROR_UNAVAILABLE outside a level.
     int (BML_CDECL *ReadHighScore)(int *out);
     int (BML_CDECL *ReadCheatEnabled)(int *out);
+    int (BML_CDECL *RegisterBallType)(BML_ModContextHandle, const BML_BallTypeDefinition *);
+    int (BML_CDECL *RegisterFloorType)(BML_ModContextHandle, const BML_FloorTypeDefinition *);
+    int (BML_CDECL *RegisterModuleBall)(BML_ModContextHandle, const BML_ModuleBallDefinition *);
+    int (BML_CDECL *RegisterModuleConvex)(BML_ModContextHandle, const BML_ModuleConvexDefinition *);
+    int (BML_CDECL *RegisterTrafo)(BML_ModContextHandle, const BML_TrafoDefinition *);
+    int (BML_CDECL *RegisterModule)(BML_ModContextHandle, const BML_ModuleDefinition *);
+    int (BML_CDECL *ReadState)(BML_GameplayState *out);
+    int (BML_CDECL *EnableCheat)(BML_ModContextHandle, uint32_t enabled);
+    int (BML_CDECL *ExitGame)(BML_ModContextHandle);
 } BML_GameplayInterface;
 
 #pragma pack(pop)
@@ -268,6 +338,114 @@ int ReadList(int (BML_CDECL *readCount)(std::size_t *),
                             [](const BML_GameplayResetpoint &row) { return row; });
 }
 
+} // namespace BML::Gameplay
+
+
+#include "BML/Mod.hpp"
+namespace BML::Gameplay {
+struct BallTypeDefinition {
+    std::string BallFile;
+    std::string BallId;
+    std::string BallName;
+    std::string ObjectName;
+    float Friction = 0.0f;
+    float Elasticity = 0.0f;
+    float Mass = 0.0f;
+    std::string CollisionGroup;
+    float LinearDamp = 0.0f;
+    float RotDamp = 0.0f;
+    float Force = 0.0f;
+    float Radius = 0.0f;
+};
+[[nodiscard]] inline int RegisterBallType(const Mod::Context &ctx, const BallTypeDefinition &value) {
+    if (!BML::Detail::IsText(value.BallFile) || !BML::Detail::IsText(value.BallId) || !BML::Detail::IsText(value.BallName) || !BML::Detail::IsText(value.ObjectName) || !BML::Detail::IsText(value.CollisionGroup)) return BML_ERROR_INVALID_PARAMETER;
+    const BML_BallTypeDefinition record{sizeof(BML_BallTypeDefinition), value.BallFile.c_str(), value.BallId.c_str(), value.BallName.c_str(), value.ObjectName.c_str(), value.Friction, value.Elasticity, value.Mass, value.CollisionGroup.c_str(), value.LinearDamp, value.RotDamp, value.Force, value.Radius};
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_GameplayInterface, RegisterBallType) ? api->RegisterBallType(ctx.Handle(), &record) : BML_ERROR_UNAVAILABLE;
+}
+struct FloorTypeDefinition {
+    std::string Name;
+    float Friction = 0.0f;
+    float Elasticity = 0.0f;
+    float Mass = 0.0f;
+    std::string CollisionGroup;
+    bool EnableCollision = true;
+};
+[[nodiscard]] inline int RegisterFloorType(const Mod::Context &ctx, const FloorTypeDefinition &value) {
+    if (!BML::Detail::IsText(value.Name) || !BML::Detail::IsText(value.CollisionGroup)) return BML_ERROR_INVALID_PARAMETER;
+    const BML_FloorTypeDefinition record{sizeof(BML_FloorTypeDefinition), value.Name.c_str(), value.Friction, value.Elasticity, value.Mass, value.CollisionGroup.c_str(), value.EnableCollision ? 1u : 0u};
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_GameplayInterface, RegisterFloorType) ? api->RegisterFloorType(ctx.Handle(), &record) : BML_ERROR_UNAVAILABLE;
+}
+struct ModuleBallDefinition {
+    std::string Name;
+    bool Fixed = false;
+    float Friction = 0.0f;
+    float Elasticity = 0.0f;
+    float Mass = 0.0f;
+    std::string CollisionGroup;
+    bool StartFrozen = false;
+    bool EnableCollision = true;
+    bool CalcMassCenter = false;
+    float LinearDamp = 0.0f;
+    float RotDamp = 0.0f;
+    float Radius = 0.0f;
+};
+[[nodiscard]] inline int RegisterModuleBall(const Mod::Context &ctx, const ModuleBallDefinition &value) {
+    if (!BML::Detail::IsText(value.Name) || !BML::Detail::IsText(value.CollisionGroup)) return BML_ERROR_INVALID_PARAMETER;
+    const BML_ModuleBallDefinition record{sizeof(BML_ModuleBallDefinition), value.Name.c_str(), value.Fixed ? 1u : 0u, value.Friction, value.Elasticity, value.Mass, value.CollisionGroup.c_str(), value.StartFrozen ? 1u : 0u, value.EnableCollision ? 1u : 0u, value.CalcMassCenter ? 1u : 0u, value.LinearDamp, value.RotDamp, value.Radius};
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_GameplayInterface, RegisterModuleBall) ? api->RegisterModuleBall(ctx.Handle(), &record) : BML_ERROR_UNAVAILABLE;
+}
+struct ModuleConvexDefinition {
+    std::string Name;
+    bool Fixed = false;
+    float Friction = 0.0f;
+    float Elasticity = 0.0f;
+    float Mass = 0.0f;
+    std::string CollisionGroup;
+    bool StartFrozen = false;
+    bool EnableCollision = true;
+    bool CalcMassCenter = false;
+    float LinearDamp = 0.0f;
+    float RotDamp = 0.0f;
+};
+[[nodiscard]] inline int RegisterModuleConvex(const Mod::Context &ctx, const ModuleConvexDefinition &value) {
+    if (!BML::Detail::IsText(value.Name) || !BML::Detail::IsText(value.CollisionGroup)) return BML_ERROR_INVALID_PARAMETER;
+    const BML_ModuleConvexDefinition record{sizeof(BML_ModuleConvexDefinition), value.Name.c_str(), value.Fixed ? 1u : 0u, value.Friction, value.Elasticity, value.Mass, value.CollisionGroup.c_str(), value.StartFrozen ? 1u : 0u, value.EnableCollision ? 1u : 0u, value.CalcMassCenter ? 1u : 0u, value.LinearDamp, value.RotDamp};
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_GameplayInterface, RegisterModuleConvex) ? api->RegisterModuleConvex(ctx.Handle(), &record) : BML_ERROR_UNAVAILABLE;
+}
+struct TrafoDefinition {
+    std::string Name;
+};
+[[nodiscard]] inline int RegisterTrafo(const Mod::Context &ctx, const TrafoDefinition &value) {
+    if (!BML::Detail::IsText(value.Name)) return BML_ERROR_INVALID_PARAMETER;
+    const BML_TrafoDefinition record{sizeof(BML_TrafoDefinition), value.Name.c_str()};
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_GameplayInterface, RegisterTrafo) ? api->RegisterTrafo(ctx.Handle(), &record) : BML_ERROR_UNAVAILABLE;
+}
+struct ModuleDefinition {
+    std::string Name;
+};
+[[nodiscard]] inline int RegisterModule(const Mod::Context &ctx, const ModuleDefinition &value) {
+    if (!BML::Detail::IsText(value.Name)) return BML_ERROR_INVALID_PARAMETER;
+    const BML_ModuleDefinition record{sizeof(BML_ModuleDefinition), value.Name.c_str()};
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_GameplayInterface, RegisterModule) ? api->RegisterModule(ctx.Handle(), &record) : BML_ERROR_UNAVAILABLE;
+}
+using State = BML_GameplayState;
+[[nodiscard]] inline int ReadState(State &out) {
+    State value{}; value.StructSize = sizeof(value); const auto *api = Detail::Interface();
+    if (!BML_IFACE_HAS(api, BML_GameplayInterface, ReadState)) return BML_ERROR_UNAVAILABLE;
+    const int code = api->ReadState(&value); if (code == BML_OK) out = value; return code;
+}
+[[nodiscard]] inline int EnableCheat(const Mod::Context &ctx, bool enabled) {
+    const auto *api = Detail::Interface(); return BML_IFACE_HAS(api, BML_GameplayInterface, EnableCheat) ? api->EnableCheat(ctx.Handle(), enabled ? 1u : 0u) : BML_ERROR_UNAVAILABLE;
+}
+[[nodiscard]] inline int ExitGame(const Mod::Context &ctx) {
+    const auto *api = Detail::Interface(); return BML_IFACE_HAS(api, BML_GameplayInterface, ExitGame) ? api->ExitGame(ctx.Handle()) : BML_ERROR_UNAVAILABLE;
+}
 } // namespace BML::Gameplay
 
 #endif // __cplusplus

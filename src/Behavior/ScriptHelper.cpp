@@ -1,4 +1,4 @@
-#include "BML/ScriptHelper.h"
+#include "Behavior/ScriptHelper.h"
 
 #include "Behavior/Engine/Graph.h"
 

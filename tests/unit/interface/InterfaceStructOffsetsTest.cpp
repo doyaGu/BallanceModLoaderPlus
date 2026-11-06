@@ -291,7 +291,16 @@ TEST(InterfaceStructOffsets, GameplayInterface) {
     EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ReadResetpoint, 40);
     EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ReadHighScore, 44);
     EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ReadCheatEnabled, 48);
-    EXPECT_EQ(sizeof(BML_GameplayInterface), static_cast<std::size_t>(52));
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, RegisterBallType, 52);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, RegisterFloorType, 56);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, RegisterModuleBall, 60);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, RegisterModuleConvex, 64);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, RegisterTrafo, 68);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, RegisterModule, 72);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ReadState, 76);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, EnableCheat, 80);
+    EXPECT_GOLDEN_OFFSET(BML_GameplayInterface, ExitGame, 84);
+    EXPECT_EQ(sizeof(BML_GameplayInterface), static_cast<std::size_t>(88));
     ExpectGrowthRules<BML_GameplayInterface>("bml.gameplay", 44, 0, BML_GAMEPLAY_INTERFACE_MINOR);
 }
 
