@@ -67,7 +67,19 @@ template <auto Function, class R, class... Args> struct Cdecl<Function, R (*)(Ar
 template <class Container, class Read> Result<Container> ReadBuffer(Read &&read) {
     Container value;
     size_t required = 0;
-    int code = read(nullptr, 0, &required);
+    int code;
+    if constexpr (std::is_same_v<Container, std::string>) {
+        // Most text getters fit here. Avoid a separate host call just to size them.
+        char buffer[256]{};
+        code = read(buffer, sizeof(buffer), &required);
+        if (code == BML_OK) {
+            if (!required || required > sizeof(buffer) || buffer[required - 1] != '\0')
+                return Result<Container>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+            return Result<Container>::Success(Container(buffer, required - 1));
+        }
+    } else {
+        code = read(nullptr, 0, &required);
+    }
     if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
         return Result<Container>::Failure(code);
     for (unsigned attempt = 0; attempt != 2; ++attempt) {
