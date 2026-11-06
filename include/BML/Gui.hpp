@@ -749,4 +749,9 @@ private:
 };
 } // namespace BGui
 
+// Keep the existing global namespace available for source compatibility.
+namespace BML {
+namespace Gui = ::BGui;
+}
+
 #endif

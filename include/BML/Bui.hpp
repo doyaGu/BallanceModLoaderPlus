@@ -1034,4 +1034,9 @@ private:
 };
 } // namespace Bui
 
+// Keep the existing global namespace available for source compatibility.
+namespace BML {
+namespace Bui = ::Bui;
+}
+
 #endif // BML_BUI_HPP
