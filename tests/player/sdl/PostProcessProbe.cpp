@@ -23,6 +23,40 @@ public:
         Write(m_ResultPath + ".unloaded", "unloaded\n");
     }
 
+    void OnPreCommandExecute(const BML::Mod::Context &,
+                             const BML::Mod::CommandEvent &event) override {
+        if (event.Name != "bml_probe_command")
+            return;
+        CheckCommandEvent(event, BML_COMMAND_EVENT_PRE);
+        m_CommandEvents.push_back(1);
+        if (m_RemoveBeforeExecute)
+            m_ProbeCommand.Unregister().Take();
+        Require(!m_CommandLease.expired(), "command state retained through pre callback");
+    }
+
+    void OnPostCommandExecute(const BML::Mod::Context &,
+                              const BML::Mod::CommandEvent &event) override {
+        if (event.Name != "bml_probe_command")
+            return;
+        CheckCommandEvent(event, BML_COMMAND_EVENT_POST);
+        Require(!m_CommandLease.expired(), "command state retained through post callback");
+        m_CommandEvents.push_back(3);
+    }
+
+    void OnModifyConfig(const BML::Mod::Context &, const BML::Mod::ConfigEvent &event) override {
+        if (event.Category != "Contract")
+            return;
+        Require(event.ModId == "SdlPostProcessProbe" && event.Property != 0,
+                "configuration notification owner and property");
+        if (event.Key == "Count") {
+            Require(event.Type == BML_CONFIG_TYPE_INTEGER, "configuration notification type");
+            ++m_CountNotifications;
+        } else if (event.Key == "Text") {
+            Require(event.Type == BML_CONFIG_TYPE_STRING, "text notification type");
+            ++m_TextNotifications;
+        }
+    }
+
     void OnProcess(const BML::Mod::Context &) override {
         if (m_Finished)
             return;
@@ -111,7 +145,11 @@ public:
             break;
         default:
             if (m_Frames >= 120) {
-                const bool timers = m_NoArgCalls == 1 && m_VoidCalls == 2 && !m_NoArgs.IsValid() && !m_VoidLoop.IsValid() && m_SelfCalls == 1 && m_RepeatCalls == 3 && !m_Self.IsValid() && !m_Repeat.IsValid() && m_SelfLease.expired();
+                const bool timers = m_NoArgCalls == 1 && m_VoidCalls == 2 && !m_NoArgs.IsValid() &&
+                                    !m_VoidLoop.IsValid() && m_SelfCalls == 1 &&
+                                    m_RepeatCalls == 3 && !m_Self.IsValid() &&
+                                    !m_Repeat.IsValid() && m_SelfLease.expired() &&
+                                    m_CountNotifications == 1 && m_TextNotifications == 1;
                 Finish(m_PhysicsFrames > 0 && timers, !timers ? "timer-lifecycle" : m_PhysicsFrames ? "passed" : "physics-not-observed-before-mod");
             }
             return;
@@ -124,7 +162,50 @@ public:
     }
 
 private:
-    static void Require(bool value, const char *message) { if (!value) throw std::runtime_error(message); }
+    static void Require(bool value, const char *message) {
+        if (!value)
+            throw std::runtime_error(message);
+    }
+
+    void CheckCommandEvent(const BML::Mod::CommandEvent &event, uint32_t phase) {
+        Require(event.Phase == phase && event.InvokedAs == "bpcheck" && !event.Cheat,
+                "command event identity");
+        Require(event.Arguments.size() == 2 && std::string_view(event.Arguments[0]) == "one" &&
+                    std::string_view(event.Arguments[1]) == "two words",
+                "command event arguments after shell expansion");
+    }
+
+    void CheckCommandLifetime(bool removeBeforeExecute) {
+        m_RemoveBeforeExecute = removeBeforeExecute;
+        m_CommandEvents.clear();
+        auto retained = std::make_shared<int>(7);
+        m_CommandLease = retained;
+        m_ProbeCommand =
+            m_Context.Commands()
+                .Register({"bml_probe_command", "bpcheck", "Retained command invocation"},
+                          [this, retained](const BML::Command::Invocation &invocation) {
+                              Require(*retained == 7 && invocation.InvokedAs() == "bpcheck" &&
+                                          invocation.Argument(0) == "one" &&
+                                          invocation.Argument(1) == "two words",
+                                      "command execute after registration removal");
+                              m_CommandEvents.push_back(2);
+                              if (!m_RemoveBeforeExecute)
+                                  m_ProbeCommand.Unregister().Take();
+                              return 7;
+                          })
+                .Take();
+        retained.reset();
+        int status = 0;
+        Require(BML::Command::ExecuteLine("bpcheck one 'two words'", status) == BML_OK &&
+                    status == 7,
+                "command invocation status");
+        Require(m_CommandEvents == std::vector<int>({1, 2, 3}), "pre execute post ordering");
+        Require(m_CommandLease.expired(), "command state released after post callback");
+        BML::Command::Info info;
+        Require(BML::Command::Find("bpcheck", info) == BML_ERROR_NOT_FOUND,
+                "removed command and alias no longer resolve");
+    }
+
     void CheckNativeServices(CKContext *engine) {
         if (const char *expected = std::getenv("BML_EXPECT_MODS")) {
             std::istringstream ids(expected);
@@ -135,6 +216,9 @@ private:
                         ("Mod did not load: " + id).c_str());
             }
         }
+        CheckCommandLifetime(true);
+        CheckCommandLifetime(false);
+
         auto config = m_Context.Config();
         auto value = config.DeclareProperty({"Contract", "Count", int32_t(42)}).Take();
         Require(value.Get<int32_t>() == 42, "numeric configuration read");
@@ -268,6 +352,12 @@ private:
     BML::Input::Block m_Block;
     BML::Timer::Registration m_Self, m_Repeat, m_NoArgs, m_VoidLoop;
     std::weak_ptr<int> m_SelfLease;
+    BML::Command::Registration m_ProbeCommand;
+    std::weak_ptr<int> m_CommandLease;
+    std::vector<int> m_CommandEvents;
+    bool m_RemoveBeforeExecute = false;
+    int m_CountNotifications = 0;
+    int m_TextNotifications = 0;
     int m_SelfCalls = 0, m_RepeatCalls = 0, m_NoArgCalls = 0, m_VoidCalls = 0;
     CKDWORD m_LastTick = 0;
     int m_Frames = 0, m_PhysicsFrames = 0, m_Renders = 0, m_Phase = 0, m_Priority = 0;
