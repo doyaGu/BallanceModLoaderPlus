@@ -26,7 +26,7 @@ about an arbitrary release archive or future commit.
 ## Completed local checks
 
 On macOS ARM64, Release dynamic builds passed the complete CTest suites:
-**107/107 with scripting and 100/100 without scripting**. These counts are a
+**109/109 with scripting and 102/102 without scripting**. These counts are a
 snapshot; optional test configuration and later tests can change them.
 
 The checks cover installed/relocated SDK consumers, C and C++ Native examples,
@@ -61,6 +61,33 @@ state-migration excerpts compiled in isolated script modules with no gameplay
 side effects. Both language sites pass strict MkDocs link
 and anchor checks. These are compilation/startup checks, not gameplay acceptance
 of every example branch.
+
+## SDL follow-up audit (2026-11-06)
+
+Enabling optional UI automation reproduced two BML+-only build blockers: the
+headless Bui target lacked CK2/VxMath usage requirements, and the script-reload
+journey still cast a composed `ModRecord` to `ScriptMod`. Both are fixed using
+existing targets and the record’s existing `Script` field. Script-on and
+script-off instrumented Loader builds and their three UI tests pass on macOS
+ARM64. These checks compile the journeys but do not drive them in a real Player.
+
+Scenario/Session contracts now run in default builds and standalone without
+engine packages or the optional Test Engine. CI is configured to run them on
+Windows, Linux and macOS; this local audit executed macOS only. The full-suite
+counts above include these two additional default tests.
+
+| Remaining item | Concrete gap and next step |
+| --- | --- |
+| Real Player UI and game journeys | No portable input/capture runner is registered. Reuse the existing SDL input path and CK2 capture API in BML test tooling first; verify capture timing and actual output before counting visual acceptance. |
+| Full native platform matrix | CI runs standalone SDK/CLI/UI contracts, not complete Loader/CKAngelScript/Mods builds. Supply matching dependency packages, then build and run native targets; x86 layout goldens do not run x86 code. |
+| Static Player | Configuration explicitly rejects it and source integration selects shared CK2/VxMath. Host entry/export work needs a separately approved Ballanced integration; it is outside this BML+-only audit. |
+| Input and each Mod’s gameplay | Virtual-gamepad/input component checks exist. Actual IME, focus, controllers, DPI/fullscreen, X11/Wayland and complete level/reset/map/per-Mod journeys remain unaccepted. |
+| Distribution and update packages | Signed fixtures pass; unpacked target packages, production channel/restart/rollback and platform signing/dependency deployment still need target-machine acceptance. |
+| Reference regeneration | Full ImGui regeneration lacks the cimgui input catalog; CKAS editor aliases still reflect a recorded macOS ARM64 host. Supply matching inputs and generate/check target-specific references. |
+
+Default engine physics scheduling is retained and is not an unresolved
+BML scheduling redesign. IVP v2 remains out of scope. No Ballanced source was
+changed for this audit.
 
 ## Still pending
 
