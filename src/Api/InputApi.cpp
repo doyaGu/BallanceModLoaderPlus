@@ -91,6 +91,19 @@ int InputApi::ReadKeyboard(ModContext &ctx, uint32_t flags, BML_InputKeyboardSta
     return BML_OK;
 }
 
+int InputApi::ShareKeyboard(ModContext &context, uint32_t flags,
+                            std::shared_ptr<const Keyboard> &out) {
+    BML_InputKeyboardState value{};
+    value.StructSize = sizeof(value);
+    const int code = ReadKeyboard(context, flags, &value);
+    if (code == BML_OK) {
+        auto *input = context.GetInputManager();
+        out = !(flags & BML_INPUT_RAW) && input->IsBlocked(CK_INPUT_DEVICE_KEYBOARD)
+                  ? m_Filtered : m_Raw;
+    }
+    return code;
+}
+
 int InputApi::AcquireBlock(ModContext &ctx, ModRecord &owner, uint32_t mask,
                            BML_InputBlockHandle *out) {
     if (!out)

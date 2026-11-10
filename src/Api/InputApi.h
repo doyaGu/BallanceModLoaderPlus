@@ -19,7 +19,6 @@ public:
     int ReleaseBlock(ModContext &context, ModRecord &owner, BML_InputBlockHandle block);
     void CleanupOwner(ModContext &context, ModRecord &owner) noexcept;
 
-private:
     struct Keyboard {
         uint64_t Revision = 0;
         bool Attached = false;
@@ -29,6 +28,10 @@ private:
         std::vector<BML_InputKeyEvent> Events;
     };
 
+    int ShareKeyboard(ModContext &context, uint32_t flags,
+                      std::shared_ptr<const Keyboard> &out);
+
+private:
     struct Block {
         ModRecord *Owner = nullptr;
         uint64_t Token = 0;
