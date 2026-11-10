@@ -100,6 +100,7 @@ static const ScriptEnumValueDescriptor kDirectoryTypeValues[] = {
     {"DIR_GAME", 2, "DirectoryType::DIR_GAME"},
     {"DIR_LOADER", 3, "DirectoryType::DIR_LOADER"},
     {"DIR_CONFIG", 4, "DirectoryType::DIR_CONFIG"},
+    {"DIR_MOD_ROOT", BML_MOD_DIRECTORY_ROOT, "DirectoryType::DIR_MOD_ROOT"},
 };
 
 static const ScriptEnumValueDescriptor kModKindValues[] = {
@@ -273,56 +274,54 @@ static const ScriptEnumDescriptor kEnums[] = {
 };
 
 static const ScriptEventMemberDescriptor kRenderEventMembers[] = {
-    {"int get_Flags() const", "int RenderEvent::get_Flags() const"},
-    {"int GetFlags() const", "int RenderEvent::GetFlags() const"},
+    {"int get_Flags() const", "RenderEvent::int get_Flags() const"},
 };
 
 static const ScriptEventMemberDescriptor kCheatEventMembers[] = {
-    {"bool get_Enabled() const", "bool CheatEvent::get_Enabled() const"},
-    {"bool IsEnabled() const", "bool CheatEvent::IsEnabled() const"},
+    {"bool get_Enabled() const", "CheatEvent::bool get_Enabled() const"},
 };
 
 static const ScriptEventMemberDescriptor kLoadObjectEventMembers[] = {
-    {"string get_Filename() const", "string LoadObjectEvent::get_Filename() const"},
-    {"bool get_IsMap() const", "bool LoadObjectEvent::get_IsMap() const"},
-    {"string get_MasterName() const", "string LoadObjectEvent::get_MasterName() const"},
-    {"int get_FilterClass() const", "int LoadObjectEvent::get_FilterClass() const"},
-    {"bool get_AddToScene() const", "bool LoadObjectEvent::get_AddToScene() const"},
-    {"bool get_ReuseMeshes() const", "bool LoadObjectEvent::get_ReuseMeshes() const"},
-    {"bool get_ReuseMaterials() const", "bool LoadObjectEvent::get_ReuseMaterials() const"},
-    {"bool get_IsDynamic() const", "bool LoadObjectEvent::get_IsDynamic() const"},
-    {"int get_ObjectCount() const", "int LoadObjectEvent::get_ObjectCount() const"},
-    {"int GetObjectId(int index) const", "int LoadObjectEvent::GetObjectId(int index) const"},
-    {"CKObject@ BorrowObject(int index) const", "CKObject@ LoadObjectEvent::BorrowObject(int index) const"},
-    {"CKObject@ BorrowMasterObject() const", "CKObject@ LoadObjectEvent::BorrowMasterObject() const"},
+    {"string get_Filename() const", "LoadObjectEvent::string get_Filename() const"},
+    {"bool get_IsMap() const", "LoadObjectEvent::bool get_IsMap() const"},
+    {"string get_MasterName() const", "LoadObjectEvent::string get_MasterName() const"},
+    {"int get_FilterClass() const", "LoadObjectEvent::int get_FilterClass() const"},
+    {"bool get_AddToScene() const", "LoadObjectEvent::bool get_AddToScene() const"},
+    {"bool get_ReuseMeshes() const", "LoadObjectEvent::bool get_ReuseMeshes() const"},
+    {"bool get_ReuseMaterials() const", "LoadObjectEvent::bool get_ReuseMaterials() const"},
+    {"bool get_Dynamic() const", "LoadObjectEvent::bool get_Dynamic() const"},
+    {"int get_ObjectCount() const", "LoadObjectEvent::int get_ObjectCount() const"},
+    {"int GetObjectId(int index) const", "LoadObjectEvent::int GetObjectId(int index) const"},
+    {"CKObject@ BorrowObject(int index) const", "LoadObjectEvent::CKObject@ BorrowObject(int index) const"},
+    {"CKObject@ BorrowMasterObject() const", "LoadObjectEvent::CKObject@ BorrowMasterObject() const"},
 };
 
 static const ScriptEventMemberDescriptor kLoadScriptEventMembers[] = {
-    {"string get_Filename() const", "string LoadScriptEvent::get_Filename() const"},
-    {"int get_ScriptId() const", "int LoadScriptEvent::get_ScriptId() const"},
-    {"CKBehavior@ BorrowScript() const", "CKBehavior@ LoadScriptEvent::BorrowScript() const"},
+    {"string get_Filename() const", "LoadScriptEvent::string get_Filename() const"},
+    {"int get_ScriptId() const", "LoadScriptEvent::int get_ScriptId() const"},
+    {"CKBehavior@ BorrowScript() const", "LoadScriptEvent::CKBehavior@ BorrowScript() const"},
 };
 
 static const ScriptEventMemberDescriptor kCommandEventMembers[] = {
-    {"CommandEventPhase get_Phase() const", "CommandEventPhase CommandEvent::get_Phase() const"},
-    {"bool get_IsPre() const", "bool CommandEvent::get_IsPre() const"},
-    {"bool get_IsPost() const", "bool CommandEvent::get_IsPost() const"},
-    {"bool get_IsExecute() const", "bool CommandEvent::get_IsExecute() const"},
-    {"bool get_IsComplete() const", "bool CommandEvent::get_IsComplete() const"},
-    {"string get_CommandName() const", "string CommandEvent::get_CommandName() const"},
-    {"int get_ArgCount() const", "int CommandEvent::get_ArgCount() const"},
-    {"string GetArg(int index) const", "string CommandEvent::GetArg(int index) const"},
-    {"string get_ArgsText() const", "string CommandEvent::get_ArgsText() const"},
-    {"bool get_IsCheat() const", "bool CommandEvent::get_IsCheat() const"},
+    {"CommandEventPhase get_Phase() const", "CommandEvent::CommandEventPhase get_Phase() const"},
+    {"bool get_IsPre() const", "CommandEvent::bool get_IsPre() const"},
+    {"bool get_IsPost() const", "CommandEvent::bool get_IsPost() const"},
+    {"bool get_IsExecute() const", "CommandEvent::bool get_IsExecute() const"},
+    {"bool get_IsComplete() const", "CommandEvent::bool get_IsComplete() const"},
+    {"string get_Name() const", "CommandEvent::string get_Name() const"},
+    {"int get_ArgumentCount() const", "CommandEvent::int get_ArgumentCount() const"},
+    {"int ReadArgument(uint index, string &out argument) const", "CommandEvent::int ReadArgument(uint index, string &out argument) const"},
+    {"bool get_Cheat() const", "CommandEvent::bool get_Cheat() const"},
+    {"string get_InvokedAs() const", "CommandEvent::string get_InvokedAs() const"},
 };
 
 static const ScriptEventMemberDescriptor kConfigEventMembers[] = {
-    {"string get_ModId() const", "string ConfigEvent::get_ModId() const"},
-    {"string get_Category() const", "string ConfigEvent::get_Category() const"},
-    {"string get_Key() const", "string ConfigEvent::get_Key() const"},
-    {"ConfigPropertyType get_Type() const", "ConfigPropertyType ConfigEvent::get_Type() const"},
-    {"bool get_HasProperty() const", "bool ConfigEvent::get_HasProperty() const"},
-    {"ConfigProperty@ BorrowProperty() const", "ConfigProperty@ ConfigEvent::BorrowProperty() const"},
+    {"string get_ModId() const", "ConfigEvent::string get_ModId() const"},
+    {"string get_Category() const", "ConfigEvent::string get_Category() const"},
+    {"string get_Key() const", "ConfigEvent::string get_Key() const"},
+    {"ConfigPropertyType get_Type() const", "ConfigEvent::ConfigPropertyType get_Type() const"},
+    {"bool get_HasProperty() const", "ConfigEvent::bool get_HasProperty() const"},
+    {"ConfigProperty@ BorrowProperty() const", "ConfigEvent::ConfigProperty@ BorrowProperty() const"},
 };
 
 static const ScriptEventMemberDescriptor kTimerEventMembers[] = {
@@ -348,37 +347,36 @@ static const ScriptEventMemberDescriptor kDataShareEventMembers[] = {
 };
 
 static const ScriptEventMemberDescriptor kPhysicalizeEventMembers[] = {
-    {"int get_TargetId() const", "int PhysicalizeEvent::get_TargetId() const"},
-    {"string get_TargetName() const", "string PhysicalizeEvent::get_TargetName() const"},
-    {"CK3dEntity@ BorrowTarget() const", "CK3dEntity@ PhysicalizeEvent::BorrowTarget() const"},
-    {"bool get_Fixed() const", "bool PhysicalizeEvent::get_Fixed() const"},
-    {"float get_Friction() const", "float PhysicalizeEvent::get_Friction() const"},
-    {"float get_Elasticity() const", "float PhysicalizeEvent::get_Elasticity() const"},
-    {"float get_Mass() const", "float PhysicalizeEvent::get_Mass() const"},
-    {"string get_CollisionGroup() const", "string PhysicalizeEvent::get_CollisionGroup() const"},
-    {"bool get_StartFrozen() const", "bool PhysicalizeEvent::get_StartFrozen() const"},
-    {"bool get_EnableCollision() const", "bool PhysicalizeEvent::get_EnableCollision() const"},
-    {"bool get_AutoCalcMassCenter() const", "bool PhysicalizeEvent::get_AutoCalcMassCenter() const"},
-    {"float get_LinearDamp() const", "float PhysicalizeEvent::get_LinearDamp() const"},
-    {"float get_RotDamp() const", "float PhysicalizeEvent::get_RotDamp() const"},
-    {"string get_CollisionSurface() const", "string PhysicalizeEvent::get_CollisionSurface() const"},
-    {"float get_MassCenterX() const", "float PhysicalizeEvent::get_MassCenterX() const"},
-    {"float get_MassCenterY() const", "float PhysicalizeEvent::get_MassCenterY() const"},
-    {"float get_MassCenterZ() const", "float PhysicalizeEvent::get_MassCenterZ() const"},
-    {"VxVector get_MassCenter() const", "VxVector PhysicalizeEvent::get_MassCenter() const"},
-    {"int get_ConvexCount() const", "int PhysicalizeEvent::get_ConvexCount() const"},
-    {"CKMesh@ BorrowConvexMesh(int index) const", "CKMesh@ PhysicalizeEvent::BorrowConvexMesh(int index) const"},
-    {"int get_BallCount() const", "int PhysicalizeEvent::get_BallCount() const"},
-    {"VxVector GetBallCenter(int index) const", "VxVector PhysicalizeEvent::GetBallCenter(int index) const"},
-    {"float GetBallRadius(int index) const", "float PhysicalizeEvent::GetBallRadius(int index) const"},
-    {"int get_ConcaveCount() const", "int PhysicalizeEvent::get_ConcaveCount() const"},
-    {"CKMesh@ BorrowConcaveMesh(int index) const", "CKMesh@ PhysicalizeEvent::BorrowConcaveMesh(int index) const"},
+    {"int get_TargetId() const", "PhysicalizeEvent::int get_TargetId() const"},
+    {"string get_TargetName() const", "PhysicalizeEvent::string get_TargetName() const"},
+    {"CK3dEntity@ BorrowTarget() const", "PhysicalizeEvent::CK3dEntity@ BorrowTarget() const"},
+    {"bool get_Fixed() const", "PhysicalizeEvent::bool get_Fixed() const"},
+    {"float get_Friction() const", "PhysicalizeEvent::float get_Friction() const"},
+    {"float get_Elasticity() const", "PhysicalizeEvent::float get_Elasticity() const"},
+    {"float get_Mass() const", "PhysicalizeEvent::float get_Mass() const"},
+    {"string get_CollisionGroup() const", "PhysicalizeEvent::string get_CollisionGroup() const"},
+    {"bool get_StartFrozen() const", "PhysicalizeEvent::bool get_StartFrozen() const"},
+    {"bool get_EnableCollision() const", "PhysicalizeEvent::bool get_EnableCollision() const"},
+    {"bool get_CalcMassCenter() const", "PhysicalizeEvent::bool get_CalcMassCenter() const"},
+    {"float get_LinearDamp() const", "PhysicalizeEvent::float get_LinearDamp() const"},
+    {"float get_RotDamp() const", "PhysicalizeEvent::float get_RotDamp() const"},
+    {"string get_CollisionSurface() const", "PhysicalizeEvent::string get_CollisionSurface() const"},
+    {"BML::Vec3 get_MassCenter() const", "PhysicalizeEvent::BML::Vec3 get_MassCenter() const"},
+    {"int get_ConvexCount() const", "PhysicalizeEvent::int get_ConvexCount() const"},
+    {"CKMesh@ BorrowConvexMesh(int index) const", "PhysicalizeEvent::CKMesh@ BorrowConvexMesh(int index) const"},
+    {"int get_SphereCount() const", "PhysicalizeEvent::int get_SphereCount() const"},
+    {"BML::Vec3 GetSphereCenter(int index) const", "PhysicalizeEvent::BML::Vec3 GetSphereCenter(int index) const"},
+    {"float GetSphereRadius(int index) const", "PhysicalizeEvent::float GetSphereRadius(int index) const"},
+    {"int get_ConcaveCount() const", "PhysicalizeEvent::int get_ConcaveCount() const"},
+    {"CKMesh@ BorrowConcaveMesh(int index) const", "PhysicalizeEvent::CKMesh@ BorrowConcaveMesh(int index) const"},
+    {"bool get_HasCollisionGroup() const", "PhysicalizeEvent::bool get_HasCollisionGroup() const"},
+    {"bool get_HasCollisionSurface() const", "PhysicalizeEvent::bool get_HasCollisionSurface() const"},
 };
 
 static const ScriptEventMemberDescriptor kObjectEventMembers[] = {
-    {"int get_TargetId() const", "int ObjectEvent::get_TargetId() const"},
-    {"string get_TargetName() const", "string ObjectEvent::get_TargetName() const"},
-    {"CK3dEntity@ BorrowTarget() const", "CK3dEntity@ ObjectEvent::BorrowTarget() const"},
+    {"int get_TargetId() const", "ObjectEvent::int get_TargetId() const"},
+    {"string get_TargetName() const", "ObjectEvent::string get_TargetName() const"},
+    {"CK3dEntity@ BorrowTarget() const", "ObjectEvent::CK3dEntity@ BorrowTarget() const"},
 };
 
 static const ScriptEventTypeDescriptor kEventTypes[] = {

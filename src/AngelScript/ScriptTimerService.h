@@ -8,6 +8,7 @@
 #include <unordered_map>
 
 #include "Timer/TimerRegistry.h"
+#include "ScriptRuntimeScope.h"
 #include "ScriptDiagnostic.h"
 #include "ScriptModRuntime.h"
 
@@ -20,60 +21,63 @@ namespace BML {
 class ScriptMod;
 class ScriptModContextView;
 
+struct ScriptTimerDefinition {
+    std::string Name;
+    uint32_t Type = BML_TIMER_ONCE;
+    uint32_t TimeBase = BML_TIMER_TIMEBASE_TIME;
+    bool StartPaused = false;
+    int Priority = 0;
+    double DelayMs = 0;
+    uint64_t DelayTicks = 0, RepeatCount = 0;
+};
+
+struct ScriptTimerInfo {
+    uint64_t Handle = 0;
+    std::string Name;
+    uint32_t State = 0, Type = 0, TimeBase = 0;
+    uint64_t CompletedIterations = 0;
+    int64_t RemainingIterations = 0;
+    float Progress = 0;
+};
+
 class ScriptTimerEventView {
 public:
-    explicit ScriptTimerEventView(TimerScheduler *timer = nullptr);
+    ScriptTimerEventView() = default;
     explicit ScriptTimerEventView(const BML_TimerEvent &event);
 
     bool IsValid() const { return m_Valid; }
-    int GetId() const;
-    std::string GetName() const;
-    int GetState() const;
-    int GetType() const;
-    int GetTimeBase() const;
-    int GetCompletedIterations() const;
-    int GetRemainingIterations() const;
-    float GetProgress() const;
+
+    int Read(ScriptTimerInfo &out) const;
 
 private:
     bool m_Valid = false;
-    int m_Id = 0;
-    std::string m_Name;
-    int m_State = 0;
-    int m_Type = 0;
-    int m_TimeBase = 0;
-    int m_CompletedIterations = 0;
-    int m_RemainingIterations = 0;
-    float m_Progress = 0.0f;
+    ScriptTimerInfo m_Info;
 };
 
 class ScriptTimerServiceState;
-struct ScriptTimerRegistration;
 
 class ScriptTimerRef {
 public:
-    ScriptTimerRef(std::weak_ptr<ScriptTimerServiceState> state, TimerScheduler::TimerId id);
+    ScriptTimerRef(std::weak_ptr<ScriptTimerServiceState> state, BML_TimerHandle id);
 
     void AddRef();
     void Release();
 
     bool IsValid() const;
-    int GetId() const;
-    std::string GetName() const;
-    int GetState() const;
-    int GetCompletedIterations() const;
-    int GetRemainingIterations() const;
-    float GetProgress() const;
-    void Pause();
-    void Resume();
-    void Cancel();
+    int Read(ScriptTimerInfo &out) const;
+    int Pause();
+    int Resume();
+    int Cancel();
+    std::shared_ptr<ScriptControlTicket> Ticket;
+
+    void SetHandle(BML_TimerHandle handle) { m_Id = handle; }
 
 private:
     TimerScheduler *ResolveTimer() const;
 
     int m_RefCount = 1;
     std::weak_ptr<ScriptTimerServiceState> m_State;
-    TimerScheduler::TimerId m_Id = TimerScheduler::InvalidId;
+    BML_TimerHandle m_Id = 0;
 };
 
 class ScriptTimerService {
@@ -81,25 +85,20 @@ public:
     ScriptTimerService();
     ~ScriptTimerService();
 
-    bool Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView);
-    ScriptTimerRef *Add(asIScriptObject *timer);
-    ScriptTimerRef *AddTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name = std::string());
-    ScriptTimerRef *AddTimeoutMs(float delayMs, asIScriptFunction *callback, const std::string &name = std::string());
-    ScriptTimerRef *AddIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name = std::string());
-    ScriptTimerRef *AddIntervalMs(float delayMs, asIScriptFunction *callback, const std::string &name = std::string());
+    bool Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime,
+              ScriptModContextView *contextView);
+    int Register(const ScriptTimerDefinition &definition, asIScriptFunction *callback,
+                 bool returnsBool, ScriptTimerRef *&out);
     void Release(ScriptDiagnostic *diagnostic = nullptr);
     size_t GetActiveCount() const;
 
 #ifdef BML_TEST
-    ScriptTimerRef *AddTestTimerForRelease(const std::string &name,
-                                           TimerScheduler::SimpleCallback callback = TimerScheduler::SimpleCallback());
+    ScriptTimerRef *AddTestTimerForRelease(
+        const std::string &name,
+        TimerScheduler::SimpleCallback callback = TimerScheduler::SimpleCallback());
 #endif
 
 private:
-    ScriptTimerRef *AddTimer(const BML_TimerDefinition &, asIScriptObject *,
-                             const ScriptTimerRegistration &);
-    ScriptTimerRef *AddCallbackTimer(const BML_TimerDefinition &, asIScriptFunction *, bool);
-
     std::shared_ptr<ScriptTimerServiceState> m_State;
 };
 

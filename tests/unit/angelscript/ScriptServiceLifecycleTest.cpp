@@ -159,16 +159,54 @@ TEST_F(ScriptServiceLifecycleTest, CommandReleaseSuppressesOldCallbackAndRunsNew
 TEST_F(ScriptServiceLifecycleTest, CommandCompletionRejectsInvalidAndExcessCandidates) {
     std::vector<std::string> items;
     ScriptCommandCompletion completion(&items);
-    completion.Add("");
-    completion.Add(std::string("bad\0value", 9));
-    completion.Add(std::string(Shell::Limits::MaxCompletionBytes + 1, 'x'));
-    completion.Add(std::string("\xe5", 1));
-    for (std::size_t index = 0; index < Shell::Limits::MaxCompletionCandidates + 10; ++index)
-        completion.Add("candidate" + std::to_string(index));
+    EXPECT_EQ(BML_ERROR_INVALID_PARAMETER, completion.Add(""));
+    EXPECT_EQ(0, completion.GetCount());
+    EXPECT_EQ(BML_ERROR_INVALID_PARAMETER, completion.Add("candidate"));
+    // A failed collection is discarded. A fresh request starts with a clean sink.
+    ScriptCommandCompletion valid(&items);
+    for (std::size_t index = 0; index < Shell::Limits::MaxCompletionCandidates; ++index)
+        EXPECT_EQ(BML_OK, valid.Add("candidate" + std::to_string(index)));
+    EXPECT_EQ(BML_ERROR_WOULD_BLOCK, valid.Add("overflow"));
+    EXPECT_EQ(static_cast<int>(Shell::Limits::MaxCompletionCandidates), valid.GetCount());
+    EXPECT_EQ("candidate0", valid.At(0));
+    unsigned count = 0;
+    EXPECT_EQ(BML_OK, valid.ReadCount(count));
+    std::string candidate;
+    EXPECT_EQ(BML_ERROR_NOT_FOUND, valid.ReadCandidate(count, candidate));
+    valid.Frame->Active = false;
+    EXPECT_EQ(BML_ERROR_INVALID_HANDLE, valid.ReadCandidate(0, candidate));
+    EXPECT_EQ(BML_ERROR_INVALID_HANDLE, valid.Add("late"));
 
-    EXPECT_EQ(static_cast<int>(Shell::Limits::MaxCompletionCandidates), completion.GetCount());
-    EXPECT_EQ("candidate0", completion.At(0));
-    EXPECT_TRUE(completion.At(completion.GetCount()).empty());
+}
+
+TEST_F(ScriptServiceLifecycleTest, TimerNotificationPreservesFullWidthCountersAndCopies) {
+    const BML_TimerEvent wire{sizeof(wire), UINT64_C(0x100000001), "captured", BML_TIMER_RUNNING,
+        BML_TIMER_REPEAT, BML_TIMER_TIMEBASE_TICK, UINT64_C(0x100000002), INT64_C(0x100000003), 0.25f};
+    ScriptTimerEventView event(wire);
+    ScriptTimerEventView copy;
+    copy = event;
+    ScriptTimerInfo info;
+    EXPECT_EQ(BML_OK, copy.Read(info));
+    EXPECT_EQ(wire.Handle, info.Handle);
+    EXPECT_EQ(wire.CompletedIterations, info.CompletedIterations);
+    EXPECT_EQ(wire.RemainingIterations, info.RemainingIterations);
+    EXPECT_EQ("captured", info.Name);
+    EXPECT_EQ(BML_ERROR_INVALID_HANDLE, ScriptTimerEventView().Read(info));
+}
+
+TEST_F(ScriptServiceLifecycleTest, CommandFrameCopiesRetireTogetherWithoutKeepingSinkAlive) {
+    ScriptCommandInvocation invocation;
+    invocation.Frame = std::make_shared<ScriptCommandFrame>();
+    invocation.Frame->Name = "name"; invocation.Frame->Arguments = {"a"};
+    auto copy = invocation;
+    std::string text;
+    EXPECT_EQ(BML_OK, copy.ReadArgument(0, text));
+    EXPECT_EQ("a", text);
+    EXPECT_EQ(BML_ERROR_NOT_FOUND, copy.ReadArgument(1, text));
+    invocation.Frame->Active = false;
+    EXPECT_EQ(BML_ERROR_INVALID_HANDLE, copy.ReadArgument(0, text));
+    EXPECT_EQ(BML_ERROR_INVALID_HANDLE, copy.Write("late"));
+    EXPECT_TRUE(copy.GetName().empty());
 }
 
 TEST_F(ScriptServiceLifecycleTest, DataShareReleaseInvalidatesOldRefAndSuppressesPendingRequest) {

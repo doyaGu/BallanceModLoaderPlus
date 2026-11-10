@@ -80,10 +80,6 @@ void ScriptMod::SetLoadFailure(const ScriptDiagnostic &) {}
 
 void ScriptMod::RecordScriptDiagnostic(const ScriptDiagnostic &) {}
 
-bool ScriptMod::UnregisterScriptCommand(const std::string &) {
-    return false;
-}
-
 bool ScriptMod::EnterScriptCall() const {
     return true;
 }
@@ -95,3 +91,11 @@ bool ScriptMod::CanDispatchScriptServiceCallback() {
 void ScriptMod::LeaveScriptCall() const {}
 
 } // namespace BML
+
+// These lifecycle tests have no live Loader context. Access checks fail closed;
+// live owner/thread and runtime retirement checks run in the Player probe.
+ModContextLease::ModContextLease() = default;
+ModContextLease::~ModContextLease() = default;
+BML::ScriptRuntimeAccess::ScriptRuntimeAccess(const BML::ScriptControlTicket &, bool) {}
+NativeMod *ModLoader::FindNativeMod(const ModRecord *) const { return nullptr; }
+bool ModLoader::CanDispatchOwner(const ModRecord *) const { return false; }

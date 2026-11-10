@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <new>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 
@@ -20,11 +21,15 @@ namespace {
 
 struct ScriptMenuPageEntry {
     ~ScriptMenuPageEntry() {
-        if (Draw) Draw->Release();
-        if (Enter) Enter->Release();
-        if (Leave) Leave->Release();
+        if (Draw)
+            Draw->Release();
+        if (Enter)
+            Enter->Release();
+        if (Leave)
+            Leave->Release();
     }
 
+    std::shared_ptr<ScriptControlTicket> Ticket;
     ScriptMod *Owner = nullptr;
     asIScriptFunction *Draw = nullptr;
     asIScriptFunction *Enter = nullptr;
@@ -53,8 +58,7 @@ int WriteReasonArg(asIScriptContext *context, void *data) {
 }
 
 bool CallPage(const ScriptMenuPageEntry &entry, asIScriptFunction *callback,
-              ScriptFunctionArgWriter writeArgs, void *args,
-              const char *phase) {
+              ScriptFunctionArgWriter writeArgs, void *args, const char *phase) {
     if (!callback)
         return true;
 
@@ -86,8 +90,7 @@ int BML_CDECL DrawPage(void *userData, BML_ModMenuPageFrame *frame) {
 
     const std::shared_ptr<ScriptMenuPageEntry> entry = *retained;
     ScriptMenuPageFrame scriptFrame;
-    if (!CallPage(*entry, entry->Draw, WriteFrameArg, &scriptFrame,
-                  "Mod Menu page Draw failed"))
+    if (!CallPage(*entry, entry->Draw, WriteFrameArg, &scriptFrame, "Mod Menu page Draw failed"))
         return BML_ERROR_FAIL;
 
     const std::string &target = scriptFrame.GetTargetPageId();
@@ -105,7 +108,9 @@ int BML_CDECL EnterPage(void *userData, BML_ModMenuPageEnterReason reason) {
     const std::shared_ptr<ScriptMenuPageEntry> entry = *retained;
     asDWORD scriptReason = static_cast<asDWORD>(reason);
     return CallPage(*entry, entry->Enter, WriteReasonArg, &scriptReason,
-                    "Mod Menu page Enter failed") ? BML_OK : BML_ERROR_FAIL;
+                    "Mod Menu page Enter failed")
+               ? BML_OK
+               : BML_ERROR_FAIL;
 }
 
 int BML_CDECL LeavePage(void *userData, BML_ModMenuPageLeaveReason reason) {
@@ -115,7 +120,9 @@ int BML_CDECL LeavePage(void *userData, BML_ModMenuPageLeaveReason reason) {
     const std::shared_ptr<ScriptMenuPageEntry> entry = *retained;
     asDWORD scriptReason = static_cast<asDWORD>(reason);
     return CallPage(*entry, entry->Leave, WriteReasonArg, &scriptReason,
-                    "Mod Menu page Leave failed") ? BML_OK : BML_ERROR_FAIL;
+                    "Mod Menu page Leave failed")
+               ? BML_OK
+               : BML_ERROR_FAIL;
 }
 
 void BML_CDECL ReleasePage(void *userData) {
@@ -159,13 +166,13 @@ void ScriptMenuPageFrame::Close() {
     m_Action = BML_MOD_MENU_PAGE_CLOSE;
 }
 
-ScriptMenuPageRef::ScriptMenuPageRef(
-    std::weak_ptr<ScriptMenuPageServiceState> state,
-    std::string id, std::uint64_t generation)
-    : m_State(std::move(state)), m_Id(std::move(id)),
-      m_Generation(generation) {}
+ScriptMenuPageRef::ScriptMenuPageRef(std::weak_ptr<ScriptMenuPageServiceState> state,
+                                     std::string id, std::uint64_t generation)
+    : m_State(std::move(state)), m_Id(std::move(id)), m_Generation(generation) {}
 
-void ScriptMenuPageRef::AddRef() { ++m_RefCount; }
+void ScriptMenuPageRef::AddRef() {
+    ++m_RefCount;
+}
 
 void ScriptMenuPageRef::Release() {
     if (--m_RefCount == 0)
@@ -173,26 +180,41 @@ void ScriptMenuPageRef::Release() {
 }
 
 bool ScriptMenuPageRef::IsValid() const {
+    std::optional<ScriptRuntimeAccess> access;
+    if (Ticket) {
+        access.emplace(*Ticket);
+        if (access->Code() != BML_OK)
+            return false;
+    }
     const std::shared_ptr<ScriptMenuPageServiceState> state = m_State.lock();
     if (!state || !state->Active)
         return false;
-    const auto page = state->Pages.find(m_Id);
-    if (page == state->Pages.end() ||
-        page->second->Generation != m_Generation ||
-        !state->Context || !state->Owner)
+    if (Ticket && Ticket->Terminal)
         return false;
-    return state->Context->GetModMenuPages().Contains(
-        state->Owner->GetID(), m_Id);
+    const auto page = state->Pages.find(m_Id);
+    if (page == state->Pages.end() || page->second->Generation != m_Generation || !state->Context ||
+        !state->Owner)
+        return false;
+    return state->Context->GetModMenuPages().Contains(state->Owner->GetID(), m_Id);
 }
 
 std::string ScriptMenuPageRef::GetId() const {
     return IsValid() ? m_Id : std::string();
 }
 
-bool ScriptMenuPageRef::Unregister() {
-    const std::shared_ptr<ScriptMenuPageServiceState> state = m_State.lock();
-    return IsValid() && state && state->Owner &&
-           state->Owner->UnregisterScriptMenuPage(m_Id);
+int ScriptMenuPageRef::Unregister() {
+    if (!Ticket)
+        return BML_ERROR_INVALID_HANDLE;
+    ScriptRuntimeAccess access(*Ticket, true);
+    if (access.Code() != BML_OK || Ticket->Terminal)
+        return access.Code();
+    const auto state = m_State.lock();
+    if (!state || !state->Active || !state->Owner)
+        return BML_ERROR_INVALID_HANDLE;
+    const auto page = state->Pages.find(m_Id);
+    if (page == state->Pages.end() || page->second->Generation != m_Generation)
+        return BML_ERROR_INVALID_HANDLE;
+    return state->Owner->MenuPagesForAuthoring().Unregister(m_Id);
 }
 
 ScriptMenuPageService::ScriptMenuPageService() = default;
@@ -203,6 +225,8 @@ ScriptMenuPageService::~ScriptMenuPageService() {
 
 bool ScriptMenuPageService::Bind(ModContext *context, ScriptMod *owner) {
     try {
+        if (m_State && !m_State->Active && !Release())
+            return false;
         if (!m_State)
             m_State = std::make_shared<ScriptMenuPageServiceState>();
         m_State->Context = context;
@@ -214,21 +238,22 @@ bool ScriptMenuPageService::Bind(ModContext *context, ScriptMod *owner) {
     }
 }
 
-ScriptMenuPageRef *ScriptMenuPageService::Register(
-    const ScriptMenuPageDefinition &definition, asIScriptFunction *draw,
-    asIScriptFunction *enter, asIScriptFunction *leave) {
+int ScriptMenuPageService::Register(const ScriptMenuPageDefinition &definition,
+                                    asIScriptFunction *draw, asIScriptFunction *enter,
+                                    asIScriptFunction *leave, ScriptMenuPageRef *&out) {
+    out = nullptr;
     if (!m_State || !m_State->Active || !m_State->Context || !m_State->Owner)
-        return nullptr;
-    if (!m_State->Context->IsMainThread() ||
-        !m_State->Context->AreModsLoaded()) {
-        Report(m_State->Owner, "Mod Menu pages must be registered on the game thread after Mods load.");
-        return nullptr;
+        return BML_ERROR_INVALID_PARAMETER;
+    if (!m_State->Context->IsMainThread() || !m_State->Context->AreModsLoaded()) {
+        Report(m_State->Owner,
+               "Mod Menu pages must be registered on the game thread after Mods load.");
+        return BML_ERROR_INVALID_PARAMETER;
     }
     if (!ValidPageId(definition.Id) || definition.Label.empty() ||
-        definition.Label.find('\0') != std::string::npos ||
-        !draw || m_State->Pages.contains(definition.Id)) {
+        definition.Label.find('\0') != std::string::npos || !draw ||
+        m_State->Pages.contains(definition.Id)) {
         Report(m_State->Owner, "Invalid or duplicate Mod Menu page registration.");
-        return nullptr;
+        return BML_ERROR_INVALID_PARAMETER;
     }
 
     const ScriptFunctionParam frameParam[] = {
@@ -244,11 +269,13 @@ ScriptMenuPageRef *ScriptMenuPageService::Register(
         (enter && !ScriptFunctionHasSignature(enter, asTYPEID_VOID, enterParam, 1)) ||
         (leave && !ScriptFunctionHasSignature(leave, asTYPEID_VOID, leaveParam, 1))) {
         Report(m_State->Owner, "Mod Menu page callback signature does not match its funcdef.");
-        return nullptr;
+        return BML_ERROR_INVALID_PARAMETER;
     }
 
     try {
         auto entry = std::make_shared<ScriptMenuPageEntry>();
+        entry->Ticket = std::make_shared<ScriptControlTicket>(
+            m_State->Owner->BorrowContextView()->RuntimeScope().lock());
         entry->Owner = m_State->Owner;
         entry->Draw = draw;
         entry->Enter = enter;
@@ -257,12 +284,14 @@ ScriptMenuPageRef *ScriptMenuPageService::Register(
         if (m_State->NextGeneration == 0)
             m_State->NextGeneration = 1;
         draw->AddRef();
-        if (enter) enter->AddRef();
-        if (leave) leave->AddRef();
+        if (enter)
+            enter->AddRef();
+        if (leave)
+            leave->AddRef();
 
         auto retained = std::make_unique<std::shared_ptr<ScriptMenuPageEntry>>(entry);
-        auto ref = std::make_unique<ScriptMenuPageRef>(
-            m_State, definition.Id, entry->Generation);
+        auto ref = std::make_unique<ScriptMenuPageRef>(m_State, definition.Id, entry->Generation);
+        ref->Ticket = entry->Ticket;
 
         BML_ModMenuPage page = {};
         page.StructSize = sizeof(page);
@@ -274,58 +303,81 @@ ScriptMenuPageRef *ScriptMenuPageService::Register(
         page.Enter = enter ? EnterPage : nullptr;
         page.Leave = leave ? LeavePage : nullptr;
         page.Release = ReleasePage;
-        page.Flags = definition.ShowInDetails
-            ? BML_MOD_MENU_PAGE_VISIBLE : BML_MOD_MENU_PAGE_HIDDEN;
+        page.Flags =
+            definition.ShowInDetails ? BML_MOD_MENU_PAGE_VISIBLE : BML_MOD_MENU_PAGE_HIDDEN;
 
         const std::string ownerId = m_State->Owner->GetID();
+        m_State->Pages.emplace(definition.Id, entry);
+
+        struct PendingPage {
+            ScriptMenuPageServiceState &State;
+            const std::string &Id;
+            bool Committed = false;
+
+            ~PendingPage() {
+                if (!Committed)
+                    State.Pages.erase(Id);
+            }
+        } pending{*m_State, definition.Id};
+
         const int status = m_State->Context->GetModMenuPages().Register(ownerId, page);
         if (status != BML_OK) {
-            Report(m_State->Owner, "Mod Menu page registration failed with status " + std::to_string(status) + ".");
-            return nullptr;
+            Report(m_State->Owner,
+                   "Mod Menu page registration failed with status " + std::to_string(status) + ".");
+            return status;
         }
+        pending.Committed = true;
         retained.release(); // The page registry now owns its Release callback.
 
-        try {
-            m_State->Pages.emplace(definition.Id, std::move(entry));
-        } catch (...) {
-            m_State->Context->GetModMenuPages().Unregister(ownerId, definition.Id);
-            throw;
-        }
-        return ref.release();
+        out = ref.release();
+        return BML_OK;
     } catch (const std::bad_alloc &) {
         Report(m_State->Owner, "Out of memory registering Mod Menu page.");
-        return nullptr;
+        return BML_ERROR_OUT_OF_MEMORY;
     }
 }
 
-bool ScriptMenuPageService::Unregister(const std::string &id) {
-    if (!m_State || !m_State->Active || !m_State->Context ||
-        !m_State->Owner || !m_State->Context->IsMainThread())
-        return false;
+int ScriptMenuPageService::Unregister(const std::string &id) {
+    if (!m_State || !m_State->Active || !m_State->Context || !m_State->Owner ||
+        !m_State->Context->IsMainThread())
+        return BML_ERROR_INVALID_HANDLE;
     const auto page = m_State->Pages.find(id);
     if (page == m_State->Pages.end())
-        return false;
+        return BML_ERROR_INVALID_HANDLE;
 
+    const int status = m_State->Context->GetModMenuPages().Unregister(m_State->Owner->GetID(), id);
+    if (status != BML_OK && status != BML_ERROR_NOT_FOUND)
+        return status;
     page->second->Active = false;
-    const int status = m_State->Context->GetModMenuPages().Unregister(
-        m_State->Owner->GetID(), id);
+    if (page->second->Ticket)
+        page->second->Ticket->Terminal = true;
     m_State->Pages.erase(page);
-    return status == BML_OK || status == BML_ERROR_NOT_FOUND;
+    return BML_OK;
 }
 
-void ScriptMenuPageService::Release() {
-    if (!m_State || !m_State->Active)
-        return;
+bool ScriptMenuPageService::Release() {
+    if (!m_State)
+        return true;
     m_State->Active = false;
-    for (auto &[id, page] : m_State->Pages) {
+    for (auto it = m_State->Pages.begin(); it != m_State->Pages.end();) {
+        auto &page = it->second;
         page->Active = false;
-        if (m_State->Context && m_State->Owner) {
-            m_State->Context->GetModMenuPages().Unregister(
-                m_State->Owner->GetID(), id);
+        const int status =
+            m_State->Context && m_State->Owner
+                ? m_State->Context->GetModMenuPages().Unregister(m_State->Owner->GetID(), it->first)
+                : BML_ERROR_FROZEN;
+        if (status != BML_OK && status != BML_ERROR_NOT_FOUND) {
+            ++it;
+            continue;
         }
+        if (page->Ticket)
+            page->Ticket->Terminal = true;
+        it = m_State->Pages.erase(it);
     }
-    m_State->Pages.clear();
+    if (!m_State->Pages.empty())
+        return false;
     m_State.reset();
+    return true;
 }
 
 } // namespace BML

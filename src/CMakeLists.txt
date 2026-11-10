@@ -622,6 +622,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptMenuPageService.h
             AngelScript/ScriptMod.h
             AngelScript/ScriptModContextView.h
+            AngelScript/ScriptRuntimeScope.h
             AngelScript/ScriptBuiltinFacade.h
             AngelScript/ScriptModDefinition.h
             AngelScript/ScriptModDefinitionBuilder.h
@@ -669,6 +670,8 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptLibraryValidator.cpp
             AngelScript/ScriptMenuPageService.cpp
             AngelScript/ScriptMod.cpp
+            AngelScript/ScriptRuntimeScope.cpp
+            AngelScript/ScriptAuthorApi.cpp
             AngelScript/ScriptModContextView.cpp
             AngelScript/ScriptBuiltinFacade.cpp
             AngelScript/ScriptModDefinition.cpp

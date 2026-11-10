@@ -6,12 +6,13 @@ namespace BMLSmoke {
     }
 
     void OnLoad(const BML::ModContext &in ctx) {
-      const bool rootOk = BML::Path::IsDirectory(ctx.GetModRootUtf8());
-      const bool resourceOk = ctx.ModFileExistsUtf8("Resources/probe.txt") &&
-                              ctx.ReadModTextFileUtf8("Resources/probe.txt", "") != "";
-      BML::Logger@ logger = ctx.BorrowLogger();
-      if (logger !is null) {
-        logger.Info("BML single-file script smoke loaded resource=" + BoolText(rootOk && resourceOk));
+      string root;
+      const bool rootOk = ctx.GetDirectory(BML::DIR_MOD_ROOT, root) == BML::ERROR_OK && BML::Path::IsDirectory(root);
+      bool exists = false; array<uint8> bytes;
+      const bool resourceOk = ctx.ResourceExists("Resources/probe.txt", exists) == BML::ERROR_OK && exists &&
+                              ctx.ReadResource("Resources/probe.txt", bytes) == BML::ERROR_OK && bytes.length() > 0;
+      if (ctx.IsValid()) {
+        ctx.LogInfo("BML single-file script smoke loaded resource=" + BoolText(rootOk && resourceOk));
       }
     }
   }

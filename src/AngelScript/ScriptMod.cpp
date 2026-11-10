@@ -1,4 +1,5 @@
 #include "ScriptMod.h"
+#include "ScriptRuntimeScope.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -62,16 +63,6 @@ static void AddReloadBoundary(std::vector<ScriptModReloadDiagnosticField> *field
                               const char *action) {
     AddReloadField(fields, "boundary", boundary ? boundary : "");
     AddReloadField(fields, "action", action ? action : "");
-}
-
-static bool IsConfigKeyValid(const std::string &key) {
-    if (key.empty())
-        return false;
-    for (char ch : key) {
-        if (ch <= ' ' || ch == '{' || ch == '}')
-            return false;
-    }
-    return true;
 }
 
 static void AppendHostRegistrationPart(std::ostringstream &stream, const std::string &value) {
@@ -252,7 +243,7 @@ private:
 ScriptMod::ScriptMod(ModContext *context, ScriptModDefinition definition, ScriptModEntry entry,
                      ScriptModRuntime runtime)
     : m_Context(context), m_Definition(std::move(definition)), m_Record(context),
-      m_Entry(std::move(entry)), m_ContextView(context, this), m_Runtime(std::move(runtime)) {
+      m_Entry(std::move(entry)), m_Runtime(std::move(runtime)) {
     m_Record.Bind(*this);
     m_Record.Script = this;
     m_Runtime.SetOwner(this);
@@ -432,6 +423,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
 void ScriptMod::OnUnload() {
     if (m_State.IsLoaded()) {
         ScriptDiagnostic diagnostic;
+        FreezeScriptServices();
         if (!m_Callbacks.CallOnUnload(diagnostic)) {
             Record(diagnostic);
             if (m_Context && m_Context->GetLogger())
@@ -850,35 +842,6 @@ void ScriptMod::LogError(const std::string &message) {
         logger->Error("%s", message.c_str());
 }
 
-bool ScriptMod::HasConfigCategory(const std::string &category) {
-    if (!IsConfigKeyValid(category))
-        return false;
-    Config *config = m_Record.GetConfig();
-    return config && config->HasCategory(category.c_str());
-}
-
-bool ScriptMod::HasConfigKey(const std::string &category, const std::string &key) {
-    if (!IsConfigKeyValid(category) || !IsConfigKeyValid(key))
-        return false;
-    Config *config = m_Record.GetConfig();
-    return config && config->HasKey(category.c_str(), key.c_str());
-}
-
-Property *ScriptMod::GetConfigProperty(const std::string &category, const std::string &key) {
-    if (!IsConfigKeyValid(category) || !IsConfigKeyValid(key))
-        return nullptr;
-    Config *config = m_Record.GetConfig();
-    return config ? config->GetProperty(category.c_str(), key.c_str()) : nullptr;
-}
-
-void ScriptMod::SetConfigCategoryComment(const std::string &category, const std::string &comment) {
-    if (!IsConfigKeyValid(category))
-        return;
-    Config *config = m_Record.GetConfig();
-    if (config)
-        config->SetCategoryComment(category.c_str(), comment.c_str());
-}
-
 bool ScriptMod::CompileAndCreate() {
     if (m_Runtime.HasObject())
         return true;
@@ -956,7 +919,7 @@ size_t ScriptMod::GetQueuedScriptServiceCallbackCount() const {
 }
 
 bool ScriptMod::RebindServices() {
-    if (m_Behavior.Bind(m_Context, this) &&
+    if (BindScriptRuntime(*this, m_AuthorRuntime) && m_Behavior.Bind(m_Context, this) &&
         m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
         m_Commands.Bind(m_Context, this, &m_ContextView) &&
         m_MenuPages.Bind(m_Context, this) &&
@@ -1161,50 +1124,6 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
         return false;
 
     return true;
-}
-
-ScriptTimerRef *ScriptMod::AddScriptTimer(asIScriptObject *timer) {
-    return m_Timers.Add(timer);
-}
-
-ScriptTimerRef *ScriptMod::AddScriptTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name) {
-    return m_Timers.AddTimeoutTicks(delayTicks, callback, name);
-}
-
-ScriptTimerRef *ScriptMod::AddScriptTimeoutMs(float delayMs, asIScriptFunction *callback, const std::string &name) {
-    return m_Timers.AddTimeoutMs(delayMs, callback, name);
-}
-
-ScriptTimerRef *ScriptMod::AddScriptIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name) {
-    return m_Timers.AddIntervalTicks(delayTicks, callback, name);
-}
-
-ScriptTimerRef *ScriptMod::AddScriptIntervalMs(float delayMs, asIScriptFunction *callback, const std::string &name) {
-    return m_Timers.AddIntervalMs(delayMs, callback, name);
-}
-
-ScriptCommandRef *ScriptMod::RegisterScriptCommand(asIScriptObject *command) {
-    return m_Commands.Register(command);
-}
-
-ScriptCommandRef *ScriptMod::RegisterScriptCommand(const ScriptCommandDefinition &definition,
-                                                   asIScriptFunction *execute,
-                                                   asIScriptFunction *complete) {
-    return m_Commands.Register(definition, execute, complete);
-}
-
-bool ScriptMod::UnregisterScriptCommand(const std::string &name) {
-    return m_Commands.Unregister(name);
-}
-
-ScriptMenuPageRef *ScriptMod::RegisterScriptMenuPage(
-    const ScriptMenuPageDefinition &definition, asIScriptFunction *draw,
-    asIScriptFunction *enter, asIScriptFunction *leave) {
-    return m_MenuPages.Register(definition, draw, enter, leave);
-}
-
-bool ScriptMod::UnregisterScriptMenuPage(const std::string &id) {
-    return m_MenuPages.Unregister(id);
 }
 
 ScriptDataShareRequestRef *ScriptMod::RequestScriptDataShare(asIScriptObject *request) {
@@ -1424,9 +1343,11 @@ void ScriptMod::CleanupFailedLoad() {
     const ScriptDiagnostic failureDiagnostic = m_State.GetLastDiagnostic();
     ScriptDiagnostic unloadDiagnostic;
     if (GetReloadPhase() == ScriptModReloadPhase::None) {
+        FreezeScriptServices();
         m_Callbacks.CallOnUnload(unloadDiagnostic);
     } else {
         ScriptModReloadPhaseScope cleanupPhase(*this, ScriptModReloadPhase::Cleanup);
+        FreezeScriptServices();
         m_Callbacks.CallOnUnload(unloadDiagnostic);
     }
     ReleaseRuntime();
@@ -1557,11 +1478,16 @@ void ScriptMod::ReleaseScriptImGuiState() {
     m_ScriptImGuiState.Release();
 }
 
+void ScriptMod::FreezeScriptServices() {
+    if (m_AuthorRuntime) m_AuthorRuntime->Accepting = false;
+}
+
 bool ScriptMod::ReleaseScriptServices() {
+    const bool authorReleased = RetireScriptRuntime(m_AuthorRuntime);
     // Pages must release their script delegates before the module is unloaded.
-    m_MenuPages.Release();
+    const bool menusReleased = m_MenuPages.Release();
     ScriptDiagnostic releaseDiagnostic;
-    bool ok = true;
+    bool ok = authorReleased && menusReleased;
     // Hook Blocks close their Patches and Instances through the Behavior
     // session, so they release while it is still open.
     m_HookBlocks.Release(&releaseDiagnostic);

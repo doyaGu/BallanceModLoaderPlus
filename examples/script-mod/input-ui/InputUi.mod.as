@@ -13,8 +13,9 @@ class InputUiExample {
     }
 
     void OnProcess(const BML::ModContext &in ctx) {
-        BML::InputHook@ input = ctx.BorrowInputManager();
-        if (input !is null && input.IsKeyPressed(CKKEY_F9))
+        BML::KeyboardState@ input;
+        int status = ctx.Input().ReadKeyboard(input);
+        if (status == BML::ERROR_OK && input.IsKeyPressed(uint(CKKEY_F9)))
             visible = !visible;
 
         if (!visible)

@@ -1,5 +1,7 @@
 #include "ScriptCallbackEvents.h"
 #include "Config/Config.h"
+#include "Loader/ModContext.h"
+#include "ScriptMod.h"
 
 namespace BML {
 
@@ -21,9 +23,15 @@ static CK_ID ObjectId(CKObject *object) {
     return object ? object->GetID() : 0;
 }
 
-static CKObject *ResolveObject(CKContext *context, CK_ID id, CK_CLASSID classId) {
-    CKObject *object = context && id != 0 ? context->GetObject(id) : nullptr;
-    return object && CKIsChildClassOf(object, classId) ? object : nullptr;
+static BML_ObjectRef ReferenceObject(CKContext *engine, CKObject *object) {
+    ModContextLease context;
+    return context && context->GetCKContext() == engine ? context->ObjectRefs().Issue(object) : BML_ObjectRef{};
+}
+static CKObject *ResolveObject(BML_ObjectRef reference, CK_CLASSID classId) {
+    ModContextLease context;
+    if (!context || !context->IsMainThread()) return nullptr;
+    auto *object = context->ObjectRefs().Resolve(reference);
+    return object && CKIsChildClassOf(object->GetClassID(), classId) ? object : nullptr;
 }
 
 static const char *kGameEventNames[] = {
@@ -95,12 +103,15 @@ ScriptLoadObjectEventView::ScriptLoadObjectEventView(const char *filename,
       m_ReuseMeshes(reuseMeshes != 0),
       m_ReuseMaterials(reuseMaterials != 0),
       m_Dynamic(dynamic != 0),
-      m_Context(context),
-      m_MasterObjectId(ObjectId(masterObject)) {
+      m_MasterObjectId(ObjectId(masterObject)), m_MasterRef(ReferenceObject(context, masterObject)) {
     const int count = objectArray ? static_cast<int>(objectArray->Size()) : 0;
     m_ObjectIds.reserve(count > 0 ? static_cast<std::size_t>(count) : 0u);
-    for (int index = 0; index < count; ++index)
-        m_ObjectIds.push_back(static_cast<CK_ID>(objectArray->GetObjectID(static_cast<unsigned int>(index))));
+    m_ObjectRefs.reserve(count > 0 ? static_cast<size_t>(count) : 0);
+    for (int index = 0; index < count; ++index) {
+        const auto id = static_cast<CK_ID>(objectArray->GetObjectID(static_cast<unsigned int>(index)));
+        m_ObjectIds.push_back(id);
+        m_ObjectRefs.push_back(ReferenceObject(context, context ? context->GetObject(id) : nullptr));
+    }
 }
 
 std::string ScriptLoadObjectEventView::GetFilename() const {
@@ -124,26 +135,26 @@ int ScriptLoadObjectEventView::GetObjectId(int index) const {
 CKObject *ScriptLoadObjectEventView::BorrowObject(int index) const {
     if (!IsIndexInRange(index, GetObjectCount()))
         return nullptr;
-    return ResolveObject(m_ObjectIds[static_cast<std::size_t>(index)], CKCID_OBJECT);
+    return ResolveObject(m_ObjectRefs[static_cast<std::size_t>(index)], CKCID_OBJECT);
 }
 
 CKObject *ScriptLoadObjectEventView::BorrowMasterObject() const {
-    return ResolveObject(m_MasterObjectId, CKCID_OBJECT);
+    return ResolveObject(m_MasterRef, CKCID_OBJECT);
 }
 
-CKObject *ScriptLoadObjectEventView::ResolveObject(CK_ID id, CK_CLASSID classId) const {
-    return BML::ResolveObject(m_Context, id, classId);
+CKObject *ScriptLoadObjectEventView::ResolveObject(BML_ObjectRef reference, CK_CLASSID classId) const {
+    return BML::ResolveObject(reference, classId);
 }
 
 ScriptLoadScriptEventView::ScriptLoadScriptEventView(CKContext *context, const char *filename, CKBehavior *script)
-    : m_Context(context), m_Filename(SafeString(filename)), m_ScriptId(ObjectId(script)) {}
+    : m_Filename(SafeString(filename)), m_ScriptId(ObjectId(script)), m_ScriptRef(ReferenceObject(context, script)) {}
 
 std::string ScriptLoadScriptEventView::GetFilename() const {
     return m_Filename;
 }
 
 CKBehavior *ScriptLoadScriptEventView::BorrowScript() const {
-    return static_cast<CKBehavior *>(ResolveObject(m_Context, m_ScriptId, CKCID_BEHAVIOR));
+    return static_cast<CKBehavior *>(ResolveObject(m_ScriptRef, CKCID_BEHAVIOR));
 }
 
 ScriptCommandEventView::ScriptCommandEventView(ScriptCommandEventPhase phase,
@@ -155,6 +166,7 @@ ScriptCommandEventView::ScriptCommandEventView(ScriptCommandEventPhase phase,
     else if (args && !args->empty())
         m_CommandName = (*args)[0];
 
+    m_InvokedAs = args && !args->empty() ? args->front() : m_CommandName;
     const std::size_t start = args && !args->empty() ? 1u : 0u;
     if (args && args->size() > start) {
         auto firstArg = args->begin();
@@ -170,6 +182,11 @@ std::string ScriptCommandEventView::GetCommandName() const {
 
 int ScriptCommandEventView::GetArgCount() const {
     return static_cast<int>(m_Args.size());
+}
+
+int ScriptCommandEventView::ReadArgument(unsigned index, std::string &out) const {
+    if (index >= m_Args.size()) return BML_ERROR_NOT_FOUND;
+    out = m_Args[index]; return BML_OK;
 }
 
 std::string ScriptCommandEventView::GetArg(int index) const {
@@ -198,7 +215,14 @@ ScriptConfigEventView::ScriptConfigEventView(const char *modId, const char *cate
     : m_ModId(SafeString(modId)), m_Category(SafeString(category)), m_Key(SafeString(key)),
       m_Type(property ? static_cast<int>(property->GetType())
                       : static_cast<int>(PropertyType::NONE)),
-      m_HasProperty(property != nullptr) {}
+      m_HasProperty(property != nullptr) {
+    ModContextLease context;
+    auto *record = context ? context->GetModLoader().FindMod(m_ModId.c_str()) : nullptr;
+    if (record && record->Script) {
+        m_PropertyScope = record->Script->BorrowContextView()->RuntimeScope();
+        m_PropertyHandle = context->GetConfigApi().HandleFor(*record, property);
+    }
+}
 
 std::string ScriptConfigEventView::GetModId() const {
     return m_ModId;
@@ -233,13 +257,14 @@ ScriptPhysicalizeEventView::ScriptPhysicalizeEventView(CKContext *context,
                                                        float *ballRadius,
                                                        int concaveCnt,
                                                        CKMesh **concaveMesh)
-    : m_Context(context),
-      m_TargetId(ObjectId(target)),
+    : m_TargetId(ObjectId(target)),
+      m_TargetRef(ReferenceObject(context, target)),
       m_TargetName(ObjectName(target)),
       m_Fixed(fixed != 0),
       m_Friction(friction),
       m_Elasticity(elasticity),
       m_Mass(mass),
+      m_HasCollisionGroup(collGroup != nullptr), m_HasCollisionSurface(collSurface != nullptr),
       m_CollisionGroup(SafeString(collGroup)),
       m_StartFrozen(startFrozen != 0),
       m_EnableCollision(enableColl != 0),
@@ -251,9 +276,9 @@ ScriptPhysicalizeEventView::ScriptPhysicalizeEventView(CKContext *context,
       m_ConvexCount(convexCnt > 0 ? convexCnt : 0),
       m_BallCount(ballCnt > 0 ? ballCnt : 0),
       m_ConcaveCount(concaveCnt > 0 ? concaveCnt : 0) {
-    m_ConvexMeshIds.reserve(static_cast<std::size_t>(m_ConvexCount));
+    m_ConvexMeshRefs.reserve(static_cast<std::size_t>(m_ConvexCount));
     for (int index = 0; index < m_ConvexCount; ++index)
-        m_ConvexMeshIds.push_back(ObjectId(convexMesh ? convexMesh[index] : nullptr));
+        m_ConvexMeshRefs.push_back(ReferenceObject(context, convexMesh ? convexMesh[index] : nullptr));
 
     m_BallCenters.reserve(static_cast<std::size_t>(m_BallCount));
     m_BallRadii.reserve(static_cast<std::size_t>(m_BallCount));
@@ -262,9 +287,9 @@ ScriptPhysicalizeEventView::ScriptPhysicalizeEventView(CKContext *context,
         m_BallRadii.push_back(ballRadius ? ballRadius[index] : 0.0f);
     }
 
-    m_ConcaveMeshIds.reserve(static_cast<std::size_t>(m_ConcaveCount));
+    m_ConcaveMeshRefs.reserve(static_cast<std::size_t>(m_ConcaveCount));
     for (int index = 0; index < m_ConcaveCount; ++index)
-        m_ConcaveMeshIds.push_back(ObjectId(concaveMesh ? concaveMesh[index] : nullptr));
+        m_ConcaveMeshRefs.push_back(ReferenceObject(context, concaveMesh ? concaveMesh[index] : nullptr));
 }
 
 std::string ScriptPhysicalizeEventView::GetTargetName() const {
@@ -280,15 +305,15 @@ std::string ScriptPhysicalizeEventView::GetCollisionSurface() const {
 }
 
 CKMesh *ScriptPhysicalizeEventView::BorrowConvexMesh(int index) const {
-    return IsIndexInRange(index, static_cast<int>(m_ConvexMeshIds.size()))
-               ? static_cast<CKMesh *>(ResolveObject(m_ConvexMeshIds[static_cast<std::size_t>(index)], CKCID_MESH))
+    return IsIndexInRange(index, static_cast<int>(m_ConvexMeshRefs.size()))
+               ? static_cast<CKMesh *>(ResolveObject(m_ConvexMeshRefs[static_cast<std::size_t>(index)], CKCID_MESH))
                : nullptr;
 }
 
 VxVector ScriptPhysicalizeEventView::GetBallCenter(int index) const {
     return IsIndexInRange(index, static_cast<int>(m_BallCenters.size()))
                ? m_BallCenters[static_cast<std::size_t>(index)]
-               : VxVector();
+               : VxVector(0, 0, 0);
 }
 
 float ScriptPhysicalizeEventView::GetBallRadius(int index) const {
@@ -298,22 +323,22 @@ float ScriptPhysicalizeEventView::GetBallRadius(int index) const {
 }
 
 CKMesh *ScriptPhysicalizeEventView::BorrowConcaveMesh(int index) const {
-    return IsIndexInRange(index, static_cast<int>(m_ConcaveMeshIds.size()))
-               ? static_cast<CKMesh *>(ResolveObject(m_ConcaveMeshIds[static_cast<std::size_t>(index)], CKCID_MESH))
+    return IsIndexInRange(index, static_cast<int>(m_ConcaveMeshRefs.size()))
+               ? static_cast<CKMesh *>(ResolveObject(m_ConcaveMeshRefs[static_cast<std::size_t>(index)], CKCID_MESH))
                : nullptr;
 }
 
 CK3dEntity *ScriptPhysicalizeEventView::BorrowTarget() const {
-    return static_cast<CK3dEntity *>(ResolveObject(m_TargetId, CKCID_3DENTITY));
+    return static_cast<CK3dEntity *>(ResolveObject(m_TargetRef, CKCID_3DENTITY));
 }
 
-CKObject *ScriptPhysicalizeEventView::ResolveObject(CK_ID id, CK_CLASSID classId) const {
-    return BML::ResolveObject(m_Context, id, classId);
+CKObject *ScriptPhysicalizeEventView::ResolveObject(BML_ObjectRef reference, CK_CLASSID classId) const {
+    return BML::ResolveObject(reference, classId);
 }
 
 ScriptObjectEventView::ScriptObjectEventView(CKContext *context, CK3dEntity *target)
-    : m_Context(context),
-      m_TargetId(ObjectId(target)),
+    : m_TargetId(ObjectId(target)),
+      m_TargetRef(ReferenceObject(context, target)),
       m_TargetName(ObjectName(target)) {}
 
 std::string ScriptObjectEventView::GetTargetName() const {
@@ -321,7 +346,7 @@ std::string ScriptObjectEventView::GetTargetName() const {
 }
 
 CK3dEntity *ScriptObjectEventView::BorrowTarget() const {
-    return static_cast<CK3dEntity *>(ResolveObject(m_Context, m_TargetId, CKCID_3DENTITY));
+    return static_cast<CK3dEntity *>(ResolveObject(m_TargetRef, CKCID_3DENTITY));
 }
 
 } // namespace BML

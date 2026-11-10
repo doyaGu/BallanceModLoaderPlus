@@ -9,15 +9,16 @@ class CommandConfigExample {
     private bool enabled = true;
 
     void OnLoad(const BML::ModContext &in ctx) {
-        BML::Config@ config = ctx.BorrowConfig();
+        BML::Config@ config = ctx.Config();
         if (config !is null) {
             config.SetCategoryComment("Example", "Command and config example");
-            @enabledProperty = config.GetProperty("Example", "Enabled");
-            if (enabledProperty !is null) {
-                enabledProperty.SetDefaultBoolean(true);
-                enabledProperty.SetComment("Feature state changed by /examplefeature.");
+            BML::ConfigPropertyDefinition property;
+            property.Category = "Example";
+            property.Key = "Enabled";
+            property.DefaultValue = BML::ConfigValue(true);
+            property.Comment = "Feature state changed by /examplefeature.";
+            if (config.DeclareProperty(property, enabledProperty) == BML::ERROR_OK)
                 enabled = enabledProperty.GetBoolean(true);
-            }
         }
 
         BML::CommandDefinition definition;
@@ -27,11 +28,12 @@ class CommandConfigExample {
         definition.Category = "Examples";
         definition.Enabled = true;
 
-        BML::CommandCallback@ execute = BML::CommandCallback(this.OnCommand);
-        BML::CommandCompletionCallback@ complete =
-            BML::CommandCompletionCallback(this.CompleteCommand);
-        BML::CommandRef@ command = ctx.RegisterCommand(definition, execute, complete);
-        if (command is null || !command.IsValid)
+        BML::CommandExecute@ execute = BML::CommandExecute(this.OnCommand);
+        BML::CommandComplete@ complete =
+            BML::CommandComplete(this.CompleteCommand);
+        BML::CommandRef@ command;
+        int status = ctx.Commands().Register(definition, execute, command, complete);
+        if (status != BML::ERROR_OK)
             ctx.LogWarn("Could not register /examplefeature");
     }
 
@@ -45,27 +47,29 @@ class CommandConfigExample {
             enabled = property.GetBoolean(enabled);
     }
 
-    private void OnCommand(const BML::ModContext &in ctx,
-                           const BML::CommandEvent &in event) {
-        string action = event.ArgCount == 0 ? "status" : event.GetArg(0);
+    private int OnCommand(const BML::ModContext &in ctx,
+                           const BML::CommandInvocation &in event) {
+        string action = "status";
+        if (event.ArgumentCount != 0) event.ReadArgument(0, action);
         if (action == "toggle") {
             enabled = !enabled;
-            if (enabledProperty !is null && enabledProperty.IsValid)
-                enabledProperty.SetBoolean(enabled);
+            if (enabledProperty !is null && enabledProperty.IsValid())
+                enabledProperty.Set(BML::ConfigValue(enabled));
         } else if (action != "status") {
             BML::UI::AddMessage("Usage: /examplefeature [status|toggle]");
-            return;
+            return 1;
         }
 
         BML::UI::AddMessage("Example feature: " + BoolText(enabled));
         ctx.LogInfo("Example feature enabled=" + BoolText(enabled));
+        return 0;
     }
 
-    private void CompleteCommand(const BML::ModContext &in ctx,
-                                 const BML::CommandEvent &in event,
-                                 BML::CommandCompletion &inout completions) {
+    private int CompleteCommand(const BML::ModContext &in ctx,
+                                 const BML::CommandCompletionRequest &in event,
+                                 const BML::CommandCompletion &in completions) {
         completions.Add("status");
-        completions.Add("toggle");
+        return completions.Add("toggle");
     }
 
     private string BoolText(bool value) {

@@ -24,7 +24,7 @@ public:
     bool HasCallback(ScriptCallbackId id) const;
     bool HasOnProcess() const { return HasCallback(ScriptCallbackOnProcess); }
     bool HasOnRender() const { return HasCallback(ScriptCallbackOnRender); }
-    bool HasGameEvent() const { return HasCallback(ScriptCallbackOnGameEvent); }
+    bool HasGameEvent() const;
     void GetCallbackNames(std::vector<std::string> &out) const;
 
     bool CallOnLoad(ScriptDiagnostic &diagnostic);
@@ -82,6 +82,8 @@ private:
     ScriptModRuntime *m_Runtime = nullptr;
     ScriptModContextView *m_ContextView = nullptr;
     CKAngelScriptMethod *m_Methods[ScriptCallbackCount] = {};
+    CKAngelScriptMethod *m_GameMethods[33] = {};
+    CKAngelScriptMethod *m_CommandMethods[2] = {};
 };
 
 } // namespace BML

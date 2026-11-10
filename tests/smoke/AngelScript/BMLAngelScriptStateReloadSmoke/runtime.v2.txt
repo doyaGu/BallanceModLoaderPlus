@@ -47,11 +47,10 @@ class BMLStateReloadSmokeMod {
   }
 
   void OnLoad(const BML::ModContext &in ctx) {
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
+    if (ctx.IsValid()) {
       const bool reloadPhaseOk = ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_LOAD;
-      logger.Info("BML state reload phase: v2 load=" + (reloadPhaseOk ? "reload" : "unexpected"));
-      logger.Info("BML state reload smoke v2 loaded migrated=" + (migrated ? "true" : "false") +
+      ctx.LogInfo("BML state reload phase: v2 load=" + (reloadPhaseOk ? "reload" : "unexpected"));
+      ctx.LogInfo("BML state reload smoke v2 loaded migrated=" + (migrated ? "true" : "false") +
                   " from=" + fromVersion +
                   " counter=" + counter +
                   " text=" + text);
@@ -68,7 +67,7 @@ class BMLStateReloadSmokeMod {
     }
     if (!requestedCommand) {
       requestedCommand = true;
-      ctx.ExecuteCommand("bml_state_reload_probe");
+      { int status; ctx.Commands().ExecuteLine("bml_state_reload_probe", status); }
     }
     if (!publishedDataShare) {
       publishedDataShare = true;
@@ -87,35 +86,34 @@ class BMLStateReloadSmokeMod {
     ImGui::End();
     if (frames >= 30 && !requestedExit) {
       requestedExit = true;
-      ctx.ExecuteCommand("exit");
+      { int status; ctx.Commands().ExecuteLine("exit", status); }
     }
   }
 
   void OnUnload(const BML::ModContext &in ctx) {
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
+    if (ctx.IsValid()) {
       const bool shutdownPhaseOk = !ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_NONE;
-      logger.Info("BML state reload phase: v2 unload=" + (shutdownPhaseOk ? "shutdown" : "unexpected"));
+      ctx.LogInfo("BML state reload phase: v2 unload=" + (shutdownPhaseOk ? "shutdown" : "unexpected"));
     }
   }
 
   private void InstallServices(const BML::ModContext &in ctx) {
     BML::TimerLoopCallback@ timerCallback = BML::TimerLoopCallback(this.OnReloadTimer);
-    @reloadTimer = ctx.SetIntervalTicks(1, timerCallback, "state-reload-v2");
+    ctx.Timers().SetIntervalTicks(1, timerCallback, reloadTimer, "state-reload-v2");
 
     BML::CommandDefinition commandDefinition;
     commandDefinition.Name = "bml_state_reload_probe";
     commandDefinition.Description = "Exercise script service ownership during hot reload";
     commandDefinition.Enabled = true;
-    BML::CommandCallback@ commandCallback = BML::CommandCallback(this.OnReloadCommand);
-    @reloadCommand = ctx.RegisterCommand(commandDefinition, commandCallback);
+    BML::CommandExecute@ commandCallback = BML::CommandExecute(this.OnReloadCommand);
+    ctx.Commands().Register(commandDefinition, commandCallback, reloadCommand);
 
     BML::DataShareCallback@ dataShareCallback = BML::DataShareCallback(this.OnReloadDataShare);
     @reloadDataShare = ctx.RequestDataShare(
         "bml.state.reload.pending", BML::DATASHARE_STRING, dataShareCallback, "BML");
 
-    const bool timerValid = reloadTimer !is null && reloadTimer.IsValid;
-    const bool commandValid = reloadCommand !is null && reloadCommand.IsValid;
+    const bool timerValid = reloadTimer !is null && reloadTimer.IsValid();
+    const bool commandValid = reloadCommand !is null && reloadCommand.IsValid();
     const bool dataShareValid = reloadDataShare !is null && reloadDataShare.IsValid;
     ctx.LogInfo("BML state reload services: v2 timer=" + (timerValid ? "valid" : "invalid") +
                 " command=" + (commandValid ? "valid" : "invalid") +
@@ -128,9 +126,9 @@ class BMLStateReloadSmokeMod {
     definition.Label = "Reload Smoke";
     definition.ShowInDetails = false;
     BML::MenuPageDraw@ draw = BML::MenuPageDraw(this.DrawMenuPage);
-    @reloadPage = ctx.RegisterMenuPage(definition, draw);
+    ctx.RegisterMenuPage(definition, draw, reloadPage);
     ctx.LogInfo("BML state reload menu page: v2=" +
-                (reloadPage !is null && reloadPage.IsValid ? "valid" : "invalid"));
+                (reloadPage !is null && reloadPage.IsValid() ? "valid" : "invalid"));
   }
 
   private void DrawMenuPage(BML::MenuPageFrame &inout frame) {
@@ -143,9 +141,10 @@ class BMLStateReloadSmokeMod {
     return true;
   }
 
-  private void OnReloadCommand(const BML::ModContext &in ctx,
-                               const BML::CommandEvent &in event) {
+  private int OnReloadCommand(const BML::ModContext &in ctx,
+                               const BML::CommandInvocation &in event) {
     ctx.LogInfo("BML state reload command callback: v2");
+    return 0;
   }
 
   private void OnReloadDataShare(const BML::ModContext &in ctx,
@@ -156,14 +155,19 @@ class BMLStateReloadSmokeMod {
   }
 
   private bool InstallHook(const BML::ModContext &in ctx) {
-    CKBehavior@ owner = ctx.BorrowScriptByName("Menu_Init");
+    BML::ObjectRef reference;
+    CKObject@ object;
+    CKBehavior@ owner;
+    if (BML::Scene::FindObject("Menu_Init", CKCID_BEHAVIOR, reference) == BML::ERROR_OK &&
+        BML::Engine::BorrowObject(ctx, reference, CKCID_BEHAVIOR, object) == BML::ERROR_OK)
+      @owner = cast<CKBehavior>(object);
     if (owner is null) {
       return false;
     }
     const bool oldHookAbsent = !HasChildNamed(owner, "__BML_StateReload_Hook_v1");
     if (oldHookAbsent) {
       BML::HookBlockCallback@ callback = BML::HookBlockCallback(this.OnReloadHook);
-      @reloadHook = ctx.CreateHookBlock(
+      @reloadHook = BML::Hook::Create(
           owner, callback, "__BML_StateReload_Hook_v2", 1, 1);
     }
 

@@ -6,6 +6,7 @@
 #include <string>
 
 #include "BML/ModMenu.h"
+#include "ScriptRuntimeScope.h"
 
 class ModContext;
 class asIScriptFunction;
@@ -30,6 +31,7 @@ public:
     void Close();
 
     BML_ModMenuPageAction GetAction() const { return m_Action; }
+
     const std::string &GetTargetPageId() const { return m_TargetPageId; }
 
 private:
@@ -39,14 +41,15 @@ private:
 
 class ScriptMenuPageRef {
 public:
-    ScriptMenuPageRef(std::weak_ptr<ScriptMenuPageServiceState> state,
-                      std::string id, std::uint64_t generation);
+    ScriptMenuPageRef(std::weak_ptr<ScriptMenuPageServiceState> state, std::string id,
+                      std::uint64_t generation);
 
     void AddRef();
     void Release();
     bool IsValid() const;
     std::string GetId() const;
-    bool Unregister();
+    int Unregister();
+    std::shared_ptr<ScriptControlTicket> Ticket;
 
 private:
     int m_RefCount = 1;
@@ -61,12 +64,10 @@ public:
     ~ScriptMenuPageService();
 
     bool Bind(ModContext *context, ScriptMod *owner);
-    ScriptMenuPageRef *Register(const ScriptMenuPageDefinition &definition,
-                                asIScriptFunction *draw,
-                                asIScriptFunction *enter,
-                                asIScriptFunction *leave);
-    bool Unregister(const std::string &id);
-    void Release();
+    int Register(const ScriptMenuPageDefinition &definition, asIScriptFunction *draw,
+                 asIScriptFunction *enter, asIScriptFunction *leave, ScriptMenuPageRef *&out);
+    int Unregister(const std::string &id);
+    bool Release();
 
 private:
     std::shared_ptr<ScriptMenuPageServiceState> m_State;

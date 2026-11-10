@@ -184,29 +184,10 @@ public:
     void LogInfo(const std::string &message);
     void LogWarn(const std::string &message);
     void LogError(const std::string &message);
-    bool HasConfigCategory(const std::string &category);
-    bool HasConfigKey(const std::string &category, const std::string &key);
-    Property *GetConfigProperty(const std::string &category, const std::string &key);
-    void SetConfigCategoryComment(const std::string &category, const std::string &comment);
     void SetLoadFailure(const std::string &diagnostic);
     void SetLoadFailure(const ScriptDiagnostic &diagnostic);
     void RecordScriptDiagnostic(const ScriptDiagnostic &diagnostic);
     bool IsInLoadCallback() const { return m_InLoadCallback; }
-    ScriptTimerRef *AddScriptTimer(asIScriptObject *timer);
-    ScriptTimerRef *AddScriptTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name);
-    ScriptTimerRef *AddScriptTimeoutMs(float delayMs, asIScriptFunction *callback, const std::string &name);
-    ScriptTimerRef *AddScriptIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name);
-    ScriptTimerRef *AddScriptIntervalMs(float delayMs, asIScriptFunction *callback, const std::string &name);
-    ScriptCommandRef *RegisterScriptCommand(asIScriptObject *command);
-    ScriptCommandRef *RegisterScriptCommand(const ScriptCommandDefinition &definition,
-                                            asIScriptFunction *execute,
-                                            asIScriptFunction *complete);
-    bool UnregisterScriptCommand(const std::string &name);
-    ScriptMenuPageRef *RegisterScriptMenuPage(
-        const ScriptMenuPageDefinition &definition,
-        asIScriptFunction *draw, asIScriptFunction *enter,
-        asIScriptFunction *leave);
-    bool UnregisterScriptMenuPage(const std::string &id);
     ScriptDataShareRequestRef *RequestScriptDataShare(asIScriptObject *request);
     ScriptDataShareRequestRef *RequestScriptDataShare(const std::string &key,
                                                       int type,
@@ -279,6 +260,9 @@ public:
         ScriptBehaviorEdit *body, int priority) {
         return m_Behavior.CreateScript(owner, name, body, priority);
     }
+    ScriptTimerService &TimersForAuthoring() { return m_Timers; }
+    ScriptCommandService &CommandsForAuthoring() { return m_Commands; }
+    ScriptMenuPageService &MenuPagesForAuthoring() { return m_MenuPages; }
     ScriptModContextView *BorrowContextView() { return &m_ContextView; }
     bool RegisterScriptBallType(const std::string &ballFile,
                                 const std::string &ballId,
@@ -383,6 +367,7 @@ private:
     void Fail(const ScriptDiagnostic &diagnostic);
     void ScheduleFailureCleanup();
     bool ReleaseScriptServices();
+    void FreezeScriptServices();
     bool ReleaseScriptMethodHandles();
     void ReleaseScriptImGuiState();
     bool ReleaseRuntime();
@@ -411,6 +396,7 @@ private:
     ModRecord m_Record;
     ScriptModEntry m_Entry;
     ScriptModContextView m_ContextView;
+    std::shared_ptr<ScriptRuntimeScope> m_AuthorRuntime;
     ScriptModRuntime m_Runtime;
     ScriptCallbackDispatcher m_Callbacks;
     ScriptTimerService m_Timers;

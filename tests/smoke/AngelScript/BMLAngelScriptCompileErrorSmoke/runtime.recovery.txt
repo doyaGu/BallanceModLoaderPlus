@@ -2,9 +2,11 @@
 class BMLCompileErrorSmokeMod {
   void OnLoad(const BML::ModContext &in ctx) {
     const bool recoveryPhaseOk = ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_RECOVERY;
+    BML::ModRef@ owner; BML::ModInfo info;
+    if (ctx.Owner(owner) != BML::ERROR_OK || owner.Read(info) != BML::ERROR_OK) return;
     ctx.LogInfo("BML failed placeholder recovery phase=" +
                 (recoveryPhaseOk ? "valid" : "unexpected") +
-                " id=" + ctx.ModId);
+                " id=" + info.Definition.Id);
   }
 
   void OnUnload(const BML::ModContext &in ctx) {

@@ -5,11 +5,11 @@ class BMLZipScriptSmoke {
   }
 
   void OnLoad(const BML::ModContext &in ctx) {
-    const bool resourceOk = ctx.ModFileExistsUtf8("Resources/probe.txt") &&
-                            ctx.ReadModTextFileUtf8("Resources/probe.txt", "") != "";
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
-      logger.Info("BML zip script smoke loaded resource=" + BoolText(resourceOk));
+    bool exists = false; array<uint8> bytes;
+    const bool resourceOk = ctx.ResourceExists("Resources/probe.txt", exists) == BML::ERROR_OK && exists &&
+                            ctx.ReadResource("Resources/probe.txt", bytes) == BML::ERROR_OK && bytes.length() > 0;
+    if (ctx.IsValid()) {
+      ctx.LogInfo("BML zip script smoke loaded resource=" + BoolText(resourceOk));
     }
   }
 }
