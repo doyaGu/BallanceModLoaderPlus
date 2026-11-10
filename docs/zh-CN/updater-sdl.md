@@ -80,7 +80,7 @@ cmake --install build --component BMLRuntime --prefix /path/to/staged-game
 python3 scripts/package_sdl_update.py \
   --stage /path/to/staged-game \
   --install-manifest build/install_manifest_BMLRuntime.txt \
-  --output /path/to/release --version v0.3.14 \
+  --output /path/to/release --version 0.4.0 \
   --signing-key /private/path/p256-key.pem \
   --signer build/Bin/BMLUpdateSigner \
   --base-url https://example.org/bml/artifacts

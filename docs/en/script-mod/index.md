@@ -68,7 +68,7 @@ manually remains supported. The underlying entry is deliberately small:
          version="1.0.0"
          author="Your Name"
          description="Minimal BML+ script mod"
-         bml="0.3.14"]
+         bml="0.4.0"]
 class HelloScript {
     void OnLoad(const BML::ModContext &in ctx) {
         ctx.LogInfo("Hello Script loaded");

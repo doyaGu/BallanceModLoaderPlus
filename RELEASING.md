@@ -1,7 +1,7 @@
 # Releasing the SDL branch
 
-This runbook describes the tools present in this checkout. The runtime is a
-Ballanced SDL **dynamic** host. Original-Player releases use their own branch;
+This runbook describes BML+ 0.4.0 and the tools present in this checkout.
+The runtime is a Ballanced SDL **dynamic** host. Original-Player releases use their own branch;
 static-package updater tests do not provide a working static BML Player.
 
 The [build workflow](.github/workflows/build.yml) currently runs standalone SDK,
@@ -79,7 +79,7 @@ The signer accepts unencrypted P-256 SEC1/PKCS#8 PEM or DER keys.
 python scripts/package_sdl_update.py \
   --stage /path/to/disposable-game \
   --install-manifest build/sdl-release/install_manifest_BMLRuntime.txt \
-  --output /path/to/review-output --version 0.3.14 \
+  --output /path/to/review-output --version 0.4.0 \
   --signing-key /secure/p256-key.pem --signer /path/to/BMLUpdateSigner \
   --base-url https://example.invalid/bml --channel beta
 ```
