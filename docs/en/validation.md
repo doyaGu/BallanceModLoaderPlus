@@ -193,3 +193,32 @@ fixtures. A successful build or doctor report cannot substitute for these runs.
 See [Contributing](contributing.md) for build commands and the repository
 [Player probe](https://github.com/doyaGu/BallanceModLoaderPlus/tree/sdl/tests/player/sdl)
 for repeatable acceptance and benchmark commands.
+
+## Native/script authoring alignment (2026-11-10)
+
+The macOS ARM64 dynamic Release build passes all 110 registered CTest tests,
+including installed-SDK consumers, native C ABI layout checks and the migrated
+command wrapper/service lifetime tests. All in-tree native Mods compile. The
+script-disabled Loader also builds successfully.
+
+Disposable real Player runs pass three cycles with the aligned script API,
+three with the extension registered but no script consumers, and three with
+scripting disabled. Each validates 120 Process/physics ticks, 119 Render
+callbacks, seven input phases, Mod unload, clean exit and unchanged staged probe
+bytes. Script runs additionally cover typed config, array type rejection,
+keyboard capture ownership, failed-candidate rollback, successful rebind, stale
+views, completed-request cleanup, individual/combined event precedence and
+instant dependency evaluation after a provider failure.
+
+A separate Player launch compiles/loads 21 complete examples and five reload
+candidate source variants. A combined launch also loads all twelve in-tree Mods
+and verifies the actual ZIP resource fixture reports successful reads. The latter have lifecycle methods renamed only in
+the disposable test copy; this is compilation coverage, not execution of their
+intentional fault paths. English/Chinese strict MkDocs builds and the runtime
+API declaration publisher checks pass.
+
+These checks do not execute other platforms/architectures or static hosts.
+Same-engine extension removal/re-registration and forced allocation-failure
+injection remain pending; independent clean launches are not substitutes for
+those cases. Existing level-transition and per-Mod gameplay acceptance limits
+above still apply.
