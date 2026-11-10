@@ -143,6 +143,21 @@ independent launches each, loading all twelve Mods and checking the same
 clean shutdown and unchanged staged probe bytes. Full gameplay, visual and
 other-platform acceptance remain pending. Ballanced was read-only throughout.
 
+## ImGui pixel alignment (2026-11-09)
+
+A real 640×480 Player capture reproduced blurred ImGui output at 1× scale:
+a 1:1 black/white checkerboard became uniform gray (both pixel classes were 128).
+The CK2 backend now converts ImGui coordinates to framebuffer pixels and applies
+CK2's half-pixel offset. The same capture then preserved 0/255 checkerboard
+pixels. Vertex positions, display origin and viewport now use the same scale.
+
+Two new component regressions cover pixel centers, 2×/fractional framebuffer
+scales, nonzero display origin and caller viewport restoration. Engine/input
+components and five related UI test executables passed. The corrected Loader
+also passed three Player probe runs with all twelve Mods. These captures verify
+the 1× macOS ARM64 case; scaled geometry is additionally covered by component
+tests. No Ballanced changes or new public APIs were needed.
+
 ## 0.4.0 version synchronization (2026-11-09)
 
 CMake's 0.4.0 release version now agrees with the installed SDK header, CMake
