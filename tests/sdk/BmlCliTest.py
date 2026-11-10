@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -32,6 +33,11 @@ def main() -> int:
     parser.add_argument("--source-root", type=Path, required=True)
     args = parser.parse_args()
     source_root = args.source_root.resolve()
+    loader_version = re.search(
+        r"\bproject\s*\([^)]*?\bVERSION\s+(\d+\.\d+\.\d+)",
+        (source_root / "CMakeLists.txt").read_text(encoding="utf-8"),
+        re.IGNORECASE | re.DOTALL,
+    ).group(1)
 
     with tempfile.TemporaryDirectory(prefix="bml-cli-test-") as temporary:
         sdk = Path(temporary) / "sdk"
@@ -149,6 +155,7 @@ bml_install_mod(ExistingTarget)
         )
         script_entry = script_project / "ScriptMod.mod.as"
         assert script_entry.is_file()
+        assert f'bml="{loader_version}"' in script_entry.read_text(encoding="utf-8")
         script_manifest = json.loads(
             (script_project / "bml.mod.json").read_text(encoding="utf-8")
         )

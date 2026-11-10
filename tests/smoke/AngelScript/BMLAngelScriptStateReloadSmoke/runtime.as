@@ -6,7 +6,7 @@ void TraceStateHookPhase(BML::ReloadPhase expected, const string &in label) {
   }
 }
 
-[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="1.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for script hot reload state migration."]
+[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="1.0.0" author="BML" bml="0.4.0" reload="auto" description="Smoke test for script hot reload state migration."]
 class BMLStateReloadSmokeMod {
   int frames = 0;
   bool requestedCommand = false;

@@ -1,6 +1,6 @@
 void BMLDetachedWorkShouldRun() {}
 
-[bml.mod id="bml.runtime.error.smoke" name="BML AngelScript Runtime Error Smoke" version="0.0.0" author="BML" bml="0.3.0" description="Negative smoke test for script mod runtime diagnostics."]
+[bml.mod id="bml.runtime.error.smoke" name="BML AngelScript Runtime Error Smoke" version="0.0.0" author="BML" bml="0.4.0" description="Negative smoke test for script mod runtime diagnostics."]
 class BMLRuntimeErrorSmokeMod {
   bool firstProcess = true;
 
