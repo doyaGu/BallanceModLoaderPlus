@@ -54,9 +54,11 @@ cmake --build build/sdl-release --config Release --parallel
 cmake --install build/sdl-release --config Release --prefix /path/to/sdk
 cmake --install build/sdl-release --config Release \
   --prefix /path/to/disposable-game --component BMLRuntime
-cmake --install build/sdl-release --config Release \
-  --prefix /path/to/disposable-game --component BMLMods
+cmake -E copy_directory /path/to/sdk/Mods /path/to/disposable-game/ModLoader/Mods
 ```
+
+The SDK installation's `Mods` directory contains the enabled in-tree Mod packages
+and their ABI sidecars. There is no separate `BMLMods` install component.
 
 The runtime prefix is an isolated copy of the **matching complete Player**, with
 host SDL available for macOS fixup. Keep CK2/VxMath/SDL supplied by Player. The

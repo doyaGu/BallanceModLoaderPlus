@@ -22,6 +22,10 @@ cmake --build build/sdl-release --config Release --parallel
 `-DBALLANCED_ROOT=` 和 `-DCMAKE_PREFIX_PATH=/path/to/engine-sdk`，并确保 CMake
 也能找到 SDL3。
 
+通过 `-DSDL3_DIR=/path/to/SDL/lib/cmake/SDL3` 选择与 Player 匹配的 SDL 开发包。
+2026-11-08 核对的 Ballanced 基线使用 SDL 3.4.20。离线源码构建可传
+`-DVXMATH_FONT_DIR=/path/to/verified-fonts`；VxMath 会按其字体清单校验文件。
+
 默认启用脚本。`BML_BUILD_SCRIPT_RUNTIME=ON` 会从 `CKANGELSCRIPT_ROOT` 构建使用
 同一引擎目标的 CKAngelScript。无脚本版本使用独立目录并传
 `-DBML_ENABLE_ANGELSCRIPT=OFF`。只有头文件不等于部署了脚本运行时。
@@ -36,12 +40,13 @@ cmake --build build/sdl-release --config Release --parallel
 cmake --install build/sdl-release --config Release --prefix /path/to/sdk
 cmake --install build/sdl-release --config Release \
   --prefix /path/to/disposable-game --component BMLRuntime
-cmake --install build/sdl-release --config Release \
-  --prefix /path/to/disposable-game --component BMLMods
+cmake -E copy_directory /path/to/sdk/Mods /path/to/disposable-game/ModLoader/Mods
 ```
 
 第一条建立开发安装树；`BMLRuntime` 只把运行时组件装进预先准备好的匹配 Player
-目录；`BMLMods` 安装可选仓库内 Mod，需先启用 `BML_BUILD_MODS=ON` 构建。
+目录。启用 `BML_BUILD_MODS=ON` 后，开发安装树的 `Mods` 目录还包含仓库内 Mod 的
+产物；把这些包及 ABI 伴随文件复制到游戏的 `ModLoader/Mods`。
+当前没有独立的 `BMLMods` 安装组件。
 CK2、VxMath、SDL 由 Player 提供。macOS 的运行时 stage 需包含对应宿主 SDL，供
 加载路径规范化和签名使用；使用完整 Player 安装的临时副本，不用 SDK 库覆盖游戏。
 打包通过组件安装清单选择属于该组件的文件。

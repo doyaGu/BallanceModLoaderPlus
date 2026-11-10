@@ -24,6 +24,12 @@ installed packages are found. To select installed packages rather than that
 sibling tree, pass `-DBALLANCED_ROOT=` and `-DCMAKE_PREFIX_PATH=/path/to/engine-sdk`.
 SDL3 must also be discoverable through CMake.
 
+Select the SDL development package matching Player with
+`-DSDL3_DIR=/path/to/SDL/lib/cmake/SDL3`. The Ballanced baseline checked on
+2026-11-08 uses SDL 3.4.20. For offline source builds, set
+`-DVXMATH_FONT_DIR=/path/to/verified-fonts`; VxMath checks these files against its
+font manifest before configuring.
+
 Scripts are enabled by default. The default `BML_BUILD_SCRIPT_RUNTIME=ON` builds
 the matching CKAngelScript plugin from `CKANGELSCRIPT_ROOT` against the same
 engine targets. For the script-free build use a separate directory and
@@ -41,14 +47,15 @@ of the Player, not an unconditional `-A Win32`.
 cmake --install build/sdl-release --config Release --prefix /path/to/sdk
 cmake --install build/sdl-release --config Release \
   --prefix /path/to/disposable-game --component BMLRuntime
-cmake --install build/sdl-release --config Release \
-  --prefix /path/to/disposable-game --component BMLMods
+cmake -E copy_directory /path/to/sdk/Mods /path/to/disposable-game/ModLoader/Mods
 ```
 
 The first command creates the development installation. `BMLRuntime` installs
-only the runtime component into an already prepared matching Player tree;
-`BMLMods` installs the optional in-tree Mods. Build those Mods with
-`BML_BUILD_MODS=ON`. Player supplies CK2, VxMath and SDL. On macOS the runtime
+only the runtime component into an already prepared matching Player tree.
+With `BML_BUILD_MODS=ON`, the development installation also contains the in-tree
+Mod packages in `Mods`; copy those packages and ABI sidecars into the game's
+`ModLoader/Mods`. There is no separate `BMLMods` install component.
+Player supplies CK2, VxMath and SDL. On macOS the runtime
 stage must contain the matching host SDL for load-command normalization/signing;
 use a disposable copy of a complete Player installation, not SDK libraries copied
 into a game. Packaging uses the component install manifest to select owned files.
