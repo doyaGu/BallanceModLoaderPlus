@@ -128,7 +128,12 @@ private bool ValidateTableForRead(const BML::ModContext &in ctx,
                                    const string &in tableName,
                                    int expectedColumns,
                                    int minRows) {
-    CKDataArray@ table = ctx.BorrowDataArrayByName(tableName);
+    CKDataArray@ table;
+    BML::ObjectRef tableRef;
+    CKObject@ tableObject;
+        if (BML::Scene::FindObject(tableName, CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+        BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+        @table = cast<CKDataArray>(tableObject);
 
     // 表是否存在
     if (table is null) {

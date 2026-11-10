@@ -375,7 +375,12 @@ class BGWatcher {
     }
 
     void OnProcess(const BML::ModContext &in ctx) {
-        CKDataArray@ ingame = ctx.BorrowDataArrayByName("IngameParameter");
+        CKDataArray@ ingame;
+        BML::ObjectRef ingameRef;
+        CKObject@ ingameObject;
+                if (BML::Scene::FindObject("IngameParameter", CKCID_DATAARRAY, ingameRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, ingameRef, CKCID_DATAARRAY, ingameObject) == BML::ERROR_OK)
+            @ingame = cast<CKDataArray>(ingameObject);
         if (ingame is null) return;
 
         int colSector = BML::CK::FindColumn(ingame, "Activate Sector");
@@ -391,7 +396,12 @@ class BGWatcher {
 
     private void SnapshotState(const BML::ModContext &in ctx,
                                const string &in reason) {
-        CKDataArray@ ingame = ctx.BorrowDataArrayByName("IngameParameter");
+        CKDataArray@ ingame;
+        BML::ObjectRef ingameRef;
+        CKObject@ ingameObject;
+                if (BML::Scene::FindObject("IngameParameter", CKCID_DATAARRAY, ingameRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, ingameRef, CKCID_DATAARRAY, ingameObject) == BML::ERROR_OK)
+            @ingame = cast<CKDataArray>(ingameObject);
         if (ingame is null) {
             ctx.LogInfo("IngameParameter not available at " + reason);
             return;

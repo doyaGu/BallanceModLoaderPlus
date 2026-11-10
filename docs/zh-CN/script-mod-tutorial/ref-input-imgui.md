@@ -1,39 +1,38 @@
 # 输入与 ImGui
 
-## 输入 API
+## 快照读取
 
 ```angelscript
-BML::InputHook@ input = ctx.BorrowInputManager();
-if (input is null) return;
+BML::KeyboardState@ keyboard;
+if (ctx.Input().ReadKeyboard(keyboard) != BML::ERROR_OK) return;
+if (keyboard.IsKeyPressed(uint(CKKEY_F9))) ctx.LogInfo("F9 pressed");
 ```
 
-| 方法 | 行为 |
-|------|------|
-| `input.IsKeyDown(CKKEY_X)` | 按住期间每帧返回 true |
-| `input.IsKeyPressed(CKKEY_X)` | 仅按下瞬间返回 true |
+ReadKeyboard、ReadMouse、ReadJoystick 是三个状态读取入口。读取不处理引擎、不消费事件。
+默认读取经过屏蔽的状态；最后一个 flags 参数传 uint(BML::INPUT_RAW) 可读取原始状态。
+没有设备时成功且 Attached=false；没有输入管理器时 ERROR_UNAVAILABLE。
 
-规则：
-- 开关用 IsKeyPressed（一次一动作）
-- 持续效果用 IsKeyDown
-- 用 IsKeyDown 做开关会每帧触发，窗口闪烁
+KeyboardState 拥有不可变共享快照；同一快照可查询多次，跨帧或退休后仍读取原捕获。
+IsKeyPressed 用于开关，IsKeyDown 用于持续操作。ReadKey/ReadEvent 提供严格错误码；
+按键越界时 IsKeyUp=true，其余便利谓词 false。原生 C/C++ 键盘 span 仍仅借用至最外层
+宿主调用结束，不具有脚本快照的拥有寿命。Input 服务视图的有效性使用 IsValid()。
 
 ## 屏蔽与释放
 
-脚本 `InputHook` 读取经过 BML 屏蔽的状态；读取不会推进事件或输入快照。
-ImGui 单独观察 SDL 事件，因而可以在阻止游戏输入时继续操作菜单。
-`input.IsValid` 是属性，使用时不加括号。
-
 ```angelscript
-uint64 token = input.AcquireBlock(BML::INPUT_BLOCK_KEYBOARD);
-// 关闭界面或 OnUnload 时，重新借用当前 input 再释放：
-if (token != 0) input.ReleaseBlock(token);
+BML::InputBlock@ block;
+int code = ctx.Input().AcquireBlock(uint(BML::INPUT_BLOCK_KEYBOARD), block);
+// 关闭界面时：
+if (code == BML::ERROR_OK) code = block.Release();
 ```
 
-掩码包括 `INPUT_BLOCK_KEYBOARD`、`INPUT_BLOCK_MOUSE`、`INPUT_BLOCK_JOYSTICK`
-和 `INPUT_BLOCK_ALL`。0 表示获取失败。令牌只是整数，丢弃它不会自动释放，须保存在
-成员中并在关闭界面、卸载/重载时释放；重复释放同一令牌无副作用。原生 SDK 的
-`Input::Block` 才是 RAII 拥有型对象。`Block`/`Unblock` 与 `SetBlock(true/false)`
-也按计数配对，不是绝对布尔赋值。不要解除别人的屏蔽；BML 屏蔽不改变引擎 Pause。
+掩码包括 INPUT_BLOCK_KEYBOARD/MOUSE/JOYSTICK/ALL。保存 InputBlock，显式 Release 或由
+原运行期退休清理；丢弃脚本 Ref 不释放。多次请求按计数叠加，只释放自己的请求。
+同 owner 重复结束成功，异 owner 无权操作。InputBlock.IsValid() 检查当前运行期。
+
+ImGui 独立观察 SDL 事件，可在游戏被屏蔽时继续操作菜单。Pause、键盘重复、光标可见性
+和形状是共享状态，修改者负责恢复。屏蔽本身不改变引擎 Pause。旧 InputHook/token
+入口不再注册，见[迁移指南](migration.md)。
 
 ## 常用键名
 

@@ -65,7 +65,7 @@ void OnUnphysicalize(const BML::ModContext &in ctx, const BML::ObjectEvent &in e
 | `OnGameEvent` | Handle level, reset, pause, finish, ball, and navigation events. |
 | `OnCheatEnabled` | Observe cheat-state changes. |
 | `OnLoadObject` / `OnLoadScript` | Observe object and behavior-script loading. |
-| `OnCommandEvent` | Observe command execution and completion phases. |
+| `OnCommandEvent` | Observe pre/post command execution. |
 | `OnModifyConfig` | React to a changed category and key. Same-key re-entry is suppressed. |
 | `OnPhysicalize` / `OnUnphysicalize` | Observe physics operations. |
 
@@ -196,15 +196,24 @@ Debug in this order:
    reference error.
 5. Reproduce with a minimal package before restoring unrelated features.
 
+An optional individual game callback has the signature
+`void OnStartLevel(const BML::ModContext &in ctx)`, with the existing native event
+names from OnPreStartMenu through OnPostLifeUp. If OnGameEvent exists it takes
+precedence; the individual callback is not also called. OnCommandEvent similarly
+takes precedence over OnPreCommandExecute/OnPostCommandExecute, whose payload is
+the same CommandEvent. Existing Process/Render dispatch order is unchanged.
+
 ## Lifetime rules
 
 - BML+ fixed callbacks and registered callbacks use no-suspend execution.
-- `CommandCompletion`, borrowed managers, and borrowed CK handles are
-  callback-scoped.
+- Command invocation, request and completion values expire at callback return.
+  Borrowed CK objects/managers remain engine-owned; keep an ObjectRef for identity.
 - CKAngelScript `ObjectRef@`-derived handles are preferred for long-lived CK
   identity; the raw pointer resolved from them is still short-lived.
-- `Logger`, `Config`, and `ConfigProperty` wrappers revalidate their owning mod,
-  but should still be checked before use after failure or unload.
+- Config/Input/Timer/Command views and property/control Refs belong to one
+  physical runtime bind. Retirement is permanent, including across rollback.
+- KeyboardState and TimerEvent captures remain readable after retirement; they
+  do not authorize new host work.
 - Timer, Command, DataShare request, callback, and Hook Block resources are
   removed on unload and successful replacement.
 - CKAngelScript async tasks are outside BML+ resource ownership; do not rely on

@@ -1,158 +1,58 @@
-# ModContext 方法
+# ModContext 与服务边界
 
-## Mod 信息
+回调传入的 `const BML::ModContext &in ctx` 是显式的 Mod 上下文。所有可失败操作返回
+`int` 状态，成功为 `BML::ERROR_OK`。Ref 输出失败为 null；其他输出仅在成功后使用。
+完整签名来自[实际注册表](https://doyagu.github.io/BallanceModLoaderPlus/api/bml-script-mod-api.as)，旧源码见[迁移指南](migration.md)。
 
-```angelscript
-string GetModId() const;
-string GetModName() const;
-```
-
-## 日志
+## 常用入口
 
 ```angelscript
-void LogInfo(const string &in message) const;
-void LogWarn(const string &in message) const;
-void LogError(const string &in message) const;
-BML::Logger@ BorrowLogger() const;
+BML::Config@ Config() const;
+BML::Input@ Input() const;
+BML::Timers@ Timers() const;
+BML::Commands@ Commands() const;
+bool IsValid() const;
+int Owner(BML::ModRef@ &out mod) const;
+int FindMod(const string &in id, BML::ModRef@ &out mod) const;
+int ReadMods(? &out mods) const; // array<BML::ModInfo> 对象
+int LogInfo(const string &in message) const;
+int LogWarn(const string &in message) const;
+int LogError(const string &in message) const;
+int GetDirectory(BML::DirectoryType directory, string &out path) const;
+int GetResourcePath(const string &in path, string &out absolutePath) const;
+int ReadResource(const string &in path, array<uint8> &out bytes) const;
+int ResourceExists(const string &in path, bool &out exists) const;
 ```
-
-普通日志直接使用 `ctx.LogInfo(...)`、`ctx.LogWarn(...)` 和
-`ctx.LogError(...)`。只有明确需要保存一个可重新验证的 Logger wrapper 时才使用
-`BorrowLogger()`；返回的句柄必须判空。
-
-## 配置
 
 ```angelscript
-BML::Config@ BorrowConfig() const;
-// config.SetCategoryComment(category, comment)
-// config.GetProperty(category, key) -> BML::ConfigProperty@
-// prop.SetDefaultBoolean/String/Integer/Float(value)
-// prop.SetComment(text)
-// prop.GetBoolean/String/Integer/Float(defaultValue)
-// prop.SetBoolean/String/Integer/Float(value)
+BML::ModRef@ owner;
+BML::ModInfo info;
+if (ctx.Owner(owner) == BML::ERROR_OK && owner.Read(info) == BML::ERROR_OK)
+    ctx.LogInfo(info.Definition.Id + ": " + info.Definition.Name);
 ```
 
-## 输入
+服务视图属于一次物理运行期。OnLoad 结束不会让它失效；卸载或替换后永久失效，回滚
+也不能复活旧视图。配置属性和控制 Ref 同样遵守这个边界。诊断用的 IsReloading、
+ReloadPhase、ReloadAttemptId、ModGeneration、RuntimeGeneration 属性不是有效性凭据。
+丢弃脚本控制 Ref 不取消注册；宿主退休会清理，或在当前运行期显式结束。
 
-```angelscript
-BML::InputHook@ BorrowInputManager() const;
-// input.IsKeyDown(CKKEY_X) — true every frame while held
-// input.IsKeyPressed(CKKEY_X) — true only first frame
-```
+## 专用模块
 
-## 命令
-
-```angelscript
-BML::CommandRef@ RegisterCommand(const BML::CommandDefinition &in def,
-    BML::CommandCallback@+ execute,
-    BML::CommandCompletionCallback@+ complete = null) const;
-bool UnregisterCommand(const string &in name) const;
-bool HasCommand(const string &in name) const;
-void ExecuteCommand(const string &in command) const;
-```
-
-## 定时器
-
-```angelscript
-BML::TimerRef@ SetTimeout(float delayMs, BML::TimerCallback@+ callback, const string &in name = "") const;
-BML::TimerRef@ SetInterval(float delayMs, BML::TimerLoopCallback@+ callback, const string &in name = "") const;
-```
-
-## 游戏状态
-
-```angelscript
-bool IsInGame;    // 属性访问器
-bool IsInLevel;
-bool IsPaused;
-bool IsPlaying;
-bool IsCheatEnabled;
-bool IsReloading;
-BML::ReloadPhase ReloadPhase;
-```
-
-用法：`ctx.IsInLevel`、`ctx.IsPaused`、`ctx.ReloadPhase`（不是方法调用，不加括号）。
-
-`IsReloading` 只在热重载生命周期回调里为 true。`ReloadPhase` 常用来区分正常启动/退出和热重载：
-
-| 值 | 含义 |
+| 任务 | 当前入口 |
 | --- | --- |
-| `BML::RELOAD_NONE` | 正常启动、正常运行、正常退出 |
-| `BML::RELOAD_UNLOAD` | 热重载正在卸载旧 runtime |
-| `BML::RELOAD_LOAD` | 热重载正在加载新 runtime |
-| `BML::RELOAD_ROLLBACK` | 新 runtime 失败，BML 正在恢复旧 runtime |
-| `BML::RELOAD_RECOVERY` | 启动时失败的占位 mod 正在恢复 |
-| `BML::RELOAD_CLEANUP` | 热重载清理阶段 |
-| `BML::RELOAD_SAVE_STATE` | 正在调用旧 runtime 的 `SaveState` |
-| `BML::RELOAD_MIGRATE_STATE` | 正在调用新 runtime 的 `MigrateState` |
-| `BML::RELOAD_RESTORE_STATE` | 正在调用 `RestoreState` |
+| 配置、命令、定时器 | [服务参考](ref-commands-config-timer.md) |
+| 键鼠与手柄 | [输入参考](ref-input-imgui.md) |
+| Ingame/Paused/Playing、球与注册 | BML::Gameplay::ReadState / BorrowActiveBall / Register* |
+| 游戏时钟 | BML::Time::ReadClock(Clock &out) |
+| HUD、消息、菜单、Speedrun | [UI 与资源](ref-hud-resources.md) |
+| CK 对象查找 | BML::Scene::FindObject(name, ObjectRef &out)，再 Engine::BorrowObject |
+| CKContext 和管理器借用 | BML::Engine::BorrowContext(ctx, out) 及 Borrow*Manager(ctx, out) |
+| Behavior、IMC、DataShare | 保留各自专用协议和失败处理，不强制改为同一种 Ref |
 
-## UI 与 Speedrun
+Gameplay 六种类型注册仅允许 OnLoad，继续经过 Capture/Validate 事务。注册失败必须
+检查错误码。数据查询返回拥有数据的快照。
 
-消息、菜单、HUD 和 BML 风格控件由 `BML::UI` 提供；Speedrun 计时由
-`BML::Speedrun` 提供。它们不是 `ModContext` 成员。完整声明和使用规则见
-[UI、计时与资源](ref-hud-resources.md)。
+## Borrow
 
-## 时间
-
-```angelscript
-float GetTimeMs() const;          // 游戏时间，毫秒
-float GetAbsoluteTimeMs() const;  // 绝对时间，毫秒
-float GetDeltaTimeMs() const;     // 上一帧到当前帧的间隔，毫秒
-uint GetFrameCount() const;       // 当前帧计数
-```
-
-需要按时间间隔执行逻辑时优先用 Timer。`GetDeltaTimeMs()` 适合平滑显示、插值和一次性调试统计，不要用它绕过 Timer 写复杂调度器。
-
-## 文件与资源
-
-```angelscript
-string GetModRootUtf8() const;
-string ResolveModPathUtf8(const string &in relativePath) const;
-bool ModFileExistsUtf8(const string &in relativePath) const;
-string ReadModTextFileUtf8(const string &in relativePath, const string &in defaultValue = "") const;
-```
-
-## Mod 列表
-
-```angelscript
-int GetModCount() const;
-BML::ModRef@ GetMod(int index) const;
-BML::ModRef@ FindMod(const string &in id) const;
-```
-
-## CKAS / Virtools 入口
-
-```angelscript
-CKContext@ BorrowCKContext() const;
-CKRenderContext@ BorrowRenderContext() const;
-CKDataArray@ BorrowDataArrayByName(const string &in name) const;
-CKGroup@ BorrowGroupByName(const string &in name) const;
-CK3dEntity@ Borrow3dEntityByName(const string &in name) const;
-CKBehavior@ BorrowScriptByName(const string &in name) const;
-```
-
-## DataShare
-
-```angelscript
-BML::DataShareRequestRef@ RequestDataShare(BML::DataShareRequest@+ request) const;
-BML::DataShareRequestRef@ RequestDataShare(const string &in key, int type,
-    BML::DataShareCallback@+ callback, const string &in name = "") const;
-```
-
-## 注册 API (仅 OnLoad 可调用)
-
-```angelscript
-bool RegisterBallType(const BML::BallTypeDefinition &in ball) const;
-bool RegisterFloorType(const BML::FloorTypeDefinition &in floor) const;
-bool RegisterModule(const BML::ModuleDefinition &in module) const;
-```
-
-## Borrow 规则
-
-1. 所有 `Borrow*` 返回值都必须判空。
-2. 原始 CK 句柄只在对应 CK 对象仍存在时有效。只应缓存生命周期明确、关卡内稳定
-   的对象，并在对象可能被删除或退出关卡前清空。
-3. 跨回调保存 CK 对象身份时，优先使用 CKAS 的可重新验证引用类型；每次使用前
-   检查 `valid`。否则保存 `CK_ID` 或确实唯一且稳定的名称，并在操作前重新查找。
-4. 不要把名称默认当成唯一标识，也不要在关卡切换后继续使用旧句柄或旧
-   `CK_ID`。
+Borrow* 返回引擎借用，必须检查状态和 null，
+跨关卡不要保存裸 CK 句柄。需要跨回调身份时保存 ObjectRef，每次重新借用。

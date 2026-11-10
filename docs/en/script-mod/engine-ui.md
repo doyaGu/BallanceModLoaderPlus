@@ -23,7 +23,7 @@ of building overlapping wrappers:
 | Patch engine internals or expose a native service | Native plugin with a guarded CKAS extension if scripts need it |
 
 BML+ callbacks receive `BML::ModContext`, not `ScriptContext` or
-`CKBehaviorContext`. Use `ctx.BorrowCKContext()` only with APIs that accept a
+`CKBehaviorContext`. Use `BML::Engine::BorrowContext(ctx, ck)` only with APIs that accept a
 `CKContext@`. Do not fake one context as another.
 
 Raw `NativePointer`, `NativeBuffer`, DynCall/DynLoad/DynCallback, and writable
@@ -34,7 +34,7 @@ the matching CKAngelScript build; the default BML build does not enable DynCall.
 ## CK objects and durable identity
 
 Start with CKAngelScript `Scene`, `Behavior`, `BB`, and `Param`. BML+
-`ctx.Borrow*` calls provide convenient access to named CK objects and managers,
+Scene lookup and `BML::Engine::Borrow*` provide checked object references and manager access,
 but those handles are non-owning.
 
 Prefer CKAS references for identity that crosses callbacks:
@@ -43,12 +43,14 @@ Prefer CKAS references for identity that crosses callbacks:
 Entity3DRef@ ball;
 
 void OnLoad(const BML::ModContext &in ctx) {
-  CKContext@ ck = ctx.BorrowCKContext();
+  CKContext@ ck;
+  if (BML::Engine::BorrowContext(ctx, ck) != BML::ERROR_OK) return;
   @ball = Scene::FindEntity3D(ck, "Ball");
 }
 
 void OnProcess(const BML::ModContext &in ctx) {
-  CKContext@ ck = ctx.BorrowCKContext();
+  CKContext@ ck;
+  if (BML::Engine::BorrowContext(ctx, ck) != BML::ERROR_OK) return;
   if (ck is null || ball is null || !ball.valid)
     return;
 
@@ -72,7 +74,11 @@ before passing a stored raw handle to the other `BML::CK` helpers.
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
-  CKDataArray@ data = ctx.BorrowDataArrayByName("Some_Array");
+  BML::ObjectRef reference;
+  CKObject@ object;
+  if (BML::Scene::FindObject("Some_Array", CKCID_DATAARRAY, reference) != BML::ERROR_OK ||
+      BML::Engine::BorrowObject(ctx, reference, CKCID_DATAARRAY, object) != BML::ERROR_OK) return;
+  CKDataArray@ data = cast<CKDataArray>(object);
   int column = BML::CK::FindColumn(data, "Name");
   string value = BML::CK::GetString(data, 0, column, "");
 
@@ -85,9 +91,10 @@ void OnLoad(const BML::ModContext &in ctx) {
 
 ## Content registration
 
-`RegisterBallType`, `RegisterFloorType`, and `RegisterModule` expose common
+`BML::Gameplay::RegisterBallType`, `RegisterFloorType`, `RegisterModuleBall`,
+`RegisterModuleConvex`, `RegisterTrafo` and `RegisterModule` expose common
 Ballance content registration. Call them from `OnLoad`; late registration
-returns `false`.
+returns `ERROR_ACCESS_DENIED`.
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
@@ -100,7 +107,7 @@ void OnLoad(const BML::ModContext &in ctx) {
   ball.Elasticity = 0.2f;
   ball.Mass = 1.0f;
   ball.Radius = 2.0f;
-  if (!ctx.RegisterBallType(ball))
+  if (BML::Gameplay::RegisterBallType(ctx, ball) != BML::ERROR_OK)
     ctx.LogWarn("failed to register ball type");
 }
 ```

@@ -10,7 +10,7 @@ DataArray 就是游戏内的电子表格。它有行有列，每个单元格可�
 
 ```text
 第一步：按名字获取表的句柄
-  -> ctx.BorrowDataArrayByName("表名")
+  -> BML::Scene::FindObject("表名", CKCID_DATAARRAY, out) -> Engine::BorrowObject
   -> 返回 CKDataArray@ 或 null
 
 第二步：确认表存在且有数据
@@ -57,7 +57,12 @@ DataArray 就是游戏内的电子表格。它有行有列，每个单元格可�
 ```angelscript
 void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
     if (event == BML::GAME_EVENT_START_LEVEL) {
-        CKDataArray@ table = ctx.BorrowDataArrayByName("CurrentLevel");
+        CKDataArray@ table;
+        BML::ObjectRef tableRef;
+        CKObject@ tableObject;
+                if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+            @table = cast<CKDataArray>(tableObject);
         if (table is null) {
             ctx.LogInfo("CurrentLevel not found");
             return;
@@ -123,7 +128,12 @@ class DataReadMod {
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
         if (event == BML::GAME_EVENT_START_LEVEL) {
-            @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+            BML::ObjectRef currentLevelRef;
+            CKObject@ currentLevelObject;
+            @currentLevel = null;
+            if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+                BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+                @currentLevel = cast<CKDataArray>(currentLevelObject);
             if (currentLevel !is null) {
                 ctx.LogInfo("CurrentLevel found, rows=" + BML::CK::GetRowCount(currentLevel));
             }
@@ -210,7 +220,12 @@ class DataReadMod {
 ### 读取 AllLevel
 
 ```angelscript
-CKDataArray@ allLevel = ctx.BorrowDataArrayByName("AllLevel");
+CKDataArray@ allLevel;
+BML::ObjectRef allLevelRef;
+CKObject@ allLevelObject;
+if (BML::Scene::FindObject("AllLevel", CKCID_DATAARRAY, allLevelRef) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, allLevelRef, CKCID_DATAARRAY, allLevelObject) == BML::ERROR_OK)
+    @allLevel = cast<CKDataArray>(allLevelObject);
 if (allLevel !is null) {
     int rows = BML::CK::GetRowCount(allLevel);  // 通常 13
     for (int row = 0; row < rows; row++) {
@@ -244,7 +259,12 @@ private CKDataArray@ currentLevel = null;
 
 // 进入关卡时获取
 if (event == BML::GAME_EVENT_START_LEVEL) {
-    @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+    BML::ObjectRef currentLevelRef;
+    CKObject@ currentLevelObject;
+    @currentLevel = null;
+    if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+        BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+        @currentLevel = cast<CKDataArray>(currentLevelObject);
 }
 
 // 退出关卡时清空

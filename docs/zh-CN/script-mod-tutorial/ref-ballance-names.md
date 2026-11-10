@@ -60,7 +60,7 @@ CurrentLevel, AllLevel, Energy, IngameParameter, Physicalize_Balls, Physicalize_
 
 | 目标 | API |
 |------|-----|
-| 3D 实体 | ctx.Borrow3dEntityByName(name) |
-| 组 | ctx.BorrowGroupByName(name) |
-| DataArray | ctx.BorrowDataArrayByName(name) |
-| 行为脚本 | ctx.BorrowScriptByName(name) |
+| 3D 实体 | Scene::FindObject(name, CKCID_3DENTITY, out)，再 Engine::BorrowObject(ctx, ref, CKCID_3DENTITY, out) |
+| 组 | Scene::FindObject(name, CKCID_GROUP, out)，再 Engine::BorrowObject(ctx, ref, CKCID_GROUP, out) |
+| DataArray | Scene::FindObject(name, CKCID_DATAARRAY, out)，再 Engine::BorrowObject(ctx, ref, CKCID_DATAARRAY, out) |
+| 行为脚本 | Scene::FindObject(name, CKCID_BEHAVIOR, out)，再 Engine::BorrowObject(ctx, ref, CKCID_BEHAVIOR, out) |

@@ -59,7 +59,7 @@
 
 ### 配置系统
 
-`LoadConfig` 获取配置对象后，为每个属性设定默认值和注释。`GetBoolean(true)` 中的参数 `true` 是默认值，如果配置文件中没有这个条目，返回 `true`。这与 `SetDefaultBoolean(true)` 配合使用：前者决定运行时行为，后者决定配置文件中写入什么。
+`LoadConfig` 获取配置对象后，为每个属性设定默认值和注释。`GetBoolean(true)` 中的参数 `true` 是默认值，如果配置文件中没有这个条目，返回 `true`。定义的 DefaultValue 使用 ConfigValue(true)，声明成功后读取回退值。第一次具体类型声明可能替换异型加载值，旧类型迁移应先 NONE 声明并严格 Read。
 
 `SaveBoolean` 在用户通过命令切换窗口开关时调用，确保偏好在下次启动时仍然有效。
 

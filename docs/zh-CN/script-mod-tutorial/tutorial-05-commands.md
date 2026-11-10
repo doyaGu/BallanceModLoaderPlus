@@ -23,8 +23,8 @@ BML 的命令栏（按 `/` 打开）提供了运行时入口。本章为 HelloMo
 一个完整命令包含：
 
 1. **定义（CommandDefinition）**：描述命令的名字、别名、说明、用法
-2. **执行回调（CommandCallback）**：玩家回车后执行的逻辑
-3. **补全回调（CommandCompletionCallback）**：输入过程中提供候选词
+2. **执行回调（CommandExecute）**：玩家回车后执行的逻辑
+3. **补全回调（CommandComplete）**：输入过程中提供候选词
 
 三者在 `OnLoad` 里组装并注册到 BML。
 
@@ -60,15 +60,18 @@ private void RegisterCommands(const BML::ModContext &in ctx) {
     def.Category = "Tutorial";
     def.Enabled = true;
 
-    BML::CommandCallback@ execute = BML::CommandCallback(this.OnHelloCommand);
-    BML::CommandCompletionCallback@ complete = BML::CommandCompletionCallback(this.CompleteHelloCommand);
+    BML::CommandExecute@ execute = BML::CommandExecute(this.OnHelloCommand);
+    BML::CommandComplete@ complete = BML::CommandComplete(this.CompleteHelloCommand);
 
-    BML::CommandRef@ command = ctx.RegisterCommand(def, execute, complete);
-    if (command is null || !command.IsValid) {
+    BML::CommandRef@ command;
+    int code = ctx.Commands().Register(def, execute, command, complete);
+    if (code != BML::ERROR_OK) {
         ctx.LogWarn("HelloMod command registration failed");
         return;
     }
-    ctx.LogInfo("HelloMod command registered: " + command.Name);
+    BML::CommandInfo info;
+    if (command.Read(info) == BML::ERROR_OK)
+        ctx.LogInfo("HelloMod command registered: " + info.Name);
 }
 ```
 
@@ -86,83 +89,59 @@ private void RegisterCommands(const BML::ModContext &in ctx) {
 ### 理解 funcdef 与回调
 
 ```angelscript
-BML::CommandCallback@ execute = BML::CommandCallback(this.OnHelloCommand);
+BML::CommandExecute@ execute = BML::CommandExecute(this.OnHelloCommand);
 ```
 
-这一行涉及 AngelScript 的 **funcdef（函数类型定义）** 概念。`BML::CommandCallback` 是 BML 预定义的函数类型，它规定了"执行回调必须长什么样"（参数列表和返回值）。
+这一行涉及 AngelScript 的 **funcdef（函数类型定义）** 概念。`BML::CommandExecute` 是 BML 预定义的函数类型，它规定了"执行回调必须长什么样"（参数列表和返回值）。
 
 `@` 表示这是一个函数句柄。注册命令时，脚本把 `this.OnHelloCommand` 交给 BML；玩家执行命令时，BML 再调用这个函数。
 
-补全回调 `BML::CommandCompletionCallback` 同理，只是参数列表多了一个 `completions`，用于写入候选词。
+补全回调 `BML::CommandComplete` 同理，只是参数列表多了一个 `completions`，用于写入候选词。
 
 ### CommandRef 返回值
 
-`ctx.RegisterCommand(...)` 返回 `BML::CommandRef@`，它是注册结果的句柄。检查方式：
-
-- `command is null`：注册过程出现内部错误
-- `!command.IsValid`：注册被拒绝（例如命令名已被占用）
-
-两种情况都意味着命令不可用，应记录警告并提前返回。如果注册成功，`command.Name` 会返回注册后的命令名（此处为 `"hello"`）。
+Register 返回错误码，CommandRef 通过 out 接收。只有 code == BML::ERROR_OK 才成功；
+失败 out 为 null。后续使用 IsValid() 判活，Read(CommandInfo &out) 读取拥有数据的元信息。
+丢弃脚本 Ref 不注销，显式 Unregister 或由运行期退休清理。
 
 ---
 
 ## 执行回调
 
 ```angelscript
-private void OnHelloCommand(const BML::ModContext &in ctx,
-                            const BML::CommandEvent &in event) {
+private int OnHelloCommand(const BML::ModContext &in ctx,
+                           const BML::CommandInvocation &in call) {
     string action = "status";
-    if (event.ArgCount > 0) {
-        action = event.GetArg(0);
+    if (call.ArgumentCount > 0) call.ReadArgument(0, action);
+    lastCommand = call.InvokedAs;
+    for (uint i = 0; i < call.ArgumentCount; ++i) {
+        string argument;
+        if (call.ReadArgument(i, argument) != BML::ERROR_OK) return 1;
+        lastCommand += " " + argument;
     }
-
-    if (event.ArgsText == "") {
-        lastCommand = event.CommandName;
-    } else {
-        lastCommand = event.CommandName + " " + event.ArgsText;
-    }
-
-    if (action == "toggle") {
-        showWindow = !showWindow;
-        BML::UI::AddMessage("HelloMod window toggled by command.");
-        return;
-    }
-
+    if (action == "toggle") showWindow = !showWindow;
     BML::UI::AddMessage("Command: " + lastCommand);
+    return 0;
 }
 ```
 
-### CommandEvent 字段
+### CommandInvocation 字段
 
-| 写法 | 含义 |
-| --- | --- |
-| `event.CommandName` | 注册命令名 |
-| `event.ArgCount` | 参数数量 |
-| `event.GetArg(0)` | 第一个参数 |
-| `event.ArgsText` | 所有参数原文 |
-
-注意：即使玩家用别名 `/h toggle` 触发，`event.CommandName` 仍然是 `"hello"`（注册时的主名称）。
-
-### 逐步追踪：玩家输入 `/hello toggle` 时发生了什么
-
-1. 玩家按 `/` 打开命令栏，输入 `hello toggle`，按回车
-2. BML 解析输入，把第一个词 `hello` 作为命令名查找
-3. BML 在注册表中找到名为 `hello` 的条目
-4. BML 构造 `CommandEvent` 对象：`CommandName = "hello"`，`ArgCount = 1`，`GetArg(0) = "toggle"`，`ArgsText = "toggle"`
-5. BML 通过之前保存的 `execute` 句柄调用 `OnHelloCommand`
-6. 回调内部读取 `action = "toggle"`，执行 `showWindow = !showWindow`
-7. 屏幕上出现提示信息 "HelloMod window toggled by command."
+Name 是注册的规范名，InvokedAs 是输入的名称或别名。ArgumentCount 与 ReadArgument
+使用不含命令名的零基参数。Input/HasInput() 区分管道输入与空输入，Write 输出到当前
+管道。回调返回非负业务状态，0 通常表示成功；API 调用的错误码另行检查。保存副本
+不能延长 sink 或请求的回调寿命。OnCommandEvent 仍是独立的前后通知协议。
 
 ---
 
 ## 补全回调
 
 ```angelscript
-private void CompleteHelloCommand(const BML::ModContext &in ctx,
-                                  const BML::CommandEvent &in event,
-                                  BML::CommandCompletion &inout completions) {
-    completions.Add("status");
-    completions.Add("toggle");
+private int CompleteHelloCommand(const BML::ModContext &in ctx,
+                                 const BML::CommandCompletionRequest &in request,
+                                 const BML::CommandCompletion &in completions) {
+    int code = completions.Add("status");
+    return code == BML::ERROR_OK ? completions.Add("toggle") : code;
 }
 ```
 
@@ -208,7 +187,7 @@ ImGui::TextUnformatted("Last command: " + lastCommand);
 | 现象 | 排查方向 |
 | --- | --- |
 | 日志中没有注册成功的信息 | 确认 `RegisterCommands(ctx)` 在 `OnLoad` 中被调用；检查是否有编译错误导致脚本未加载 |
-| 日志显示 "registration failed" | `command is null` 或 `!command.IsValid` 为真。检查是否有其他 Mod 已注册同名命令 |
+| 日志显示 "registration failed" | `command is null` 或 `!command.IsValid()` 为真。检查是否有其他 Mod 已注册同名命令 |
 | 命令栏输入后无反应 | 确认输入格式正确（`hello` 而非 `/hello`，命令栏已自动添加 `/`）；确认 `def.Enabled = true` |
 | 没有补全候选词出现 | 确认命令名后输入了空格；确认 `complete` 句柄传给了 `RegisterCommand` 的第三个参数 |
 | 补全列表为空但不报错 | 确认 `CompleteHelloCommand` 内部调用了 `completions.Add(...)`；检查函数签名是否匹配 funcdef |

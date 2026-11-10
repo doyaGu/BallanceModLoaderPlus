@@ -17,8 +17,9 @@ dependency.
 An accessor named `get_Name()` defines an AngelScript property and is normally
 used as `object.Name`. `@+` is an AngelScript auto-handle annotation at the native boundary. It does
 not replace each service’s documented ownership/release contract. Prefer
-property syntax (`input.IsValid`, `ctx.IsInLevel`) when an accessor is present,
-even if a same-named method alias also appears in the declarations.
+property syntax for recorded values, such as `info.Definition.Id`. Service and Ref
+validity uses `IsValid()`. Old getter aliases and flat Context services are removed;
+see the [migration guide](migration.md).
 
 Use `as.predefined` for editor tooling. Use the two smaller files when looking
 up only the BML+-owned API surface.
@@ -47,13 +48,14 @@ class MenuExampleMod {
     BML::MenuPageDefinition entry;
     entry.Id = "overview";
     entry.Label = "Overview";
-    @entryPage = ctx.RegisterMenuPage(entry, DrawEntry);
+    int code = ctx.RegisterMenuPage(entry, DrawEntry, entryPage);
+    if (code != BML::ERROR_OK) return;
 
     BML::MenuPageDefinition child;
     child.Id = "child";
     child.Label = "Details";
     child.ShowInDetails = false;
-    @childPage = ctx.RegisterMenuPage(child, DrawChild);
+    code = ctx.RegisterMenuPage(child, DrawChild, childPage);
   }
 
   void OnUnload(const BML::ModContext &in ctx) {
@@ -82,11 +84,15 @@ calls for a local change instead of leaving a shared style mutation behind.
 
 ## Reference baseline
 
-The current combined declaration file was regenerated on 2026-11-06 from a
-macOS ARM64 SDL dynamic host running AngelScript 2.38.0, with DynCall disabled,
-then combined with the BML+ and ImGui declarations. It includes current
-BehaviorFrame/Scene signatures and 64-bit pointer-sized aliases. CKAS platform
-aliases and optional FFI bindings depend on the host; this is an editor snapshot,
-not a universal ABI definition. Regenerate against the target host when those
-features matter. The runtime’s registered declarations decide whether a script
-compiles.
+The BML section is reflected from the macOS ARM64 SDL dynamic Player running
+AngelScript 2.38.0. Native `@+` annotations, omitted by engine reflection, are
+restored from the BML registrations. The existing CKAngelScript/ImGui editor
+baseline is retained. These files are editor references, not a universal engine
+ABI; CKAS platform aliases and optional FFI still depend on the matching host.
+
+To update or verify the BML reference, build the independent Player probe with
+matching CKAngelScript headers, run `RunPostProcessTest.py --dump-api <export>`,
+then run `python3 tools/generate_script_api.py --export <export>` (or add
+`--check`). The generator preserves the non-BML portions of `as.predefined`.
+Registration and teardown tests must still pass; a text export alone does not
+prove object lifetime or config-group cleanup.

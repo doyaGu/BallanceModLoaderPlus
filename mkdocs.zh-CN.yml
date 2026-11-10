@@ -26,6 +26,7 @@ nav:
       - Behavior 编写: behavior-authoring.md
       - 原生 API 该走哪条路: native-api-routes.md
       - 脚本 Mod:
+          - API 迁移: script-mod-tutorial/migration.md
           - 导读: script-mod-tutorial/README.md
           - 教程:
               - 01 环境搭建: script-mod-tutorial/tutorial-01-setup.md

@@ -236,7 +236,7 @@ Complete Mod v1.1.0
 配置的默认值必须在代码中设置：
 
 ```angelscript
-showWindowProp.SetDefaultBoolean(true);
+int code = showWindowProp.SetDefault(BML::ConfigValue(true));
 ```
 
 不要通过分发默认配置文件来提供初始值。原因：用户更新 mod 后，如果你的新配置文件覆盖了他的自定义设置，他会丢失个人配置。
@@ -246,11 +246,21 @@ showWindowProp.SetDefaultBoolean(true);
 如果新版本需要修改配置项名称（例如从 `OldKey` 改为 `NewKey`），必须写迁移代码：
 
 ```angelscript
-if (config.HasKey("MyMod", "OldKey") && !config.HasKey("MyMod", "NewKey")) {
-    BML::ConfigProperty@ old = config.GetProperty("MyMod", "OldKey");
-    BML::ConfigProperty@ new = config.GetProperty("MyMod", "NewKey");
-    if (old !is null && new !is null) {
-        new.SetBoolean(old.GetBoolean(true));
+bool oldExists = false, newExists = false;
+if (config.HasKey("MyMod", "OldKey", oldExists) == BML::ERROR_OK &&
+    config.HasKey("MyMod", "NewKey", newExists) == BML::ERROR_OK && oldExists && !newExists) {
+    BML::ConfigProperty@ oldProperty;
+    BML::ConfigProperty@ newProperty;
+    BML::ConfigPropertyDefinition definition;
+    definition.Category = "MyMod"; definition.Key = "NewKey";
+    definition.DefaultValue = BML::ConfigValue(true);
+    if (config.FindProperty("MyMod", "OldKey", oldProperty) == BML::ERROR_OK &&
+        config.DeclareProperty(definition, newProperty) == BML::ERROR_OK) {
+        BML::ConfigPropertyInfo info;
+        bool value = false;
+        if (oldProperty.Read(info) == BML::ERROR_OK &&
+            info.CurrentValue.ReadBoolean(value) == BML::ERROR_OK)
+            newProperty.Set(BML::ConfigValue(value));
     }
 }
 ```
@@ -344,7 +354,7 @@ Ballance 社区常见的发布平台：
 
 ### 配置依赖本机环境
 
-**现象**：别人下载后首次运行报错，找不到路径或缺少初始值。**解决**：所有默认值通过 `SetDefaultXxx()` 在代码中设置，不依赖外部文件。
+**现象**：别人下载后首次运行报错，找不到路径或缺少初始值。**解决**：所有默认值通过 ConfigPropertyDefinition.DefaultValue 在代码中声明，不依赖外部文件。
 
 ### zip 中的入口数量不正确
 
@@ -367,3 +377,5 @@ Ballance 社区常见的发布平台：
 mod 经过完整的发布流程：元数据正确、版本号递增、清洁测试通过、打包格式正确、发布说明完整。用户可以通过 zip 文件安装并正常使用。
 
 下一步：[22 排错索引](tutorial-22-troubleshooting.md)
+
+SetDefault 同类型保留当前值，但 NONE 或异型默认值可能替换它；迁移前严格读取旧类型，不能把 SetDefault 当成无损类型迁移。

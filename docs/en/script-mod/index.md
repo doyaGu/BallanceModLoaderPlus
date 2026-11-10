@@ -146,8 +146,8 @@ named after the entry stem, such as `Mods/Foo/Resources` for `Foo.mod.as`.
 
 - `T@` is a handle. Use `is null` and `!is null` for null and identity checks.
 - Use `@field = handle` when rebinding a handle member.
-- Script classes are reference types. BML+ retains a registered Timer, Command,
-  DataShare request, callback, or delegate until it completes, is cancelled, or
+- Script classes are reference types. BML+ retains registered timer/command delegates,
+  DataShare requests and other managed callbacks until it completes, is cancelled, or
   the mod unloads.
 - Value classes such as event snapshots and definitions are copied by value.
   A method named `Borrow*` still returns a non-owning handle.
@@ -162,9 +162,9 @@ named after the entry stem, such as `Mods/Foo/Resources` for `Foo.mod.as`.
 The `@+` markers are AngelScript auto-handle annotations at the native binding
 boundary. Pass ordinary handles/delegates normally; use the specific service’s
 registration and release contract rather than inferring ownership from `@+`.
-For properties, use `ctx.IsInLevel`, `ctx.HasContext`, or `input.IsValid`,
-without parentheses. Same-named compatibility methods can be hidden by property
-syntax; the property form is unambiguous.
+Use methods such as `ctx.IsValid()` and `input.IsValid()` with parentheses.
+Read-only properties such as `ctx.ReloadPhase` and `KeyboardState.Attached` use
+property syntax. The old duplicate method/property aliases are not registered.
 
 ## Develop and package
 

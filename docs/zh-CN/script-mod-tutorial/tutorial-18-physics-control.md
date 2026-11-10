@@ -130,7 +130,8 @@ class ControlBall {
     }
 
     private void HandleInput(const BML::ModContext &in ctx) {
-        BML::InputHook@ input = ctx.BorrowInputManager();
+        BML::KeyboardState@ input;
+        if (ctx.Input().ReadKeyboard(input) != BML::ERROR_OK) return;
         if (input is null) return;
 
         if (input.IsKeyPressed(CKKEY_J)) {
@@ -238,7 +239,9 @@ class ControlBall {
         }
 
         string relativePath = "3D Entities/PH/P_Ball_Wood.nmo";
-        string resourcePath = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), relativePath);
+        string game;
+        if (ctx.GetDirectory(BML::DIR_GAME, game) != BML::ERROR_OK) return;
+        string resourcePath = BML::Path::Combine(game, relativePath);
         if (!BML::Path::IsFile(resourcePath)) { ctx.LogWarn("Resource missing"); return; }
 
         BML::ObjectLoadOptions options;
@@ -278,7 +281,12 @@ class ControlBall {
     }
 
     private CK3dEntity@ BorrowActiveBall(const BML::ModContext &in ctx) {
-        CKDataArray@ currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+        CKDataArray@ currentLevel;
+        BML::ObjectRef currentLevelRef;
+        CKObject@ currentLevelObject;
+                if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+            @currentLevel = cast<CKDataArray>(currentLevelObject);
         if (currentLevel is null) return null;
 
         int col = BML::CK::FindColumn(currentLevel, "ActiveBall");

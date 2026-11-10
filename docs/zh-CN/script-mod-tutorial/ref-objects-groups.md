@@ -3,10 +3,12 @@
 ## 查找 API
 
 ```angelscript
-CK3dEntity@ ctx.Borrow3dEntityByName(const string &in name);
-CKGroup@ ctx.BorrowGroupByName(const string &in name);
-CKDataArray@ ctx.BorrowDataArrayByName(const string &in name);
-CKBehavior@ ctx.BorrowScriptByName(const string &in name);
+BML::ObjectRef reference;
+CKObject@ object;
+if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, reference) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, reference, CKCID_DATAARRAY, object) == BML::ERROR_OK) {
+    CKDataArray@ table = cast<CKDataArray>(object);
+}
 ```
 
 ## 对象信息
@@ -58,7 +60,12 @@ void BML::CK::RestoreIC(CKBeObject@ object, bool hierarchy = false);
 ## 组
 
 ```angelscript
-CKGroup@ group = ctx.BorrowGroupByName("P_Extra_Point");
+CKGroup@ group;
+BML::ObjectRef groupRef;
+CKObject@ groupObject;
+if (BML::Scene::FindObject("P_Extra_Point", CKCID_GROUP, groupRef) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, groupRef, CKCID_GROUP, groupObject) == BML::ERROR_OK)
+    @group = cast<CKGroup>(groupObject);
 if (group is null) return;
 
 int count = group.GetObjectCount();

@@ -46,7 +46,7 @@ Ballance 的运行时由四类文件协作组成。想象成一条流水线，�
 
 ## 为什么"太早"会失败
 
-如果你在 `OnLoad` 里调用 `ctx.Borrow3dEntityByName("Ball")`，结果是 null。因为 `OnLoad` 在游戏启动时执行，那时候 Level_01.NMO 还没加载，球根本不存在。
+如果你在 `OnLoad` 里调用 按名称查找并借用 `Ball`，结果是 null。因为 `OnLoad` 在游戏启动时执行，那时候 Level_01.NMO 还没加载，球根本不存在。
 
 常见的"时机太早"错误：
 
@@ -191,11 +191,21 @@ Gameplay 持续维护
 ```angelscript
 if (event == BML::GAME_EVENT_START_LEVEL) {
     // 验证对象存在
-    CK3dEntity@ ball = ctx.Borrow3dEntityByName("Ball");
+    CK3dEntity@ ball;
+    BML::ObjectRef ballRef;
+    CKObject@ ballObject;
+        if (BML::Scene::FindObject("Ball", CKCID_3DENTITY, ballRef) == BML::ERROR_OK &&
+        BML::Engine::BorrowObject(ctx, ballRef, CKCID_3DENTITY, ballObject) == BML::ERROR_OK)
+        @ball = cast<CK3dEntity>(ballObject);
     ctx.LogInfo("Ball: " + (ball is null ? "null" : "found"));
 
     // 验证 DataArray 存在
-    CKDataArray@ table = ctx.BorrowDataArrayByName("CurrentLevel");
+    CKDataArray@ table;
+    BML::ObjectRef tableRef;
+    CKObject@ tableObject;
+        if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+        BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+        @table = cast<CKDataArray>(tableObject);
     ctx.LogInfo("CurrentLevel: " + (table is null ? "null" : "found"));
 }
 ```

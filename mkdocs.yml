@@ -65,6 +65,7 @@ nav:
           - Start here: script-mod/index.md
           - Lifecycle and reload: script-mod/lifecycle.md
           - BML services: script-mod/services.md
+          - API migration: script-mod/migration.md
           - Engine and UI: script-mod/engine-ui.md
           - Communication: script-mod/communication.md
           - API reference: script-mod/api.md

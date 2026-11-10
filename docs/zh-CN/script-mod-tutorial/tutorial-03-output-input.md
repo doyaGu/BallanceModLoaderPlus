@@ -45,8 +45,7 @@ ctx.LogWarn("recoverable problem");
 ctx.LogError("operation failed");
 ```
 
-普通 Mod 代码优先使用这些方法。`ctx.BorrowLogger()` 是进阶接口，只在确实需要
-保存一个可重新验证的 Logger wrapper 时使用；它不是记录一行日志的必经步骤。
+这些方法返回错误码，成功是 BML::ERROR_OK；没有单独的 Logger wrapper。
 
 ## 键盘输入：OnProcess 回调
 
@@ -56,7 +55,8 @@ ctx.LogError("operation failed");
 
 ```angelscript
 void OnProcess(const BML::ModContext &in ctx) {
-    BML::InputHook@ input = ctx.BorrowInputManager();
+    BML::KeyboardState@ input;
+    if (ctx.Input().ReadKeyboard(input) != BML::ERROR_OK) return;
     if (input is null) {
         return;
     }
@@ -79,13 +79,13 @@ BML 的输入系统是轮询（polling）模型，不是事件（event）模型�
 
 BML 用的是轮询模型。所以检查按键的代码必须放在 `OnProcess` 里，因为它每帧都执行。如果放在 `OnLoad` 里只执行一次，那一次检查之后就再也不检查了。
 
-### BorrowInputManager
+### 读取键盘快照
 
-`ctx.BorrowInputManager()` 返回一个 `BML::InputHook@` 句柄。和 Logger 一样，用 `@` 句柄并检查是否为空。InputHook 提供了检查键盘和鼠标状态的方法。
+`ctx.Input().ReadKeyboard(input)` 通过 out 返回不可变键盘快照，先检查状态。需要鼠标或手柄时分别使用 ReadMouse/ReadJoystick。
 
 ## IsKeyDown 和 IsKeyPressed 的区别
 
-InputHook 提供了两个检查按键的方法，它们的行为不同：
+KeyboardState 提供了两个检查按键的方法，它们的行为不同：
 
 | 方法 | 含义 | 按住 F9 不放时的行为 |
 | --- | --- | --- |
@@ -162,7 +162,8 @@ class HelloMod {
     }
 
     void OnProcess(const BML::ModContext &in ctx) {
-        BML::InputHook@ input = ctx.BorrowInputManager();
+        BML::KeyboardState@ input;
+        if (ctx.Input().ReadKeyboard(input) != BML::ERROR_OK) return;
         if (input is null) {
             return;
         }
@@ -183,7 +184,7 @@ class HelloMod {
 | 按 F9 没反应 | `OnProcess` 是否在 class 内部；方法签名是否正确 |
 | 一按键消息刷很多条 | 是否错用了 `IsKeyDown`，应该换成 `IsKeyPressed` |
 | 编译提示找不到 `CKKEY_F9` | `as.predefined` 是否在 VS Code 工作区里（编辑器报错）；实际运行中这个常量由 BML 注入，不会找不到 |
-| 编译提示 `BorrowInputManager` 不存在 | 检查 `as.predefined` 版本是否和 BML 版本匹配 |
+| 编译提示 ReadKeyboard 不存在 | 检查 `as.predefined` 版本是否和 BML 版本匹配 |
 
 ## 完成状态
 

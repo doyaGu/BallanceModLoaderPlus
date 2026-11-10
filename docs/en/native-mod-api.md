@@ -89,6 +89,15 @@ Void interval callbacks continue until cancellation; bool callbacks may return
 false to finish. Result access failures retain `std::bad_optional_access` as
 the exception family and report the status and any supplied diagnostic.
 
+Commands also provides `Find(name) -> Result<Command::Info>`,
+`ReadCommands() -> Result<vector<Command::Info>>` and
+`ExecuteLine(line) -> Result<int>`. Metadata snapshots own their strings.
+The ExecuteLine Result reports API failure separately from its command exit
+status. Use the explicit Context for registration and queries; the old public
+namespace-level command and timer entry points are removed. The C ABI tables
+and native registration RAII contracts remain unchanged. See the
+[aligned API migration](script-mod/migration.md).
+
 ## Pick a service
 
 | Headers | Authoring surface |

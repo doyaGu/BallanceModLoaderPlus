@@ -189,7 +189,7 @@ void OnProcess(const BML::ModContext &in ctx) {
 ### &in 与 &inout 混用
 
 ```text
-[ModLoader/ERROR]: (line 30, col 5): No matching signatures to 'BML::CommandCompletionCallback'
+[ModLoader/ERROR]: (line 30, col 5): No matching signatures to 'BML::CommandComplete'
 ```
 
 补全回调第三个参数必须是 `BML::CommandCompletion &inout`，不是 `&in`。
@@ -268,14 +268,14 @@ ImGui::End();  // 必须在 if 外面
 - 确认 `RegisterCommand` 在 OnLoad 里调用
 - 日志中如果出现 `Command 'xxx' already registered, skipping` 说明重复注册
 - 命令栏输入的是 `def.Name` 或 `def.Alias`，不是 AngelScript 函数名
-- 确认 `BML::CommandCallback@` 绑定了正确的成员函数
+- 确认 `BML::CommandExecute@` 绑定了正确的成员函数
 - 补全不出现：检查补全函数第三个参数是否为 `BML::CommandCompletion &inout`
 
 ---
 
 ## 对象查找失败
 
-`ctx.Borrow3dEntityByName(...)` 或 `ctx.BorrowGroupByName(...)` 返回 `null`。
+`BML::Scene::FindObject(...) 与 BML::Engine::BorrowObject(...)` 或 `BML::Scene::FindObject(...) 与 BML::Engine::BorrowObject(...)` 返回 `null`。
 
 **排查清单**：
 
@@ -287,9 +287,16 @@ ImGui::End();  // 必须在 if 外面
 添加诊断日志定位具体原因：
 
 ```angelscript
-CKGroup@ checkpoints = ctx.BorrowGroupByName("PC_Checkpoints");
+CKGroup@ checkpoints;
+BML::ObjectRef checkpointsRef;
+CKObject@ checkpointsObject;
+if (BML::Scene::FindObject("PC_Checkpoints", CKCID_GROUP, checkpointsRef) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, checkpointsRef, CKCID_GROUP, checkpointsObject) == BML::ERROR_OK)
+    @checkpoints = cast<CKGroup>(checkpointsObject);
 if (checkpoints is null) {
-    ctx.LogInfo("PC_Checkpoints not found, IsInLevel=" + ctx.IsInLevel);
+    BML::Gameplay::State state;
+    if (BML::Gameplay::ReadState(state) == BML::ERROR_OK)
+        ctx.LogInfo("PC_Checkpoints not found, IsInLevel=" + (state.Playing || state.Paused));
 }
 ```
 
@@ -321,9 +328,9 @@ Impulse/SetForce 没效果。
 
 改了配置但重启后恢复默认值。
 
-- 修改后必须调用 `messagesEnabledProp.SetBoolean(value)` 写回；只改成员变量不够
+- 修改后必须调用 `messagesEnabledProp.Set(BML::ConfigValue(value))` 写回；只改成员变量不够
 - `GetProperty` 返回值可能为 null，调用 Set 前判空
-- `SetDefaultBoolean` 不覆盖已有值，只在键不存在时写入
+- 同类型 SetDefault 保留当前值；首次具体类型声明、NONE 或异型 SetDefault 可能替换已有值，迁移前先严格 Read
 - 用记事本打开 `ModLoader/Configs/xxx.cfg` 验证值是否写入
 
 ---

@@ -1,5 +1,9 @@
 # Ballance 脚本 Mod 编写指南
 
+本轮原生与脚本 API 对齐不提供旧作者接口兼容层。旧源码请先查看
+[迁移指南和逐入口清单](migration.md)；当前完整声明见
+[注册 API](https://doyagu.github.io/BallanceModLoaderPlus/api/bml-script-mod-api.as)。
+
 ## 五分钟快速开始
 
 不确定从哪里开始时，先完成这一段；不需要先理解句柄、Timer、IMC 或 Virtools

@@ -154,7 +154,12 @@ class PHGroupsMod {
     }
 
     private void ReadPHGroups(const BML::ModContext &in ctx) {
-        CKDataArray@ table = ctx.BorrowDataArrayByName("PH_Groups");
+        CKDataArray@ table;
+        BML::ObjectRef tableRef;
+        CKObject@ tableObject;
+                if (BML::Scene::FindObject("PH_Groups", CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+            @table = cast<CKDataArray>(tableObject);
         if (table is null) {
             ctx.LogInfo("PH_Groups not found");
             return;
@@ -188,7 +193,12 @@ class PHGroupsMod {
     }
 
     private void ReadCheckpoints(const BML::ModContext &in ctx) {
-        CKDataArray@ table = ctx.BorrowDataArrayByName("Checkpoints");
+        CKDataArray@ table;
+        BML::ObjectRef tableRef;
+        CKObject@ tableObject;
+                if (BML::Scene::FindObject("Checkpoints", CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+            @table = cast<CKDataArray>(tableObject);
         if (table is null) {
             ctx.LogInfo("Checkpoints not found");
             return;
@@ -199,7 +209,12 @@ class PHGroupsMod {
     }
 
     private void ReadResetPoints(const BML::ModContext &in ctx) {
-        CKDataArray@ table = ctx.BorrowDataArrayByName("ResetPoints");
+        CKDataArray@ table;
+        BML::ObjectRef tableRef;
+        CKObject@ tableObject;
+                if (BML::Scene::FindObject("ResetPoints", CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+            @table = cast<CKDataArray>(tableObject);
         if (table is null) {
             ctx.LogInfo("ResetPoints not found");
             return;

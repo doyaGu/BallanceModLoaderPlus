@@ -147,7 +147,7 @@ void OnUnload(const BML::ModContext &in ctx)
 
 ```angelscript
 void OnUnload(const BML::ModContext &in ctx) {
-    if (statusTimer !is null && statusTimer.IsValid) {
+    if (statusTimer !is null && statusTimer.IsValid()) {
         statusTimer.Cancel();
     }
     ctx.LogInfo("MyMod unloaded");
@@ -227,17 +227,17 @@ ImGui 窗口和 `BML::UI` 控件都应在这里提交。`OnRender` 用于接收 
 | 写法 | 用途 |
 | --- | --- |
 | `ctx.LogInfo/LogWarn/LogError()` | 日志 |
-| `ctx.BorrowInputManager()` | 输入 |
+| `ctx.Input().ReadKeyboard(out)` | 输入 |
 | `BML::UI::AddMessage(...)` | 游戏内消息 |
-| `ctx.RegisterCommand(...)` | 注册命令 |
+| `ctx.Commands().Register(...)` | 注册命令 |
 
 ### 下一章将用到的服务
 
 | 写法 | 用途 |
 | --- | --- |
-| `ctx.BorrowConfig()` | 配置 |
-| `ctx.SetTimeout(...)` | 一次性 Timer |
-| `ctx.SetInterval(...)` | 循环 Timer |
+| `ctx.Config()` | 配置 |
+| `ctx.Timers().SetTimeout(...)` | 一次性 Timer |
+| `ctx.Timers().SetInterval(...)` | 循环 Timer |
 
 ---
 

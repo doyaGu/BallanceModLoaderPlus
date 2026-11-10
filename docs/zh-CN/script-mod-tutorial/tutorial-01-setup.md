@@ -118,8 +118,7 @@ MyMod/
 它不在 Player 内执行，禁止 `#include` 到 Mod，也不要装进发行包。
 CLI 会排除这类编辑器文件。
 
-试着补全 `BML::UI::AddMessage`、`ctx.LogInfo`。属性按 `ctx.IsInLevel`、
-`input.IsValid` 使用，不加函数调用括号。编辑器检查不能替代真实 Player 编译。
+试着补全 `BML::UI::AddMessage`、`ctx.LogInfo`。方法使用 `ctx.IsValid()`、`input.IsValid()`；只读属性如 `ctx.ReloadPhase` 不加括号。编辑器检查不能替代真实 Player 编译。
 
 ## 完成标准
 
