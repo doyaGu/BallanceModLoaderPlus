@@ -9,6 +9,9 @@
 #include <cstdlib>
 #include <sstream>
 #include <string>
+#ifdef BML_TEST_SCRIPT_REFLECTION
+#include "ScriptApiDump.h"
+#endif
 
 namespace {
 class PostProcessProbe final : public BML::Mod::Instance {
@@ -16,6 +19,11 @@ public:
     static BML::Mod::Definition Define(){return {"SdlPostProcessProbe","SDL PostProcess regression","1.0.0","BML tests","Checks the shipped loader frame ordering and input edges",BML_VERSION,{}};}
     void OnLoad(const BML::Mod::Context &context) override {
         m_Context=context;
+#ifdef BML_TEST_SCRIPT_REFLECTION
+        if (const char *dump = std::getenv("BML_SCRIPT_API_DUMP"))
+            Write(dump, DumpBmlScriptApi(context));
+#endif
+
         if (const char *path = std::getenv("BML_POSTPROCESS_RESULT"))
             m_ResultPath = path;
     }
@@ -153,6 +161,10 @@ public:
                      !native->IsMouseToggled(CK_MOUSEBUTTON_LEFT);
             break;
         default:
+            if (std::getenv("BML_EXPECT_SCRIPTS") && std::string_view(std::getenv("BML_EXPECT_SCRIPTS")) == "1") {
+                try { if (!CheckScriptRuntime()) return; }
+                catch (const std::exception &error) { Finish(false, std::string("script-runtime: ") + error.what()); return; }
+            }
             if (m_Frames >= 120) {
                 const bool timers = m_NoArgCalls == 1 && m_VoidCalls == 2 && !m_NoArgs.IsValid() &&
                                     !m_VoidLoop.IsValid() && m_SelfCalls == 1 &&
@@ -188,6 +200,46 @@ private:
         auto result = m_Context.Commands().ExecuteLine(line);
         if (result) out = result.Value();
         return result.Code();
+    }
+
+    bool CheckScriptRuntime() {
+        if (m_Frames < 90) return false;
+        const auto marker = [&](const char *name) { return bool(m_Context.Commands().Find(name)); };
+        if (m_ReloadStep == 0) {
+            Require(marker("bml_probe_combined_event") && marker("bml_probe_individual_event") &&
+                    marker("bml_probe_combined_command") && marker("bml_probe_individual_command"), "event dispatch once");
+            m_ScriptPath = m_Context.GetDirectory(BML_DIR_GAME).Take() + "/ModLoader/Mods/ScriptRuntimeProbe.mod.as";
+            size_t length = 0;
+            auto *data = SDL_LoadFile(m_ScriptPath.c_str(), &length);
+            Require(data != nullptr, "read staged script");
+            m_ScriptSource.assign(static_cast<const char *>(data), length); SDL_free(data);
+            auto candidate = m_ScriptSource;
+            auto at = candidate.find("bool FailCandidate = false;");
+            Require(at != std::string::npos, "candidate source marker");
+            candidate.replace(at, std::string("bool FailCandidate = false;").size(), "bool FailCandidate = true;");
+            Require(Write(m_ScriptPath, candidate), "write failing candidate");
+            Require(m_Context.Commands().ExecuteLine("script reload SdlRuntimeProbe").Take() == 0,
+                    "queue failing candidate");
+            ++m_ReloadStep;
+        } else if (m_ReloadStep == 1 && marker("bml_probe_rollback_scope")) {
+            auto candidate = m_ScriptSource;
+            auto at = candidate.find("bool NewRuntime = false;");
+            candidate.replace(at, std::string("bool NewRuntime = false;").size(), "bool NewRuntime = true;");
+            at = candidate.find("definition.DefaultValue = BML::ConfigValue(false);");
+            candidate.replace(at, std::string("definition.DefaultValue = BML::ConfigValue(false);").size(), "definition.DefaultValue = BML::ConfigValue(2);");
+            Require(Write(m_ScriptPath, candidate), "write valid candidate");
+            Require(m_Context.Commands().ExecuteLine("script reload SdlRuntimeProbe").Take() == 0,
+                    "queue valid candidate");
+            ++m_ReloadStep;
+        } else if (m_ReloadStep == 2 && marker("bml_probe_new_scope")) {
+            Require(m_Context.Commands().ExecuteLine("bml_probe_fail_provider").Take() != 0,
+                    "provider callback reports command failure");
+            ++m_ReloadStep;
+        } else if (m_ReloadStep == 3 && marker("bml_probe_dependency_failed")) {
+            return true;
+        }
+        Require(m_Frames < 600, "reload, rollback or dependency query timed out");
+        return false;
     }
 
     void CheckCommandLifetime(bool removeBeforeExecute) {
@@ -459,6 +511,8 @@ private:
     int m_TextNotifications = 0;
     int m_SelfCalls = 0, m_RepeatCalls = 0, m_NoArgCalls = 0, m_VoidCalls = 0;
     CKDWORD m_LastTick = 0;
+    int m_ReloadStep = 0;
+    std::string m_ScriptPath, m_ScriptSource;
     int m_Frames = 0, m_PhysicsFrames = 0, m_Renders = 0, m_Phase = 0, m_Priority = 0;
     bool m_MenuReady = false, m_Finished = false;
 };

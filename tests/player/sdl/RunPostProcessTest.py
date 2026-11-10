@@ -11,8 +11,10 @@ import shutil
 import subprocess
 import tempfile
 
+from ScriptExamples import stage_examples
 
-def stage(source, probe, destination, mods_from=None, scripts=False):
+
+def stage(source, probe, destination, mods_from=None, scripts=False, examples=False, tutorials=False):
     runtime = destination / "runtime"
     # Materialize links so neither Player nor test staging can write back into
     # the supplied runtime through a symlink to its configuration or Mods.
@@ -23,8 +25,10 @@ def stage(source, probe, destination, mods_from=None, scripts=False):
     mods.mkdir(parents=True)
     if mods_from:
         shutil.copytree(mods_from, mods, dirs_exist_ok=True, symlinks=False)
+    identities = stage_examples(mods, tutorials) if examples else []
     if scripts:
-        for name in ("DependencyProbe.mod.as", "ScriptAccessProbe.mod.as"):
+        for name in ("DependencyProbe.mod.as", "ScriptAccessProbe.mod.as",
+                     "ScriptRuntimeProbe.mod.as", "ScriptEventProbe.mod.as"):
             shutil.copy2(Path(__file__).with_name(name), mods / name)
     installed = mods / probe.name
     shutil.copy2(probe, installed)
@@ -52,7 +56,7 @@ def stage(source, probe, destination, mods_from=None, scripts=False):
             config.set(section, key, value)
     with ini.open("w", encoding="utf-8") as file:
         config.write(file)
-    return runtime, player
+    return runtime, player, identities
 
 
 def run(args):
@@ -66,14 +70,20 @@ def run(args):
             raise RuntimeError(f"Probe/Player extension ABI mismatch ({name})")
     args.output.mkdir(parents=True, exist_ok=True)
     results = []
+    scripts = host_abi.get("scripts", False) and not args.without_script_consumers
+    if args.script_examples and not host_abi.get("scripts", False):
+        raise RuntimeError("Script examples require a script-enabled runtime")
     for cycle in range(args.repeat):
         directory = Path(tempfile.mkdtemp(prefix=f"cycle-{cycle + 1}-", dir=args.output))
-        runtime, player = stage(args.runtime, args.probe, directory, args.mods_from, host_abi.get("scripts", False))
+        runtime, player, identities = stage(args.runtime, args.probe, directory, args.mods_from,
+                                            scripts, args.script_examples, args.tutorial_examples)
         result_path = directory / "result.json"
         env = os.environ.copy()
         env["BML_POSTPROCESS_RESULT"] = str(result_path)
-        env["BML_EXPECT_MODS"] = ",".join(args.expect_mod)
-        env["BML_EXPECT_SCRIPTS"] = "1" if host_abi.get("scripts") else "0"
+        if args.dump_api:
+            env["BML_SCRIPT_API_DUMP"] = str(directory / "bml-script-api.as")
+        env["BML_EXPECT_MODS"] = ",".join(args.expect_mod + identities)
+        env["BML_EXPECT_SCRIPTS"] = "1" if scripts else "0"
         if args.benchmark_api:
             env["BML_BENCHMARK_API"] = "1"
         with (directory / "player-output.log").open("wb") as log:
@@ -93,7 +103,13 @@ def run(args):
             raise RuntimeError(f"Probe produced no result (Player exit {exit_code}); logs: {directory}")
         result = json.loads(result_path.read_text(encoding="utf-8"))
         log = (runtime / "ModLoader" / "ModLoader.log").read_text(encoding="utf-8", errors="replace")
+        if args.script_examples:
+            for marker in ("BML single-file script smoke loaded resource=true",
+                           "BML zip script smoke loaded resource=true"):
+                if marker not in log:
+                    raise RuntimeError(f"Script resource regression ({marker}); logs: {directory}")
         result.update(exit_code=exit_code,
+                      script_examples=len(identities),
                       probe_sha256=hashlib.sha256(args.probe.read_bytes()).hexdigest(),
                       staged_sha256=hashlib.sha256((runtime / "ModLoader" / "Mods" / args.probe.name).read_bytes()).hexdigest(),
                       unloaded=Path(str(result_path) + ".unloaded").exists(),
@@ -110,6 +126,10 @@ def run(args):
         if not (result["passed"] and exit_code == 0 and result["unloaded"] and result["clean_shutdown"]
                 and result["probe_sha256"] == result["staged_sha256"]):
             raise RuntimeError(f"PostProcess regression: {result}")
+        if args.dump_api:
+            if not (directory / "bml-script-api.as").is_file():
+                raise RuntimeError("API export missing; rebuild the probe with matching CKAngelScript headers")
+            shutil.copy2(directory / "bml-script-api.as", args.dump_api)
         print(f"PASS cycle {cycle + 1}: {result}", flush=True)
 
 
@@ -122,8 +142,17 @@ if __name__ == "__main__":
     parser.add_argument("--mods-from", type=lambda p: Path(p).resolve())
     parser.add_argument("--expect-mod", action="append", default=[])
     parser.add_argument("--timeout", type=float, default=60)
+    parser.add_argument("--dump-api", type=lambda p: Path(p).resolve())
+    parser.add_argument("--script-examples", action="store_true",
+                        help="Compile and load the SDK and positive smoke examples")
+    parser.add_argument("--tutorial-examples", action="store_true",
+                        help="Also verify documentation examples with a matching documentation checkout")
+    parser.add_argument("--without-script-consumers", action="store_true",
+                        help="Exercise extension registration and teardown without script modules")
     parser.add_argument("--benchmark-api", action="store_true", help="Measure common SDK calls in Player")
     arguments = parser.parse_args()
+    if arguments.tutorial_examples:
+        arguments.script_examples = True
     if arguments.repeat < 1 or arguments.timeout <= 0:
         parser.error("repeat and timeout must be positive")
     if arguments.output == arguments.runtime or arguments.runtime in arguments.output.parents:

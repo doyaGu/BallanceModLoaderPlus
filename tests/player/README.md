@@ -44,7 +44,11 @@ python tests/player/sdl/RunPostProcessTest.py \
 
 `--expect-mod` is repeatable and requires each identity to reach the loaded state.
 Include native ABI sidecars. Script-enabled runs automatically stage the probe’s
-script helpers; test native-only runtime/SDK builds separately. The extended
+script helpers; test native-only runtime/SDK builds separately. These helpers
+check strict ConfigValue reads and choices ownership, keyboard snapshot COW and
+retirement, zero-delay timers, full command notifications, successful reload and
+failed-candidate rollback, stale-view output clearing, terminal cleanup and an
+instant dependency query after the provider fails. The extended
 SDK fixture covers C/C++, all four native profiles, inter-Mod interfaces,
 configuration notifications, timer/command lifetimes, CK borrowing after object
 deletion, script dependencies and the twelve in-tree Mods.
@@ -57,3 +61,43 @@ a cross-platform performance claim.
 Loading every Mod is startup coverage. Full level transitions, each Mod’s game
 behavior, visual correctness and all input devices remain separate acceptance
 work. [Current evidence and pending targets](../../docs/en/validation.md).
+
+## Script API registration and examples
+
+`--without-script-consumers` leaves the extension enabled while staging no probe
+script modules. It checks registration and clean engine teardown, including the
+native value type that exposes ConfigPropertyDefinition.Choices through owned
+array accessors. This is separate from a build with scripting disabled.
+
+`--script-examples` compiles and loads the three SDK examples, template and
+positive smoke scripts (including a real ZIP with resources). It also
+compiles five reload/recovery source variants with their lifecycle methods
+renamed in the staged copy, so intentional exit/throw paths cannot run. Real
+runtime replacement and rollback are exercised by ScriptRuntimeProbe instead.
+`--tutorial-examples` additionally enables the complete tutorial asset and
+complete course code blocks; use it with documentation matching the API.
+Each expected identity must reach Loaded; a script compile failure cannot pass
+because Player still starts. These checks cover compilation/startup, not every
+gameplay path in the examples.
+
+When a prepared runtime is supplied to the standalone CMake project, CTest
+registers the normal three-cycle probe, three-cycle empty-consumer registration
+probe, and a one-cycle example check for script-enabled runtimes.
+
+To refresh editor declarations from the actual registered runtime:
+
+```sh
+python tests/player/sdl/RunPostProcessTest.py \
+  --runtime "/path/to/prepared/runtime" \
+  --probe "/path/to/SdlPostProcessProbe.bmodp" \
+  --output build/script-api-runs --repeat 1 \
+  --dump-api build/bml-script-api.as
+python tools/generate_script_api.py --export build/bml-script-api.as
+python tools/generate_script_api.py --export build/bml-script-api.as --check
+```
+
+The dump requires headers matching the runtime CKAngelScript, discovered from
+the sibling checkout or BML_TEST_CKAS_INCLUDE/BML_TEST_AS_INCLUDE. The probe uses
+public runtime/engine reflection, not another registration list. The publisher
+restores @+ ownership markers from native declarations because reflection omits
+them, and replaces only the BML section of the editor baseline.
