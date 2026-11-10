@@ -121,11 +121,17 @@ def main() -> int:
         # Player package. Supply its already-loaded SDL in the normal host Bin
         # directory without editing any library or consumer load commands.
         (host / "Bin").mkdir()
-        for line in run("otool", "-L", str(loader)).splitlines()[1:]:
-            dependency = Path(line.strip().split(" (", 1)[0])
-            if dependency.name.startswith("libSDL3"):
-                assert dependency.is_absolute() and dependency.is_file(), dependency
-                (host / "Bin" / dependency.name).symlink_to(dependency)
+        dyld = ctypes.CDLL(None)
+        dyld._dyld_image_count.restype = ctypes.c_uint32
+        dyld._dyld_get_image_name.argtypes = [ctypes.c_uint32]
+        dyld._dyld_get_image_name.restype = ctypes.c_char_p
+        images = [Path(os.fsdecode(dyld._dyld_get_image_name(index)))
+                  for index in range(dyld._dyld_image_count())]
+        sdl_images = [image for image in images if image.name.startswith("libSDL3")]
+        assert len(sdl_images) == 1, sdl_images
+        dependency = sdl_images[0]
+        assert dependency.is_absolute() and dependency.is_file(), dependency
+        (host / "Bin" / dependency.name).symlink_to(dependency)
     projects = {}
     for profile in ("basic", "interface-provider", "interface-consumer", "imc-provider"):
         destination = work / "中文工作区" / profile
