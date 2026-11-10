@@ -57,7 +57,10 @@ def main():
         stage = root / "staged"
         output = root / "server"
         output.mkdir()
-        abi = {"schema": 1, **target, "sdk_abi": "a" * 64, "configuration": "Debug", "scripts": False, "version": "v0"}
+        abi = {"schema": 2, **target, "mod_api": "bml.mod", "mod_api_major": 1,
+               "sdk_abi": "a" * 64, "configuration": "Debug", "scripts": False,
+               "extension_abis": {"engine": "b" * 64 + "-Debug", "imgui": "c" * 64 + "-Debug"},
+               "version": "v0"}
         put_json(game / "ModLoader/BML.abi.json", abi)
         # These executable copies test format/architecture diagnostics only;
         # the fixture never starts an engine or a real game scene.
@@ -141,6 +144,13 @@ def main():
             (game / loader_relative).write_bytes(b"invalid binary")
             assert "wrong-format-or-architecture" in updater("doctor", success=False)
             (game / loader_relative).write_bytes(saved_loader)
+            for unsupported in ({"mod_api": "unknown"}, {"mod_api_major": 2}):
+                put_json(stage / "ModLoader/BML.abi.json", {**abi, **unsupported})
+                rejected = run(sys.executable, args.packager, "--stage", stage,
+                    "--output", root / "unsupported-protocol", "--version", "v1",
+                    "--signing-key", key, "--signer", signer, success=False)
+                assert "unsupported native Mod C protocol" in rejected
+            put_json(stage / "ModLoader/BML.abi.json", abi)
             run(sys.executable, args.packager, "--stage", stage, "--output", output, "--version", "v1",
                 "--signing-key", key, "--signer", signer, "--base-url", base_url)
             package = next(output.glob("*.zip"))
@@ -149,9 +159,22 @@ def main():
             channel = json.loads(channel_path.read_text())
             original_channel = dict(channel)
             with zipfile.ZipFile(package) as archive:
+                assert json.loads(archive.read("ModLoader/BML.abi.json")) == {**abi, "version": "v1"}
                 assert not any("Updater" in name for name in archive.namelist())
                 if os.name != "nt":
                     assert (archive.getinfo(loader_relative).external_attr >> 16) & 0o111
+            legacy_stage = root / "schema1-stage"
+            shutil.copytree(stage, legacy_stage)
+            legacy_abi = {name: value for name, value in abi.items()
+                          if name not in {"mod_api", "mod_api_major", "extension_abis"}}
+            legacy_abi["schema"] = 1
+            put_json(legacy_stage / "ModLoader/BML.abi.json", legacy_abi)
+            legacy_output = root / "schema1-output"
+            run(sys.executable, args.packager, "--stage", legacy_stage,
+                "--output", legacy_output, "--version", "v1",
+                "--signing-key", key, "--signer", signer)
+            with zipfile.ZipFile(next(legacy_output.glob("*.zip"))) as archive:
+                assert json.loads(archive.read("ModLoader/BML.abi.json")) == {**legacy_abi, "version": "v1"}
             before = (game / loader_relative).read_bytes()
             assert "local package verified" in updater("verify-local", package)
             assert "Detached signature verification failed" in updater("verify-local", package, success=False, executable=args.production_updater)

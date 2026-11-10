@@ -79,11 +79,13 @@ def main() -> int:
         parser.error("Output must be outside the input stage")
     abi = json.loads((stage / "ModLoader/BML.abi.json").read_text(encoding="utf-8"))
     target = {name: abi.get(name) for name in ("runtime", "platform", "architecture", "host_linkage")}
-    if (abi.get("schema") != 1 or target["runtime"] != "sdl" or target["platform"] not in {"windows", "linux", "macos"}
+    if (abi.get("schema") not in (1, 2) or target["runtime"] != "sdl" or target["platform"] not in {"windows", "linux", "macos"}
             or target["architecture"] not in {"x86", "x64", "arm64"} or target["host_linkage"] not in {"dynamic", "static"}
             or (target["architecture"] == "x86" and target["platform"] != "windows")
             or not re.fullmatch(r"[0-9a-f]{64}", abi.get("sdk_abi", ""))):
         parser.error("Stage has no valid SDL ABI descriptor")
+    if abi["schema"] == 2 and (abi.get("mod_api") != "bml.mod" or abi.get("mod_api_major") != 1):
+        parser.error("Stage has an unsupported native Mod C protocol")
     subprocess.run([args.signer, "check", str(args.signing_key)],
                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     abi["version"] = args.version
