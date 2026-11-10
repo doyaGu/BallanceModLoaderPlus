@@ -731,7 +731,8 @@ static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data)
     CKRenderContext *dev = bd->RenderContext;
 
     // Setup viewport
-    VxRect viewport(0, 0, draw_data->DisplaySize.x, draw_data->DisplaySize.y);
+    VxRect viewport(0, 0, draw_data->DisplaySize.x * draw_data->FramebufferScale.x,
+                        draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
     dev->SetViewRect(viewport);
 
     // Setup render state: alpha-blending, no face culling, no depth testing, shade mode
@@ -761,6 +762,7 @@ static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data)
 }
 
 static VxDrawPrimitiveData *ImGui_ImplCK2_UploadVertices(CKRenderContext *dev,
+                                                         const ImDrawData *draw_data,
                                                          const ImDrawVert *vertices,
                                                          int vertex_count,
                                                          ImGui_ImplCK2_FrameMetrics *metrics,
@@ -795,10 +797,14 @@ static VxDrawPrimitiveData *ImGui_ImplCK2_UploadVertices(CKRenderContext *dev,
         XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
         XPtrStrided<CKDWORD> colors(data->ColorPtr, data->ColorStride);
         XPtrStrided<VxUV> uvs(data->TexCoordPtr, data->TexCoordStride);
+        const ImVec2 offset = draw_data->DisplayPos;
+        const ImVec2 scale = draw_data->FramebufferScale;
 
         for (int i = 0; i < vertex_count; ++i)
         {
-            positions->Set(vertices[i].pos.x, vertices[i].pos.y, 0.0f, 1.0f);
+            // ImGui uses pixel boundaries; CK2's XYZRHW pixel centers are at integer coordinates.
+            positions->Set((vertices[i].pos.x - offset.x) * scale.x - 0.5f,
+                           (vertices[i].pos.y - offset.y) * scale.y - 0.5f, 0.0f, 1.0f);
             *colors = IMGUI_COL_TO_ARGB(vertices[i].col);
             uvs->u = vertices[i].uv.x;
             uvs->v = vertices[i].uv.y;
@@ -1099,7 +1105,7 @@ static void ImGui_ImplCK2_RenderDrawDataInternal(ImDrawData *draw_data, ImGui_Im
                 if (!segment_upload_attempted)
                 {
                     segment_data = ImGui_ImplCK2_UploadVertices(
-                        dev, vtx_buffer + segment.VertexOffset, (int)segment.VertexCount,
+                        dev, draw_data, vtx_buffer + segment.VertexOffset, (int)segment.VertexCount,
                         metrics, &abort_render);
                     segment_upload_attempted = true;
                 }
@@ -1125,7 +1131,7 @@ static void ImGui_ImplCK2_RenderDrawDataInternal(ImDrawData *draw_data, ImGui_Im
                     segment_data = NULL;
                 }
                 data = ImGui_ImplCK2_UploadVertices(
-                    dev, vtx_buffer + draw_slice->VertexOffset, (int)draw_slice->VertexCount,
+                    dev, draw_data, vtx_buffer + draw_slice->VertexOffset, (int)draw_slice->VertexCount,
                     metrics, &abort_render);
                 if (abort_render)
                     return;

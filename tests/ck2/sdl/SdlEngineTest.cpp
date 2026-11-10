@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <array>
 #include <memory>
 #include "CKAll.h"
 #include "TextureTestObserver.h"
@@ -21,14 +22,28 @@ namespace {
 class DrawObserver : public TextureTestObserver {
 public:
     int Draws = 0, Clears = 0;
+    std::array<VxVector4, 4> DrawPositions{};
+    int DrawPositionCount = 0;
+    CKViewportData DrawViewport;
     CKBOOL Clear(CKDWORD, CKDWORD, float, CKDWORD, int, CKRECT *) override { ++Clears; return TRUE; }
     CKBOOL BeginScene() override { return TRUE; }
     CKBOOL EndScene() override { return TRUE; }
     CKBOOL BeginOverlayPhase() override { return TRUE; }
     void InitDefaultRenderStatesValue() override {}
     CKBOOL EnableLight(CKDWORD, CKBOOL) override { return TRUE; }
-    CKBOOL DrawPrimitive(VXPRIMITIVETYPE, CKWORD *, int, VxDrawPrimitiveData *) override {
+    CKBOOL DrawPrimitive(VXPRIMITIVETYPE, CKWORD *, int, VxDrawPrimitiveData *data) override {
         ++Draws;
+        DrawViewport = Viewport;
+        DrawPositionCount = 0;
+        if (data && !(data->Flags & CKRST_DP_VBUFFER) && data->PositionPtr &&
+            data->PositionStride >= sizeof(VxVector4)) {
+            XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
+            for (int i = 0; i < data->VertexCount && i < int(DrawPositions.size()); ++i) {
+                DrawPositions[i] = *positions;
+                ++DrawPositionCount;
+                ++positions;
+            }
+        }
         return TRUE;
     }
 };
@@ -99,16 +114,20 @@ protected:
         EXPECT_TRUE(texture->Create(2, 2, 32));
         return texture;
     }
-    void RenderUi(CKTexture *texture) {
+    void RenderUi(CKTexture *texture, ImVec2 displayPos = ImVec2(0, 0),
+                  ImVec2 framebufferScale = ImVec2(1, 1)) {
+        const ImVec2 displaySize(640 / framebufferScale.x, 360 / framebufferScale.y);
         ImDrawList list(ImGui::GetDrawListSharedData());
         list._ResetForNewFrame();
-        list.PushClipRect(ImVec2(0, 0), ImVec2(640, 360));
+        list.PushClipRect(displayPos, ImVec2(displayPos.x + displaySize.x, displayPos.y + displaySize.y));
         list.PushTexture(ImTextureRef(reinterpret_cast<ImTextureID>(texture)));
-        list.AddRectFilled(ImVec2(10, 10), ImVec2(80, 80), IM_COL32_WHITE);
+        list.AddRectFilled(ImVec2(displayPos.x + 10, displayPos.y + 10),
+                           ImVec2(displayPos.x + 80, displayPos.y + 80), IM_COL32_WHITE);
         ImDrawData data;
         data.Valid = true;
-        data.DisplaySize = ImVec2(640, 360);
-        data.FramebufferScale = ImVec2(1, 1);
+        data.DisplayPos = displayPos;
+        data.DisplaySize = displaySize;
+        data.FramebufferScale = framebufferScale;
         ASSERT_GT(list.VtxBuffer.Size, 0);
         ASSERT_GT(list.IdxBuffer.Size, 0);
         data.AddDrawList(&list);
@@ -563,6 +582,44 @@ TEST_F(SdlEngineTest, CatalogDetectsSameVersionReloadWithoutACountChange) {
     EXPECT_NE(before.Generation, after.Generation);
     ASSERT_EQ(CK_OK, CKRemovePrototypeDeclaration(CKGetObjectDeclarationFromGuid(prototypeGuid)));
     EXPECT_FALSE(catalog.Validate(after));
+}
+
+TEST_F(SdlEngineTest, UiAlignsGeometryWithCk2PixelCenters) {
+    ImGui::CreateContext();
+    ASSERT_TRUE(ImGui_ImplCK2_Init(Context));
+    RenderUi(Texture());
+    ASSERT_EQ(4, State.DrawPositionCount);
+    EXPECT_FLOAT_EQ(9.5f, State.DrawPositions[0].x);
+    EXPECT_FLOAT_EQ(9.5f, State.DrawPositions[0].y);
+    EXPECT_FLOAT_EQ(79.5f, State.DrawPositions[2].x);
+    EXPECT_FLOAT_EQ(79.5f, State.DrawPositions[2].y);
+}
+
+TEST_F(SdlEngineTest, UiProjectsDisplayCoordinatesIntoFramebufferPixels) {
+    ImGui::CreateContext();
+    ASSERT_TRUE(ImGui_ImplCK2_Init(Context));
+    CKTexture *texture = Texture();
+    VxRect originalViewport(4, 8, 620, 350);
+    Device->SetViewRect(originalViewport);
+    for (const ImVec2 scale : {ImVec2(2, 2), ImVec2(1.5f, 1.25f)}) {
+        SCOPED_TRACE(::testing::Message() << "framebuffer scale " << scale.x << ", " << scale.y);
+        RenderUi(texture, ImVec2(100, 50), scale);
+        ASSERT_EQ(4, State.DrawPositionCount);
+        EXPECT_FLOAT_EQ(10 * scale.x - 0.5f, State.DrawPositions[0].x);
+        EXPECT_FLOAT_EQ(10 * scale.y - 0.5f, State.DrawPositions[0].y);
+        EXPECT_FLOAT_EQ(80 * scale.x - 0.5f, State.DrawPositions[2].x);
+        EXPECT_FLOAT_EQ(80 * scale.y - 0.5f, State.DrawPositions[2].y);
+        EXPECT_EQ(0u, State.DrawViewport.ViewX);
+        EXPECT_EQ(0u, State.DrawViewport.ViewY);
+        EXPECT_EQ(640u, State.DrawViewport.ViewWidth);
+        EXPECT_EQ(360u, State.DrawViewport.ViewHeight);
+        VxRect restored;
+        Device->GetViewRect(restored);
+        EXPECT_FLOAT_EQ(originalViewport.left, restored.left);
+        EXPECT_FLOAT_EQ(originalViewport.top, restored.top);
+        EXPECT_FLOAT_EQ(originalViewport.right, restored.right);
+        EXPECT_FLOAT_EQ(originalViewport.bottom, restored.bottom);
+    }
 }
 
 TEST_F(SdlEngineTest, UiRestoresTextureStagesTransformsAndAlphaOnSuccessAndFailure) {
