@@ -89,6 +89,30 @@ Default engine physics scheduling is retained and is not an unresolved
 BML scheduling redesign. IVP v2 remains out of scope. No Ballanced source was
 changed for this audit.
 
+## 0.4.0 version synchronization (2026-11-09)
+
+CMake's 0.4.0 release version now agrees with the installed SDK header, CMake
+package version and the loaded binary's string/numeric version APIs. The Windows
+resource continues to use the same generated macros; no Windows build was run
+for this audit. Native templates and examples declare their SDK's `BML_VERSION`
+as the loader minimum. Script templates, examples, smoke fixtures and publishing
+commands now target 0.4.0. Individual Mod versions and historical configuration
+migrations retain their separate meanings.
+
+The native protocol remains `bml.mod` major 1, the ABI descriptor remains schema
+2 and update manifests remain schema 2. The publisher now accepts current
+schema-2 runtimes, preserves their extension metadata and rejects unsupported C
+protocols; schema-1 packaging compatibility also passes. An actual macOS ARM64
+0.4.0 runtime produced a local test-signed package whose runtime, manifest and
+channel versions all match 0.4.0. The test-key updater verified that package.
+This did not publish a release or validate a production signing key.
+
+The 0.4.0 macOS ARM64 suites passed **111/111** with scripting and **102/102**
+without scripting. The Player loaded all 21 updated documentation/template
+script examples. Each script mode also passed three independent probe runs with
+all twelve in-tree Mods. Other-platform and full gameplay acceptance remain
+pending as listed below.
+
 ## Still pending
 
 Real Windows/Linux/macOS x64 runs; all static integration; X11/Wayland and full
