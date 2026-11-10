@@ -46,5 +46,6 @@ BML_DEFINE_MOD(HelloMod, {
     .Version = "__MOD_VERSION_CPP__",
     .Author = "__MOD_AUTHOR_CPP__",
     .Description = "__MOD_DESCRIPTION_CPP__",
+    .MinimumLoaderVersion = BML_VERSION,
     .Dependencies = {{"BML"}},
 })

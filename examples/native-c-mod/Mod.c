@@ -37,7 +37,7 @@ static const BML_ModDefinition definition = {sizeof(BML_ModDefinition),
                                              "1.0.0",
                                              "BML",
                                              "Minimal native Mod using the C protocol",
-                                             "",
+                                             BML_VERSION,
                                              NULL,
                                              0,
                                              0};

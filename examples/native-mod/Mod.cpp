@@ -47,4 +47,5 @@ BML_DEFINE_MOD(MyMod, {
     .Version = "1.0.0",
     .Author = "BML",
     .Description = "Config, command, timer and input",
+    .MinimumLoaderVersion = BML_VERSION,
 })

@@ -39,5 +39,6 @@ BML_DEFINE_MOD(HelloMod, {
     .Version = "__MOD_VERSION_CPP__",
     .Author = "__MOD_AUTHOR_CPP__",
     .Description = "__MOD_DESCRIPTION_CPP__",
+    .MinimumLoaderVersion = BML_VERSION,
     .Dependencies = {{"BML"}, {BML___PROVIDER_SYMBOL___PROVIDER_ID, std::to_string(BML___PROVIDER_SYMBOL___PROVIDER_VERSION_MAJOR) + "." + std::to_string(BML___PROVIDER_SYMBOL___PROVIDER_VERSION_MINOR) + "." + std::to_string(BML___PROVIDER_SYMBOL___PROVIDER_VERSION_PATCH), false}},
 })

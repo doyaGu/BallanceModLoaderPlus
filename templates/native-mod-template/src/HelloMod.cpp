@@ -40,5 +40,6 @@ BML_DEFINE_MOD(HelloMod, {
     .Version = "1.0.0",
     .Author = "Template",
     .Description = "Minimal example mod for BML+",
+    .MinimumLoaderVersion = BML_VERSION,
     .Dependencies = {{"BML"}},
 })

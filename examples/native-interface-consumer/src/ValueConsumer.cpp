@@ -35,5 +35,6 @@ BML_DEFINE_MOD(ValueConsumer, {
     .Version = "1.0.0",
     .Author = "BML",
     .Description = "Consumes the example.value native interface",
+    .MinimumLoaderVersion = BML_VERSION,
     .Dependencies = {{"BML", "", false}, {BML_EXAMPLE_VALUE_PROVIDER_ID, std::to_string(BML_EXAMPLE_VALUE_PROVIDER_VERSION_MAJOR) + "." + std::to_string(BML_EXAMPLE_VALUE_PROVIDER_VERSION_MINOR) + "." + std::to_string(BML_EXAMPLE_VALUE_PROVIDER_VERSION_PATCH), false}},
 })

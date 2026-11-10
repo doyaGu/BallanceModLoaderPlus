@@ -6,6 +6,7 @@ import ctypes
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -76,6 +77,20 @@ def main() -> int:
     else:
         loader = next(sdk.rglob("libBMLPlus.dylib" if sys.platform == "darwin" else "libBMLPlus.so"))
     host_library = ctypes.CDLL(str(loader), mode=ctypes.RTLD_GLOBAL)
+    version_header = (sdk / "include/BML/Version.h").read_text(encoding="utf-8")
+    version_match = re.search(r'^#define BML_VERSION "([0-9]+\.[0-9]+\.[0-9]+)"$',
+                              version_header, re.MULTILINE)
+    assert version_match, "SDK release version is missing"
+    release = version_match.group(1)
+    host_library.BML_GetVersionString.restype = ctypes.c_char_p
+    assert host_library.BML_GetVersionString().decode("utf-8") == release
+    version = [ctypes.c_int() for _ in range(3)]
+    host_library.BML_GetVersion.argtypes = [ctypes.POINTER(ctypes.c_int)] * 3
+    host_library.BML_GetVersion.restype = None
+    host_library.BML_GetVersion(*(ctypes.byref(part) for part in version))
+    assert tuple(part.value for part in version) == tuple(map(int, release.split(".")))
+    package_version = next(sdk.rglob("BMLConfigVersion.cmake")).read_text(encoding="utf-8")
+    assert f'set(PACKAGE_VERSION "{release}")' in package_version
     for name in ("CKGetPluginInfoCount", "CKGetPluginInfo", "RegisterBehaviorDeclarations",
                  "BML_GetInterface"):
         assert hasattr(host_library, name), f"Required host export is missing: {name}"
@@ -161,6 +176,7 @@ def main() -> int:
         assert metadata.id.decode("utf-8") == manifest["id"]
         assert metadata.name.decode("utf-8") == manifest["name"]
         assert metadata.version.decode("utf-8") == manifest["version"]
+        assert metadata.minimum_loader_version.decode("utf-8") == release
         assert metadata.author.decode("utf-8") == "SDK Test"
         assert metadata.dependency_count == (2 if profile == "interface-consumer" else 1)
         original_interface = interface.value

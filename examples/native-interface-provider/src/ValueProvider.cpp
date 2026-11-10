@@ -44,5 +44,6 @@ BML_DEFINE_MOD(ValueProvider, {
     .Version = "1.0.0",
     .Author = "BML",
     .Description = "Publishes the example.value native interface",
+    .MinimumLoaderVersion = BML_VERSION,
     .Dependencies = {{"BML", "", false}},
 })
