@@ -116,7 +116,7 @@ void TravelMode::EnterTravelCam() {
     m_TravelCam->SetFov(cam->GetFov());
     m_RenderContext->AttachViewpointToCamera(m_TravelCam);
 
-    ModSupport::ExecuteCommand("hud off");
+    ModSupport::ExecuteCommand(m_Context, "hud off");
 }
 
 void TravelMode::ExitTravelCam() {
@@ -127,7 +127,7 @@ void TravelMode::ExitTravelCam() {
         ModSupport::Engine(m_Context)->DestroyObject(m_TravelCam);
         m_TravelCam = nullptr;
 
-        ModSupport::ExecuteCommand("hud on");
+        ModSupport::ExecuteCommand(m_Context, "hud on");
     }
 }
 

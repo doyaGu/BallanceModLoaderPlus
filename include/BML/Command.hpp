@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace BML::Command {
 
@@ -32,11 +33,8 @@ struct Definition {
 };
 
 struct Info;
-using Visitor = std::function<int(const Info &)>;
 
-[[nodiscard]] inline int Visit(const Visitor &visitor) noexcept;
-[[nodiscard]] inline int Find(std::string_view name, Info &out) noexcept;
-[[nodiscard]] inline int ExecuteLine(std::string_view line, int &commandStatus) noexcept;
+class View;
 
 struct Info {
     Info() = default;
@@ -61,8 +59,7 @@ private:
           Hidden((value.Flags & BML_COMMAND_HIDDEN) != 0),
           Enabled((value.Flags & BML_COMMAND_DISABLED) == 0) {}
 
-    friend int Visit(const Visitor &visitor) noexcept;
-    friend int Find(std::string_view name, Info &out) noexcept;
+    friend class View;
 };
 
 class Invocation {
@@ -92,7 +89,9 @@ public:
         return {m_Value->Input, m_Value->InputLength};
     }
 
-    [[nodiscard]] bool HasInput() const noexcept { return m_Value && m_Value->Input; }
+    [[nodiscard]] bool HasInput() const noexcept {
+        return m_Value && m_Value->Input;
+    }
 
     [[nodiscard]] Result<void> Write(std::string_view text) const noexcept {
         if (!m_Value || !m_Value->Write)
@@ -180,7 +179,9 @@ private:
         CallbackState(ExecuteCallback execute, CompleteCallback complete) noexcept
             : Execute(std::move(execute)), Complete(std::move(complete)) {}
 
-        void Retain() noexcept { References.fetch_add(1, std::memory_order_relaxed); }
+        void Retain() noexcept {
+            References.fetch_add(1, std::memory_order_relaxed);
+        }
 
         void Release() noexcept {
             if (References.fetch_sub(1, std::memory_order_acq_rel) == 1)
@@ -198,7 +199,9 @@ private:
     public:
         explicit CallbackReference(CallbackState *state) noexcept : m_State(state) {}
 
-        ~CallbackReference() { m_State->Release(); }
+        ~CallbackReference() {
+            m_State->Release();
+        }
 
         CallbackReference(const CallbackReference &) = delete;
         CallbackReference &operator=(const CallbackReference &) = delete;
@@ -210,7 +213,9 @@ private:
 public:
     Registration() noexcept = default;
 
-    ~Registration() { Dispose(); }
+    ~Registration() {
+        Dispose();
+    }
 
     Registration(const Registration &) = delete;
     Registration &operator=(const Registration &) = delete;
@@ -230,6 +235,9 @@ public:
         }
         return *this;
     }
+
+private:
+    friend class View;
 
     [[nodiscard]] Result<void> Register(const Definition &definition, ExecuteCallback execute,
                                         CompleteCallback complete = {},
@@ -303,6 +311,7 @@ public:
         }
     }
 
+public:
     [[nodiscard]] Result<void> Unregister() noexcept {
         if (m_State && m_State->HostReleased.load(std::memory_order_acquire)) {
             Reset();
@@ -327,7 +336,9 @@ public:
                !m_State->HostReleased.load(std::memory_order_acquire);
     }
 
-    [[nodiscard]] BML_CommandHandle Handle() const noexcept { return m_Handle; }
+    [[nodiscard]] BML_CommandHandle Handle() const noexcept {
+        return m_Handle;
+    }
 
     [[nodiscard]] Result<void> SetEnabled(bool enabled) noexcept {
         if (!IsRegistered() || !m_Interface)
@@ -413,9 +424,7 @@ private:
         return value.find('\0') != std::string_view::npos;
     }
 
-    friend int Visit(const Visitor &visitor) noexcept;
-    friend int Find(std::string_view name, Info &out) noexcept;
-    friend int ExecuteLine(std::string_view line, int &commandStatus) noexcept;
+    friend class View;
 
     Interfaces::Reference<InterfaceTraits> m_Interface;
     std::string m_OwnerId;
@@ -423,91 +432,7 @@ private:
     BML_CommandHandle m_Handle = BML_COMMAND_INVALID_HANDLE;
 };
 
-[[nodiscard]] inline int Visit(const Visitor &visitor) noexcept {
-    if (!visitor)
-        return BML_ERROR_INVALID_PARAMETER;
-    Interfaces::Reference<Registration::InterfaceTraits> interfaceReference;
-    int status = interfaceReference.Open();
-    if (status != BML_OK)
-        return status;
-    if (!BML_IFACE_HAS(interfaceReference.Get(), BML_CommandInterface, Visit))
-        return BML_ERROR_NOT_FOUND;
-
-    struct State {
-        const Visitor *Callback;
-    } state = {&visitor};
-
-    const auto visit = [](void *userData, const BML_CommandInfo *wire) noexcept {
-        if (!userData || !wire || wire->StructSize < BML_COMMAND_INFO_1_0_SIZE)
-            return BML_ERROR_MALFORMED_MESSAGE;
-        State *state = static_cast<State *>(userData);
-        try {
-            const Info info(*wire);
-            return (*state->Callback)(info);
-        } catch (const std::bad_alloc &) {
-            return BML_ERROR_OUT_OF_MEMORY;
-        } catch (...) {
-            return BML_ERROR_FAIL;
-        }
-    };
-    return interfaceReference->Visit(BML::Detail::Cdecl<visit>::Call, &state);
-}
-
-[[nodiscard]] inline int Find(std::string_view name, Info &out) noexcept {
-    if (name.empty() || name.size() > BML_COMMAND_MAX_NAME_BYTES ||
-        name.find('\0') != std::string_view::npos)
-        return BML_ERROR_INVALID_PARAMETER;
-
-    Interfaces::Reference<Registration::InterfaceTraits> interfaceReference;
-    int status = interfaceReference.Open();
-    if (status != BML_OK)
-        return status;
-    if (!BML_IFACE_HAS(interfaceReference.Get(), BML_CommandInterface, Find))
-        return BML_ERROR_NOT_FOUND;
-
-    try {
-        const std::string terminated(name);
-        const auto store = [](void *userData, const BML_CommandInfo *wire) noexcept {
-            if (!userData || !wire || wire->StructSize < BML_COMMAND_INFO_1_0_SIZE)
-                return BML_ERROR_MALFORMED_MESSAGE;
-            try {
-                *static_cast<Info *>(userData) = Info(*wire);
-                return BML_OK;
-            } catch (const std::bad_alloc &) {
-                return BML_ERROR_OUT_OF_MEMORY;
-            } catch (...) {
-                return BML_ERROR_FAIL;
-            }
-        };
-        return interfaceReference->Find(terminated.c_str(), BML::Detail::Cdecl<store>::Call, &out);
-    } catch (const std::bad_alloc &) {
-        return BML_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return BML_ERROR_FAIL;
-    }
-}
-
-[[nodiscard]] inline int ExecuteLine(std::string_view line, int &commandStatus) noexcept {
-    commandStatus = BML_COMMAND_STATUS_FAILURE;
-    if (line.size() > BML_COMMAND_MAX_LINE_BYTES || line.find('\0') != std::string_view::npos)
-        return BML_ERROR_INVALID_PARAMETER;
-
-    Interfaces::Reference<Registration::InterfaceTraits> interfaceReference;
-    int status = interfaceReference.Open();
-    if (status != BML_OK)
-        return status;
-    if (!BML_IFACE_HAS(interfaceReference.Get(), BML_CommandInterface, ExecuteLine))
-        return BML_ERROR_NOT_FOUND;
-
-    try {
-        const std::string terminated(line);
-        return interfaceReference->ExecuteLine(terminated.c_str(), &commandStatus);
-    } catch (const std::bad_alloc &) {
-        return BML_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return BML_ERROR_FAIL;
-    }
-}
+using Visitor = std::function<int(const Info &)>;
 
 // Binds the explicit owner for registration. Existing command operations and
 // callback/RAII types remain the same; no second command implementation exists.
@@ -536,7 +461,138 @@ public:
         return Result<Registration>::Failure(BML_ERROR_FAIL);
     }
 
+    [[nodiscard]] Result<Info> Find(std::string_view name) const try {
+        auto owner = m_Context.Owner();
+        if (!owner)
+            return Result<Info>::Failure(owner.Code());
+        Info info;
+        const int code = FindInfo(name, info);
+        return code == BML_OK ? Result<Info>::Success(std::move(info))
+                              : Result<Info>::Failure(code);
+    } catch (const std::bad_alloc &) {
+        return Result<Info>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Info>::Failure(BML_ERROR_FAIL);
+    }
+
+    [[nodiscard]] Result<std::vector<Info>> ReadCommands() const try {
+        auto owner = m_Context.Owner();
+        if (!owner)
+            return Result<std::vector<Info>>::Failure(owner.Code());
+        std::vector<Info> infos;
+        const int code = Visit([&](const Info &info) {
+            infos.push_back(info);
+            return BML_OK;
+        });
+        return code == BML_OK ? Result<std::vector<Info>>::Success(std::move(infos))
+                              : Result<std::vector<Info>>::Failure(code);
+    } catch (const std::bad_alloc &) {
+        return Result<std::vector<Info>>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<std::vector<Info>>::Failure(BML_ERROR_FAIL);
+    }
+
+    [[nodiscard]] Result<int> ExecuteLine(std::string_view line) const try {
+        auto owner = m_Context.Owner();
+        if (!owner)
+            return Result<int>::Failure(owner.Code());
+        int status = BML_COMMAND_STATUS_FAILURE;
+        const int code = Execute(line, status);
+        return code == BML_OK ? Result<int>::Success(status) : Result<int>::Failure(code);
+    } catch (const std::bad_alloc &) {
+        return Result<int>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<int>::Failure(BML_ERROR_FAIL);
+    }
+
 private:
+    [[nodiscard]] static int Visit(const Visitor &visitor) noexcept {
+        if (!visitor)
+            return BML_ERROR_INVALID_PARAMETER;
+        Interfaces::Reference<Registration::InterfaceTraits> interfaceReference;
+        int status = interfaceReference.Open();
+        if (status != BML_OK)
+            return status;
+        if (!BML_IFACE_HAS(interfaceReference.Get(), BML_CommandInterface, Visit))
+            return BML_ERROR_NOT_FOUND;
+
+        struct State {
+            const Visitor *Callback;
+        } state = {&visitor};
+
+        const auto visit = [](void *userData, const BML_CommandInfo *wire) noexcept {
+            if (!userData || !wire || wire->StructSize < BML_COMMAND_INFO_1_0_SIZE)
+                return BML_ERROR_MALFORMED_MESSAGE;
+            State *state = static_cast<State *>(userData);
+            try {
+                const Info info(*wire);
+                return (*state->Callback)(info);
+            } catch (const std::bad_alloc &) {
+                return BML_ERROR_OUT_OF_MEMORY;
+            } catch (...) {
+                return BML_ERROR_FAIL;
+            }
+        };
+        return interfaceReference->Visit(BML::Detail::Cdecl<visit>::Call, &state);
+    }
+
+    [[nodiscard]] static int FindInfo(std::string_view name, Info &out) noexcept {
+        if (name.empty() || name.size() > BML_COMMAND_MAX_NAME_BYTES ||
+            name.find('\0') != std::string_view::npos)
+            return BML_ERROR_INVALID_PARAMETER;
+
+        Interfaces::Reference<Registration::InterfaceTraits> interfaceReference;
+        int status = interfaceReference.Open();
+        if (status != BML_OK)
+            return status;
+        if (!BML_IFACE_HAS(interfaceReference.Get(), BML_CommandInterface, Find))
+            return BML_ERROR_NOT_FOUND;
+
+        try {
+            const std::string terminated(name);
+            const auto store = [](void *userData, const BML_CommandInfo *wire) noexcept {
+                if (!userData || !wire || wire->StructSize < BML_COMMAND_INFO_1_0_SIZE)
+                    return BML_ERROR_MALFORMED_MESSAGE;
+                try {
+                    *static_cast<Info *>(userData) = Info(*wire);
+                    return BML_OK;
+                } catch (const std::bad_alloc &) {
+                    return BML_ERROR_OUT_OF_MEMORY;
+                } catch (...) {
+                    return BML_ERROR_FAIL;
+                }
+            };
+            return interfaceReference->Find(terminated.c_str(), BML::Detail::Cdecl<store>::Call,
+                                            &out);
+        } catch (const std::bad_alloc &) {
+            return BML_ERROR_OUT_OF_MEMORY;
+        } catch (...) {
+            return BML_ERROR_FAIL;
+        }
+    }
+
+    [[nodiscard]] static int Execute(std::string_view line, int &commandStatus) noexcept {
+        commandStatus = BML_COMMAND_STATUS_FAILURE;
+        if (line.size() > BML_COMMAND_MAX_LINE_BYTES || line.find('\0') != std::string_view::npos)
+            return BML_ERROR_INVALID_PARAMETER;
+
+        Interfaces::Reference<Registration::InterfaceTraits> interfaceReference;
+        int status = interfaceReference.Open();
+        if (status != BML_OK)
+            return status;
+        if (!BML_IFACE_HAS(interfaceReference.Get(), BML_CommandInterface, ExecuteLine))
+            return BML_ERROR_NOT_FOUND;
+
+        try {
+            const std::string terminated(line);
+            return interfaceReference->ExecuteLine(terminated.c_str(), &commandStatus);
+        } catch (const std::bad_alloc &) {
+            return BML_ERROR_OUT_OF_MEMORY;
+        } catch (...) {
+            return BML_ERROR_FAIL;
+        }
+    }
+
     Mod::Context m_Context;
 };
 

@@ -7,7 +7,6 @@ namespace ModSupport {
 template <class T>
 void RegisterCommand(const Context &context, std::vector<BML::Command::Registration> &registrations,
                      std::shared_ptr<T> command) {
-    BML::Command::Registration registration;
     BML::Command::CompleteCallback complete;
     if constexpr (requires(const Context &c, const std::vector<std::string> &args) {
                       command->GetTabCompletion(c, args);
@@ -23,8 +22,7 @@ void RegisterCommand(const Context &context, std::vector<BML::Command::Registrat
             }
             return BML::Result<void>::Success();
         };
-    registration
-        .Register(
+    auto registration = context.Commands().Register(
             T::Define(),
             [command, context](const auto &invocation) {
                 std::vector<std::string> args{std::string(invocation.InvokedAs())};
@@ -33,8 +31,7 @@ void RegisterCommand(const Context &context, std::vector<BML::Command::Registrat
                 command->Execute(context, args);
                 return BML_COMMAND_STATUS_SUCCESS;
             },
-            std::move(complete))
-        .Take();
+            std::move(complete)).Take();
     registrations.push_back(std::move(registration));
 }
 } // namespace ModSupport

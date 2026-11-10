@@ -98,9 +98,8 @@ inline void Show(const Context &c, CKBeObject *o, CK_OBJECT_SHOWOPTION option = 
     Check(BML::Scene::Show(c, Reference(c, o), option, hierarchy));
 }
 
-inline void ExecuteCommand(const char *text) {
-    int status = 0;
-    Check(BML::Command::ExecuteLine(text, status));
+inline void ExecuteCommand(const Context &context, const char *text) {
+    context.Commands().ExecuteLine(text).Take();
 }
 
 inline bool ResourceIs(std::string_view path, std::string_view expected) {
@@ -126,18 +125,18 @@ public:
     explicit Timers(Context c) : m_Context(c) {}
 
     template <class F> void AfterTicks(uint64_t ticks, F &&f) {
-        Keep(BML::Timer::SetTimeoutTicks(
-            m_Context, ticks, [fn = std::forward<F>(f)](const auto &, const auto &) { fn(); }));
+        Keep(m_Context.Timers().SetTimeoutTicks(
+            ticks, [fn = std::forward<F>(f)](const auto &, const auto &) { fn(); }));
     }
 
     template <class F> void After(double ms, F &&f) {
-        Keep(BML::Timer::SetTimeout(
-            m_Context, ms, [fn = std::forward<F>(f)](const auto &, const auto &) { fn(); }));
+        Keep(m_Context.Timers().SetTimeout(
+            ms, [fn = std::forward<F>(f)](const auto &, const auto &) { fn(); }));
     }
 
     template <class F> void EveryTicks(uint64_t ticks, F &&f) {
-        Keep(BML::Timer::SetIntervalTicks(
-            m_Context, ticks,
+        Keep(m_Context.Timers().SetIntervalTicks(
+            ticks,
             [fn = std::forward<F>(f)](const auto &, const auto &) { return fn(); }));
     }
 

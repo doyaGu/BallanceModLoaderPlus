@@ -550,7 +550,7 @@ void DebugUtilities::OnEditScript_Gameplay_Events(CKBehavior *script) {
 void DebugUtilities::OnProcess_Suicide() {
     if (m_EnableSuicideKey.Get<bool>() && !m_SuicideCd &&
         ModSupport::Keyboard(m_Context).IsKeyPressed(m_Suicide.Get<uint32_t>())) {
-        ModSupport::ExecuteCommand("kill");
+        ModSupport::ExecuteCommand(m_Context, "kill");
         m_Timers.After(1000.0f, [this]() { m_SuicideCd = false; });
         m_SuicideCd = true;
     }
@@ -661,9 +661,9 @@ void DebugUtilities::OnProcess_ResetBall() {
 void DebugUtilities::OnProcess_ChangeSpeed() {
     bool speedup = ModSupport::Keyboard(m_Context).IsKeyDown(m_SpeedupBall.Get<uint32_t>());
     if (speedup && !m_Speedup)
-        ModSupport::ExecuteCommand("speed 3");
+        ModSupport::ExecuteCommand(m_Context, "speed 3");
     if (!speedup && m_Speedup)
-        ModSupport::ExecuteCommand("speed 1");
+        ModSupport::ExecuteCommand(m_Context, "speed 1");
     m_Speedup = speedup;
 }
 

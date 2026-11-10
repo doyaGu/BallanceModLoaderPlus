@@ -43,16 +43,25 @@ struct Info {
 using Callback = std::function<bool(const Mod::Context &, const Event &)>;
 using OnceCallback = std::function<void(const Mod::Context &, const Event &)>;
 
+class Registration;
+namespace Detail {
+Result<Registration> Register(const Mod::Context &, Definition, Callback);
+}
+
 class Registration {
 public:
     Registration() noexcept = default;
 
-    ~Registration() noexcept { Dispose(); }
+    ~Registration() noexcept {
+        Dispose();
+    }
 
     Registration(const Registration &) = delete;
     Registration &operator=(const Registration &) = delete;
 
-    Registration(Registration &&other) noexcept { Move(other); }
+    Registration(Registration &&other) noexcept {
+        Move(other);
+    }
 
     Registration &operator=(Registration &&other) noexcept {
         if (this != &other) {
@@ -61,6 +70,9 @@ public:
         }
         return *this;
     }
+
+private:
+    friend Result<Registration> Detail::Register(const Mod::Context &, Definition, Callback);
 
     [[nodiscard]] Result<void> Register(const Mod::Context &context, const Definition &definition,
                                         Callback callback) noexcept {
@@ -106,6 +118,7 @@ public:
         }));
     }
 
+public:
     [[nodiscard]] bool IsValid() const noexcept {
         return m_Handle && m_State && !m_State->Released.load(std::memory_order_acquire);
     }
@@ -235,7 +248,6 @@ inline Result<Registration> Register(const Mod::Context &ctx, Definition definit
 } catch (...) {
     return Result<Registration>::Failure(BML_ERROR_FAIL);
 }
-} // namespace Detail
 [[nodiscard]] inline Result<Registration> SetTimeout(const Mod::Context &ctx, double delayMs,
                                                      OnceCallback callback,
                                                      std::string_view name = {}) try {
@@ -305,6 +317,8 @@ inline Result<Registration> Register(const Mod::Context &ctx, Definition definit
     return Result<Registration>::Failure(BML_ERROR_FAIL);
 }
 
+} // namespace Detail
+
 // A non-owning service view. Registrations still make cancellation ownership
 // explicit; this view only binds Context and adapts ordinary author lambdas.
 class View {
@@ -325,7 +339,7 @@ public:
             if (!static_cast<bool>(function))
                 return Result<Registration>::Failure(BML_ERROR_INVALID_PARAMETER);
         }
-        return Timer::SetTimeout(m_Context, delayMs, Once(std::forward<Function>(function)), name);
+        return Detail::SetTimeout(m_Context, delayMs, Once(std::forward<Function>(function)), name);
     } catch (const std::bad_alloc &) {
         return Result<Registration>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -338,8 +352,8 @@ public:
             if (!static_cast<bool>(function))
                 return Result<Registration>::Failure(BML_ERROR_INVALID_PARAMETER);
         }
-        return Timer::SetTimeoutTicks(m_Context, ticks, Once(std::forward<Function>(function)),
-                                      name);
+        return Detail::SetTimeoutTicks(m_Context, ticks, Once(std::forward<Function>(function)),
+                                       name);
     } catch (const std::bad_alloc &) {
         return Result<Registration>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -352,8 +366,8 @@ public:
             if (!static_cast<bool>(function))
                 return Result<Registration>::Failure(BML_ERROR_INVALID_PARAMETER);
         }
-        return Timer::SetInterval(m_Context, intervalMs, Loop(std::forward<Function>(function)),
-                                  name);
+        return Detail::SetInterval(m_Context, intervalMs, Loop(std::forward<Function>(function)),
+                                   name);
     } catch (const std::bad_alloc &) {
         return Result<Registration>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -366,8 +380,8 @@ public:
             if (!static_cast<bool>(function))
                 return Result<Registration>::Failure(BML_ERROR_INVALID_PARAMETER);
         }
-        return Timer::SetIntervalTicks(m_Context, ticks, Loop(std::forward<Function>(function)),
-                                       name);
+        return Detail::SetIntervalTicks(m_Context, ticks, Loop(std::forward<Function>(function)),
+                                        name);
     } catch (const std::bad_alloc &) {
         return Result<Registration>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {

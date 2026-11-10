@@ -184,6 +184,12 @@ private:
                 "command event arguments after shell expansion");
     }
 
+    int ExecuteCommand(std::string_view line, int &out) {
+        auto result = m_Context.Commands().ExecuteLine(line);
+        if (result) out = result.Value();
+        return result.Code();
+    }
+
     void CheckCommandLifetime(bool removeBeforeExecute) {
         m_RemoveBeforeExecute = removeBeforeExecute;
         m_CommandEvents.clear();
@@ -205,13 +211,13 @@ private:
                 .Take();
         retained.reset();
         int status = 0;
-        Require(BML::Command::ExecuteLine("bpcheck one 'two words'", status) == BML_OK &&
+        Require(ExecuteCommand("bpcheck one 'two words'", status) == BML_OK &&
                     status == 7,
                 "command invocation status");
         Require(m_CommandEvents == std::vector<int>({1, 2, 3}), "pre execute post ordering");
         Require(m_CommandLease.expired(), "command state released after post callback");
         BML::Command::Info info;
-        Require(BML::Command::Find("bpcheck", info) == BML_ERROR_NOT_FOUND,
+        Require(m_Context.Commands().Find("bpcheck").Code() == BML_ERROR_NOT_FOUND,
                 "removed command and alias no longer resolve");
     }
 
@@ -263,7 +269,7 @@ private:
         auto helper = m_Context.FindMod("SdlScriptAccessProbe");
         BML::Command::Info info;
         Require(helper && helper.Value().Read().Value().State == BML_MOD_STATE_LOADED &&
-                    BML::Command::Find("bml_probe_script_access", info) == BML_OK,
+                    m_Context.Commands().Find("bml_probe_script_access").Code() == BML_OK,
                 "script access probe registration");
         auto *entity = static_cast<CK3dEntity *>(
             engine->CreateObject(CKCID_3DENTITY, const_cast<char *>("BML_ScriptAccess_借用"),
@@ -275,14 +281,14 @@ private:
         entity->SetScale3f(2.0f, 3.0f, 4.0f);
         entity->Show(CKSHOW);
         int status = 0;
-        const int executed = BML::Command::ExecuteLine("bml_probe_script_access live", status);
+        const int executed = ExecuteCommand("bml_probe_script_access live", status);
         engine->DestroyObject(id);
         Require(executed == BML_OK && status == 0 &&
-                    BML::Command::Find("bml_probe_script_access_live", info) == BML_OK,
+                    m_Context.Commands().Find("bml_probe_script_access_live").Code() == BML_OK,
                 "script CK values, time, input conversions and nested blocks");
-        Require(BML::Command::ExecuteLine("bml_probe_script_access deleted", status) == BML_OK &&
+        Require(ExecuteCommand("bml_probe_script_access deleted", status) == BML_OK &&
                     status == 0 &&
-                    BML::Command::Find("bml_probe_script_access_deleted", info) == BML_OK,
+                    m_Context.Commands().Find("bml_probe_script_access_deleted").Code() == BML_OK,
                 "script borrowed object validity after engine deletion");
     }
 
@@ -300,7 +306,7 @@ private:
             auto helper = m_Context.FindMod("SdlDependencyProbe");
             BML::Command::Info info;
             Require(helper && helper.Value().Read().Value().State == BML_MOD_STATE_LOADED &&
-                        BML::Command::Find("bml_probe_dependencies", info) == BML_OK,
+                        m_Context.Commands().Find("bml_probe_dependencies").Code() == BML_OK,
                     "script dependency values and invalid indices");
             CheckScriptAccess(engine);
         }
@@ -348,10 +354,10 @@ private:
         BML::Timer::Definition repeat;
         repeat.Type = BML_TIMER_REPEAT; repeat.TimeBase = BML_TIMER_TIMEBASE_TICK;
         repeat.DelayTicks = 1; repeat.RepeatCount = 3;
-        Require(m_Repeat.Register(m_Context, repeat, [this](const auto &, const auto &event) {
+        m_Repeat = m_Context.Timers().Register(repeat, [this](const auto &, const auto &event) {
             Require(event.CompletedIterations == uint64_t(m_RepeatCalls), "timer event count");
             ++m_RepeatCalls; return true;
-        }).Code() == BML_OK, "finite timer registration");
+        }).Take();
 
         Require(BML_GetInterface(BML_INPUT_INTERFACE_ID, 1, &raw) == BML_OK, "input C binding");
         const auto *input = static_cast<const BML_InputInterface *>(raw);
