@@ -1,7 +1,7 @@
 # BML+ for Ballanced SDL
 
-This documentation describes the current `sdl` branch and its versioned Native
-C ABI, module-local C++ SDK and AngelScript authoring surface. The old IMod/IBML
+This documentation describes BML+ **0.4.0** on the `sdl` branch and its versioned
+Native C ABI, module-local C++ SDK and AngelScript authoring surface. The old IMod/IBML
 system has been removed from this branch, including private implementations.
 
 | Task | Start here |

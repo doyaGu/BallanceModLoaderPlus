@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-BML+ 为 **Ballanced 的 SDL Player** 加载原生和 AngelScript Mod，提供生命周期事件、
+BML+ **0.4.0** 为 **Ballanced 的 SDL Player** 加载原生和 AngelScript Mod，提供生命周期事件、
 配置、命令、输入、UI、Behavior 编写、资源和跨 Mod 通信。
 
 当前是 `sdl` 分支，使用 SDL CK2 和 VxMath，支持**动态 Loader**。原版 Windows Player

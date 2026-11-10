@@ -1,6 +1,6 @@
 # Ballanced SDL 的 BML+
 
-本文档对应当前 `sdl` 分支：原生 Mod 使用版本化 C ABI 和模块内 C++ SDK，脚本使用
+本文档对应 BML+ **0.4.0** 的 `sdl` 分支：原生 Mod 使用版本化 C ABI 和模块内 C++ SDK，脚本使用
 AngelScript。旧 IMod/IBML 体系已从本分支彻底移除，也不再作为私有实现保留。
 
 | 任务 | 入口 |

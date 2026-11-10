@@ -2,8 +2,8 @@
 
 English | [简体中文](README_zh-CN.md)
 
-BML+ loads Native and AngelScript Mods into **Ballanced's SDL Player**. It supplies
-Mod lifecycle events, configuration, commands, input, UI, Behavior authoring,
+BML+ **0.4.0** loads Native and AngelScript Mods into **Ballanced's SDL Player**.
+It supplies Mod lifecycle events, configuration, commands, input, UI, Behavior authoring,
 resources and inter-Mod communication.
 
 This checkout is the `sdl` branch. It builds a **dynamic** Loader for the SDL CK2
