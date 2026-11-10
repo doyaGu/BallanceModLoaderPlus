@@ -1,8 +1,8 @@
 # Support and validation
 
 This page separates available build targets from completed game acceptance.
-The record below is a **2026-11-06 local validation snapshot**, not a promise
-about an arbitrary release archive or future commit.
+The dated records below are local validation snapshots, not promises about an
+arbitrary release archive or future commit.
 
 ## Runtime scope
 
@@ -25,7 +25,7 @@ about an arbitrary release archive or future commit.
 
 ## Completed local checks
 
-On macOS ARM64, Release dynamic builds passed the complete CTest suites:
+On 2026-11-06, macOS ARM64 Release dynamic builds passed the complete CTest suites:
 **109/109 with scripting and 102/102 without scripting**. These counts are a
 snapshot; optional test configuration and later tests can change them.
 
@@ -88,6 +88,60 @@ counts above include these two additional default tests.
 Default engine physics scheduling is retained and is not an unresolved
 BML scheduling redesign. IVP v2 remains out of scope. No Ballanced source was
 changed for this audit.
+
+## Updated engine baseline (2026-11-08)
+
+This audit uses Ballanced `a330482`, CK2 `0f414789`, VxMath `91aed4e1`,
+RenderEngine `ce0432bc` and Player `f3a34f0c`. SdlInputManager remains at
+`f070cf67`. The runtime uses SDL 3.4.20 and VxMath's default extended-arithmetic
+emulation. No Ballanced source or submodule pointer was changed.
+
+The newer VxMath package exports `VxMath::VxMath`. BML now accepts that target
+through an alias at its two package entry points, retaining source-tree and
+older package support. Engine ABI checks remain strict: Mods using `BML::Engine`
+need rebuilding against the new headers and public settings. The core C protocol
+is unchanged. The macOS SDK fixture now locates its already-loaded SDL image,
+accepting both absolute and `@rpath` install names without patching staged Mods.
+Both the new relocated SDK and an older installed SDK passed the consumer test.
+
+On macOS ARM64, the script-enabled source build passed all **111** registered
+tests; the script-free build using installed engine packages passed all **102**.
+Both include the updater. Three process/loopback-network tests in each suite
+initially hit sandbox restrictions and passed when rerun with those permissions;
+the other tests passed in the original runs. The separate engine/render and
+input component tests passed **2/2**. Optional headless UI instrumentation was
+off in these configurations.
+
+Disposable copies of the updated Player passed **three independent launches in
+each script mode**. Every launch loaded all twelve in-tree Mods and verified
+120 Process/physics ticks, 119 render callbacks, seven input phases, Mod unload,
+clean shutdown and identical original/staged probe bytes. This is startup and
+runtime coverage, not per-Mod gameplay or visual acceptance.
+
+The installation instructions also now use the SDK installation's actual `Mods`
+directory. The previously documented `BMLMods` install component does not exist.
+All remaining acceptance items above still apply.
+
+## libx87 baseline recheck (2026-11-09)
+
+Ballanced is now `ac8e25f`, with CK2 `f07579aa`, VxMath `a0b437ed`, RenderEngine
+`88a47ff6`, BuildingBlocks `6ead8209` and Plugins `0ae7b9cb`. Player and
+SdlInputManager are unchanged from the previous snapshot; SDL remains 3.4.20.
+VxMath now uses the `libx87` submodule (`b91aa6bc`) for extended arithmetic.
+
+The existing BML package integration required no additional code changes.
+The installed SDK includes libx87's static library, CMake package and licenses;
+its relocated consumers pass, and the checked CMake package files contain no
+absolute source/build paths. Engine extension fingerprints distinguish this
+baseline from the previous one; the BML C protocol is unchanged.
+
+macOS ARM64 Release checks passed **111/111** with scripting, **102/102** without
+scripting using the newly installed engine packages, and **2/2** engine/render
+and input component tests. Both temporary Player configurations passed three
+independent launches each, loading all twelve Mods and checking the same
+120 Process/physics ticks, 119 render callbacks, seven input phases, unload,
+clean shutdown and unchanged staged probe bytes. Full gameplay, visual and
+other-platform acceptance remain pending. Ballanced was read-only throughout.
 
 ## 0.4.0 version synchronization (2026-11-09)
 
