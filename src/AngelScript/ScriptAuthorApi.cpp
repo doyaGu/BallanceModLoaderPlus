@@ -801,10 +801,7 @@ public:
         ScriptRuntimeAccess access(Ticket);
         if (access.Code() != BML_OK)
             return access.Code();
-        if (!BML::Detail::IsText(line) || line.size() > BML_COMMAND_MAX_LINE_BYTES)
-            return BML_ERROR_INVALID_PARAMETER;
-        out = access.Context().ExecuteCommandLine(line.c_str());
-        return BML_OK;
+        return Publish(Native(access).Commands().ExecuteLine(line), out);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
     } catch (...) {
