@@ -1928,6 +1928,7 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CommandEvent", "bool get_IsComplete() const", "bool CommandEvent::get_IsComplete() const", asMETHOD(BML::ScriptCommandEventView, IsComplete), asCALL_THISCALL},
     {"CommandEvent", "string get_Name() const", "string CommandEvent::get_Name() const", BML_AS_GENERIC_METHOD(&BML::ScriptCommandEventView::GetCommandName), asCALL_GENERIC},
     {"CommandEvent", "int get_ArgumentCount() const", "int CommandEvent::get_ArgumentCount() const", asMETHOD(BML::ScriptCommandEventView, GetArgCount), asCALL_THISCALL},
+    {"CommandEvent", "bool get_Cheat() const", "bool CommandEvent::get_Cheat() const", asMETHOD(BML::ScriptCommandEventView, IsCheat), asCALL_THISCALL},
     {"ConfigEvent", "string get_ModId() const", "string ConfigEvent::get_ModId() const", BML_AS_GENERIC_METHOD(&BML::ScriptConfigEventView::GetModId), asCALL_GENERIC},
     {"ConfigEvent", "string get_Category() const", "string ConfigEvent::get_Category() const", BML_AS_GENERIC_METHOD(&BML::ScriptConfigEventView::GetCategory), asCALL_GENERIC},
     {"ConfigEvent", "string get_Key() const", "string ConfigEvent::get_Key() const", BML_AS_GENERIC_METHOD(&BML::ScriptConfigEventView::GetKey), asCALL_GENERIC},

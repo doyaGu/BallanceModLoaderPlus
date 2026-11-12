@@ -522,6 +522,7 @@ class CommandEvent {
     bool get_IsComplete() const;
     string get_Name() const;
     int get_ArgumentCount() const;
+    bool get_Cheat() const;
 }
 
 class CommandDefinition {
