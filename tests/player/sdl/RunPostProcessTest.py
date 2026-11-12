@@ -28,7 +28,8 @@ def stage(source, probe, destination, mods_from=None, scripts=False, examples=Fa
     identities = stage_examples(mods, tutorials) if examples else []
     if scripts:
         for name in ("DependencyProbe.mod.as", "ScriptAccessProbe.mod.as",
-                     "ScriptRuntimeProbe.mod.as", "ScriptEventProbe.mod.as"):
+                     "ScriptRuntimeProbe.mod.as", "ScriptEventProbe.mod.as",
+                     "ScriptCommandContractProbe.mod.as"):
             shutil.copy2(Path(__file__).with_name(name), mods / name)
     installed = mods / probe.name
     shutil.copy2(probe, installed)

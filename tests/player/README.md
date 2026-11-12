@@ -48,7 +48,9 @@ script helpers; test native-only runtime/SDK builds separately. These helpers
 check strict ConfigValue reads and choices ownership, keyboard snapshot COW and
 retirement, zero-delay timers, full command notifications, successful reload and
 failed-candidate rollback, stale-view output clearing, terminal cleanup and an
-instant dependency query after the provider fails. The extended
+instant dependency query after the provider fails. Command contracts also reject
+malformed UTF-8 and embedded NUL before dispatch, preserve valid Chinese text
+and business exit codes, and read both ordinary and cheat command event flags. The extended
 SDK fixture covers C/C++, all four native profiles, inter-Mod interfaces,
 configuration notifications, timer/command lifetimes, CK borrowing after object
 deletion, script dependencies and the twelve in-tree Mods.
