@@ -241,3 +241,24 @@ and retain the existing input/render/reload and clean-shutdown checks. Public
 API reference files were regenerated from that runtime. This uses the existing
 prepared Player baseline, not the external engine source reorganization in
 progress; the unexecuted targets listed above remain pending.
+
+## Command API failure paths (2026-11-12)
+
+Script command registration now applies the native UTF-8 metadata rules, and
+Find uses the shared name validator. Error-returning command/timer reads contain
+allocation exceptions and publish complete record copies only. Completion
+collectors retain their first failure status. Native registration prepares all
+metadata before publishing an internal Entry. Public signatures and ABI layouts
+are unchanged.
+
+Five new allocation-failure tests reproduced exceptions before their fixes and
+now verify error codes, unchanged outputs, retry behavior and collector failure
+retention. The script-enabled installed-engine build passes all 109 CTests.
+Three disposable macOS ARM64 Player cycles compare native/script metadata and
+lookup rejection, retry rejected registrations, and pass the existing
+input/render/reload, unload and clean-exit checks with unchanged probe bytes.
+The runtime declaration publisher check passes without reference changes.
+These unit injections cover script bridges; native host allocation failure has
+not been injected in Player. Its publication ordering was checked in source and
+its normal/rejected registrations run through the native Player probe. The
+previous platform and engine-baseline limits still apply.
