@@ -345,6 +345,39 @@ private:
                 "script borrowed object validity after engine deletion");
     }
 
+    void CheckCommandValidation() {
+        const std::array<std::string, 6> invalid{
+            std::string("\xff"), std::string("\xc3"), std::string("\xc0\xaf"),
+            std::string("\xed\xa0\x80"), std::string("\xf4\x90\x80\x80"),
+            std::string(1, '\0')};
+        auto commands = m_Context.Commands();
+        const auto execute = [](const BML::Command::Invocation &) { return 0; };
+        for (const auto &text : invalid) {
+            for (unsigned field = 0; field < 3; ++field) {
+                BML::Command::Definition definition;
+                definition.Name = "bml_probe_native_metadata";
+                if (field == 0) definition.Description = text;
+                else if (field == 1) definition.Usage = text;
+                else definition.Category = text;
+                Require(commands.Register(definition, execute).Code() == BML_ERROR_INVALID_PARAMETER,
+                        "native invalid command metadata rejection");
+                definition.Description = definition.Usage = definition.Category = "中文";
+                auto registration = commands.Register(definition, execute).Take();
+                registration.Unregister().Take();
+            }
+            Require(commands.Find(text).Code() == BML_ERROR_INVALID_PARAMETER,
+                    "native invalid command lookup rejection");
+        }
+        for (const auto &name : {std::string(), std::string("two words"),
+                                 std::string("tab\tname"),
+                                 std::string(BML_COMMAND_MAX_NAME_BYTES + 1, 'x')}) {
+            Require(commands.Find(name).Code() == BML_ERROR_INVALID_PARAMETER,
+                    "native invalid command name rejection");
+        }
+        Require(commands.Find("bml_probe_missing_valid_name").Code() == BML_ERROR_NOT_FOUND,
+                "native valid command lookup preserves not found");
+    }
+
     void CheckNativeServices(CKContext *engine) {
         if (const char *expected = std::getenv("BML_EXPECT_MODS")) {
             std::istringstream ids(expected);
@@ -366,6 +399,7 @@ private:
 
         BenchmarkCommonApi();
 
+        CheckCommandValidation();
         CheckCommandLifetime(true);
         CheckCommandLifetime(false);
 

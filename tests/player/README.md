@@ -50,7 +50,10 @@ retirement, zero-delay timers, full command notifications, successful reload and
 failed-candidate rollback, stale-view output clearing, terminal cleanup and an
 instant dependency query after the provider fails. Command contracts also reject
 malformed UTF-8 and embedded NUL before dispatch, preserve valid Chinese text
-and business exit codes, and read both ordinary and cheat command event flags. The extended
+and business exit codes, and read both ordinary and cheat command event flags.
+Native and script checks reject malformed metadata in all three descriptive
+fields, retry the same registration name, and distinguish invalid lookup names
+from valid names that are absent. The extended
 SDK fixture covers C/C++, all four native profiles, inter-Mod interfaces,
 configuration notifications, timer/command lifetimes, CK borrowing after object
 deletion, script dependencies and the twelve in-tree Mods.

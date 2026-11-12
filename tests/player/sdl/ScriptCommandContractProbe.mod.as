@@ -14,6 +14,36 @@ class ScriptCommandContractProbe {
             Bytes({237, 160, 128}), Bytes({244, 144, 128, 128}), Bytes({0})
         };
         for (uint i = 0; i < invalid.length(); ++i) {
+            for (uint field = 0; field < 3; ++field) {
+                BML::CommandDefinition rejected;
+                rejected.Name = "bml_probe_invalid_metadata";
+                if (field == 0) rejected.Description = invalid[i];
+                else if (field == 1) rejected.Usage = invalid[i];
+                else rejected.Category = invalid[i];
+                BML::CommandRef@ registration;
+                int code = ctx.Commands().Register(rejected, BML::CommandExecute(this.Marker), registration);
+                if (code != BML::ERROR_INVALID_PARAMETER || registration !is null)
+                    throw("invalid command metadata accepted: " + i + " field=" + field + " code=" + code);
+                rejected.Description = "中文"; rejected.Usage = "中文"; rejected.Category = "中文";
+                if (ctx.Commands().Register(rejected, BML::CommandExecute(this.Marker), registration) != BML::ERROR_OK ||
+                    registration.Unregister() != BML::ERROR_OK)
+                    throw("rejected command metadata left a registration");
+            }
+        }
+        array<string> invalidNames = invalid;
+        invalidNames.insertLast(""); invalidNames.insertLast("two words"); invalidNames.insertLast("tab\tname");
+        string oversized; oversized.resize(257);
+        for (uint i = 0; i < oversized.length(); ++i) oversized[i] = 120;
+        invalidNames.insertLast(oversized);
+        BML::CommandInfo info;
+        for (uint i = 0; i < invalidNames.length(); ++i) {
+            if (ctx.Commands().Find(invalidNames[i], info) != BML::ERROR_INVALID_PARAMETER)
+                throw("invalid command lookup was reported as missing: " + i);
+        }
+        if (ctx.Commands().Find("bml_probe_missing_valid_name", info) != BML::ERROR_NOT_FOUND ||
+            ctx.Commands().Find(definition.Name, info) != BML::ERROR_OK)
+            throw("valid command lookup changed");
+        for (uint i = 0; i < invalid.length(); ++i) {
             int status = -1;
             int code = ctx.Commands().ExecuteLine("bml_probe_text_contract " + invalid[i], status);
             if (code != BML::ERROR_INVALID_PARAMETER || calls != 0)

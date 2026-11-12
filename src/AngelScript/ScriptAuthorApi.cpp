@@ -22,6 +22,7 @@
 #include "ScriptMod.h"
 #include "ScriptModRuntime.h"
 #include "ScriptStringInterop.h"
+#include "StringUtils.h"
 
 namespace BML {
 namespace {
@@ -770,7 +771,9 @@ public:
             return BML_ERROR_FROZEN;
         if (!BML::Detail::IsText(definition.Name) || !BML::Detail::IsText(definition.Alias) ||
             !BML::Detail::IsText(definition.Description) ||
-            !BML::Detail::IsText(definition.Usage) || !BML::Detail::IsText(definition.Category))
+            !BML::Detail::IsText(definition.Usage) || !BML::Detail::IsText(definition.Category) ||
+            !utils::IsValidUtf8(definition.Description) || !utils::IsValidUtf8(definition.Usage) ||
+            !utils::IsValidUtf8(definition.Category))
             return BML_ERROR_INVALID_PARAMETER;
         if (access.Context().FindCommand(definition.Name.c_str()) ||
             (!definition.Alias.empty() && access.Context().FindCommand(definition.Alias.c_str())))
@@ -785,7 +788,7 @@ public:
         ScriptRuntimeAccess access(Ticket);
         if (access.Code() != BML_OK)
             return access.Code();
-        if (!BML::Detail::IsText(name) || name.empty())
+        if (!BML::Detail::IsText(name) || !CommandContext::IsValidCommandAlias(name))
             return BML_ERROR_INVALID_PARAMETER;
         CommandInfo value;
         if (!access.Context().FindCommandInfo(name.c_str(), value))
