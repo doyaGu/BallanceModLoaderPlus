@@ -454,10 +454,6 @@ int CommandApi::Register(const std::string &owner,
         if(!ownerMod||!AcceptsModWork(m_Context,*ownerMod))return BML_ERROR_FROZEN;
         auto entry = std::make_shared<Entry>(m_Context, owner, definition);
         Entry *registrar = entry.get();
-        const auto inserted = m_Entries.emplace(candidate, entry);
-        if (!inserted.second)
-            return BML_ERROR_BUSY;
-
         CommandContext::CommandInfo info;
         info.Name = definition.Name;
         info.Alias = definition.Alias ? definition.Alias : "";
@@ -468,6 +464,10 @@ int CommandApi::Register(const std::string &owner,
         info.Hidden = (definition.Flags & BML_COMMAND_HIDDEN) != 0;
         info.Enabled = (definition.Flags & BML_COMMAND_DISABLED) == 0;
         info.Handle = candidate;
+        const auto inserted = m_Entries.emplace(candidate, entry);
+        if (!inserted.second)
+            return BML_ERROR_BUSY;
+
         int result = BML_ERROR_FAIL;
         try {
             result = m_Context.RegisterCallbackCommand(
