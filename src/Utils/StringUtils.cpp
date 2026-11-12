@@ -189,10 +189,37 @@ namespace utils {
 #endif
 
     bool IsValidUtf8(std::string_view text) noexcept {
-        if (text.find('\0') != std::string_view::npos)
-            return false;
-        return utf8nvalid(reinterpret_cast<const utf8_int8_t *>(text.data()),
-                          text.size()) == nullptr;
+        for (std::size_t i = 0; i < text.size();) {
+            const auto lead = static_cast<unsigned char>(text[i++]);
+            if (lead < 0x80) {
+                if (lead == 0)
+                    return false;
+                continue;
+            }
+
+            unsigned following;
+            if (lead >= 0xC2 && lead <= 0xDF)
+                following = 1;
+            else if (lead >= 0xE0 && lead <= 0xEF)
+                following = 2;
+            else if (lead >= 0xF0 && lead <= 0xF4)
+                following = 3;
+            else
+                return false;
+            if (text.size() - i < following)
+                return false;
+
+            // Exclude overlong encodings, surrogate code points and values above U+10FFFF.
+            const auto second = static_cast<unsigned char>(text[i]);
+            if ((lead == 0xE0 && second < 0xA0) || (lead == 0xED && second >= 0xA0) ||
+                (lead == 0xF0 && second < 0x90) || (lead == 0xF4 && second > 0x8F))
+                return false;
+            for (unsigned j = 0; j < following; ++j) {
+                if ((static_cast<unsigned char>(text[i++]) & 0xC0) != 0x80)
+                    return false;
+            }
+        }
+        return true;
     }
 
     bool TryUtf8ToUtf16(std::string_view text, std::wstring &result) {

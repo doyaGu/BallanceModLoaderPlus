@@ -366,6 +366,22 @@ TEST_F(StringUtilsTest, StringConversion) {
     }
 }
 
+TEST_F(StringUtilsTest, StrictUtf8UnicodeScalars) {
+    for (const char *value : {"", "ASCII", "\xC2\x80", "\xDF\xBF", "\xE0\xA0\x80",
+                             "\xED\x9F\xBF", "\xEE\x80\x80", "\xEF\xBF\xBF",
+                             "\xEF\xBF\xBD", "\xF0\x90\x80\x80", "\xF4\x8F\xBF\xBF"}) {
+        EXPECT_TRUE(utils::IsValidUtf8(value));
+    }
+    for (const char *value : {"\x80", "\xFF", "\xC2", "\xC0\xAF", "\xE0\x80\x80",
+                             "\xED\xA0\x80", "\xED\xBF\xBF", "\xF0\x80\x80\x80",
+                             "\xF4\x90\x80\x80", "\xF5\x80\x80\x80", "\xF8\x80\x80\x80\x80"}) {
+        EXPECT_FALSE(utils::IsValidUtf8(value));
+        EXPECT_FALSE(utils::IsValidUtf8(std::string("prefix") + value + "suffix"));
+    }
+    EXPECT_FALSE(utils::IsValidUtf8(std::string("\0", 1)));
+    EXPECT_TRUE(utils::IsValidUtf8(std::string_view{}));
+}
+
 TEST_F(StringUtilsTest, StrictUtf8Utilities) {
     const std::string utf8 = "\xC3\x84pfel";
     EXPECT_TRUE(utils::IsValidUtf8(utf8));
