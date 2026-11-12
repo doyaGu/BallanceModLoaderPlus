@@ -465,13 +465,17 @@ unsigned ScriptCommandInvocation::GetArgumentCount() const {
     return Frame && Frame->Active ? unsigned(Frame->Arguments.size()) : 0;
 }
 
-int ScriptCommandInvocation::ReadArgument(unsigned index, std::string &out) const {
+int ScriptCommandInvocation::ReadArgument(unsigned index, std::string &out) const try {
     if (!Frame || !Frame->Active)
         return BML_ERROR_INVALID_HANDLE;
     if (index >= Frame->Arguments.size())
         return BML_ERROR_NOT_FOUND;
     out = Frame->Arguments[index];
     return BML_OK;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
 bool ScriptCommandInvocation::HasInput() const {
@@ -482,13 +486,17 @@ std::string ScriptCommandInvocation::GetInput() const {
     return HasInput() ? Frame->Input : "";
 }
 
-int ScriptCommandInvocation::Write(const std::string &text) const {
+int ScriptCommandInvocation::Write(const std::string &text) const try {
     if (!Frame || !Frame->Active || !Frame->Context)
         return BML_ERROR_INVALID_HANDLE;
     if ((!BML::Detail::IsText(text) || !utils::IsValidUtf8(text)))
         return BML_ERROR_INVALID_PARAMETER;
     Frame->Context->SendIngameMessage(text.c_str());
     return BML_OK;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_COMMAND_EXECUTION;
 }
 
 unsigned ScriptCommandCompletionRequest::GetActiveArgument() const {
@@ -514,8 +522,14 @@ int ScriptCommandCompletion::Add(const std::string &value) const {
         return Frame->Status = BML_ERROR_INVALID_PARAMETER;
     if (Frame->Items->size() >= Shell::Limits::MaxCompletionCandidates)
         return Frame->Status = BML_ERROR_WOULD_BLOCK;
-    Frame->Items->push_back(value);
-    return BML_OK;
+    try {
+        Frame->Items->push_back(value);
+        return BML_OK;
+    } catch (const std::bad_alloc &) {
+        return Frame->Status = BML_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return Frame->Status = BML_ERROR_COMMAND_EXECUTION;
+    }
 }
 
 int ScriptCommandCompletion::ReadCount(unsigned &out) const {
@@ -525,13 +539,17 @@ int ScriptCommandCompletion::ReadCount(unsigned &out) const {
     return BML_OK;
 }
 
-int ScriptCommandCompletion::ReadCandidate(unsigned index, std::string &out) const {
+int ScriptCommandCompletion::ReadCandidate(unsigned index, std::string &out) const try {
     if (!Frame || !Frame->Active || !Frame->Items)
         return BML_ERROR_INVALID_HANDLE;
     if (index >= Frame->Items->size())
         return BML_ERROR_NOT_FOUND;
     out = (*Frame->Items)[index];
     return BML_OK;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
 int ScriptCommandCompletion::GetCount() const {
@@ -612,7 +630,7 @@ bool ScriptCommandRef::IsEnabled() const {
            it->second->Enabled;
 }
 
-int ScriptCommandRef::Read(CommandInfo &out) const {
+int ScriptCommandRef::Read(CommandInfo &out) const try {
     if (!Ticket)
         return BML_ERROR_INVALID_HANDLE;
     ScriptRuntimeAccess access(*Ticket);
@@ -630,11 +648,16 @@ int ScriptCommandRef::Read(CommandInfo &out) const {
     auto *record = state->Context->FindCommand(e.Name.c_str());
     if (!record || record->UserData != e.Command.get())
         return BML_ERROR_INVALID_HANDLE;
-    out = record->Info;
+    CommandInfo value = record->Info;
+    out = std::move(value);
     return BML_OK;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
-int ScriptCommandRef::SetEnabled(bool enabled) {
+int ScriptCommandRef::SetEnabled(bool enabled) try {
     if (!Ticket)
         return BML_ERROR_INVALID_HANDLE;
     ScriptRuntimeAccess access(*Ticket);
@@ -652,9 +675,13 @@ int ScriptCommandRef::SetEnabled(bool enabled) {
         return BML_ERROR_FAIL;
     it->second->Enabled = enabled;
     return BML_OK;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
-int ScriptCommandRef::Unregister() {
+int ScriptCommandRef::Unregister() try {
     if (!Ticket)
         return BML_ERROR_INVALID_HANDLE;
     ScriptRuntimeAccess access(*Ticket, true);
@@ -667,6 +694,10 @@ int ScriptCommandRef::Unregister() {
         return BML_ERROR_FAIL;
     Ticket->Terminal = true;
     return BML_OK;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
 ScriptCommandService::ScriptCommandService()

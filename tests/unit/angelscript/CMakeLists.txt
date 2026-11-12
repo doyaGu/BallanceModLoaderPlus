@@ -13,6 +13,7 @@ if (BML_WITH_ANGELSCRIPT)
             ScriptCommandRegistrationTest.cpp
             ScriptServiceLifecycleStubs.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptCommandService.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptCallbackEvents.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptDataShareService.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptFunctionSupport.cpp

@@ -189,11 +189,16 @@ ScriptTimerEventView::ScriptTimerEventView(const BML_TimerEvent &event)
                             event.RemainingIterations,
                             event.Progress} {}
 
-int ScriptTimerEventView::Read(ScriptTimerInfo &out) const {
+int ScriptTimerEventView::Read(ScriptTimerInfo &out) const try {
     if (!m_Valid)
         return BML_ERROR_INVALID_HANDLE;
-    out = m_Info;
+    ScriptTimerInfo value = m_Info;
+    out = std::move(value);
     return BML_OK;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
 ScriptTimerRef::ScriptTimerRef(std::weak_ptr<ScriptTimerServiceState> state, BML_TimerHandle id)
@@ -228,7 +233,7 @@ bool ScriptTimerRef::IsValid() const {
     return ResolveTimer() != nullptr;
 }
 
-int ScriptTimerRef::Read(ScriptTimerInfo &out) const {
+int ScriptTimerRef::Read(ScriptTimerInfo &out) const try {
     if (!Ticket)
         return BML_ERROR_INVALID_HANDLE;
     ScriptRuntimeAccess access(*Ticket);
@@ -240,9 +245,13 @@ int ScriptTimerRef::Read(ScriptTimerInfo &out) const {
     return state->Registry->Read(state.get(), m_Id, [&](const BML_TimerEvent &event) {
         return ScriptTimerEventView(event).Read(out);
     });
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
-int ScriptTimerRef::Pause() {
+int ScriptTimerRef::Pause() try {
     if (!Ticket)
         return BML_ERROR_INVALID_HANDLE;
     ScriptRuntimeAccess access(*Ticket);
@@ -252,9 +261,13 @@ int ScriptTimerRef::Pause() {
     return state && state->Active && state->Registry
                ? state->Registry->Control(state.get(), m_Id, 0)
                : BML_ERROR_INVALID_HANDLE;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
-int ScriptTimerRef::Resume() {
+int ScriptTimerRef::Resume() try {
     if (!Ticket)
         return BML_ERROR_INVALID_HANDLE;
     ScriptRuntimeAccess access(*Ticket);
@@ -264,9 +277,13 @@ int ScriptTimerRef::Resume() {
     return state && state->Active && state->Registry
                ? state->Registry->Control(state.get(), m_Id, 1)
                : BML_ERROR_INVALID_HANDLE;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
-int ScriptTimerRef::Cancel() {
+int ScriptTimerRef::Cancel() try {
     if (!Ticket)
         return BML_ERROR_INVALID_HANDLE;
     ScriptRuntimeAccess access(*Ticket, true);
@@ -279,6 +296,10 @@ int ScriptTimerRef::Cancel() {
     if (code == BML_OK)
         Ticket->Terminal = true;
     return code;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
 ScriptTimerService::ScriptTimerService() : m_State(std::make_shared<ScriptTimerServiceState>()) {}

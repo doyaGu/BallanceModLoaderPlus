@@ -65,9 +65,6 @@ CommandContext::UnregisterResult CommandContext::UnregisterCommand(const void *,
 
 void CommandContext::UnregisterCommands(const void *) {}
 
-ScriptCommandEventView::ScriptCommandEventView(ScriptCommandEventPhase, BML::CommandRecord *,
-                                               const std::vector<std::string> *) {}
-
 ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *) {}
 
 ScriptCurrentModScope::~ScriptCurrentModScope() = default;
@@ -99,3 +96,9 @@ ModContextLease::~ModContextLease() = default;
 BML::ScriptRuntimeAccess::ScriptRuntimeAccess(const BML::ScriptControlTicket &, bool) {}
 NativeMod *ModLoader::FindNativeMod(const ModRecord *) const { return nullptr; }
 bool ModLoader::CanDispatchOwner(const ModRecord *) const { return false; }
+ModRecord *ModLoader::FindMod(const char *) const { return nullptr; }
+BML_ObjectRef BML::ObjectRefs::Issue(CKObject *) noexcept { return {}; }
+CKObject *BML::ObjectRefs::Resolve(BML_ObjectRef) const noexcept { return nullptr; }
+BML_ConfigPropertyHandle BML::Api::ConfigApi::HandleFor(ModRecord &, Property *) const noexcept {
+    return 0;
+}

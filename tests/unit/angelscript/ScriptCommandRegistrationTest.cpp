@@ -6,6 +6,8 @@
 #include <string>
 
 #include "AngelScript/ScriptCommandService.h"
+#include "AngelScript/ScriptCallbackEvents.h"
+#include "AngelScript/ScriptTimerService.h"
 #include "BML/Detail/Api.hpp"
 
 namespace {
@@ -122,5 +124,95 @@ TEST(ScriptCommandRegistrationTest, HostRejectionRollsBackRetainedEntry) {
     auto *retry = service.AddTestCommandForRelease("retry");
     ASSERT_NE(nullptr, retry);
     retry->Release();
+}
+
+TEST(ScriptCommandFailureTest, CompletionAllocationFailureReturnsAndLatchesStatus) {
+    std::vector<std::string> items;
+    ScriptCommandCompletion completion(&items);
+    const std::string value(128, 'x');
+    for (std::ptrdiff_t index = 0; index < 2; ++index) {
+        int code = BML_OK;
+        {
+            FailAllocation failure(index);
+            EXPECT_NO_THROW(code = completion.Add(value));
+        }
+        EXPECT_EQ(BML_ERROR_OUT_OF_MEMORY, code);
+        EXPECT_EQ(BML_ERROR_OUT_OF_MEMORY, completion.Frame->Status);
+        EXPECT_TRUE(items.empty());
+        EXPECT_EQ(BML_ERROR_OUT_OF_MEMORY, completion.Add("retry"));
+        EXPECT_TRUE(items.empty());
+        completion.Frame->Status = BML_OK;
+    }
+    EXPECT_EQ(BML_OK, completion.Add(value));
+    ASSERT_EQ(1u, items.size());
+    EXPECT_EQ(value, items.front());
+}
+
+TEST(ScriptCommandFailureTest, ArgumentReadAllocationFailureReturnsStatusAndPermitsRetry) {
+    ScriptCommandInvocation invocation;
+    invocation.Frame = std::make_shared<ScriptCommandFrame>();
+    invocation.Frame->Arguments.emplace_back(128, 'x');
+    std::string out = "unchanged";
+    int code = BML_OK;
+    {
+        FailAllocation failure(0);
+        EXPECT_NO_THROW(code = invocation.ReadArgument(0, out));
+    }
+    EXPECT_EQ(BML_ERROR_OUT_OF_MEMORY, code);
+    EXPECT_EQ("unchanged", out);
+    EXPECT_EQ(BML_OK, invocation.ReadArgument(0, out));
+    EXPECT_EQ(invocation.Frame->Arguments.front(), out);
+}
+
+TEST(ScriptCommandFailureTest, CandidateReadAllocationFailureReturnsStatusAndPermitsRetry) {
+    std::vector<std::string> items{std::string(128, 'x')};
+    ScriptCommandCompletion completion(&items);
+    std::string out = "unchanged";
+    int code = BML_OK;
+    {
+        FailAllocation failure(0);
+        EXPECT_NO_THROW(code = completion.ReadCandidate(0, out));
+    }
+    EXPECT_EQ(BML_ERROR_OUT_OF_MEMORY, code);
+    EXPECT_EQ("unchanged", out);
+    EXPECT_EQ(BML_OK, completion.ReadCandidate(0, out));
+    EXPECT_EQ(items.front(), out);
+}
+
+TEST(ScriptCommandFailureTest, EventArgumentAllocationFailureReturnsStatusAndPermitsRetry) {
+    const std::vector<std::string> arguments{"command", std::string(128, 'x')};
+    ScriptCommandEventView event(ScriptCommandEventPre, nullptr, &arguments);
+    std::string out = "unchanged";
+    int code = BML_OK;
+    {
+        FailAllocation failure(0);
+        EXPECT_NO_THROW(code = event.ReadArgument(0, out));
+    }
+    EXPECT_EQ(BML_ERROR_OUT_OF_MEMORY, code);
+    EXPECT_EQ("unchanged", out);
+    EXPECT_EQ(BML_OK, event.ReadArgument(0, out));
+    EXPECT_EQ(arguments[1], out);
+}
+
+TEST(ScriptTimerFailureTest, EventReadAllocationFailureReturnsStatusAndPermitsRetry) {
+    const std::string name(128, 'x');
+    BML_TimerEvent wire{};
+    wire.Handle = 42;
+    wire.Name = name.c_str();
+    ScriptTimerEventView event(wire);
+    ScriptTimerInfo out;
+    out.Handle = 99;
+    out.Name = "unchanged";
+    int code = BML_OK;
+    {
+        FailAllocation failure(0);
+        EXPECT_NO_THROW(code = event.Read(out));
+    }
+    EXPECT_EQ(BML_ERROR_OUT_OF_MEMORY, code);
+    EXPECT_EQ(99u, out.Handle);
+    EXPECT_EQ("unchanged", out.Name);
+    EXPECT_EQ(BML_OK, event.Read(out));
+    EXPECT_EQ(wire.Handle, out.Handle);
+    EXPECT_EQ(name, out.Name);
 }
 } // namespace BML::Test

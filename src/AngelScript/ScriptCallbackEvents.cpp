@@ -3,6 +3,8 @@
 #include "Loader/ModContext.h"
 #include "ScriptMod.h"
 
+#include <new>
+
 namespace BML {
 
 namespace {
@@ -184,9 +186,15 @@ int ScriptCommandEventView::GetArgCount() const {
     return static_cast<int>(m_Args.size());
 }
 
-int ScriptCommandEventView::ReadArgument(unsigned index, std::string &out) const {
-    if (index >= m_Args.size()) return BML_ERROR_NOT_FOUND;
-    out = m_Args[index]; return BML_OK;
+int ScriptCommandEventView::ReadArgument(unsigned index, std::string &out) const try {
+    if (index >= m_Args.size())
+        return BML_ERROR_NOT_FOUND;
+    out = m_Args[index];
+    return BML_OK;
+} catch (const std::bad_alloc &) {
+    return BML_ERROR_OUT_OF_MEMORY;
+} catch (...) {
+    return BML_ERROR_FAIL;
 }
 
 std::string ScriptCommandEventView::GetArg(int index) const {
