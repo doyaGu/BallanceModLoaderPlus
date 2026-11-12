@@ -222,3 +222,22 @@ Same-engine extension removal/re-registration and forced allocation-failure
 injection remain pending; independent clean launches are not substitutes for
 those cases. Existing level-transition and per-Mod gameplay acceptance limits
 above still apply.
+
+## Command contract review fixes (2026-11-11)
+
+The three review findings are fixed: command registration prepares metadata
+before publication and rolls back retained entries on host failure; script
+ExecuteLine uses the native wrapper; CommandEvent.Cheat is registered. The shared
+UTF-8 validator additionally rejects surrogate code points and values above
+U+10FFFF, so both native and script paths enforce the same text contract.
+
+An allocation-failure sweep, host exception/rejection tests and Unicode scalar
+boundary tests were reproduced failing before their fixes and now pass. The
+matching installed-engine SDK build passes all 109 registered tests (the source
+engine export/consumer test is not registered in this configuration). Player
+checks reject six invalid byte patterns without executing the command, preserve
+valid Chinese text and business status, verify false/true Cheat event values,
+and retain the existing input/render/reload and clean-shutdown checks. Public
+API reference files were regenerated from that runtime. This uses the existing
+prepared Player baseline, not the external engine source reorganization in
+progress; the unexecuted targets listed above remain pending.
