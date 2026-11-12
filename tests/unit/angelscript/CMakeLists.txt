@@ -10,6 +10,7 @@ if (BML_WITH_ANGELSCRIPT)
     add_bml_test(ScriptServiceLifecycleTest
             SOURCES
             ScriptServiceLifecycleTest.cpp
+            ScriptCommandRegistrationTest.cpp
             ScriptServiceLifecycleStubs.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptCommandService.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptDataShareService.cpp

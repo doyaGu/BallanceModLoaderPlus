@@ -356,9 +356,11 @@ CreateScriptCommand(const std::shared_ptr<ScriptCommandServiceState> &state,
                                            entry->Description, entry->Cheat);
 }
 
+template <class RegisterHost>
 static ScriptCommandRef *
 RegisterCommandEntry(const std::shared_ptr<ScriptCommandServiceState> &state,
-                     const std::string &key, ScriptCommandEntry &&entry, int *status = nullptr) {
+                     const std::string &key, ScriptCommandEntry &&entry,
+                     RegisterHost &&registerHost, int *status = nullptr) {
     if (status)
         *status = BML_ERROR_FAIL;
     if (state->ContextView)
@@ -371,8 +373,9 @@ RegisterCommandEntry(const std::shared_ptr<ScriptCommandServiceState> &state,
     } catch (const std::bad_alloc &) {
         if (status)
             *status = BML_ERROR_OUT_OF_MEMORY;
-        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(
-            ScriptDiagnosticPhase::Runtime, "Unable to retain registered command."));
+        if (state->Owner)
+            state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(
+                ScriptDiagnosticPhase::Runtime, "Unable to retain registered command."));
         return nullptr;
     }
 
@@ -381,37 +384,16 @@ RegisterCommandEntry(const std::shared_ptr<ScriptCommandServiceState> &state,
     } catch (const std::bad_alloc &) {
         if (status)
             *status = BML_ERROR_OUT_OF_MEMORY;
-        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(
-            ScriptDiagnosticPhase::Runtime, "Unable to create command wrapper."));
+        if (state->Owner)
+            state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(
+                ScriptDiagnosticPhase::Runtime, "Unable to create command wrapper."));
         return nullptr;
     }
 
-    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(state, key, generation);
-    if (!ref) {
-        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(
-            ScriptDiagnosticPhase::Runtime, "Unable to create command reference."));
-        return nullptr;
-    }
-
+    auto ref = std::make_unique<ScriptCommandRef>(state, key, generation);
     ref->Ticket = stored->Ticket;
-    try {
-        auto [position, inserted] = state->Commands.emplace(key, stored);
-        if (!inserted) {
-            ref->Release();
-            return nullptr;
-        }
-    } catch (const std::bad_alloc &) {
-        if (status)
-            *status = BML_ERROR_OUT_OF_MEMORY;
-        ref->Release();
-        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(
-            ScriptDiagnosticPhase::Runtime, "Unable to retain registered command."));
-        return nullptr;
-    }
 
-    // The registry retains the complete script entry for every acquired call,
-    // so removal can stop new lookup without invalidating an in-progress
-    // Execute or Complete callback.
+    // Prepare owned metadata before publishing either registration.
     CommandContext::CommandInfo info;
     info.Name = stored->Name;
     info.Alias = stored->Alias;
@@ -421,19 +403,38 @@ RegisterCommandEntry(const std::shared_ptr<ScriptCommandServiceState> &state,
     info.Cheat = stored->Cheat;
     info.Hidden = stored->Hidden;
     info.Enabled = stored->Enabled;
-    if (!state->Context->GetCommandContext().RegisterCommand(state.get(), stored->Command.get(),
-                                                             std::move(info), stored)) {
-        const std::string commandName = stored->Name;
-        state->Commands.erase(key);
-        ref->Release();
-        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(
-            ScriptDiagnosticPhase::Runtime, "Command registration failed: " + commandName));
+
+    auto [position, inserted] = state->Commands.emplace(key, stored);
+    if (!inserted) {
+        if (status)
+            *status = BML_ERROR_ALREADY_EXISTS;
         return nullptr;
     }
 
+    struct PendingCommand {
+        ScriptCommandServiceState &State;
+        const std::string &Key;
+        bool Committed = false;
+
+        ~PendingCommand() {
+            if (!Committed)
+                State.Commands.erase(Key);
+        }
+    } pending{*state, key};
+
+    // The host retains the entry for acquired Execute/Complete callbacks.
+    // Keep rollback active through host allocation, rejection and exceptions.
+    if (!registerHost(stored, std::move(info))) {
+        if (state->Owner)
+            state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(
+                ScriptDiagnosticPhase::Runtime, "Command registration failed: " + stored->Name));
+        return nullptr;
+    }
+
+    pending.Committed = true;
     if (status)
         *status = BML_OK;
-    return ref;
+    return ref.release();
 }
 
 #ifdef BML_TEST
@@ -753,7 +754,13 @@ int ScriptCommandService::Register(const ScriptCommandDefinition &definition,
     entry.Generation = m_State->NextGeneration++;
 
     int code = BML_ERROR_FAIL;
-    out = RegisterCommandEntry(m_State, key, std::move(entry), &code);
+    out = RegisterCommandEntry(
+        m_State, key, std::move(entry),
+        [&](const auto &stored, CommandInfo info) {
+            return m_State->Context->GetCommandContext().RegisterCommand(
+                m_State.get(), stored->Command.get(), std::move(info), stored);
+        },
+        &code);
     return code;
 } catch (const std::bad_alloc &) {
     return BML_ERROR_OUT_OF_MEMORY;
@@ -804,7 +811,8 @@ size_t ScriptCommandService::GetActiveCount() const {
 #ifdef BML_TEST
 ScriptCommandRef *ScriptCommandService::AddTestCommandForRelease(
     const std::string &name, const std::string &alias,
-    std::function<void(const std::vector<std::string> &)> execute) {
+    std::function<void(const std::vector<std::string> &)> execute,
+    std::function<bool()> registerHost) {
     if (!m_State || name.empty())
         return nullptr;
     m_State->Active = true;
@@ -817,17 +825,9 @@ ScriptCommandRef *ScriptCommandService::AddTestCommandForRelease(
     entry.TestExecute = std::move(execute);
 
     const std::string key = CommandContext::NormalizeCommandName(entry.Name.c_str());
-    const unsigned int generation = entry.Generation;
-    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
-    if (!ref)
-        return nullptr;
-    try {
-        m_State->Commands.emplace(key, std::make_shared<ScriptCommandEntry>(std::move(entry)));
-    } catch (const std::bad_alloc &) {
-        ref->Release();
-        return nullptr;
-    }
-    return ref;
+    return RegisterCommandEntry(m_State, key, std::move(entry), [&](const auto &, CommandInfo) {
+        return !registerHost || registerHost();
+    });
 }
 
 bool ScriptCommandService::InvokeTestCommandForRelease(const std::string &name,

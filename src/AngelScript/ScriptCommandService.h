@@ -114,7 +114,8 @@ public:
 #ifdef BML_TEST
     ScriptCommandRef *
     AddTestCommandForRelease(const std::string &name, const std::string &alias = std::string(),
-                             std::function<void(const std::vector<std::string> &)> execute = {});
+                             std::function<void(const std::vector<std::string> &)> execute = {},
+                             std::function<bool()> registerHost = {});
     bool InvokeTestCommandForRelease(const std::string &name,
                                      const std::vector<std::string> &args = {});
 #endif
