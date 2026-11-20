@@ -52,7 +52,11 @@ inline std::string DumpBmlScriptApi(const BML::Mod::Context &context) {
         std::ostringstream text;
         text << "enum " << type->GetName() << " {\n";
         for (asUINT n = 0; n < type->GetEnumValueCount(); ++n) {
+#if ANGELSCRIPT_VERSION >= 23900
+            asINT64 value = 0;
+#else
             int value = 0;
+#endif
             const auto *name = type->GetEnumValueByIndex(n, &value);
             text << "    " << name << " = " << value << ",\n";
         }

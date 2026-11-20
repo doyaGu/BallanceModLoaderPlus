@@ -48,14 +48,14 @@ CK2/VxMath 安装包和 SDL3 开发包。初始化子模块后使用新的构建
 git submodule update --init --recursive
 cmake -S . -B build/sdl -DBML_RUNTIME=sdl \
   -DCMAKE_PREFIX_PATH="/path/to/engine-sdk;/path/to/SDL-prefix" \
-  -DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript \
   -DCMAKE_BUILD_TYPE=Release -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/sdl --config Release --parallel
 ctest --test-dir build/sdl -C Release --output-on-failure
 ```
 
-默认启用脚本；`-DBML_ENABLE_ANGELSCRIPT=OFF` 构建无脚本版本。匹配 SDK 的获取方式、
-组件安装和 Player 测试流程见开发指南。
+默认启用脚本。CMake 会获取固定的 CKAngelScript SDL 提交，并使用 AngelScript 2.39.0
+构建。设置 `CKANGELSCRIPT_ROOT` 可使用本地源码，设置 `-DBML_ENABLE_ANGELSCRIPT=OFF`
+可构建无脚本版本。匹配 SDK 的获取方式、组件安装和 Player 测试流程见开发指南。
 
 ## 项目链接
 

@@ -14,7 +14,6 @@ SDL3 开发包。完整安装对应的 Ballanced 构建也会导出 NeMo2 的 CK
 git submodule update --init --recursive
 cmake -S . -B build/sdl-release -DBML_RUNTIME=sdl \
   -DCMAKE_PREFIX_PATH="/path/to/engine-sdk;/path/to/SDL-prefix" \
-  -DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript \
   -DCMAKE_BUILD_TYPE=Release -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/sdl-release --config Release --parallel
 ```
@@ -23,9 +22,12 @@ BML+ 直接复用父 CMake 工程已提供的 CK2、VxMath 和 SDL3 目标。独
 CMake 安装包，也可以用 `CK2_DIR`、`VxMath_DIR`、`SDL3_DIR` 单独指定。当前 Ballanced
 基线使用 SDL 3.4.20。
 
-默认启用脚本。`BML_BUILD_SCRIPT_RUNTIME=ON` 会从 `CKANGELSCRIPT_ROOT` 构建使用
-同一引擎目标的 CKAngelScript。无脚本版本使用独立目录并传
-`-DBML_ENABLE_ANGELSCRIPT=OFF`。只有头文件不等于部署了脚本运行时。
+默认启用脚本。`BML_BUILD_SCRIPT_RUNTIME=ON` 会获取固定的 CKAngelScript SDL 提交，
+使用 AngelScript 2.39.0 和同一套引擎目标构建插件。用
+`-DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript` 指定本地源码进行联调。若旧配置缓存了
+位于同级目录的源码路径，请用新构建目录以采用固定版本。设置
+`BML_BUILD_SCRIPT_RUNTIME=OFF` 时，`CKANGELSCRIPT_ROOT` 应指向 Player 中插件对应的
+SDK。构建无脚本版本时，在独立构建目录中设置 `BML_ENABLE_ANGELSCRIPT=OFF`。
 
 编译器、架构或配置改变时新建构建目录。本分支只接受 `BML_RUNTIME=sdl` 和动态宿主，
 会拒绝静态集成及旧 `VIRTOOLS_SDK_PATH` 缓存。多配置生成器使用 `--config Release`、

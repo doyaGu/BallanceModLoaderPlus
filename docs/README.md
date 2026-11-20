@@ -81,10 +81,11 @@ On Windows set that environment variable in the launching shell and run
 exports by patching Player or changing engine source. Keep game assets and all
 runtime dependencies matched; this can use a disposable Player copy.
 
-From the BML+ source root, use CKAngelScript’s existing generator:
+From the BML+ source root, use the generator from the CKAngelScript checkout
+that built the plugin. For the default dependency and a build in `build/sdl`:
 
 ```sh
-python ../CKAngelScript/tools/generate_as_predefined.py \
+python build/sdl/_deps/ckangelscript-src/tools/generate_as_predefined.py \
   --api-json /absolute/path/ckas-api.json \
   --output docs/api/as.predefined \
   --append-file docs/api/bml-script-mod-api.as \

@@ -15,7 +15,6 @@ CK2 and VxMath packages. Initialize BML+'s submodules before configuring.
 git submodule update --init --recursive
 cmake -S . -B build/sdl-release -DBML_RUNTIME=sdl \
   -DCMAKE_PREFIX_PATH="/path/to/engine-sdk;/path/to/SDL-prefix" \
-  -DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript \
   -DCMAKE_BUILD_TYPE=Release -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/sdl-release --config Release --parallel
 ```
@@ -25,10 +24,13 @@ project. In a standalone build it finds their CMake packages. You can select
 individual packages with `CK2_DIR`, `VxMath_DIR` and `SDL3_DIR`. The current
 Ballanced baseline uses SDL 3.4.20.
 
-Scripts are enabled by default. The default `BML_BUILD_SCRIPT_RUNTIME=ON` builds
-the matching CKAngelScript plugin from `CKANGELSCRIPT_ROOT` against the same
-engine targets. For the script-free build use a separate directory and
-`-DBML_ENABLE_ANGELSCRIPT=OFF`. Supplying only headers is not a runtime deployment.
+Scripts are enabled by default. `BML_BUILD_SCRIPT_RUNTIME=ON` fetches the pinned
+CKAngelScript SDL revision and builds it with AngelScript 2.39.0 against the
+same engine targets. Use `-DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript` to test a
+local checkout. Use a fresh build directory to pick up the pin if an earlier
+configuration cached the sibling checkout. With `BML_BUILD_SCRIPT_RUNTIME=OFF`,
+point `CKANGELSCRIPT_ROOT` at the SDK for the plugin installed in Player. Set
+`BML_ENABLE_ANGELSCRIPT=OFF` in a separate build directory for a script-free build.
 
 A compiler/architecture/configuration change needs a new build directory. The
 branch accepts only `BML_RUNTIME=sdl` and dynamic hosts; it rejects static host

@@ -55,15 +55,15 @@ Initialize the submodules and use a fresh build directory:
 git submodule update --init --recursive
 cmake -S . -B build/sdl -DBML_RUNTIME=sdl \
   -DCMAKE_PREFIX_PATH="/path/to/engine-sdk;/path/to/SDL-prefix" \
-  -DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript \
   -DCMAKE_BUILD_TYPE=Release -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/sdl --config Release --parallel
 ctest --test-dir build/sdl -C Release --output-on-failure
 ```
 
-Scripts are enabled by default. `-DBML_ENABLE_ANGELSCRIPT=OFF` builds the
-script-free variant. See the contribution guide for obtaining the matching SDK,
-installing components and running the Player tests.
+Scripts are enabled by default. CMake fetches the pinned CKAngelScript SDL
+revision, which builds with AngelScript 2.39.0. Set `CKANGELSCRIPT_ROOT` to use a
+local checkout or `-DBML_ENABLE_ANGELSCRIPT=OFF` for a script-free build. See the
+contribution guide for SDK setup, installation and Player tests.
 
 ## Project links
 
