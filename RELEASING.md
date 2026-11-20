@@ -54,11 +54,14 @@ cmake --build build/sdl-release --config Release --parallel
 cmake --install build/sdl-release --config Release --prefix /path/to/sdk
 cmake --install build/sdl-release --config Release \
   --prefix /path/to/disposable-game --component BMLRuntime
-cmake -E copy_directory /path/to/sdk/Mods /path/to/disposable-game/ModLoader/Mods
+python scripts/package_sdl_release.py --stage /path/to/disposable-game \
+  --install-manifest build/sdl-release/install_manifest_BMLRuntime.txt \
+  --sdk /path/to/sdk --output /path/to/review-archives
 ```
 
 The SDK installation's `Mods` directory contains the enabled in-tree Mod packages
-and their ABI sidecars. There is no separate `BMLMods` install component.
+and their ABI sidecars. The archiver places them under `ModLoader/Mods` in the
+separate Mods ZIP. The runtime ZIP includes the Updater when it was built.
 
 The runtime prefix is an isolated copy of the **matching complete Player**, with
 host SDL available for macOS fixup. Keep CK2/VxMath/SDL supplied by Player. The

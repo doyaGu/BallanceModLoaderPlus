@@ -1035,6 +1035,3 @@ if (BML_WITH_ANGELSCRIPT)
     )
 
 endif ()
-
-install(FILES "${PROJECT_SOURCE_DIR}/docs/design/native-mod-api-implementation.md"
-    DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/design")
