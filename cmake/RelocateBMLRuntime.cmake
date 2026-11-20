@@ -5,6 +5,9 @@ find_program(_otool otool REQUIRED)
 find_program(_install_name_tool install_name_tool REQUIRED)
 find_program(_codesign codesign REQUIRED)
 file(GLOB _runtime_libraries "${_root}/Bin/*.dylib")
+# Player's engine and SDL are already staged and signed. Keep their install IDs
+# intact, including the versioned IDs shared by Player and the native Mods.
+list(FILTER _runtime_libraries EXCLUDE REGEX "/lib(CK2|VxMath|SDL3)(\\.|-)")
 file(GLOB _modules "${_root}/Managers/*BML*.dylib" "${_root}/BuildingBlocks/*AngelScript*.dylib" "${_root}/ModLoader/Mods/*.bmodp")
 if(EXISTS "${_root}/Bin/Updater")
     list(APPEND _modules "${_root}/Bin/Updater")
