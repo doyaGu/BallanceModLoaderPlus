@@ -23,7 +23,7 @@ set(BML_INSTALLED_SDK TRUE)
 # only when the final link graph actually uses an extension.
 foreach(_engine CK2 VxMath)
     if(NOT TARGET BML::${_engine})
-        add_library(BML::${_engine} INTERFACE IMPORTED GLOBAL)
+        add_library(BML::${_engine} INTERFACE IMPORTED)
     endif()
 endforeach()
 include("${CMAKE_CURRENT_LIST_DIR}/BMLTargets.cmake")
@@ -60,7 +60,7 @@ foreach(_var BML_SDK_COMPILER_ID BML_SDK_COMPILER_VERSION BML_SDK_POINTER_SIZE B
         BML_SDK_CK2_ABI_ID BML_SDK_VXMATH_ABI_ID BML_MSVC_RUNTIME_LIBRARY)
     set_property(TARGET BML::BML PROPERTY "${_var}" "${${_var}}")
 endforeach()
-cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _bml_resolve_sdk_extensions)
+cmake_language(DEFER CALL _bml_resolve_sdk_extensions)
 
 set_and_check(BML_INTERFACE_CODEGEN
               "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/BML/tools/interface_codegen.py")

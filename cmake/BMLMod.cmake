@@ -143,7 +143,7 @@ function(_bml_sdk_targets directory output)
 endfunction()
 
 function(_bml_resolve_sdk_extensions)
-    _bml_sdk_targets("${CMAKE_SOURCE_DIR}" _targets)
+    _bml_sdk_targets("${CMAKE_CURRENT_SOURCE_DIR}" _targets)
     set(_needs_engine FALSE)
     foreach(_target IN LISTS _targets)
         _bml_uses_extension("${_target}" Engine _engine)

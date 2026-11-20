@@ -216,8 +216,9 @@ def main() -> int:
     # Two DLLs deliberately use the same C++ names, template instantiations and
     # static state. A transitive extension dependency must enter the descriptor.
     fixture = work / "same-type-fixture"
-    fixture.mkdir()
-    (fixture / "Mod.cpp").write_text(r'''#include <BML/Mod.hpp>
+    source = fixture / "consumer"
+    source.mkdir(parents=True)
+    (source / "Mod.cpp").write_text(r'''#include <BML/Mod.hpp>
 #ifdef USE_EXTENSIONS
 #include <BML/Engine.hpp>
 #include <BML/Bui/ImGui.hpp>
@@ -232,8 +233,11 @@ public:
 BML_MOD_ENTRY(int) BML_TestInstances() { return instances; }
 BML_DEFINE_MOD(HelloMod, {.Id = MOD_ID, .Name = "Same type", .Version = "1.0.0", .Author = "SDK tests"})
 ''', encoding="utf-8")
-    (fixture / "CMakeLists.txt").write_text(r'''cmake_minimum_required(VERSION 3.25)
+    (fixture / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.25)
 project(IndependentModules LANGUAGES CXX)
+add_subdirectory(consumer)
+''', encoding="utf-8")
+    (source / "CMakeLists.txt").write_text(r'''
 find_package(BML CONFIG REQUIRED)
 bml_add_mod(Core Mod.cpp)
 target_compile_definitions(Core PRIVATE MOD_ID="test.core")
