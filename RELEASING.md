@@ -5,11 +5,23 @@ The runtime is a Ballanced SDL **dynamic** host. Original-Player releases use th
 static-package updater tests do not provide a working static BML Player.
 
 The [build workflow](.github/workflows/build.yml) currently runs standalone SDK,
-CLI and UI framework contracts on Windows, Linux and macOS. It does not build
-or publish a complete seven-target runtime/SDK matrix.
+CLI and UI framework contracts on Windows, Linux and macOS. The manually
+dispatched [SDL release acceptance workflow](.github/workflows/sdl-release.yml)
+builds Windows x64 and Linux x64 on matching `bml-release` self-hosted runners.
+It uploads runtime, SDK and Mods archives after testing those artifacts.
 The [docs workflow](.github/workflows/docs.yml)
 strictly builds both languages and uploads a site artifact; it reserves `/updates`
-for updater metadata. Neither workflow publishes release packages or deploys Pages.
+for updater metadata. Release publication and production signing are separate steps.
+
+Set `BML_RELEASE_PLAYER` on each native runner to a complete matching Player
+fixture. Set `BML_RELEASE_CMAKE_PREFIX_PATH` to the CMake prefixes for its NeMo2
+and SDL3 SDKs and any separately installed libcurl development package. The
+Windows runner needs Git Bash and Visual Studio 2022 with the x64 C++ tools.
+The Linux runner needs Ninja and usable X11 and Wayland sessions. Both need
+CMake, Python, a renderer and game data. The workflow builds default-pinned
+CKAngelScript and runs SDK consumers, signed updater tests and Player probes.
+It uses a dedicated test key for apply and rollback. Only the three BML archives
+are uploaded as workflow artifacts.
 
 ## Freeze the source and acceptance record
 

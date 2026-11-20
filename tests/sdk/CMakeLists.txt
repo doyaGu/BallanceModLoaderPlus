@@ -32,10 +32,16 @@ add_test(NAME SdlUpdatePackageTest
 set_tests_properties(SdlUpdatePackageTest PROPERTIES LABELS "sdl;packaging;updater" TIMEOUT 90)
 
 if(TARGET CK2 AND CK2_DIR AND VxMath_DIR AND SDL3_DIR)
+    set(BML_TEST_INSTALLED_SDK "" CACHE PATH "Use the extracted SDK archive in consumer tests")
+    if(BML_TEST_INSTALLED_SDK)
+        set(_bml_sdk_test_source --sdk "${BML_TEST_INSTALLED_SDK}")
+    else()
+        set(_bml_sdk_test_source --main-build-dir "${PROJECT_BINARY_DIR}")
+    endif()
     add_test(
             NAME SdlSdkConsumerTest
             COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/SdlSdkConsumerTest.py"
-                    --main-build-dir "${PROJECT_BINARY_DIR}"
+                    ${_bml_sdk_test_source}
                     --work-root "${PROJECT_BINARY_DIR}/tests/sdl-sdk-consumer"
                     --cmake "${CMAKE_COMMAND}"
                     --configuration "$<CONFIG>"

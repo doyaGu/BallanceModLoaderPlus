@@ -41,6 +41,10 @@ def main():
     parser.add_argument("--signer", type=Path, required=True)
     parser.add_argument("--platform", required=True)
     parser.add_argument("--architecture", required=True)
+    parser.add_argument("--runtime-archive", type=Path,
+                        help="Extracted BML runtime archive to apply and roll back")
+    parser.add_argument("--player-runtime", type=Path,
+                        help="Complete Player with the runtime archive already extracted over it")
     args = parser.parse_args()
     args.updater, args.production_updater = args.updater.resolve(), args.production_updater.resolve()
     spec = importlib.util.spec_from_file_location("packager", args.packager)
@@ -306,6 +310,37 @@ def main():
                 "--install-manifest", inventory, "--signing-key", key, "--signer", signer)
             with zipfile.ZipFile(next(selected.glob("*.zip"))) as archive:
                 assert not any("Configs" in name or "Updater" in name for name in archive.namelist())
+            if args.runtime_archive and args.player_runtime:
+                install = root / "实际发行包"
+                shutil.copytree(args.player_runtime, install, symlinks=False)
+                descriptor = install / "ModLoader/BML.abi.json"
+                package_abi = json.loads(descriptor.read_bytes())
+                assert all(package_abi[name] == value for name, value in target.items())
+                updater("doctor", runtime=install)
+                old_abi = {**package_abi, "version": "0.0.0"}
+                put_json(descriptor, old_abi)
+                preserved = install / "ModLoader/Configs/release-test.cfg"
+                preserved.parent.mkdir(parents=True, exist_ok=True)
+                preserved.write_bytes(b"preserve user settings")
+                backup_file = install / "ModLoader/Licenses/CRYPTO-NOTICES.txt"
+                backup_file.write_bytes(b"previous release marker")
+                bundle = root / "test-signed-release"
+                run(sys.executable, args.packager, "--stage", args.runtime_archive,
+                    "--output", bundle, "--version", package_abi["version"],
+                    "--signing-key", key, "--signer", signer)
+                update_zip = next(bundle.glob("*.zip"))
+                updater("apply-local", update_zip, runtime=install)
+                manifest = json.loads(next(bundle.glob("*.manifest.json")).read_bytes())
+                for owned in manifest["managedFiles"]:
+                    file = install / owned["path"]
+                    assert hashlib.sha256(file.read_bytes()).hexdigest() == owned["sha256"], file
+                    if os.name != "nt":
+                        assert file.stat().st_mode & 0o777 == owned["mode"], file
+                updater("doctor", runtime=install)
+                updater("rollback", runtime=install)
+                assert json.loads(descriptor.read_bytes()) == old_abi
+                assert backup_file.read_bytes() == b"previous release marker"
+                assert preserved.read_bytes() == b"preserve user settings"
         finally:
             server.shutdown()
             server.server_close()

@@ -51,13 +51,21 @@ target_include_directories(BMLUpdaterSdlTest PRIVATE "${BML_SOURCE_DIR}")
 add_test(NAME BMLUpdaterSdlTest COMMAND BMLUpdaterSdlTest)
 set_tests_properties(BMLUpdaterSdlTest PROPERTIES LABELS "updater;sdl;integration" TIMEOUT 120 RUN_SERIAL TRUE)
 
+set(BML_TEST_RUNTIME_ARCHIVE "" CACHE PATH "Extracted runtime-only archive for updater acceptance")
+set(BML_TEST_RELEASE_PLAYER "" CACHE PATH "Complete Player with the extracted runtime overlaid")
+set(_bml_production_updater "$<TARGET_FILE:Updater>")
+if(BML_TEST_RUNTIME_ARCHIVE AND BML_TEST_RELEASE_PLAYER)
+    set(_bml_production_updater "${BML_TEST_RELEASE_PLAYER}/Bin/Updater${CMAKE_EXECUTABLE_SUFFIX}")
+    set(_bml_runtime_test_args --runtime-archive "${BML_TEST_RUNTIME_ARCHIVE}"
+        --player-runtime "${BML_TEST_RELEASE_PLAYER}")
+endif()
 add_test(NAME BMLUpdaterSdlIntegrationTest
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/UpdaterIntegrationTest.py"
         --updater "$<TARGET_FILE:UpdaterSdlTestRunner>"
-        --production-updater "$<TARGET_FILE:Updater>"
+        --production-updater "${_bml_production_updater}"
         --shared-fixture "$<TARGET_FILE:BMLUpdaterDoctorBinaryFixture>"
         --player-fixture "$<TARGET_FILE:BMLUpdaterPlayerFixture>"
         --platform "${BML_TARGET_PLATFORM}" --architecture "${BML_TARGET_ARCH}"
         --packager "${PROJECT_SOURCE_DIR}/scripts/package_sdl_update.py"
-        --signer "$<TARGET_FILE:BMLUpdateSigner>")
+        --signer "$<TARGET_FILE:BMLUpdateSigner>" ${_bml_runtime_test_args})
 set_tests_properties(BMLUpdaterSdlIntegrationTest PROPERTIES LABELS "updater;sdl;network;integration" TIMEOUT 180 RUN_SERIAL TRUE)
