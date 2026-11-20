@@ -2,7 +2,6 @@
 """Build all public workflow profiles against a relocated, installed SDL SDK."""
 
 import argparse
-import ctypes
 import json
 import os
 from pathlib import Path
@@ -14,26 +13,9 @@ import tempfile
 import zipfile
 
 
-class Header(ctypes.Structure):
-    _fields_ = [("size", ctypes.c_size_t), ("major", ctypes.c_uint16),
-                ("minor", ctypes.c_uint16), ("id", ctypes.c_char_p)]
-
-
-class ModDefinition(ctypes.Structure):
-    _fields_ = [("size", ctypes.c_size_t), ("id", ctypes.c_char_p),
-                ("name", ctypes.c_char_p), ("version", ctypes.c_char_p),
-                ("author", ctypes.c_char_p), ("description", ctypes.c_char_p),
-                ("minimum_loader_version", ctypes.c_char_p),
-                ("dependencies", ctypes.c_void_p), ("dependency_count", ctypes.c_size_t),
-                ("dependency_stride", ctypes.c_size_t)]
-
-
-class ModInterfacePrefix(ctypes.Structure):
-    _fields_ = [("header", Header), ("definition", ctypes.POINTER(ModDefinition))]
-
-
-def run(*command: str) -> str:
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+def run(*command: str, env=None) -> str:
+    result = subprocess.run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            encoding="utf-8", errors="replace")
     if result.returncode or "install_name_tool:" in result.stdout:
         raise RuntimeError(f"Command failed ({result.returncode}): {command}\n{result.stdout}")
     return result.stdout
@@ -52,6 +34,10 @@ def main() -> int:
     parser.add_argument("--work-root", required=True, type=Path)
     parser.add_argument("--cmake", default="cmake")
     parser.add_argument("--configuration", default="Debug")
+    parser.add_argument("--generator", default="")
+    parser.add_argument("--generator-platform", default="")
+    parser.add_argument("--generator-toolset", default="")
+    parser.add_argument("--toolchain", default="")
     parser.add_argument("--engine-prefix-path", default="")
     parser.add_argument("--package-dir", action="append", nargs=2, default=[], metavar=("NAME", "DIR"))
     parser.add_argument("--runtime-library", action="append", type=Path, default=[])
@@ -73,73 +59,72 @@ def main() -> int:
     tool = sdk / "scripts/bml.py"
     abi = json.loads((sdk / "share/BML/BML.abi.json").read_text(encoding="utf-8"))
     assert abi["runtime"] == "sdl" and abi["host_linkage"] == "dynamic"
-    dll_directories = []
+    if args.generator.startswith("Visual Studio") and not args.generator_platform:
+        args.generator_platform = {"x86": "Win32", "x64": "x64", "arm64": "ARM64"}[abi["architecture"]]
+    generator_options = []
+    for option, value in (("-G", args.generator), ("-A", args.generator_platform),
+                          ("-T", args.generator_toolset), ("--toolchain", args.toolchain)):
+        if value:
+            generator_options.extend((option, value))
+    if sys.platform == "darwin":
+        architecture = {"arm64": "arm64", "x64": "x86_64"}[abi["architecture"]]
+        generator_options.append(f"-DCMAKE_OSX_ARCHITECTURES={architecture}")
+    workflow_env = os.environ.copy()
+    if args.generator_toolset:
+        workflow_env["CMAKE_GENERATOR_TOOLSET"] = args.generator_toolset
+    if args.toolchain:
+        workflow_env["CMAKE_TOOLCHAIN_FILE"] = args.toolchain
     if os.name == "nt":
-        runtime_dirs = dict.fromkeys(path.resolve().parent for path in args.runtime_library)
-        dll_directories = [os.add_dll_directory(str(directory)) for directory in (sdk / "bin", *runtime_dirs)]
         loader = sdk / "bin/BMLPlus.dll"
     else:
         loader = next(sdk.rglob("libBMLPlus.dylib" if sys.platform == "darwin" else "libBMLPlus.so"))
-    # The SDK no longer installs CK2 or VxMath. Load the same engine libraries
-    # as the target Player would, without copying them into the relocated SDK.
-    _engine_libraries = [ctypes.CDLL(str(library.resolve()), mode=ctypes.RTLD_GLOBAL)
-                         for library in args.runtime_library]
-    host_library = ctypes.CDLL(str(loader), mode=ctypes.RTLD_GLOBAL)
     version_header = (sdk / "include/BML/Version.h").read_text(encoding="utf-8")
     version_match = re.search(r'^#define BML_VERSION "([0-9]+\.[0-9]+\.[0-9]+)"$',
                               version_header, re.MULTILINE)
     assert version_match, "SDK release version is missing"
     release = version_match.group(1)
-    host_library.BML_GetVersionString.restype = ctypes.c_char_p
-    assert host_library.BML_GetVersionString().decode("utf-8") == release
-    version = [ctypes.c_int() for _ in range(3)]
-    host_library.BML_GetVersion.argtypes = [ctypes.POINTER(ctypes.c_int)] * 3
-    host_library.BML_GetVersion.restype = None
-    host_library.BML_GetVersion(*(ctypes.byref(part) for part in version))
-    assert tuple(part.value for part in version) == tuple(map(int, release.split(".")))
     package_version = next(sdk.rglob("BMLConfigVersion.cmake")).read_text(encoding="utf-8")
     assert f'set(PACKAGE_VERSION "{release}")' in package_version
-    for name in ("CKGetPluginInfoCount", "CKGetPluginInfo", "RegisterBehaviorDeclarations",
-                 "BML_GetInterface"):
-        assert hasattr(host_library, name), f"Required host export is missing: {name}"
-    # Obsolete C++ vtables and caller-address services must not remain a second
-    # native entry route. Installed consumers use Context and versioned C tables.
-    obsolete_headers = ("IMod.h", "IBML.h", "IConfig.h", "ICommand.h", "ILogger.h",
-                        "IMessageReceiver.h", "InputHook.h", "ExecuteBB.h", "ModInterface.hpp",
-                        "RefCount.h")
-    for name in obsolete_headers:
+    for name in ("IMod.h", "IBML.h", "IConfig.h", "ICommand.h", "ILogger.h",
+                 "IMessageReceiver.h", "InputHook.h", "ExecuteBB.h", "ModInterface.hpp", "RefCount.h"):
         assert not (sdk / "include/BML" / name).exists(), name
-    obsolete_symbols = [
-        "BML_GetLoaderPathW", "BML_GetLoaderPathUtf8", "BML_GetModRootW",
-        "BML_GetModRootUtf8", "BML_UnregisterCommand", "BML_SetCommandStatus",
-        "BML_GetCommandInput", "BML_GetConfigPropertyEditor", "BML_SetConfigPropertyEditor",
-        "BML_GetConfigPropertyChoiceCount", "BML_GetConfigPropertyChoice",
-        "BML_SetConfigPropertyChoices",
-    ]
-    if os.name != "nt":
-        obsolete_symbols += ["_ZTI4IMod", "_ZTI4IBML", "_ZTI9IProperty", "_ZTI7IConfig",
-                             "_ZTI8ICommand", "_ZTI7ILogger", "_ZTI16IMessageReceiver"]
-    for name in obsolete_symbols:
-        assert not hasattr(host_library, name), f"Obsolete native export remains: {name}"
+
+    # The inspection process is compiled for the SDK target. The orchestration
+    # interpreter can have a different Windows architecture.
+    probe_source = work / "native-probe"
+    probe_source.mkdir()
+    shutil.copy2(Path(__file__).with_name("NativeConsumerProbe.cpp"), probe_source)
+    (probe_source / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.25)
+project(NativeSdkProbe LANGUAGES CXX)
+add_executable(NativeSdkProbe NativeConsumerProbe.cpp)
+target_compile_features(NativeSdkProbe PRIVATE cxx_std_20)
+target_include_directories(NativeSdkProbe PRIVATE "${SDK}/include")
+target_link_libraries(NativeSdkProbe PRIVATE ${CMAKE_DL_LIBS})
+if(WIN32)
+    target_compile_definitions(NativeSdkProbe PRIVATE _WIN32_WINNT=0x0A00)
+endif()
+if(MINGW)
+    target_link_options(NativeSdkProbe PRIVATE -municode)
+endif()
+''', encoding="utf-8")
+    probe_build = work / "native-probe-build"
+    print(run(args.cmake, *generator_options, "-S", str(probe_source), "-B", str(probe_build),
+              f"-DSDK={sdk}", f"-DCMAKE_BUILD_TYPE={args.configuration}"))
+    print(run(args.cmake, "--build", str(probe_build), "--config", args.configuration))
+    probe = next(probe_build.rglob("NativeSdkProbe.exe" if os.name == "nt" else "NativeSdkProbe"))
+    libraries = [library.resolve() for library in args.runtime_library]
+    probe_command = [str(probe), str(loader), release, str(len(libraries)), *map(str, libraries)]
+    run(*probe_command, "loader")
+
     host = work / "中文宿主 with spaces"
     host_mods = host / "ModLoader/Mods"
     host_mods.mkdir(parents=True)
     if sys.platform == "darwin":
-        # This ctypes host uses the SDK's development libraries, rather than a
-        # Player package. Supply its already-loaded SDL in the normal host Bin
-        # directory without editing any library or consumer load commands.
+        # Match the layout expected by an SDK-built Mod while reusing one SDL.
         (host / "Bin").mkdir()
-        dyld = ctypes.CDLL(None)
-        dyld._dyld_image_count.restype = ctypes.c_uint32
-        dyld._dyld_get_image_name.argtypes = [ctypes.c_uint32]
-        dyld._dyld_get_image_name.restype = ctypes.c_char_p
-        images = [Path(os.fsdecode(dyld._dyld_get_image_name(index)))
-                  for index in range(dyld._dyld_image_count())]
-        sdl_images = [image for image in images if image.name.startswith("libSDL3")]
-        assert len(sdl_images) == 1, sdl_images
-        dependency = sdl_images[0]
-        assert dependency.is_absolute() and dependency.is_file(), dependency
-        (host / "Bin" / dependency.name).symlink_to(dependency)
+        dependency = next(library for library in libraries if library.name.startswith("libSDL3"))
+        install_name = run("otool", "-D", str(dependency)).splitlines()[1].strip()
+        (host / "Bin" / Path(install_name).name).symlink_to(dependency)
     projects = {}
     for profile in ("basic", "interface-provider", "interface-consumer", "imc-provider"):
         destination = work / "中文工作区" / profile
@@ -147,12 +132,14 @@ def main() -> int:
                            "--author", "SDK Test", "--destination", str(destination))
         if profile == "interface-consumer":
             command += ["--provider-id", "test.interface-provider"]
-        print(run(*command))
+        print(run(*command, env=workflow_env))
         projects[profile] = destination
-        command = workflow(destination / "bml.py", "build", "--verbose")
+        command = workflow(destination / "bml.py", "build", "--verbose", "--configuration", args.configuration)
+        if args.generator:
+            command += ["--generator", args.generator]
         if profile == "interface-consumer":
             command += ["--package-root", str(projects["interface-provider"] / ".bml/stage")]
-        print(run(*command))
+        print(run(*command, env=workflow_env))
         manifest = json.loads((destination / "bml.mod.json").read_text(encoding="utf-8"))
         module = destination / ".bml/stage/Mods" / f"{manifest['target']}.bmodp"
         built = list((destination / ".bml/build").rglob(module.name))
@@ -170,7 +157,7 @@ def main() -> int:
         # Rebuilding/reinstalling must preserve the deployable output, including
         # its signature; packaging must copy these same bytes as well.
         original = module.read_bytes()
-        print(run(*command))
+        print(run(*command, env=workflow_env))
         assert module.read_bytes() == original == built[0].read_bytes()
         print(run(*workflow(destination / "bml.py", "pack", "--verbose")))
         with zipfile.ZipFile(destination / "dist" / f"{manifest['target']}.zip") as archive:
@@ -180,26 +167,12 @@ def main() -> int:
         load_module = host_mods / module.name
         shutil.copy2(module, load_module)
         assert load_module.read_bytes() == module.read_bytes()
-        library = ctypes.CDLL(str(load_module))
-        query = library.BML_GetModInterface
-        query.argtypes = [ctypes.c_uint16, ctypes.POINTER(ctypes.c_void_p)]
-        query.restype = ctypes.c_int
-        interface = ctypes.c_void_p()
-        assert query(1, ctypes.byref(interface)) == 0 and interface.value
-        metadata = ctypes.cast(interface, ctypes.POINTER(ModInterfacePrefix)).contents.definition.contents
-        assert metadata.id.decode("utf-8") == manifest["id"]
-        assert metadata.name.decode("utf-8") == manifest["name"]
-        assert metadata.version.decode("utf-8") == manifest["version"]
-        assert metadata.minimum_loader_version.decode("utf-8") == release
-        assert metadata.author.decode("utf-8") == "SDK Test"
-        assert metadata.dependency_count == (2 if profile == "interface-consumer" else 1)
-        original_interface = interface.value
-        assert query(1, ctypes.byref(interface)) == 0 and interface.value == original_interface
-        assert query(2, ctypes.byref(interface)) < 0 and interface.value is None
+        run(*probe_command, "metadata", str(load_module), manifest["id"], manifest["name"],
+            manifest["version"], "SDK Test", "2" if profile == "interface-consumer" else "1")
 
     # The installed pure C example has no C++ compiler or engine requirement.
     c_build = work / "pure-c-build"
-    print(run(args.cmake, "-S", str(sdk / "examples/native-c-mod"), "-B", str(c_build),
+    print(run(args.cmake, *generator_options, "-S", str(sdk / "examples/native-c-mod"), "-B", str(c_build),
               f"-DCMAKE_PREFIX_PATH={sdk}", f"-DCMAKE_BUILD_TYPE={args.configuration}"))
     print(run(args.cmake, "--build", str(c_build), "--config", args.configuration))
     c_module = next(c_build.rglob("BMLCExample.bmodp"))
@@ -207,7 +180,7 @@ def main() -> int:
     assert c_manifest["extensions"] == {}
 
     friendly_build = work / "native-example-build"
-    print(run(args.cmake, "-S", str(sdk / "examples/native-mod"), "-B", str(friendly_build),
+    print(run(args.cmake, *generator_options, "-S", str(sdk / "examples/native-mod"), "-B", str(friendly_build),
               f"-DCMAKE_PREFIX_PATH={sdk}", f"-DCMAKE_BUILD_TYPE={args.configuration}"))
     print(run(args.cmake, "--build", str(friendly_build), "--config", args.configuration))
     friendly = next(friendly_build.rglob("BMLNativeExample.bmodp"))
@@ -249,41 +222,19 @@ target_link_libraries(Extended PRIVATE Extensions)
 ''', encoding="utf-8")
     build = fixture / "build"
     prefixes = ";".join(filter(None, (str(sdk), args.engine_prefix_path)))
-    print(run(args.cmake, "-S", str(fixture), "-B", str(build),
+    print(run(args.cmake, *generator_options, "-S", str(fixture), "-B", str(build),
               f"-DCMAKE_PREFIX_PATH={prefixes}", f"-DCMAKE_BUILD_TYPE={args.configuration}",
               *(f"-D{name}_DIR={path}" for name, path in args.package_dir)))
     print(run(args.cmake, "--build", str(build), "--config", args.configuration))
-    Create = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_uint64, ctypes.POINTER(ctypes.c_void_p))
-    Destroy = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
-    class Protocol(ctypes.Structure):
-        _fields_ = [("header", Header), ("definition", ctypes.c_void_p),
-                    ("callbacks", ctypes.c_void_p), ("create", Create), ("destroy", Destroy)]
-    libraries = []
-    protocols = []
-    objects = []
+    deployed_modules = []
     for target in ("Core", "Extended"):
         module = next(build.rglob(target + ".bmodp"))
         descriptor = json.loads(Path(str(module) + ".abi.json").read_text())
         assert descriptor["extensions"] == ({} if target == "Core" else abi["extension_abis"])
         deployed = host_mods / module.name
         shutil.copy2(module, deployed)
-        library = ctypes.CDLL(str(deployed))
-        query = library.BML_GetModInterface
-        query.argtypes = [ctypes.c_uint16, ctypes.POINTER(ctypes.POINTER(Protocol))]
-        query.restype = ctypes.c_int
-        interface = ctypes.POINTER(Protocol)()
-        assert query(1, ctypes.byref(interface)) == 0
-        assert library.BML_TestInstances() == 0
-        libraries.append(library)
-        protocols.append(interface.contents)
-    for index, protocol in enumerate(protocols):
-        instance = ctypes.c_void_p()
-        assert protocol.create(0, ctypes.byref(instance)) == 0 and instance.value
-        objects.append(instance)
-        assert [lib.BML_TestInstances() for lib in libraries] == ([1, 0] if index == 0 else [1, 1])
-    for protocol, instance in zip(protocols, objects):
-        protocol.destroy(instance)
-    assert [lib.BML_TestInstances() for lib in libraries] == [0, 0]
+        deployed_modules.append(str(deployed))
+    run(*probe_command, "isolation", *deployed_modules)
 
     if (sdk / "templates/script-mod-template").is_dir():
         destination = work / "中文工作区/script"
