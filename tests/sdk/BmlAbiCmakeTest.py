@@ -20,33 +20,48 @@ class EngineAbiTest(unittest.TestCase):
         (self.headers / "CKTypes.h").write_text("struct CKObject { int value; };\n")
         (self.headers / "VxMath.h").write_text('#include "VxDefines.h"\n')
         (self.headers / "VxDefines.h").write_text("struct VxVector { float x, y, z; };\n")
+        for package, target in (("CK2", "CK2"), ("VxMath", "VxMath::VxMath")):
+            config = self.engine / "lib/cmake" / package
+            config.mkdir(parents=True)
+            (config / f"{package}Config.cmake").write_text(f'''
+add_library({target} INTERFACE IMPORTED)
+set_property(TARGET {target} PROPERTY INTERFACE_INCLUDE_DIRECTORIES
+    "${{CMAKE_CURRENT_LIST_DIR}}/../../../include")
+''', encoding="utf-8")
         self.source = self.root / "project"
         self.source.mkdir()
         (self.source / "CMakeLists.txt").write_text('''
 cmake_minimum_required(VERSION 3.25)
 project(BMLAbiTest LANGUAGES CXX)
 set(PROJECT_SOURCE_DIR "${BML_SOURCE_ROOT}")
-set(BML_RUNTIME sdl)
-add_library(CK2 INTERFACE IMPORTED)
-add_library(VxMath INTERFACE IMPORTED)
-set_target_properties(CK2 VxMath PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${ENGINE_ROOT}/include")
+add_library(SDL3::SDL3 INTERFACE IMPORTED)
+set(CMAKE_DISABLE_FIND_PACKAGE_SDL3 TRUE)
+if(REUSE_TARGETS)
+    set(CMAKE_DISABLE_FIND_PACKAGE_CK2 TRUE)
+    set(CMAKE_DISABLE_FIND_PACKAGE_VxMath TRUE)
+    add_library(CK2 INTERFACE IMPORTED)
+    add_library(VxMath INTERFACE IMPORTED)
+    set_target_properties(CK2 VxMath PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_PREFIX_PATH}/include")
+endif()
+include("${BML_SOURCE_ROOT}/cmake/BMLRuntime.cmake")
+bml_find_engine()
 set_property(TARGET CK2 PROPERTY INTERFACE_LINK_LIBRARIES VxMath)
 if(ENGINE_DEFINE)
-    set_property(TARGET VxMath PROPERTY INTERFACE_COMPILE_DEFINITIONS "${ENGINE_DEFINE}")
+    set_property(TARGET VxMath::VxMath PROPERTY INTERFACE_COMPILE_DEFINITIONS "${ENGINE_DEFINE}")
 endif()
 include("${BML_SOURCE_ROOT}/cmake/BMLAbi.cmake")
 file(WRITE "${CMAKE_BINARY_DIR}/result.txt" "${BML_SDK_ABI_ID}")
 ''', encoding="utf-8")
         self.run_number = 0
 
-    def fingerprint(self, engine=None, unused_source=None, define=""):
+    def fingerprint(self, engine=None, reuse_targets=False, define=""):
         self.run_number += 1
         build = self.root / f"build-{self.run_number}"
         command = [ARGS.cmake, "-S", str(self.source), "-B", str(build),
                    "-DCMAKE_BUILD_TYPE=Debug", f"-DBML_SOURCE_ROOT={ARGS.source_root}",
-                   f"-DENGINE_ROOT={engine or self.engine}", f"-DENGINE_DEFINE={define}",
-                   f"-DBALLANCED_ROOT={unused_source or ''}"]
+                   f"-DCMAKE_PREFIX_PATH={engine or self.engine}", f"-DENGINE_DEFINE={define}",
+                   f"-DREUSE_TARGETS={'ON' if reuse_targets else 'OFF'}"]
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout)
@@ -62,15 +77,8 @@ file(WRITE "${CMAKE_BINARY_DIR}/result.txt" "${BML_SDK_ABI_ID}")
         shutil.copytree(self.engine, relocated)
         self.assertEqual(self.fingerprint(), self.fingerprint(relocated))
 
-    def test_unselected_source_tree_does_not_affect_package_abi(self):
-        unused = self.root / "unused source"
-        headers = unused / "Source/CK2/include"
-        headers.mkdir(parents=True)
-        header = headers / "CKAll.h"
-        header.write_text("// unselected source revision one\n")
-        before = self.fingerprint(unused_source=unused)
-        header.write_text("// unselected source revision two\n")
-        self.assertEqual(before, self.fingerprint(unused_source=unused))
+    def test_reuses_existing_engine_targets(self):
+        self.assertEqual(self.fingerprint(), self.fingerprint(reuse_targets=True))
 
     def test_public_compile_definitions_change_abi(self):
         self.assertNotEqual(self.fingerprint(define="VX_SIMD_USE_SIMDE=0"),
