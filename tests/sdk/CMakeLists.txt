@@ -26,7 +26,7 @@ add_test(
 )
 set_tests_properties(BmlSdlCliTest PROPERTIES LABELS "sdk;workflow;sdl" RUN_SERIAL TRUE)
 
-if(CK2_INSTALL AND VXMATH_INSTALL)
+if(TARGET CK2 AND CK2_DIR AND VxMath_DIR AND SDL3_DIR)
     add_test(
             NAME SdlSdkConsumerTest
             COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/SdlSdkConsumerTest.py"
@@ -34,6 +34,13 @@ if(CK2_INSTALL AND VXMATH_INSTALL)
                     --work-root "${PROJECT_BINARY_DIR}/tests/sdl-sdk-consumer"
                     --cmake "${CMAKE_COMMAND}"
                     --configuration "$<CONFIG>"
+                    --engine-prefix-path "${CMAKE_PREFIX_PATH}"
+                    --package-dir CK2 "${CK2_DIR}"
+                    --package-dir VxMath "${VxMath_DIR}"
+                    --package-dir SDL3 "${SDL3_DIR}"
+                    --runtime-library "$<TARGET_FILE:SDL3::SDL3>"
+                    --runtime-library "$<TARGET_FILE:VxMath>"
+                    --runtime-library "$<TARGET_FILE:CK2>"
     )
     set_tests_properties(SdlSdkConsumerTest PROPERTIES LABELS "sdk;workflow;sdl;integration"
             RUN_SERIAL TRUE TIMEOUT 240)

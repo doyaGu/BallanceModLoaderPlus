@@ -52,6 +52,9 @@ def main() -> int:
     parser.add_argument("--work-root", required=True, type=Path)
     parser.add_argument("--cmake", default="cmake")
     parser.add_argument("--configuration", default="Debug")
+    parser.add_argument("--engine-prefix-path", default="")
+    parser.add_argument("--package-dir", action="append", nargs=2, default=[], metavar=("NAME", "DIR"))
+    parser.add_argument("--runtime-library", action="append", type=Path, default=[])
     args = parser.parse_args()
     args.work_root.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="run-", dir=args.work_root)).resolve()
@@ -72,10 +75,15 @@ def main() -> int:
     assert abi["runtime"] == "sdl" and abi["host_linkage"] == "dynamic"
     dll_directories = []
     if os.name == "nt":
-        dll_directories = [os.add_dll_directory(str(sdk / directory)) for directory in ("Bin", "bin")]
+        runtime_dirs = dict.fromkeys(path.resolve().parent for path in args.runtime_library)
+        dll_directories = [os.add_dll_directory(str(directory)) for directory in (sdk / "bin", *runtime_dirs)]
         loader = sdk / "bin/BMLPlus.dll"
     else:
         loader = next(sdk.rglob("libBMLPlus.dylib" if sys.platform == "darwin" else "libBMLPlus.so"))
+    # The SDK no longer installs CK2 or VxMath. Load the same engine libraries
+    # as the target Player would, without copying them into the relocated SDK.
+    _engine_libraries = [ctypes.CDLL(str(library.resolve()), mode=ctypes.RTLD_GLOBAL)
+                         for library in args.runtime_library]
     host_library = ctypes.CDLL(str(loader), mode=ctypes.RTLD_GLOBAL)
     version_header = (sdk / "include/BML/Version.h").read_text(encoding="utf-8")
     version_match = re.search(r'^#define BML_VERSION "([0-9]+\.[0-9]+\.[0-9]+)"$',
@@ -236,8 +244,10 @@ target_compile_definitions(Extended PRIVATE USE_EXTENSIONS MOD_ID="test.extended
 target_link_libraries(Extended PRIVATE Extensions)
 ''', encoding="utf-8")
     build = fixture / "build"
+    prefixes = ";".join(filter(None, (str(sdk), args.engine_prefix_path)))
     print(run(args.cmake, "-S", str(fixture), "-B", str(build),
-              f"-DCMAKE_PREFIX_PATH={sdk}", f"-DCMAKE_BUILD_TYPE={args.configuration}"))
+              f"-DCMAKE_PREFIX_PATH={prefixes}", f"-DCMAKE_BUILD_TYPE={args.configuration}",
+              *(f"-D{name}_DIR={path}" for name, path in args.package_dir)))
     print(run(args.cmake, "--build", str(build), "--config", args.configuration))
     Create = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_uint64, ctypes.POINTER(ctypes.c_void_p))
     Destroy = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
