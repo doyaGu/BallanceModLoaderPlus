@@ -4,7 +4,11 @@ project(BMLSdlEngineTests LANGUAGES C CXX)
 # These component tests exercise the SDL adapters without loading BML or
 # modifying a Player installation.
 get_filename_component(BML_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
-set(BALLANCED_ROOT "${BML_ROOT}/../Ballanced" CACHE PATH "Ballanced source tree")
+set(NEMO2_ROOT "" CACHE PATH "NeMo2 source tree for the engine test fixtures")
+set(NEMO2_SOURCE_DIR "${NEMO2_ROOT}/Source")
+if(NOT NEMO2_ROOT OR NOT EXISTS "${NEMO2_SOURCE_DIR}/RenderEngine/CMakeLists.txt")
+    message(FATAL_ERROR "Set NEMO2_ROOT to the NeMo2 source tree")
+endif()
 set(CKRE_BUILD_TESTS ON CACHE BOOL "" FORCE)
 set(CKRE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(CKRE_BUILD_SHARED OFF CACHE BOOL "" FORCE)
@@ -15,7 +19,7 @@ set(CK2_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(CK2_INSTALL OFF CACHE BOOL "" FORCE)
 set(VXMATH_INSTALL OFF CACHE BOOL "" FORCE)
 find_package(SDL3 CONFIG REQUIRED)
-add_subdirectory("${BALLANCED_ROOT}/Source/RenderEngine" engine)
+add_subdirectory("${NEMO2_SOURCE_DIR}/RenderEngine" engine)
 
 include(FetchContent)
 FetchContent_Declare(googletest
@@ -54,7 +58,7 @@ target_compile_features(BMLSdlEngineTest PRIVATE cxx_std_20)
 target_include_directories(BMLSdlEngineTest PRIVATE
     "${BML_ROOT}/include" "${BML_ROOT}/src" "${BML_ROOT}/src/Utils"
     "${BML_ROOT}/deps/imgui" "${BML_ROOT}/deps/utf8.h"
-    "${BALLANCED_ROOT}/Source/RenderEngine/tests")
+    "${NEMO2_SOURCE_DIR}/RenderEngine/tests")
 target_compile_definitions(BMLSdlEngineTest PRIVATE
     BML_RUNTIME_SDL=1 BML_TEST BML_EXPORTS BML_ENABLE_ANGELSCRIPT=0
     IMGUI_USER_CONFIG="BMLImGuiConfig.h")
@@ -78,18 +82,18 @@ add_test(NAME BMLSdlEngineTest COMMAND BMLSdlEngineTest)
 set(SDLINPUT_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(SDLINPUT_BUILD_STATIC ON CACHE BOOL "" FORCE)
 set(SDLINPUT_INSTALL OFF CACHE BOOL "" FORCE)
-add_subdirectory("${BALLANCED_ROOT}/Source/Managers/SdlInputManager" input)
+add_subdirectory("${NEMO2_SOURCE_DIR}/Managers/SdlInputManager" input)
 add_executable(BMLSdlInputTest
     SdlInputTest.cpp
     SdlVTablePatchTest.cpp
     "${BML_ROOT}/src/Hooks/InputHookSdl.cpp"
     "${BML_ROOT}/src/Hooks/VTablePatchSdl.cpp"
-    "${BALLANCED_ROOT}/Source/BuildingBlocks/Controllers/Behaviors/KeyEvent.cpp"
-    "${BALLANCED_ROOT}/Source/BuildingBlocks/Controllers/Behaviors/GetMouseRelativePosition.cpp")
+    "${NEMO2_SOURCE_DIR}/BuildingBlocks/Controllers/Behaviors/KeyEvent.cpp"
+    "${NEMO2_SOURCE_DIR}/BuildingBlocks/Controllers/Behaviors/GetMouseRelativePosition.cpp")
 target_compile_features(BMLSdlInputTest PRIVATE cxx_std_20)
 target_include_directories(BMLSdlInputTest PRIVATE
     "${BML_ROOT}/include" "${BML_ROOT}/src"
-    "${BALLANCED_ROOT}/Source/Managers/SdlInputManager")
+    "${NEMO2_SOURCE_DIR}/Managers/SdlInputManager")
 target_compile_definitions(BMLSdlInputTest PRIVATE BML_RUNTIME_SDL=1 BML_EXPORTS)
 target_link_libraries(BMLSdlInputTest PRIVATE SdlInputManagerStatic CK2Static gtest_main SDL3::SDL3)
 add_test(NAME BMLSdlInputTest COMMAND BMLSdlInputTest)
