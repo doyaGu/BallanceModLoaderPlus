@@ -187,19 +187,13 @@ void DebugUtilities::OnLoad(const BML::Mod::Context &context) {
 }
 
 void DebugUtilities::OnModifyConfig(const BML::Mod::Context &, const BML::Mod::ConfigEvent &event) {
-    const auto *category = event.Category.data();
-    const auto *key = event.Key.data();
-    auto found = m_Context.Config().FindProperty(event.Category, event.Key);
-    if (!found)
+    if (event.Category != "Debug" || !ModSupport::CheatEnabled())
         return;
-    auto prop = found.Value();
 
-    if (ModSupport::CheatEnabled()) {
-        if ((event.Category == "Debug" && event.Key == "BallUp"))
-            SetParamValue(m_BallForce[0], m_BallCheat[0].Get<uint32_t>());
-        if ((event.Category == "Debug" && event.Key == "BallDown"))
-            SetParamValue(m_BallForce[1], m_BallCheat[1].Get<uint32_t>());
-    }
+    if (event.Key == "BallUp")
+        UpdateBallForceKey(0, true);
+    else if (event.Key == "BallDown")
+        UpdateBallForceKey(1, true);
 }
 
 void DebugUtilities::OnLoadObject(const BML::Mod::Context &,
@@ -261,17 +255,17 @@ void DebugUtilities::OnProcess(const BML::Mod::Context &) {
 }
 
 void DebugUtilities::OnCheatEnabled(const BML::Mod::Context &, const BML::Mod::CheatEvent &event) {
-    const bool enable = event.Enabled;
+    if (!event.Enabled && abs(m_SpeedTimes - 1.0f) > EPSILON)
+        ChangeBallSpeed(1.0f);
 
-    if (enable) {
-        SetParamValue(m_BallForce[0], m_BallCheat[0].Get<uint32_t>());
-        SetParamValue(m_BallForce[1], m_BallCheat[1].Get<uint32_t>());
-    } else {
-        if (abs(m_SpeedTimes - 1.0f) > EPSILON)
-            ChangeBallSpeed(1.0f);
+    UpdateBallForceKey(0, event.Enabled);
+    UpdateBallForceKey(1, event.Enabled);
+}
 
-        SetParamValue(m_BallForce[0], CKKEYBOARD(0));
-        SetParamValue(m_BallForce[1], CKKEYBOARD(0));
+void DebugUtilities::UpdateBallForceKey(int index, bool enabled) {
+    if (auto *parameter = m_BallForce[index].Get()) {
+        const uint32_t key = enabled ? m_BallCheat[index].Get<uint32_t>() : 0;
+        SetParamValue(parameter, key);
     }
 }
 
@@ -511,7 +505,9 @@ void DebugUtilities::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
                            CreateParamValue(ballNav, "Down", CKPGUID_VECTOR, VxVector(0, -1, 0))};
     CKBehavior *wake = FindFirstBB(ballNav, "Physics WakeUp");
 
+    const bool cheatEnabled = ModSupport::CheatEnabled();
     for (int i = 0; i < 2; i++) {
+        UpdateBallForceKey(i, cheatEnabled);
         keyevent[i]->GetInputParameter(0)->SetDirectSource(m_BallForce[i]);
         CreateLink(ballNav, nop[0], keyevent[i], 0, 0);
         CreateLink(ballNav, nop[1], keyevent[i], 0, 1);

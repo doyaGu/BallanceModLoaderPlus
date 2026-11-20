@@ -44,6 +44,8 @@ python tests/player/sdl/RunPostProcessTest.py \
 ```
 
 `--expect-mod` is repeatable and requires each identity to reach the loaded state.
+Include `DebugUtilities` in a script-enabled run to exercise cheat notifications
+before its ball force parameters exist.
 Include native ABI sidecars. Script-enabled runs automatically stage the probe’s
 script helpers; test native-only runtime/SDK builds separately. These helpers
 check strict ConfigValue reads and choices ownership, keyboard snapshot COW and

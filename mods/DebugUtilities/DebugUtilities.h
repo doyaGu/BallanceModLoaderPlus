@@ -48,6 +48,7 @@ class DebugUtilities : public BML::Mod::Instance {
     BML::Input::Block m_ChangeBallBlock, m_SummonBlock;
     void OnEditScript_Gameplay_Ingame(CKBehavior *script);
     void OnEditScript_Gameplay_Events(CKBehavior *script);
+    void UpdateBallForceKey(int index, bool enabled);
 
     void OnProcess_Suicide();
     void OnProcess_ChangeBall();
