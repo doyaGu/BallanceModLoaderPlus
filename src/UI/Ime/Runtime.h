@@ -1,22 +1,18 @@
 #ifndef BML_UI_IME_RUNTIME_H
 #define BML_UI_IME_RUNTIME_H
 
-#include "UI/Ime/NativePresentation.h"
 #include "UI/Ime/State.h"
 
 #include <cstdint>
 
 union SDL_Event;
+struct SDL_Window;
 
 namespace Overlay::Ime::Runtime {
     void ObserveEvent(const SDL_Event &event);
-    // Overlay Platform Input owns these calls and invokes them only on the
-    // Player UI thread. The root window bounds message observation; the
-    // presentation window is the exact HWND used by the ImGui backend.
-    void Attach(void *rootWindow, void *presentationWindow);
-    void Detach();
-    NativePresentation::MessageDisposition HandleNativeMessage(void *messageWindow, std::uint32_t message,
-                                                               std::uintptr_t wParam, std::intptr_t lParam);
+    // Overlay Platform Input owns the attachment on the Player UI thread.
+    bool Attach(SDL_Window *window);
+    bool Detach();
     bool WantsCandidateNavigation();
 
     struct PresentationFrame {

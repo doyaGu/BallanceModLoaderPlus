@@ -31,16 +31,18 @@ std::u16string Decode(const char *text, int cursor, std::uint32_t &utf16Cursor) 
 }
 }
 
-void Attach(void *, void *window) {
-    g_Window = static_cast<SDL_Window *>(window);
+bool Attach(SDL_Window *window) {
+    g_Window = window;
     g_State.Reset();
     g_Visible = false;
+    return true;
 }
-void Detach() {
+bool Detach() {
     if (g_Window && SDL_TextInputActive(g_Window)) SDL_StopTextInput(g_Window);
     g_Window = nullptr;
     g_State.Reset();
     g_Visible = false;
+    return true;
 }
 void ObserveEvent(const SDL_Event &event) {
     if (!g_Window) return;
@@ -59,7 +61,6 @@ void ObserveEvent(const SDL_Event &event) {
         g_State.Reset();
     }
 }
-NativePresentation::MessageDisposition HandleNativeMessage(void *, std::uint32_t, std::uintptr_t, std::intptr_t) { return {}; }
 // Candidate navigation and candidate windows belong to the system IME.
 bool WantsCandidateNavigation() { return false; }
 bool MoveCandidate(CandidateDirection) { return false; }

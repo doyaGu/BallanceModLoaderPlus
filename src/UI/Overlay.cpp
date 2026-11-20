@@ -6,8 +6,6 @@
 
 #include "CKContext.h"
 
-#include "HookUtils.h"
-
 #include "imgui_internal.h"
 #include "UI/imgui_impl_ck2.h"
 #include <SDL3/SDL.h>
@@ -58,7 +56,8 @@ namespace Overlay {
             ImGuiEndFrame();
         }
         ImGuiShutdownRenderer(nullptr);
-        ImGuiShutdownPlatform(nullptr);
+        if (!ImGuiShutdownPlatform(nullptr))
+            return;
 
         g_ImGuiContext = nullptr;
         g_DrawDataReady = false;
@@ -93,20 +92,17 @@ namespace Overlay {
         return true;
     }
 
-    void ImGuiShutdownPlatform(CKContext *context) {
+    bool ImGuiShutdownPlatform(CKContext *context) {
         (void) context;
-        if (!g_PlatformInitialized) {
-            if (!PlatformInput::Detach())
-                utils::OutputDebugA("BML: Unable to detach Overlay platform input.\n");
-            return;
-        }
+        if (!PlatformInput::Detach())
+            return false;
+        if (!g_PlatformInitialized)
+            return true;
 
         ImGuiContextScope scope;
-
-        if (!PlatformInput::Detach())
-            utils::OutputDebugA("BML: Unable to detach Overlay platform input.\n");
         ImGui_ImplSDL3_Shutdown();
         g_PlatformInitialized = false;
+        return true;
     }
 
     void ImGuiShutdownRenderer(CKContext *context) {

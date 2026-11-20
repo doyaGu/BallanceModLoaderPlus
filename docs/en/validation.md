@@ -23,6 +23,10 @@ arbitrary release archive or future commit.
 | macOS ARM64 | `macos` / `arm64` | Dynamic, scripting on/off |
 | Static host, any target | Not integrated | Pending |
 
+Windows SDL builds attach the existing IMM/TSF presentation to the SDL window.
+SDL supplies committed text to ImGui. Chinese IME composition, cancellation,
+candidate navigation and focus changes still need target-machine checks.
+
 ## Completed local checks
 
 On 2026-11-06, macOS ARM64 Release dynamic builds passed the complete CTest suites:

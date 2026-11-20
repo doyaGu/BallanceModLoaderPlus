@@ -408,9 +408,10 @@ bool ModContext::Init() {
 
 bool ModContext::Shutdown() {
     if (!IsInited()) {
-        if (m_Hooks && !ShutdownHooks()) {
+        if ((m_Hooks && !ShutdownHooks()) || !Overlay::ImGuiShutdownPlatform(nullptr)) {
             return false;
         }
+        Overlay::ImGuiDestroyContext();
         return CloseApiAccess();
     }
 
@@ -429,6 +430,11 @@ bool ModContext::Shutdown() {
     if (!CloseApiAccess()) {
         if (m_Logger)
             m_Logger->Error("Cannot shut down the runtime Context while an API call is in progress.");
+        return false;
+    }
+
+    if (!Overlay::ImGuiShutdownPlatform(m_CKContext)) {
+        m_Logger->Error("Cannot release the runtime Context while an Overlay input callback is still installed.");
         return false;
     }
 
@@ -451,7 +457,6 @@ bool ModContext::Shutdown() {
             Overlay::ImGuiEndFrame();
         }
         Overlay::ImGuiShutdownRenderer(m_CKContext);
-        Overlay::ImGuiShutdownPlatform(m_CKContext);
         Overlay::ImGuiDestroyContext();
     }
 

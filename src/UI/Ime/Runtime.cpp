@@ -10,7 +10,9 @@
 #define NOMINMAX
 #endif
 #include <Windows.h>
+#include <CommCtrl.h>
 #include <imm.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <array>
@@ -490,33 +492,115 @@ namespace Overlay::Ime {
 }
 
 namespace Overlay::Ime::Runtime {
-    void Attach(void *rootWindow, void *presentationWindow) {
-        const HWND root = NormalizeRoot(static_cast<HWND>(rootWindow));
-        HWND owner = static_cast<HWND>(presentationWindow);
-        if (!BelongsToRoot(owner, root))
-            owner = nullptr;
+    static NativePresentation::MessageDisposition HandleNativeMessage(HWND window, UINT message,
+                                                                       WPARAM wParam, LPARAM lParam);
+
+    namespace {
+        constexpr UINT_PTR ImeSubclass = 0x424d4c49;
+        HWND g_MessageWindow = nullptr;
+        SDL_WindowID g_WindowId = 0;
+        HHOOK g_ProcessKeyHook = nullptr;
+        UINT g_CandidateMoveMessage = 0;
+        DWORD g_WindowThread = 0;
+        bool g_Observing = false;
+
+        LRESULT CALLBACK RouteImeMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
+                                        UINT_PTR, DWORD_PTR) {
+            if (message == WM_NCDESTROY) {
+                ::RemoveWindowSubclass(window, RouteImeMessage, ImeSubclass);
+                g_MessageWindow = nullptr;
+                g_WindowId = 0;
+            }
+            if (!g_Observing)
+                return ::DefSubclassProc(window, message, wParam, lParam);
+            if (g_CandidateMoveMessage && message == g_CandidateMoveMessage) {
+                if (wParam == static_cast<WPARAM>(CandidateDirection::Previous))
+                    MoveCandidate(CandidateDirection::Previous);
+                else if (wParam == static_cast<WPARAM>(CandidateDirection::Next))
+                    MoveCandidate(CandidateDirection::Next);
+                return 0;
+            }
+
+            const auto disposition = HandleNativeMessage(window, message, wParam, lParam);
+            if (disposition.suppress)
+                return 0;
+            // Pass committed text through SDL. It queues the single UTF-8
+            // TEXT_INPUT event used by both Player and ImGui.
+            return ::DefSubclassProc(window, message, wParam,
+                                     disposition.replaceLParam ? disposition.lParam : lParam);
+        }
+
+        LRESULT CALLBACK ImeProcessKey(int code, WPARAM removeMode, LPARAM address) {
+            const auto *message = reinterpret_cast<const MSG *>(address);
+            if (g_Observing && g_CandidateMoveMessage && code == HC_ACTION && removeMode == PM_REMOVE &&
+                message && message->hwnd == g_MessageWindow && message->message == WM_KEYDOWN &&
+                message->wParam == VK_PROCESSKEY && ::ImmGetVirtualKey(message->hwnd) == VK_TAB &&
+                WantsCandidateNavigation()) {
+                const auto direction = (::GetKeyState(VK_SHIFT) & 0x8000) != 0
+                    ? CandidateDirection::Previous : CandidateDirection::Next;
+                ::PostMessageW(g_MessageWindow, g_CandidateMoveMessage, static_cast<WPARAM>(direction), 0);
+            }
+            return ::CallNextHookEx(g_ProcessKeyHook, code, removeMode, address);
+        }
+    }
+
+    bool Attach(SDL_Window *window) {
+        const auto owner = static_cast<HWND>(SDL_GetPointerProperty(
+            SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
+        const DWORD thread = ::GetCurrentThreadId();
+        if (!owner || ::GetWindowThreadProcessId(owner, nullptr) != thread || !Detach())
+            return false;
+        if (!::SetWindowSubclass(owner, RouteImeMessage, ImeSubclass, 0))
+            return false;
+        g_WindowThread = thread;
+        g_MessageWindow = owner;
+        g_WindowId = SDL_GetWindowID(window);
+        g_CandidateMoveMessage = ::RegisterWindowMessageW(L"BMLPlus.Ime.CandidateMove");
+        if (g_CandidateMoveMessage)
+            g_ProcessKeyHook = ::SetWindowsHookExW(WH_GETMESSAGE, ImeProcessKey, nullptr, thread);
         {
             std::lock_guard lock(g_StateMutex);
-            g_RootWindow = root;
+            g_RootWindow = NormalizeRoot(owner);
             g_State.Reset();
         }
         g_PresentationTarget.Attach(owner);
         Tsf::Attach();
         Tsf::SetPresentationOwned(false);
+        g_Observing = true;
+        return true;
     }
 
-    void Detach() {
+    bool Detach() {
+        if (g_WindowThread && g_WindowThread != ::GetCurrentThreadId())
+            return false;
+        g_Observing = false;
+        if (g_ProcessKeyHook && ::UnhookWindowsHookEx(g_ProcessKeyHook))
+            g_ProcessKeyHook = nullptr;
+        if (g_MessageWindow && (!::IsWindow(g_MessageWindow) ||
+                ::RemoveWindowSubclass(g_MessageWindow, RouteImeMessage, ImeSubclass)))
+            g_MessageWindow = nullptr;
+        if (auto *window = g_WindowId ? SDL_GetWindowFromID(g_WindowId) : nullptr) {
+            if (SDL_TextInputActive(window)) SDL_StopTextInput(window);
+        }
+        g_WindowId = 0;
         g_PresentationTarget.Detach();
         Tsf::SetPresentationOwned(false);
         Tsf::Detach();
         std::lock_guard lock(g_StateMutex);
         g_State.Reset();
         g_RootWindow = nullptr;
+        if (g_MessageWindow || g_ProcessKeyHook)
+            return false;
+        g_WindowThread = 0;
+        return true;
     }
 
-    NativePresentation::MessageDisposition HandleNativeMessage(void *messageWindow, std::uint32_t message,
-                                                               std::uintptr_t wParam, std::intptr_t lParam) {
-        const HWND window = static_cast<HWND>(messageWindow);
+    void ObserveEvent(const SDL_Event &) {
+        // Native messages supply composition and candidate state on Windows.
+    }
+
+    static NativePresentation::MessageDisposition HandleNativeMessage(HWND window, UINT message,
+                                                                       WPARAM wParam, LPARAM lParam) {
         const HWND root = CopyRootWindow();
         const HWND owner = g_PresentationTarget.Window();
         if (!BelongsToRoot(window, root))

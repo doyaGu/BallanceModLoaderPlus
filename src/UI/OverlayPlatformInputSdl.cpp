@@ -54,21 +54,25 @@ bool SDLCALL Watch(void *, SDL_Event *event) {
 
 bool Attach(void *window) {
     if (g_Window) return g_Window == window;
-    if (!window || !SDL_AddEventWatch(Watch, nullptr)) return false;
-    g_Window = static_cast<SDL_Window *>(window);
-    Ime::Runtime::Attach(window, window);
+    auto *sdlWindow = static_cast<SDL_Window *>(window);
+    if (!sdlWindow || !Ime::Runtime::Attach(sdlWindow)) return false;
+    if (!SDL_AddEventWatch(Watch, nullptr)) {
+        Ime::Runtime::Detach();
+        return false;
+    }
+    g_Window = sdlWindow;
     return true;
 }
 
 bool Detach() {
-    if (!g_Window) return true;
+    if (!g_Window) return Ime::Runtime::Detach();
     SDL_RemoveEventWatch(Watch, nullptr);
-    Ime::Runtime::Detach();
+    const bool detached = Ime::Runtime::Detach();
     g_Window = nullptr;
     std::lock_guard lock(g_Mutex);
     g_Events.clear();
     g_CaptureFailed = false;
-    return true;
+    return detached;
 }
 
 void ProcessEvents() {

@@ -743,11 +743,14 @@ set(IMGUI_SOURCES
 
 list(APPEND BML_SOURCES
     Hooks/InputHookSdl.cpp Hooks/InputVTable.h Hooks/InputVTableMsvc.h Hooks/VTablePatchSdl.cpp
-    UI/OverlayPlatformInputSdl.cpp UI/Ime/RuntimeSdl.cpp UI/ImGuiFileSdl.cpp)
+    UI/OverlayPlatformInputSdl.cpp UI/ImGuiFileSdl.cpp)
 list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
 
-if(NOT WIN32)
+if(WIN32)
+    list(APPEND BML_SOURCES UI/Ime/Runtime.cpp UI/Ime/NativePresentation.cpp UI/Ime/Tsf.cpp)
+else()
     list(REMOVE_ITEM BML_SOURCES BML.rc)
+    list(APPEND BML_SOURCES UI/Ime/RuntimeSdl.cpp)
 endif()
 
 add_library(BML SHARED
@@ -811,6 +814,9 @@ target_link_libraries(BML
 )
 
 target_link_libraries(BML PRIVATE SDL3::SDL3)
+if(WIN32)
+    target_link_libraries(BML PRIVATE imm32 comctl32 ole32 oleaut32 uuid)
+endif()
 if(APPLE)
     set_target_properties(BML PROPERTIES INSTALL_RPATH "@loader_path;@loader_path/../Bin")
 elseif(UNIX)
