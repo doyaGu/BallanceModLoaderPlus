@@ -60,6 +60,35 @@ def allowed_path(path: str, target: dict) -> bool:
         name.endswith((".dll", ".dylib", ".so")) or ".so." in name)
 
 
+def package_source(path: Path, stage: Path, selected: dict, target: dict) -> Path:
+    if not path.is_symlink():
+        return path
+    if (target["platform"] != "linux" or path.parent != stage / "Bin"
+            or not re.fullmatch(r"[^/]+\.so(?:\.[0-9]+)*", path.name)):
+        raise ValueError(f"Stage contains an unsupported symlink: {path}")
+    try:
+        source = path.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ValueError(f"SONAME link does not resolve to a packaged library: {path}") from error
+    if (source.parent != path.parent or selected.get(f"Bin/{source.name}") != source
+            or not re.fullmatch(r"[^/]+\.so(?:\.[0-9]+)*", source.name)):
+        raise ValueError(f"SONAME link does not resolve to a packaged library: {path}")
+    return source
+
+
+def installed_files(stage: Path, manifest: Path) -> list[Path]:
+    paths = set()
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        entry = Path(line)
+        path = entry.parent.resolve() / entry.name
+        if stage not in path.parents or not (path.is_symlink() or path.is_file()):
+            raise ValueError(f"Install manifest references a missing or external file: {line}")
+        paths.add(path)
+    return sorted(paths)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", required=True, type=Path, help="Fresh BMLRuntime stage, or matching full static Player runtime stage")
@@ -77,7 +106,17 @@ def main() -> int:
     stage, output = args.stage.resolve(), args.output.resolve()
     if output == stage or stage in output.parents:
         parser.error("Output must be outside the input stage")
-    abi = json.loads((stage / "ModLoader/BML.abi.json").read_text(encoding="utf-8"))
+    abi_name = "ModLoader/BML.abi.json"
+    abi_path = stage / abi_name
+    if not abi_path.is_file() or abi_path.resolve() != abi_path:
+        parser.error("Stage is missing its regular ABI descriptor")
+    try:
+        abi_data = abi_path.read_bytes()
+        abi = json.loads(abi_data.decode("utf-8"))
+        if not isinstance(abi, dict):
+            raise ValueError("expected a JSON object")
+    except (OSError, ValueError) as error:
+        parser.error(f"Unable to read the staged ABI descriptor: {error}")
     target = {name: abi.get(name) for name in ("runtime", "platform", "architecture", "host_linkage")}
     if (abi.get("schema") not in (1, 2) or target["runtime"] != "sdl" or target["platform"] not in {"windows", "linux", "macos"}
             or target["architecture"] not in {"x86", "x64", "arm64"} or target["host_linkage"] not in {"dynamic", "static"}
@@ -86,28 +125,21 @@ def main() -> int:
         parser.error("Stage has no valid SDL ABI descriptor")
     if abi["schema"] == 2 and (abi.get("mod_api") != "bml.mod" or abi.get("mod_api_major") != 1):
         parser.error("Stage has an unsupported native Mod C protocol")
-    subprocess.run([args.signer, "check", str(args.signing_key)],
-                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    abi["version"] = args.version
-    files = []
+    if abi.get("version") != args.version:
+        parser.error(f"Requested version {args.version} does not match the stage version {abi.get('version')!r}")
+    if not isinstance(abi.get("scripts"), bool):
+        parser.error("Stage ABI descriptor must declare whether scripts are enabled")
+    selected = {}
     seen = set()
     if args.install_manifest:
-        candidates = []
-        for line in args.install_manifest.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            path = Path(line)
-            resolved = path.resolve()
-            if stage not in resolved.parents or path.is_symlink() or not path.exists():
-                parser.error(f"Install manifest references a missing, linked or external path: {line}")
-            candidates.append(resolved)
-        candidates = sorted(set(candidates))
+        try:
+            candidates = installed_files(stage, args.install_manifest)
+        except ValueError as error:
+            parser.error(str(error))
     else:
         candidates = sorted(stage.rglob("*"))
     for path in candidates:
-        if path.is_symlink():
-            parser.error(f"Stage contains a symlink: {path}")
-        if not path.is_file() or path.name == ".DS_Store":
+        if path.name == ".DS_Store" or not (path.is_symlink() or path.is_file()):
             continue
         relative = path.relative_to(stage).as_posix()
         if relative.lower() in {"updater", "updater.exe", "bin/updater", "bin/updater.exe", "bin/updater-readme.txt"}:
@@ -125,15 +157,29 @@ def main() -> int:
         if identity in seen:
             parser.error(f"Duplicate target path: {relative}")
         seen.add(identity)
-        data = json_bytes(abi) if relative == "ModLoader/BML.abi.json" else path.read_bytes()
-        mode = 0o755 if path.stat().st_mode & 0o111 else 0o644
-        files.append((relative, data, mode))
+        selected[relative] = path
     prefix, suffix = {"windows": ("", ".dll"), "linux": ("lib", ".so"), "macos": ("lib", ".dylib")}[target["platform"]]
     runtime = {"Player.exe", "Bin/Player.exe"} if target["platform"] == "windows" else {"Player", "Bin/Player"}
     if target["host_linkage"] == "dynamic":
         runtime = {f"Managers/{prefix}BMLPlus{suffix}"}
-    if not runtime.intersection(name for name, _, _ in files):
+    if abi_name not in selected:
+        parser.error("Package inventory is missing its ABI descriptor")
+    if not runtime.intersection(selected):
         parser.error("Stage is missing its Loader or static Player")
+    if (target["host_linkage"] == "dynamic" and abi["scripts"]
+            and f"BuildingBlocks/{prefix}AngelScript{suffix}" not in selected):
+        parser.error("Stage declares scripts enabled but its script runtime is missing from the package inventory")
+    files = []
+    for relative, path in selected.items():
+        try:
+            source = package_source(path, stage, selected, target)
+        except ValueError as error:
+            parser.error(str(error))
+        # Store one regular file per load name. The updater treats ZIP symlinks
+        # as invalid, and the ELF loader still needs the original SONAME path.
+        data = abi_data if relative == abi_name else source.read_bytes()
+        mode = 0o755 if source.stat().st_mode & 0o111 else 0o644
+        files.append((relative, data, mode))
     label = f"sdl-{target['platform']}-{target['architecture']}-{target['host_linkage']}"
     stem = f"BMLPlus-Update-{args.version}-{label}"
     package = output / f"{stem}.zip"
@@ -147,6 +193,8 @@ def main() -> int:
         paths += [channel_path, channel_path.with_suffix(".json.sig")]
     if not args.force and any(path.exists() for path in paths):
         parser.error("Output exists; pass --force to replace it")
+    subprocess.run([args.signer, "check", str(args.signing_key)],
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     output.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".bml-package-", dir=output)
     os.close(fd)

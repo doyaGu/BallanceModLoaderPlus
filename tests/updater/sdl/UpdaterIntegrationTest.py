@@ -73,7 +73,8 @@ def main():
         (game / "ModLoader/Configs/user.cfg").write_text("user config\n")
         (game / "ModLoader/Mods").mkdir()
         (game / "ModLoader/Mods/user.bmodp").write_bytes(b"user mod")
-        put_json(stage / "ModLoader/BML.abi.json", abi)
+        stage_abi = {**abi, "version": "v1"}
+        put_json(stage / "ModLoader/BML.abi.json", stage_abi)
         (stage / "Managers").mkdir()
         (stage / loader_relative).write_bytes(args.shared_fixture.read_bytes() + b"new version payload")
         (stage / loader_relative).chmod(0o755)
@@ -145,12 +146,12 @@ def main():
             assert "wrong-format-or-architecture" in updater("doctor", success=False)
             (game / loader_relative).write_bytes(saved_loader)
             for unsupported in ({"mod_api": "unknown"}, {"mod_api_major": 2}):
-                put_json(stage / "ModLoader/BML.abi.json", {**abi, **unsupported})
+                put_json(stage / "ModLoader/BML.abi.json", {**stage_abi, **unsupported})
                 rejected = run(sys.executable, args.packager, "--stage", stage,
                     "--output", root / "unsupported-protocol", "--version", "v1",
                     "--signing-key", key, "--signer", signer, success=False)
                 assert "unsupported native Mod C protocol" in rejected
-            put_json(stage / "ModLoader/BML.abi.json", abi)
+            put_json(stage / "ModLoader/BML.abi.json", stage_abi)
             run(sys.executable, args.packager, "--stage", stage, "--output", output, "--version", "v1",
                 "--signing-key", key, "--signer", signer, "--base-url", base_url)
             package = next(output.glob("*.zip"))
@@ -159,13 +160,13 @@ def main():
             channel = json.loads(channel_path.read_text())
             original_channel = dict(channel)
             with zipfile.ZipFile(package) as archive:
-                assert json.loads(archive.read("ModLoader/BML.abi.json")) == {**abi, "version": "v1"}
+                assert json.loads(archive.read("ModLoader/BML.abi.json")) == stage_abi
                 assert not any("Updater" in name for name in archive.namelist())
                 if os.name != "nt":
                     assert (archive.getinfo(loader_relative).external_attr >> 16) & 0o111
             legacy_stage = root / "schema1-stage"
             shutil.copytree(stage, legacy_stage)
-            legacy_abi = {name: value for name, value in abi.items()
+            legacy_abi = {name: value for name, value in stage_abi.items()
                           if name not in {"mod_api", "mod_api_major", "extension_abis"}}
             legacy_abi["schema"] = 1
             put_json(legacy_stage / "ModLoader/BML.abi.json", legacy_abi)
@@ -174,7 +175,7 @@ def main():
                 "--output", legacy_output, "--version", "v1",
                 "--signing-key", key, "--signer", signer)
             with zipfile.ZipFile(next(legacy_output.glob("*.zip"))) as archive:
-                assert json.loads(archive.read("ModLoader/BML.abi.json")) == {**legacy_abi, "version": "v1"}
+                assert json.loads(archive.read("ModLoader/BML.abi.json")) == legacy_abi
             before = (game / loader_relative).read_bytes()
             assert "local package verified" in updater("verify-local", package)
             assert "Detached signature verification failed" in updater("verify-local", package, success=False, executable=args.production_updater)
@@ -279,6 +280,7 @@ def main():
                 put_json(directory / "ModLoader/BML.abi.json", static_abi)
                 (directory / "Bin").mkdir()
                 shutil.copy(args.production_updater, directory / f"Bin/{player_name}")
+            put_json(static_stage / "ModLoader/BML.abi.json", {**static_abi, "version": "v2"})
             (static_game / "Bin/Player.ini").write_text("user Player settings")
             assert "doctor passed" in updater("doctor", runtime=static_game)
             static_out = root / "static-out"
@@ -292,6 +294,7 @@ def main():
             assert (static_game / "Bin/Player.ini").read_text() == "user Player settings"
             # Component inventory selects owned files from a staged game.
             user_config = stage / "ModLoader/Configs/user.cfg"
+            put_json(stage / "ModLoader/BML.abi.json", {**stage_abi, "version": "v3"})
             user_config.parent.mkdir()
             user_config.write_text("never publish this configuration")
             run(sys.executable, args.packager, "--stage", stage, "--output", root / "unsafe-output", "--version", "v3",

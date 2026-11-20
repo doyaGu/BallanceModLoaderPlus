@@ -87,7 +87,11 @@ python scripts/package_sdl_update.py \
 ```
 
 Replace the sample version, paths, key and URL. The stage supplies its own target
-from `ModLoader/BML.abi.json`; do not edit it to impersonate another target.
+and version from `ModLoader/BML.abi.json`. Before signing, the publisher requires
+that descriptor, the matching Loader/Player and the shared script plugin when
+the dynamic stage declares scripts enabled. Linux library links inside `Bin`
+are stored as regular files under their original SONAME names if their targets
+are also owned by the package. The update archive format remains regular-file only.
 Review the ZIP, exact JSON manifest bytes, SHA-256/size/mode inventory and detached
 signatures. The format is ECDSA P-256/SHA-256, base64 of raw 64-byte `r || s`.
 The runtime and publisher public key must agree.

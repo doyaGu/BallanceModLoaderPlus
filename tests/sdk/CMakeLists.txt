@@ -26,6 +26,11 @@ add_test(
 )
 set_tests_properties(BmlSdlCliTest PROPERTIES LABELS "sdk;workflow;sdl" RUN_SERIAL TRUE)
 
+add_test(NAME SdlUpdatePackageTest
+        COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tests/updater/sdl/UpdatePackageTest.py"
+                --packager "${PROJECT_SOURCE_DIR}/scripts/package_sdl_update.py" --cmake "${CMAKE_COMMAND}")
+set_tests_properties(SdlUpdatePackageTest PROPERTIES LABELS "sdl;packaging;updater" TIMEOUT 90)
+
 if(TARGET CK2 AND CK2_DIR AND VxMath_DIR AND SDL3_DIR)
     add_test(
             NAME SdlSdkConsumerTest
