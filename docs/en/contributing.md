@@ -5,30 +5,25 @@ This page is for changing the Loader, its SDK, bindings or tools.
 
 ## Prerequisites and engine selection
 
-Use CMake 3.25+, C++20, Python 3.10+ and SDL3 3.4.8+ development files. Initialize
-BML+'s submodules. Use the matching Ballanced `sdl` revision and submodules;
-never mix original Virtools headers/libraries into this build.
+Use CMake 3.25+, C++20 and Python 3.10+. Build and install NeMo2 at the revision
+pinned by the target Ballanced Player, with shared CK2 and VxMath and their
+development files. Use the same SDL3 development package for the engine, Player
+and BML+. A full install from the matching Ballanced build also exports NeMo2's
+CK2 and VxMath packages. Initialize BML+'s submodules before configuring.
 
 ```sh
 git submodule update --init --recursive
 cmake -S . -B build/sdl-release -DBML_RUNTIME=sdl \
-  -DBALLANCED_ROOT=/path/to/Ballanced \
+  -DCMAKE_PREFIX_PATH="/path/to/engine-sdk;/path/to/SDL-prefix" \
   -DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript \
   -DCMAKE_BUILD_TYPE=Release -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/sdl-release --config Release --parallel
 ```
 
-`BALLANCED_ROOT` defaults to a sibling `Ballanced` checkout. Existing CK2/VxMath
-CMake targets are reused; otherwise matching source subdirectories are added or
-installed packages are found. To select installed packages rather than that
-sibling tree, pass `-DBALLANCED_ROOT=` and `-DCMAKE_PREFIX_PATH=/path/to/engine-sdk`.
-SDL3 must also be discoverable through CMake.
-
-Select the SDL development package matching Player with
-`-DSDL3_DIR=/path/to/SDL/lib/cmake/SDL3`. The Ballanced baseline checked on
-2026-11-08 uses SDL 3.4.20. For offline source builds, set
-`-DVXMATH_FONT_DIR=/path/to/verified-fonts`; VxMath checks these files against its
-font manifest before configuring.
+BML+ reuses CK2, VxMath and SDL3 targets already supplied by the parent CMake
+project. In a standalone build it finds their CMake packages. You can select
+individual packages with `CK2_DIR`, `VxMath_DIR` and `SDL3_DIR`. The current
+Ballanced baseline uses SDL 3.4.20.
 
 Scripts are enabled by default. The default `BML_BUILD_SCRIPT_RUNTIME=ON` builds
 the matching CKAngelScript plugin from `CKANGELSCRIPT_ROOT` against the same
@@ -115,8 +110,8 @@ ctest --test-dir build/ui-framework -C Release --output-on-failure
 The standalone SDK and UI framework contracts need no engine. The normal suite
 always includes the UI scenario/Session contracts; headless Bui and the
 test-instrumented Loader additionally require `BML_BUILD_UI_AUTOMATION=ON`.
-The full suite also builds installed SDK consumers when CK2/VxMath installation
-is available. Run the script-free
+With installed engine packages the full suite also builds relocated BML SDK
+consumers against the same CK2, VxMath and SDL3 packages. Run the script-free
 configuration separately. Process-management and updater tests are serialized
 because they inspect running Player processes.
 

@@ -47,13 +47,14 @@ runtime ABI. [In-tree Mods](mods/README.md) demonstrate the current SDK.
 
 ## Build the Loader
 
-Install CMake 3.25+, a C++20 compiler, Python 3.10+ and SDL3 3.4.8+ development
-files. Initialize the submodules and use a fresh build directory:
+Install CMake 3.25+, a C++20 compiler and Python 3.10+. Use NeMo2's exported
+CK2/VxMath packages and the SDL3 development package matching your Player.
+Initialize the submodules and use a fresh build directory:
 
 ```sh
 git submodule update --init --recursive
 cmake -S . -B build/sdl -DBML_RUNTIME=sdl \
-  -DBALLANCED_ROOT=/path/to/Ballanced \
+  -DCMAKE_PREFIX_PATH="/path/to/engine-sdk;/path/to/SDL-prefix" \
   -DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript \
   -DCMAKE_BUILD_TYPE=Release -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/sdl --config Release --parallel
@@ -61,8 +62,8 @@ ctest --test-dir build/sdl -C Release --output-on-failure
 ```
 
 Scripts are enabled by default. `-DBML_ENABLE_ANGELSCRIPT=OFF` builds the
-script-free variant. See the contribution guide before installing components
-or choosing installed engine packages. Cross-compilation is not game acceptance.
+script-free variant. See the contribution guide for obtaining the matching SDK,
+installing components and running the Player tests.
 
 ## Project links
 

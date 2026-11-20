@@ -6,14 +6,15 @@ matching Player runtime with real game data.
 
 ```sh
 cmake -S tests/player/sdl -B build/sdl-postprocess-test \
-  -DCMAKE_PREFIX_PATH="/path/to/BML-SDK;/path/to/SDL-prefix" \
+  -DCMAKE_PREFIX_PATH="/path/to/BML-SDK;/path/to/engine-sdk;/path/to/SDL-prefix" \
   -DCMAKE_BUILD_TYPE=Release -DBML_SDL_PLAYER_ROOT="/path/to/prepared/runtime"
 cmake --build build/sdl-postprocess-test --config Release
 ctest --test-dir build/sdl-postprocess-test -C Release --output-on-failure
 ```
 
-Match architecture, compiler/runtime and configuration to the SDK because this
-probe uses engine/ImGui extensions. CTest runs Player three times. It requires
+Use the CK2/VxMath exports and SDL3 package used to build BML+. Match their
+architecture, compiler/runtime and configuration because this probe uses
+engine/ImGui extensions. CTest runs Player three times. It requires
 a native desktop and working renderer, unlike `tests/ck2/sdl` dummy-video tests.
 Do not run multiple Player probes or update tests against the same fixture at
 once.

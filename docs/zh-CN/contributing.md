@@ -5,26 +5,23 @@ Mod 作者通常使用已安装 SDK 和[开发工作流](modding.md)。本文面
 
 ## 环境与引擎选择
 
-准备 CMake 3.25+、C++20、Python 3.10+ 和 SDL3 3.4.8+ 开发文件，初始化 BML+
-子模块。使用对应 Ballanced `sdl` 源码和子模块，不混用原版 Virtools 头文件、库或缓存。
+准备 CMake 3.25+、C++20 和 Python 3.10+。按目标 Ballanced Player 锁定的版本构建并
+安装 NeMo2，包含 CK2、VxMath 动态库和开发文件。引擎、Player 和 BML+ 使用同一
+SDL3 开发包。完整安装对应的 Ballanced 构建也会导出 NeMo2 的 CK2 和 VxMath 包。
+配置前初始化 BML+ 的子模块。
 
 ```sh
 git submodule update --init --recursive
 cmake -S . -B build/sdl-release -DBML_RUNTIME=sdl \
-  -DBALLANCED_ROOT=/path/to/Ballanced \
+  -DCMAKE_PREFIX_PATH="/path/to/engine-sdk;/path/to/SDL-prefix" \
   -DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript \
   -DCMAKE_BUILD_TYPE=Release -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/sdl-release --config Release --parallel
 ```
 
-`BALLANCED_ROOT` 默认为同级 `Ballanced`。已有 CK2/VxMath CMake target 时直接复用；
-否则加入相应源码子目录，或查找已安装包。需要显式选择安装包时传
-`-DBALLANCED_ROOT=` 和 `-DCMAKE_PREFIX_PATH=/path/to/engine-sdk`，并确保 CMake
-也能找到 SDL3。
-
-通过 `-DSDL3_DIR=/path/to/SDL/lib/cmake/SDL3` 选择与 Player 匹配的 SDL 开发包。
-2026-11-08 核对的 Ballanced 基线使用 SDL 3.4.20。离线源码构建可传
-`-DVXMATH_FONT_DIR=/path/to/verified-fonts`；VxMath 会按其字体清单校验文件。
+BML+ 直接复用父 CMake 工程已提供的 CK2、VxMath 和 SDL3 目标。独立构建时查找它们的
+CMake 安装包，也可以用 `CK2_DIR`、`VxMath_DIR`、`SDL3_DIR` 单独指定。当前 Ballanced
+基线使用 SDL 3.4.20。
 
 默认启用脚本。`BML_BUILD_SCRIPT_RUNTIME=ON` 会从 `CKANGELSCRIPT_ROOT` 构建使用
 同一引擎目标的 CKAngelScript。无脚本版本使用独立目录并传
@@ -101,7 +98,8 @@ ctest --test-dir build/ui-framework -C Release --output-on-failure
 
 独立 SDK 和 UI 框架契约测试不需要引擎。默认测试包含 UI 场景目录和 Session 检查；
 无窗口 Bui 测试和带测试代码的 Loader 另需 `BML_BUILD_UI_AUTOMATION=ON`。
-完整测试在 CK2/VxMath 可安装时增加安装后 SDK 消费者。
+使用已安装的引擎包时，完整测试还会用同一组 CK2、VxMath 和 SDL3 包构建移动后的
+BML SDK 消费者。
 无脚本配置另行构建测试。进程管理与更新器测试会检查 Player 进程，使用串行调度。
 
 [Player 验收](https://github.com/doyaGu/BallanceModLoaderPlus/tree/sdl/tests/player/sdl)

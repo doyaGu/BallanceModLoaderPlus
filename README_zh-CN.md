@@ -41,21 +41,21 @@ ZIP；Linux/macOS 的模块也使用 `.bmodp` 扩展名。
 
 ## 构建 Loader
 
-准备 CMake 3.25+、C++20 编译器、Python 3.10+ 和 SDL3 3.4.8+ 开发文件，初始化
-子模块并使用新的构建目录：
+准备 CMake 3.25+、C++20 编译器和 Python 3.10+。使用与 Player 匹配的 NeMo2
+CK2/VxMath 安装包和 SDL3 开发包。初始化子模块后使用新的构建目录：
 
 ```sh
 git submodule update --init --recursive
 cmake -S . -B build/sdl -DBML_RUNTIME=sdl \
-  -DBALLANCED_ROOT=/path/to/Ballanced \
+  -DCMAKE_PREFIX_PATH="/path/to/engine-sdk;/path/to/SDL-prefix" \
   -DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript \
   -DCMAKE_BUILD_TYPE=Release -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/sdl --config Release --parallel
 ctest --test-dir build/sdl -C Release --output-on-failure
 ```
 
-默认启用脚本；`-DBML_ENABLE_ANGELSCRIPT=OFF` 构建无脚本版本。安装组件、使用已安装
-引擎包及独立 SDK 的流程见开发指南。交叉编译通过不代表游戏功能验收通过。
+默认启用脚本；`-DBML_ENABLE_ANGELSCRIPT=OFF` 构建无脚本版本。匹配 SDK 的获取方式、
+组件安装和 Player 测试流程见开发指南。
 
 ## 项目链接
 
