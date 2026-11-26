@@ -3,6 +3,7 @@
 
 import argparse
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,9 @@ spec.loader.exec_module(cli)
 
 class WorkflowTest(unittest.TestCase):
     def setUp(self):
+        output = patch.object(sys, "stdout", io.StringIO())
+        output.start()
+        self.addCleanup(output.stop)
         self.temporary = tempfile.TemporaryDirectory(prefix="bml-sdl-cli-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve() / "中文项目 with spaces"
@@ -76,6 +80,20 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn(f"sdl-{'a' * 64}-Debug", configure[configure.index("-B") + 1])
         self.assertEqual(build[build.index("--config") + 1], "Debug")
         self.assertEqual(artifact.read_bytes(), b"native module")
+
+    def test_cli_reports_unicode_paths_to_legacy_output_streams(self):
+        destination = self.root / "script"
+        encoding = "cp1252"
+        result = subprocess.run(
+            [sys.executable, str(source_root / "scripts/bml.py"), "new", "script",
+             "test.output", "--destination", str(destination)],
+            env={**os.environ, "PYTHONIOENCODING": f"{encoding}:strict"},
+            capture_output=True, encoding=encoding, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        displayed_path = str(destination).encode(encoding, "backslashreplace").decode(encoding)
+        self.assertIn(displayed_path, result.stdout)
+        self.assertTrue((destination / "bml.mod.json").is_file())
 
     def test_windows_sdl_target_is_not_forced_to_win32(self):
         self.abi.update(platform="windows", architecture="arm64")

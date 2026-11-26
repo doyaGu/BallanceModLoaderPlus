@@ -1381,6 +1381,12 @@ def parse_command(argv: list[str]) -> tuple[str, argparse.Namespace]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A redirected Windows console can use a code page that cannot represent
+    # some valid paths. Preserve the stream encoding and escape those characters.
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(errors="backslashreplace")
+
     arguments = list(sys.argv[1:] if argv is None else argv)
     if not arguments or arguments[0] in ("help", "-h", "--help"):
         print_help(any(value in ("--verbose", "-v") for value in arguments[1:]))
