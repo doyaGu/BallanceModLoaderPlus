@@ -2,8 +2,10 @@
 #include "FileError.h"
 #include "StringUtils.h"
 #include <SDL3/SDL_properties.h>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <vector>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -72,6 +74,39 @@ bool IsLink(const std::string &path) {
     return ::lstat(path.c_str(), &info) == 0 && S_ISLNK(info.st_mode);
 #endif
 }
+#ifdef _WIN32
+bool ReadFileBytes(const std::wstring &path, std::string &out, std::uint32_t &error) {
+    // SDL's file wrapper does not preserve GetLastError across its cleanup.
+    // Missing files and failed reads have different persistence policies.
+    out.clear();
+    if (path.empty() || path.find(L'\0') != std::wstring::npos) {
+        error = FileError::InvalidName;
+        return false;
+    }
+    HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        error = GetLastError();
+        return false;
+    }
+    const std::unique_ptr<void, decltype(&CloseHandle)> file(handle, CloseHandle);
+    std::string bytes;
+    std::array<char, 64 * 1024> buffer;
+    for (;;) {
+        DWORD count = 0;
+        if (!::ReadFile(file.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &count, nullptr)) {
+            error = GetLastError();
+            return false;
+        }
+        if (count == 0)
+            break;
+        bytes.append(buffer.data(), count);
+    }
+    out.swap(bytes);
+    error = FileError::Success;
+    return true;
+}
+#endif
 bool SyncFile(SDL_IOStream *stream) {
     if (!SDL_FlushIO(stream)) return false;
     const auto properties = SDL_GetIOProperties(stream);
@@ -87,12 +122,19 @@ bool SyncFile(SDL_IOStream *stream) {
     return fd >= 0 && ::fsync(fd) == 0;
 #endif
 }
-bool PublishNewFile(const std::string &source, const std::string &destination) {
+bool PublishFile(const std::string &source, const std::string &destination,
+                 bool replace, std::uint32_t &error) {
 #ifdef _WIN32
-    return MoveFileExW(utils::Utf8ToUtf16(source).c_str(), utils::Utf8ToUtf16(destination).c_str(), MOVEFILE_WRITE_THROUGH) != 0;
+    const auto from = utils::Utf8ToUtf16(source);
+    const auto to = utils::Utf8ToUtf16(destination);
+    const DWORD flags = MOVEFILE_WRITE_THROUGH | (replace ? MOVEFILE_REPLACE_EXISTING : 0);
+    const bool published = MoveFileExW(from.c_str(), to.c_str(), flags) != 0;
 #else
-    return ::link(source.c_str(), destination.c_str()) == 0;
+    const bool published = replace ? std::rename(source.c_str(), destination.c_str()) == 0
+                                   : ::link(source.c_str(), destination.c_str()) == 0;
 #endif
+    error = published ? FileError::Success : LastFileError();
+    return published;
 }
 bool SetWorkingDirectory(const std::string &path) {
 #ifdef _WIN32

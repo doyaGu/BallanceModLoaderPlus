@@ -193,11 +193,15 @@ FileTime GetFileTimeW(const std::wstring &p) {
     return {ticks(info.create_time), ticks(info.access_time), ticks(info.modify_time)};
 }
 bool ReadFileBytesW(const std::wstring &p, std::string &out, std::uint32_t &error) {
+#ifdef _WIN32
+    return Native::ReadFileBytes(p, out, error);
+#else
     out.clear(); size_t size = 0;
     void *bytes = SDL_LoadFile(Path(p).c_str(), &size);
     if (!bytes) { error = Native::LastFileError(); return false; }
     std::unique_ptr<void, decltype(&SDL_free)> owned(bytes, SDL_free);
     out.assign(static_cast<const char *>(bytes), size); error = 0; return true;
+#endif
 }
 bool ReadFileBytesW(const std::wstring &p, std::string &out) { std::uint32_t e; return ReadFileBytesW(p, out, e); }
 bool ReadFileBytesUtf8(const std::string &p, std::string &out) { return ReadFileBytesW(Utf8ToUtf16(p), out); }
@@ -209,18 +213,20 @@ bool WriteFileBytesAtomicW(const std::wstring &p, std::string_view bytes, std::u
     for (int attempt = 0; attempt < 32 && !stream; ++attempt) {
         temporary = Unique(destination + ".tmp-");
         stream = SDL_IOFromFile(temporary.c_str(), "wbx");
-        if (!stream && Native::LastFileError() != E::FileExists) { error = Native::LastFileError(); return false; }
+        if (!stream) {
+            const auto openError = Native::LastFileError();
+            if (openError != E::FileExists) {
+                error = openError == E::Success ? E::WriteFault : openError;
+                return false;
+            }
+        }
     }
     if (!stream) { error = E::FileExists; return false; }
     bool ok = SDL_WriteIO(stream, bytes.data(), bytes.size()) == bytes.size() && Native::SyncFile(stream);
     if (!SDL_CloseIO(stream)) ok = false;
     if (!ok) error = E::WriteFault;
-    if (ok) {
-        ok = replace ? SDL_RenamePath(temporary.c_str(), destination.c_str()) : Native::PublishNewFile(temporary, destination);
-        if (!ok) error = Native::LastFileError();
-    }
+    if (ok) ok = Native::PublishFile(temporary, destination, replace, error);
     SDL_RemovePath(temporary.c_str());
-    if (ok) error = E::Success;
     return ok;
 }
 std::vector<uint8_t> ReadBinaryFileW(const std::wstring &p) { std::string bytes; if (!ReadFileBytesW(p, bytes)) return {}; return {bytes.begin(), bytes.end()}; }
