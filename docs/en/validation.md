@@ -27,7 +27,7 @@ Windows SDL builds attach the existing IMM/TSF presentation to the SDL window.
 SDL supplies committed text to ImGui. The native release workflow builds and
 tests Windows x64 and Linux x64 artifacts on configured runners. Chinese IME
 composition, cancellation, candidate navigation and focus changes still need
-target-machine checks. See the [release runbook](../../RELEASING.md).
+target-machine checks. See the [release runbook](https://github.com/doyaGu/BallanceModLoaderPlus/blob/sdl/RELEASING.md).
 
 ## Completed local checks
 
