@@ -255,7 +255,12 @@ struct FakeState {
     int InstanceValueWrites = 0;
     std::uint64_t InstanceBinding = 0;
     std::uint64_t ResolvedBinding = 0;
-    std::uint64_t ActivePatchBinding = 0;
+    std::vector<std::uint64_t> ActivePatchBindings;
+
+    bool HasPatchBinding(std::uint64_t binding) const {
+        return std::find(ActivePatchBindings.begin(), ActivePatchBindings.end(), binding) !=
+            ActivePatchBindings.end();
+    }
     std::vector<std::uint64_t> PlanBindings;
     std::vector<std::uint64_t> PatchBindings;
     BML_BehaviorPortRef ValuePort{};
@@ -1451,8 +1456,7 @@ int BML_BEHAVIOR_CALL ApplyPatch(
         g_State.PatchFingerprints.push_back(spec->Edits[index].Fingerprint);
         g_State.PatchBindings.push_back(spec->Edits[index].Binding);
     }
-    if (!g_State.PatchBindings.empty())
-        g_State.ActivePatchBinding = g_State.PatchBindings.front();
+    g_State.ActivePatchBindings = g_State.PatchBindings;
     if (spec->EditCount != 0 && spec->Edits) {
         g_State.PatchGraph = spec->Edits[0].Graph;
         CaptureSteps(spec->Edits[0].Program, g_State.PatchSteps,
@@ -1530,6 +1534,10 @@ int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession, BML_BehaviorPatch,
     g_State.ResolvedHandle = resolved->Handle;
     if (g_State.ResolveNodeCode != BML_OK)
         return g_State.ResolveNodeCode;
+    if (!g_State.HasPatchBinding(resolved->Binding)) {
+        status->Error = BML_BEHAVIOR_ERROR_QUERY_NOT_FOUND;
+        return BML_ERROR_NOT_FOUND;
+    }
     outNode->Domain = 11;
     outNode->Slot = g_State.MalformedResolvedNode ? 0u : resolved->Handle;
     outNode->Generation = g_State.MalformedResolvedNode ? 0u : 4u;
@@ -1672,8 +1680,7 @@ int BML_BEHAVIOR_CALL ReplacePatch(
         g_State.PatchGraphs.push_back(edits[index].Graph);
         g_State.PatchBindings.push_back(edits[index].Binding);
     }
-    if (!g_State.PatchBindings.empty())
-        g_State.ActivePatchBinding = g_State.PatchBindings.front();
+    g_State.ActivePatchBindings = g_State.PatchBindings;
     if (g_State.PatchReplaceCode != BML_OK) {
         SetError(status, BML_BEHAVIOR_ERROR_STATE_INVALID,
                  "The replacement was rejected.");
@@ -1848,7 +1855,7 @@ int BML_BEHAVIOR_CALL ReadPatchValue(
     void *payload, std::uint32_t capacity, std::uint32_t *size,
     BML_BehaviorStatus *status) {
     ++g_State.PatchValueReads;
-    if (port->Binding != g_State.ActivePatchBinding)
+    if (!g_State.HasPatchBinding(port->Binding))
         return BML_ERROR_NOT_FOUND;
     return ReadInstanceValue(port, value, payload, capacity, size, status);
 }
@@ -1858,7 +1865,7 @@ int BML_BEHAVIOR_CALL WritePatchValue(
     const BML_BehaviorPortRef *port, const BML_BehaviorValue *value,
     BML_BehaviorStatus *status) {
     Success(status);
-    if (port->Binding != g_State.ActivePatchBinding)
+    if (!g_State.HasPatchBinding(port->Binding))
         return BML_ERROR_NOT_FOUND;
     ++g_State.PatchValueWrites;
     CaptureWrittenValue(port, value);
@@ -4623,7 +4630,7 @@ TEST(BehaviorAuthoring, ReadsAndWritesValuesThroughAnAppliedEdit) {
     // A queued replacement can fail and restore the previous definition.
     // The old symbol must remain addressable while the rejected symbol must
     // not alias the old handle range.
-    g_State.ActivePatchBinding = originalBinding;
+    g_State.ActivePatchBindings = {originalBinding};
     EXPECT_TRUE(patch.Read(state));
     EXPECT_FALSE(patch.Read(replacementState));
 }
@@ -4815,6 +4822,29 @@ TEST(BehaviorAuthoring, UsesLatestBindingWhenAnEditIsResubmitted) {
     auto resolved = patch.Resolve(node);
     ASSERT_TRUE(resolved);
     EXPECT_EQ(g_State.ResolvedBinding, replacementBinding);
+}
+
+TEST(BehaviorAuthoring, RestoredDefinitionResolvesOnlyItsOwnNodeAndPortHandles) {
+    g_State = {};
+    auto session = Session::Open().Take();
+    auto graph = session.Inspect({41, 42, 43}).Take();
+    Edit edit;
+    auto node = edit.Root().AddGraph("stable");
+    auto local = edit.Root().AppendLocal("input", CKPGUID_INT);
+    auto patch = graph.Apply("recovered binding", edit).Take();
+    const auto original = g_State.PatchBindings.front();
+
+    auto late = edit.Root().AppendLocal("rejected", CKPGUID_INT);
+    g_State.PatchState = BML_BEHAVIOR_PATCH_PENDING;
+    ASSERT_TRUE(patch.Replace(On(graph, edit)));
+    g_State.PatchState = BML_BEHAVIOR_PATCH_ACTIVE;
+    g_State.ActivePatchBindings = {original};
+    ASSERT_TRUE(patch.Resolve(node));
+    EXPECT_EQ(g_State.ResolvedBinding, original);
+    ASSERT_TRUE(patch.Set(local, std::int32_t{17}));
+    ASSERT_TRUE(patch.Read(local));
+    EXPECT_EQ(g_State.ValuePort.Binding, original);
+    EXPECT_FALSE(patch.Read(late));
 }
 
 TEST(BehaviorAuthoring, DoesNotReusePlanBindingsAfterARejectedReplacement) {

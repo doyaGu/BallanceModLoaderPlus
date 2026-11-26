@@ -123,6 +123,8 @@ public:
     // edit program used for it. Busy means the Patch has not reached its safe
     // point yet, so nothing is live to name.
 private:
+    [[nodiscard]] Result<const Detail::PatchSymbols *> PublishedSymbols(
+        const std::weak_ptr<Detail::EditProgram> &edit) const;
     [[nodiscard]] Result<ObjectRef> ResolveHandle(
         const BML_BehaviorNodeRef &node) const;
 

@@ -59,6 +59,10 @@ class BehaviorInstallationsProbe {
             BML::Behavior::Edit@ invalid = BML::Behavior::Edit();
             invalid.Root().Require(BML::Behavior::NodePattern("__BML_Installations_Missing"));
             Require(plan.Replace("Event_handler", invalid), "Plan replacement request was not queued");
+        } else if (step == 14) {
+            step = 15;
+            patchBody.Root().Require(BML::Behavior::NodePattern("__BML_Installations_Missing"));
+            Require(patch.Replace(patchBase, patchBody), "Failed replacement did not queue");
         } else if (step == 9) {
             step = 10;
             Require(patch.Replace(patchBase, patchBody), "Patch rebinding request was not queued");
@@ -107,7 +111,9 @@ class BehaviorInstallationsProbe {
             Require(marker !is null && !OwnsOriginalNode(ctx, marker),
                     "Plan did not reinstall after its node was deleted");
             ctx.LogInfo("Behavior installations PASS deleted Plan installation");
-            @patchBase = BML::Behavior::Inspect(source);
+            // The Watch trigger edits source. Keep the replacement's exact
+            // snapshot on a separate graph so its fingerprint stays valid.
+            @patchBase = BML::Behavior::Inspect(marker);
             @patchBody = BML::Behavior::Edit();
             @patchNode = patchBody.Root().AddGraph("__BML_Installations_Patch");
             @patch = patchBase.Apply("installation rebinding", patchBody);
@@ -120,6 +126,18 @@ class BehaviorInstallationsProbe {
             Require(patch.State == BML::Behavior::PatchState::Active && patch.Resolve(patchNode) !is null,
                     "Queued Patch replacement did not publish the new binding");
             ctx.LogInfo("Behavior installations PASS deferred Patch binding");
+            watch.Close();
+            trigger.Close();
+            step = 14;
+            TriggerWatch(source, "__BML_Installations_Reject");
+        } else if (step == 15 && !patch.Error.isEmpty()) {
+            Require(patch.State == BML::Behavior::PatchState::Active,
+                    "Old Patch was not restored, state=" + int(patch.State) + " " + patch.Error);
+            Require(patch.Error.findFirst("matched no Node") >= 0, patch.Error);
+            Require(patch.Resolve(patchNode) !is null, "Failed replacement lost the old Node binding");
+            ctx.LogInfo("Behavior installations PASS rejected replacement Node");
+            watch.Close();
+            trigger.Close();
             BML::Behavior::Edit@ edit = BML::Behavior::Edit();
             BML::Behavior::EditGraph@ graph = edit.Root();
             @input = graph.AppendLocal("__BML_Apply_Input", BML::Behavior::Value(1).Type);
