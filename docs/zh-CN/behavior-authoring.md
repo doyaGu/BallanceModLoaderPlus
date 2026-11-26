@@ -118,7 +118,7 @@ if (result) {
 }
 ```
 
-AngelScript 使用 `edit.Apply(name, graph, ownership)` 或 `edit.Apply(name, script, ownership, each)`。C 客户端通过 `BML_BEHAVIOR_HAS_1_1` 检查后调用 `SubmitEdit`。已有的 1.0 Patch 和 Plan 接口继续可用。
+AngelScript 使用 `edit.Apply(name, graph, ownership)` 或 `edit.Apply(name, script, ownership, each)`。C 客户端通过 `BML_BEHAVIOR_HAS_1_1` 检查后调用 `SubmitEdit`。1.2 新增 `SetSubmissionInputs`，可原子更新同一 Local 在多个目标上的绑定。已有的 1.0 Patch 和 Plan 接口继续可用。
 
 ## 2. 打开 Session
 

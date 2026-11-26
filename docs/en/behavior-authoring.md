@@ -114,7 +114,7 @@ if (result) {
 }
 ```
 
-AngelScript uses the same ownership and installation model through `edit.Apply(name, graph, ownership)` or `edit.Apply(name, script, ownership, each)`. C clients use `BML_BEHAVIOR_HAS_1_1` and `SubmitEdit`. Existing 1.0 Patch and Plan APIs remain available.
+AngelScript uses the same ownership and installation model through `edit.Apply(name, graph, ownership)` or `edit.Apply(name, script, ownership, each)`. C clients use `BML_BEHAVIOR_HAS_1_1` and `SubmitEdit`. Version 1.2 adds `SetSubmissionInputs` for atomic writes when several target bindings share an authored Local. Existing 1.0 Patch and Plan APIs remain available.
 
 ## 2. Open a Session
 

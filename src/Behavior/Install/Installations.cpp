@@ -2245,59 +2245,64 @@ Status Installations::WriteInstallation(const SessionOwner &owner, std::uintptr_
     return WriteValue(owner, static_cast<PatchId>(installed.Value.Id), port, value);
 }
 
-Status Installations::SetInput(const SessionOwner &owner, std::uintptr_t id,
-                               const PortQuery &query, const Parameter::Binding &value) {
+Status Installations::SetInputs(const SessionOwner &owner, std::uintptr_t id,
+                               std::span<const PortQuery> queries, const Parameter::Binding &value) {
     Status status = Ready();
     if (!status)
         return status;
     const auto *submission = Owned(m_Submissions, id, owner);
     if (!submission || submission->Closing)
         return Failure(Error::OwnerInvalid, "The Behavior Submission is closed.");
-    if (query.Selector || value.Kind() != Parameter::BindingKind::Value)
+    if (queries.empty() || value.Kind() != Parameter::BindingKind::Value)
         return Failure(Error::WorldBoundValue, "An Edit input requires an owned literal.");
 
-    const SymbolRef key{query.Binding, query.Scope, query.Handle};
-    std::shared_ptr<Inputs> inputs;
-    const auto find = [&](const auto &definitions) {
-        for (const auto &definition : definitions) {
-            const auto symbol = definition.Symbols.find(key);
-            if (symbol == definition.Symbols.end() || symbol->second.Kind != SymbolKind::Port)
-                continue;
-            const Port &port = symbol->second.PortValue;
-            if (port.Selector.Kind == SlotKind::Local &&
-                port.Selector.ExpectedType == value.Type()) {
-                inputs = definition.Values;
-                return;
-            }
-        }
-    };
-    if (submission->Patch) {
-        if (const auto *patch = Owned(m_Patches, submission->Patch, owner))
-            find(patch->Requested);
-    } else if (const auto *plan = Owned(m_Plans, submission->Plan, owner))
-        find(plan->Requested);
-    if (!inputs)
-        return Failure(Error::TypeMismatch, "An Edit input must be a declared Local of the same type.");
-
-    Inputs next = *inputs;
-    next.insert_or_assign(key, value);
     std::vector<InstalledEdit> live;
     status = ReadInstallations(*submission, live);
     if (!status)
         return status;
     std::vector<std::pair<const Patch *, Port>> writes;
-    for (const auto &installed : live) {
-        if (installed.Binding != query.Binding)
-            continue;
-        const auto *patch = Owned(m_Patches, static_cast<PatchId>(installed.Value.Id), owner);
-        if (!patch)
-            return Failure(Error::GraphChanged, "The installation is stale.");
-        Port port;
-        status = ResolvePort(*patch, query, port);
-        if (!status)
-            return status;
-        writes.emplace_back(&patch->Scopes[patch->Symbols.at(key).ScopeIndex].Value,
-                            std::move(port));
+    std::shared_ptr<Inputs> inputs;
+    Inputs next;
+    for (const auto &query : queries) {
+        const SymbolRef key{query.Binding, query.Scope, query.Handle};
+        const auto findInput = [&](const auto &definitions) -> std::shared_ptr<Inputs> {
+            for (const auto &definition : definitions) {
+                const auto symbol = definition.Symbols.find(key);
+                if (symbol == definition.Symbols.end() || symbol->second.Kind != SymbolKind::Port)
+                    continue;
+                const auto &port = symbol->second.PortValue;
+                if (!query.Selector && port.Selector.Kind == SlotKind::Local &&
+                    port.Selector.ExpectedType == value.Type())
+                    return definition.Values;
+            }
+            return {};
+        };
+        std::shared_ptr<Inputs> storage;
+        if (submission->Patch) {
+            if (const auto *patch = Owned(m_Patches, submission->Patch, owner))
+                storage = findInput(patch->Requested);
+        } else if (const auto *plan = Owned(m_Plans, submission->Plan, owner))
+            storage = findInput(plan->Requested);
+        if (!storage || (inputs && inputs != storage))
+            return Failure(Error::TypeMismatch, "An Edit input must be a declared Local of the same type.");
+        if (!inputs) {
+            inputs = std::move(storage);
+            next = *inputs;
+        }
+        next.insert_or_assign(key, value);
+        for (const auto &installed : live) {
+            if (installed.Binding != query.Binding)
+                continue;
+            const auto *patch = Owned(m_Patches, static_cast<PatchId>(installed.Value.Id), owner);
+            if (!patch)
+                return Failure(Error::GraphChanged, "The installation is stale.");
+            Port port;
+            status = ResolvePort(*patch, query, port);
+            if (!status)
+                return status;
+            writes.emplace_back(&patch->Scopes[patch->Symbols.at(key).ScopeIndex].Value,
+                                std::move(port));
+        }
     }
     status = m_Edit.WriteLocals(writes, value);
     if (status)

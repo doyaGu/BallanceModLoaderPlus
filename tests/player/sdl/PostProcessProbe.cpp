@@ -307,9 +307,17 @@ private:
         m_SurvivingGraph = makeGraph("__BML_Batch_Second");
         Edit shared;
         shared.Root().AddGraph("__BML_Batch_Child");
+        auto local = shared.Root().AppendLocal("shared", CKPGUID_INT);
         auto batch = session.Apply("graph batch", EditOwnership::Graph,
             On(session.Inspect(first).Take(), shared),
             On(session.Inspect(m_SurvivingGraph).Take(), shared)).Take();
+        batch.SetInput(local, 31).Take();
+        for (const auto target : {first, m_SurvivingGraph}) {
+            auto receipt = batch.Find(target, local).Take();
+            Require(std::get<int32_t>(receipt.Read(local).Take().Data) == 31,
+                    "SetInput missed an installation of the same Edit");
+        }
+        (void)m_Context.LogInfo("Behavior installations PASS repeated Edit SetInput");
         Require(batch.Close().Take() == CloseState::Closed, "batch ownership transfer");
         auto target = BML::Engine::BorrowObject<CKBehavior>(m_Context, first).Value();
         Require(target->GetCKContext()->DestroyObject(target) == CK_OK, "delete first target");

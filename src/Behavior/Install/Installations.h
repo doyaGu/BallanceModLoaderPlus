@@ -6,6 +6,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -129,8 +130,8 @@ public:
     Status WriteInstallation(const SessionOwner &owner, std::uintptr_t id,
                              const InstalledEdit &installed, const PortQuery &port,
                              const Parameter::Binding &value);
-    Status SetInput(const SessionOwner &owner, std::uintptr_t id,
-                    const PortQuery &port, const Parameter::Binding &value);
+    Status SetInputs(const SessionOwner &owner, std::uintptr_t id,
+                     std::span<const PortQuery> ports, const Parameter::Binding &value);
     Status CloseSubmission(const SessionOwner &owner, std::uintptr_t id);
 
     Installations(CKContext *context, Runtime &runtime,

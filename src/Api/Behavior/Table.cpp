@@ -1410,7 +1410,7 @@ int WriteSubmissionValue(
             auto &edits = context.BehaviorInstallations();
             result = installation
                 ? edits.WriteInstallation(owner, id, ReadInstallation(*installation), query, binding)
-                : edits.SetInput(owner, id, query, binding);
+                : edits.SetInputs(owner, id, {&query, 1}, binding);
             return ResultCode(result);
         });
 }
@@ -1429,6 +1429,27 @@ int BML_BEHAVIOR_CALL SetSubmissionInput(
     const BML_BehaviorPortRef *port, const BML_BehaviorValue *value,
     BML_BehaviorStatus *status) {
     return WriteSubmissionValue(session, submission, nullptr, port, value, status);
+}
+
+int BML_BEHAVIOR_CALL SetSubmissionInputs(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    const BML_BehaviorPortRef *ports, std::uint32_t count,
+    const BML_BehaviorValue *value, BML_BehaviorStatus *status) {
+    if (!ports || !count || !value)
+        return BML_ERROR_INVALID_PARAMETER;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            Parameter::Binding binding;
+            if (!ReadValue(*value, context, binding, result))
+                return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
+            std::vector<Installations::PortQuery> queries(count);
+            for (std::size_t i = 0; i < count; ++i) {
+                if (!ReadPortQuery(ports[i], queries[i], result))
+                    return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
+            }
+            result = context.BehaviorInstallations().SetInputs(owner, id, queries, binding);
+            return ResultCode(result);
+        });
 }
 
 const BML_BehaviorInterface kBehaviorInterface = {
@@ -1492,6 +1513,7 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &ReadInstallationValue,
     &WriteInstallationValue,
     &SetSubmissionInput,
+    &SetSubmissionInputs,
 };
 
 } // namespace

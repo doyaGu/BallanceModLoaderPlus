@@ -1812,9 +1812,6 @@ struct Submission::State {
             });
         if (it == Edits.end())
             return Result<BML_BehaviorPortRef>::Failure(BML_ERROR_INVALID_PARAMETER);
-        if (!binding && std::any_of(std::next(it), Edits.end(),
-            [&](const Detail::PatchSymbols &edit) { return edit.Edit == it->Edit; }))
-            return Result<BML_BehaviorPortRef>::Failure(BML_ERROR_INVALID_PARAMETER);
         BML_BehaviorPortRef wire{};
         wire.StructSize = sizeof(wire);
         wire.Graph = port.m_Scope;
@@ -1858,10 +1855,31 @@ inline Result<Submission::Installation> Submission::Find(
     ObjectRef graph, const Edit::Port &port) const {
     if (!*this)
         return Result<Installation>::Failure(BML_ERROR_INVALID_HANDLE);
-    const auto ref = m_State->Resolve(port);
-    if (!ref)
-        return Result<Installation>::Failure(ref.Code(), ref.GetStatus());
-    return FindBinding(graph, ref->Binding);
+    const auto first = m_State->Resolve(port);
+    if (!first)
+        return Result<Installation>::Failure(first.Code(), first.GetStatus());
+    auto result = FindBinding(graph, first->Binding);
+    for (const auto &edit : m_State->Edits) {
+        if (edit.Binding == first->Binding || !m_State->Resolve(port, edit.Binding))
+            continue;
+        if (!result && result.GetStatus().Error != Error::QueryNotFound)
+            return result;
+        auto match = FindBinding(graph, edit.Binding);
+        if (!match) {
+            if (match.GetStatus().Error == Error::QueryNotFound)
+                continue;
+            return match;
+        }
+        if (result) {
+            Status status;
+            status.Error = Error::QueryAmbiguous;
+            status.Phase = Phase::Edit;
+            status.Message = "More than one installation matches the Edit Port.";
+            return Result<Installation>::Failure(BML_ERROR_FAIL, std::move(status));
+        }
+        result = std::move(match);
+    }
+    return result;
 }
 
 inline Result<Submission::Installation> Submission::FindBinding(
@@ -1936,8 +1954,28 @@ inline Result<void> Submission::SetInput(const Edit::Port &port, const Value &va
     const auto &session = m_State->Session;
     const auto wire = Detail::Wire::From(value);
     auto status = Detail::EmptyStatus();
-    const int code = Detail::WireCode(session->Api->SetSubmissionInput(
-        session->Handle, m_State->Handle, &ref.Value(), &wire, &status), status);
+    int code;
+    if (std::count_if(m_State->Edits.begin(), m_State->Edits.end(),
+            [&](const auto &edit) { return edit.Edit == port.m_Edit.lock(); }) == 1) {
+        code = session->Api->SetSubmissionInput(
+            session->Handle, m_State->Handle, &ref.Value(), &wire, &status);
+    } else {
+        if (!BML_IFACE_HAS(session->Api, BML_BehaviorInterface, SetSubmissionInputs))
+            return Result<void>::Failure(BML_ERROR_VERSION_MISMATCH);
+        try {
+            std::vector<BML_BehaviorPortRef> ports;
+            for (const auto &edit : m_State->Edits) {
+                auto match = m_State->Resolve(port, edit.Binding);
+                if (match)
+                    ports.push_back(match.Value());
+            }
+            code = session->Api->SetSubmissionInputs(session->Handle, m_State->Handle,
+                ports.data(), static_cast<std::uint32_t>(ports.size()), &wire, &status);
+        } catch (const std::bad_alloc &) {
+            return Result<void>::Failure(BML_ERROR_OUT_OF_MEMORY);
+        }
+    }
+    code = Detail::WireCode(code, status);
     return code == BML_OK ? Result<void>::Success(Detail::ReadStatus(status))
                           : Result<void>::Failure(code, Detail::ReadStatus(status));
 }

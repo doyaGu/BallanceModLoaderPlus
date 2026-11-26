@@ -11,7 +11,7 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorGuidSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceMajor,
                         BML_BEHAVIOR_INTERFACE_MAJOR == 1u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceMinor,
-                        BML_BEHAVIOR_INTERFACE_MINOR == 1u);
+                        BML_BEHAVIOR_INTERFACE_MINOR == 2u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSubmissionAppendOnly,
                         offsetof(BML_BehaviorInterface, SubmitEdit) ==
                             BML_BEHAVIOR_INTERFACE_1_0_SIZE);
@@ -101,7 +101,7 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 240u);
+                        sizeof(BML_BehaviorInterface) == 244u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
                         BML_BEHAVIOR_INTERFACE_1_0_SIZE == 212u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,
@@ -155,7 +155,7 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 480u);
+                        sizeof(BML_BehaviorInterface) == 488u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
                         BML_BEHAVIOR_INTERFACE_1_0_SIZE == 424u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,

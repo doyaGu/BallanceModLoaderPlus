@@ -22,7 +22,7 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 1u
+#define BML_BEHAVIOR_INTERFACE_MINOR 2u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
 #define BML_BEHAVIOR_VALUE_ALIGNMENT 4u
 
@@ -1732,6 +1732,11 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorSession session, BML_BehaviorSubmission submission,
         const BML_BehaviorPortRef *port, const BML_BehaviorValue *value,
         BML_BehaviorStatus *status);
+    // Atomically update the same authored Local across several target bindings.
+    int (BML_BEHAVIOR_CALL *SetSubmissionInputs)(
+        BML_BehaviorSession session, BML_BehaviorSubmission submission,
+        const BML_BehaviorPortRef *ports, uint32_t count,
+        const BML_BehaviorValue *value, BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 #define BML_BEHAVIOR_HAS_1_1(iface) \

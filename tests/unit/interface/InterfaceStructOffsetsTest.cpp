@@ -178,7 +178,7 @@ TEST(InterfaceStructOffsets, BehaviorInterface) {
     ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 212, 424, 0,
                                              BML_BEHAVIOR_INTERFACE_MINOR);
     EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MAJOR, 1u);
-    EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MINOR, 1u);
+    EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MINOR, 2u);
     EXPECT_EQ(BML_BEHAVIOR_INTERFACE_1_0_SIZE, AbiSize(212, 424));
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, SubmitEdit, 212, 424);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadSubmission, 216, 432);
@@ -187,7 +187,8 @@ TEST(InterfaceStructOffsets, BehaviorInterface) {
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadInstallationValue, 228, 456);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, WriteInstallationValue, 232, 464);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, SetSubmissionInput, 236, 472);
-    EXPECT_EQ(sizeof(BML_BehaviorInterface), AbiSize(240, 480));
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, SetSubmissionInputs, 240, 480);
+    EXPECT_EQ(sizeof(BML_BehaviorInterface), AbiSize(244, 488));
 }
 
 TEST(InterfaceStructOffsets, BehaviorWireRecords) {
