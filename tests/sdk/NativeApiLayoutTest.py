@@ -24,6 +24,10 @@ def main():
     # include these two C library headers, so supply only their declarations.
     with tempfile.TemporaryDirectory(prefix="bml-c-layout-") as temporary:
         shims = Path(temporary)
+        # The full loader configures Version.h. Its release macros are not
+        # needed by the layout assertions.
+        (shims / "BML").mkdir()
+        (shims / "BML" / "Version.h").touch()
         (shims / "stdlib.h").write_text("#include <stddef.h>\nvoid *malloc(size_t);\nvoid *realloc(void *, size_t);\nvoid free(void *);\n")
         (shims / "string.h").write_text("#include <stddef.h>\nvoid *memcpy(void *, const void *, size_t);\nvoid *memset(void *, int, size_t);\nint memcmp(const void *, const void *, size_t);\nsize_t strlen(const char *);\nint strcmp(const char *, const char *);\n")
         (shims / "assert.h").write_text("#define assert(expression) ((void)0)\n")
