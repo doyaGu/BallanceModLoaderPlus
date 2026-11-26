@@ -754,26 +754,26 @@ TEST_F(StringUtilsTest, JoinStringExtras) {
 }
 
 #ifdef _WIN32
-// Windows-only: CompareString behavior and flags
+// Windows-only: CompareLocaleStrings behavior and flags
 TEST_F(StringUtilsTest, CompareStringFlags) {
     using utils::CompareFlags;
 
     // Case-insensitive by flag
-    EXPECT_EQ(0, utils::CompareString(L"apple", L"APPLE", CompareFlags::kLinguisticIgnoreCase));
+    EXPECT_EQ(0, utils::CompareLocaleStrings(L"apple", L"APPLE", CompareFlags::kLinguisticIgnoreCase));
 
     // Width-insensitive: halfwidth vs fullwidth
-    EXPECT_EQ(0, utils::CompareString(L"A", L"\uFF21", CompareFlags::kIgnoreWidth)); // fullwidth 'A'
+    EXPECT_EQ(0, utils::CompareLocaleStrings(L"A", L"\uFF21", CompareFlags::kIgnoreWidth)); // fullwidth 'A'
 
     // Digits as numbers: "a10" > "a2"
-    EXPECT_LT(utils::CompareString(L"a2", L"a10", CompareFlags::kDigitsAsNumbers), 0);
-    EXPECT_GT(utils::CompareString(L"a10", L"a2", CompareFlags::kDigitsAsNumbers), 0);
+    EXPECT_LT(utils::CompareLocaleStrings(L"a2", L"a10", CompareFlags::kDigitsAsNumbers), 0);
+    EXPECT_GT(utils::CompareLocaleStrings(L"a10", L"a2", CompareFlags::kDigitsAsNumbers), 0);
 
     // Default flags combine the three; numeric comparison makes "2" < "10"
-    EXPECT_LT(utils::CompareString(L"\uFF21pple2", L"apple10"), 0);
-    EXPECT_LT(utils::CompareString(L"a2", L"a10"), 0);
+    EXPECT_LT(utils::CompareLocaleStrings(L"\uFF21pple2", L"apple10"), 0);
+    EXPECT_LT(utils::CompareLocaleStrings(L"a2", L"a10"), 0);
 
     // UTF-8 overload mirrors wide one (ASCII scope)
-    EXPECT_EQ(0, utils::CompareString(std::string("Test"), std::string("test"), CompareFlags::kLinguisticIgnoreCase));
+    EXPECT_EQ(0, utils::CompareLocaleStrings(std::string("Test"), std::string("test"), CompareFlags::kLinguisticIgnoreCase));
 }
 #endif
 

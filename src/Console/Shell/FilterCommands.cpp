@@ -153,7 +153,7 @@ namespace BML::Shell::Filters {
                 if (x != y)
                     return x < y;
             }
-            return utils::CompareString(a, b) < 0;
+            return utils::CompareLocaleStrings(a, b) < 0;
         };
         std::stable_sort(lines.begin(), lines.end(), less);
         if (options.unique) {

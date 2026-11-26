@@ -566,7 +566,7 @@ public:
         if (m_PageCount == 0) {
             m_PageIndex = 0;
         } else {
-            m_PageIndex = std::min(m_PageIndex, m_PageCount - 1);
+            m_PageIndex = (std::min)(m_PageIndex, m_PageCount - 1);
         }
     }
 
@@ -581,7 +581,7 @@ public:
     bool CanNext() const { return m_PageIndex + 1 < m_PageCount; }
 
     bool SetPage(int page) {
-        const int next = m_PageCount == 0 ? 0 : std::max(0, std::min(page, m_PageCount - 1));
+        const int next = m_PageCount == 0 ? 0 : (std::max)(0, (std::min)(page, m_PageCount - 1));
         if (next == m_PageIndex)
             return false;
         m_PageIndex = next;

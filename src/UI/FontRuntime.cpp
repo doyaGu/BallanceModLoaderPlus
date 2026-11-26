@@ -16,9 +16,6 @@
 #ifdef _WIN32
 #include <Windows.h>
 #endif
-#ifdef CompareString
-#undef CompareString
-#endif
 
 #include "imgui.h"
 
@@ -60,11 +57,11 @@ namespace {
     };
 
     bool EqualFace(const std::string &left, const std::string &right) {
-        return utils::CompareString(left, right) == 0;
+        return utils::CompareLocaleStrings(left, right) == 0;
     }
 
     bool FaceLess(const std::string &left, const std::string &right) {
-        return utils::CompareString(left, right) < 0;
+        return utils::CompareLocaleStrings(left, right) < 0;
     }
 
     bool ContainsFace(const std::vector<std::string> &faces, const std::string &candidate) {

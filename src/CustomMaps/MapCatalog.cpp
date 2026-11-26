@@ -35,7 +35,7 @@ MapEntry::~MapEntry() {
 bool MapEntry::operator<(const MapEntry &rhs) const {
     if (type != rhs.type)
         return type < rhs.type;
-    return utils::CompareString(name, rhs.name) < 0;
+    return utils::CompareLocaleStrings(name, rhs.name) < 0;
 }
 
 MapCatalog::MapCatalog() : m_Root(std::make_unique<MapEntry>(nullptr, MAP_ENTRY_DIR)) {}

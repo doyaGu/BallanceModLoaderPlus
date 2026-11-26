@@ -46,10 +46,15 @@ endif ()
 add_compile_definitions(
         $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
         $<$<CXX_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_WARNINGS>
+        $<$<PLATFORM_ID:Windows>:NOMINMAX>
 )
 
-# Disable char8_t for MSVC to maintain compatibility with C++20
+# Use the conforming preprocessor and UTF-8 source encoding with MSVC.
 add_compile_options(
+        $<$<COMPILE_LANG_AND_ID:C,MSVC>:/utf-8>
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:preprocessor>
+        # Keep the existing char8_t compatibility setting for C++20.
         $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:char8_t->
 )
 
@@ -105,11 +110,16 @@ if (BML_ENABLE_ANGELSCRIPT)
             else()
                 include(FetchContent)
                 set(ckas_patch)
-                if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+                if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR WIN32)
+                    if(WIN32)
+                        set(ckas_patch_platform Windows)
+                    else()
+                        set(ckas_patch_platform Linux)
+                    endif()
                     find_package(Git REQUIRED)
                     set(ckas_patch PATCH_COMMAND "${CMAKE_COMMAND}"
                         "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
-                        "-DPATCH_FILE=${PROJECT_SOURCE_DIR}/cmake/patches/CKAngelScriptLinux.patch"
+                        "-DPATCH_FILE=${PROJECT_SOURCE_DIR}/cmake/patches/CKAngelScript${ckas_patch_platform}.patch"
                         -P "${PROJECT_SOURCE_DIR}/cmake/ApplySourcePatch.cmake")
                 endif()
                 FetchContent_Declare(ckangelscript

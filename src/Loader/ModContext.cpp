@@ -40,10 +40,7 @@ namespace {
     constexpr wchar_t kInstanceDirectoryName[] = L"Instance";
     constexpr wchar_t kShellStateFileName[] = L"CommandBar.shell.json";
 
-    using HMODULE = void *;
-    HMODULE ModuleFromAddress(const void *address) {
-        return const_cast<void *>(BML::Platform::ModuleFromAddress(address));
-    }
+    using BML::Platform::ModuleFromAddress;
     std::wstring ResolveGameDirectoryFromExecutable(const std::wstring &executablePath) {
         if (executablePath.empty())
             return {};
@@ -139,7 +136,7 @@ namespace {
              context->GetModLoader().NativeModOwnsAddress(owner, cleanupAddress)))
             return true;
 
-        const HMODULE loader = ModuleFromAddress(
+        const auto loader = ModuleFromAddress(
             reinterpret_cast<const void *>(&BML_GetModContext));
         return loader && ModuleFromAddress(callerAddress) == loader &&
                ModuleFromAddress(callbackAddress) == loader &&

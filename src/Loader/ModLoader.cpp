@@ -37,11 +37,10 @@ using namespace BML;
 namespace {
     constexpr wchar_t PACKAGES_DIRECTORY_NAME[] = L"Packages";
 
-    using HMODULE = void *;
-    HMODULE ModuleFromAddress(const void *address) {
+    void *ModuleFromAddress(const void *address) {
         return const_cast<void *>(BML::Platform::ModuleFromAddress(address));
     }
-    std::wstring ModuleDirectory(HMODULE module) {
+    std::wstring ModuleDirectory(const void *module) {
         return utils::GetParentDirectoryW(utils::Utf8ToUtf16(BML::Platform::ModulePath(module)));
     }
 
@@ -383,7 +382,7 @@ std::wstring ModLoader::GetModRootDirectory(const char *modId) const {
 
     const std::shared_ptr<void> nativeDll = m_NativeModRegistry.FindDllForMod(modId);
     if (nativeDll)
-        return ModuleDirectory(static_cast<HMODULE>(nativeDll.get()));
+        return ModuleDirectory(nativeDll.get());
 
 #if BML_ENABLE_ANGELSCRIPT
     for (const auto &scriptMod : m_ScriptMods) {
@@ -1796,13 +1795,13 @@ std::string ModLoader::GetNativeModOwnerId(
     if (!callerAddress)
         return {};
 
-    HMODULE callerModule = ModuleFromAddress(callerAddress);
+    auto *callerModule = ModuleFromAddress(callerAddress);
     if (!callerModule)
         return {};
 
     std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
 
-    HMODULE const bmlModule = ModuleFromAddress(reinterpret_cast<const void *>(&BML_GetModContext));
+    const auto bmlModule = ModuleFromAddress(reinterpret_cast<const void *>(&BML_GetModContext));
     if (bmlModule && callerModule == bmlModule) {
         if (!requestedOwnerId || !*requestedOwnerId)
             return {};
@@ -1849,7 +1848,7 @@ bool ModLoader::NativeModOwnsAddress(
     if (ownerId.empty() || !address)
         return false;
 
-    HMODULE module = ModuleFromAddress(address);
+    auto *module = ModuleFromAddress(address);
     if (!module)
         return false;
 

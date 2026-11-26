@@ -288,8 +288,8 @@ private:
 template <auto Method, typename Signature = decltype(Method)>
 struct GenericMethod;
 
-template <auto Method, typename C, typename R, bool Noexcept, typename... Args>
-struct GenericMethod<Method, R (C::*)(Args...) noexcept(Noexcept)> {
+template <auto Method, typename C, typename R, typename... Args>
+struct GenericMethod<Method, R (C::*)(Args...)> {
     static void Call(asIScriptGeneric *gen) {
         InvokeGenericBinding("AngelScript generic method", [gen]() {
             C *self = static_cast<C *>(gen ? gen->GetObject() : nullptr);
@@ -338,8 +338,8 @@ private:
     }
 };
 
-template <auto Method, typename C, typename R, bool Noexcept, typename... Args>
-struct GenericMethod<Method, R (C::*)(Args...) const noexcept(Noexcept)> {
+template <auto Method, typename C, typename R, typename... Args>
+struct GenericMethod<Method, R (C::*)(Args...) const> {
     static void Call(asIScriptGeneric *gen) {
         InvokeGenericBinding("AngelScript generic method", [gen]() {
             const C *self = static_cast<const C *>(gen ? gen->GetObject() : nullptr);
@@ -387,6 +387,15 @@ private:
         return (self->*Method)(std::get<I>(args).Get()...);
     }
 };
+
+// MSVC 19.44 cannot deduce a boolean template argument inside noexcept(...).
+template <auto Method, typename C, typename R, typename... Args>
+struct GenericMethod<Method, R (C::*)(Args...) noexcept>
+    : GenericMethod<Method, R (C::*)(Args...)> {};
+
+template <auto Method, typename C, typename R, typename... Args>
+struct GenericMethod<Method, R (C::*)(Args...) const noexcept>
+    : GenericMethod<Method, R (C::*)(Args...) const> {};
 
 template <auto Function>
 asSFuncPtr GenericFunctionPtr() {

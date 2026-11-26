@@ -1057,10 +1057,10 @@ static ColorPickerLayout FitColorPicker(const BML::Mod::Context &context, const 
                    viewport->WorkPos.y + viewport->WorkSize.y);
     if (pickerArea && pickerArea->maximum.x > pickerArea->minimum.x &&
         pickerArea->maximum.y > pickerArea->minimum.y) {
-        const ImVec2 clippedMin(std::max(areaMin.x, pickerArea->minimum.x),
-                                std::max(areaMin.y, pickerArea->minimum.y));
-        const ImVec2 clippedMax(std::min(areaMax.x, pickerArea->maximum.x),
-                                std::min(areaMax.y, pickerArea->maximum.y));
+        const ImVec2 clippedMin((std::max)(areaMin.x, pickerArea->minimum.x),
+                                (std::max)(areaMin.y, pickerArea->minimum.y));
+        const ImVec2 clippedMax((std::min)(areaMax.x, pickerArea->maximum.x),
+                                (std::min)(areaMax.y, pickerArea->maximum.y));
         if (clippedMax.x > clippedMin.x && clippedMax.y > clippedMin.y) {
             areaMin = clippedMin;
             areaMax = clippedMax;
@@ -1079,8 +1079,8 @@ static ColorPickerLayout FitColorPicker(const BML::Mod::Context &context, const 
 
     const ImGuiStyle &style = ImGui::GetStyle();
     const float frameHeight = ImGui::GetFrameHeight();
-    const float availableWidth = std::max(1.0f, areaMax.x - areaMin.x);
-    const float availableHeight = std::max(1.0f, areaMax.y - areaMin.y);
+    const float availableWidth = (std::max)(1.0f, areaMax.x - areaMin.x);
+    const float availableHeight = (std::max)(1.0f, areaMax.y - areaMin.y);
     const float horizontalPadding = style.WindowPadding.x * 2.0f;
     const float verticalPadding = style.WindowPadding.y * 2.0f;
     const bool alphaBar =
@@ -1094,19 +1094,19 @@ static ColorPickerLayout FitColorPicker(const BML::Mod::Context &context, const 
     const float inputHeight = inputRows * frameHeight + inputRows * style.ItemSpacing.y;
 
     float contentWidth =
-        std::min(frameHeight * 11.0f, std::max(1.0f, availableWidth - horizontalPadding));
+        (std::min)(frameHeight * 11.0f, (std::max)(1.0f, availableWidth - horizontalPadding));
     const float maximumSquareHeight =
-        std::max(frameHeight, availableHeight - verticalPadding - inputHeight);
-    contentWidth = std::min(contentWidth, maximumSquareHeight + barSpace);
-    const float squareHeight = std::max(frameHeight, contentWidth - barSpace);
+        (std::max)(frameHeight, availableHeight - verticalPadding - inputHeight);
+    contentWidth = (std::min)(contentWidth, maximumSquareHeight + barSpace);
+    const float squareHeight = (std::max)(frameHeight, contentWidth - barSpace);
     const float contentHeight = squareHeight + inputHeight;
 
     ColorPickerLayout layout;
-    layout.size.x = std::min(availableWidth, contentWidth + horizontalPadding);
-    layout.size.y = std::min(availableHeight, contentHeight + verticalPadding);
-    layout.contentWidth = std::max(1.0f, layout.size.x - horizontalPadding);
+    layout.size.x = (std::min)(availableWidth, contentWidth + horizontalPadding);
+    layout.size.y = (std::min)(availableHeight, contentHeight + verticalPadding);
+    layout.contentWidth = (std::max)(1.0f, layout.size.x - horizontalPadding);
 
-    const float maximumX = std::max(areaMin.x, areaMax.x - layout.size.x);
+    const float maximumX = (std::max)(areaMin.x, areaMax.x - layout.size.x);
     layout.position.x =
         std::clamp(anchor.GetCenter().x - layout.size.x * 0.5f, areaMin.x, maximumX);
     const float gap = style.ItemSpacing.y;
@@ -1118,7 +1118,7 @@ static ColorPickerLayout FitColorPicker(const BML::Mod::Context &context, const 
         layout.position.y = above;
     else
         layout.position.y = std::clamp(anchor.GetCenter().y - layout.size.y * 0.5f, areaMin.y,
-                                       std::max(areaMin.y, areaMax.y - layout.size.y));
+                                       (std::max)(areaMin.y, areaMax.y - layout.size.y));
     return layout;
 }
 
@@ -1139,7 +1139,7 @@ static bool DrawColorButton(const BML::Mod::Context &context, const char *label,
     const float editorWidth = row.size.x * 0.6f;
     if (showEditor && showSwatch) {
         ImGui::SetNextItemWidth(
-            std::max(1.0f, editorWidth - swatchSize - ImGui::GetStyle().ItemInnerSpacing.x));
+            (std::max)(1.0f, editorWidth - swatchSize - ImGui::GetStyle().ItemInnerSpacing.x));
     } else if (showEditor) {
         ImGui::SetNextItemWidth(editorWidth);
     }

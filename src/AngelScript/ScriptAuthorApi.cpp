@@ -1,6 +1,6 @@
+#include "ScriptStringInterop.h"
 #include "ScriptRuntimeScope.h"
 
-#include <angelscript.h>
 #include <algorithm>
 #include <new>
 #include <variant>
@@ -21,8 +21,10 @@
 #include "Api/BuiltinCapabilities.h"
 #include "ScriptMod.h"
 #include "ScriptModRuntime.h"
-#include "ScriptStringInterop.h"
 #include "StringUtils.h"
+
+// CK headers define GetObject as a Win32 alias.
+#undef GetObject
 
 namespace BML {
 namespace {

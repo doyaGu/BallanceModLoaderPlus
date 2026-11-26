@@ -20,6 +20,10 @@ add_library(BehaviorCAbiCompile OBJECT BehaviorCAbiCompile.c)
 target_include_directories(BehaviorCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(BehaviorCAbiCompile PROPERTIES FOLDER "Tests")
 
+foreach(BML_C_ABI_TARGET IN ITEMS ImcCAbiCompile BmlCAbiCompile BehaviorCAbiCompile)
+    target_compile_features(${BML_C_ABI_TARGET} PRIVATE c_std_11)
+endforeach()
+
 if (MSVC)
     foreach(BML_ADVERSE_ABI_TARGET IN ITEMS
             ImcCAbiCompile

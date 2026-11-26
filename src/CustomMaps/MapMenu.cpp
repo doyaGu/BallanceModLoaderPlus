@@ -301,7 +301,7 @@ void MapListPage::OnSearchMaps() {
         try {
             std::sort(m_MapSearchResult.begin(), m_MapSearchResult.end(), [](const MapEntry *a, const MapEntry *b) {
                 if (a->type != b->type) return a->type < b->type; // MAP_ENTRY_DIR < MAP_ENTRY_FILE
-                return utils::CompareString(a->name, b->name) < 0;
+                return utils::CompareLocaleStrings(a->name, b->name) < 0;
             });
         } catch (...) {
             if (Logger *logger = m_State.GetLogger())

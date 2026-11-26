@@ -87,8 +87,8 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
     }
 
     const std::wstring extension = utils::GetExtensionW(sourcePath);
-    if (utils::CompareString(utils::Utf16ToUtf8(extension), ".nmo") != 0 &&
-        utils::CompareString(utils::Utf16ToUtf8(extension), ".cmo") != 0) {
+    if (utils::CompareLocaleStrings(utils::Utf16ToUtf8(extension), ".nmo") != 0 &&
+        utils::CompareLocaleStrings(utils::Utf16ToUtf8(extension), ".cmo") != 0) {
         error = "only .nmo and .cmo maps can be staged";
         return false;
     }
