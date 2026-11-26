@@ -1240,6 +1240,8 @@ PatchState Installations::State(const PatchRecord &patch) const {
     bool pending = false;
     bool active = false;
     for (const PatchRecord::Scope &scope : patch.Scopes) {
+        if (!closingRequested && patch.RetiredTargets.contains(scope.Target))
+            continue;
         switch (scope.Value.State()) {
         case PatchState::Conflicted: return PatchState::Conflicted;
         case PatchState::Failed: return PatchState::Failed;
@@ -1444,7 +1446,7 @@ Status Installations::Close(const SessionOwner &owner, PatchId id) {
         found->second.Owner.Generation != owner.Generation)
         return Failure(Error::OwnerInvalid,
                        "The Behavior Patch belongs to another Mod generation.");
-    if (found->second.GraphOwned)
+    if (found->second.Lifetime == PatchRecord::Ownership::DetachedGraph)
         return {};
     Status status = Close(found->second);
     const PatchState state = State(found->second);
@@ -2092,6 +2094,8 @@ Status Installations::SubmitEdit(const SessionOwner &owner, std::string name,
         m_Submissions.erase(id);
         throw;
     }
+    if (submission.Patch && graphOwned)
+        m_Patches.at(submission.Patch).Lifetime = PatchRecord::Ownership::Graph;
     if (!submission.Patch && !submission.Plan)
         m_Submissions.erase(id);
     else
@@ -2142,7 +2146,10 @@ Status Installations::ReadInstallations(const Submission &submission,
         const auto *patch = Owned(m_Patches, submission.Patch, submission.Owner);
         if (!patch || State(*patch) != PatchState::Active)
             return {};
-        for (const auto &target : patch->Applied) {
+        for (std::size_t i = 0; i < patch->Applied.size(); ++i) {
+            if (patch->RetiredTargets.contains(i))
+                continue;
+            const auto &target = patch->Applied[i];
             out.push_back({{target.Graph, submission.Patch, m_Selections.WorldEpoch(),
                             patch->Revision}, target.Binding});
         }
@@ -2304,7 +2311,7 @@ void Installations::TransferToGraph(const Submission &submission) {
         return;
     for (const auto &entry : installed) {
         if (auto *patch = Owned(m_Patches, static_cast<PatchId>(entry.Value.Id), submission.Owner))
-            patch->GraphOwned = true;
+            patch->Lifetime = PatchRecord::Ownership::DetachedGraph;
     }
 }
 
@@ -2371,7 +2378,8 @@ Status Installations::RetireRecords(const std::string &ownerId) {
     // Patches may stack on one graph, so the newest one is restored first
     // and each restoration sees the graph its own Apply left behind.
     for (auto entry = m_Patches.rbegin(); entry != m_Patches.rend(); ++entry) {
-        if (entry->second.Owner.Id != ownerId || entry->second.GraphOwned)
+        if (entry->second.Owner.Id != ownerId ||
+            entry->second.Lifetime == PatchRecord::Ownership::DetachedGraph)
             continue;
         (void) Close(entry->second);
     }
@@ -2379,7 +2387,7 @@ Status Installations::RetireRecords(const std::string &ownerId) {
     Collect();
     Status remaining;
     for (const auto &[id, patch] : m_Patches) {
-        if (patch.Owner.Id != ownerId || patch.GraphOwned)
+        if (patch.Owner.Id != ownerId || patch.Lifetime == PatchRecord::Ownership::DetachedGraph)
             continue;
         Status status = LastStatus(patch);
         if (status) {
@@ -2408,61 +2416,40 @@ void Installations::ObjectsToBeDeleted(const CK_ID *ids, int count) {
     const std::set<CK_ID> deleting(ids, ids + count);
     for (auto &entry : m_Patches) {
         PatchRecord &patch = entry.second;
-        const bool affected = std::any_of(
-            patch.Scopes.begin(), patch.Scopes.end(),
-            [&](const PatchRecord::Scope &scope) {
-                const PatchState state = scope.Value.State();
-                // Closing a parent scope destroys graph-backed Nodes created
-                // by that Patch. Their nested scope has already been restored
-                // in reverse order, so this deletion is part of the journal's
-                // own inverse rather than loss of an external target.
-                if (state == PatchState::Closed ||
-                    state == PatchState::Failed)
-                    return false;
-                if (deleting.contains(scope.Graph))
-                    return true;
-                // Native world teardown can delete dynamic Nodes before the
-                // graph that owns them. A close already in progress owns those
-                // deletions; otherwise the installation has been lost.
-                return state != PatchState::Closing &&
-                    m_Edit.OwnsAny(scope.Value, deleting);
-            }) || std::any_of(
-                patch.Requested.begin(), patch.Requested.end(),
-                [&](const Target &target) {
-                    // The Graph already carries TOBEDELETED here, so the
-                    // resolver refuses it. Issue the deleting object's handle
-                    // instead: it equals the Target only while both name the
-                    // same object, never a later one that reused its CK_ID.
-                    if (!deleting.contains(target.Graph.Slot) || !m_Context ||
-                        !m_IssueObject)
-                        return false;
-                    CKObject *object = m_Context->GetObject(
-                        static_cast<CK_ID>(target.Graph.Slot));
-                    return object && m_IssueObject(object) == target.Graph;
-                });
-        if (!affected)
-            continue;
-
-        // Top-level targets are independent Graphs. Restore every surviving
-        // Graph even when one target (or one nested graph) has already entered
-        // CK deletion; a missing target must not strand the rest of this
-        // composed Patch in its after-image. The deletion callback is not a
-        // graph-mutation safe point, so only forget journals whose graph is
-        // disappearing here. ProcessFrame restores every surviving scope.
+        std::set<std::size_t> affected;
         for (auto &scope : patch.Scopes) {
             const PatchState state = scope.Value.State();
+            if (state == PatchState::Closed || state == PatchState::Failed)
+                continue;
             if (deleting.contains(scope.Graph)) {
                 m_Edit.GraphDeleted(scope.Value, deleting);
-            } else if (state != PatchState::Closing &&
-                       state != PatchState::Closed &&
-                       state != PatchState::Failed &&
-                       m_Edit.OwnsAny(scope.Value, deleting)) {
+            } else if (state != PatchState::Closing && m_Edit.OwnsAny(scope.Value, deleting)) {
                 m_Edit.InstallationDeleted(scope.Value);
+            } else {
+                continue;
+            }
+            affected.insert(scope.Target);
+        }
+        // A deferred batch may have no scopes yet. Match the generation of
+        // the object CK is deleting before invalidating its pending request.
+        for (std::size_t i = 0; i < patch.Requested.size(); ++i) {
+            const auto &graph = patch.Requested[i].Graph;
+            if (deleting.contains(graph.Slot) && m_Context && m_IssueObject) {
+                auto *object = m_Context->GetObject(static_cast<CK_ID>(graph.Slot));
+                if (object && m_IssueObject(object) == graph)
+                    affected.insert(i);
             }
         }
-        // Losing one target retires the composed Patch as a whole. Stop Hook
-        // admission on every surviving Graph now; only the native inverse is
-        // deferred to ProcessFrame.
+        if (affected.empty())
+            continue;
+        if (patch.Lifetime != PatchRecord::Ownership::Submission && !patch.Applied.empty() &&
+            patch.Goal != InstallGoal::Closed) {
+            patch.RetiredTargets.merge(affected);
+            if (patch.RetiredTargets.size() < patch.Applied.size()) {
+                patch.NeedsTargetCleanup = true;
+                continue;
+            }
+        }
         CloseAdmission(patch);
         patch.TargetDeleted = true;
         m_Selections.InvalidateInstallation(patch.Id);
@@ -2516,7 +2503,18 @@ Status Installations::ProcessFrame() {
     }
     for (auto &entry : m_Patches) {
         PatchRecord &patch = entry.second;
-        if ((!patch.GraphOwned || patch.Goal == InstallGoal::Closed) &&
+        if (patch.NeedsTargetCleanup && m_Edit.CanPublish()) {
+            patch.NeedsTargetCleanup = false;
+            for (auto scope = patch.Scopes.rbegin(); scope != patch.Scopes.rend(); ++scope) {
+                if (!patch.RetiredTargets.contains(scope->Target) || !scope->Value)
+                    continue;
+                if (!m_Edit.Close(scope->Value) || scope->Value.State() == PatchState::Closing) {
+                    patch.NeedsTargetCleanup = true;
+                    break;
+                }
+            }
+        }
+        if ((patch.Lifetime != PatchRecord::Ownership::DetachedGraph || patch.Goal == InstallGoal::Closed) &&
             HasPendingChange(patch) && m_Edit.CanPublish()) {
             (void) Reconcile(patch);
             needsCollection = true;

@@ -417,6 +417,14 @@ Status CKEdit::Transaction::RetireLayer() {
             }
         }
     }
+    const auto lost = m_Editor.m_LostOverlays.find(m_GraphId);
+    if (lost != m_Editor.m_LostOverlays.end()) {
+        std::erase_if(lost->second, [&](const auto &site) {
+            return site.first == m_Journal.Key;
+        });
+        if (lost->second.empty())
+            m_Editor.m_LostOverlays.erase(lost);
+    }
     return {};
 }
 

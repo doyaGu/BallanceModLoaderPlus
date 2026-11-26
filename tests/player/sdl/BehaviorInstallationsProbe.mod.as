@@ -24,10 +24,10 @@ class BehaviorInstallationsProbe {
         return cast<CKBehavior>(object);
     }
 
-    CKBehavior@ FindMarker(CKBehavior@ graph) {
+    CKBehavior@ FindMarker(CKBehavior@ graph, const string &in name = "__BML_Installations_Plan") {
         for (int i = 0; i < graph.GetSubBehaviorCount(); ++i) {
             CKBehavior@ child = graph.GetSubBehavior(i);
-            if (BML::CK::GetName(child) == "__BML_Installations_Plan")
+            if (BML::CK::GetName(child) == name)
                 return child;
         }
         return null;
@@ -140,6 +140,8 @@ class BehaviorInstallationsProbe {
             trigger.Close();
             BML::Behavior::Edit@ edit = BML::Behavior::Edit();
             BML::Behavior::EditGraph@ graph = edit.Root();
+            graph.AddGraph("__BML_Receipt_A");
+            graph.AddGraph("__BML_Receipt_B");
             @input = graph.AppendLocal("__BML_Apply_Input", BML::Behavior::Value(1).Type);
             Require(graph.Bind(input, BML::Behavior::Value(1)), "initial Edit input");
             @submission = edit.Apply("unified script edit", "Event_handler",
@@ -161,11 +163,31 @@ class BehaviorInstallationsProbe {
             Require(submission.SetInput(input, BML::Behavior::Value(4)) &&
                     installation.Read(input).Read(value) && value == 4,
                     "SetInput did not update the live installation");
+            Require(int(source.GetCKContext().DestroyObject(FindMarker(source, "__BML_Receipt_A"))) == 0,
+                    "Could not remove installation member");
+            step = 16;
+        } else if (step == 16 && FindMarker(source, "__BML_Receipt_A") !is null) {
+            bool staleRead = false;
+            try {
+                BML::Behavior::ObservedValue@ oldValue = installation.Read(input);
+                staleRead = oldValue !is null;
+            } catch {}
+            Require(!installation.IsValid && !staleRead, "Reinstalled graph left its old receipt valid");
+            int reinstalled = 0;
+            Require(submission.Find().Read(input).Read(reinstalled) && reinstalled == 4,
+                    "Reinstalled Local lost the submitted input");
+            int siblings = 0;
+            for (int i = 0; i < source.GetSubBehaviorCount(); ++i)
+                if (BML::CK::GetName(source.GetSubBehavior(i)) == "__BML_Receipt_B") ++siblings;
+            Require(siblings == 1 && submission.Find().IsValid, "Reinstall duplicated a sibling");
             step = 12;
         } else if (step == 12) {
             if (submission.Close() == BML::Behavior::CloseState::Closing)
                 return;
             Require(!installation.IsValid, "A closed submission retained a live receipt");
+            Require(FindMarker(source, "__BML_Receipt_A") is null &&
+                    FindMarker(source, "__BML_Receipt_B") is null, "Close stranded an installation member");
+            ctx.LogInfo("Behavior installations PASS member loss and receipt invalidation");
             ctx.LogInfo("Behavior installations PASS unified script Apply and inputs");
             BML::CommandDefinition definition;
             definition.Name = "bml_probe_behavior_installations";

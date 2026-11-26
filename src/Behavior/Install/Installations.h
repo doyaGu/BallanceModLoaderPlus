@@ -297,7 +297,12 @@ private:
         bool TargetDeleted = false;
         // A Script body; see Define.
         bool Defines = false;
-        bool GraphOwned = false;
+        // Graph ownership begins at publication. Detaching releases the
+        // submission's handle without shortening any target's lifetime.
+        enum class Ownership { Submission, Graph, DetachedGraph };
+        Ownership Lifetime = Ownership::Submission;
+        std::set<std::size_t> RetiredTargets;
+        bool NeedsTargetCleanup = false;
         std::vector<Scope> Scopes;
         // Public handle -> resolved symbol in one installed scope.
         std::map<SymbolRef, ResolvedSymbol> Symbols;

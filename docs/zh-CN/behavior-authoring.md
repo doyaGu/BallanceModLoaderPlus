@@ -85,7 +85,7 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 
 ## 提交图编辑
 
-新 Mod 通过 `Session::Apply(name, ownership, On(target, edit))` 提交 Edit。目标可以是逻辑 Graph 快照，或 `Scripts::One/Each` 选择器。一次精确提交会一起应用到指定的图。Script 选择器对每个匹配实例分别安装，换关后继续生效。提交会分别报告应用错误和恢复错误。发布失败时，Loader 会恢复受影响的图。
+新 Mod 通过 `Session::Apply(name, ownership, On(target, edit))` 提交 Edit。目标可以是逻辑 Graph 快照，或 `Scripts::One/Each` 选择器。一次精确提交会一起应用到指定的图。发布成功后，图所有的安装分别随各自的目标图存活。Script 选择器对每个匹配实例分别安装，换关后继续生效。提交会分别报告应用错误和恢复错误。发布失败时，Loader 会恢复受影响的图。
 
 所有权决定关闭提交后的行为。
 

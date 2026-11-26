@@ -205,8 +205,17 @@ private:
 
     bool CheckPlanSymbolBinding() {
         using namespace BML::Behavior;
-        if (m_CheckedPlanSymbols)
+        if (m_CheckedPlanSymbols && !m_SurvivingGraph.Domain)
             return true;
+        if (m_CheckedPlanSymbols) {
+            auto session = Session::Open().Take();
+            Require(session.Inspect(m_SurvivingGraph, View::Live).Take()
+                        .FindAll("__BML_Batch_Child").size() == 1,
+                    "deleting a graph retired its graph-owned sibling edit");
+            (void)m_Context.LogInfo("Behavior installations PASS graph-owned target lifetime");
+            m_SurvivingGraph = {};
+            return true;
+        }
         if (!m_SymbolPlan) {
             auto session = Session::Open().Take();
             auto graph = m_SymbolEdit.Root();
@@ -247,7 +256,7 @@ private:
         instance.Set(m_SymbolPort, Value(41)).Take();
         CheckUnifiedGraphEdit(instance.Script());
         m_CheckedPlanSymbols = true;
-        return true;
+        return false;
     }
 
     void CheckUnifiedGraphEdit(BML_ObjectRef graphRef) {
@@ -285,6 +294,25 @@ private:
         live = session.Inspect(graphRef, View::Live).Take();
         Require(live.FindAll("__BML_Apply_GraphOwned").size() == 1,
                 "graph-owned edits survive closing their submission");
+
+        const auto makeGraph = [&](const char *name) {
+            Edit root;
+            root.Root().AddGraph(name);
+            auto created = session.Apply(name, EditOwnership::Graph,
+                On(session.Inspect(graphRef).Take(), root)).Take();
+            Require(created.Close().Take() == CloseState::Closed, "graph ownership transfer");
+            return session.Inspect(graphRef).Take().FindAll(name).at(0).Object();
+        };
+        const auto first = makeGraph("__BML_Batch_First");
+        m_SurvivingGraph = makeGraph("__BML_Batch_Second");
+        Edit shared;
+        shared.Root().AddGraph("__BML_Batch_Child");
+        auto batch = session.Apply("graph batch", EditOwnership::Graph,
+            On(session.Inspect(first).Take(), shared),
+            On(session.Inspect(m_SurvivingGraph).Take(), shared)).Take();
+        Require(batch.Close().Take() == CloseState::Closed, "batch ownership transfer");
+        auto target = BML::Engine::BorrowObject<CKBehavior>(m_Context, first).Value();
+        Require(target->GetCKContext()->DestroyObject(target) == CK_OK, "delete first target");
     }
 
     bool CheckScriptRuntime() {
@@ -630,6 +658,7 @@ private:
     BML::Behavior::Plan m_SymbolPlan;
     BML::Behavior::Plan::Instance m_PreviousSymbolInstance;
     BML_ObjectRef m_PreviousSymbolNode{};
+    BML_ObjectRef m_SurvivingGraph{};
     bool m_CheckedPlanSymbols = false;
     BML::Input::Block m_Block;
     BML::Timer::Registration m_Self, m_Repeat, m_NoArgs, m_VoidLoop;

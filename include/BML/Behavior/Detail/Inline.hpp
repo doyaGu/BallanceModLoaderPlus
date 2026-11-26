@@ -1885,7 +1885,15 @@ inline Result<Submission::Installation> Submission::FindBinding(
 
 inline Submission::Installation::operator bool() const noexcept {
     const auto state = m_State.lock();
-    return state && state->Handle && m_Receipt.Id;
+    if (!state || !state->Handle || !m_Receipt.Id)
+        return false;
+    BML_BehaviorInstallation current{};
+    current.StructSize = sizeof(current);
+    const auto &session = state->Session;
+    return session->Api->FindInstallation(session->Handle, state->Handle,
+               m_Receipt.Graph, m_Receipt.Binding, &current, nullptr) == BML_OK &&
+        current.Id == m_Receipt.Id && current.World == m_Receipt.World &&
+        current.Revision == m_Receipt.Revision;
 }
 
 inline Result<ObservedValue> Submission::Installation::Read(const Edit::Port &port) const {

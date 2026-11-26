@@ -74,7 +74,7 @@ void CKEdit::Queue(Request request) {
 }
 
 bool CKEdit::NeedsFrameProcessing() const noexcept {
-    return !m_LostOverlays.empty() || !m_Queue.empty();
+    return !m_Queue.empty();
 }
 
 Status CKEdit::Ready() const {
@@ -634,35 +634,15 @@ void CKEdit::InstallationDeleted(Patch &patch) {
     CloseAdmission(*journal);
     const std::uint64_t graphId =
         static_cast<std::uint32_t>(journal->Graph.Id);
-    const auto topology = m_Topology.find(graphId);
-    if (topology != m_Topology.end())
-        (void) topology->second.Remove(journal->Key);
-    if (m_Links) {
+    // The normal inverse still owns all surviving members. Mark missing
+    // overlay endpoints so it can reconnect their anchors at the safe point.
+    if (!journal->Splices.empty() || !journal->Redirects.empty()) {
         auto &lost = m_LostOverlays[graphId];
-        for (const auto &[link, ordinal] : journal->Splices) {
-            (void) link;
+        for (const auto &[link, ordinal] : journal->Splices)
             lost.emplace(journal->Key, ordinal);
-        }
-        for (const auto &[link, ordinal] : journal->Redirects) {
-            (void) link;
+        for (const auto &[link, ordinal] : journal->Redirects)
             lost.emplace(journal->Key, ordinal);
-        }
-        const auto infrastructure = m_Links->Patches.find(graphId);
-        if (infrastructure != m_Links->Patches.end())
-            infrastructure->second.erase(journal->Key);
     }
-    const auto relations = m_Relations.find(graphId);
-    if (relations != m_Relations.end())
-        (void) relations->second.Remove(journal->Key);
-    const auto active = m_Active.find(graphId);
-    if (active != m_Active.end())
-        active->second.erase(journal->Key);
-    if (journal->StructuralEditClaim)
-        m_StructuralEdits.erase(graphId);
-    journal->State = PatchState::Closed;
-    journal->Queued = false;
-    journal->Callbacks.clear();
-    patch.m_Journal.reset();
 }
 
 void CKEdit::ObjectsToBeDeleted(const CK_ID *ids, int count) {
@@ -721,31 +701,6 @@ void CKEdit::ProcessFrame() {
 
     if (!m_Links)
         return;
-    for (auto graph = m_LostOverlays.begin();
-         graph != m_LostOverlays.end();) {
-        const std::uint64_t graphId = graph->first;
-        const auto root = m_Links->Roots.find(graphId);
-        CKBehavior *native = root != m_Links->Roots.end()
-            ? Resolve<CKBehavior>(m_Context, root->second, CKCID_BEHAVIOR)
-            : nullptr;
-        if (!native) {
-            graph = m_LostOverlays.erase(graph);
-            continue;
-        }
-        Status repaired = Materialize(graphId, native);
-        if (!repaired) {
-            ++graph;
-            continue;
-        }
-        auto sites = m_Links->Sites.find(graphId);
-        if (sites != m_Links->Sites.end()) {
-            for (const auto &key : graph->second)
-                sites->second.erase({key.first, key.second});
-        }
-        (void) PublishLogicalGraph(graphId);
-        graph = m_LostOverlays.erase(graph);
-    }
-
     // Requests queued while this batch runs wait for the next safe point.
     std::vector<Request> requests;
     requests.swap(m_Queue);

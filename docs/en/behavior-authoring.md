@@ -81,7 +81,7 @@ The rest of this guide follows that order: BB execution first, graph reading and
 
 ## Apply graph edits
 
-New Mods use `Session::Apply(name, ownership, On(target, edit))` with a logical `Graph` snapshot or a `Scripts::One/Each` selector. An exact batch applies to the indicated graphs together. A Script selector reconciles each matching instance independently, including after a world reload. A submission exposes apply and recovery failures separately. The loader restores the affected graph when publication fails.
+New Mods use `Session::Apply(name, ownership, On(target, edit))` with a logical `Graph` snapshot or a `Scripts::One/Each` selector. An exact batch applies to the indicated graphs together. After publication, each graph-owned installation lives with its own target graph. A Script selector reconciles each matching instance independently, including after a world reload. A submission exposes apply and recovery failures separately. The loader restores the affected graph when publication fails.
 
 Ownership determines what happens when the submission closes.
 
