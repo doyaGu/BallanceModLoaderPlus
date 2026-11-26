@@ -11,17 +11,6 @@
 namespace {
 namespace Behavior = BML::Behavior;
 
-Behavior::Edit LanternAlphaTest(bool enabled) {
-    Behavior::Edit edit;
-    auto mapping = edit.Root()
-        .Require("set Mapping and Textures")
-        .Graph();
-    auto lantern = mapping.Require("Set Mat Laterne").Graph();
-    const auto alpha = lantern.Require("Set Alpha Test");
-    lantern.Bind(alpha.Pin(0, CKPGUID_BOOL), enabled);
-    return edit;
-}
-
 Behavior::Edit OverclockIngame() {
     Behavior::Edit edit;
     auto manager = edit.Root().Require("BallManager").Graph();
@@ -112,18 +101,26 @@ void GameplayTweaks::OnLoad(ModContext &bml, Logger &logger) {
 
     const bool lanternEnabled = m_LanternAlphaTest &&
         m_LanternAlphaTest->GetBoolean();
-    Behavior::Edit lanternEdit = LanternAlphaTest(lanternEnabled);
-    auto lantern = m_Behavior.Plan(
-        "Lantern alpha test",
-        Behavior::On(Behavior::Scripts::One("Levelinit_build"),
-                     lanternEdit));
-    if (lantern)
-        m_LanternPlan = lantern.Take();
-    else
-        m_Logger->Warn("Lantern alpha-test Plan is unavailable: %s",
+    Behavior::Edit lanternEdit;
+    auto lanternGraph = lanternEdit.Root()
+        .Require("set Mapping and Textures").Graph()
+        .Require("Set Mat Laterne").Graph();
+    const auto alpha = lanternGraph.Require("Set Alpha Test");
+    const auto enabled = lanternGraph.AppendLocal("Lantern Alpha Test", CKPGUID_BOOL);
+    lanternGraph.Set(enabled, lanternEnabled);
+    lanternGraph.Bind(alpha.Pin(0, CKPGUID_BOOL), enabled);
+    auto lantern = m_Behavior.Apply(
+        "Lantern alpha test", Behavior::EditOwnership::Submission,
+        Behavior::On(Behavior::Scripts::One("Levelinit_build"), lanternEdit));
+    if (lantern) {
+        m_Lantern = lantern.Take();
+        m_LanternInput = enabled;
+    } else {
+        m_Logger->Warn("Lantern alpha-test edit is unavailable: %s",
             lantern.GetStatus().Message.empty()
-                ? "Behavior Plan creation failed"
+                ? "Behavior Apply failed"
                 : lantern.GetStatus().Message.c_str());
+    }
 
     Behavior::Edit ingame = OverclockIngame();
     Behavior::Edit energy = OverclockEnergy();
@@ -180,7 +177,12 @@ void GameplayTweaks::OnLoad(ModContext &bml, Logger &logger) {
 void GameplayTweaks::OnUnload() {
     ClosePlan(m_ExtraLifePlan, "Life-ball freeze fix");
     ClosePlan(m_OverclockPlan, "Overclock");
-    ClosePlan(m_LanternPlan, "Lantern alpha test");
+    auto lantern = m_Lantern.Close();
+    if (!lantern && m_Logger)
+        m_Logger->Error("Failed to restore the lantern alpha-test edit: %s",
+                        lantern.GetStatus().Message.c_str());
+    m_Lantern = {};
+    m_LanternInput = {};
     m_Behavior.Reset();
     m_Logger = nullptr;
     m_BML = nullptr;
@@ -199,30 +201,12 @@ void GameplayTweaks::ApplyLanternAlphaTest(bool enabled) {
         material->SetAlphaFunc(VXCMP_GREATEREQUAL);
         material->SetAlphaRef(0);
     }
-    if (m_LanternPlan)
-        (void) ApplyLanternScript(enabled, true);
-}
-
-bool GameplayTweaks::ApplyLanternScript(bool enabled,
-                                        bool warnIfUnavailable) {
-    if (!m_LanternPlan)
-        return false;
-    Behavior::Edit edit = LanternAlphaTest(enabled);
-    auto replaced = m_LanternPlan.Replace(Behavior::On(
-        Behavior::Scripts::One("Levelinit_build"),
-        edit));
-    if (!replaced) {
-        if (warnIfUnavailable && m_Logger)
-            m_Logger->Warn("Lantern alpha-test graph could not be edited: %s",
-                replaced.GetStatus().Message.empty()
-                    ? "Behavior Plan replacement failed"
-                    : replaced.GetStatus().Message.c_str());
-        return false;
+    if (m_Lantern) {
+        const auto changed = m_Lantern.SetInput(m_LanternInput, enabled);
+        if (!changed && m_Logger)
+            m_Logger->Warn("Could not update the lantern alpha-test input: %s",
+                           changed.GetStatus().Message.c_str());
     }
-    if (m_Logger)
-        m_Logger->Info(
-            "Requested a lantern alpha-test Plan update");
-    return true;
 }
 
 bool GameplayTweaks::ApplyOverclock(bool enabled, bool warnIfUnavailable) {

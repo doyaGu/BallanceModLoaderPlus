@@ -69,6 +69,7 @@ public:
         friend bool operator==(const Symbol &, const Symbol &) = default;
     };
     using SymbolMap = std::map<SymbolRef, Symbol>;
+    using Inputs = std::map<SymbolRef, Parameter::Binding>;
 
     struct PortQuery {
         std::uint64_t Binding = 0;
@@ -84,12 +85,26 @@ public:
         InstallationInfo Value;
     };
 
+    struct InstalledEdit {
+        InstallationInfo Value;
+        std::uint64_t Binding = 0;
+    };
+
+    enum class SubmissionState { Pending = 1, Applied = 2, Failed = 3 };
+
+    struct SubmissionInfo {
+        SubmissionState State = SubmissionState::Pending;
+        Status ApplyFailure;
+        Status RestoreFailure;
+    };
+
     struct Target {
         ObjectRef Graph;
         std::uint64_t Fingerprint = 0;
         std::uint64_t Binding = 0;
         std::shared_ptr<const Program> Body;
         SymbolMap Symbols;
+        std::shared_ptr<Inputs> Values;
     };
 
     struct Rule {
@@ -97,7 +112,26 @@ public:
         std::uint64_t Binding = 0;
         std::shared_ptr<const Program> Body;
         SymbolMap Symbols;
+        std::shared_ptr<Inputs> Values;
     };
+
+    Status SubmitEdit(const SessionOwner &owner, std::string name, bool graphOwned,
+                      std::vector<Target> targets, std::vector<Rule> rules,
+                      std::uintptr_t &out);
+    Status ReadSubmission(const SessionOwner &owner, std::uintptr_t id,
+                          SubmissionInfo &out) const;
+    Status FindInstallation(const SessionOwner &owner, std::uintptr_t id,
+                            const ObjectRef &graph, std::uint64_t binding,
+                            InstalledEdit &out) const;
+    Status ReadInstallation(const SessionOwner &owner, std::uintptr_t id,
+                            const InstalledEdit &installed, const PortQuery &port,
+                            GraphValue &out) const;
+    Status WriteInstallation(const SessionOwner &owner, std::uintptr_t id,
+                             const InstalledEdit &installed, const PortQuery &port,
+                             const Parameter::Binding &value);
+    Status SetInput(const SessionOwner &owner, std::uintptr_t id,
+                    const PortQuery &port, const Parameter::Binding &value);
+    Status CloseSubmission(const SessionOwner &owner, std::uintptr_t id);
 
     Installations(CKContext *context, Runtime &runtime,
                   PrototypeCatalog *catalog, GraphSource &graph,
@@ -263,10 +297,26 @@ private:
         bool TargetDeleted = false;
         // A Script body; see Define.
         bool Defines = false;
+        bool GraphOwned = false;
         std::vector<Scope> Scopes;
         // Public handle -> resolved symbol in one installed scope.
         std::map<SymbolRef, ResolvedSymbol> Symbols;
     };
+
+    struct Submission {
+        SessionOwner Owner;
+        PatchId Patch = 0;
+        PlanId Plan = 0;
+        bool GraphOwned = false;
+        bool Closing = false;
+    };
+
+    Status ReadInstallations(const Submission &submission,
+                             std::vector<InstalledEdit> &out) const;
+    Status ValidateInstallation(const Submission &submission,
+                                 const InstalledEdit &installed,
+                                 const PortQuery &port) const;
+    void TransferToGraph(const Submission &submission);
 
     struct PlanRecord : Record<Rule> {
         static constexpr bool IsPlan = true;
@@ -306,14 +356,14 @@ private:
                         const ObjectRef &graph, const Program &edit,
                         std::uint32_t scope, std::size_t target,
                         PatchRecord &out,
-                        const SymbolMap *authorSymbols);
+                        const SymbolMap *authorSymbols, const Inputs *values);
     Status PublishScope(const SessionOwner &owner, const PatchKey &patch,
                         const ObjectRef &graph, const Program &edit,
                         Ops resolved,
                         Program::ResolvedSymbols compiled,
                         std::uint32_t scope, std::size_t target,
                         PatchRecord &out,
-                        const SymbolMap *authorSymbols);
+                        const SymbolMap *authorSymbols, const Inputs *values);
     Status Uninstall(PatchRecord &patch, std::size_t target);
     Status Uninstall(PlanRecord &plan, std::size_t rule);
     void CloseAdmission(PatchRecord &patch);
@@ -380,6 +430,8 @@ private:
     std::thread::id m_Thread;
     PatchId m_NextId = 1;
     PlanId m_NextPlanId = 1;
+    std::uintptr_t m_NextSubmission = 1;
+    std::map<std::uintptr_t, Submission> m_Submissions;
     std::map<PatchId, PatchRecord> m_Patches;
     std::map<PlanId, PlanRecord> m_Plans;
 };

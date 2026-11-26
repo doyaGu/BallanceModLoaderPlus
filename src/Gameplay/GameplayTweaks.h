@@ -19,7 +19,6 @@ public:
 
 private:
     void ApplyLanternAlphaTest(bool enabled);
-    bool ApplyLanternScript(bool enabled, bool warnIfUnavailable);
     bool ApplyOverclock(bool enabled, bool warnIfUnavailable);
     bool SetPlanEnabled(BML::Behavior::Plan &plan, bool enabled,
                         const char *name, bool warnIfUnavailable);
@@ -33,7 +32,8 @@ private:
     Property *m_Overclock = nullptr;
 
     BML::Behavior::Session m_Behavior;
-    BML::Behavior::Plan m_LanternPlan;
+    BML::Behavior::Submission m_Lantern;
+    BML::Behavior::Edit::Port m_LanternInput;
     BML::Behavior::Plan m_OverclockPlan;
     BML::Behavior::Plan m_ExtraLifePlan;
 };

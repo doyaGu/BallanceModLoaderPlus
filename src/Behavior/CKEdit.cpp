@@ -350,6 +350,59 @@ Status CKEdit::WriteValue(const Patch &patch, Port port,
     return Parameter::Write(m_Context, parameter, value);
 }
 
+Status CKEdit::WriteLocals(
+    const std::vector<std::pair<const Patch *, Port>> &writes,
+    const Parameter::Binding &value) const {
+    struct Snapshot {
+        CKParameterLocal *Destination;
+        CKParameterLocal *Previous;
+    };
+    std::vector<Snapshot> snapshots;
+    snapshots.reserve(writes.size());
+    struct Cleanup {
+        CKContext *Context;
+        const std::vector<Snapshot> &Snapshots;
+        ~Cleanup() {
+            for (const auto &entry : Snapshots)
+                Context->DestroyObject(entry.Previous);
+        }
+    } cleanup{m_Context, snapshots};
+
+    for (const auto &[patch, port] : writes) {
+        CKBehavior *behavior = nullptr;
+        SlotInfo slot;
+        Status status = ResolvePort(*patch, port, behavior, slot);
+        if (!status)
+            return status;
+        auto *local = slot.Kind == SlotKind::Local
+            ? behavior->GetLocalParameter(slot.NativeIndex) : nullptr;
+        if (!local)
+            return Failure(Error::GraphChanged, "The Edit input is unavailable.");
+        CKParameterLocal *previous = nullptr;
+        status = Parameter::Clone(m_Context, local, previous);
+        if (!status)
+            return status;
+        snapshots.push_back({local, previous});
+    }
+
+    for (std::size_t i = 0; i < snapshots.size(); ++i) {
+        Status status = Parameter::Write(m_Context, snapshots[i].Destination, value);
+        if (status)
+            continue;
+        CKERROR recovery = CK_OK;
+        for (std::size_t rollback = i + 1; rollback > 0; --rollback) {
+            const auto &entry = snapshots[rollback - 1];
+            const CKERROR copied = entry.Destination->CopyValue(entry.Previous, FALSE);
+            if (copied != CK_OK)
+                recovery = copied;
+        }
+        if (recovery != CK_OK)
+            return Failure(Error::RevertConflict, "The Edit input could not be restored.", recovery);
+        return status;
+    }
+    return {};
+}
+
 Status CKEdit::ApplyNow(const Ops &edit,
                         const std::shared_ptr<Patch::Journal> &patch) {
     Status status = Ready();

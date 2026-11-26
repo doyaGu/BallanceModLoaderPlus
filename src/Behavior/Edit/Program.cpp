@@ -905,6 +905,22 @@ bool Program::UsesIdentity() const noexcept {
                     });
 }
 
+bool Program::UsesCallbacks() const noexcept {
+    for (const Step &step : m_Steps) {
+        if (std::holds_alternative<Steps::HookFlow>(step) ||
+            std::holds_alternative<Steps::Tap>(step) ||
+            std::holds_alternative<Steps::After>(step) ||
+            std::holds_alternative<Steps::Before>(step))
+            return true;
+        if (const auto *block = std::get_if<Steps::AddBlock>(&step);
+            block && !block->Block.Callbacks().empty())
+            return true;
+    }
+    return std::any_of(m_Nested.begin(), m_Nested.end(), [](const Nested &nested) {
+        return nested.Body && nested.Body->UsesCallbacks();
+    });
+}
+
 bool Program::SameAs(const Program &other) const noexcept {
     if (m_Steps != other.m_Steps || m_Nested.size() != other.m_Nested.size())
         return false;

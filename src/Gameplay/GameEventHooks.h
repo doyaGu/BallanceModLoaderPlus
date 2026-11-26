@@ -13,10 +13,10 @@ public:
     void OnUnload();
 
 private:
-    void RejectPlan(const char *reason) const;
+    void RejectSubmission(const char *reason) const;
 
     BML::Behavior::Session m_Behavior;
-    BML::Behavior::Plan m_Plan;
+    BML::Behavior::Submission m_Submission;
     ModContext *m_Receiver = nullptr;
     Logger *m_Logger = nullptr;
 };

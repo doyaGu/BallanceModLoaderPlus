@@ -38,13 +38,13 @@ public:
             bool LoadCustom = false;
         };
 
-        Transaction(BML::Behavior::Plan::Instance instance,
+        Transaction(BML::Behavior::Submission::Installation instance,
                     BML::Behavior::Edit::Port mapFile,
                     BML::Behavior::Edit::Port levelRow,
                     BML::Behavior::Edit::Port loadCustom,
                     Snapshot previous);
 
-        BML::Behavior::Plan::Instance m_Instance;
+        BML::Behavior::Submission::Installation m_Instance;
         BML::Behavior::Edit::Port m_MapFile;
         BML::Behavior::Edit::Port m_LevelRow;
         BML::Behavior::Edit::Port m_LoadCustom;
@@ -67,7 +67,7 @@ public:
 private:
     template <class T>
     [[nodiscard]] static BML::Behavior::Result<T> Read(
-        const BML::Behavior::Plan::Instance &instance,
+        const BML::Behavior::Submission::Installation &instance,
         const BML::Behavior::Edit::Port &port, std::string_view name);
 
     [[nodiscard]] static BML::Behavior::Status AddContext(
@@ -84,8 +84,8 @@ private:
         BML::Behavior::Result<void> candidate);
     void ClearPorts();
 
-    BML::Behavior::Plan m_Plan;
-    std::optional<BML::Behavior::Plan::Instance> m_Instance;
+    BML::Behavior::Submission m_Submission;
+    std::optional<BML::Behavior::Submission::Installation> m_Instance;
     BML::Behavior::Edit::Port m_MapFile;
     BML::Behavior::Edit::Port m_LevelRow;
     BML::Behavior::Edit::Port m_LoadCustom;

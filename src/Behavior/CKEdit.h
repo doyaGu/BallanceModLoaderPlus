@@ -104,6 +104,8 @@ public:
     Status ReadValue(const Patch &patch, Port port, GraphValue &out) const;
     Status WriteValue(const Patch &patch, Port port,
                       const Parameter::Binding &value) const;
+    Status WriteLocals(const std::vector<std::pair<const Patch *, Port>> &writes,
+                       const Parameter::Binding &value) const;
     // Invalidates an installation whose graph is being deleted by CK and
     // closes callback admission immediately. Its journal retains any native
     // objects CK2 skipped until the next safe point retires them.

@@ -406,6 +406,27 @@ void Ops::Set(Port target, Parameter::Binding value) {
         {std::move(target), std::move(value), NextOrdinal()});
 }
 
+void Ops::SetLocalOverride(Port target, Parameter::Binding value) {
+    const auto matches = [&](const auto &write) {
+        return write.Target.Owner == target.Owner &&
+            write.Target.Interface == target.Interface;
+    };
+    const auto set = std::find_if(m_Sets.begin(), m_Sets.end(), matches);
+    if (set != m_Sets.end()) {
+        set->Value = std::move(value);
+        return;
+    }
+
+    const auto bind = std::find_if(m_Binds.begin(), m_Binds.end(), matches);
+    if (bind != m_Binds.end()) {
+        bind->Kind = BindKind::Literal;
+        bind->Source = Port();
+        bind->Value = std::move(value);
+        return;
+    }
+    Set(std::move(target), std::move(value));
+}
+
 void Ops::Bind(Port target, Parameter::Binding value) {
     EditBind bind;
     bind.Target = std::move(target);

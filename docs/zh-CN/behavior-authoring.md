@@ -83,6 +83,43 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 
 下文按这个顺序展开：先讲 BB 执行，再讲 graph 读取与创建，最后讲 graph edit 及其生命期。
 
+## 提交图编辑
+
+新 Mod 通过 `Session::Apply(name, ownership, On(target, edit))` 提交 Edit。目标可以是逻辑 Graph 快照，或 `Scripts::One/Each` 选择器。一次精确提交会一起应用到指定的图。Script 选择器对每个匹配实例分别安装，换关后继续生效。提交会分别报告应用错误和恢复错误。发布失败时，Loader 会恢复受影响的图。
+
+所有权决定关闭提交后的行为。
+
+- `EditOwnership::Submission` 会立即停止接收回调，并在安全点撤除安装。包含 Hook 或其他 Mod 回调的 Edit 使用此模式。
+- `EditOwnership::Graph` 让已发布的编辑随图存活。关闭 Script 提交会停止匹配后续实例。排队中的精确编辑会先到达安全点，再释放提交。
+
+通过 `Find(graph)` 精确定位一个当前安装，只有一个匹配时可用 `Find()`。关闭提交或底层安装变化后，原来的引用会失效。`Installation::Read/Set` 访问单个实例。`SetInput` 为 Edit 声明的 Local 设置值，同时更新当前匹配和将来的安装。传入的字面值必须匹配 Local 的声明类型。
+
+```cpp
+namespace Behavior = BML::Behavior;
+
+Behavior::Edit edit;
+auto root = edit.Root();
+auto input = root.AppendLocal("Enabled", CKPGUID_BOOL);
+root.Set(input, true);
+auto result = session.Apply(
+    "My edit", Behavior::EditOwnership::Submission,
+    Behavior::On(Behavior::Scripts::One("Levelinit_build"), edit));
+if (result) {
+    auto submission = result.Take();
+    auto updated = submission.SetInput(input, false);
+    if (updated) {
+        auto installation = submission.Find();
+        if (installation) {
+            auto observed = installation->Read(input);
+            // Use the observed value while this installation is current.
+        }
+    }
+    // Retain the submission for as long as the selection should reconcile.
+}
+```
+
+AngelScript 使用 `edit.Apply(name, graph, ownership)` 或 `edit.Apply(name, script, ownership, each)`。C 客户端通过 `BML_BEHAVIOR_HAS_1_1` 检查后调用 `SubmitEdit`。已有的 1.0 Patch 和 Plan 接口继续可用。
+
 ## 2. 打开 Session
 
 在 `OnLoad(const BML::Mod::Context &ctx)` 内打开 `Session`，

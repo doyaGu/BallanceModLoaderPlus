@@ -1264,6 +1264,17 @@ enum WatchState {
     Failed = 2,
 }
 
+enum EditOwnership {
+    Graph = 1,
+    Submission = 2,
+}
+
+enum SubmissionState {
+    Pending = 1,
+    Applied = 2,
+    Failed = 3,
+}
+
 enum PatchState {
     Pending = 1,
     Active = 2,
@@ -1845,6 +1856,8 @@ class Edit {
     Edit();
     bool get_IsValid() const;
     BML::Behavior::EditGraph@ Root() const;
+    BML::Behavior::Submission@ Apply(const string&in name, BML::Behavior::Graph@ graph, BML::Behavior::EditOwnership ownership) const;
+    BML::Behavior::Submission@ Apply(const string&in name, const string&in script, BML::Behavior::EditOwnership ownership, bool each = false) const;
     BML::Behavior::Plan@ Plan(const string&in name, const string&in script, bool each = false);
     BML::Behavior::Script@ CreateScript(CKBeObject@ owner, const string&in name, int priority = 0);
 }
@@ -1960,6 +1973,22 @@ class Operation {
     bool get_IsValid() const;
     BML::Behavior::EditPort@ Input(int index) const;
     BML::Behavior::EditPort@ Result() const;
+}
+
+class Submission {
+    bool get_IsValid() const;
+    BML::Behavior::SubmissionState get_State() const;
+    string get_ApplyError() const;
+    string get_RestoreError() const;
+    BML::Behavior::Installation@ Find(BML::Behavior::ObjectRef@ graph = null) const;
+    bool SetInput(BML::Behavior::EditPort@ port, const BML::Behavior::Value&in value) const;
+    BML::Behavior::CloseState Close();
+}
+
+class Installation {
+    bool get_IsValid() const;
+    BML::Behavior::ObservedValue@ Read(BML::Behavior::EditPort@ port) const;
+    bool Set(BML::Behavior::EditPort@ port, const BML::Behavior::Value&in value) const;
 }
 
 class Patch {

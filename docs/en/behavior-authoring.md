@@ -79,6 +79,43 @@ Choose the entry point by the lifetime of the work:
 
 The rest of this guide follows that order: BB execution first, graph reading and creation next, then graph edits and their lifetime.
 
+## Apply graph edits
+
+New Mods use `Session::Apply(name, ownership, On(target, edit))` with a logical `Graph` snapshot or a `Scripts::One/Each` selector. An exact batch applies to the indicated graphs together. A Script selector reconciles each matching instance independently, including after a world reload. A submission exposes apply and recovery failures separately. The loader restores the affected graph when publication fails.
+
+Ownership determines what happens when the submission closes.
+
+- `EditOwnership::Submission` retires its installations and stops admitting callbacks immediately. Graph teardown runs at a safe point. Use this for Edits that contain Hooks or other Mod callbacks.
+- `EditOwnership::Graph` lets published edits live until their graph disappears. Closing a Script submission stops selecting new instances. Closing a queued exact edit lets it reach its safe point before releasing the submission.
+
+Use `Find(graph)` to pick a current installation or `Find()` when exactly one can match. Receipts become stale after closure or when the underlying graph installation changes. Use `Installation::Read/Set` for one installation and `SetInput` for an authored Local whose value should persist into future installations. `SetInput` requires an owned literal that matches the Local's declared type.
+
+```cpp
+namespace Behavior = BML::Behavior;
+
+Behavior::Edit edit;
+auto root = edit.Root();
+auto input = root.AppendLocal("Enabled", CKPGUID_BOOL);
+root.Set(input, true);
+auto result = session.Apply(
+    "My edit", Behavior::EditOwnership::Submission,
+    Behavior::On(Behavior::Scripts::One("Levelinit_build"), edit));
+if (result) {
+    auto submission = result.Take();
+    auto updated = submission.SetInput(input, false);
+    if (updated) {
+        auto installation = submission.Find();
+        if (installation) {
+            auto observed = installation->Read(input);
+            // Use the observed value while this installation is current.
+        }
+    }
+    // Retain the submission for as long as the selection should reconcile.
+}
+```
+
+AngelScript uses the same ownership and installation model through `edit.Apply(name, graph, ownership)` or `edit.Apply(name, script, ownership, each)`. C clients use `BML_BEHAVIOR_HAS_1_1` and `SubmitEdit`. Existing 1.0 Patch and Plan APIs remain available.
+
 ## 2. Open a Session
 
 Open a `Session` inside `OnLoad(const BML::Mod::Context &ctx)`;

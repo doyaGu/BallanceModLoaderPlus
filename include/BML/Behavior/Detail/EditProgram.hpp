@@ -93,12 +93,6 @@ struct PatchSymbols {
     std::uint32_t HandleLimit = 0;
 };
 
-struct PlanSymbols {
-    std::shared_ptr<EditProgram> Edit;
-    std::uint64_t Binding = 0;
-    std::uint32_t HandleLimit = 0;
-};
-
 struct PatchTarget {
     std::shared_ptr<SessionState> Session;
     BML_ObjectRef Graph{};

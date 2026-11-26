@@ -245,8 +245,46 @@ private:
         value = instance.Read(m_SymbolPort).Take();
         Require(std::get<int32_t>(value.Data) == 42, "rebound Plan symbol can be written");
         instance.Set(m_SymbolPort, Value(41)).Take();
+        CheckUnifiedGraphEdit(instance.Script());
         m_CheckedPlanSymbols = true;
         return true;
+    }
+
+    void CheckUnifiedGraphEdit(BML_ObjectRef graphRef) {
+        using namespace BML::Behavior;
+        auto session = Session::Open().Take();
+
+        Edit invalid;
+        auto nested = invalid.Root().AddGraph("__BML_Apply_Rollback").Graph();
+        nested.Require("__BML_Apply_Missing");
+        auto graph = session.Inspect(graphRef).Take();
+        auto failed = session.Apply("failed exact edit", EditOwnership::Submission,
+                                    On(graph, invalid));
+        Require(!failed && failed.GetStatus().Error == Error::QueryNotFound,
+                "exact Apply reported its primary failure");
+        auto live = session.Inspect(graphRef, View::Live).Take();
+        Require(live.FindAll("__BML_Apply_Rollback").empty(),
+                "failed exact Apply restored the graph");
+
+        Edit edit;
+        auto body = edit.Root();
+        body.AddGraph("__BML_Apply_GraphOwned");
+        auto input = body.AppendLocal("__BML_Apply_Native_Input", CKPGUID_INT);
+        body.Bind(input, 12);
+        graph = session.Inspect(graphRef).Take();
+        auto applied = session.Apply("durable exact edit", EditOwnership::Graph,
+                                     On(graph, edit)).Take();
+        Require(applied.Info().Take().State == SubmissionState::Applied,
+                "exact Apply published its edit");
+        auto installed = applied.Find(graphRef).Take();
+        Require(installed.Graph().Generation == graphRef.Generation &&
+                    std::get<int32_t>(installed.Read(input).Take().Data) == 12,
+                "exact Apply returned a typed installation receipt");
+        Require(applied.Close().Take() == CloseState::Closed && !installed.Read(input),
+                "closing invalidates native receipts");
+        live = session.Inspect(graphRef, View::Live).Take();
+        Require(live.FindAll("__BML_Apply_GraphOwned").size() == 1,
+                "graph-owned edits survive closing their submission");
     }
 
     bool CheckScriptRuntime() {

@@ -158,11 +158,11 @@ class Installations::PlanWorld final : public Selection::World {
 public:
     PlanWorld(Installations &installations, SessionOwner owner, PatchKey patch,
               std::shared_ptr<const Program> edit,
-              SymbolMap symbols,
+              SymbolMap symbols, std::shared_ptr<Inputs> values = {},
               std::shared_ptr<const CallbackAdmission> admission = {})
         : m_Installations(installations), m_Owner(std::move(owner)),
           m_Patch(std::move(patch)), m_Edit(std::move(edit)),
-          m_Symbols(std::move(symbols)),
+          m_Symbols(std::move(symbols)), m_Values(std::move(values)),
           m_Admission(std::move(admission)) {}
 
     Status Install(const PatchKey &, const ObjectRef &target, Epoch,
@@ -175,6 +175,7 @@ public:
             graph.Graph = target;
             graph.Body = m_Edit;
             graph.Symbols = m_Symbols;
+            graph.Values = m_Values;
             std::vector<Target> targets;
             targets.push_back(std::move(graph));
 
@@ -202,6 +203,7 @@ private:
     PatchKey m_Patch;
     std::shared_ptr<const Program> m_Edit;
     SymbolMap m_Symbols;
+    std::shared_ptr<Inputs> m_Values;
     std::shared_ptr<const CallbackAdmission> m_Admission;
 };
 
@@ -902,7 +904,7 @@ Status Installations::InstallFrom(PatchRecord &patch,
             patch.Owner, key, item.TargetValue->Graph,
             *item.TargetValue->Body, std::move(item.Value),
             std::move(item.Symbols), 1, index, patch,
-            &item.TargetValue->Symbols);
+            &item.TargetValue->Symbols, item.TargetValue->Values.get());
         if (!status) {
             NoteFailure(patch, index);
             break;
@@ -930,7 +932,8 @@ Status Installations::InstallScope(const SessionOwner &owner,
                                    std::uint32_t scopeId,
                                    std::size_t targetIndex,
                                    PatchRecord &out,
-                                   const SymbolMap *authorSymbols) {
+                                   const SymbolMap *authorSymbols,
+                                   const Inputs *values) {
     Ops resolved;
     Program::ResolvedSymbols compiled;
     PatchKey scopedKey = patch;
@@ -944,7 +947,7 @@ Status Installations::InstallScope(const SessionOwner &owner,
 
     return PublishScope(owner, patch, graph, edit, std::move(resolved),
                         std::move(compiled), scopeId, targetIndex, out,
-                        authorSymbols);
+                        authorSymbols, values);
 }
 
 Status Installations::PublishScope(const SessionOwner &owner,
@@ -956,8 +959,23 @@ Status Installations::PublishScope(const SessionOwner &owner,
                                    std::uint32_t scopeId,
                                    std::size_t targetIndex,
                                    PatchRecord &out,
-                                   const SymbolMap *authorSymbols) {
+                                   const SymbolMap *authorSymbols,
+                                   const Inputs *values) {
     Status status;
+
+    if (values && authorSymbols) {
+        for (const auto &[reference, input] : *values) {
+            if (reference.Scope != scopeId)
+                continue;
+            const auto symbol = authorSymbols->find(reference);
+            if (symbol == authorSymbols->end())
+                continue;
+            const auto port = compiled.Ports.find(symbol->second.PortValue.Selector.Index);
+            if (port == compiled.Ports.end())
+                return Failure(Error::QueryNotFound, "The Edit input did not resolve.");
+            resolved.SetLocalOverride(port->second, input);
+        }
+    }
 
     Patch value;
     status = m_Edit.Apply(resolved, value, out.Admission, out.Defines);
@@ -1050,7 +1068,7 @@ Status Installations::PublishScope(const SessionOwner &owner,
                     Error::CreateFailed,
                     "The Loader could not retain the nested graph identity.");
             status = InstallScope(owner, patch, nestedGraph, *nested.Body,
-                                  nested.Scope, targetIndex, out, authorSymbols);
+                                  nested.Scope, targetIndex, out, authorSymbols, values);
             if (!status)
                 return status;
         }
@@ -1426,6 +1444,8 @@ Status Installations::Close(const SessionOwner &owner, PatchId id) {
         found->second.Owner.Generation != owner.Generation)
         return Failure(Error::OwnerInvalid,
                        "The Behavior Patch belongs to another Mod generation.");
+    if (found->second.GraphOwned)
+        return {};
     Status status = Close(found->second);
     const PatchState state = State(found->second);
     if (state == PatchState::Closed || state == PatchState::Failed)
@@ -1506,7 +1526,7 @@ Status Installations::InstallFrom(PlanRecord &plan,
             SelectionId selection = 0;
             auto world = std::make_shared<PlanWorld>(
                 *this, plan.Owner, PatchKey{plan.Owner.Id, plan.Name},
-                rule.Body, rule.Symbols, plan.Admission);
+                rule.Body, rule.Symbols, rule.Values, plan.Admission);
             status = m_Selections.Submit(
                 {plan.Owner.Id, plan.Name + "/" + std::to_string(plan.Id) +
                                       "/" + std::to_string(index)},
@@ -2035,10 +2055,303 @@ Status Installations::Interpose(Ops &edit, Port source, Port sink,
     return status;
 }
 
+Status Installations::SubmitEdit(const SessionOwner &owner, std::string name,
+                                 bool graphOwned, std::vector<Target> targets,
+                                 std::vector<Rule> rules, std::uintptr_t &out) {
+    out = 0;
+    Status status = Ready();
+    if (!status)
+        return status;
+    if (targets.empty() == rules.empty())
+        return Failure(Error::InvalidState,
+                       "Apply requires one kind of target: live Graphs or Script rules.");
+    const auto usesCallbacks = [](const auto &entry) {
+        return entry.Body && entry.Body->UsesCallbacks();
+    };
+    if (graphOwned && (std::any_of(targets.begin(), targets.end(), usesCallbacks) ||
+                       std::any_of(rules.begin(), rules.end(), usesCallbacks)))
+        return Failure(Error::InvalidState,
+                       "An Edit with callbacks must be owned by its Submission.");
+    if (!m_NextSubmission)
+        return Failure(Error::InvalidState, "Behavior Submission ids are exhausted.");
+
+    auto inputs = std::make_shared<Inputs>();
+    for (auto &target : targets)
+        target.Values = inputs;
+    for (auto &rule : rules)
+        rule.Values = inputs;
+    const auto id = m_NextSubmission++;
+    Submission &submission = m_Submissions.emplace(
+        id, Submission{owner, 0, 0, graphOwned, false}).first->second;
+    try {
+        if (rules.empty())
+            status = Apply(owner, std::move(name), std::move(targets), submission.Patch);
+        else
+            status = Submit(owner, std::move(name), std::move(rules), submission.Plan);
+    } catch (...) {
+        m_Submissions.erase(id);
+        throw;
+    }
+    if (!submission.Patch && !submission.Plan)
+        m_Submissions.erase(id);
+    else
+        out = id;
+    return status;
+}
+
+Status Installations::ReadSubmission(const SessionOwner &owner, std::uintptr_t id,
+                                     SubmissionInfo &out) const {
+    out = {};
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    const auto *submission = Owned(m_Submissions, id, owner);
+    if (!submission || submission->Closing)
+        return Failure(Error::OwnerInvalid, "The Behavior Submission is closed.");
+    if (submission->Patch) {
+        PatchInfo info;
+        Status status = Read(owner, submission->Patch, info);
+        if (!status)
+            return status;
+        if (info.State == PatchState::Active)
+            out.State = SubmissionState::Applied;
+        else if (info.State == PatchState::Failed || info.State == PatchState::Conflicted ||
+                 info.State == PatchState::Closed)
+            out.State = SubmissionState::Failed;
+        out.ApplyFailure = info.ApplyFailure ? info.LastStatus : info.ApplyFailure;
+        out.RestoreFailure = std::move(info.RestoreFailure);
+    } else {
+        PlanInfo info;
+        Status status = ReadPlan(owner, submission->Plan, info);
+        if (!status)
+            return status;
+        if (info.State == PlanState::Conflicted || !info.LastStatus)
+            out.State = SubmissionState::Failed;
+        else if (info.State == PlanState::Active || info.State == PlanState::Partial)
+            out.State = SubmissionState::Applied;
+        out.ApplyFailure = info.ApplyFailure ? info.LastStatus : info.ApplyFailure;
+        out.RestoreFailure = std::move(info.RestoreFailure);
+    }
+    return {};
+}
+
+Status Installations::ReadInstallations(const Submission &submission,
+                                        std::vector<InstalledEdit> &out) const {
+    out.clear();
+    if (submission.Patch) {
+        const auto *patch = Owned(m_Patches, submission.Patch, submission.Owner);
+        if (!patch || State(*patch) != PatchState::Active)
+            return {};
+        for (const auto &target : patch->Applied) {
+            out.push_back({{target.Graph, submission.Patch, m_Selections.WorldEpoch(),
+                            patch->Revision}, target.Binding});
+        }
+    } else {
+        std::vector<PlanInstance> instances;
+        Status status = ReadPlanInstances(submission.Owner, submission.Plan, instances);
+        if (!status)
+            return status;
+        for (auto &instance : instances)
+            out.push_back({std::move(instance.Value), instance.Binding});
+    }
+    return {};
+}
+
+Status Installations::FindInstallation(const SessionOwner &owner, std::uintptr_t id,
+                                       const ObjectRef &graph, std::uint64_t binding,
+                                       InstalledEdit &out) const {
+    out = {};
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto *submission = Owned(m_Submissions, id, owner);
+    if (!submission || submission->Closing)
+        return Failure(Error::OwnerInvalid, "The Behavior Submission is closed.");
+    std::vector<InstalledEdit> installed;
+    status = ReadInstallations(*submission, installed);
+    if (!status)
+        return status;
+    for (const auto &entry : installed) {
+        if ((!graph.IsNull() && graph != entry.Value.Target) ||
+            (binding && binding != entry.Binding))
+            continue;
+        if (out.Value.Id) {
+            out = {};
+            return Failure(Error::QueryAmbiguous, "More than one installation matches.");
+        }
+        out = entry;
+    }
+    if (!out.Value.Id)
+        return Failure(Error::QueryNotFound, "No current installation matches.");
+    return {};
+}
+
+Status Installations::ValidateInstallation(const Submission &submission,
+                                            const InstalledEdit &installed,
+                                            const PortQuery &port) const {
+    if (port.Binding != installed.Binding)
+        return Failure(Error::InvalidGraphLocality,
+                       "The Port belongs to another authored Edit.");
+    std::vector<InstalledEdit> live;
+    Status status = ReadInstallations(submission, live);
+    if (!status)
+        return status;
+    const auto matches = [&](const InstalledEdit &candidate) {
+        return candidate.Binding == installed.Binding &&
+            candidate.Value.Id == installed.Value.Id &&
+            candidate.Value.Target == installed.Value.Target &&
+            candidate.Value.World == installed.Value.World &&
+            candidate.Value.Revision == installed.Value.Revision;
+    };
+    return std::any_of(live.begin(), live.end(), matches)
+        ? Status{} : Failure(Error::GraphChanged, "The installation is stale.");
+}
+
+Status Installations::ReadInstallation(const SessionOwner &owner, std::uintptr_t id,
+                                       const InstalledEdit &installed, const PortQuery &port,
+                                       GraphValue &out) const {
+    out = {};
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto *submission = Owned(m_Submissions, id, owner);
+    if (!submission || submission->Closing)
+        return Failure(Error::OwnerInvalid, "The Behavior Submission is closed.");
+    status = ValidateInstallation(*submission, installed, port);
+    if (!status)
+        return status;
+    return ReadValue(owner, static_cast<PatchId>(installed.Value.Id), port, out);
+}
+
+Status Installations::WriteInstallation(const SessionOwner &owner, std::uintptr_t id,
+                                        const InstalledEdit &installed, const PortQuery &port,
+                                        const Parameter::Binding &value) {
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto *submission = Owned(m_Submissions, id, owner);
+    if (!submission || submission->Closing)
+        return Failure(Error::OwnerInvalid, "The Behavior Submission is closed.");
+    status = ValidateInstallation(*submission, installed, port);
+    if (!status)
+        return status;
+    return WriteValue(owner, static_cast<PatchId>(installed.Value.Id), port, value);
+}
+
+Status Installations::SetInput(const SessionOwner &owner, std::uintptr_t id,
+                               const PortQuery &query, const Parameter::Binding &value) {
+    Status status = Ready();
+    if (!status)
+        return status;
+    const auto *submission = Owned(m_Submissions, id, owner);
+    if (!submission || submission->Closing)
+        return Failure(Error::OwnerInvalid, "The Behavior Submission is closed.");
+    if (query.Selector || value.Kind() != Parameter::BindingKind::Value)
+        return Failure(Error::WorldBoundValue, "An Edit input requires an owned literal.");
+
+    const SymbolRef key{query.Binding, query.Scope, query.Handle};
+    std::shared_ptr<Inputs> inputs;
+    const auto find = [&](const auto &definitions) {
+        for (const auto &definition : definitions) {
+            const auto symbol = definition.Symbols.find(key);
+            if (symbol == definition.Symbols.end() || symbol->second.Kind != SymbolKind::Port)
+                continue;
+            const Port &port = symbol->second.PortValue;
+            if (port.Selector.Kind == SlotKind::Local &&
+                port.Selector.ExpectedType == value.Type()) {
+                inputs = definition.Values;
+                return;
+            }
+        }
+    };
+    if (submission->Patch) {
+        if (const auto *patch = Owned(m_Patches, submission->Patch, owner))
+            find(patch->Requested);
+    } else if (const auto *plan = Owned(m_Plans, submission->Plan, owner))
+        find(plan->Requested);
+    if (!inputs)
+        return Failure(Error::TypeMismatch, "An Edit input must be a declared Local of the same type.");
+
+    Inputs next = *inputs;
+    next.insert_or_assign(key, value);
+    std::vector<InstalledEdit> live;
+    status = ReadInstallations(*submission, live);
+    if (!status)
+        return status;
+    std::vector<std::pair<const Patch *, Port>> writes;
+    for (const auto &installed : live) {
+        if (installed.Binding != query.Binding)
+            continue;
+        const auto *patch = Owned(m_Patches, static_cast<PatchId>(installed.Value.Id), owner);
+        if (!patch)
+            return Failure(Error::GraphChanged, "The installation is stale.");
+        Port port;
+        status = ResolvePort(*patch, query, port);
+        if (!status)
+            return status;
+        writes.emplace_back(&patch->Scopes[patch->Symbols.at(key).ScopeIndex].Value,
+                            std::move(port));
+    }
+    status = m_Edit.WriteLocals(writes, value);
+    if (status)
+        inputs->swap(next);
+    return status;
+}
+
+void Installations::TransferToGraph(const Submission &submission) {
+    std::vector<InstalledEdit> installed;
+    if (!ReadInstallations(submission, installed))
+        return;
+    for (const auto &entry : installed) {
+        if (auto *patch = Owned(m_Patches, static_cast<PatchId>(entry.Value.Id), submission.Owner))
+            patch->GraphOwned = true;
+    }
+}
+
+Status Installations::CloseSubmission(const SessionOwner &owner, std::uintptr_t id) {
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    auto found = m_Submissions.find(id);
+    if (found == m_Submissions.end())
+        return {};
+    if (found->second.Owner.Id != owner.Id || found->second.Owner.Generation != owner.Generation)
+        return Failure(Error::OwnerInvalid, "The Behavior Submission belongs to another Mod generation.");
+    Submission &submission = found->second;
+    submission.Closing = true;
+    if (submission.GraphOwned) {
+        const auto *patch = submission.Patch ? Owned(m_Patches, submission.Patch, owner) : nullptr;
+        if (patch && State(*patch) == PatchState::Pending)
+            return Failure(Error::Busy, "The Behavior Edit is waiting for a safe point.");
+        TransferToGraph(submission);
+    }
+    Status status = submission.Patch ? Close(owner, submission.Patch) : ClosePlan(owner, submission.Plan);
+    if (status)
+        m_Submissions.erase(id);
+    return status;
+}
+
 Status Installations::RetireOwner(const std::string &ownerId) {
     // A Plan can be waiting on a Patch request that is still queued. Request
     // Plan retirement, complete every owned Patch at the CK edit safe point,
     // then collect Plans whose installations closed.
+    std::vector<std::uintptr_t> closing;
+    for (const auto &[id, submission] : m_Submissions) {
+        if (submission.Owner.Id == ownerId)
+            closing.push_back(id);
+    }
+    for (auto id = closing.rbegin(); id != closing.rend(); ++id) {
+        const auto entry = m_Submissions.find(*id);
+        if (entry != m_Submissions.end()) {
+            const auto owner = entry->second.Owner;
+            auto status = CloseSubmission(owner, *id);
+            const auto *pending = Owned(m_Submissions, *id, owner);
+            if (!status && pending && pending->Patch && pending->GraphOwned) {
+                m_Submissions.at(*id).GraphOwned = false;
+                (void) CloseSubmission(owner, *id);
+            }
+        }
+    }
     (void) m_Selections.RetireOwner(ownerId);
     const Status patches = RetireRecords(ownerId);
     const Status plans = m_Selections.RetireOwner(ownerId);
@@ -2058,7 +2371,7 @@ Status Installations::RetireRecords(const std::string &ownerId) {
     // Patches may stack on one graph, so the newest one is restored first
     // and each restoration sees the graph its own Apply left behind.
     for (auto entry = m_Patches.rbegin(); entry != m_Patches.rend(); ++entry) {
-        if (entry->second.Owner.Id != ownerId)
+        if (entry->second.Owner.Id != ownerId || entry->second.GraphOwned)
             continue;
         (void) Close(entry->second);
     }
@@ -2066,7 +2379,7 @@ Status Installations::RetireRecords(const std::string &ownerId) {
     Collect();
     Status remaining;
     for (const auto &[id, patch] : m_Patches) {
-        if (patch.Owner.Id != ownerId)
+        if (patch.Owner.Id != ownerId || patch.GraphOwned)
             continue;
         Status status = LastStatus(patch);
         if (status) {
@@ -2182,7 +2495,7 @@ Status Installations::ProcessFrame() {
     if (std::this_thread::get_id() != m_Thread)
         return selections;
     const bool editPending = m_Edit.NeedsFrameProcessing();
-    if (m_Plans.empty() && m_Patches.empty() && !editPending)
+    if (m_Submissions.empty() && m_Plans.empty() && m_Patches.empty() && !editPending)
         return selections;
     if (editPending)
         m_Edit.ProcessFrame();
@@ -2203,7 +2516,8 @@ Status Installations::ProcessFrame() {
     }
     for (auto &entry : m_Patches) {
         PatchRecord &patch = entry.second;
-        if (HasPendingChange(patch) && m_Edit.CanPublish()) {
+        if ((!patch.GraphOwned || patch.Goal == InstallGoal::Closed) &&
+            HasPendingChange(patch) && m_Edit.CanPublish()) {
             (void) Reconcile(patch);
             needsCollection = true;
         }
@@ -2212,6 +2526,11 @@ Status Installations::ProcessFrame() {
     }
     if (needsCollection)
         Collect();
+    for (auto entry = m_Submissions.begin(); entry != m_Submissions.end();) {
+        const auto current = entry++;
+        if (current->second.Closing)
+            (void) CloseSubmission(current->second.Owner, current->first);
+    }
     return selections;
 }
 

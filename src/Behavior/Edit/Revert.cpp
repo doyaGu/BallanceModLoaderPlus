@@ -449,9 +449,13 @@ void CKEdit::Transaction::RevertValues() {
             item->Before = {};
             item->Expected = {};
         };
-        if (!stored) {
-            // The parameter went with its Block, so there is nothing left to
-            // hand back. The journal still owns and releases both copies.
+        const bool ownedLocal = std::any_of(m_Journal.Ports.begin(), m_Journal.Ports.end(),
+            [&](const Patch::Journal::Interface &port) {
+                return port.Kind == SlotKind::Local && port.Port == item->Parameter;
+            });
+        if (!stored || ownedLocal) {
+            // Appended Locals are destroyed with the Edit. Their current
+            // values belong to the installation until then.
             item->Reverted = true;
             releaseCopies();
             continue;

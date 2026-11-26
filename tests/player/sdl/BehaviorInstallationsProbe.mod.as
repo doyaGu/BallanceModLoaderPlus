@@ -11,6 +11,9 @@ class BehaviorInstallationsProbe {
     BML::ObjectRef original;
     int step = 0;
     int frames = 0;
+    BML::Behavior::Submission@ submission;
+    BML::Behavior::EditPort@ input;
+    BML::Behavior::Installation@ installation;
 
     CKBehavior@ FindGraph(const BML::ModContext &in ctx) {
         BML::ObjectRef reference;
@@ -63,7 +66,7 @@ class BehaviorInstallationsProbe {
     }
 
     void OnProcess(const BML::ModContext &in ctx) {
-        if (step == 11)
+        if (step == 13)
             return;
         CKBehavior@ source = FindGraph(ctx);
         if (source is null)
@@ -117,12 +120,41 @@ class BehaviorInstallationsProbe {
             Require(patch.State == BML::Behavior::PatchState::Active && patch.Resolve(patchNode) !is null,
                     "Queued Patch replacement did not publish the new binding");
             ctx.LogInfo("Behavior installations PASS deferred Patch binding");
+            BML::Behavior::Edit@ edit = BML::Behavior::Edit();
+            BML::Behavior::EditGraph@ graph = edit.Root();
+            @input = graph.AppendLocal("__BML_Apply_Input", BML::Behavior::Value(1).Type);
+            Require(graph.Bind(input, BML::Behavior::Value(1)), "initial Edit input");
+            @submission = edit.Apply("unified script edit", "Event_handler",
+                BML::Behavior::EditOwnership::Submission);
+            Require(submission !is null && submission.SetInput(input, BML::Behavior::Value(2)),
+                    "SetInput before installation failed");
+            step = 11;
+        } else if (step == 11) {
+            Require(submission.ApplyError.isEmpty(), submission.ApplyError);
+            if (submission.State != BML::Behavior::SubmissionState::Applied)
+                return;
+            @installation = submission.Find();
+            int value = 0;
+            Require(installation !is null && installation.Read(input).Read(value) && value == 2,
+                    "Pending input was not applied to the new installation");
+            Require(installation.Set(input, BML::Behavior::Value(3)) &&
+                    installation.Read(input).Read(value) && value == 3,
+                    "Installation-local value did not read back");
+            Require(submission.SetInput(input, BML::Behavior::Value(4)) &&
+                    installation.Read(input).Read(value) && value == 4,
+                    "SetInput did not update the live installation");
+            step = 12;
+        } else if (step == 12) {
+            if (submission.Close() == BML::Behavior::CloseState::Closing)
+                return;
+            Require(!installation.IsValid, "A closed submission retained a live receipt");
+            ctx.LogInfo("Behavior installations PASS unified script Apply and inputs");
             BML::CommandDefinition definition;
             definition.Name = "bml_probe_behavior_installations";
             BML::CommandRef@ command;
             Require(ctx.Commands().Register(definition, BML::CommandExecute(this.Marker), command) ==
                     BML::ERROR_OK, "Behavior regression marker registration failed");
-            step = 11;
+            step = 13;
         }
     }
 
