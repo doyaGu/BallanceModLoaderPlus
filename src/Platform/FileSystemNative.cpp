@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <vector>
 #ifdef _WIN32
@@ -74,6 +75,13 @@ bool IsLink(const std::string &path) {
     return ::lstat(path.c_str(), &info) == 0 && S_ISLNK(info.st_mode);
 #endif
 }
+bool RemoveFile(const std::string &path) {
+#ifdef _WIN32
+    return ::DeleteFileW(utils::Utf8ToUtf16(path).c_str()) != 0;
+#else
+    return ::unlink(path.c_str()) == 0;
+#endif
+}
 #ifdef _WIN32
 bool ReadFileBytes(const std::wstring &path, std::string &out, std::uint32_t &error) {
     // SDL's file wrapper does not preserve GetLastError across its cleanup.
@@ -105,6 +113,54 @@ bool ReadFileBytes(const std::wstring &path, std::string &out, std::uint32_t &er
     out.swap(bytes);
     error = FileError::Success;
     return true;
+}
+
+bool EncodePathForCodePage(std::wstring_view path, std::uint32_t codePage, std::string &out) {
+    out.clear();
+    if (path.empty() || path.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+        path.find(L'\0') != std::wstring_view::npos)
+        return false;
+
+    if (codePage == CP_ACP)
+        codePage = GetACP();
+    const bool unicodePage = codePage == CP_UTF8 || codePage == 54936; // GB18030
+    const DWORD encodeFlags = unicodePage ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
+    BOOL substituted = FALSE;
+    BOOL *usedDefault = unicodePage ? nullptr : &substituted;
+    const int length = static_cast<int>(path.size());
+    const int byteCount = WideCharToMultiByte(codePage, encodeFlags, path.data(), length,
+                                              nullptr, 0, nullptr, usedDefault);
+    if (byteCount <= 0 || substituted)
+        return false;
+
+    std::string encoded(byteCount, '\0');
+    if (WideCharToMultiByte(codePage, encodeFlags, path.data(), length,
+                            encoded.data(), byteCount, nullptr, usedDefault) != byteCount || substituted)
+        return false;
+
+    // An exact round trip also rejects ambiguous legacy encodings.
+    std::wstring decoded(length, L'\0');
+    const DWORD decodeFlags = unicodePage ? MB_ERR_INVALID_CHARS : 0;
+    if (MultiByteToWideChar(codePage, decodeFlags, encoded.data(), byteCount,
+                            decoded.data(), length) != length || decoded != path)
+        return false;
+
+    out.swap(encoded);
+    return true;
+}
+
+std::wstring ShortPath(const std::wstring &path) {
+    if (path.empty() || path.find(L'\0') != std::wstring::npos)
+        return {};
+    const DWORD required = GetShortPathNameW(path.c_str(), nullptr, 0);
+    if (!required)
+        return {};
+    std::wstring result(required, L'\0');
+    const DWORD written = GetShortPathNameW(path.c_str(), result.data(), required);
+    if (!written || written >= required)
+        return {};
+    result.resize(written);
+    return result;
 }
 #endif
 bool SyncFile(SDL_IOStream *stream) {

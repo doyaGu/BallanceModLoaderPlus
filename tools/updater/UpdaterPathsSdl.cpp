@@ -220,15 +220,13 @@ namespace bmlupdater {
         }
 
         std::string normalized;
-        std::wstring wideRelative;
         for (size_t i = 0; i < segments.size(); ++i) {
             if (i > 0) {
                 normalized.push_back('/');
             }
             normalized += segments[i];
-            wideRelative = JoinPath(wideRelative, utils::Utf8ToUtf16(segments[i]));
         }
-        return NormalizedRelativePath{normalized, wideRelative};
+        return NormalizedRelativePath{normalized, utils::Utf8ToUtf16(normalized)};
     }
 
     bool IsDisallowedUpdaterPackagePath(std::string_view path) {

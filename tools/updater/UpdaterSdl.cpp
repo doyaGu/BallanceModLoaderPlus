@@ -175,8 +175,8 @@ Result CheckUpdaterPaths(const UpdaterContext &context) {
     if (!DirectoryExists(context.gameRoot)) return Result::Failure("Game root does not exist");
     std::wstring resolved;
     std::string error;
-    const auto relative = utils::MakeRelativePathW(context.updaterStateRoot, context.gameRoot);
-    if (!ResolveUnderRoot(context.gameRoot, relative, resolved, error)) return Result::Failure(error);
+    const auto relative = utils::MakeRelativePathUtf8(PathUtf8(context.updaterStateRoot), PathUtf8(context.gameRoot));
+    if (!ResolveUnderRoot(context.gameRoot, utils::Utf8ToUtf16(relative), resolved, error)) return Result::Failure(error);
     for (const auto *path : {L".lock", L"state.json", L"sources.json", L"pending.json", L"installed.manifest.json",
                             L"installed.manifest.json.sig", L"transactions", L"staging", L"downloads"})
         if (!ResolveUnderRoot(context.updaterStateRoot, path, resolved, error)) return Result::Failure(error);

@@ -16,6 +16,7 @@ namespace CustomMap {
 namespace {
 
 constexpr wchar_t StagingRootName[] = L"BMLPlus.Staging";
+constexpr std::uint32_t Utf8CodePage = 65001;
 
 std::wstring MakeSessionName() {
     wchar_t name[48]{};
@@ -104,7 +105,7 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
         const std::wstring relativePath = utils::CombinePathW(m_RelativeDirectory, fileName);
         utils::CreateFileTreeW(m_SessionDirectory);
         if (utils::CopyFileW(sourcePath, destination) &&
-            utils::TryEncodePathForCodePage(relativePath, 20127, staged.LoadPath) &&
+            utils::TryEncodePathForCodePage(relativePath, Utf8CodePage, staged.LoadPath) &&
             CanResolve(pathManager, staged.LoadPath)) {
             staged.Attempt = attempt;
             m_PendingAttempt = attempt;
@@ -129,14 +130,10 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
         return false;
     }
 
-    if (!utils::TryEncodePathForActiveCodePage(fallback, staged.LoadPath)) {
-        const std::wstring shortPath = utils::GetShortPathW(fallback);
-        if (shortPath.empty() ||
-            !utils::TryEncodePathForActiveCodePage(shortPath, staged.LoadPath)) {
-            DiscardFile(fallback);
-            error = "the fallback staging path is not representable in the active code page and has no usable 8.3 path";
-            return false;
-        }
+    if (!utils::TryEncodePathForCodePage(fallback, Utf8CodePage, staged.LoadPath)) {
+        DiscardFile(fallback);
+        error = "the fallback staging path is not representable in UTF-8";
+        return false;
     }
 
     if (!CanResolve(pathManager, staged.LoadPath)) {

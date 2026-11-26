@@ -28,12 +28,13 @@ protected:
         tempPathW = utils::GetTempPathW();
         
         // Create unique test directories
-        testDirA = tempPathA + "PathUtilsTestA_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed());
-        testDirW = tempPathW + L"PathUtilsTestW_" + std::to_wstring(::testing::UnitTest::GetInstance()->random_seed());
+        const int seed = ::testing::UnitTest::GetInstance()->random_seed();
+        testDirA = utils::CombinePathA(tempPathA, "PathUtilsTestA_" + std::to_string(seed));
+        testDirW = utils::CombinePathW(tempPathW, L"PathUtilsTestW_" + std::to_wstring(seed));
         
         // Create test directories
-        utils::CreateDirectoryA(testDirA);
-        utils::CreateDirectoryW(testDirW);
+        ASSERT_TRUE(utils::CreateDirectoryA(testDirA));
+        ASSERT_TRUE(utils::CreateDirectoryW(testDirW));
     }
     
     void TearDown() override {
@@ -351,6 +352,9 @@ TEST_F(PathUtilsTest, PathManipulation) {
     EXPECT_EQ("C:\\Windows\\System32", utils::NormalizePathA("C:/Windows/System32"));
     EXPECT_EQ("C:\\Windows\\System32", utils::NormalizePathA("C:\\Windows\\\\System32"));
     EXPECT_EQ(L"D:\\Games\\Steam", utils::NormalizePathW(L"D:/Games/Steam"));
+    EXPECT_EQ(L"\\\\server\\share\\game", utils::NormalizePathW(L"//server/share/folder/../game"));
+    EXPECT_EQ("D:/Games/Steam", utils::NormalizePathUtf8("D:\\Games\\Steam"));
+    EXPECT_EQ("D:/Games/Steam", utils::CombinePathUtf8("D:\\Games", "Steam"));
 }
 
 TEST_F(PathUtilsTest, ParentDirectoryEdgeCases) {
@@ -394,6 +398,7 @@ TEST_F(PathUtilsTest, PathValidation) {
     EXPECT_FALSE(utils::IsPathValidW(L"D:\\Games\\Steam"));     // Contains colon
     EXPECT_TRUE(utils::IsPathValidW(L"Games\\Steam"));          // No invalid chars
     EXPECT_FALSE(utils::IsPathValidW(L"Games\\St?eam"));        // Contains ?
+    EXPECT_FALSE(utils::IsPathValidUtf8("Games/\xFF"));
     
     // IsAbsolutePath
     EXPECT_TRUE(utils::IsAbsolutePathA("C:\\Windows\\System32"));
@@ -428,6 +433,7 @@ TEST_F(PathUtilsTest, PathResolution) {
     EXPECT_EQ("System32", utils::MakeRelativePathA("C:\\Windows\\System32", "C:\\Windows"));
     EXPECT_EQ("..", utils::MakeRelativePathA("C:\\Windows", "C:\\Windows\\System32"));
     EXPECT_EQ("..\\..\\Games", utils::MakeRelativePathA("C:\\Games", "C:\\Windows\\System32"));
+    EXPECT_EQ("../../Games", utils::MakeRelativePathUtf8("C:\\Games", "C:/Windows/System32"));
     EXPECT_EQ(L"Steam", utils::MakeRelativePathW(L"D:\\Games\\Steam", L"D:\\Games"));
 }
 

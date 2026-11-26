@@ -1,5 +1,8 @@
 #include "PathUtils.h"
 #include "StringUtils.h"
+#ifdef _WIN32
+#include "PathUtilsDetail.h"
+#endif
 #include "Platform/FileError.h"
 #include "Platform/FileSystemNative.h"
 #include <SDL3/SDL.h>
@@ -19,6 +22,15 @@ namespace Native = BML::Platform;
 namespace E = BML::Platform::FileError;
 std::string Slashes(std::string path) { std::replace(path.begin(), path.end(), '\\', '/'); return path; }
 std::string Path(const std::wstring &path) { return Slashes(Utf16ToUtf8(path)); }
+std::wstring NativePath(std::string path) {
+#ifdef _WIN32
+    std::replace(path.begin(), path.end(), '/', '\\');
+#endif
+    return Utf8ToUtf16(path);
+}
+bool HasPathText(const std::wstring &path) {
+    return !path.empty() && path.find(L'\0') == std::wstring::npos && Utf8ToUtf16(Utf16ToUtf8(path)) == path;
+}
 size_t RootLength(const std::string &path) {
 #ifdef _WIN32
     if (path.size() >= 3 && path[1] == ':' && path[2] == '/') return 3;
@@ -111,7 +123,9 @@ bool DirectoryExistsW(const std::wstring &p) { SDL_PathInfo i{}; return SDL_GetP
 bool PathExistsW(const std::wstring &p) { return SDL_GetPathInfo(Path(p).c_str(), nullptr); }
 bool CreateDirectoryW(const std::wstring &p) { return SDL_CreateDirectory(Path(p).c_str()); }
 bool CreateFileTreeW(const std::wstring &p) { return CreateDirectoryW(p); }
-bool DeleteFileW(const std::wstring &p) { return !DirectoryExistsW(p) && SDL_RemovePath(Path(p).c_str()); }
+bool DeleteFileW(const std::wstring &p) {
+    return HasPathText(p) && Native::RemoveFile(Path(p));
+}
 bool DeleteDirectoryW(const std::wstring &p) { return !p.empty() && RemoveTree(Path(p)); }
 bool CopyFileW(const std::wstring &a, const std::wstring &b) { return SDL_CopyFile(Path(a).c_str(), Path(b).c_str()); }
 bool MoveFileW(const std::wstring &a, const std::wstring &b) { return SDL_RenamePath(Path(a).c_str(), Path(b).c_str()); }
@@ -121,16 +135,26 @@ std::wstring GetDriveW(const std::wstring &p) {
 #endif
     return {};
 }
-std::wstring GetDirectoryW(const std::wstring &p) { auto s = Path(p); auto at = s.find_last_of('/'); return at == std::string::npos ? L"" : Utf8ToUtf16(s.substr(0, at == 0 ? 1 : at)); }
+std::wstring GetDirectoryW(const std::wstring &p) {
+    const auto path = Path(p);
+    const auto separator = path.find_last_of('/');
+    return separator == std::string::npos ? L"" : NativePath(path.substr(0, separator == 0 ? 1 : separator));
+}
 std::wstring TrimTrailingSeparatorsW(const std::wstring &p) { auto s = Path(p); while (s.size() > RootLength(s) && s.back() == '/') s.pop_back(); return Utf8ToUtf16(s); }
 std::wstring GetParentDirectoryW(const std::wstring &p) { auto s = Path(TrimTrailingSeparatorsW(p)); return s.size() == RootLength(s) ? L"" : GetDirectoryW(Utf8ToUtf16(s)); }
 std::wstring GetFileNameW(const std::wstring &p) { auto s = Path(p); auto at = s.find_last_of('/'); return Utf8ToUtf16(at == std::string::npos ? s : s.substr(at + 1)); }
 std::wstring GetExtensionW(const std::wstring &p) { auto name = GetFileNameW(p); auto at = name.find_last_of(L'.'); return at == std::wstring::npos ? L"" : name.substr(at); }
 std::wstring RemoveExtensionW(const std::wstring &p) { return p.substr(0, p.size() - GetExtensionW(p).size()); }
-std::wstring CombinePathW(const std::wstring &a, const std::wstring &b) { return Utf8ToUtf16(Join(Path(a), Path(b))); }
-std::wstring NormalizePathW(const std::wstring &p) { return Utf8ToUtf16(Lexical(Path(p))); }
+std::wstring CombinePathW(const std::wstring &a, const std::wstring &b) { return NativePath(Join(Path(a), Path(b))); }
+std::wstring NormalizePathW(const std::wstring &p) { return NativePath(Lexical(Path(p))); }
 std::pair<std::wstring, std::wstring> GetDriveAndDirectoryW(const std::wstring &p) { auto drive = GetDriveW(p), dir = GetDirectoryW(p); if (!drive.empty() && dir.starts_with(drive)) dir.erase(0, drive.size()); return {drive, dir}; }
-bool IsPathValidW(const std::wstring &p) { return !p.empty() && p.find(L'\0') == std::wstring::npos && Utf8ToUtf16(Utf16ToUtf8(p)) == p; }
+bool IsPathValidW(const std::wstring &p) {
+#ifdef _WIN32
+    return HasPathText(p) && detail::IsPathValidImpl(p);
+#else
+    return HasPathText(p);
+#endif
+}
 bool IsAbsolutePathW(const std::wstring &p) { return RootLength(Path(p)) != 0; }
 bool IsRelativePathW(const std::wstring &p) { return !IsAbsolutePathW(p); }
 bool IsPathRootedW(const std::wstring &p) { return IsAbsolutePathW(p) || !GetDriveW(p).empty(); }
@@ -154,7 +178,7 @@ std::wstring MakeRelativePathW(const std::wstring &p, const std::wstring &base) 
     std::string result;
     for (size_t i = common; i < b.size(); ++i) result = Join(result, "..");
     for (size_t i = common; i < a.size(); ++i) result = Join(result, a[i]);
-    return result.empty() ? L"." : Utf8ToUtf16(result);
+    return result.empty() ? L"." : NativePath(std::move(result));
 }
 bool IsPathInsideRootW(const std::wstring &p, const std::wstring &root) {
     if (p.empty() || root.empty()) return false;
@@ -168,12 +192,22 @@ bool TryGetFinalPathInsideRootW(const std::wstring &p, const std::wstring &root,
     return true;
 }
 bool TryEncodePathForCodePage(std::wstring_view p, std::uint32_t page, std::string &out) {
+#ifdef _WIN32
+    return Native::EncodePathForCodePage(p, page, out);
+#else
     out.clear(); if (page != 0 && page != 65001) return false;
-    if (!IsPathValidW(std::wstring(p))) return false;
+    if (!HasPathText(std::wstring(p))) return false;
     out = Utf16ToUtf8(std::wstring(p)); return true;
+#endif
 }
-bool TryEncodePathForActiveCodePage(std::wstring_view p, std::string &out) { return TryEncodePathForCodePage(p, 65001, out); }
-std::wstring GetShortPathW(const std::wstring &) { return {}; }
+bool TryEncodePathForActiveCodePage(std::wstring_view p, std::string &out) { return TryEncodePathForCodePage(p, 0, out); }
+std::wstring GetShortPathW(const std::wstring &path) {
+#ifdef _WIN32
+    return Native::ShortPath(path);
+#else
+    return {};
+#endif
+}
 std::wstring GetTempPathW() {
     for (const char *name : {"TMPDIR", "TEMP", "TMP"}) if (const char *value = SDL_getenv(name); value && *value) return Utf8ToUtf16(Slashes(value));
 #ifdef _WIN32
@@ -206,7 +240,7 @@ bool ReadFileBytesW(const std::wstring &p, std::string &out, std::uint32_t &erro
 bool ReadFileBytesW(const std::wstring &p, std::string &out) { std::uint32_t e; return ReadFileBytesW(p, out, e); }
 bool ReadFileBytesUtf8(const std::string &p, std::string &out) { return ReadFileBytesW(Utf8ToUtf16(p), out); }
 bool WriteFileBytesAtomicW(const std::wstring &p, std::string_view bytes, std::uint32_t &error, bool replace) {
-    error = E::InvalidName; if (!IsPathValidW(p)) return false;
+    error = E::InvalidName; if (!HasPathText(p)) return false;
     const auto destination = Path(p);
     std::string temporary;
     SDL_IOStream *stream = nullptr;
@@ -253,7 +287,7 @@ bool ListFilePathsRecursiveW(const std::wstring &p, std::vector<std::wstring> &f
         // directories: they can escape the tree or form cycles.
         if (Native::IsLink(path) && info.type != SDL_PATHTYPE_FILE) return true;
         if (info.type == SDL_PATHTYPE_DIRECTORY) return Enumerate(path, visit);
-        if (info.type == SDL_PATHTYPE_FILE) files.push_back(Utf8ToUtf16(path));
+        if (info.type == SDL_PATHTYPE_FILE) files.push_back(NativePath(path));
         return true;
     };
     if (!visit(Path(p))) { files.clear(); return false; }
@@ -333,8 +367,8 @@ bool DeleteFileA(const std::string &p) { return DeleteFileW(Utf8ToUtf16(p)); }
 bool DeleteFileUtf8(const std::string &p) { return DeleteFileW(Utf8ToUtf16(p)); }
 bool DeleteDirectoryA(const std::string &p) { return DeleteDirectoryW(Utf8ToUtf16(p)); }
 bool DeleteDirectoryUtf8(const std::string &p) { return DeleteDirectoryW(Utf8ToUtf16(p)); }
-bool IsPathValidA(const std::string &p) { return IsPathValidW(Utf8ToUtf16(p)); }
-bool IsPathValidUtf8(const std::string &p) { return IsPathValidW(Utf8ToUtf16(p)); }
+bool IsPathValidA(const std::string &p) { return IsPathValidUtf8(p); }
+bool IsPathValidUtf8(const std::string &p) { return IsValidUtf8(p) && IsPathValidW(Utf8ToUtf16(p)); }
 bool IsAbsolutePathA(const std::string &p) { return IsAbsolutePathW(Utf8ToUtf16(p)); }
 bool IsAbsolutePathUtf8(const std::string &p) { return IsAbsolutePathW(Utf8ToUtf16(p)); }
 bool IsRelativePathA(const std::string &p) { return IsRelativePathW(Utf8ToUtf16(p)); }
@@ -352,7 +386,7 @@ bool ExtractZipUtf8(const std::string &a, const std::string &b) { return Extract
 std::string GetDriveA(const std::string &p) { return Utf16ToUtf8(GetDriveW(Utf8ToUtf16(p))); }
 std::string GetDriveUtf8(const std::string &p) { return Utf16ToUtf8(GetDriveW(Utf8ToUtf16(p))); }
 std::string GetDirectoryA(const std::string &p) { return Utf16ToUtf8(GetDirectoryW(Utf8ToUtf16(p))); }
-std::string GetDirectoryUtf8(const std::string &p) { return Utf16ToUtf8(GetDirectoryW(Utf8ToUtf16(p))); }
+std::string GetDirectoryUtf8(const std::string &p) { return Path(GetDirectoryW(Utf8ToUtf16(p))); }
 std::string GetFileNameA(const std::string &p) { return Utf16ToUtf8(GetFileNameW(Utf8ToUtf16(p))); }
 std::string GetFileNameUtf8(const std::string &p) { return Utf16ToUtf8(GetFileNameW(Utf8ToUtf16(p))); }
 std::string GetExtensionA(const std::string &p) { return Utf16ToUtf8(GetExtensionW(Utf8ToUtf16(p))); }
@@ -360,17 +394,17 @@ std::string GetExtensionUtf8(const std::string &p) { return Utf16ToUtf8(GetExten
 std::string RemoveExtensionA(const std::string &p) { return Utf16ToUtf8(RemoveExtensionW(Utf8ToUtf16(p))); }
 std::string RemoveExtensionUtf8(const std::string &p) { return Utf16ToUtf8(RemoveExtensionW(Utf8ToUtf16(p))); }
 std::string NormalizePathA(const std::string &p) { return Utf16ToUtf8(NormalizePathW(Utf8ToUtf16(p))); }
-std::string NormalizePathUtf8(const std::string &p) { return Utf16ToUtf8(NormalizePathW(Utf8ToUtf16(p))); }
+std::string NormalizePathUtf8(const std::string &p) { return Path(NormalizePathW(Utf8ToUtf16(p))); }
 std::string ResolvePathA(const std::string &p) { return Utf16ToUtf8(ResolvePathW(Utf8ToUtf16(p))); }
-std::string ResolvePathUtf8(const std::string &p) { return Utf16ToUtf8(ResolvePathW(Utf8ToUtf16(p))); }
+std::string ResolvePathUtf8(const std::string &p) { return Path(ResolvePathW(Utf8ToUtf16(p))); }
 std::string CreateTempFileA(const std::string &p) { return Utf16ToUtf8(CreateTempFileW(Utf8ToUtf16(p))); }
 std::string CreateTempFileUtf8(const std::string &p) { return Utf16ToUtf8(CreateTempFileW(Utf8ToUtf16(p))); }
 std::string ReadTextFileA(const std::string &p) { return Utf16ToUtf8(ReadTextFileW(Utf8ToUtf16(p))); }
 std::string ReadTextFileUtf8(const std::string &p) { return Utf16ToUtf8(ReadTextFileW(Utf8ToUtf16(p))); }
 std::string CombinePathA(const std::string &a, const std::string &b) { return Utf16ToUtf8(CombinePathW(Utf8ToUtf16(a), Utf8ToUtf16(b))); }
-std::string CombinePathUtf8(const std::string &a, const std::string &b) { return Utf16ToUtf8(CombinePathW(Utf8ToUtf16(a), Utf8ToUtf16(b))); }
+std::string CombinePathUtf8(const std::string &a, const std::string &b) { return Path(CombinePathW(Utf8ToUtf16(a), Utf8ToUtf16(b))); }
 std::string MakeRelativePathA(const std::string &a, const std::string &b) { return Utf16ToUtf8(MakeRelativePathW(Utf8ToUtf16(a), Utf8ToUtf16(b))); }
-std::string MakeRelativePathUtf8(const std::string &a, const std::string &b) { return Utf16ToUtf8(MakeRelativePathW(Utf8ToUtf16(a), Utf8ToUtf16(b))); }
+std::string MakeRelativePathUtf8(const std::string &a, const std::string &b) { return Path(MakeRelativePathW(Utf8ToUtf16(a), Utf8ToUtf16(b))); }
 std::string GetTempPathA() { return Utf16ToUtf8(GetTempPathW()); }
 std::string GetTempPathUtf8() { return Utf16ToUtf8(GetTempPathW()); }
 std::string GetCurrentDirectoryA() { return Utf16ToUtf8(GetCurrentDirectoryW()); }
