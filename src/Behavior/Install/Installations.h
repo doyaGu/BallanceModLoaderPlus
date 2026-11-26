@@ -211,6 +211,7 @@ private:
         InstallGoal Goal = InstallGoal::Enabled;
         InstallRecovery Recovery = InstallRecovery::None;
         std::uint64_t Revision = 1;
+        std::uint64_t SettledRevision = 1;
         Status LastStatus;
         Status PrimaryFailure;
         Status RecoveryFailure;

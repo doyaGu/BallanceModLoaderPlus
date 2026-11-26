@@ -327,6 +327,7 @@ Status Installations::Reconcile(R &record) {
             record.RestoreFrom.reset();
             ClearFailures(record);
             record.Recovery = InstallRecovery::None;
+            record.SettledRevision = record.Revision;
         } else {
             record.RecoveryFailure = status;
         }
@@ -372,6 +373,8 @@ Status Installations::Reconcile(R &record) {
         record.Previous.clear();
         record.Recovery = InstallRecovery::None;
         Settle(record);
+        record.Applied = record.Requested;
+        record.SettledRevision = record.Revision;
         return {};
     }
 
@@ -394,8 +397,10 @@ Status Installations::Reconcile(R &record) {
         // request whole, since a kept prefix target may carry new symbols.
         if constexpr (!R::IsPlan)
             record.Applied = requested;
-        Settle(record);
         if (revision == record.Revision) {
+            Settle(record);
+            record.Applied = record.Requested;
+            record.SettledRevision = revision;
             record.Previous.clear();
             record.RecoveryFailure = {};
             if (record.Recovery == InstallRecovery::Previous &&
@@ -581,7 +586,8 @@ bool Installations::HasPendingChange(const R &record) {
     if (record.RestoreFrom)
         return true;
     return record.Goal == InstallGoal::Enabled
-        ? record.Applied.size() != record.Requested.size()
+        ? record.SettledRevision != record.Revision ||
+            record.Applied.size() != record.Requested.size()
         : Installed(record);
 }
 
@@ -1227,7 +1233,7 @@ PatchState Installations::State(const PatchRecord &patch) const {
         return PatchState::Closing;
     if (pending)
         return PatchState::Pending;
-    if (patch.RestoreFrom ||
+    if (patch.RestoreFrom || patch.SettledRevision != patch.Revision ||
         CommonPrefix(patch.Applied, patch.Requested) !=
             patch.Requested.size() ||
         patch.Applied.size() != patch.Requested.size())
@@ -1604,6 +1610,7 @@ PlanState Installations::State(const PlanRecord &plan) const {
         }
     }
     const bool definitionPending = plan.RestoreFrom ||
+        plan.SettledRevision != plan.Revision ||
         plan.Applied.size() != plan.Requested.size() ||
         CommonPrefix(plan.Applied, plan.Requested) != plan.Requested.size();
     if (active && (unsatisfied || reconciling || definitionPending))

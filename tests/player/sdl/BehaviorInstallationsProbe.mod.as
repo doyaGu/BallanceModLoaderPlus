@@ -2,9 +2,14 @@
 class BehaviorInstallationsProbe {
     BML::Behavior::Plan@ plan;
     BML::Behavior::Edit@ planBody;
+    BML::Behavior::Patch@ patch;
+    BML::Behavior::Graph@ patchBase;
+    BML::Behavior::Edit@ patchBody;
+    BML::Behavior::EditNode@ patchNode;
     BML::Behavior::Watch@ watch;
     BML::Behavior::Patch@ trigger;
     int step = 0;
+    int frames = 0;
 
     CKBehavior@ FindGraph(const BML::ModContext &in ctx) {
         BML::ObjectRef reference;
@@ -43,6 +48,9 @@ class BehaviorInstallationsProbe {
             BML::Behavior::Edit@ invalid = BML::Behavior::Edit();
             invalid.Root().Require(BML::Behavior::NodePattern("__BML_Installations_Missing"));
             Require(plan.Replace("Event_handler", invalid), "Plan replacement request was not queued");
+        } else if (step == 9) {
+            step = 10;
+            Require(patch.Replace(patchBase, patchBody), "Patch rebinding request was not queued");
         }
     }
 
@@ -69,6 +77,19 @@ class BehaviorInstallationsProbe {
             ctx.LogInfo("Behavior installations PASS failed Plan replacement recovery");
             watch.Close();
             trigger.Close();
+            @patchBase = BML::Behavior::Inspect(source);
+            @patchBody = BML::Behavior::Edit();
+            @patchNode = patchBody.Root().AddGraph("__BML_Installations_Patch");
+            @patch = patchBase.Apply("installation rebinding", patchBody);
+            step = 8;
+        } else if (step == 8 && patch.State == BML::Behavior::PatchState::Active) {
+            Require(patch.Resolve(patchNode) !is null, "Initial Patch node is not resolved");
+            step = 9;
+            TriggerWatch(source, "__BML_Installations_Rebind");
+        } else if (step == 10 && ++frames >= 2) {
+            Require(patch.State == BML::Behavior::PatchState::Active && patch.Resolve(patchNode) !is null,
+                    "Queued Patch replacement did not publish the new binding");
+            ctx.LogInfo("Behavior installations PASS deferred Patch binding");
             BML::CommandDefinition definition;
             definition.Name = "bml_probe_behavior_installations";
             BML::CommandRef@ command;
