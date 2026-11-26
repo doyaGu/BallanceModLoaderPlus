@@ -2,6 +2,7 @@
 #include "Behavior/Engine/Scope.h"
 #include "Behavior/Install/Installations.h"
 
+#include <memory_resource>
 #include <gtest/gtest.h>
 
 namespace {
@@ -9,6 +10,26 @@ using namespace BML::Behavior::Internal;
 
 CKBehavior *rejectGraph = nullptr;
 CKBehavior *foreignParent = nullptr;
+
+class FailingRegistry final : public std::pmr::memory_resource {
+public:
+    bool FailNext = true;
+    unsigned Failures = 0;
+private:
+    void *do_allocate(std::size_t bytes, std::size_t alignment) override {
+        if (std::exchange(FailNext, false)) {
+            ++Failures;
+            throw std::bad_alloc();
+        }
+        return std::pmr::new_delete_resource()->allocate(bytes, alignment);
+    }
+    void do_deallocate(void *memory, std::size_t bytes, std::size_t alignment) override {
+        std::pmr::new_delete_resource()->deallocate(memory, bytes, alignment);
+    }
+    bool do_is_equal(const std::pmr::memory_resource &other) const noexcept override {
+        return this == &other;
+    }
+};
 
 class BehaviorTransactionFailure : public ::testing::Test {
 protected:
@@ -154,6 +175,32 @@ TEST_F(BehaviorTransactionFailure, ScriptSelectionRetainsBothFaultsAndCanCloseAf
     EXPECT_EQ(graph->GetSubBehaviorCount(), 1);
     graph->SetParent(nullptr);
     EXPECT_TRUE(edits.CloseSubmission(owner, submission));
+    EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
+}
+
+TEST_F(BehaviorTransactionFailure, RegistryAllocationFailureLeavesGraphAndPatchKeyReusable) {
+    FailingRegistry registry;
+    struct DefaultResource {
+        std::pmr::memory_resource *Previous;
+        ~DefaultResource() { std::pmr::set_default_resource(Previous); }
+    } restore{std::pmr::set_default_resource(&registry)};
+    Runtime runtime(context, Issue);
+    auto source = MakeCKGraphSource(context, runtime, Issue);
+    CKEdit editor(context, runtime, nullptr, *source);
+    Ops edit;
+    ASSERT_TRUE(editor.Begin(graph, {"mod", "same key"}, edit));
+    Node child;
+    ASSERT_TRUE(editor.AddGraph(edit, "child", 0, child));
+    Patch patch;
+    const Status failed = editor.Apply(edit, patch);
+    EXPECT_EQ(registry.Failures, 1u);
+    EXPECT_EQ(failed.CkError, CKERR_OUTOFMEMORY);
+    EXPECT_FALSE(patch);
+    EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
+    const Status retried = editor.Apply(edit, patch);
+    ASSERT_TRUE(retried) << retried.Message;
+    EXPECT_EQ(graph->GetSubBehaviorCount(), 1);
+    EXPECT_TRUE(editor.Close(patch));
     EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
 }
 } // namespace

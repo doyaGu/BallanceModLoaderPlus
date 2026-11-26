@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <memory_resource>
 #include <set>
 #include <thread>
 #include <vector>
@@ -176,7 +177,7 @@ private:
     std::unique_ptr<Links> m_Links;
     // Journals that have published, so an Edit can be refused when it names
     // an object another active Patch introduced.
-    std::vector<std::weak_ptr<Patch::Journal>> m_Published;
+    std::pmr::vector<std::weak_ptr<Patch::Journal>> m_Published;
     std::vector<Request> m_Queue;
     [[nodiscard]] bool Deferred() const noexcept;
 

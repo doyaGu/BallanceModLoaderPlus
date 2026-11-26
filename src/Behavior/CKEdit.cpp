@@ -420,16 +420,16 @@ Status CKEdit::ApplyNow(const Ops &edit,
         return Failure(Error::InvalidState,
                        "The Patch journal is unavailable.");
     PublishingScope publishing(m_Publishing);
-    status = Transaction(*this, *patch).Apply(edit);
-    if (status) {
-        std::erase_if(m_Published,
-                      [&](const std::weak_ptr<Patch::Journal> &entry) {
-                          const auto journal = entry.lock();
-                          return !journal || journal == patch;
-                      });
+    // Track the journal before any native mutation or callback. If growing
+    // the registry fails the same key can be retried on an untouched graph.
+    std::erase_if(m_Published, [](const auto &entry) { return entry.expired(); });
+    try {
         m_Published.push_back(patch);
+    } catch (const std::bad_alloc &) {
+        return Failure(Error::CreateFailed, "Cannot retain the Behavior Patch journal.",
+                       CKERR_OUTOFMEMORY);
     }
-    return status;
+    return Transaction(*this, *patch).Apply(edit);
 }
 
 void CKEdit::CloseAdmission(Patch &patch) noexcept {
