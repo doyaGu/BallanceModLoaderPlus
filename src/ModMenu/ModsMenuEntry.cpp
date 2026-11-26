@@ -518,18 +518,18 @@ void ModsMenuEntry::ResumePendingLoad() {
     m_PendingLoad = {};
     Clear(true);
     if (!pending.Behavior || !pending.Script ||
-        !pending.Bml || !pending.Logger) {
+        !pending.Bml || !pending.Log) {
         return;
     }
 
     CKContext *context = pending.Bml->GetCKContext();
     CKBehavior *script = Live<CKBehavior>(context, pending.Script);
     if (!script) {
-        pending.Logger->Error(
+        pending.Log->Error(
             "Cannot replace the Mods menu Patch because Menu_Options is no longer live");
         return;
     }
-    BeginLoad(*pending.Behavior, script, *pending.Bml, *pending.Logger);
+    BeginLoad(*pending.Behavior, script, *pending.Bml, *pending.Log);
 }
 
 void ModsMenuEntry::HideButton() {

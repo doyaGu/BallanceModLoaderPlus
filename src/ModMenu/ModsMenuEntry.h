@@ -25,7 +25,7 @@ private:
         BML::Behavior::Session *Behavior = nullptr;
         CK_ID Script = 0;
         ModContext *Bml = nullptr;
-        Logger *Logger = nullptr;
+        Logger *Log = nullptr;
     };
 
     void BeginLoad(BML::Behavior::Session &behavior, CKBehavior *script, ModContext &bml,

@@ -1,5 +1,6 @@
 ﻿#include "UI/AnsiPalette.h"
 
+#include <climits>
 #include <cstdio>
 #include <cwchar>
 #include <cwctype>

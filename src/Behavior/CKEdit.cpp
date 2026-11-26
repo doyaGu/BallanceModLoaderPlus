@@ -28,7 +28,7 @@ struct CKEdit::Request {
 
     Kind Action = Kind::Apply;
     Ops Candidate;
-    std::shared_ptr<Patch::Journal> Patch;
+    std::shared_ptr<Patch::Journal> Journal;
 };
 
 Patch::Patch() = default;
@@ -618,7 +618,7 @@ void CKEdit::ObjectsToBeDeleted(const CK_ID *ids, int count) {
     const std::set<CK_ID> deleting(ids, ids + count);
 
     for (auto request = m_Queue.begin(); request != m_Queue.end();) {
-        const auto &journal = request->Patch;
+        const auto &journal = request->Journal;
         if (!journal || !deleting.contains(journal->Graph.Id)) {
             ++request;
             continue;
@@ -697,7 +697,7 @@ void CKEdit::ProcessFrame() {
     std::vector<Request> requests;
     requests.swap(m_Queue);
     for (Request &request : requests) {
-        const std::shared_ptr<Patch::Journal> &patch = request.Patch;
+        const std::shared_ptr<Patch::Journal> &patch = request.Journal;
         if (!patch)
             continue;
         patch->Queued = false;

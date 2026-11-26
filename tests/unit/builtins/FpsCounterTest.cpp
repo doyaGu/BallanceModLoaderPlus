@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include "HUD/FpsCounter.h"
 
 class FpsCounterTest : public ::testing::Test {

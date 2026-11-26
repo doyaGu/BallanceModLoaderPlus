@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -290,7 +291,7 @@ bool ExtractZipW(const std::wstring &archive, const std::wstring &destination) {
         if (!CreateFileTreeW(GetDirectoryW(output))) return false;
         auto *stream = SDL_IOFromFile(Path(output).c_str(), "wbx");
         if (!stream) return false;
-        const auto extracted = zip_entry_extract(zip.get(), [](void *context, unsigned long long, const void *data, size_t size) -> size_t {
+        const auto extracted = zip_entry_extract(zip.get(), [](void *context, std::uint64_t, const void *data, size_t size) -> size_t {
             return SDL_WriteIO(static_cast<SDL_IOStream *>(context), data, size);
         }, stream);
         const bool closed = SDL_CloseIO(stream);

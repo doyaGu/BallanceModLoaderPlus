@@ -6,6 +6,7 @@
 
 #include <new>
 #include <atomic>
+#include <cstring>
 #include <string>
 #include <string_view>
 #include <vector>

@@ -184,7 +184,7 @@ struct InterfacePort {
 
 struct ResolvedPort {
     Node Owner;
-    Slot Selector;
+    Internal::Slot Selector;
     SlotInfo Slot;
     std::uint32_t Interface = 0;
     NativeRef Native;

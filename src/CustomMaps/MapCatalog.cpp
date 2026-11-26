@@ -175,7 +175,7 @@ MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, Logger
     struct Scan {
         MapEntry *Maps;
         int Depth;
-        Logger *Logger;
+        Logger *Log;
         const std::wstring &Root;
     } scan{maps, depth, logger, rootPath};
     const auto directory = utils::Utf16ToUtf8(maps->path);
@@ -194,7 +194,7 @@ MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, Logger
             entry->path = std::move(path);
             scan.Maps->children.push_back(entry.get());
             auto *child = entry.release();
-            if (dir && ExploreMaps(child, scan.Depth - 1, scan.Logger, scan.Root) == ScanResult::Failure)
+            if (dir && ExploreMaps(child, scan.Depth - 1, scan.Log, scan.Root) == ScanResult::Failure)
                 return SDL_ENUM_FAILURE;
             return SDL_ENUM_CONTINUE;
         } catch (...) { return SDL_ENUM_FAILURE; }
