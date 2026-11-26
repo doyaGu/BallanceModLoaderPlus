@@ -33,6 +33,8 @@ set_tests_properties(SdlUpdatePackageTest PROPERTIES LABELS "sdl;packaging;updat
 
 if(TARGET CK2 AND CK2_DIR AND VxMath_DIR AND SDL3_DIR)
     set(BML_TEST_INSTALLED_SDK "" CACHE PATH "Use the extracted SDK archive in consumer tests")
+    set(BML_TEST_SDK_WORK_ROOT "${PROJECT_BINARY_DIR}/tests/sdl-sdk-consumer"
+        CACHE PATH "Work directory for the installed SDK consumer tests")
     if(BML_TEST_INSTALLED_SDK)
         set(_bml_sdk_test_source --sdk "${BML_TEST_INSTALLED_SDK}")
     else()
@@ -42,7 +44,7 @@ if(TARGET CK2 AND CK2_DIR AND VxMath_DIR AND SDL3_DIR)
             NAME SdlSdkConsumerTest
             COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/SdlSdkConsumerTest.py"
                     ${_bml_sdk_test_source}
-                    --work-root "${PROJECT_BINARY_DIR}/tests/sdl-sdk-consumer"
+                    --work-root "${BML_TEST_SDK_WORK_ROOT}"
                     --cmake "${CMAKE_COMMAND}"
                     --configuration "$<CONFIG>"
                     --generator "${CMAKE_GENERATOR}"

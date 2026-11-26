@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import filecmp
+import hashlib
 import json
 import locale
 import os
@@ -14,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any
 import zipfile
@@ -846,6 +848,7 @@ def save_settings(
     sdk: Path,
     game: Path | None,
     generator: str,
+    build_directory: Path,
 ) -> None:
     write_json(
         root / ".bml/settings.json",
@@ -854,6 +857,7 @@ def save_settings(
             "bmlSdk": str(sdk),
             "ballanceRoot": str(game) if game else "",
             "generator": generator,
+            "buildDirectory": str(build_directory),
         },
     )
 
@@ -895,6 +899,14 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
     state_dir = root / ".bml"
     # Keep incompatible runtimes/SDKs/configurations out of the same CMake cache.
     build_dir = state_dir / "build" / f"sdl-{abi['sdk_abi']}-{configuration}"
+    if os.name == "nt" and generator.startswith("Visual Studio") and not str(build_dir).isascii():
+        # The Visual Studio generator can fail before it writes a cache in
+        # a non-ASCII binary directory, even with a supported source path.
+        cache_root = Path(tempfile.gettempdir()) / "BMLPlus"
+        if not str(cache_root).isascii():
+            raise BmlError("Use an ASCII path for TEMP when building this project with Visual Studio.")
+        cache_key = hashlib.sha256(f"{build_dir}\0{generator}".encode("utf-8")).hexdigest()
+        build_dir = cache_root / cache_key
     install_dir = state_dir / "stage"
     prefixes = [sdk]
     if game:
@@ -937,7 +949,7 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
         "Build failed",
         args.verbose,
     )
-    save_settings(root, sdk, game, generator)
+    save_settings(root, sdk, game, generator, build_dir)
     artifact = str(manifest.get("artifact") or manifest["target"])
     mod_path = install_dir / "Mods" / f"{artifact}.bmodp"
     require_file(mod_path, "Built Mod")

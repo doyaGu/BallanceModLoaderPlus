@@ -70,6 +70,7 @@ def main() -> int:
         architecture = {"arm64": "arm64", "x64": "x86_64"}[abi["architecture"]]
         generator_options.append(f"-DCMAKE_OSX_ARCHITECTURES={architecture}")
     workflow_env = os.environ.copy()
+    workflow_env["PYTHONIOENCODING"] = "utf-8"
     if args.generator_toolset:
         workflow_env["CMAKE_GENERATOR_TOOLSET"] = args.generator_toolset
     if args.toolchain:
@@ -142,7 +143,8 @@ endif()
         print(run(*command, env=workflow_env))
         manifest = json.loads((destination / "bml.mod.json").read_text(encoding="utf-8"))
         module = destination / ".bml/stage/Mods" / f"{manifest['target']}.bmodp"
-        built = list((destination / ".bml/build").rglob(module.name))
+        settings = json.loads((destination / ".bml/settings.json").read_text(encoding="utf-8"))
+        built = list(Path(settings["buildDirectory"]).rglob(module.name))
         assert len(built) == 1, built
         assert built[0].read_bytes() == module.read_bytes(), "Install changed the SDK-built Mod"
         descriptor = json.loads(module.with_suffix(".bmodp.abi.json").read_text(encoding="utf-8"))
@@ -250,4 +252,6 @@ target_link_libraries(Extended PRIVATE Extensions)
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     raise SystemExit(main())

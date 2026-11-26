@@ -30,7 +30,8 @@ if(BML_WITH_ANGELSCRIPT AND TARGET CKAngelScript)
     list(APPEND _bml_runtime_targets CKAngelScript)
 endif()
 install(RUNTIME_DEPENDENCY_SET BMLRuntimeDependencies
-    PRE_EXCLUDE_REGEXES "api-ms-.*" "ext-ms-.*" "[Cc][Kk]2" "[Vv]x[Mm]ath" "SDL3"
+    # CMake matches the Windows dependency names in lowercase.
+    PRE_EXCLUDE_REGEXES "api-ms-.*" "ext-ms-.*" "[Cc][Kk]2" "[Vv]x[Mm]ath" "[Ss][Dd][Ll]3"
     POST_EXCLUDE_REGEXES "^/System/Library/" "^/usr/lib(64)?/" "^/lib(64)?/" "[Ww]indows[/\\\\][Ss]ystem32/"
     LIBRARY DESTINATION Bin COMPONENT BMLRuntime EXCLUDE_FROM_ALL
     RUNTIME DESTINATION Bin COMPONENT BMLRuntime EXCLUDE_FROM_ALL)
