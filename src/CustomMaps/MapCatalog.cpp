@@ -1,12 +1,10 @@
 #include "CustomMaps/MapCatalog.h"
 
 #include <algorithm>
-#include <cerrno>
-#include <cstring>
 #include <cwchar>
+#include <filesystem>
 #include <SDL3/SDL_filesystem.h>
 #include "Platform/FileSystemNative.h"
-#include "Platform/FileError.h"
 
 #include "Logging/Logger.h"
 #include "PathUtils.h"
@@ -95,8 +93,7 @@ bool MapCatalog::ValidateFile(const std::wstring &mapsDirectory, const std::wstr
         error = "the map could not be resolved inside ModLoader/Maps";
         return false;
     }
-    if (!IsSupportedFileType(filePath)
-    ) {
+    if (!IsSupportedFileType(filePath)) {
         error = "the resolved map path is not a supported file";
         return false;
     }
@@ -106,6 +103,8 @@ bool MapCatalog::ValidateFile(const std::wstring &mapsDirectory, const std::wstr
 }
 
 bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, Logger *logger) {
+    if (path.empty())
+        return false;
     auto newRoot = std::unique_ptr<MapEntry>(new(std::nothrow) MapEntry(nullptr, MAP_ENTRY_DIR));
     if (!newRoot) {
         if (logger)
@@ -116,16 +115,20 @@ bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, Logger *logger)
     newRoot->name = "Maps";
     newRoot->path = path;
 
-    SDL_PathInfo info{};
     const auto nativePath = utils::Utf16ToUtf8(path);
-    if (!SDL_GetPathInfo(nativePath.c_str(), &info)) {
-        const auto error = BML::Platform::LastFileError();
-        if (error != BML::Platform::FileError::NotFound &&
-            error != BML::Platform::FileError::PathNotFound) return false;
-    } else if (info.type != SDL_PATHTYPE_DIRECTORY) {
-        if (logger) logger->Error("Maps path is not a directory: %s", nativePath.c_str());
-        return false;
-    } else {
+    std::error_code error;
+    const auto status = std::filesystem::status(std::filesystem::u8path(nativePath), error);
+    if (status.type() != std::filesystem::file_type::not_found) {
+        if (error) {
+            if (logger)
+                logger->Error("Failed to inspect maps directory: %s (error %d)", nativePath.c_str(), error.value());
+            return false;
+        }
+        if (!std::filesystem::is_directory(status)) {
+            if (logger)
+                logger->Error("Maps path is not a directory: %s", nativePath.c_str());
+            return false;
+        }
         std::wstring rootPath;
         if (!utils::TryGetFinalPathW(path, rootPath) ||
             ExploreMaps(newRoot.get(), maxDepth, logger, rootPath) == ScanResult::Failure)

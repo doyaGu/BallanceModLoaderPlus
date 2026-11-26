@@ -185,7 +185,10 @@ bool IsPathInsideRootW(const std::wstring &p, const std::wstring &root) {
     const auto a = Path(TrimTrailingSeparatorsW(ResolvePathW(p))), b = Path(TrimTrailingSeparatorsW(ResolvePathW(root)));
     return EqualPath(a, b) || (a.size() > b.size() && EqualPath(a.substr(0, b.size()), b) && (b.back() == '/' || a[b.size()] == '/'));
 }
-bool TryGetFinalPathW(const std::wstring &p, std::wstring &out) { out = Utf8ToUtf16(Slashes(Native::CanonicalPath(Path(p)))); return !out.empty(); }
+bool TryGetFinalPathW(const std::wstring &p, std::wstring &out) {
+    out = NativePath(Native::CanonicalPath(Path(p)));
+    return !out.empty();
+}
 bool TryGetFinalPathInsideRootW(const std::wstring &p, const std::wstring &root, std::wstring &out) {
     std::wstring finalRoot;
     if (!TryGetFinalPathW(root, finalRoot) || !TryGetFinalPathW(p, out) || !IsPathInsideRootW(out, finalRoot)) { out.clear(); return false; }
