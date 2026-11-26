@@ -14,16 +14,43 @@
 #include "UpdaterSigning.h"
 #include <zip.h>
 #include <cstdlib>
+#include <cstdio>
 #include <array>
 #include <memory>
 #include <stdexcept>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
+#include <SDL3/SDL_main.h>
 
 using namespace bmlupdater;
 namespace {
+constexpr int InterruptedExitCode = 73;
+constexpr std::string_view InterruptApply = "--interrupt-apply";
+constexpr std::string_view InterruptRollback = "--interrupt-rollback";
+std::string testExecutable;
+
 void Require(Result result) { if (!result.ok) throw std::runtime_error(result.message); }
+
+int RunInterruptedTransaction(std::string_view action, const char *gamePath, const char *packagePath) {
+    UpdaterService service({utils::Utf8ToUtf16(gamePath), {}});
+    int operations = 0;
+    if (action == InterruptApply) {
+        LocalPackageVerification verification;
+        Require(service.VerifyLocalPackage(utils::Utf8ToUtf16(packagePath), verification));
+        ApplyPlan plan;
+        Require(service.BuildApplyPlan(verification, plan));
+        Require(service.Apply(verification, plan, [&](const auto &message) {
+            if (message.starts_with("installing ") && ++operations == 2) std::_Exit(InterruptedExitCode);
+        }));
+    } else {
+        Require(service.Rollback([&](const auto &) {
+            if (++operations == 2) std::_Exit(InterruptedExitCode);
+        }));
+    }
+    return 74;
+}
+
 void Put(const std::wstring &path, std::string_view text) {
     std::string error;
     if (!WriteTextFile(path, text, error)) throw std::runtime_error(error);
@@ -136,6 +163,19 @@ protected:
     }
     ApplyPlan Plan(const LocalPackageVerification &verification) {
         ApplyPlan plan; Require(service->BuildApplyPlan(verification, plan)); return plan;
+    }
+    void InterruptTransaction(std::string_view action) {
+        // The worker must mutate this fixture even on platforms that re-exec.
+        const auto gamePath = PathUtf8(game);
+        const auto packagePath = PathUtf8(package);
+        const char *arguments[]{testExecutable.c_str(), action.data(),
+                                gamePath.c_str(), packagePath.c_str(), nullptr};
+        std::unique_ptr<SDL_Process, decltype(&SDL_DestroyProcess)> process(
+            SDL_CreateProcess(arguments, false), SDL_DestroyProcess);
+        ASSERT_TRUE(process) << SDL_GetError();
+        int exitCode = 0;
+        ASSERT_TRUE(SDL_WaitProcess(process.get(), true, &exitCode)) << SDL_GetError();
+        ASSERT_EQ(exitCode, InterruptedExitCode);
     }
 };
 
@@ -262,16 +302,11 @@ TEST_F(UpdaterSdlTest, FailedRollbackRetainsPendingMetadataAndCanBeRetried) {
 TEST_F(UpdaterSdlTest, InterruptedProcessCanBeRecoveredFromDurableJournal) {
     Put(JoinPath(game, loader), "old loader");
     MakePackage(); auto verification = Verify(); auto plan = Plan(verification);
-    ASSERT_EXIT({
-        int installs = 0;
-        (void)service->Apply(verification, plan, [&](const auto &message) {
-            if (message.starts_with("installing ") && ++installs == 2) std::_Exit(73);
-        });
-        std::_Exit(74);
-    }, ::testing::ExitedWithCode(73), "");
-    EXPECT_TRUE(service->GetStatus().pendingTransaction);
+    ASSERT_NO_FATAL_FAILURE(InterruptTransaction(InterruptApply));
+    ASSERT_TRUE(service->GetStatus().pendingTransaction);
     EXPECT_FALSE(service->Apply(verification, plan).ok);
     Require(service->Rollback());
+    EXPECT_FALSE(service->GetStatus().pendingTransaction);
     EXPECT_EQ(ReadTextFile(JoinPath(game, loader)), "old loader");
     EXPECT_EQ(service->GetStatus().installedVersion, "v0");
 }
@@ -279,13 +314,10 @@ TEST_F(UpdaterSdlTest, InterruptedManualRollbackAlsoRetainsRecoveryHint) {
     Put(JoinPath(game, loader), "old loader");
     MakePackage(); auto verification = Verify(); auto plan = Plan(verification);
     Require(service->Apply(verification, plan));
-    ASSERT_EXIT({
-        int restores = 0;
-        (void)service->Rollback([&](const auto &) { if (++restores == 2) std::_Exit(73); });
-        std::_Exit(74);
-    }, ::testing::ExitedWithCode(73), "");
-    EXPECT_TRUE(service->GetStatus().pendingTransaction);
+    ASSERT_NO_FATAL_FAILURE(InterruptTransaction(InterruptRollback));
+    ASSERT_TRUE(service->GetStatus().pendingTransaction);
     Require(service->Rollback());
+    EXPECT_FALSE(service->GetStatus().pendingTransaction);
     EXPECT_EQ(ReadTextFile(JoinPath(game, loader)), "old loader");
     EXPECT_EQ(service->GetStatus().installedVersion, "v0");
 }
@@ -374,4 +406,19 @@ TEST_F(UpdaterSdlTest, CaseDistinctPathsRemainDistinctOnCaseSensitiveFilesystems
     EXPECT_NE(ArchivePathKey("Case"), ArchivePathKey("case"));
 }
 #endif
+}
+
+int main(int argc, char **argv) {
+    if (argc == 4 && (argv[1] == InterruptApply || argv[1] == InterruptRollback)) {
+        try {
+            return RunInterruptedTransaction(argv[1], argv[2], argv[3]);
+        } catch (const std::exception &error) {
+            std::fprintf(stderr, "Unable to interrupt updater transaction: %s\n", error.what());
+            return EXIT_FAILURE;
+        }
+    }
+
+    testExecutable = argv[0];
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }

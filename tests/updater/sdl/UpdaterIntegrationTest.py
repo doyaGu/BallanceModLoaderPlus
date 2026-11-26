@@ -20,7 +20,7 @@ import importlib.util
 
 def run(*command, env=None, success=True):
     result = subprocess.run([str(part) for part in command], env=env, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, timeout=40)
+                            stderr=subprocess.STDOUT, encoding="utf-8", timeout=40)
     if (result.returncode == 0) != success:
         raise AssertionError(f"Unexpected exit {result.returncode}: {command}\n{result.stdout}")
     return result.stdout
@@ -304,7 +304,10 @@ def main():
             run(sys.executable, args.packager, "--stage", stage, "--output", root / "unsafe-output", "--version", "v3",
                 "--signing-key", key, "--signer", signer, success=False)
             inventory = root / "install_manifest_BMLRuntime.txt"
-            inventory.write_text("\n".join(str(path) for path in stage.rglob("*") if path.is_file() and path != user_config) + "\n")
+            inventory.write_text(
+                "\n".join(str(path) for path in stage.rglob("*") if path.is_file() and path != user_config) + "\n",
+                encoding="utf-8",
+            )
             selected = root / "selected-output"
             run(sys.executable, args.packager, "--stage", stage, "--output", selected, "--version", "v3",
                 "--install-manifest", inventory, "--signing-key", key, "--signer", signer)
