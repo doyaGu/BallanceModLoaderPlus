@@ -476,6 +476,16 @@ Status Selections::Retry(SelectionId id) {
     return {};
 }
 
+Status Selections::ReconcileNow(SelectionId id) {
+    Status status = CanRetry(id);
+    if (!status)
+        return status;
+    if (m_InWorld)
+        return Failure(Error::Busy,
+                       "Behavior Plan reconciliation is already in progress.");
+    return Reconcile(*m_Plans.at(id));
+}
+
 Status Selections::RetireOwner(std::string_view owner) {
     Status ready = Ready();
     if (!ready)
@@ -600,6 +610,31 @@ Status Selections::ResetWorld() {
     return first;
 }
 
+Status Selections::Reconcile(Record &record) {
+    std::vector<ObjectRef> targets;
+    try {
+        for (const auto &[script, name] : m_Scripts) {
+            if (name == record.Value.Target().Name)
+                targets.push_back(script);
+        }
+    } catch (...) {
+        return record.Value.Applied(Failure(
+            Error::CreateFailed,
+            "The Loader could not form the Behavior Plan target set."));
+    }
+
+    record.Matches = targets.size();
+    // A load or deletion nested in a provider callback marks this rule dirty
+    // for the next safe point rather than being overwritten by this pass.
+    record.Dirty = false;
+    WorldCall call(m_InWorld);
+    Status status = record.Value.Reconcile(
+        std::move(targets), m_Epoch, *record.World);
+    if (!status && record.Value.RestoreFailure().Code == Error::Busy)
+        record.Dirty = true;
+    return status;
+}
+
 Status Selections::ProcessFrame() {
     Status ready = Ready();
     if (!ready)
@@ -628,37 +663,7 @@ Status Selections::ProcessFrame() {
             ++item;
             continue;
         }
-        std::vector<ObjectRef> targets;
-        try {
-            for (const auto &[script, name] : m_Scripts) {
-                if (name == record.Value.Target().Name)
-                    targets.push_back(script);
-            }
-        } catch (...) {
-            Status status = Failure(
-                Error::CreateFailed,
-                "The Loader could not form the Behavior Plan target set.");
-            (void) record.Value.Applied(status);
-            if (first)
-                first = status;
-            ++item;
-            continue;
-        }
-
-        record.Matches = targets.size();
-        // Clear the consumed notification before entering the world. A Script
-        // load/remove nested in a provider callback marks it again for the next
-        // safe point instead of being overwritten when this pass returns.
-        record.Dirty = false;
-        Status status;
-        {
-            WorldCall call(m_InWorld);
-            status = record.Value.Reconcile(
-                std::move(targets), m_Epoch, *record.World);
-        }
-        if (!status &&
-            record.Value.RestoreFailure().Code == Error::Busy)
-            record.Dirty = true;
+        Status status = Reconcile(record);
         if (!status && first)
             first = status;
         ++item;

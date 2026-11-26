@@ -205,6 +205,10 @@ private:
     bool CheckScriptRuntime() {
         if (m_Frames < 90) return false;
         const auto marker = [&](const char *name) { return bool(m_Context.Commands().Find(name)); };
+        if (!marker("bml_probe_behavior_installations")) {
+            if (m_Frames < 360) return false;
+            Require(false, "Behavior installation regression");
+        }
         if (m_ReloadStep == 0) {
             Require(marker("bml_probe_command_contracts"), "script command validation and event fields");
             Require(marker("bml_probe_combined_event") && marker("bml_probe_individual_event") &&

@@ -569,6 +569,32 @@ TEST(BehaviorSelections, AsksWhetherARetryIsAcceptedWithoutRetrying) {
     EXPECT_EQ(plans.Size(), 0u);
 }
 
+TEST(BehaviorSelections, ReconcilesAReplacementRuleAndReturnsItsActualInstallFailure) {
+    Selections plans;
+    auto failing = std::make_shared<FakeWorld>();
+    auto waiting = std::make_shared<FakeWorld>();
+    SelectionId replacement = 0;
+    SelectionId unrelated = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 4, {"Gameplay_Events"}, failing, replacement));
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "energy"}, 4, {"Gameplay_Energy"}, waiting, unrelated));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Energy", Target(2)));
+    failing->FailInstall.insert(1);
+
+    EXPECT_EQ(plans.ReconcileNow(replacement).Code, Error::CreateFailed);
+    EXPECT_TRUE(waiting->Calls.empty());
+    PlanInfo info;
+    ASSERT_TRUE(plans.Read(replacement, info));
+    EXPECT_EQ(info.ApplyFailure.Code, Error::CreateFailed);
+    EXPECT_EQ(info.Instances, 0u);
+
+    ASSERT_TRUE(plans.ProcessFrame());
+    EXPECT_EQ(failing->Calls.size(), 1u);
+    EXPECT_EQ(waiting->Live.size(), 1u);
+}
+
 TEST(BehaviorSelections, KeepsItsWorldOnTheGameThread) {
     Selections plans;
     auto world = std::make_shared<FakeWorld>();

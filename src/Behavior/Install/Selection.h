@@ -157,6 +157,9 @@ public:
     // Reports whether Retry would accept the Plan, without changing it.
     [[nodiscard]] Status CanRetry(SelectionId id) const;
     Status Retry(SelectionId id);
+    // Runs a rule at the current safe point when a definition replacement
+    // needs its graph installation result before it can commit.
+    Status ReconcileNow(SelectionId id);
     Status RetireOwner(std::string_view owner);
 
     Status LoadScript(std::string name, ObjectRef script);
@@ -195,6 +198,7 @@ private:
     [[nodiscard]] SelectionId NextId() noexcept;
     [[nodiscard]] Status Ready() const;
     void Mark(std::string_view name) noexcept;
+    Status Reconcile(Record &record);
 
     Epoch m_Epoch = 1;
     SelectionId m_NextId = 1;

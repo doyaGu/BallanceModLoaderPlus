@@ -1,0 +1,82 @@
+[bml.mod id="SdlBehaviorInstallationsProbe" name="Behavior installation regression" version="1.0.0"]
+class BehaviorInstallationsProbe {
+    BML::Behavior::Plan@ plan;
+    BML::Behavior::Edit@ planBody;
+    BML::Behavior::Watch@ watch;
+    BML::Behavior::Patch@ trigger;
+    int step = 0;
+
+    CKBehavior@ FindGraph(const BML::ModContext &in ctx) {
+        BML::ObjectRef reference;
+        CKObject@ object;
+        if (BML::Scene::FindObject("Event_handler", CKCID_BEHAVIOR, reference) != BML::ERROR_OK ||
+            BML::Engine::BorrowObject(ctx, reference, CKCID_BEHAVIOR, object) != BML::ERROR_OK)
+            return null;
+        return cast<CKBehavior>(object);
+    }
+
+    CKBehavior@ FindMarker(CKBehavior@ graph) {
+        for (int i = 0; i < graph.GetSubBehaviorCount(); ++i) {
+            CKBehavior@ child = graph.GetSubBehavior(i);
+            if (BML::CK::GetName(child) == "__BML_Installations_Plan")
+                return child;
+        }
+        return null;
+    }
+
+    void Require(bool condition, const string &in message) {
+        if (!condition)
+            throw(message);
+    }
+
+    void TriggerWatch(CKBehavior@ source, const string &in name) {
+        BML::Behavior::Graph@ graph = BML::Behavior::Inspect(source);
+        @watch = graph.Watch(BML::Behavior::WatchCallback(this.OnGraphChanged));
+        BML::Behavior::Edit@ edit = BML::Behavior::Edit();
+        edit.Root().AddGraph(name);
+        @trigger = graph.Apply(name, edit);
+    }
+
+    void OnGraphChanged(const BML::ModContext &in ctx, const BML::Behavior::Change &in change) {
+        if (step == 2) {
+            step = 3;
+            BML::Behavior::Edit@ invalid = BML::Behavior::Edit();
+            invalid.Root().Require(BML::Behavior::NodePattern("__BML_Installations_Missing"));
+            Require(plan.Replace("Event_handler", invalid), "Plan replacement request was not queued");
+        }
+    }
+
+    void OnProcess(const BML::ModContext &in ctx) {
+        if (step == 11)
+            return;
+        CKBehavior@ source = FindGraph(ctx);
+        if (source is null)
+            return;
+        CKBehavior@ marker = FindMarker(source);
+        if (step == 0) {
+            @planBody = BML::Behavior::Edit();
+            planBody.Root().AddGraph("__BML_Installations_Plan");
+            @plan = planBody.Plan("installation regression", "Event_handler");
+            step = 1;
+        } else if (step == 1 && plan.State == BML::Behavior::PlanState::Active) {
+            Require(marker !is null, "Initial Plan did not install its marker");
+            step = 2;
+            TriggerWatch(source, "__BML_Installations_Failed_Replace");
+        } else if (step == 3 && !plan.Error.isEmpty()) {
+            Require(plan.State == BML::Behavior::PlanState::Active && marker !is null,
+                    "A failed Plan replacement lost the previous definition");
+            Require(plan.Error.findFirst("matched no Node") >= 0, "Unexpected Plan replacement error");
+            ctx.LogInfo("Behavior installations PASS failed Plan replacement recovery");
+            watch.Close();
+            trigger.Close();
+            BML::CommandDefinition definition;
+            definition.Name = "bml_probe_behavior_installations";
+            BML::CommandRef@ command;
+            Require(ctx.Commands().Register(definition, BML::CommandExecute(this.Marker), command) ==
+                    BML::ERROR_OK, "Behavior regression marker registration failed");
+            step = 11;
+        }
+    }
+
+    int Marker(const BML::ModContext &in ctx, const BML::CommandInvocation &in call) { return 0; }
+}

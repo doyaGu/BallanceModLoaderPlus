@@ -1484,6 +1484,8 @@ Status Installations::InstallFrom(PlanRecord &plan,
                        "A Behavior Plan replacement prefix is invalid.");
     Status status;
     const std::size_t originalSize = plan.Selections.size();
+    const bool replacing = !plan.Previous.empty() ||
+        plan.Recovery == InstallRecovery::Previous;
     try {
         plan.Applied.reserve(definition.size());
         plan.Selections.reserve(definition.size());
@@ -1505,6 +1507,16 @@ Status Installations::InstallFrom(PlanRecord &plan,
             }
             plan.Applied.push_back(std::move(applied));
             plan.Selections.push_back(selection);
+            if (replacing) {
+                // Registration only queues a Selection. A replacement may
+                // discard its previous definition only after the matching
+                // graphs actually accept the new rule at this safe point.
+                status = m_Selections.ReconcileNow(selection);
+                if (!status) {
+                    NoteFailure(plan, index, rule.Scripts.Name);
+                    break;
+                }
+            }
         }
     } catch (...) {
         status = Failure(Error::CreateFailed,
@@ -2152,7 +2164,7 @@ Status Installations::ProcessFrame() {
 
     bool needsCollection = editPending;
     for (auto plan = m_Plans.begin(); plan != m_Plans.end();) {
-        if (HasPendingChange(plan->second)) {
+        if (HasPendingChange(plan->second) && m_Edit.CanPublish()) {
             Status status = Reconcile(plan->second);
             plan->second.LastStatus = status;
         }
