@@ -1,0 +1,138 @@
+name: SDL release acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-and-accept:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [Windows, Linux]
+    runs-on: [self-hosted, "${{ matrix.os }}", X64, bml-release]
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out release source and submodules
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: recursive
+      - name: Select native release inputs
+        id: paths
+        run: |
+          : "${BML_RELEASE_PLAYER:?Set BML_RELEASE_PLAYER on the runner}"
+          : "${BML_RELEASE_CMAKE_PREFIX_PATH:?Set the matching NeMo2 and SDL SDK prefixes}"
+          test -d "$BML_RELEASE_PLAYER"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            root="$(pwd -W)"
+          else
+            test "$(uname -m)" = x86_64
+            root="$(pwd)"
+          fi
+          root="$root/build/release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "root=$root" >> "$GITHUB_OUTPUT"
+      - name: Build Loader, Updater, Mods, and tests
+        env:
+          ROOT: "${{ steps.paths.outputs.root }}"
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G "Visual Studio 17 2022" -A x64)
+          else
+            generator=(-G Ninja)
+          fi
+          cmake -S . -B "$ROOT/build" "${generator[@]}" \
+            "-DCMAKE_PREFIX_PATH=$BML_RELEASE_CMAKE_PREFIX_PATH" -DCMAKE_BUILD_TYPE=Release \
+            -DBML_BUILD_TESTS=ON -DBML_BUILD_MODS=ON -DBML_BUILD_UPDATER=ON \
+            "-DBML_TEST_INSTALLED_SDK=$ROOT/unpacked/sdk" \
+            "-DBML_TEST_RUNTIME_ARCHIVE=$ROOT/unpacked/runtime" \
+            "-DBML_TEST_RELEASE_PLAYER=$ROOT/unpacked/player"
+          cmake --build "$ROOT/build" --config Release --parallel
+      - name: Stage and archive runtime, SDK, and Mods
+        env:
+          ROOT: "${{ steps.paths.outputs.root }}"
+        run: |
+          cmake -E copy_directory "$BML_RELEASE_PLAYER" "$ROOT/stage/game"
+          cmake --install "$ROOT/build" --config Release --prefix "$ROOT/stage/sdk"
+          cmake --install "$ROOT/build" --config Release --prefix "$ROOT/stage/game" --component BMLRuntime
+          python scripts/package_sdl_release.py --stage "$ROOT/stage/game" \
+            --install-manifest "$ROOT/build/install_manifest_BMLRuntime.txt" \
+            --sdk "$ROOT/stage/sdk" --output "$ROOT/packages"
+
+          cmake -E make_directory "$ROOT/unpacked/sdk" "$ROOT/unpacked/runtime" "$ROOT/unpacked/mods"
+          cmake -E chdir "$ROOT/unpacked/sdk" cmake -E tar xf "$ROOT"/packages/BMLPlus-SDK-*.zip
+          cmake -E chdir "$ROOT/unpacked/runtime" cmake -E tar xf "$ROOT"/packages/BMLPlus-Runtime-*.zip
+          cmake -E chdir "$ROOT/unpacked/mods" cmake -E tar xf "$ROOT"/packages/BMLPlus-Mods-*.zip
+          cmake -E copy_directory "$BML_RELEASE_PLAYER" "$ROOT/unpacked/player"
+          cmake -E copy_directory "$ROOT/unpacked/runtime" "$ROOT/unpacked/player"
+      - name: Check extracted native runtime dependencies
+        env:
+          ROOT: "${{ steps.paths.outputs.root }}"
+        run: |
+          game="$ROOT/unpacked/player"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            test -x "$game/Bin/Updater"
+            unset LD_LIBRARY_PATH
+            for binary in "$game/Bin/Updater" "$game/Managers/libBMLPlus.so" "$game/BuildingBlocks/libAngelScript.so"; do
+              ldd "$binary" | tee "$ROOT/$(basename "$binary").ldd"
+              if grep -q 'not found' "$ROOT/$(basename "$binary").ldd"; then
+                exit 1
+              fi
+            done
+            "$game/Bin/Updater" doctor --game-root "$game"
+          else
+            "$game/Bin/Updater.exe" doctor --game-root "$game"
+          fi
+      - name: Exercise installed SDK, signed package update, and rollback
+        env:
+          ROOT: "${{ steps.paths.outputs.root }}"
+        run: |
+          ctest --test-dir "$ROOT/build" -C Release --output-on-failure \
+            -R '^(SdlSdkConsumerTest|SdlUpdatePackageTest|BMLUpdaterSdlTest|BMLUpdaterSdlIntegrationTest)$'
+      - name: Start unpacked Player with packed Mods
+        env:
+          ROOT: "${{ steps.paths.outputs.root }}"
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G "Visual Studio 17 2022" -A x64)
+          else
+            generator=(-G Ninja)
+          fi
+          ckas="$ROOT/build/_deps/ckangelscript-src"
+          cmake -S tests/player/sdl -B "$ROOT/player-tests" "${generator[@]}" \
+            "-DCMAKE_PREFIX_PATH=$ROOT/unpacked/sdk;$BML_RELEASE_CMAKE_PREFIX_PATH" -DCMAKE_BUILD_TYPE=Release \
+            "-DBML_SDL_PLAYER_ROOT=$ROOT/unpacked/player" \
+            "-DBML_TEST_CKAS_INCLUDE=$ckas/include" \
+            "-DBML_TEST_AS_INCLUDE=$ckas/deps/angelscript/angelscript/include"
+          cmake --build "$ROOT/player-tests" --config Release --parallel
+          probe="$(find "$ROOT/player-tests" -name SdlPostProcessProbe.bmodp -print -quit)"
+          expected=()
+          while IFS= read -r module; do
+            module="${module%$'\r'}"
+            if [[ -n "$module" ]]; then
+              expected+=(--expect-mod "${module%.*}")
+            fi
+          done < "$ROOT/unpacked/sdk/share/BML/mods.txt"
+          run_player() {
+            python tests/player/sdl/RunPostProcessTest.py --runtime "$ROOT/unpacked/player" \
+              --probe "$probe" --mods-from "$ROOT/unpacked/mods/ModLoader/Mods" \
+              "${expected[@]}" --script-examples --output "$ROOT/player-tests/$1" --repeat 1 --timeout 90
+          }
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            export SDL_VIDEO_DRIVER=x11
+            run_player x11
+            export SDL_VIDEO_DRIVER=wayland
+            run_player wayland
+          else
+            run_player windows
+          fi
+      - name: Upload accepted archives
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bml-sdl-${{ matrix.os }}-x64
+          path: "${{ steps.paths.outputs.root }}/packages/*.zip"
+          if-no-files-found: error
