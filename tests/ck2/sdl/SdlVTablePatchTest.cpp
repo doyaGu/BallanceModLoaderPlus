@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <limits>
-#include <memory>
+#include <string>
 
-#include <SDL3/SDL.h>
 #include "Hooks/VTablePatch.h"
 
 #if defined(_WIN32)
@@ -79,20 +80,15 @@ public:
         if (object != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), object);
         return result == KERN_SUCCESS ? info.protection : -1;
 #else
-        std::size_t length = 0;
-        std::unique_ptr<char, decltype(&SDL_free)> maps(
-            static_cast<char *>(SDL_LoadFile("/proc/self/maps", &length)), SDL_free);
-        if (!maps) return -1;
+        std::ifstream maps("/proc/self/maps");
         const auto address = reinterpret_cast<std::uintptr_t>(Data);
-        for (const char *line = maps.get(); line && *line;) {
+        for (std::string line; std::getline(maps, line);) {
             unsigned long long begin = 0, end = 0;
             char flags[5]{};
-            if (SDL_sscanf(line, "%llx-%llx %4s", &begin, &end, flags) == 3 &&
+            if (std::sscanf(line.c_str(), "%llx-%llx %4s", &begin, &end, flags) == 3 &&
                 address >= begin && address < end)
                 return (flags[0] == 'r' ? PROT_READ : 0) | (flags[1] == 'w' ? PROT_WRITE : 0) |
                        (flags[2] == 'x' ? PROT_EXEC : 0);
-            const char *next = SDL_strchr(line, '\n');
-            line = next ? next + 1 : nullptr;
         }
         return -1;
 #endif

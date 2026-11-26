@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <limits>
 #include <memory>
+#include <string>
 
 #include <SDL3/SDL_iostream.h>
 #include <SDL3/SDL_stdinc.h>
@@ -83,14 +84,19 @@ bool Query(const void *address, MemoryRegion &region) {
               static_cast<int>(info.protection)};
     return true;
 #elif defined(__linux__)
-    // PT_LOAD flags do not describe the final RELRO protection. Read the actual
-    // mappings through SDL IO so removal restores the original page access.
-    std::size_t size = 0;
-    std::unique_ptr<char, decltype(&SDL_free)> mappings(
-        static_cast<char *>(SDL_LoadFile("/proc/self/maps", &size)), SDL_free);
-    if (!mappings)
+    // PT_LOAD flags do not describe the final RELRO protection. Stream the
+    // actual mappings because procfs reports a file size of zero.
+    std::unique_ptr<SDL_IOStream, decltype(&SDL_CloseIO)> stream(
+        SDL_IOFromFile("/proc/self/maps", "rb"), SDL_CloseIO);
+    if (!stream)
         return false;
-    const char *line = mappings.get();
+    std::string mappings;
+    char buffer[4096];
+    while (const auto size = SDL_ReadIO(stream.get(), buffer, sizeof(buffer)))
+        mappings.append(buffer, size);
+    if (SDL_GetIOStatus(stream.get()) != SDL_IO_STATUS_EOF)
+        return false;
+    const char *line = mappings.c_str();
     while (*line) {
         unsigned long long begin = 0, end = 0;
         char flags[5]{};

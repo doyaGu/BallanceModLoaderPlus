@@ -121,8 +121,10 @@ void ModManager::SynchronizeUiFonts() {
 }
 
 bool ModManager::StartRuntime() {
-    if (!m_ModContext || m_RenderContext)
-        return m_RenderContext != nullptr;
+    if (!m_ModContext || !m_ModContext->IsInited())
+        return false;
+    if (m_RenderContext)
+        return true;
 
     CKRenderContext *renderContext = m_Context->GetPlayerRenderContext();
     if (!renderContext)
