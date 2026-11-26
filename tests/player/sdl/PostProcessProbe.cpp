@@ -1,4 +1,5 @@
 #include <BML/BMLAll.h>
+#include <BML/Behavior.hpp>
 #include <BML/Engine.hpp>
 #include <BML/ImGui.hpp>
 #include <SDL3/SDL.h>
@@ -202,10 +203,56 @@ private:
         return result.Code();
     }
 
+    bool CheckPlanSymbolBinding() {
+        using namespace BML::Behavior;
+        if (m_CheckedPlanSymbols)
+            return true;
+        if (!m_SymbolPlan) {
+            auto session = Session::Open().Take();
+            auto graph = m_SymbolEdit.Root();
+            m_SymbolNode = graph.AddGraph("__BML_Installations_Native");
+            m_SymbolPort = graph.AppendLocal("__BML_Installations_Value", CKPGUID_INT);
+            graph.Bind(m_SymbolPort, 41);
+            m_SymbolPlan = session.Plan(
+                "native symbol binding", Scripts::One("Event_handler"), m_SymbolEdit).Take();
+            return false;
+        }
+
+        const auto info = m_SymbolPlan.Info().Take();
+        if (info.State != PlanState::Active) {
+            Require(info.LastStatus.Error == Error::None, "native Behavior Plan installation");
+            return false;
+        }
+        auto instances = m_SymbolPlan.Instances().Take();
+        Require(instances.size() == 1, "native Behavior Plan instance");
+        const auto &instance = instances.front();
+        const auto node = instance.Resolve(m_SymbolNode).Take();
+        auto value = instance.Read(m_SymbolPort).Take();
+        Require(std::get<int32_t>(value.Data) == 41, "native Behavior Plan value");
+        if (!m_PreviousSymbolInstance) {
+            m_PreviousSymbolInstance = instance;
+            m_PreviousSymbolNode = node;
+            (void)m_SymbolPlan.Replace(On(Scripts::One("Event_handler"), m_SymbolEdit)).Take();
+            return false;
+        }
+
+        Require(node.Slot == m_PreviousSymbolNode.Slot &&
+                    node.Generation == m_PreviousSymbolNode.Generation,
+                "unchanged Plan reused its native symbol");
+        Require(!m_PreviousSymbolInstance.Resolve(m_SymbolNode),
+                "previous Plan instance is stale after rebinding");
+        instance.Set(m_SymbolPort, Value(42)).Take();
+        value = instance.Read(m_SymbolPort).Take();
+        Require(std::get<int32_t>(value.Data) == 42, "rebound Plan symbol can be written");
+        instance.Set(m_SymbolPort, Value(41)).Take();
+        m_CheckedPlanSymbols = true;
+        return true;
+    }
+
     bool CheckScriptRuntime() {
         if (m_Frames < 90) return false;
         const auto marker = [&](const char *name) { return bool(m_Context.Commands().Find(name)); };
-        if (!marker("bml_probe_behavior_installations")) {
+        if (!marker("bml_probe_behavior_installations") || !CheckPlanSymbolBinding()) {
             if (m_Frames < 360) return false;
             Require(false, "Behavior installation regression");
         }
@@ -539,6 +586,13 @@ private:
     uint64_t m_ApiBenchmarkChecksum = 0;
     std::string m_ResultPath;
     BML::Mod::Context m_Context;
+    BML::Behavior::Edit m_SymbolEdit;
+    BML::Behavior::Edit::Node m_SymbolNode;
+    BML::Behavior::Edit::Port m_SymbolPort;
+    BML::Behavior::Plan m_SymbolPlan;
+    BML::Behavior::Plan::Instance m_PreviousSymbolInstance;
+    BML_ObjectRef m_PreviousSymbolNode{};
+    bool m_CheckedPlanSymbols = false;
     BML::Input::Block m_Block;
     BML::Timer::Registration m_Self, m_Repeat, m_NoArgs, m_VoidLoop;
     std::weak_ptr<int> m_SelfLease;

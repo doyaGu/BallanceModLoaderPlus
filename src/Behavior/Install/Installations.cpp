@@ -56,9 +56,14 @@ bool Same(const Installations::Target &left,
 bool Same(const Installations::Rule &left,
           const Installations::Rule &right) noexcept {
     return left.Scripts == right.Scripts &&
-        left.Binding == right.Binding &&
         left.Body && right.Body && left.Body->SameAs(*right.Body) &&
-        left.Symbols == right.Symbols;
+        std::equal(left.Symbols.begin(), left.Symbols.end(),
+                   right.Symbols.begin(), right.Symbols.end(),
+                   [](const auto &a, const auto &b) {
+                       return a.first.Scope == b.first.Scope &&
+                           a.first.Handle == b.first.Handle &&
+                           a.second == b.second;
+                   });
 }
 
 template <class Definition>
@@ -1512,7 +1517,7 @@ Status Installations::InstallFrom(PlanRecord &plan,
                 break;
             }
             plan.Applied.push_back(std::move(applied));
-            plan.Selections.push_back(selection);
+            plan.Selections.push_back({selection, rule.Binding});
             if (replacing) {
                 // Registration only queues a Selection. A replacement may
                 // discard its previous definition only after the matching
@@ -1549,7 +1554,7 @@ Status Installations::Uninstall(PlanRecord &plan, std::size_t rule) {
                        "A Behavior Plan replacement prefix is invalid.");
     while (plan.Selections.size() > rule) {
         const std::size_t index = plan.Selections.size() - 1;
-        Status status = m_Selections.Close(plan.Selections.back());
+        Status status = m_Selections.Close(plan.Selections.back().Id);
         if (!status) {
             plan.RestoreAt = index;
             plan.RestoreScript = plan.Applied.back().Scripts.Name;
@@ -1565,7 +1570,7 @@ Status Installations::Uninstall(PlanRecord &plan, std::size_t rule) {
 Status Installations::CanRefresh(const PlanRecord &plan,
                                  std::size_t prefix) const {
     for (std::size_t index = 0; index < prefix; ++index) {
-        Status retry = m_Selections.CanRetry(plan.Selections[index]);
+        Status retry = m_Selections.CanRetry(plan.Selections[index].Id);
         if (!retry)
             return retry;
     }
@@ -1574,7 +1579,7 @@ Status Installations::CanRefresh(const PlanRecord &plan,
 
 Status Installations::Refresh(PlanRecord &plan, std::size_t prefix) {
     for (std::size_t index = 0; index < prefix; ++index) {
-        Status retry = m_Selections.Retry(plan.Selections[index]);
+        Status retry = m_Selections.Retry(plan.Selections[index].Id);
         if (!retry)
             return retry;
     }
@@ -1595,9 +1600,9 @@ PlanState Installations::State(const PlanRecord &plan) const {
     bool active = false;
     bool unsatisfied = false;
     bool reconciling = false;
-    for (const SelectionId selection : plan.Selections) {
+    for (const PlanRecord::Selection &selection : plan.Selections) {
         PlanInfo info;
-        if (!m_Selections.Read(selection, info))
+        if (!m_Selections.Read(selection.Id, info))
             return PlanState::Conflicted;
         switch (info.State) {
         case PlanState::Conflicted: return PlanState::Conflicted;
@@ -1645,7 +1650,7 @@ Status Installations::ReadPlan(const SessionOwner &owner, PlanId id,
     for (std::size_t index = 0; index < plan.Selections.size(); ++index) {
         const std::string &script = plan.Applied[index].Scripts.Name;
         PlanInfo info;
-        Status status = m_Selections.Read(plan.Selections[index], info);
+        Status status = m_Selections.Read(plan.Selections[index].Id, info);
         if (!status) {
             if (out.LastStatus) {
                 out.LastStatus = status;
@@ -1716,7 +1721,7 @@ Status Installations::ReadPlanInstances(
         for (std::size_t index = 0; index < plan->Selections.size(); ++index) {
             std::vector<InstallationInfo> installations;
             status = m_Selections.ReadInstallations(
-                owner.Id, owner.Generation, plan->Selections[index],
+                owner.Id, owner.Generation, plan->Selections[index].Id,
                 installations);
             if (!status) {
                 out.clear();
@@ -1752,7 +1757,7 @@ Status Installations::FindPlanInstance(const PlanRecord &plan,
     std::vector<InstallationInfo> current;
     Status status = m_Selections.ReadInstallations(
         plan.Owner.Id, plan.Owner.Generation,
-        plan.Selections[instance.Rule], current);
+        plan.Selections[instance.Rule].Id, current);
     if (!status)
         return status;
     const auto found = std::find_if(
@@ -1785,7 +1790,11 @@ Status Installations::ResolvePlanNode(
     if (status && node.Binding != instance.Binding)
         status = Failure(Error::InvalidGraphLocality,
                          "The Node belongs to another Behavior Plan definition.");
-    return status ? ResolveNode(owner, patch, node, out) : status;
+    if (!status)
+        return status;
+    SymbolRef installed = node;
+    installed.Binding = plan->Selections[instance.Rule].Binding;
+    return ResolveNode(owner, patch, installed, out);
 }
 
 Status Installations::ReadPlanValue(
@@ -1803,7 +1812,11 @@ Status Installations::ReadPlanValue(
     if (status && port.Binding != instance.Binding)
         status = Failure(Error::InvalidGraphLocality,
                          "The Port belongs to another Behavior Plan definition.");
-    return status ? ReadValue(owner, patch, port, out) : status;
+    if (!status)
+        return status;
+    PortQuery installed = port;
+    installed.Binding = plan->Selections[instance.Rule].Binding;
+    return ReadValue(owner, patch, installed, out);
 }
 
 Status Installations::WritePlanValue(
@@ -1820,7 +1833,11 @@ Status Installations::WritePlanValue(
     if (status && port.Binding != instance.Binding)
         status = Failure(Error::InvalidGraphLocality,
                          "The Port belongs to another Behavior Plan definition.");
-    return status ? WriteValue(owner, patch, port, value) : status;
+    if (!status)
+        return status;
+    PortQuery installed = port;
+    installed.Binding = plan->Selections[instance.Rule].Binding;
+    return WriteValue(owner, patch, installed, value);
 }
 
 Status Installations::SetPlanActive(const SessionOwner &owner, PlanId id,

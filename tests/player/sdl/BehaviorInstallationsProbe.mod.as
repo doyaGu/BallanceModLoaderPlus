@@ -8,6 +8,7 @@ class BehaviorInstallationsProbe {
     BML::Behavior::EditNode@ patchNode;
     BML::Behavior::Watch@ watch;
     BML::Behavior::Patch@ trigger;
+    BML::ObjectRef original;
     int step = 0;
     int frames = 0;
 
@@ -32,6 +33,13 @@ class BehaviorInstallationsProbe {
     void Require(bool condition, const string &in message) {
         if (!condition)
             throw(message);
+    }
+
+    bool OwnsOriginalNode(const BML::ModContext &in ctx, CKBehavior@ node) {
+        CKObject@ object;
+        return node !is null &&
+            BML::Engine::BorrowObject(ctx, original, CKCID_BEHAVIOR, object) == BML::ERROR_OK &&
+            BML::CK::GetId(object) == BML::CK::GetId(node);
     }
 
     void TriggerWatch(CKBehavior@ source, const string &in name) {
@@ -77,6 +85,16 @@ class BehaviorInstallationsProbe {
             ctx.LogInfo("Behavior installations PASS failed Plan replacement recovery");
             watch.Close();
             trigger.Close();
+            step = 4;
+        } else if (step == 4) {
+            Require(BML::Scene::FindObject("__BML_Installations_Plan", CKCID_BEHAVIOR, original) ==
+                    BML::ERROR_OK, "Could not record the installed Plan node identity");
+            Require(plan.Replace("Event_handler", planBody), "Identical Plan replacement request failed");
+            step = 5;
+        } else if (step == 5 && plan.State == BML::Behavior::PlanState::Active) {
+            Require(OwnsOriginalNode(ctx, marker) && plan.Error.isEmpty(),
+                    "Identical Plan replacement rebuilt the installed node");
+            ctx.LogInfo("Behavior installations PASS unchanged Plan installation");
             @patchBase = BML::Behavior::Inspect(source);
             @patchBody = BML::Behavior::Edit();
             @patchNode = patchBody.Root().AddGraph("__BML_Installations_Patch");

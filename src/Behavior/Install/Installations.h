@@ -271,9 +271,16 @@ private:
     struct PlanRecord : Record<Rule> {
         static constexpr bool IsPlan = true;
 
+        struct Selection {
+            SelectionId Id = 0;
+            // The Plan's current public binding may change even when this
+            // Selection keeps its existing graph installations.
+            std::uint64_t Binding = 0;
+        };
+
         // The Selection that keeps each applied rule installed, parallel to
         // Applied.
-        std::vector<SelectionId> Selections;
+        std::vector<Selection> Selections;
     };
 
     [[nodiscard]] Status Ready() const;
