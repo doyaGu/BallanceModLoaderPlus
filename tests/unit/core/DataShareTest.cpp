@@ -41,7 +41,7 @@ size_t BoundedStringLength(const char *value, size_t maxSize) {
     return length;
 }
 
-void __cdecl RecordRequest(const char *key, const void *data, size_t size, void *userdata) {
+void BML_CDECL RecordRequest(const char *key, const void *data, size_t size, void *userdata) {
     auto *probe = static_cast<RequestProbe *>(userdata);
     ASSERT_NE(nullptr, probe);
     probe->callbacks++;
@@ -52,31 +52,31 @@ void __cdecl RecordRequest(const char *key, const void *data, size_t size, void 
         probe->value.assign(static_cast<const char *>(data), BoundedStringLength(static_cast<const char *>(data), size));
 }
 
-void __cdecl RecordCleanup(const char *, void *userdata) {
+void BML_CDECL RecordCleanup(const char *, void *userdata) {
     auto *probe = static_cast<RequestProbe *>(userdata);
     ASSERT_NE(nullptr, probe);
     probe->cleanups++;
 }
 
-void __cdecl ThrowingRequest(const char *key, const void *data, size_t size, void *userdata) {
+void BML_CDECL ThrowingRequest(const char *key, const void *data, size_t size, void *userdata) {
     RecordRequest(key, data, size, userdata);
     throw std::runtime_error("request failed");
 }
 
-void __cdecl ThrowingCleanup(const char *, void *userdata) {
+void BML_CDECL ThrowingCleanup(const char *, void *userdata) {
     auto *probe = static_cast<RequestProbe *>(userdata);
     ASSERT_NE(nullptr, probe);
     probe->cleanups++;
     throw std::runtime_error("cleanup failed");
 }
 
-void __cdecl RejectedRequest(const char *, const void *, size_t, void *userdata) {
+void BML_CDECL RejectedRequest(const char *, const void *, size_t, void *userdata) {
     auto *probe = static_cast<RequestProbe *>(userdata);
     ASSERT_NE(nullptr, probe);
     probe->callbacks++;
 }
 
-void __cdecl RejectedCleanup(const char *, void *userdata) {
+void BML_CDECL RejectedCleanup(const char *, void *userdata) {
     auto *probe = static_cast<RequestProbe *>(userdata);
     ASSERT_NE(nullptr, probe);
     probe->cleanups++;
@@ -106,7 +106,7 @@ public:
     OwnerResolverScope &operator=(const OwnerResolverScope &) = delete;
 };
 
-void __cdecl TryRetireFromCallback(const char *key, const void *data,
+void BML_CDECL TryRetireFromCallback(const char *key, const void *data,
                                    size_t size, void *userdata) {
     auto *probe = static_cast<ReentrantRetireProbe *>(userdata);
     ASSERT_NE(nullptr, probe);
@@ -115,7 +115,7 @@ void __cdecl TryRetireFromCallback(const char *key, const void *data,
         DataShareStore::RetireCallbacksFromOwner(probe->owner);
 }
 
-void __cdecl RecordProtectedRequest(const char *key, const void *data,
+void BML_CDECL RecordProtectedRequest(const char *key, const void *data,
                                     size_t size, void *userdata) {
     auto *probe = static_cast<InvocationProbe *>(userdata);
     ASSERT_NE(nullptr, probe);
@@ -123,7 +123,7 @@ void __cdecl RecordProtectedRequest(const char *key, const void *data,
     RecordRequest(key, data, size, probe);
 }
 
-void __cdecl RecordProtectedCleanup(const char *key, void *userdata) {
+void BML_CDECL RecordProtectedCleanup(const char *key, void *userdata) {
     auto *probe = static_cast<InvocationProbe *>(userdata);
     ASSERT_NE(nullptr, probe);
     probe->cleanupProtected = probe->gate->IsCallActiveOnCurrentThread();

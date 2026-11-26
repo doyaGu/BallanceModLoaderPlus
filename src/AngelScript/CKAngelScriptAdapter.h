@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "BML/Defines.h"
 #include "CKAngelScript.h"
 
 class CKAngelScriptAdapter {
@@ -17,132 +18,132 @@ public:
         Available
     };
 
-    typedef CKAngelScript *(__cdecl *CKGetAngelScriptFn)(CKContext *);
-    typedef CKDWORD(__cdecl *GetApiVersionFn)();
-    typedef CKBOOL(__cdecl *HasFeatureFn)(CKAS_FEATURE);
-    typedef void(__cdecl *InitResultFn)(CKAngelScriptResult *);
-    typedef void(__cdecl *InitLoadOptionsFn)(CKAngelScriptLoadOptions *);
-    typedef void(__cdecl *InitImportBindOptionsFn)(CKAngelScriptImportBindOptions *);
-    typedef void(__cdecl *InitBytecodeSaveOptionsFn)(CKAngelScriptBytecodeSaveOptions *);
-    typedef void(__cdecl *InitBytecodeLoadOptionsFn)(CKAngelScriptBytecodeLoadOptions *);
-    typedef void(__cdecl *InitModuleFingerprintFn)(CKAngelScriptModuleFingerprint *);
-    typedef void(__cdecl *InitObjectOptionsFn)(CKAngelScriptObjectOptions *);
-    typedef void(__cdecl *InitMethodOptionsFn)(CKAngelScriptMethodOptions *);
-    typedef void(__cdecl *InitObjectMethodExecuteOptionsFn)(CKAngelScriptObjectMethodExecuteOptions *);
-    typedef void(__cdecl *InitEngineExtensionFn)(CKAngelScriptEngineExtension *);
-    typedef const char *(__cdecl *GetStatusNameFn)(CKAS_STATUS);
-    typedef const char *(__cdecl *GetStatusDescriptionFn)(CKAS_STATUS);
-    typedef CKAS_STATUS(__cdecl *LoadModuleFn)(CKAngelScript *,
+    typedef CKAngelScript *(BML_CDECL *CKGetAngelScriptFn)(CKContext *);
+    typedef CKDWORD(BML_CDECL *GetApiVersionFn)();
+    typedef CKBOOL(BML_CDECL *HasFeatureFn)(CKAS_FEATURE);
+    typedef void(BML_CDECL *InitResultFn)(CKAngelScriptResult *);
+    typedef void(BML_CDECL *InitLoadOptionsFn)(CKAngelScriptLoadOptions *);
+    typedef void(BML_CDECL *InitImportBindOptionsFn)(CKAngelScriptImportBindOptions *);
+    typedef void(BML_CDECL *InitBytecodeSaveOptionsFn)(CKAngelScriptBytecodeSaveOptions *);
+    typedef void(BML_CDECL *InitBytecodeLoadOptionsFn)(CKAngelScriptBytecodeLoadOptions *);
+    typedef void(BML_CDECL *InitModuleFingerprintFn)(CKAngelScriptModuleFingerprint *);
+    typedef void(BML_CDECL *InitObjectOptionsFn)(CKAngelScriptObjectOptions *);
+    typedef void(BML_CDECL *InitMethodOptionsFn)(CKAngelScriptMethodOptions *);
+    typedef void(BML_CDECL *InitObjectMethodExecuteOptionsFn)(CKAngelScriptObjectMethodExecuteOptions *);
+    typedef void(BML_CDECL *InitEngineExtensionFn)(CKAngelScriptEngineExtension *);
+    typedef const char *(BML_CDECL *GetStatusNameFn)(CKAS_STATUS);
+    typedef const char *(BML_CDECL *GetStatusDescriptionFn)(CKAS_STATUS);
+    typedef CKAS_STATUS(BML_CDECL *LoadModuleFn)(CKAngelScript *,
                                                const CKAngelScriptLoadOptions *,
                                                CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *CompileModuleFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *CompileModuleFn)(CKAngelScript *,
                                                   const char *,
                                                   const char *,
                                                   CKDWORD,
                                                   CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *UnloadModuleFn)(CKAngelScript *, const char *, CKAngelScriptResult *);
-    typedef CKBOOL(__cdecl *HasModuleFn)(CKAngelScript *, const char *);
-    typedef CKDWORD(__cdecl *GetModuleGenerationFn)(CKAngelScript *, const char *);
-    typedef CKAS_STATUS(__cdecl *EnumerateMetadataFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *UnloadModuleFn)(CKAngelScript *, const char *, CKAngelScriptResult *);
+    typedef CKBOOL(BML_CDECL *HasModuleFn)(CKAngelScript *, const char *);
+    typedef CKDWORD(BML_CDECL *GetModuleGenerationFn)(CKAngelScript *, const char *);
+    typedef CKAS_STATUS(BML_CDECL *EnumerateMetadataFn)(CKAngelScript *,
                                                       const char *,
                                                       CKAngelScriptMetadataCallback,
                                                       void *,
                                                       CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *GetImportedFunctionCountFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *GetImportedFunctionCountFn)(CKAngelScript *,
                                                              const char *,
                                                              CKDWORD *,
                                                              CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *EnumerateImportedFunctionsFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *EnumerateImportedFunctionsFn)(CKAngelScript *,
                                                                const char *,
                                                                CKAngelScriptImportCallback,
                                                                void *,
                                                                CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *BindImportedFunctionFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *BindImportedFunctionFn)(CKAngelScript *,
                                                          const CKAngelScriptImportBindOptions *,
                                                          CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *BindAllImportedFunctionsFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *BindAllImportedFunctionsFn)(CKAngelScript *,
                                                              const char *,
                                                              CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *UnbindImportedFunctionFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *UnbindImportedFunctionFn)(CKAngelScript *,
                                                            const char *,
                                                            CKDWORD,
                                                            CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *UnbindAllImportedFunctionsFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *UnbindAllImportedFunctionsFn)(CKAngelScript *,
                                                                const char *,
                                                                CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *SaveModuleBytecodeFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *SaveModuleBytecodeFn)(CKAngelScript *,
                                                        const CKAngelScriptBytecodeSaveOptions *,
                                                        CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *LoadModuleBytecodeFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *LoadModuleBytecodeFn)(CKAngelScript *,
                                                        const CKAngelScriptBytecodeLoadOptions *,
                                                        CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *EnumerateBoundImportEdgesFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *EnumerateBoundImportEdgesFn)(CKAngelScript *,
                                                               const char *,
                                                               CKAngelScriptBoundImportEdgeCallback,
                                                               void *,
                                                               CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *EnumerateModuleIncludeEdgesFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *EnumerateModuleIncludeEdgesFn)(CKAngelScript *,
                                                                 const char *,
                                                                 CKAngelScriptIncludeEdgeCallback,
                                                                 void *,
                                                                 CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *GetModuleFingerprintFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *GetModuleFingerprintFn)(CKAngelScript *,
                                                          const char *,
                                                          CKAngelScriptModuleFingerprint *,
                                                          CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *CreateObjectFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *CreateObjectFn)(CKAngelScript *,
                                                  const CKAngelScriptObjectOptions *,
                                                  CKAngelScriptObject **,
                                                  CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *ReleaseObjectFn)(CKAngelScript *, CKAngelScriptObject *, CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *FindObjectMethodFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *ReleaseObjectFn)(CKAngelScript *, CKAngelScriptObject *, CKAngelScriptResult *);
+    typedef CKAS_STATUS(BML_CDECL *FindObjectMethodFn)(CKAngelScript *,
                                                      const CKAngelScriptMethodOptions *,
                                                      CKAngelScriptMethod **,
                                                      CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *ReleaseMethodFn)(CKAngelScript *, CKAngelScriptMethod *, CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *BorrowEngineFn)(CKAngelScript *, asIScriptEngine **, CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *BorrowActiveContextFn)(CKAngelScript *, asIScriptContext **, CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *SetActiveContextExceptionFn)(CKAngelScript *, const char *, CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *AssignObjectHandleFn)(void **, void *, asITypeInfo *);
-    typedef CKAS_STATUS(__cdecl *ArgSetBoolFn)(CKAngelScriptArgWriter *, CKDWORD, CKBOOL);
-    typedef CKAS_STATUS(__cdecl *ArgSetIntFn)(CKAngelScriptArgWriter *, CKDWORD, int);
-    typedef CKAS_STATUS(__cdecl *ArgSetFloatFn)(CKAngelScriptArgWriter *, CKDWORD, float);
-    typedef CKAS_STATUS(__cdecl *ArgSetStringFn)(CKAngelScriptArgWriter *, CKDWORD, const char *);
-    typedef CKAS_STATUS(__cdecl *ArgSetBorrowedObjectFn)(CKAngelScriptArgWriter *, CKDWORD, void *);
-    typedef CKAS_STATUS(__cdecl *ArgSetObjectHandleFn)(CKAngelScriptArgWriter *, CKDWORD, void *);
-    typedef CKAS_STATUS(__cdecl *ResultGetBoolFn)(CKAngelScriptResultReader *, CKBOOL *);
-    typedef CKAS_STATUS(__cdecl *ResultGetIntFn)(CKAngelScriptResultReader *, int *);
-    typedef CKAS_STATUS(__cdecl *ResultGetFloatFn)(CKAngelScriptResultReader *, float *);
-    typedef CKAS_STATUS(__cdecl *ResultGetStringFn)(CKAngelScriptResultReader *, char *, size_t, size_t *);
-    typedef CKAS_STATUS(__cdecl *ResultGetStringViewFn)(CKAngelScriptResultReader *, const char **, size_t *);
-    typedef CKAS_STATUS(__cdecl *CallObjectMethodFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *ReleaseMethodFn)(CKAngelScript *, CKAngelScriptMethod *, CKAngelScriptResult *);
+    typedef CKAS_STATUS(BML_CDECL *BorrowEngineFn)(CKAngelScript *, asIScriptEngine **, CKAngelScriptResult *);
+    typedef CKAS_STATUS(BML_CDECL *BorrowActiveContextFn)(CKAngelScript *, asIScriptContext **, CKAngelScriptResult *);
+    typedef CKAS_STATUS(BML_CDECL *SetActiveContextExceptionFn)(CKAngelScript *, const char *, CKAngelScriptResult *);
+    typedef CKAS_STATUS(BML_CDECL *AssignObjectHandleFn)(void **, void *, asITypeInfo *);
+    typedef CKAS_STATUS(BML_CDECL *ArgSetBoolFn)(CKAngelScriptArgWriter *, CKDWORD, CKBOOL);
+    typedef CKAS_STATUS(BML_CDECL *ArgSetIntFn)(CKAngelScriptArgWriter *, CKDWORD, int);
+    typedef CKAS_STATUS(BML_CDECL *ArgSetFloatFn)(CKAngelScriptArgWriter *, CKDWORD, float);
+    typedef CKAS_STATUS(BML_CDECL *ArgSetStringFn)(CKAngelScriptArgWriter *, CKDWORD, const char *);
+    typedef CKAS_STATUS(BML_CDECL *ArgSetBorrowedObjectFn)(CKAngelScriptArgWriter *, CKDWORD, void *);
+    typedef CKAS_STATUS(BML_CDECL *ArgSetObjectHandleFn)(CKAngelScriptArgWriter *, CKDWORD, void *);
+    typedef CKAS_STATUS(BML_CDECL *ResultGetBoolFn)(CKAngelScriptResultReader *, CKBOOL *);
+    typedef CKAS_STATUS(BML_CDECL *ResultGetIntFn)(CKAngelScriptResultReader *, int *);
+    typedef CKAS_STATUS(BML_CDECL *ResultGetFloatFn)(CKAngelScriptResultReader *, float *);
+    typedef CKAS_STATUS(BML_CDECL *ResultGetStringFn)(CKAngelScriptResultReader *, char *, size_t, size_t *);
+    typedef CKAS_STATUS(BML_CDECL *ResultGetStringViewFn)(CKAngelScriptResultReader *, const char **, size_t *);
+    typedef CKAS_STATUS(BML_CDECL *CallObjectMethodFn)(CKAngelScript *,
                                                      const CKAngelScriptObjectMethodExecuteOptions *,
                                                      CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *RegisterEngineExtensionFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *RegisterEngineExtensionFn)(CKAngelScript *,
                                                             const CKAngelScriptEngineExtension *,
                                                             CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *UnregisterEngineExtensionFn)(CKAngelScript *,
+    typedef CKAS_STATUS(BML_CDECL *UnregisterEngineExtensionFn)(CKAngelScript *,
                                                               const char *,
                                                               CKAngelScriptResult *);
-    typedef CKAS_STATUS(__cdecl *CreateArrayFn)(CKAngelScript *, const char *, CKDWORD, void **);
-    typedef CKAS_STATUS(__cdecl *CreateArrayByTypeFn)(asITypeInfo *, CKDWORD, void **);
-    typedef CKAS_STATUS(__cdecl *ArrayAddRefFn)(void *);
-    typedef CKAS_STATUS(__cdecl *ArrayReleaseFn)(void *);
-    typedef CKAS_STATUS(__cdecl *ArrayGetRefCountFn)(void *, int *);
-    typedef CKAS_STATUS(__cdecl *ArrayGetArrayTypeFn)(void *, asITypeInfo **);
-    typedef CKAS_STATUS(__cdecl *ArrayGetArrayTypeIdFn)(void *, int *);
-    typedef CKAS_STATUS(__cdecl *ArrayGetSizeFn)(void *, CKDWORD *);
-    typedef CKAS_STATUS(__cdecl *ArrayResizeFn)(void *, CKDWORD);
-    typedef CKAS_STATUS(__cdecl *ArrayReserveFn)(void *, CKDWORD);
-    typedef CKAS_STATUS(__cdecl *ArrayGetElementTypeIdFn)(void *, int *);
-    typedef CKAS_STATUS(__cdecl *ArrayGetElementAddressFn)(void *, CKDWORD, void **);
-    typedef CKAS_STATUS(__cdecl *ArrayGetConstElementAddressFn)(const void *, CKDWORD, const void **);
-    typedef CKAS_STATUS(__cdecl *ArraySetElementValueFn)(void *, CKDWORD, const void *);
-    typedef CKAS_STATUS(__cdecl *ArrayInsertAtFn)(void *, CKDWORD, const void *);
-    typedef CKAS_STATUS(__cdecl *ArrayInsertLastFn)(void *, const void *);
-    typedef CKAS_STATUS(__cdecl *ArrayRemoveAtFn)(void *, CKDWORD);
-    typedef CKAS_STATUS(__cdecl *ArrayRemoveLastFn)(void *);
-    typedef CKAS_STATUS(__cdecl *ArrayClearFn)(void *);
+    typedef CKAS_STATUS(BML_CDECL *CreateArrayFn)(CKAngelScript *, const char *, CKDWORD, void **);
+    typedef CKAS_STATUS(BML_CDECL *CreateArrayByTypeFn)(asITypeInfo *, CKDWORD, void **);
+    typedef CKAS_STATUS(BML_CDECL *ArrayAddRefFn)(void *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayReleaseFn)(void *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayGetRefCountFn)(void *, int *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayGetArrayTypeFn)(void *, asITypeInfo **);
+    typedef CKAS_STATUS(BML_CDECL *ArrayGetArrayTypeIdFn)(void *, int *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayGetSizeFn)(void *, CKDWORD *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayResizeFn)(void *, CKDWORD);
+    typedef CKAS_STATUS(BML_CDECL *ArrayReserveFn)(void *, CKDWORD);
+    typedef CKAS_STATUS(BML_CDECL *ArrayGetElementTypeIdFn)(void *, int *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayGetElementAddressFn)(void *, CKDWORD, void **);
+    typedef CKAS_STATUS(BML_CDECL *ArrayGetConstElementAddressFn)(const void *, CKDWORD, const void **);
+    typedef CKAS_STATUS(BML_CDECL *ArraySetElementValueFn)(void *, CKDWORD, const void *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayInsertAtFn)(void *, CKDWORD, const void *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayInsertLastFn)(void *, const void *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayRemoveAtFn)(void *, CKDWORD);
+    typedef CKAS_STATUS(BML_CDECL *ArrayRemoveLastFn)(void *);
+    typedef CKAS_STATUS(BML_CDECL *ArrayClearFn)(void *);
 
     struct Api {
         CKGetAngelScriptFn GetAngelScript = nullptr;

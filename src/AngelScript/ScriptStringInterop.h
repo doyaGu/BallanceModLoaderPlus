@@ -285,11 +285,11 @@ private:
     }
 };
 
-template <auto Method>
+template <auto Method, typename Signature = decltype(Method)>
 struct GenericMethod;
 
-template <typename C, typename R, typename... Args, R (C::*Method)(Args...)>
-struct GenericMethod<Method> {
+template <auto Method, typename C, typename R, bool Noexcept, typename... Args>
+struct GenericMethod<Method, R (C::*)(Args...) noexcept(Noexcept)> {
     static void Call(asIScriptGeneric *gen) {
         InvokeGenericBinding("AngelScript generic method", [gen]() {
             C *self = static_cast<C *>(gen ? gen->GetObject() : nullptr);
@@ -338,8 +338,8 @@ private:
     }
 };
 
-template <typename C, typename R, typename... Args, R (C::*Method)(Args...) const>
-struct GenericMethod<Method> {
+template <auto Method, typename C, typename R, bool Noexcept, typename... Args>
+struct GenericMethod<Method, R (C::*)(Args...) const noexcept(Noexcept)> {
     static void Call(asIScriptGeneric *gen) {
         InvokeGenericBinding("AngelScript generic method", [gen]() {
             const C *self = static_cast<const C *>(gen ? gen->GetObject() : nullptr);

@@ -1,5 +1,6 @@
 #include "ScriptStringInterop.h"
 
+#include "BML/Defines.h"
 #include "ScriptRuntimeModule.h"
 
 #include <cstdio>
@@ -24,7 +25,7 @@ asIStringFactory *GetStringFactory(asIScriptEngine *engine) {
     return factory;
 }
 
-using AsGetActiveContextFn = asIScriptContext *(__cdecl *)();
+using AsGetActiveContextFn = asIScriptContext *(BML_CDECL *)();
 
 AsGetActiveContextFn ResolveAsGetActiveContext() {
     void *module = FindScriptRuntimeModule();
