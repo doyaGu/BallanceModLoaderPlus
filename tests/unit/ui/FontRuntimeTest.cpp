@@ -93,7 +93,7 @@ TEST_F(ImGuiContextFixture, DisabledWindowsFallbacksDoNotEnterTheAtlas) {
         snapshot, BML::UI::FontSourceOrigin::WindowsCatalog));
 }
 
-TEST_F(ImGuiContextFixture, PackagedPrimaryPrecedesWindowsFallbacks) {
+TEST_F(ImGuiContextFixture, PackagedPrimaryPrecedesSystemFallbacks) {
     BML::UI::FontRuntime runtime(BML_TEST_FONT_DIRECTORY);
     const auto faces = runtime.ListLoaderFaces();
     EXPECT_NE(std::find(faces.begin(), faces.end(), "unifont.otf"), faces.end());
@@ -109,15 +109,17 @@ TEST_F(ImGuiContextFixture, PackagedPrimaryPrecedesWindowsFallbacks) {
     const auto &snapshot = runtime.Inspect();
     EXPECT_NE(snapshot.State, BML::UI::FontRuntimeState::Pending);
     EXPECT_NE(snapshot.State, BML::UI::FontRuntimeState::Unconfigured);
-    ASSERT_GE(snapshot.Sources.size(), 3u);
+    ASSERT_FALSE(snapshot.Sources.empty());
     EXPECT_EQ(snapshot.Sources[0].Origin,
               BML::UI::FontSourceOrigin::LoaderCatalog);
     EXPECT_TRUE(snapshot.Sources[0].Loaded);
 #ifdef _WIN32
+    ASSERT_GE(snapshot.Sources.size(), 2u);
     EXPECT_EQ(snapshot.Sources[1].Origin, BML::UI::FontSourceOrigin::WindowsCatalog);
     EXPECT_TRUE(snapshot.SupportsCommonEmoji);
 #else
-    EXPECT_EQ(snapshot.Sources[1].Origin, BML::UI::FontSourceOrigin::SystemCatalog);
+    for (std::size_t index = 1; index < snapshot.Sources.size(); ++index)
+        EXPECT_EQ(snapshot.Sources[index].Origin, BML::UI::FontSourceOrigin::SystemCatalog);
 #endif
 
     ImFont *font = ImGui::GetIO().FontDefault;

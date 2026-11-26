@@ -821,7 +821,7 @@ std::wstring AnsiPalette::ResolveThemePathW(const std::wstring &name) const {
         std::wstring el = ext;
         std::transform(el.begin(), el.end(), el.begin(), [](wchar_t c) { return (wchar_t) std::towlower(c); });
         if (el == L".ini" || el == L".theme") {
-            if (try_name(name)) return cand;
+            if (try_name(name) || (el != ext && try_name(utils::RemoveExtensionW(name) + el))) return cand;
         }
         return L"";
     }
