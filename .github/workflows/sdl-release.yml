@@ -40,14 +40,19 @@ jobs:
         env:
           ROOT: "${{ steps.paths.outputs.root }}"
         run: |
+          sdk_test_args=()
           if [[ "$RUNNER_OS" == Windows ]]; then
             generator=(-G "Visual Studio 17 2022" -A x64)
+            # Keep nested MSBuild tracker paths within the Windows path limit.
+            sdk_work_root="$(cygpath -am "$TEMP")/bml-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            sdk_test_args+=("-DBML_TEST_SDK_WORK_ROOT=$sdk_work_root")
           else
             generator=(-G Ninja)
           fi
           cmake -S . -B "$ROOT/build" "${generator[@]}" \
             "-DCMAKE_PREFIX_PATH=$BML_RELEASE_CMAKE_PREFIX_PATH" -DCMAKE_BUILD_TYPE=Release \
             -DBML_BUILD_TESTS=ON -DBML_BUILD_MODS=ON -DBML_BUILD_UPDATER=ON \
+            "${sdk_test_args[@]}" \
             "-DBML_TEST_INSTALLED_SDK=$ROOT/unpacked/sdk" \
             "-DBML_TEST_RUNTIME_ARCHIVE=$ROOT/unpacked/runtime" \
             "-DBML_TEST_RELEASE_PLAYER=$ROOT/unpacked/player"
