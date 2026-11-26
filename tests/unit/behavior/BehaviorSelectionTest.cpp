@@ -595,6 +595,39 @@ TEST(BehaviorSelections, ReconcilesAReplacementRuleAndReturnsItsActualInstallFai
     EXPECT_EQ(waiting->Live.size(), 1u);
 }
 
+TEST(BehaviorSelections, ReinstallsALostInstallationWithoutReloadingItsScript) {
+    Selections plans;
+    auto world = std::make_shared<FakeWorld>();
+    SelectionId plan = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
+    ASSERT_TRUE(plans.ProcessFrame());
+    ASSERT_EQ(world->Live.size(), 1u);
+    const Installation lost = world->Live.begin()->first;
+
+    plans.InvalidateInstallation(lost);
+    PlanInfo info;
+    ASSERT_TRUE(plans.Read(plan, info));
+    EXPECT_EQ(info.State, PlanState::Reconciling);
+    EXPECT_EQ(info.Instances, 0u);
+    std::vector<InstallationInfo> current;
+    ASSERT_TRUE(plans.ReadInstallations("mod", 4, plan, current));
+    EXPECT_TRUE(current.empty());
+
+    world->BusyClose.insert(lost);
+    EXPECT_EQ(plans.ProcessFrame().Code, Error::Busy);
+    ASSERT_EQ(world->Live.size(), 1u);
+    EXPECT_TRUE(world->Live.contains(lost));
+
+    world->BusyClose.clear();
+    ASSERT_TRUE(plans.ProcessFrame());
+    ASSERT_TRUE(plans.ReadInstallations("mod", 4, plan, current));
+    ASSERT_EQ(current.size(), 1u);
+    EXPECT_EQ(current.front().Target, Target(1));
+    EXPECT_NE(current.front().Id, lost);
+}
+
 TEST(BehaviorSelections, KeepsItsWorldOnTheGameThread) {
     Selections plans;
     auto world = std::make_shared<FakeWorld>();

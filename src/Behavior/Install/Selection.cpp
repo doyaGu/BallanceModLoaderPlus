@@ -42,20 +42,42 @@ bool Selection::RefLess::operator()(const ObjectRef &left,
 }
 
 bool Selection::Contains(const ObjectRef &target) const noexcept {
-    return m_Installed.contains(target);
+    const auto found = m_Installed.find(target);
+    return found != m_Installed.end() && !found->second.Invalid;
+}
+
+std::size_t Selection::Size() const noexcept {
+    return static_cast<std::size_t>(std::count_if(
+        m_Installed.begin(), m_Installed.end(),
+        [](const auto &entry) { return !entry.second.Invalid; }));
 }
 
 std::vector<InstallationInfo> Selection::Installations() const {
     std::vector<InstallationInfo> result;
     result.reserve(m_Installed.size());
-    for (const auto &[target, installation] : m_Installed)
-        result.push_back({target, installation, m_Epoch, m_Revision});
+    for (const auto &[target, installation] : m_Installed) {
+        if (!installation.Invalid)
+            result.push_back({target, installation.Id, m_Epoch, m_Revision});
+    }
     return result;
 }
 
 void Selection::Touch() noexcept {
     m_Revision = m_Revision == (std::numeric_limits<std::uint64_t>::max)()
         ? 1 : m_Revision + 1;
+}
+
+bool Selection::Invalidate(Installation installation) noexcept {
+    for (auto &[target, entry] : m_Installed) {
+        if (entry.Id != installation || entry.Invalid)
+            continue;
+        entry.Invalid = true;
+        Touch();
+        if (!m_Retiring)
+            m_State = PlanState::Reconciling;
+        return true;
+    }
+    return false;
 }
 
 Status Selection::Applied(Status status) {
@@ -81,7 +103,7 @@ Status Selection::Settled() {
 Status Selection::CloseAll(World &world) {
     Status first;
     for (auto item = m_Installed.begin(); item != m_Installed.end();) {
-        Status status = world.Close(item->second);
+        Status status = world.Close(item->second.Id);
         if (!status) {
             if (first ||
                 (first.Code == Error::Busy && status.Code != Error::Busy))
@@ -152,12 +174,13 @@ Status Selection::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
 
     Status closeFailure;
     for (auto item = m_Installed.begin(); item != m_Installed.end();) {
-        if (std::binary_search(targets.begin(), targets.end(), item->first,
+        if (!item->second.Invalid &&
+            std::binary_search(targets.begin(), targets.end(), item->first,
                                RefLess{})) {
             ++item;
             continue;
         }
-        Status status = world.Close(item->second);
+        Status status = world.Close(item->second.Id);
         if (!status) {
             if (closeFailure)
                 closeFailure = std::move(status);
@@ -193,7 +216,7 @@ Status Selection::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
                 const auto installed = m_Installed.find(*item);
                 if (installed == m_Installed.end())
                     continue;
-                Status closed = world.Close(installed->second);
+                Status closed = world.Close(installed->second.Id);
                 if (!closed) {
                     if (rollbackFailure)
                         rollbackFailure = std::move(closed);
@@ -210,12 +233,13 @@ Status Selection::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
                 ? PlanState::Unsatisfied : PlanState::Partial;
             return status;
         }
-        m_Installed.emplace(target, installation);
+        m_Installed.emplace(target, Installed{installation});
         Touch();
         added.push_back(target);
     }
 
-    m_State = PlanState::Active;
+    m_State = Size() == m_Installed.size()
+        ? PlanState::Active : PlanState::Reconciling;
     return Settled();
 }
 
@@ -585,6 +609,17 @@ void Selections::RemoveObject(std::uint32_t domain, std::uint32_t slot) {
         const std::string name = script->second;
         script = m_Scripts.erase(script);
         Mark(name);
+    }
+}
+
+void Selections::InvalidateInstallation(Installation installation) noexcept {
+    if (std::this_thread::get_id() != m_Thread)
+        return;
+    for (auto &[id, record] : m_Plans) {
+        if (record->Value.Invalidate(installation)) {
+            record->Dirty = true;
+            return;
+        }
     }
 }
 

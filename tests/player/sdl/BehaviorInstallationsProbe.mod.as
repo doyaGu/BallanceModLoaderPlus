@@ -95,6 +95,15 @@ class BehaviorInstallationsProbe {
             Require(OwnsOriginalNode(ctx, marker) && plan.Error.isEmpty(),
                     "Identical Plan replacement rebuilt the installed node");
             ctx.LogInfo("Behavior installations PASS unchanged Plan installation");
+            Require(int(source.GetCKContext().DestroyObject(marker)) == 0, "CK rejected marker deletion");
+            if (FindMarker(source) is null)
+                Require(plan.State != BML::Behavior::PlanState::Active,
+                        "Plan kept reporting an invalid installation");
+            step = 6;
+        } else if (step == 6 && plan.State == BML::Behavior::PlanState::Active) {
+            Require(marker !is null && !OwnsOriginalNode(ctx, marker),
+                    "Plan did not reinstall after its node was deleted");
+            ctx.LogInfo("Behavior installations PASS deleted Plan installation");
             @patchBase = BML::Behavior::Inspect(source);
             @patchBody = BML::Behavior::Edit();
             @patchNode = patchBody.Root().AddGraph("__BML_Installations_Patch");

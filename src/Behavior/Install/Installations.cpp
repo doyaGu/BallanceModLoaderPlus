@@ -2152,6 +2152,7 @@ void Installations::ObjectsToBeDeleted(const CK_ID *ids, int count) {
         // deferred to ProcessFrame.
         CloseAdmission(patch);
         patch.TargetDeleted = true;
+        m_Selections.InvalidateInstallation(patch.Id);
     }
     m_Edit.ObjectsToBeDeleted(ids, count);
 }
