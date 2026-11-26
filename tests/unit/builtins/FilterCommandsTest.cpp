@@ -2,7 +2,10 @@
 
 #include <memory>
 
+// GTest may include the system regex.h, which declares a different re_registers.
+#define re_registers OnigRegisters
 #include <oniguruma.h>
+#undef re_registers
 
 #include "Console/Shell/FilterCommands.h"
 #include "Console/Shell/ShellBuiltins.h"

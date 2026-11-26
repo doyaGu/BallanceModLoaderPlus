@@ -17,6 +17,7 @@ set_target_properties(BML_Sha256 BML_P256 PROPERTIES
 # Oniguruma
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
 add_subdirectory(oniguruma EXCLUDE_FROM_ALL)
+set_target_properties(onig PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # utf8.h
 add_library(utf8 INTERFACE)
