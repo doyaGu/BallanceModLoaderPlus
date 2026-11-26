@@ -128,22 +128,24 @@ TEST(BehaviorSelection, SingleTargetPlanWithoutTargetsIsUnsatisfiedNotFailed) {
     EXPECT_TRUE(plan.Contains(Target(2)));
 }
 
-TEST(BehaviorSelection, RollsBackNewInstallationsAndKeepsTheCanonicalPlan) {
+TEST(BehaviorSelection, KeepsSuccessfulTargetsAndRetriesOnlyTheMissingInstance) {
     Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     world.FailInstall.insert(2);
     const Status status = plan.Reconcile({Target(1), Target(2)}, 1, world);
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::CreateFailed);
-    EXPECT_EQ(plan.State(), PlanState::Unsatisfied);
-    EXPECT_EQ(plan.Size(), 0u);
-    EXPECT_TRUE(world.Live.empty());
+    EXPECT_EQ(plan.State(), PlanState::Partial);
+    EXPECT_EQ(plan.Size(), 1u);
+    ASSERT_EQ(world.Live.size(), 1u);
+    const auto first = world.Live.begin()->first;
     EXPECT_EQ(plan.LastStatus().Code, Error::CreateFailed);
     EXPECT_EQ(plan.ApplyFailure().Code, Error::CreateFailed);
     EXPECT_TRUE(plan.RestoreFailure());
 
     world.FailInstall.clear();
     ASSERT_TRUE(plan.Reconcile({Target(1), Target(2)}, 1, world));
+    EXPECT_TRUE(world.Live.contains(first));
     EXPECT_EQ(plan.State(), PlanState::Active);
     EXPECT_TRUE(plan.LastStatus());
     EXPECT_TRUE(plan.ApplyFailure());
@@ -199,23 +201,17 @@ TEST(BehaviorSelection, ClosesEveryIndependentInstallationWhenOneNeedsRepair) {
     EXPECT_EQ(world.Live.size(), 1u);
 }
 
-TEST(BehaviorSelection, KeepsOnlyRollbackConflictsAfterAnInstallFailure) {
+TEST(BehaviorSelection, ContinuesPastAFailedTargetInTheSamePass) {
     Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
-    world.FailInstall.insert(3);
-    world.FailClose.insert(1);
-
-    const Status status = plan.Reconcile(
-        {Target(1), Target(2), Target(3)}, 1, world);
-    EXPECT_FALSE(status);
-    EXPECT_EQ(status.Code, Error::RevertConflict);
-    EXPECT_EQ(plan.State(), PlanState::Conflicted);
-    EXPECT_EQ(plan.Size(), 1u);
-    EXPECT_EQ(world.Live.size(), 1u);
+    world.FailInstall.insert(2);
+    ASSERT_FALSE(plan.Reconcile({Target(1), Target(2), Target(3)}, 1, world));
+    EXPECT_EQ(plan.State(), PlanState::Partial);
     EXPECT_TRUE(plan.Contains(Target(1)));
-    EXPECT_EQ(plan.LastStatus().Code, Error::RevertConflict);
+    EXPECT_TRUE(plan.Contains(Target(3)));
+    EXPECT_FALSE(plan.Contains(Target(2)));
     EXPECT_EQ(plan.ApplyFailure().Code, Error::CreateFailed);
-    EXPECT_EQ(plan.RestoreFailure().Code, Error::RevertConflict);
+    EXPECT_TRUE(plan.RestoreFailure());
 }
 
 TEST(BehaviorSelection, RetirementIsIdempotentAndRejectsNewTargets) {

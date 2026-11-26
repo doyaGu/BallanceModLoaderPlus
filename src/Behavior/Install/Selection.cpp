@@ -200,7 +200,7 @@ Status Selection::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
         return Settled();
     }
 
-    std::vector<ObjectRef> added;
+    Status firstFailure;
     for (const ObjectRef &target : targets) {
         if (m_Installed.contains(target))
             continue;
@@ -210,32 +210,16 @@ Status Selection::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
             if (status && installation == 0)
                 status = Failure(Error::InvalidState,
                                   "A Behavior installation has no identity.");
-            (void) Applied(status);
-            Status rollbackFailure;
-            for (auto item = added.rbegin(); item != added.rend(); ++item) {
-                const auto installed = m_Installed.find(*item);
-                if (installed == m_Installed.end())
-                    continue;
-                Status closed = world.Close(installed->second.Id);
-                if (!closed) {
-                    if (rollbackFailure)
-                        rollbackFailure = std::move(closed);
-                    continue;
-                }
-                m_Installed.erase(installed);
-                Touch();
-            }
-            if (!rollbackFailure) {
-                m_State = PlanState::Conflicted;
-                return Restored(std::move(rollbackFailure));
-            }
-            m_State = m_Installed.empty()
-                ? PlanState::Unsatisfied : PlanState::Partial;
-            return status;
+            if (firstFailure)
+                firstFailure = std::move(status);
+            continue;
         }
         m_Installed.emplace(target, Installed{installation});
         Touch();
-        added.push_back(target);
+    }
+    if (!firstFailure) {
+        m_State = m_Installed.empty() ? PlanState::Unsatisfied : PlanState::Partial;
+        return Applied(std::move(firstFailure));
     }
 
     m_State = Size() == m_Installed.size()
