@@ -26,8 +26,10 @@ Ballanced baseline uses SDL 3.4.20.
 
 Scripts are enabled by default. `BML_BUILD_SCRIPT_RUNTIME=ON` fetches the pinned
 CKAngelScript SDL revision and builds it with AngelScript 2.39.0 against the
-same engine targets. Use `-DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript` to test a
-local checkout. Use a fresh build directory to pick up the pin if an earlier
+same engine targets. Linux applies the checked-in portability patch to the
+downloaded revision. For a local checkout, use
+`-DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript` and supply a version that builds on
+the target platform. Use a fresh build directory to pick up the pin if an earlier
 configuration cached the sibling checkout. With `BML_BUILD_SCRIPT_RUNTIME=OFF`,
 point `CKANGELSCRIPT_ROOT` at the SDK for the plugin installed in Player. Set
 `BML_ENABLE_ANGELSCRIPT=OFF` in a separate build directory for a script-free build.

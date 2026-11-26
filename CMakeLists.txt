@@ -104,11 +104,20 @@ if (BML_ENABLE_ANGELSCRIPT)
                 add_subdirectory("${CKANGELSCRIPT_ROOT}" "script-runtime" EXCLUDE_FROM_ALL)
             else()
                 include(FetchContent)
+                set(ckas_patch)
+                if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+                    find_package(Git REQUIRED)
+                    set(ckas_patch PATCH_COMMAND "${CMAKE_COMMAND}"
+                        "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+                        "-DPATCH_FILE=${PROJECT_SOURCE_DIR}/cmake/patches/CKAngelScriptLinux.patch"
+                        -P "${PROJECT_SOURCE_DIR}/cmake/ApplySourcePatch.cmake")
+                endif()
                 FetchContent_Declare(ckangelscript
                     GIT_REPOSITORY https://github.com/doyaGu/CKAngelScript.git
                     # sdl, with AngelScript 2.39.0 and the ARM64 call fixes.
                     GIT_TAG f7e9113e81693a61a95a1de871d4a2b9216e2cc0
-                    GIT_SUBMODULES deps/fmt)
+                    GIT_SUBMODULES deps/fmt
+                    ${ckas_patch})
                 FetchContent_MakeAvailable(ckangelscript)
                 set(CKANGELSCRIPT_ROOT "${ckangelscript_SOURCE_DIR}")
             endif()

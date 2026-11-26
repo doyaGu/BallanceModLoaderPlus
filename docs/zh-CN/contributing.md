@@ -23,8 +23,8 @@ CMake 安装包，也可以用 `CK2_DIR`、`VxMath_DIR`、`SDL3_DIR` 单独指�
 基线使用 SDL 3.4.20。
 
 默认启用脚本。`BML_BUILD_SCRIPT_RUNTIME=ON` 会获取固定的 CKAngelScript SDL 提交，
-使用 AngelScript 2.39.0 和同一套引擎目标构建插件。用
-`-DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript` 指定本地源码进行联调。若旧配置缓存了
+使用 AngelScript 2.39.0 和同一套引擎目标构建插件。Linux 构建会给下载的源码应用仓库内的兼容补丁。
+用 `-DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript` 联调时，请提供能在目标平台构建的本地源码。若旧配置缓存了
 位于同级目录的源码路径，请用新构建目录以采用固定版本。设置
 `BML_BUILD_SCRIPT_RUNTIME=OFF` 时，`CKANGELSCRIPT_ROOT` 应指向 Player 中插件对应的
 SDK。构建无脚本版本时，在独立构建目录中设置 `BML_ENABLE_ANGELSCRIPT=OFF`。
