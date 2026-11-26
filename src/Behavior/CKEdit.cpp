@@ -55,6 +55,14 @@ Status Patch::Diagnostic() const {
     return m_Journal->LastStatus;
 }
 
+Status Patch::ApplyFailure() const {
+    return m_Journal ? m_Journal->ApplyFailure : Status{};
+}
+
+Status Patch::RestoreFailure() const {
+    return m_Journal ? m_Journal->RestoreFailure : Status{};
+}
+
 std::vector<RevertConflict> Patch::Conflicts() const {
     if (!m_Journal)
         return {};
@@ -503,13 +511,15 @@ Status CKEdit::Apply(const Ops &edit, Patch &out,
 
     status = ApplyNow(edit, patch);
     patch->LastStatus = status;
+    if (!status)
+        patch->ApplyFailure = status;
     patch->State = status
         ? PatchState::Active
-        : status.Code == Error::RevertConflict
+        : !patch->RestoreFailure || status.Code == Error::RevertConflict
             ? PatchState::Conflicted : PatchState::Failed;
-    if (!status && status.Code != Error::RevertConflict)
+    if (patch->State == PatchState::Failed)
         patch->Callbacks.clear();
-    if (status || status.Code == Error::RevertConflict)
+    if (status || patch->State == PatchState::Conflicted)
         out.m_Journal = std::move(patch);
     return status;
 }
@@ -528,6 +538,7 @@ Status CKEdit::CloseNow(const std::shared_ptr<Patch::Journal> &patch) {
         status = Transaction(*this, *patch).Revert();
     }
     patch->LastStatus = status;
+    patch->RestoreFailure = status;
     patch->State = status.Code == Error::RevertConflict
         ? PatchState::Conflicted : PatchState::Closed;
     if (status.Code != Error::RevertConflict)
@@ -733,13 +744,15 @@ void CKEdit::ProcessFrame() {
             Status status = ApplyNow(request.Candidate, patch);
             bool close = false;
             patch->LastStatus = status;
+            if (!status)
+                patch->ApplyFailure = status;
             close = patch->State == PatchState::Closing;
             if (!close) {
                 patch->State = status
                     ? PatchState::Active
-                    : status.Code == Error::RevertConflict
+                    : !patch->RestoreFailure || status.Code == Error::RevertConflict
                         ? PatchState::Conflicted : PatchState::Failed;
-                if (!status && status.Code != Error::RevertConflict)
+                if (patch->State == PatchState::Failed)
                     patch->Callbacks.clear();
             }
             if (close) {

@@ -66,6 +66,8 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] PatchState State() const noexcept;
     [[nodiscard]] Status Diagnostic() const;
+    [[nodiscard]] Status ApplyFailure() const;
+    [[nodiscard]] Status RestoreFailure() const;
     [[nodiscard]] std::vector<RevertConflict> Conflicts() const;
 
 private:

@@ -139,3 +139,14 @@ add_bml_test(BehaviorTextTest
         BehaviorTextTest.cpp
         ${BML_SOURCE_DIR}/Api/Behavior/Text.cpp
 )
+
+# Exercise the production graph adapter against a real CK context. The test
+# supplies the EDITED callback so it can change graph ownership during Apply.
+get_target_property(behavior_sources BML SOURCES)
+list(FILTER behavior_sources INCLUDE REGEX "^Behavior/.*[.]cpp$")
+list(FILTER behavior_sources EXCLUDE REGEX "/(CKPrototypeSource|Message|ScriptHelper|Sessions|Script|Text2DView|PhysicsForce)[.]cpp$")
+list(TRANSFORM behavior_sources PREPEND "${BML_SOURCE_DIR}/")
+add_bml_test(BehaviorTransactionFailureTest
+        SOURCES BehaviorTransactionFailureTest.cpp ${behavior_sources}
+        DEPENDENCIES CK2 VxMath
+)

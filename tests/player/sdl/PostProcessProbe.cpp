@@ -321,6 +321,22 @@ private:
         Require(batch.Close().Take() == CloseState::Closed, "batch ownership transfer");
         auto target = BML::Engine::BorrowObject<CKBehavior>(m_Context, first).Value();
         Require(target->GetCKContext()->DestroyObject(target) == CK_OK, "delete first target");
+
+        Edit parent;
+        parent.Root().AddGraph("__BML_Dependency");
+        auto owner = session.Apply("dependency owner", EditOwnership::Submission,
+            On(session.Inspect(m_SurvivingGraph).Take(), parent)).Take();
+        Edit child;
+        child.Root().Require("__BML_Dependency").Graph().AddGraph("__BML_Dependent");
+        auto dependent = session.Apply("dependent", EditOwnership::Submission,
+            On(session.Inspect(m_SurvivingGraph).Take(), child)).Take();
+        Require(!owner.Close(), "dependent edit did not block close");
+        const auto conflict = owner.Info().Take();
+        Require(conflict.RestoreFailure.Error == Error::RevertConflict &&
+                conflict.ApplyFailure.Error == Error::None, "close conflict diagnostic lost");
+        Require(dependent.Close().Take() == CloseState::Closed, "release dependent edit");
+        Require(owner.Close().Take() == CloseState::Closed, "retry close after releasing dependency");
+        (void)m_Context.LogInfo("Behavior installations PASS close conflict query and retry");
     }
 
     bool CheckScriptRuntime() {

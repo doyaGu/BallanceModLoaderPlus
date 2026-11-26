@@ -62,7 +62,7 @@ public:
     public:
         virtual ~World() = default;
         virtual Status Install(const PatchKey &patch, const ObjectRef &target,
-                               Epoch epoch, Installation &out) = 0;
+                               Epoch epoch, Installation &out, Status &recovery) = 0;
         virtual Status Close(Installation installation) = 0;
     };
 

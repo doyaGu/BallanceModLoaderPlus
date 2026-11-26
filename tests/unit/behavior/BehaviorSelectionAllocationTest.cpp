@@ -32,7 +32,8 @@ public:
     Install(const BML::Behavior::Internal::PatchKey &,
             const BML::Behavior::Internal::ObjectRef &,
             BML::Behavior::Internal::Epoch,
-            BML::Behavior::Internal::Installation &out) override {
+            BML::Behavior::Internal::Installation &out,
+            BML::Behavior::Internal::Status &) override {
         ++Installs;
         out = 1;
         return {};

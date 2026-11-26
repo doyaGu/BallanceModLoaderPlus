@@ -351,7 +351,7 @@ private:
     Status Apply(const SessionOwner &owner, std::string name,
                  std::vector<Target> targets, PatchId &out,
                  std::shared_ptr<const CallbackAdmission> parentAdmission,
-                 bool defines = false);
+                 bool defines = false, Status *recovery = nullptr);
     Status Install(PatchRecord &patch);
     Status InstallFrom(PatchRecord &patch,
                        const std::vector<Target> &definition,

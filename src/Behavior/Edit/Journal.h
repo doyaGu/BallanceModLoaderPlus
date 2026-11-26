@@ -293,6 +293,8 @@ struct Patch::Journal {
     CKEdit *Editor = nullptr;
     PatchState State = PatchState::Pending;
     Status LastStatus;
+    Status ApplyFailure;
+    Status RestoreFailure;
     bool Queued = false;
     bool Published = false;
     bool GraphObserved = false;

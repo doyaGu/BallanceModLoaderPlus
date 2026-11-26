@@ -201,21 +201,36 @@ Status Selection::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
     }
 
     Status firstFailure;
+    Status recoveryFailure;
     for (const ObjectRef &target : targets) {
         if (m_Installed.contains(target))
             continue;
         Installation installation = 0;
-        Status status = world.Install(m_Patch, target, epoch, installation);
+        Status recovery;
+        Status status = world.Install(m_Patch, target, epoch, installation, recovery);
         if (!status || installation == 0) {
             if (status && installation == 0)
                 status = Failure(Error::InvalidState,
                                   "A Behavior installation has no identity.");
             if (firstFailure)
                 firstFailure = std::move(status);
+            if (!recovery) {
+                if (recoveryFailure)
+                    recoveryFailure = std::move(recovery);
+                if (installation) {
+                    m_Installed.emplace(target, Installed{installation, true});
+                    Touch();
+                }
+            }
             continue;
         }
         m_Installed.emplace(target, Installed{installation});
         Touch();
+    }
+    if (!recoveryFailure) {
+        (void) Applied(std::move(firstFailure));
+        m_State = PlanState::Conflicted;
+        return Restored(std::move(recoveryFailure));
     }
     if (!firstFailure) {
         m_State = m_Installed.empty() ? PlanState::Unsatisfied : PlanState::Partial;

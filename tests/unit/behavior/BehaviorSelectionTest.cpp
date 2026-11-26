@@ -21,7 +21,7 @@ ObjectRef Target(std::uint32_t slot, std::uint32_t generation = 1) {
 class FakeWorld final : public Selection::World {
 public:
     Status Install(const PatchKey &, const ObjectRef &target, Epoch epoch,
-                   Installation &out) override {
+                   Installation &out, Status &) override {
         Calls.push_back("+" + std::to_string(target.Slot) + "@" +
                         std::to_string(epoch));
         if (FailInstall.contains(target.Slot))

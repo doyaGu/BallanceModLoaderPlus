@@ -166,7 +166,7 @@ public:
           m_Admission(std::move(admission)) {}
 
     Status Install(const PatchKey &, const ObjectRef &target, Epoch,
-                   Installation &out) override {
+                   Installation &out, Status &recovery) override {
         out = 0;
         if (!m_Owner || (m_Admission && !m_Admission->IsOpen()))
             return Failure(Error::InvalidState, "The Behavior Session is closed.");
@@ -181,9 +181,8 @@ public:
 
             PatchId patch = 0;
             Status status = m_Installations.Apply(
-                m_Owner, m_Patch.Name, std::move(targets), patch, m_Admission);
-            if (status)
-                out = static_cast<Installation>(patch);
+                m_Owner, m_Patch.Name, std::move(targets), patch, m_Admission, false, &recovery);
+            out = static_cast<Installation>(patch);
             return status;
         } catch (...) {
             return Failure(
@@ -744,7 +743,7 @@ Status Installations::Apply(const SessionOwner &owner, std::string name,
 Status Installations::Apply(
     const SessionOwner &owner, std::string name,
     std::vector<Target> targets, PatchId &out,
-    std::shared_ptr<const CallbackAdmission> parentAdmission, bool defines) {
+    std::shared_ptr<const CallbackAdmission> parentAdmission, bool defines, Status *recovery) {
     out = 0;
     Status status = Ready();
     if (!status)
@@ -816,7 +815,11 @@ Status Installations::Apply(
         return Failure(Error::CreateFailed,
                        "The Loader could not retain the Behavior Patch.");
     }
-    if (status)
+    if (recovery)
+        *recovery = m_Patches.at(id).RecoveryFailure;
+    // A Selection also owns the inverse of a failed installation. It keeps
+    // that id private until the remaining journal can close.
+    if (status || (recovery && !*recovery))
         out = id;
     return status;
 }
@@ -917,11 +920,8 @@ Status Installations::InstallFrom(PatchRecord &patch,
     if (patch.PrimaryFailure)
         patch.PrimaryFailure = failure;
     Status restored = Uninstall(patch, firstTarget);
-    if (!restored) {
-        patch.RecoveryFailure = restored;
-        if (restored.Code != Error::Busy)
-            return restored;
-    }
+    if (!restored && restored.Code != Error::Busy)
+        patch.RecoveryFailure = std::move(restored);
     return failure;
 }
 
@@ -979,6 +979,11 @@ Status Installations::PublishScope(const SessionOwner &owner,
 
     Patch value;
     status = m_Edit.Apply(resolved, value, out.Admission, out.Defines);
+    if (!status && value) {
+        out.RecoveryFailure = value.RestoreFailure();
+        if (!out.RecoveryFailure)
+            out.RestoreAt = targetIndex;
+    }
     if (!value)
         return status;
     if (value.State() == PatchState::Pending && !edit.NestedGraphs().empty()) {
@@ -1209,16 +1214,23 @@ Status Installations::Read(const SessionOwner &owner, PatchId id,
     out.State = State(*patch);
     out.LastStatus = PatchStatus(
         LastStatus(*patch), patch->Name, patch->Owner);
-    out.ApplyFailure = PatchStatus(
-        patch->PrimaryFailure, patch->Name, patch->Owner, patch->ApplyAt);
+    Status primary = patch->PrimaryFailure;
+    auto target = patch->ApplyAt;
     out.RestoreFailure = PatchStatus(
         RestoreFailure(*patch), patch->Name, patch->Owner, patch->RestoreAt);
     out.Conflicts.clear();
     for (const PatchRecord::Scope &scope : patch->Scopes) {
+        if (primary) {
+            primary = scope.Value.ApplyFailure();
+            if (!primary)
+                target = scope.Target;
+        }
         const std::vector<RevertConflict> conflicts = scope.Value.Conflicts();
         out.Conflicts.insert(out.Conflicts.end(), conflicts.begin(),
                              conflicts.end());
     }
+    out.ApplyFailure = PatchStatus(
+        std::move(primary), patch->Name, patch->Owner, target);
     return {};
 }
 
@@ -1283,7 +1295,7 @@ Status Installations::RestoreFailure(const PatchRecord &patch) const {
     for (const PatchRecord::Scope &scope : patch.Scopes) {
         if (scope.Value.State() != PatchState::Conflicted)
             continue;
-        Status current = scope.Value.Diagnostic();
+        Status current = scope.Value.RestoreFailure();
         if (!current)
             return current;
     }
@@ -2110,7 +2122,7 @@ Status Installations::ReadSubmission(const SessionOwner &owner, std::uintptr_t i
     if (!ready)
         return ready;
     const auto *submission = Owned(m_Submissions, id, owner);
-    if (!submission || submission->Closing)
+    if (!submission)
         return Failure(Error::OwnerInvalid, "The Behavior Submission is closed.");
     if (submission->Patch) {
         PatchInfo info;
@@ -2122,7 +2134,7 @@ Status Installations::ReadSubmission(const SessionOwner &owner, std::uintptr_t i
         else if (info.State == PatchState::Failed || info.State == PatchState::Conflicted ||
                  info.State == PatchState::Closed)
             out.State = SubmissionState::Failed;
-        out.ApplyFailure = info.ApplyFailure ? info.LastStatus : info.ApplyFailure;
+        out.ApplyFailure = std::move(info.ApplyFailure);
         out.RestoreFailure = std::move(info.RestoreFailure);
     } else {
         PlanInfo info;
@@ -2133,7 +2145,7 @@ Status Installations::ReadSubmission(const SessionOwner &owner, std::uintptr_t i
             out.State = SubmissionState::Failed;
         else if (info.State == PlanState::Active || info.State == PlanState::Partial)
             out.State = SubmissionState::Applied;
-        out.ApplyFailure = info.ApplyFailure ? info.LastStatus : info.ApplyFailure;
+        out.ApplyFailure = std::move(info.ApplyFailure);
         out.RestoreFailure = std::move(info.RestoreFailure);
     }
     return {};
