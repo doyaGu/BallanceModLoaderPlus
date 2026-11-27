@@ -307,6 +307,7 @@ public:
         friend class Edit;
         friend class Patch;
         friend class Plan::Instance;
+        friend class Submission;
         friend class Nodes;
     };
 
@@ -605,16 +606,26 @@ enum class EditOwnership : std::uint32_t {
     Submission = BML_BEHAVIOR_EDIT_OWNED_BY_SUBMISSION,
 };
 
+struct ApplyOptions {
+    EditOwnership Ownership = EditOwnership::Submission;
+    bool Enabled = true;
+};
+
 enum class SubmissionState : std::uint32_t {
     Pending = BML_BEHAVIOR_SUBMISSION_PENDING,
     Applied = BML_BEHAVIOR_SUBMISSION_APPLIED,
     Failed = BML_BEHAVIOR_SUBMISSION_FAILED,
+    Disabled = BML_BEHAVIOR_SUBMISSION_DISABLED,
+    Partial = BML_BEHAVIOR_SUBMISSION_PARTIAL,
+    Closing = BML_BEHAVIOR_SUBMISSION_CLOSING,
+    Conflicted = BML_BEHAVIOR_SUBMISSION_CONFLICTED,
 };
 
 struct SubmissionInfo {
     SubmissionState State = SubmissionState::Pending;
     Status ApplyFailure;
     Status RestoreFailure;
+    bool RequestedEnabled = true;
 };
 
 class Submission {
@@ -625,6 +636,7 @@ public:
         Installation() = default;
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] ObjectRef Graph() const noexcept { return m_Receipt.Graph; }
+        [[nodiscard]] Result<ObjectRef> Resolve(const Edit::Node &node) const;
         [[nodiscard]] Result<ObservedValue> Read(const Edit::Port &port) const;
         [[nodiscard]] Result<void> Set(const Edit::Port &port, const Value &value) const;
 
@@ -642,6 +654,10 @@ public:
     Submission &operator=(Submission &&) noexcept = default;
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] Result<SubmissionInfo> Info() const;
+    [[nodiscard]] Result<void> SetEnabled(bool enabled);
+    template <class First, class... More>
+    [[nodiscard]] Result<void> Replace(First &&first, More &&...more);
+    [[nodiscard]] Result<std::vector<Installation>> Installations() const;
     [[nodiscard]] Result<Installation> Find(ObjectRef graph = {}) const;
     [[nodiscard]] Result<Installation> Find(ObjectRef graph, const Edit::Port &port) const;
     [[nodiscard]] Result<void> SetInput(const Edit::Port &port, const Value &value) const;

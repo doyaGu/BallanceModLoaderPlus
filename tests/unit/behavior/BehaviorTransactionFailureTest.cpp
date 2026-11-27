@@ -107,7 +107,7 @@ TEST_F(BehaviorTransactionFailure, DeferredSubmissionSeparatesApplyAndInverseErr
     edits.ProcessFrame();
     Installations::SubmissionInfo info;
     ASSERT_TRUE(edits.ReadSubmission(owner, submission, info));
-    EXPECT_EQ(info.State, Installations::SubmissionState::Failed);
+    EXPECT_EQ(info.State, Installations::SubmissionState::Conflicted);
     EXPECT_EQ(info.ApplyFailure.Code, Error::CallbackFailed);
     EXPECT_EQ(info.ApplyFailure.CkError, CKERR_INVALIDPARAMETER);
     EXPECT_EQ(info.ApplyFailure.Details.Stage, Phase::Edit);
@@ -202,5 +202,55 @@ TEST_F(BehaviorTransactionFailure, RegistryAllocationFailureLeavesGraphAndPatchK
     EXPECT_EQ(graph->GetSubBehaviorCount(), 1);
     EXPECT_TRUE(editor.Close(patch));
     EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
+}
+
+TEST_F(BehaviorTransactionFailure, SubmissionRetriesOnlyMissingScriptAndRestoresFailedReplacement) {
+    Runtime runtime(context, Issue);
+    auto source = MakeCKGraphSource(context, runtime, Issue);
+    Installations edits(context, runtime, nullptr, *source,
+        [&](const ObjectRef &ref) { return context->GetObject(ref.Slot); }, Issue);
+    const SessionOwner owner{"mod", 1};
+    auto *energy = MakeGraph("energy");
+    ASSERT_NE(energy, nullptr);
+    ASSERT_TRUE(edits.LoadScript("Gameplay_Ingame", Issue(graph)));
+    ASSERT_TRUE(edits.LoadScript("Gameplay_Energy", Issue(energy)));
+    auto first = std::make_shared<Program>();
+    first->AddGraph("ingame marker");
+    auto second = std::make_shared<Program>();
+    second->RequireOne(NodePattern("prerequisite"));
+    second->AddGraph("energy marker");
+    const Installations::Rule ingame{{"Gameplay_Ingame"}, 1, first};
+    const Installations::Rule energyRule{{"Gameplay_Energy"}, 2, second};
+    std::uintptr_t submission = 0;
+    ASSERT_TRUE(edits.SubmitEdit(owner, "overclock retry", false, {}, {ingame, energyRule}, submission));
+    EXPECT_FALSE(edits.ProcessFrame());
+    Installations::SubmissionInfo info;
+    ASSERT_TRUE(edits.ReadSubmission(owner, submission, info));
+    EXPECT_EQ(info.State, Installations::SubmissionState::Partial);
+    EXPECT_NE(info.ApplyFailure.Code, Error::None);
+    Installations::InstalledEdit before;
+    ASSERT_TRUE(edits.FindInstallation(owner, submission, Issue(graph), 1, before));
+    ASSERT_EQ(energy->GetSubBehaviorCount(), 0);
+
+    auto *prerequisite = MakeGraph("prerequisite");
+    ASSERT_NE(prerequisite, nullptr);
+    ASSERT_EQ(energy->AddSubBehavior(prerequisite), CK_OK);
+    ASSERT_TRUE(edits.SetSubmissionEnabled(owner, submission, true));
+    ASSERT_TRUE(edits.ProcessFrame());
+    ASSERT_EQ(energy->GetSubBehaviorCount(), 2);
+    auto invalid = std::make_shared<Program>();
+    invalid->RequireOne(NodePattern("missing"));
+    const Installations::Rule replacement{{"Gameplay_Energy"}, 4, invalid};
+    EXPECT_FALSE(edits.ReplaceSubmission(owner, submission, {},
+        {{{"Gameplay_Ingame"}, 3, first}, replacement}));
+    ASSERT_TRUE(edits.ReadSubmission(owner, submission, info));
+    EXPECT_NE(info.ApplyFailure.Code, Error::None);
+    EXPECT_EQ(info.RestoreFailure.Code, Error::None);
+    Installations::InstalledEdit after;
+    ASSERT_TRUE(edits.FindInstallation(owner, submission, Issue(graph), 1, after));
+    EXPECT_EQ(before.Value.Id, after.Value.Id);
+    EXPECT_EQ(energy->GetSubBehaviorCount(), 2);
+    EXPECT_TRUE(edits.CloseSubmission(owner, submission));
+    EXPECT_EQ(energy->GetSubBehaviorCount(), 1);
 }
 } // namespace

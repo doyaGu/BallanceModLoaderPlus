@@ -22,7 +22,7 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 2u
+#define BML_BEHAVIOR_INTERFACE_MINOR 3u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
 #define BML_BEHAVIOR_VALUE_ALIGNMENT 4u
 
@@ -1270,6 +1270,8 @@ typedef enum BML_BehaviorEditOwnership {
 
 // Exactly one target array is supplied. Graphs form a single exact batch;
 // Script rules apply once per matching graph instance.
+#define BML_BEHAVIOR_SUBMIT_DISABLED 1u
+
 typedef struct BML_BehaviorSubmissionSpec {
     uint32_t StructSize;
     uint32_t Ownership;
@@ -1277,13 +1279,17 @@ typedef struct BML_BehaviorSubmissionSpec {
     const BML_BehaviorGraphEdit *Graphs;
     const BML_BehaviorScriptEdit *Scripts;
     uint32_t Count;
-    uint32_t Reserved;
+    uint32_t Reserved; // 1.3: may contain BML_BEHAVIOR_SUBMIT_DISABLED for SubmitEdit.
 } BML_BehaviorSubmissionSpec;
 
 typedef enum BML_BehaviorSubmissionState {
     BML_BEHAVIOR_SUBMISSION_PENDING = 1,
     BML_BEHAVIOR_SUBMISSION_APPLIED = 2,
-    BML_BEHAVIOR_SUBMISSION_FAILED = 3
+    BML_BEHAVIOR_SUBMISSION_FAILED = 3,
+    BML_BEHAVIOR_SUBMISSION_DISABLED = 4,
+    BML_BEHAVIOR_SUBMISSION_PARTIAL = 5,
+    BML_BEHAVIOR_SUBMISSION_CLOSING = 6,
+    BML_BEHAVIOR_SUBMISSION_CONFLICTED = 7
 } BML_BehaviorSubmissionState;
 
 typedef struct BML_BehaviorSubmissionInfo {
@@ -1291,7 +1297,10 @@ typedef struct BML_BehaviorSubmissionInfo {
     uint32_t State;
     BML_BehaviorStatus ApplyFailure;
     BML_BehaviorStatus RestoreFailure;
+    uint32_t RequestedEnabled;
 } BML_BehaviorSubmissionInfo;
+
+#define BML_BEHAVIOR_SUBMISSION_INFO_1_2_SIZE offsetof(BML_BehaviorSubmissionInfo, RequestedEnabled)
 
 // Initialized by FindInstallation. Every access validates this receipt
 // against the submission, graph identity, and installation generation.
@@ -1737,6 +1746,27 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorSession session, BML_BehaviorSubmission submission,
         const BML_BehaviorPortRef *ports, uint32_t count,
         const BML_BehaviorValue *value, BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *SetSubmissionEnabled)(
+        BML_BehaviorSession session, BML_BehaviorSubmission submission,
+        uint32_t enabled, BML_BehaviorStatus *status);
+    // Replacement uses the same target kind and preserves name and ownership.
+    // Only Graphs/Scripts and Count are used. Other fields must be zero.
+    int (BML_BEHAVIOR_CALL *ReplaceSubmission)(
+        BML_BehaviorSession session, BML_BehaviorSubmission submission,
+        const BML_BehaviorSubmissionSpec *definition, BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ListInstallations)(
+        BML_BehaviorSession session, BML_BehaviorSubmission submission,
+        BML_BehaviorInstallation *installations, uint32_t capacity,
+        uint32_t *count, BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ResolveInstallationNode)(
+        BML_BehaviorSession session, BML_BehaviorSubmission submission,
+        const BML_BehaviorInstallation *installation,
+        const BML_BehaviorNodeRef *node, BML_ObjectRef *outNode, BML_BehaviorStatus *status);
+    // Bindings in the requested definition, including while it is disabled.
+    int (BML_BEHAVIOR_CALL *ReadSubmissionBindings)(
+        BML_BehaviorSession session, BML_BehaviorSubmission submission,
+        uint64_t *bindings, uint32_t capacity, uint32_t *count,
+        BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 #define BML_BEHAVIOR_HAS_1_1(iface) \
