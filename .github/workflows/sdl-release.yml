@@ -26,7 +26,7 @@ jobs:
         id: paths
         run: |
           : "${BML_RELEASE_PLAYER:?Set BML_RELEASE_PLAYER on the runner}"
-          : "${BML_RELEASE_CMAKE_PREFIX_PATH:?Set the matching NeMo2 and SDL SDK prefixes}"
+          : "${BML_RELEASE_CMAKE_PREFIX_PATH:?Set the SDK prefixes for the NeMo2 sdl revision pinned by the Player and its matching SDL3}"
           test -d "$BML_RELEASE_PLAYER"
           if [[ "$RUNNER_OS" == Windows ]]; then
             root="$(pwd -W)"

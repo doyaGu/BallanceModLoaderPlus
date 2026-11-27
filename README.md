@@ -47,8 +47,8 @@ runtime ABI. [In-tree Mods](mods/README.md) demonstrate the current SDK.
 
 ## Build the Loader
 
-Install CMake 3.25+, a C++20 compiler and Python 3.10+. Use NeMo2's exported
-CK2/VxMath packages and the SDL3 development package matching your Player.
+Install CMake 3.25+, a C++20 compiler and Python 3.10+. Use the CK2/VxMath packages from the [NeMo2 `sdl` branch](https://github.com/doyaGu/NeMo2/tree/sdl)
+at the commit pinned by your Ballanced Player, and the matching SDL3 development package.
 Initialize the submodules and use a fresh build directory:
 
 ```sh

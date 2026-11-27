@@ -41,8 +41,8 @@ ZIP；Linux/macOS 的模块也使用 `.bmodp` 扩展名。
 
 ## 构建 Loader
 
-准备 CMake 3.25+、C++20 编译器和 Python 3.10+。使用与 Player 匹配的 NeMo2
-CK2/VxMath 安装包和 SDL3 开发包。初始化子模块后使用新的构建目录：
+准备 CMake 3.25+、C++20 编译器和 Python 3.10+。使用目标 Ballanced Player 锁定的
+[NeMo2 `sdl` 分支](https://github.com/doyaGu/NeMo2/tree/sdl)提交构建的 CK2/VxMath 安装包，以及配套的 SDL3 开发包。初始化子模块后使用新的构建目录：
 
 ```sh
 git submodule update --init --recursive
