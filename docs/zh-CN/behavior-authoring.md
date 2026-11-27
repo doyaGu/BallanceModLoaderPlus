@@ -118,7 +118,18 @@ if (result) {
 }
 ```
 
-AngelScript 使用 `edit.Apply(name, graph, ownership)` 或 `edit.Apply(name, script, ownership, each)`。C 客户端通过 `BML_BEHAVIOR_HAS_1_1` 检查后调用 `SubmitEdit`。1.2 新增 `SetSubmissionInputs`，可原子更新同一 Local 在多个目标上的绑定。已有的 1.0 Patch 和 Plan 接口继续可用。
+由提交所有的编辑可以通过 `ApplyOptions{.Enabled = false}` 创建为禁用状态。
+`Submission::SetEnabled(false)` 在安全点恢复当前安装，同时保留定义和输入。
+再次启用会使用同一句柄重新匹配。已启用的 Script 提交可以再次请求启用来重试失败实例，
+健康的安装继续生效。安全点前的关开请求由最后一次请求决定。
+`Replace` 在同一提交上换版，保留未变化的安装前缀。新定义失败时恢复旧定义及其符号和输入。
+`Info()` 同时给出请求的启用状态、实际安装状态以及应用和恢复错误。
+`Installations()` 枚举当前安装，`Installation::Resolve` 将其符号节点解析为对象引用。
+
+AngelScript 使用 `edit.Apply(name, graph, ownership)` 或 `edit.Apply(name, script, ownership, each)`，
+也可选用带显式 `enabled` 参数的重载。C 客户端通过 `BML_BEHAVIOR_HAS_1_1` 检查后调用
+`SubmitEdit`。1.2 提供跨目标绑定的原子输入更新，1.3 增加启停、换版及当前安装查询。
+使用追加的函数前请检查 `BML_IFACE_HAS`。已有的 Patch 和 Plan 入口使用同一套提交与恢复实现。
 
 ## 2. 打开 Session
 

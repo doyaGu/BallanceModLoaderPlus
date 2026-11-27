@@ -3352,9 +3352,13 @@ public:
                              const std::string &script, bool each);
     ScriptBehaviorSubmission *ApplyGraph(const std::string &name,
                                          ScriptBehaviorGraph *graph, int ownership) const;
+    ScriptBehaviorSubmission *ApplyGraphWithState(const std::string &name,
+        ScriptBehaviorGraph *graph, int ownership, bool enabled) const;
     ScriptBehaviorSubmission *ApplyScripts(const std::string &name,
                                            const std::string &script, int ownership,
                                            bool each) const;
+    ScriptBehaviorSubmission *ApplyScriptsWithState(const std::string &name,
+        const std::string &script, int ownership, bool each, bool enabled) const;
     ScriptBehaviorScript *CreateScript(CKBeObject *owner,
                                        const std::string &name,
                                        int priority);
@@ -3377,6 +3381,18 @@ public:
 
     bool IsValid() const noexcept {
         return m_State && m_State->Active && static_cast<bool>(m_Installation);
+    }
+    ScriptBehaviorObjectRef *Resolve(ScriptBehaviorEditNode *node) const {
+        if (!IsValid() || !node || !node->IsValid()) {
+            ScriptStringInterop::RaiseActiveException(
+                "Resolve requires a live Behavior Installation and EditNode.");
+            return nullptr;
+        }
+        auto result = m_Installation.Resolve(node->Value());
+        if (!Accept("Resolve installed Behavior Node", result))
+            return nullptr;
+        return NewScriptObject<ScriptBehaviorObjectRef>(
+            "resolved Behavior ObjectRef", m_State, result.Value());
     }
     ScriptBehaviorObservedValue *Read(ScriptBehaviorEditPort *port) const {
         if (!CheckPort(port))
@@ -3417,6 +3433,67 @@ public:
     int State() const {
         const auto info = Info();
         return info ? static_cast<int>(info->State) : -1;
+    }
+    bool RequestedEnabled() const {
+        const auto info = Info();
+        return info && info->RequestedEnabled;
+    }
+    bool SetEnabled(bool enabled) {
+        if (!IsValid()) {
+            ScriptStringInterop::RaiseActiveException("SetEnabled requires a live Behavior Submission.");
+            return false;
+        }
+        return Accept("Set Behavior Submission enabled", m_Submission->Value->SetEnabled(enabled));
+    }
+    bool ReplaceGraph(ScriptBehaviorGraph *graph, ScriptBehaviorEdit *edit) {
+        auto *target = graph ? graph->Value() : nullptr;
+        auto *body = edit ? edit->Value() : nullptr;
+        if (!IsValid() || !target || !body) {
+            ScriptStringInterop::RaiseActiveException("Replace requires a live Submission, Graph and Edit.");
+            return false;
+        }
+        return Accept("Replace Behavior Submission",
+                      m_Submission->Value->Replace(Authoring::On(*target, *body)));
+    }
+    bool ReplaceScripts(const std::string &script, ScriptBehaviorEdit *edit, bool each) {
+        auto *body = edit ? edit->Value() : nullptr;
+        if (!IsValid() || !body) {
+            ScriptStringInterop::RaiseActiveException("Replace requires a live Submission and Edit.");
+            return false;
+        }
+        const auto target = each ? Authoring::Scripts::Each(script) : Authoring::Scripts::One(script);
+        return Accept("Replace Behavior Submission",
+                      m_Submission->Value->Replace(Authoring::On(target, *body)));
+    }
+    bool ReadInstallations(void *array) const {
+        if (!IsValid() || !array) {
+            ScriptStringInterop::RaiseActiveException("ReadInstallations requires a live Submission and output array.");
+            return false;
+        }
+        auto entries = m_Submission->Value->Installations();
+        if (!Accept("List Behavior installations", entries))
+            return false;
+        const auto &api = m_State->Owner->GetRuntimeForFacade().GetApi();
+        if (!api.ArrayResize || !api.ArraySetElementValue ||
+            api.ArrayResize(array, static_cast<CKDWORD>(entries->size())) != CKAS_OK) {
+            ScriptStringInterop::RaiseActiveException("Could not create the Behavior installation list.");
+            return false;
+        }
+        CKDWORD index = 0;
+        for (auto &entry : *entries) {
+            auto *item = NewScriptObject<ScriptBehaviorInstallation>(
+                "Behavior Installation", m_State, std::move(entry));
+            const auto status = item ? api.ArraySetElementValue(array, index, &item) : CKAS_INVALIDARGUMENT;
+            if (item)
+                item->Release();
+            if (status != CKAS_OK) {
+                (void) api.ArrayResize(array, 0);
+                ScriptStringInterop::RaiseActiveException("Could not write the Behavior installation list.");
+                return false;
+            }
+            ++index;
+        }
+        return true;
     }
     std::string ApplyError() const {
         const auto info = Info();
@@ -3470,6 +3547,11 @@ private:
 
 ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyGraph(
     const std::string &name, ScriptBehaviorGraph *graph, int ownership) const {
+    return ApplyGraphWithState(name, graph, ownership, true);
+}
+
+ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyGraphWithState(
+    const std::string &name, ScriptBehaviorGraph *graph, int ownership, bool enabled) const {
     if (!IsValid() || !graph || !graph->Value()) {
         ScriptStringInterop::RaiseActiveException("Apply requires a live Behavior Edit and Graph.");
         return nullptr;
@@ -3477,12 +3559,18 @@ ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyGraph(
     auto *session = m_State->GetSession();
     if (!session)
         return nullptr;
-    return KeepSubmission(session->Apply(name, static_cast<Authoring::EditOwnership>(ownership),
+    return KeepSubmission(session->Apply(name,
+                                        Authoring::ApplyOptions{static_cast<Authoring::EditOwnership>(ownership), enabled},
                                         Authoring::On(*graph->Value(), *Value())));
 }
 
 ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyScripts(
     const std::string &name, const std::string &script, int ownership, bool each) const {
+    return ApplyScriptsWithState(name, script, ownership, each, true);
+}
+
+ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyScriptsWithState(
+    const std::string &name, const std::string &script, int ownership, bool each, bool enabled) const {
     if (!IsValid()) {
         ScriptStringInterop::RaiseActiveException("Apply requires a live Behavior Edit.");
         return nullptr;
@@ -3491,7 +3579,8 @@ ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyScripts(
     if (!session)
         return nullptr;
     const auto target = each ? Authoring::Scripts::Each(script) : Authoring::Scripts::One(script);
-    return KeepSubmission(session->Apply(name, static_cast<Authoring::EditOwnership>(ownership),
+    return KeepSubmission(session->Apply(name,
+                                        Authoring::ApplyOptions{static_cast<Authoring::EditOwnership>(ownership), enabled},
                                         Authoring::On(target, *Value())));
 }
 

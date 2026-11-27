@@ -14,6 +14,10 @@ class BehaviorInstallationsProbe {
     BML::Behavior::Submission@ submission;
     BML::Behavior::EditPort@ input;
     BML::Behavior::Installation@ installation;
+    BML::Behavior::Submission@ controlled;
+    BML::Behavior::Edit@ controlledBody;
+    BML::Behavior::EditNode@ controlledNode;
+    BML::Behavior::EditPort@ controlledInput;
 
     CKBehavior@ FindGraph(const BML::ModContext &in ctx) {
         BML::ObjectRef reference;
@@ -66,6 +70,15 @@ class BehaviorInstallationsProbe {
         } else if (step == 9) {
             step = 10;
             Require(patch.Replace(patchBase, patchBody), "Patch rebinding request was not queued");
+        } else if (step == 20) {
+            step = 21;
+            Require(controlled.SetEnabled(false) && controlled.SetEnabled(true),
+                    "Rapid disable and enable were not accepted");
+        } else if (step == 24) {
+            step = 25;
+            BML::Behavior::Edit@ invalid = BML::Behavior::Edit();
+            invalid.Root().Require(BML::Behavior::NodePattern("__BML_Installations_Missing"));
+            Require(controlled.Replace("Event_handler", invalid), "Submission replacement did not queue");
         }
     }
 
@@ -189,6 +202,76 @@ class BehaviorInstallationsProbe {
                     FindMarker(source, "__BML_Receipt_B") is null, "Close stranded an installation member");
             ctx.LogInfo("Behavior installations PASS member loss and receipt invalidation");
             ctx.LogInfo("Behavior installations PASS unified script Apply and inputs");
+            @controlledBody = BML::Behavior::Edit();
+            @controlledNode = controlledBody.Root().AddGraph("__BML_Controlled");
+            @controlledInput = controlledBody.Root().AppendLocal("__BML_Controlled_Input", BML::Behavior::Value(1).Type);
+            Require(controlledBody.Root().Bind(controlledInput, BML::Behavior::Value(1)),
+                    "Could not declare the controlled input");
+            @controlled = controlledBody.Apply("controlled submission", "Event_handler",
+                BML::Behavior::EditOwnership::Submission, false, false);
+            Require(controlled !is null && !controlled.RequestedEnabled &&
+                    controlled.State == BML::Behavior::SubmissionState::Disabled &&
+                    FindMarker(source, "__BML_Controlled") is null,
+                    "Initially disabled submission changed the graph");
+            Require(controlled.SetEnabled(true), "Could not enable the submission");
+            step = 19;
+        } else if (step == 19 && controlled.State == BML::Behavior::SubmissionState::Applied) {
+            Require(controlled.SetInput(controlledInput, BML::Behavior::Value(8)) &&
+                    BML::Scene::FindObject("__BML_Controlled", CKCID_BEHAVIOR, original) == BML::ERROR_OK,
+                    "Could not capture the original installation");
+            Require(controlled.Replace("Event_handler", controlledBody), "Identical replacement was refused");
+            step = 18;
+        } else if (step == 18 && controlled.State == BML::Behavior::SubmissionState::Applied) {
+            array<BML::Behavior::Installation@> entries;
+            int value = 0;
+            Require(controlled.RequestedEnabled && controlled.ReadInstallations(entries) &&
+                    entries.length() == 1 && entries[0].Resolve(controlledNode) !is null &&
+                    entries[0].Read(controlledInput).Read(value) && value == 8 &&
+                    OwnsOriginalNode(ctx, FindMarker(source, "__BML_Controlled")),
+                    "Identical replacement lost its node or input binding");
+            Require(controlled.SetInput(controlledInput, BML::Behavior::Value(9)) &&
+                    entries[0].Read(controlledInput).Read(value) && value == 9,
+                    "Rebound input did not reach the preserved installation");
+            @installation = entries[0];
+            step = 20;
+            TriggerWatch(source, "__BML_Installations_Toggle");
+        } else if (step == 21) {
+            Require(installation.IsValid && controlled.RequestedEnabled &&
+                    controlled.State == BML::Behavior::SubmissionState::Applied,
+                    "Rapid toggles changed the installation: valid=" + installation.IsValid +
+                    " enabled=" + controlled.RequestedEnabled + " state=" + int(controlled.State));
+            watch.Close();
+            trigger.Close();
+            Require(controlled.SetEnabled(false), "Could not disable the submission");
+            step = 22;
+        } else if (step == 22 && controlled.State == BML::Behavior::SubmissionState::Disabled) {
+            Require(!controlled.RequestedEnabled && !installation.IsValid &&
+                    FindMarker(source, "__BML_Controlled") is null,
+                    "Disable did not restore the graph");
+            Require(controlled.SetEnabled(true), "Could not re-enable the submission");
+            step = 23;
+        } else if (step == 23 && controlled.State == BML::Behavior::SubmissionState::Applied) {
+            int value = 0;
+            Require(FindMarker(source, "__BML_Controlled") !is null && controlled.Find().IsValid &&
+                    controlled.Find().Read(controlledInput).Read(value) && value == 9,
+                    "Re-enable did not reinstall the same definition and input values");
+            ctx.LogInfo("Behavior installations PASS submission enable disable and rapid toggle");
+            step = 24;
+            TriggerWatch(source, "__BML_Installations_Submission_Replace");
+        } else if (step == 25 && !controlled.ApplyError.isEmpty()) {
+            Require(controlled.RestoreError.isEmpty() &&
+                    controlled.Find().Resolve(controlledNode) !is null &&
+                    FindMarker(source, "__BML_Controlled") !is null,
+                    "Failed replacement lost the previous Submission definition");
+            ctx.LogInfo("Behavior installations PASS submission replacement recovery");
+            watch.Close();
+            trigger.Close();
+            step = 26;
+        } else if (step == 26) {
+            if (controlled.Close() == BML::Behavior::CloseState::Closing)
+                return;
+            Require(FindMarker(source, "__BML_Controlled") is null,
+                    "Close stranded the controlled installation");
             BML::CommandDefinition definition;
             definition.Name = "bml_probe_behavior_installations";
             BML::CommandRef@ command;

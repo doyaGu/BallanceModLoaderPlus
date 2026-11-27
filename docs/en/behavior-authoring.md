@@ -114,7 +114,25 @@ if (result) {
 }
 ```
 
-AngelScript uses the same ownership and installation model through `edit.Apply(name, graph, ownership)` or `edit.Apply(name, script, ownership, each)`. C clients use `BML_BEHAVIOR_HAS_1_1` and `SubmitEdit`. Version 1.2 adds `SetSubmissionInputs` for atomic writes when several target bindings share an authored Local. Existing 1.0 Patch and Plan APIs remain available.
+Submission-owned edits can start disabled with `ApplyOptions{.Enabled = false}`.
+`Submission::SetEnabled(false)` restores current installations at a safe point
+and retains the definition and its inputs. Re-enabling uses the same handle.
+Requesting enable again for a Script submission retries failed instances and
+preserves healthy installations. The last enable request before a safe point wins.
+`Replace` changes the definition on the same submission, preserving its unchanged
+installation prefix. If the candidate fails, the loader restores the previous
+definition and its symbols and inputs. `Info()` reports the requested enable
+state, installation state, and separate apply and recovery failures.
+`Installations()` lists live installations, and `Installation::Resolve` maps
+an authored node to an object reference.
+
+AngelScript uses `edit.Apply(name, graph, ownership)` or
+`edit.Apply(name, script, ownership, each)`, with overloads that accept an
+explicit `enabled` argument. C clients use `BML_BEHAVIOR_HAS_1_1` and
+`SubmitEdit`. Version 1.2 supplies atomic input updates across target bindings,
+and 1.3 adds enable control, replacement, and installation queries. Check
+`BML_IFACE_HAS` before calling appended members. Existing Patch and Plan
+entry points use the same submission and recovery implementation.
 
 ## 2. Open a Session
 

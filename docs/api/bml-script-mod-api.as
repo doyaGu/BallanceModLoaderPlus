@@ -1273,6 +1273,10 @@ enum SubmissionState {
     Pending = 1,
     Applied = 2,
     Failed = 3,
+    Disabled = 4,
+    Partial = 5,
+    Closing = 6,
+    Conflicted = 7,
 }
 
 enum PatchState {
@@ -1858,6 +1862,8 @@ class Edit {
     BML::Behavior::EditGraph@ Root() const;
     BML::Behavior::Submission@ Apply(const string&in name, BML::Behavior::Graph@ graph, BML::Behavior::EditOwnership ownership) const;
     BML::Behavior::Submission@ Apply(const string&in name, const string&in script, BML::Behavior::EditOwnership ownership, bool each = false) const;
+    BML::Behavior::Submission@ Apply(const string&in name, BML::Behavior::Graph@ graph, BML::Behavior::EditOwnership ownership, bool enabled) const;
+    BML::Behavior::Submission@ Apply(const string&in name, const string&in script, BML::Behavior::EditOwnership ownership, bool each, bool enabled) const;
     BML::Behavior::Plan@ Plan(const string&in name, const string&in script, bool each = false);
     BML::Behavior::Script@ CreateScript(CKBeObject@ owner, const string&in name, int priority = 0);
 }
@@ -1978,6 +1984,11 @@ class Operation {
 class Submission {
     bool get_IsValid() const;
     BML::Behavior::SubmissionState get_State() const;
+    bool get_RequestedEnabled() const;
+    bool SetEnabled(bool enabled);
+    bool Replace(BML::Behavior::Graph@ graph, BML::Behavior::Edit@ edit);
+    bool Replace(const string&in script, BML::Behavior::Edit@ edit, bool each = false);
+    bool ReadInstallations(BML::Behavior::Installation@[]&out installations) const;
     string get_ApplyError() const;
     string get_RestoreError() const;
     BML::Behavior::Installation@ Find(BML::Behavior::ObjectRef@ graph = null) const;
@@ -1987,6 +1998,7 @@ class Submission {
 
 class Installation {
     bool get_IsValid() const;
+    BML::Behavior::ObjectRef@ Resolve(BML::Behavior::EditNode@ node) const;
     BML::Behavior::ObservedValue@ Read(BML::Behavior::EditPort@ port) const;
     bool Set(BML::Behavior::EditPort@ port, const BML::Behavior::Value&in value) const;
 }
