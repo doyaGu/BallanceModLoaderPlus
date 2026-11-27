@@ -204,6 +204,77 @@ TEST_F(BehaviorTransactionFailure, RegistryAllocationFailureLeavesGraphAndPatchK
     EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
 }
 
+TEST_F(BehaviorTransactionFailure, SubmissionSwitchesTwoScriptRulesOnTheSameHandle) {
+    Runtime runtime(context, Issue);
+    auto source = MakeCKGraphSource(context, runtime, Issue);
+    Installations edits(context, runtime, nullptr, *source,
+        [&](const ObjectRef &ref) { return context->GetObject(ref.Slot); }, Issue);
+    const SessionOwner owner{"mod", 1};
+    auto *energy = MakeGraph("energy");
+    ASSERT_NE(energy, nullptr);
+    ASSERT_TRUE(edits.LoadScript("Gameplay_Ingame", Issue(graph)));
+    ASSERT_TRUE(edits.LoadScript("Gameplay_Energy", Issue(energy)));
+    auto body = std::make_shared<Program>();
+    body->AddGraph("installed");
+    const Installations::Rule ingame{{"Gameplay_Ingame"}, 1, body};
+    const Installations::Rule energyRule{{"Gameplay_Energy"}, 2, body};
+    std::uintptr_t submission = 0;
+    ASSERT_TRUE(edits.SubmitEdit(owner, "overclock lifecycle", false, {},
+                                 {ingame, energyRule}, submission, false));
+    ASSERT_NE(submission, 0u);
+    ASSERT_TRUE(edits.ProcessFrame());
+    Installations::SubmissionInfo info;
+    ASSERT_TRUE(edits.ReadSubmission(owner, submission, info));
+    EXPECT_FALSE(info.RequestedEnabled);
+    EXPECT_EQ(info.State, Installations::SubmissionState::Disabled);
+    EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
+    EXPECT_EQ(energy->GetSubBehaviorCount(), 0);
+
+    ASSERT_TRUE(edits.SetSubmissionEnabled(owner, submission, true));
+    ASSERT_TRUE(edits.ProcessFrame());
+    ASSERT_TRUE(edits.ReadSubmission(owner, submission, info));
+    EXPECT_TRUE(info.RequestedEnabled);
+    EXPECT_EQ(info.State, Installations::SubmissionState::Applied);
+    Installations::InstalledEdit before;
+    ASSERT_TRUE(edits.FindInstallation(owner, submission, Issue(graph), 1, before));
+    ASSERT_EQ(energy->GetSubBehaviorCount(), 1);
+
+    auto *manager = context->GetBehaviorManager();
+    auto *previous = std::exchange(manager->m_CurrentBehavior, graph);
+    const auto queuedDisable = edits.SetSubmissionEnabled(owner, submission, false);
+    const auto queuedEnable = edits.SetSubmissionEnabled(owner, submission, true);
+    manager->m_CurrentBehavior = previous;
+    ASSERT_TRUE(queuedDisable) << queuedDisable.Message;
+    ASSERT_TRUE(queuedEnable) << queuedEnable.Message;
+    ASSERT_TRUE(edits.ProcessFrame());
+    Installations::InstalledEdit after;
+    ASSERT_TRUE(edits.FindInstallation(owner, submission, Issue(graph), 1, after));
+    EXPECT_EQ(after.Value.Id, before.Value.Id);
+    EXPECT_EQ(after.Value.Revision, before.Value.Revision);
+
+    foreignParent = MakeGraph("foreign parent");
+    ASSERT_NE(foreignParent, nullptr);
+    energy->SetParent(foreignParent);
+    const auto disabled = edits.SetSubmissionEnabled(owner, submission, false);
+    energy->SetParent(nullptr);
+    EXPECT_EQ(disabled.Code, Error::RevertConflict);
+    ASSERT_TRUE(edits.ReadSubmission(owner, submission, info));
+    EXPECT_FALSE(info.RequestedEnabled);
+    EXPECT_EQ(info.RestoreFailure.Code, Error::RevertConflict);
+
+    ASSERT_TRUE(edits.SetSubmissionEnabled(owner, submission, false));
+    EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
+    EXPECT_EQ(energy->GetSubBehaviorCount(), 0);
+    ASSERT_TRUE(edits.ReadSubmission(owner, submission, info));
+    EXPECT_EQ(info.State, Installations::SubmissionState::Disabled);
+    ASSERT_TRUE(edits.SetSubmissionEnabled(owner, submission, true));
+    ASSERT_TRUE(edits.ProcessFrame());
+    ASSERT_TRUE(edits.FindInstallation(owner, submission, Issue(graph), 1, after));
+    EXPECT_NE(after.Value.Id, before.Value.Id);
+    EXPECT_EQ(energy->GetSubBehaviorCount(), 1);
+    EXPECT_TRUE(edits.CloseSubmission(owner, submission));
+}
+
 TEST_F(BehaviorTransactionFailure, SubmissionRetriesOnlyMissingScriptAndRestoresFailedReplacement) {
     Runtime runtime(context, Issue);
     auto source = MakeCKGraphSource(context, runtime, Issue);

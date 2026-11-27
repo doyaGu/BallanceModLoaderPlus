@@ -66,7 +66,7 @@ bool GameplayTweaks::OnModifyConfig(const char *category, const char *key, Prope
     }
     if (property == m_Overclock &&
         std::strcmp(key ? key : "", "Overclock") == 0) {
-        // The Plan outlives each world, so a change made in the menu must
+        // The submission outlives each world, so a change made in the menu must
         // reach it too; it applies once the next level's scripts load.
         (void) ApplyOverclock(property->GetBoolean(), true);
         return true;
@@ -124,22 +124,19 @@ void GameplayTweaks::OnLoad(ModContext &bml, Logger &logger) {
 
     Behavior::Edit ingame = OverclockIngame();
     Behavior::Edit energy = OverclockEnergy();
-    auto overclock = m_Behavior.Plan(
-        "Overclock",
+    auto overclock = m_Behavior.Apply(
+        "Overclock", Behavior::ApplyOptions{
+            .Enabled = m_Overclock && m_Overclock->GetBoolean()},
         Behavior::On(Behavior::Scripts::One("Gameplay_Ingame"),
                      ingame),
         Behavior::On(Behavior::Scripts::One("Gameplay_Energy"),
                      energy));
     if (overclock) {
-        m_OverclockPlan = overclock.Take();
-        if (!m_Overclock || !m_Overclock->GetBoolean()) {
-            (void) SetPlanEnabled(m_OverclockPlan, false,
-                                  "Overclock", true);
-        }
+        m_OverclockSubmission = overclock.Take();
     } else {
-        m_Logger->Warn("Overclock Plan is unavailable: %s",
+        m_Logger->Warn("Overclock submission is unavailable: %s",
             overclock.GetStatus().Message.empty()
-                ? "Behavior Plan creation failed"
+                           ? "Behavior Apply failed"
                 : overclock.GetStatus().Message.c_str());
     }
 
@@ -176,7 +173,11 @@ void GameplayTweaks::OnLoad(ModContext &bml, Logger &logger) {
 
 void GameplayTweaks::OnUnload() {
     ClosePlan(m_ExtraLifePlan, "Life-ball freeze fix");
-    ClosePlan(m_OverclockPlan, "Overclock");
+    auto overclock = m_OverclockSubmission.Close();
+    if (!overclock && m_Logger)
+        m_Logger->Error("Failed to restore Overclock: %s",
+                        overclock.GetStatus().Message.c_str());
+    m_OverclockSubmission = {};
     auto lantern = m_Lantern.Close();
     if (!lantern && m_Logger)
         m_Logger->Error("Failed to restore the lantern alpha-test edit: %s",
@@ -189,7 +190,7 @@ void GameplayTweaks::OnUnload() {
 }
 
 void GameplayTweaks::OnExitGame() {
-    // Plans retain their definitions across the world reset and reconcile
+    // Script rules retain their definitions across the world reset and reconcile
     // against the next matching scripts. No per-world Patch collection exists.
 }
 
@@ -210,19 +211,22 @@ void GameplayTweaks::ApplyLanternAlphaTest(bool enabled) {
 }
 
 bool GameplayTweaks::ApplyOverclock(bool enabled, bool warnIfUnavailable) {
-    if (!m_OverclockPlan) {
+    if (!m_OverclockSubmission) {
         if (enabled && warnIfUnavailable && m_Logger)
-            m_Logger->Warn("Overclock Plan is unavailable");
+            m_Logger->Warn("Overclock submission is unavailable");
         return !enabled;
     }
-    if (!SetPlanEnabled(m_OverclockPlan, enabled, "Overclock",
-                        warnIfUnavailable)) {
+    const auto changed = m_OverclockSubmission.SetEnabled(enabled);
+    if (!changed) {
+        if (warnIfUnavailable && m_Logger)
+            m_Logger->Warn("Overclock could not change state: %s",
+                           changed.GetStatus().Message.c_str());
         return false;
     }
     if (m_Logger)
         m_Logger->Info(enabled
-            ? "Requested the Overclock Behavior Plan"
-            : "Requested restoration of the Overclock Behavior Plan");
+            ? "Requested the Overclock Behavior edit"
+            : "Requested restoration of the Overclock Behavior edit");
     return true;
 }
 

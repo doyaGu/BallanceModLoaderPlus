@@ -34,7 +34,7 @@ private:
     BML::Behavior::Session m_Behavior;
     BML::Behavior::Submission m_Lantern;
     BML::Behavior::Edit::Port m_LanternInput;
-    BML::Behavior::Plan m_OverclockPlan;
+    BML::Behavior::Submission m_OverclockSubmission;
     BML::Behavior::Plan m_ExtraLifePlan;
 };
 
