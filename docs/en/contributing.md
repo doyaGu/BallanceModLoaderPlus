@@ -24,21 +24,15 @@ project. In a standalone build it finds their CMake packages. You can select
 individual packages with `CK2_DIR`, `VxMath_DIR` and `SDL3_DIR`. The current
 Ballanced baseline uses SDL 3.4.20.
 
-Scripts are enabled by default. `BML_BUILD_SCRIPT_RUNTIME=ON` fetches the pinned
-CKAngelScript SDL revision and builds it with AngelScript 2.39.0 against the
-same engine targets. Linux applies the checked-in portability patch to the
-downloaded revision. For a local checkout, use
-`-DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript` and supply a version that builds on
-the target platform. Use a fresh build directory to pick up the pin if an earlier
-configuration cached the sibling checkout. With `BML_BUILD_SCRIPT_RUNTIME=OFF`,
-point `CKANGELSCRIPT_ROOT` at the SDK for the plugin installed in Player. Set
-`BML_ENABLE_ANGELSCRIPT=OFF` in a separate build directory for a script-free build.
+Both runtimes build CKAngelScript from the same reviewed source checkout by
+default. Set CKANGELSCRIPT_ROOT to that checkout or place it next to this
+repository. With BML_BUILD_SCRIPT_RUNTIME=OFF, set CKANGELSCRIPT_ROOT to an
+installed CKAngelScript package matching the runtime, platform and architecture.
+Use BML_ENABLE_ANGELSCRIPT=OFF for a script-free build.
 
-A compiler/architecture/configuration change needs a new build directory. The
-branch accepts only `BML_RUNTIME=sdl` and dynamic hosts; it rejects static host
-integration and old `VIRTOOLS_SDK_PATH` cache settings. On a multi-config generator
-keep `--config Release` and `ctest -C Release`; on Windows choose the architecture
-of the Player, not an unconditional `-A Win32`.
+Use a separate build directory per target. SDL uses the matching NeMo2 and
+SDL3 packages. Virtools uses VS 2022 with -A Win32 and BML_RUNTIME=virtools.
+Use --config Release and ctest -C Release with a multi-config generator.
 
 ## Install the right component
 

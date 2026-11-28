@@ -27,6 +27,7 @@ jobs:
         run: |
           : "${BML_RELEASE_PLAYER:?Set BML_RELEASE_PLAYER on the runner}"
           : "${BML_RELEASE_CMAKE_PREFIX_PATH:?Set the SDK prefixes for the NeMo2 sdl revision pinned by the Player and its matching SDL3}"
+          : "${BML_RELEASE_CKANGELSCRIPT_ROOT:?Set the reviewed dual-runtime CKAngelScript source checkout}"
           test -d "$BML_RELEASE_PLAYER"
           if [[ "$RUNNER_OS" == Windows ]]; then
             root="$(pwd -W)"
@@ -51,6 +52,7 @@ jobs:
           fi
           cmake -S . -B "$ROOT/build" "${generator[@]}" \
             "-DCMAKE_PREFIX_PATH=$BML_RELEASE_CMAKE_PREFIX_PATH" -DCMAKE_BUILD_TYPE=Release \
+            "-DCKANGELSCRIPT_ROOT=$BML_RELEASE_CKANGELSCRIPT_ROOT" \
             -DBML_BUILD_TESTS=ON -DBML_BUILD_MODS=ON -DBML_BUILD_UPDATER=ON \
             "${sdk_test_args[@]}" \
             "-DBML_TEST_INSTALLED_SDK=$ROOT/unpacked/sdk" \

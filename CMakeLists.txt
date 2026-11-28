@@ -80,8 +80,8 @@ cmake_dependent_option(
 option(BML_BUILD_UPDATER "Build the standalone BML updater" ON)
 option(BML_BUILD_MODS "Build the in-tree native Mods" OFF)
 option(BML_ENABLE_ANGELSCRIPT "Build AngelScript support (disable for the script-free build)" ON)
-set(CKANGELSCRIPT_ROOT "" CACHE PATH "Override the pinned CKAngelScript source or select an installed SDK")
-option(BML_BUILD_SCRIPT_RUNTIME "Build the matching SDL CKAngelScript plugin" ${BML_RUNTIME_SDL})
+set(CKANGELSCRIPT_ROOT "" CACHE PATH "Path to the dual-runtime CKAngelScript sources or matching installed SDK")
+option(BML_BUILD_SCRIPT_RUNTIME "Build CKAngelScript for the selected engine runtime" ON)
 
 set(BML_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
 set(BML_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
@@ -91,71 +91,47 @@ set(BML_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
 include("${PROJECT_SOURCE_DIR}/cmake/BMLBehaviorBlocksPublicSurface.cmake")
 
 bml_find_engine()
+include(BMLAbi)
 
 if (BML_ENABLE_ANGELSCRIPT)
-    if(NOT BML_RUNTIME_SDL)
-        if(BML_BUILD_SCRIPT_RUNTIME)
-            message(FATAL_ERROR "Virtools uses the CKAngelScript 0.5.0 Win32 SDK and plugin")
-        endif()
-        find_file(CKANGELSCRIPT_RUNTIME_DLL NAMES AngelScript.dll
-            HINTS "${CKANGELSCRIPT_ROOT}" PATH_SUFFIXES bin BuildingBlocks NO_DEFAULT_PATH REQUIRED)
-    endif()
-    if(BML_BUILD_SCRIPT_RUNTIME AND NOT TARGET CKAngelScript)
-        # Keep the child's install/test settings scoped. All runtime plugins
-        # share these exact CK2/VxMath targets and the same SDL library.
-        function(bml_build_script_runtime)
-            set(CKAS_RUNTIME sdl)
-            set(CKAS_BUILD_CORE_TESTS OFF)
-            set(CKAS_INSTALL_DOCS OFF)
-            set(SKIP_INSTALL_ALL ON)
-
-            if(CKANGELSCRIPT_ROOT)
-                if(NOT EXISTS "${CKANGELSCRIPT_ROOT}/CMakeLists.txt")
-                    message(FATAL_ERROR "CKANGELSCRIPT_ROOT must point to a CKAngelScript source tree when BML_BUILD_SCRIPT_RUNTIME is enabled")
-                endif()
-                add_subdirectory("${CKANGELSCRIPT_ROOT}" "script-runtime" EXCLUDE_FROM_ALL)
-            else()
-                include(FetchContent)
-                set(ckas_patch)
-                if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR WIN32)
-                    if(WIN32)
-                        set(ckas_patch_platform Windows)
-                    else()
-                        set(ckas_patch_platform Linux)
-                    endif()
-                    find_package(Git REQUIRED)
-                    set(ckas_patch PATCH_COMMAND "${CMAKE_COMMAND}"
-                        "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
-                        "-DPATCH_FILE=${PROJECT_SOURCE_DIR}/cmake/patches/CKAngelScript${ckas_patch_platform}.patch"
-                        -P "${PROJECT_SOURCE_DIR}/cmake/ApplySourcePatch.cmake")
-                endif()
-                FetchContent_Declare(ckangelscript
-                    GIT_REPOSITORY https://github.com/doyaGu/CKAngelScript.git
-                    # sdl, with AngelScript 2.39.0 and the ARM64 call fixes.
-                    GIT_TAG f7e9113e81693a61a95a1de871d4a2b9216e2cc0
-                    GIT_SUBMODULES deps/fmt
-                    ${ckas_patch})
-                FetchContent_MakeAvailable(ckangelscript)
-                set(CKANGELSCRIPT_ROOT "${ckangelscript_SOURCE_DIR}")
-            endif()
-
-            set(CKANGELSCRIPT_INCLUDE_DIR "${CKANGELSCRIPT_ROOT}/include" PARENT_SCOPE)
-            set(CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR "${CKAS_ANGELSCRIPT_ROOT}/angelscript/include" PARENT_SCOPE)
-        endfunction()
-        bml_build_script_runtime()
-    else()
-        if(NOT CKANGELSCRIPT_ROOT)
+    if(NOT CKANGELSCRIPT_ROOT)
+        if(DEFINED ENV{CKANGELSCRIPT_ROOT})
+            set(CKANGELSCRIPT_ROOT "$ENV{CKANGELSCRIPT_ROOT}")
+        else()
             set(CKANGELSCRIPT_ROOT "${PROJECT_SOURCE_DIR}/../CKAngelScript")
         endif()
-        find_path(CKANGELSCRIPT_INCLUDE_DIR
-                NAMES CKAngelScript.h
-                HINTS "${CKANGELSCRIPT_ROOT}/include" "${CKANGELSCRIPT_ROOT}")
-        find_path(CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR
-                NAMES angelscript.h
-                HINTS
-                "${CKANGELSCRIPT_ROOT}/deps/angelscript/angelscript/include"
-                "${CKANGELSCRIPT_ROOT}/include"
-                "${CKANGELSCRIPT_ROOT}")
+    endif()
+    if(BML_BUILD_SCRIPT_RUNTIME)
+        if(NOT TARGET CKAngelScript)
+            if(NOT EXISTS "${CKANGELSCRIPT_ROOT}/CMakeLists.txt")
+                message(FATAL_ERROR "Set CKANGELSCRIPT_ROOT to the dual-runtime CKAngelScript source checkout")
+            endif()
+            # Scope nested options to CKAngelScript. Both projects share the
+            # engine provided by BML and build for the same runtime.
+            function(bml_build_script_runtime)
+                set(CKAS_RUNTIME "${BML_RUNTIME}")
+                set(CKAS_BUILD_CORE_TESTS OFF)
+                set(CKAS_INSTALL_DOCS OFF)
+                set(SKIP_INSTALL_ALL ON)
+                add_subdirectory("${CKANGELSCRIPT_ROOT}" "script-runtime" EXCLUDE_FROM_ALL)
+            endfunction()
+            bml_build_script_runtime()
+        endif()
+        get_target_property(_ckas_runtime CKAngelScript CKAS_RUNTIME)
+        if(NOT _ckas_runtime STREQUAL BML_RUNTIME)
+            message(FATAL_ERROR "CKAngelScript target uses '${_ckas_runtime}'; expected '${BML_RUNTIME}'")
+        endif()
+        get_target_property(CKANGELSCRIPT_INCLUDE_DIR CKAngelScript CKAS_INCLUDE_DIR)
+        get_target_property(CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR CKAngelScript CKAS_ANGELSCRIPT_INCLUDE_DIR)
+    else()
+        bml_verify_script_package("${CKANGELSCRIPT_ROOT}")
+        set(CKANGELSCRIPT_INCLUDE_DIR "${CKANGELSCRIPT_ROOT}/include")
+        set(CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR "${CKANGELSCRIPT_ROOT}/include")
+        set(CKANGELSCRIPT_RUNTIME_DLL
+            "${CKANGELSCRIPT_ROOT}/BuildingBlocks/${CMAKE_SHARED_LIBRARY_PREFIX}AngelScript${CMAKE_SHARED_LIBRARY_SUFFIX}")
+        if(NOT EXISTS "${CKANGELSCRIPT_RUNTIME_DLL}")
+            message(FATAL_ERROR "CKAngelScript package is missing ${CKANGELSCRIPT_RUNTIME_DLL}")
+        endif()
     endif()
     if (EXISTS "${CKANGELSCRIPT_INCLUDE_DIR}/CKAngelScript.h"
             AND EXISTS "${CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR}/angelscript.h")
@@ -211,7 +187,6 @@ add_subdirectory(deps)
 if (BML_BUILD_UI_AUTOMATION)
     include("${PROJECT_SOURCE_DIR}/cmake/ImGuiTestEngine.cmake")
 endif ()
-include(BMLAbi)
 add_subdirectory(src)
 include(BMLRuntimePackage)
 if (BML_BUILD_PLATFORM_TESTS OR BML_BUILD_TESTS)

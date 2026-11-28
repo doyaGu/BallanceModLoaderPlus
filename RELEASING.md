@@ -20,8 +20,9 @@ fixture. Set `BML_RELEASE_CMAKE_PREFIX_PATH` to the CMake prefixes for its NeMo2
 and SDL3 SDKs and any separately installed libcurl development package. The
 Windows runner needs Git Bash and Visual Studio 2022 with the x64 C++ tools.
 The Linux runner needs Ninja and usable X11 and Wayland sessions. Both need
-CMake, Python, a renderer and game data. The workflow builds default-pinned
-CKAngelScript and runs SDK consumers, signed updater tests and Player probes.
+CMake, Python, a renderer and game data. Set BML_RELEASE_CKANGELSCRIPT_ROOT to
+the reviewed dual-runtime CKAngelScript checkout. The workflow builds it against
+the same engine and runs SDK consumers, signed updater tests and Player probes.
 It uses a dedicated test key for apply and rollback. Only the three BML archives
 are uploaded as workflow artifacts.
 

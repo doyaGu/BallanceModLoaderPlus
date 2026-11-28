@@ -52,17 +52,16 @@ cmake --build build/sdl --config Release --parallel
 ctest --test-dir build/sdl -C Release --output-on-failure
 ```
 
-默认启用脚本。CMake 会获取固定的 CKAngelScript SDL 提交，并使用 AngelScript 2.39.0
-构建。设置 `CKANGELSCRIPT_ROOT` 可使用本地源码，设置 `-DBML_ENABLE_ANGELSCRIPT=OFF`
+两种运行时默认启用脚本。设置 `CKANGELSCRIPT_ROOT` 可指定经过验收的 CKAngelScript 双运行时源码，设置 `-DBML_ENABLE_ANGELSCRIPT=OFF`
 可构建无脚本版本。匹配 SDK 的获取方式、组件安装和 Player 测试流程见开发指南。
 
 ### 构建 BallancePlayer Win32 版
 
 使用 VS 2022 和 Virtools 2.1 SDK 的 `175bcb12d829c687359b90615be53524cdba0132` 提交。
-启用脚本时，`CKANGELSCRIPT_ROOT` 指向解包后的 CKAngelScript 0.5.0 Win32 版。
+启用脚本时，`CKANGELSCRIPT_ROOT` 与 SDL 使用同一套 CKAngelScript 源码。使用独立安装的匹配包时，设置 BML_BUILD_SCRIPT_RUNTIME=OFF。
 
 ```powershell
-cmake -S . -B build/virtools -G "Visual Studio 17 2022" -A Win32 -DBML_RUNTIME=virtools -DVIRTOOLS_SDK_PATH=C:/sdk/Virtools-SDK-2.1 -DCKANGELSCRIPT_ROOT=C:/sdk/CKAngelScript-0.5.0 -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
+cmake -S . -B build/virtools -G "Visual Studio 17 2022" -A Win32 -DBML_RUNTIME=virtools -DVIRTOOLS_SDK_PATH=C:/sdk/Virtools-SDK-2.1 -DCKANGELSCRIPT_ROOT=C:/src/CKAngelScript -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/virtools --config Release --parallel
 cmake --install build/virtools --config Release --prefix build/virtools-runtime --component BMLRuntime
 cmake --install build/virtools --config Release --prefix build/virtools-sdk

@@ -22,16 +22,14 @@ BML+ 直接复用父 CMake 工程已提供的 CK2、VxMath 和 SDL3 目标。独
 CMake 安装包，也可以用 `CK2_DIR`、`VxMath_DIR`、`SDL3_DIR` 单独指定。当前 Ballanced
 基线使用 SDL 3.4.20。
 
-默认启用脚本。`BML_BUILD_SCRIPT_RUNTIME=ON` 会获取固定的 CKAngelScript SDL 提交，
-使用 AngelScript 2.39.0 和同一套引擎目标构建插件。Linux 构建会给下载的源码应用仓库内的兼容补丁。
-用 `-DCKANGELSCRIPT_ROOT=/path/to/CKAngelScript` 联调时，请提供能在目标平台构建的本地源码。若旧配置缓存了
-位于同级目录的源码路径，请用新构建目录以采用固定版本。设置
-`BML_BUILD_SCRIPT_RUNTIME=OFF` 时，`CKANGELSCRIPT_ROOT` 应指向 Player 中插件对应的
-SDK。构建无脚本版本时，在独立构建目录中设置 `BML_ENABLE_ANGELSCRIPT=OFF`。
+两个运行时默认从同一个经过验收的 CKAngelScript 源码检出构建插件。设置
+CKANGELSCRIPT_ROOT 指向该检出，也可将它放在本仓库的同级目录。设置
+BML_BUILD_SCRIPT_RUNTIME=OFF 时，CKANGELSCRIPT_ROOT 指向匹配运行时、平台和架构的已安装包。
+设置 BML_ENABLE_ANGELSCRIPT=OFF 可构建无脚本版。
 
-编译器、架构或配置改变时新建构建目录。本分支只接受 `BML_RUNTIME=sdl` 和动态宿主，
-会拒绝静态集成及旧 `VIRTOOLS_SDK_PATH` 缓存。多配置生成器使用 `--config Release`、
-`ctest -C Release`；Windows 选择 Player 的实际架构，不要无条件指定 `-A Win32`。
+每个目标使用独立构建目录。SDL 使用匹配的 NeMo2 和 SDL3 包。Virtools 使用
+VS 2022 的 -A Win32，并设置 BML_RUNTIME=virtools。多配置生成器用
+--config Release 构建，并用 ctest -C Release 测试。
 
 ## 安装组件
 

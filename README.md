@@ -59,19 +59,19 @@ cmake --build build/sdl --config Release --parallel
 ctest --test-dir build/sdl -C Release --output-on-failure
 ```
 
-Scripts are enabled by default. CMake fetches the pinned CKAngelScript SDL
-revision, which builds with AngelScript 2.39.0. Set `CKANGELSCRIPT_ROOT` to use a
-local checkout or `-DBML_ENABLE_ANGELSCRIPT=OFF` for a script-free build. See the
+Scripts are enabled by default for both runtimes. Set `CKANGELSCRIPT_ROOT` to use the
+reviewed dual-runtime CKAngelScript checkout, or `-DBML_ENABLE_ANGELSCRIPT=OFF` for a script-free build. See the
 contribution guide for SDK setup, installation and Player tests.
 
 ### Build for BallancePlayer Win32
 
 Use Visual Studio 2022 and the Virtools 2.1 SDK at
 `175bcb12d829c687359b90615be53524cdba0132`. With scripting enabled,
-`CKANGELSCRIPT_ROOT` is the unpacked CKAngelScript 0.5.0 Win32 release.
+`CKANGELSCRIPT_ROOT` selects the same dual-runtime CKAngelScript sources as SDL.
+To use a matching installed CKAngelScript package, set BML_BUILD_SCRIPT_RUNTIME=OFF.
 
 ```powershell
-cmake -S . -B build/virtools -G "Visual Studio 17 2022" -A Win32 -DBML_RUNTIME=virtools -DVIRTOOLS_SDK_PATH=C:/sdk/Virtools-SDK-2.1 -DCKANGELSCRIPT_ROOT=C:/sdk/CKAngelScript-0.5.0 -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
+cmake -S . -B build/virtools -G "Visual Studio 17 2022" -A Win32 -DBML_RUNTIME=virtools -DVIRTOOLS_SDK_PATH=C:/sdk/Virtools-SDK-2.1 -DCKANGELSCRIPT_ROOT=C:/src/CKAngelScript -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
 cmake --build build/virtools --config Release --parallel
 cmake --install build/virtools --config Release --prefix build/virtools-runtime --component BMLRuntime
 cmake --install build/virtools --config Release --prefix build/virtools-sdk

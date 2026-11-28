@@ -144,10 +144,10 @@ python tools/generate_script_api.py --export build/bml-script-api.as
 python tools/generate_script_api.py --export build/bml-script-api.as --check
 ```
 
-The dump requires headers matching the runtime CKAngelScript. For a default BML
-build, set `BML_TEST_CKAS_INCLUDE` to `build/sdl/_deps/ckangelscript-src/include`
-and `BML_TEST_AS_INCLUDE` to the `angelscript/include` directory under
-`CKAS_ANGELSCRIPT_ROOT` in that BML build's cache. For a local checkout next to
+The dump requires headers matching the runtime CKAngelScript. Set
+`BML_TEST_CKAS_INCLUDE` to the `include` directory in the CKAngelScript checkout
+used by BML and `BML_TEST_AS_INCLUDE` to the `angelscript/include` directory
+under `CKAS_ANGELSCRIPT_ROOT` in that BML build's cache. For a local checkout next to
 BML+, the probe can discover those paths automatically. The probe uses
 public runtime/engine reflection, not another registration list. The publisher
 restores @+ ownership markers from native declarations because reflection omits
