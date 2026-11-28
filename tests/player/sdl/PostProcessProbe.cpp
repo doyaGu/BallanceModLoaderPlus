@@ -1,15 +1,23 @@
+#include "../GameplayTimerCheck.hpp"
 #include <BML/BMLAll.h>
 #include <BML/Behavior.hpp>
 #include <BML/Engine.hpp>
+#include <BML/Guids/TT_Toolbox_RT.h>
 #include <BML/ImGui.hpp>
+#include <BML/Time.hpp>
 #include <SDL3/SDL.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 #ifdef BML_TEST_SCRIPT_REFLECTION
 #include "ScriptApiDump.h"
 #endif
@@ -123,6 +131,12 @@ public:
             return;
         }
 
+        try { CheckSpeedrunTimer(*context); }
+        catch (const std::exception &error) {
+            Finish(false, std::string("speedrun: ") + error.what());
+            return;
+        }
+
         const auto repeated=input.ReadKeyboard(BML_INPUT_RAW).Value();
         if(raw.Keys.data()!=repeated.Keys.data() || raw.Events.data()!=repeated.Events.data()) {Finish(false,"unstable-input-snapshot");return;}
         bool passed = true;
@@ -172,7 +186,10 @@ public:
                                     m_RepeatCalls == 3 && !m_Self.IsValid() &&
                                     !m_Repeat.IsValid() && m_SelfLease.expired() &&
                                     m_CountNotifications == 1 && m_TextNotifications == 1;
-                Finish(m_PhysicsFrames > 0 && timers, !timers ? "timer-lifecycle" : m_PhysicsFrames ? "passed" : "physics-not-observed-before-mod");
+                const bool speedrun = m_SpeedrunPhase == 6;
+                Finish(m_PhysicsFrames > 0 && timers && speedrun,
+                       !timers ? "timer-lifecycle" : !speedrun ? "speedrun-incomplete" :
+                       m_PhysicsFrames ? "passed" : "physics-not-observed-before-mod");
             }
             return;
         }
@@ -187,6 +204,100 @@ private:
     static void Require(bool value, const char *message) {
         if (!value)
             throw std::runtime_error(message);
+    }
+
+    static bool HudShowsTime(float elapsed) {
+        const auto *window = ImGui::FindWindowByName("HUD");
+        Require(window != nullptr, "HUD window missing");
+        const auto ms = static_cast<int64_t>(elapsed);
+        char text[32];
+        std::snprintf(text, sizeof(text), "%02d:%02d:%02d.%03d",
+                      static_cast<int>(ms / 3600000), static_cast<int>(ms / 60000 % 60),
+                      static_cast<int>(ms / 1000 % 60), static_cast<int>(ms % 1000));
+        // HUD text goes directly into its draw list. Compare the real glyph
+        // sequence with the text formatted from the public timer reading.
+        auto *font = ImGui::GetFontBaked();
+        std::vector<ImVec4> glyphs;
+        for (char ch : std::string_view(text)) {
+            const auto &glyph = *font->FindGlyph(static_cast<ImWchar>(ch));
+            glyphs.emplace_back(glyph.U0, glyph.V0, glyph.U1, glyph.V1);
+        }
+        const auto &vertices = window->DrawList->VtxBuffer;
+        const int span = static_cast<int>(glyphs.size()) * 4;
+        for (int start = 0; start + span <= vertices.Size; ++start) {
+            bool matches = true;
+            for (int i = 0; i < span; i += 4) {
+                const auto &glyph = glyphs[i / 4];
+                const auto &first = vertices[start + i].uv;
+                const auto &opposite = vertices[start + i + 2].uv;
+                if (first.x != glyph.x || first.y != glyph.y ||
+                    opposite.x != glyph.z || opposite.y != glyph.w) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches)
+                return true;
+        }
+        return false;
+    }
+
+
+    void CheckSpeedrunTimer(CKContext &engine) {
+        namespace Speedrun = BML::Speedrun;
+        if (m_SpeedrunPhase == 6)
+            return;
+        BML::Time::Clock clock{};
+        Speedrun::TimerState timer{};
+        Require(BML::Time::ReadClock(clock) == BML_OK &&
+                Speedrun::ReadTimerState(timer) == BML_OK, "cannot read game clock or speedrun timer");
+        switch (m_SpeedrunPhase) {
+        case 0:
+            Require(Speedrun::ResetTimer() == BML_OK && Speedrun::SetTimerVisible(true) == BML_OK,
+                    "cannot reset and show speedrun timer");
+            // CK tick timers run before the built-in HUD processes the tick.
+            m_SpeedrunStart = m_Context.Timers().SetTimeoutTicks(1, [this] {
+                BML::Time::Clock start{};
+                Require(BML::Time::ReadClock(start) == BML_OK && Speedrun::StartTimer() == BML_OK,
+                        "cannot start speedrun timer before HUD update");
+                m_SpeedrunPlayTick = start.MainTickCount;
+            }).Take();
+            break;
+        case 1:
+            if (!m_SpeedrunPlayTick)
+                return;
+            Require(clock.MainTickCount == *m_SpeedrunPlayTick && timer.ElapsedTime == 0.0f,
+                    "Play tick was counted");
+            Require(HudShowsTime(timer.ElapsedTime), "HUD did not draw zero on the Play tick");
+            break;
+        case 2:
+            m_SpeedrunExpected = clock.DeltaMs;
+            Require(timer.ElapsedTime == m_SpeedrunExpected && HudShowsTime(timer.ElapsedTime),
+                    "first counted tick differs from the clock or HUD");
+            Require(Speedrun::SetTimerVisible(false) == BML_OK, "cannot hide speedrun timer");
+            break;
+        case 3:
+            m_SpeedrunExpected += clock.DeltaMs;
+            Require(timer.ElapsedTime == m_SpeedrunExpected, "hidden timer did not count the tick");
+            Require(Speedrun::PauseTimer() == BML_OK && Speedrun::SetTimerVisible(true) == BML_OK,
+                    "cannot pause and show speedrun timer");
+            break;
+        case 4:
+            Require(timer.ElapsedTime == m_SpeedrunExpected && HudShowsTime(timer.ElapsedTime),
+                    "shown HUD kept stale time after being paused while hidden");
+            Require(Speedrun::StartTimer() == BML_OK, "cannot resume speedrun timer after HUD update");
+            break;
+        case 5:
+            m_SpeedrunExpected += clock.DeltaMs;
+            Require(timer.ElapsedTime == m_SpeedrunExpected && HudShowsTime(timer.ElapsedTime),
+                    "resume after HUD update skipped the next tick or drew the wrong time");
+            Require(Speedrun::ResetTimer() == BML_OK && Speedrun::SetTimerVisible(false) == BML_OK,
+                    "cannot restore speedrun timer");
+            (void)m_Context.LogInfo("SRTimer PASS Play tick, API/HUD agreement, and hidden HUD refresh");
+            CheckNativeGameplayTimer(m_Context, engine);
+            break;
+        }
+        ++m_SpeedrunPhase;
     }
 
     void CheckCommandEvent(const BML::Mod::CommandEvent &event, uint32_t phase) {
@@ -686,6 +797,10 @@ private:
     bool m_CheckedPlanSymbols = false;
     BML::Input::Block m_Block;
     BML::Timer::Registration m_Self, m_Repeat, m_NoArgs, m_VoidLoop;
+    BML::Timer::Registration m_SpeedrunStart;
+    std::optional<uint32_t> m_SpeedrunPlayTick;
+    float m_SpeedrunExpected = 0.0f;
+    int m_SpeedrunPhase = 0;
     std::weak_ptr<int> m_SelfLease;
     BML::Command::Registration m_ProbeCommand;
     std::weak_ptr<int> m_CommandLease;

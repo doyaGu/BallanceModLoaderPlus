@@ -28,7 +28,8 @@ public:
 
     void OnLoad(ModContext &bml);
     void OnUnload();
-    void OnProcess(float frameDeltaSeconds, float gameDeltaMilliseconds);
+    void OnProcess(uint32_t gameTick, float gameDeltaMilliseconds, bool hasGameplayTimer);
+    void OnRenderFrame();
 
     void OnMenuStart();
     void OnLevelStart();
@@ -41,9 +42,10 @@ public:
     void ShowFPS(bool show);
     void ShowSRTimer(bool show);
 
-    void StartSRTimer();
+    void StartSRTimer(uint32_t gameTick);
     void PauseSRTimer();
     void ResetSRTimer();
+    void UpdateGameplayTimer(unsigned inputs, float deltaTimeMs);
     float GetSRTime() const;
 
 private:
@@ -70,7 +72,10 @@ private:
     void ApplySettings(ApplyWhen when);
     void ApplySetting(const Setting &setting, Property *property, bool levelStarting = false);
 
+    void UpdateFPSDisplay();
     void UpdateTimerDisplay();
+    void UpdateSRTimerDisplay();
+    void UpdateSRTimerFade();
     void UpdateCheatState(bool cheatEnabled);
 
     ModContext *m_BML = nullptr;

@@ -4,6 +4,8 @@
 #include <bitset>
 #include <vector>
 
+#include "BML/Guids/TT_Toolbox_RT.h"
+#include "CKBehaviorPrototype.h"
 #include "UI/BuiHost.h"
 #include "UI/GuiHost.h"
 
@@ -208,6 +210,7 @@ void BMLMod::OnUnload() {
 #endif
     UnregisterBuiltinCapabilities(*this);
 
+    UnbindGameplayTimer();
     m_Console.OnUnload();
     m_HUD.OnUnload();
     m_CustomMaps.OnUnload();
@@ -241,6 +244,9 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
 void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
     m_CustomMaps.OnLoadScript(script);
 
+    if (!strcmp(script->GetName(), "Gameplay_Energy"))
+        BindGameplayTimer(script);
+
     if (!strcmp(script->GetName(), "Menu_Init"))
         OnEditScript_Menu_MenuInit(script);
 
@@ -248,9 +254,62 @@ void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
         m_ModsMenuEntry.Load(m_Behavior, script, *m_BML, *m_Record.GetLogger());
 }
 
+void BMLMod::BindGameplayTimer(CKBehavior *script) {
+    for (int index = 0; index < script->GetSubBehaviorCount(); ++index) {
+        CKBehavior *timer = script->GetSubBehavior(index);
+        if (!timer || timer->GetPrototypeGuid() != TT_TOOLBOX_RT_TT_TIMER)
+            continue;
+        CKBEHAVIORFCT function = timer->GetFunction();
+        if (!function || function == &ExecuteGameplayTimer)
+            return;
+        UnbindGameplayTimer();
+        m_GameplayTimer = timer->GetID();
+        m_GameplayTimerFunction = function;
+        timer->SetFunction(&ExecuteGameplayTimer);
+        return;
+    }
+}
+
+CKBehavior *BMLMod::GetGameplayTimer() const {
+    if (!m_GameplayTimer || !m_CKContext)
+        return nullptr;
+    auto *timer = CKBehavior::Cast(m_CKContext->GetObject(m_GameplayTimer));
+    return timer && timer->GetFunction() == &ExecuteGameplayTimer ? timer : nullptr;
+}
+
+void BMLMod::UnbindGameplayTimer() {
+    if (auto *timer = GetGameplayTimer())
+        timer->SetFunction(m_GameplayTimerFunction);
+    m_GameplayTimer = 0;
+    m_GameplayTimerFunction = nullptr;
+}
+
+int BMLMod::ExecuteGameplayTimer(const CKBehaviorContext &context) {
+    ModContext *runtime = BML_GetModContext();
+    BMLMod *mod = runtime ? runtime->GetModLoader().GetBuiltinMod() : nullptr;
+    if (!mod || mod->m_CKContext != context.Context ||
+        mod->m_GameplayTimer != context.Behavior->GetID()) {
+        auto *prototype = context.Behavior->GetPrototype();
+        CKBEHAVIORFCT function = prototype ? prototype->GetFunction() : nullptr;
+        return function && function != &ExecuteGameplayTimer ? function(context) : CKBR_OK;
+    }
+
+    // Observe the inputs before TT_Timer consumes them. Running on this node
+    // also preserves the order if the graph invokes it twice in one CK tick.
+    unsigned inputs = 0;
+    for (int index = 0; index < 4; ++index) {
+        if (context.Behavior->IsInputActive(index))
+            inputs |= 1u << index;
+    }
+    const int result = mod->m_GameplayTimerFunction(context);
+    mod->m_HUD.UpdateGameplayTimer(inputs, context.DeltaTime);
+    return result;
+}
+
 void BMLMod::OnProcess() {
     m_ModsMenuEntry.OnProcess();
-    m_HUD.OnProcess(ImGui::GetIO().DeltaTime, m_TimeManager->GetLastDeltaTime());
+    m_HUD.OnProcess(m_TimeManager->GetMainTickCount(),
+                    m_TimeManager->GetLastDeltaTime(), GetGameplayTimer() != nullptr);
     OnProcess_Menu();
     m_Console.OnProcess();
 #if BML_ENABLE_ANGELSCRIPT
@@ -267,6 +326,10 @@ void BMLMod::OnProcess() {
         ImGui::ShowDemoWindow(&m_ShowImGuiDemo);
 #endif
 
+}
+
+void BMLMod::OnPlayerRender() {
+    m_HUD.OnRenderFrame();
 }
 
 void BMLMod::OnModifyConfig(const char *category, const char *key, Property *prop) {
@@ -330,6 +393,8 @@ void BMLMod::OnPreLoadLevel() {
 void BMLMod::OnStartLevel() {
     ApplySettings(OnLevelInit);
 
+    if (!GetGameplayTimer())
+        ResetSRTimer();
     m_HUD.OnLevelStart();
     m_CustomMaps.OnStartLevel();
 #if BML_ENABLE_UI_AUTOMATION
@@ -348,19 +413,23 @@ void BMLMod::OnBallNavActive() {
 }
 
 void BMLMod::OnPauseLevel() {
-    m_HUD.PauseSRTimer();
+    if (!GetGameplayTimer())
+        PauseSRTimer();
 }
 
 void BMLMod::OnUnpauseLevel() {
-    m_HUD.StartSRTimer();
+    if (!GetGameplayTimer())
+        StartSRTimer();
 }
 
 void BMLMod::OnCounterActive() {
-    m_HUD.StartSRTimer();
+    if (!GetGameplayTimer())
+        StartSRTimer();
 }
 
 void BMLMod::OnCounterInactive() {
-    m_HUD.PauseSRTimer();
+    if (!GetGameplayTimer())
+        PauseSRTimer();
 }
 
 void BMLMod::AddIngameMessage(const char *msg) {
@@ -631,7 +700,8 @@ void BMLMod::ShowSRTimer(bool show) {
 }
 
 void BMLMod::StartSRTimer() {
-    m_HUD.StartSRTimer();
+    if (m_TimeManager)
+        m_HUD.StartSRTimer(m_TimeManager->GetMainTickCount());
 }
 
 void BMLMod::PauseSRTimer() {

@@ -1380,6 +1380,10 @@ void ModContext::OnRender(CKRenderContext *dev) {
     if (!IsInited() || !dev)
         return;
 
+    if (dev == GetRenderContext()) {
+        if (auto *builtin = m_Loader.GetBuiltinMod())
+            builtin->OnPlayerRender();
+    }
     m_Loader.BroadcastCallback<ModEvent::OnRender>(
         static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
 }

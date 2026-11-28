@@ -3,13 +3,17 @@
 
 #include <cstdint>
 #include <array>
+#include <chrono>
+#include <optional>
 
 class FpsCounter {
 public:
-    explicit FpsCounter(uint32_t sampleCount = 60);
-    ~FpsCounter() = default;
+    using Clock = std::chrono::steady_clock;
 
-    void Update(float frameTime);
+    explicit FpsCounter(uint32_t sampleCount = 60);
+
+    void RecordFrame(Clock::time_point now);
+    void Reset();
 
     float GetAverageFps() const;
     const char *GetFormattedFps() const;
@@ -20,17 +24,22 @@ public:
     uint32_t GetUpdateFrequency() const;
 
 private:
-    std::array<float, 120> m_FrameTimes = {}; // Circular buffer of frame times
-    uint32_t m_SampleCount;                   // Number of samples to average
-    uint32_t m_CurrentIndex;                  // Current index in circular buffer
-    uint32_t m_FrameCounter;                  // Frame counter for update frequency
-    uint32_t m_UpdateFrequency;               // How often to update the average
-    float m_CurrentAverageFps;                // Current average FPS
-    mutable char m_FormattedFps[16] = {};     // Formatted FPS string
-    int m_LastFpsInt = 60;                    // Last integer FPS used for string
-    bool m_Dirty = true;                      // Whether formatted FPS changed since last clear
+    std::array<Clock::duration, 120> m_FrameTimes{};
+    const uint32_t m_Capacity;
+    std::optional<Clock::time_point> m_LastFrame;
+    Clock::duration m_WindowDuration{};
+    Clock::duration m_TimeSinceUpdate{};
+    uint32_t m_FirstSample = 0;
+    uint32_t m_Samples = 0;
+    uint32_t m_FramesSinceUpdate = 0;
+    uint32_t m_UpdateFrequency = 1;
+    float m_CurrentAverageFps = 0.0f;
+    char m_FormattedFps[16] = "FPS: --";
+    int m_LastFpsInt = -1;
+    bool m_Dirty = true;
 
-    void RecalculateAverage();
+    void DropOldestSample();
+    void Publish();
 };
 
 #endif // BML_FPSCOUNTER_H

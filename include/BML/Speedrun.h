@@ -49,7 +49,7 @@ typedef struct BML_SpeedrunInterface {
     int (BML_CDECL *SetTimerVisible)(int visible);
 
     // Resumes counting from the current elapsed time rather than from zero. Call
-    // ResetTimer first for a fresh run.
+    // ResetTimer first for a fresh run. Counting resumes on the next CK tick.
     int (BML_CDECL *StartTimer)(void);
 
     // Stops counting and keeps the elapsed time.

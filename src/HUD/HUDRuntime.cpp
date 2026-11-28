@@ -50,7 +50,7 @@ void HUDRuntime::InitConfig(Config &config) {
     m_ShowSRTimer->SetDefaultBoolean(false);
 
     m_FPSUpdateFrequency->SetComment(
-        "FPS counter update frequency in frames (higher values = less frequent updates, better performance)");
+        "Rendered frames between FPS updates. Also refreshes after 250 ms when a frame is rendered.");
     m_FPSUpdateFrequency->SetDefaultInteger(30);
 }
 
@@ -111,7 +111,8 @@ void HUDRuntime::OnLoad(ModContext &bml) {
     title->SetVisible(m_ShowTitle->GetBoolean());
     m_TitleElement = title;
 
-    m_FPSElement = m_Window.AddText("fps", "FPS: 60", AnchorPoint::TopLeft);
+    m_FPSCounter.Reset();
+    m_FPSElement = m_Window.AddText("fps", m_FPSCounter.GetFormattedFps(), AnchorPoint::TopLeft);
     m_FPSElement->SetVisible(m_ShowFPS->GetBoolean());
 
     auto sr = m_Window.AddVStack("sr", AnchorPoint::BottomLeft);
@@ -137,18 +138,21 @@ void HUDRuntime::OnUnload() {
     m_BML = nullptr;
 }
 
-void HUDRuntime::OnProcess(float frameDeltaSeconds, float gameDeltaMilliseconds) {
-    m_FPSCounter.Update(frameDeltaSeconds);
-    m_SRTimer.Update(gameDeltaMilliseconds);
+void HUDRuntime::OnProcess(uint32_t gameTick, float gameDeltaMilliseconds,
+                           bool hasGameplayTimer) {
+    if (!hasGameplayTimer || m_SRTimer.UsesManualClock())
+        m_SRTimer.Update(gameTick, gameDeltaMilliseconds);
 
     UpdateCheatState(m_BML && m_BML->IsCheatEnabled());
+    UpdateFPSDisplay();
     UpdateTimerDisplay();
-
-    if (m_FPSCounter.IsDirty()) m_FPSCounter.ClearDirty();
-    if (m_SRTimer.IsDirty()) m_SRTimer.ClearDirty();
 
     m_Window.OnProcess();
     m_Window.Render();
+}
+
+void HUDRuntime::OnRenderFrame() {
+    m_FPSCounter.RecordFrame(FpsCounter::Clock::now());
 }
 
 void HUDRuntime::OnMenuStart() {
@@ -158,7 +162,6 @@ void HUDRuntime::OnMenuStart() {
 
 void HUDRuntime::OnLevelStart() {
     ApplySettings(OnLevelInit);
-    ResetSRTimer();
 }
 
 void HUDRuntime::OnLevelExit() {
@@ -197,26 +200,39 @@ void HUDRuntime::ShowTitle(bool show) {
 void HUDRuntime::ShowFPS(bool show) {
     if (m_FPSElement) {
         m_FPSElement->SetVisible(show);
+        if (show)
+            UpdateFPSDisplay();
     }
 }
 
 void HUDRuntime::ShowSRTimer(bool show) {
     if (m_SRElement) {
         m_SRElement->SetVisible(show);
+        if (show)
+            UpdateSRTimerDisplay();
     }
 }
 
-void HUDRuntime::StartSRTimer() {
-    m_SRTimer.Start();
-    if (auto container = HUDCast<HUDContainer>(m_SRElement)) {
-        if (container->IsFadeEnabled()) container->SetFadeTarget(1.0f);
-    }
+void HUDRuntime::StartSRTimer(uint32_t gameTick) {
+    m_SRTimer.Start(gameTick);
+    UpdateSRTimerFade();
 }
 
 void HUDRuntime::PauseSRTimer() {
     m_SRTimer.Pause();
+    UpdateSRTimerFade();
+}
+
+void HUDRuntime::UpdateGameplayTimer(unsigned inputs, float deltaTimeMs) {
+    m_SRTimer.UpdateGameplay(inputs, deltaTimeMs);
+    if (inputs != 0)
+        UpdateSRTimerFade();
+}
+
+void HUDRuntime::UpdateSRTimerFade() {
     if (auto container = HUDCast<HUDContainer>(m_SRElement)) {
-        if (container->IsFadeEnabled()) container->SetFadeTarget(0.5f);
+        if (container->IsFadeEnabled())
+            container->SetFadeTarget(m_SRTimer.IsRunning() ? 1.0f : 0.5f);
     }
 }
 
@@ -235,26 +251,24 @@ void HUDRuntime::SetFPSUpdateFrequency(uint32_t frames) {
     }
 }
 
-void HUDRuntime::UpdateTimerDisplay() {
-    if (m_FPSElement) {
-        if (auto textElement = HUDCast<HUDText>(m_FPSElement)) {
-            if (m_FPSElement->IsVisible() &&
-                (m_FPSCounter.IsDirty() || std::strlen(textElement->GetText()) == 0)) {
-                textElement->SetText(m_FPSCounter.GetFormattedFps());
-            }
-        }
+void HUDRuntime::UpdateFPSDisplay() {
+    if (!m_FPSElement || !m_FPSElement->IsVisible() || !m_FPSCounter.IsDirty())
+        return;
+    if (auto textElement = HUDCast<HUDText>(m_FPSElement)) {
+        textElement->SetText(m_FPSCounter.GetFormattedFps());
+        m_FPSCounter.ClearDirty();
     }
+}
 
-    if (m_SRElement && m_SRElement->IsVisible()) {
-        if (auto container = HUDCast<HUDContainer>(m_SRElement)) {
-            if (auto value = container->FindChild("value")) {
-                if (auto textElement = HUDCast<HUDText>(value)) {
-                    if (m_SRTimer.IsDirty() || std::strcmp(textElement->GetText(), "  00:00:00.000") == 0) {
-                        textElement->SetText(m_SRTimer.GetFormattedTime());
-                    }
-                }
-            }
-        }
+void HUDRuntime::UpdateTimerDisplay() {
+    if (m_SRElement && m_SRElement->IsVisible() && m_SRTimer.IsDirty())
+        UpdateSRTimerDisplay();
+}
+
+void HUDRuntime::UpdateSRTimerDisplay() {
+    if (auto container = HUDCast<HUDContainer>(m_SRElement)) {
+        if (auto text = HUDCast<HUDText>(container->FindChild("value")))
+            text->SetText(m_SRTimer.GetFormattedTime());
     }
 }
 

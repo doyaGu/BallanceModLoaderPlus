@@ -52,6 +52,7 @@ public:
                       CKObject *masterObj);
     void OnLoadScript(const char *filename, CKBehavior *script);
     void OnProcess();
+    void OnPlayerRender();
     void OnModifyConfig(const char *category, const char *key, Property *prop);
 
     void OnPreStartMenu();
@@ -136,8 +137,15 @@ private:
 
     void OnProcess_Menu();
 
+    void BindGameplayTimer(CKBehavior *script);
+    void UnbindGameplayTimer();
+    CKBehavior *GetGameplayTimer() const;
+    static int ExecuteGameplayTimer(const CKBehaviorContext &context);
+
     CKContext *m_CKContext = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
+    CK_ID m_GameplayTimer = 0;
+    CKBEHAVIORFCT m_GameplayTimerFunction = nullptr;
 
     HUDRuntime m_HUD;
     ModMenu m_ModMenu;

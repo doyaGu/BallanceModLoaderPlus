@@ -1,100 +1,107 @@
 #include <gtest/gtest.h>
 
-#include <cmath>
-
 #include "HUD/FpsCounter.h"
+
+using namespace std::chrono_literals;
 
 class FpsCounterTest : public ::testing::Test {
 protected:
-    FpsCounter counter{60};
+    void SetUp() override { counter.RecordFrame(now); }
+
+    void RenderAfter(FpsCounter::Clock::duration interval, int frames = 1) {
+        for (int frame = 0; frame < frames; ++frame) {
+            now += interval;
+            counter.RecordFrame(now);
+        }
+    }
+
+    FpsCounter counter;
+    FpsCounter::Clock::time_point now{};
 };
 
-// C18: Division by zero when all frame times are zero
-TEST_F(FpsCounterTest, DivisionByZeroOnZeroFrameTimes) {
-    // First update triggers RecalculateAverage with all-zero frame times
-    counter.Update(0.0f);
-
-    float fps = counter.GetAverageFps();
-    // Must not be inf, -inf, or NaN
-    EXPECT_FALSE(std::isinf(fps)) << "FPS should not be infinity when frame times are zero";
-    EXPECT_FALSE(std::isnan(fps)) << "FPS should not be NaN when frame times are zero";
-}
-
-TEST_F(FpsCounterTest, NormalFps60) {
-    // Simulate 60 frames at ~16.67ms each
-    for (int i = 0; i < 60; ++i) {
-        counter.Update(1.0f / 60.0f);
-    }
-    float fps = counter.GetAverageFps();
-    EXPECT_GT(fps, 50.0f);
-    EXPECT_LT(fps, 70.0f);
-}
-
-TEST_F(FpsCounterTest, FormattedFpsNotEmpty) {
-    counter.Update(1.0f / 60.0f);
-    const char *formatted = counter.GetFormattedFps();
-    ASSERT_NE(nullptr, formatted);
-    EXPECT_GT(strlen(formatted), 0u);
-}
-
-TEST_F(FpsCounterTest, DirtyFlagAfterUpdate) {
+TEST_F(FpsCounterTest, WaitsForACompleteInterval) {
+    EXPECT_STREQ("FPS: --", counter.GetFormattedFps());
     counter.ClearDirty();
+    counter.RecordFrame(now);
+    counter.RecordFrame(now - 1ms);
     EXPECT_FALSE(counter.IsDirty());
 
-    counter.Update(0.016f);
-    EXPECT_TRUE(counter.IsDirty());
-
-    counter.ClearDirty();
-    EXPECT_FALSE(counter.IsDirty());
+    RenderAfter(16666667ns);
+    EXPECT_STREQ("FPS: 60", counter.GetFormattedFps());
+    EXPECT_NEAR(60.0f, counter.GetAverageFps(), 0.01f);
 }
 
-TEST_F(FpsCounterTest, UpdateFrequency) {
-    counter.SetUpdateFrequency(5);
-    EXPECT_EQ(5u, counter.GetUpdateFrequency());
-
-    // Zero frequency should be clamped to 1
-    counter.SetUpdateFrequency(0);
-    EXPECT_EQ(1u, counter.GetUpdateFrequency());
+TEST_F(FpsCounterTest, PartialWindowCountsOnlyMeasuredFrames) {
+    counter.SetUpdateFrequency(30);
+    RenderAfter(50ms, 4);
+    EXPECT_STREQ("FPS: --", counter.GetFormattedFps());
+    RenderAfter(50ms);
+    EXPECT_STREQ("FPS: 20", counter.GetFormattedFps());
+    EXPECT_FLOAT_EQ(20.0f, counter.GetAverageFps());
 }
 
-TEST_F(FpsCounterTest, UpdateFrequencyDelaysDirty) {
+TEST_F(FpsCounterTest, FrameFrequencyAppliesBeforeTheTimeLimit) {
     counter.SetUpdateFrequency(3);
     counter.ClearDirty();
-
-    counter.Update(0.016f);
-    EXPECT_FALSE(counter.IsDirty()) << "Should not be dirty after 1 of 3 frames";
-
-    counter.Update(0.016f);
-    EXPECT_FALSE(counter.IsDirty()) << "Should not be dirty after 2 of 3 frames";
-
-    counter.Update(0.016f);
-    EXPECT_TRUE(counter.IsDirty()) << "Should be dirty after 3 of 3 frames";
+    RenderAfter(10ms, 2);
+    EXPECT_FALSE(counter.IsDirty());
+    RenderAfter(10ms);
+    EXPECT_TRUE(counter.IsDirty());
+    EXPECT_STREQ("FPS: 100", counter.GetFormattedFps());
 }
 
-TEST_F(FpsCounterTest, VeryHighFps) {
-    // 1000 FPS = 0.001s frame time
-    for (int i = 0; i < 60; ++i) {
-        counter.Update(0.001f);
-    }
-    float fps = counter.GetAverageFps();
-    EXPECT_GT(fps, 900.0f);
-    EXPECT_LT(fps, 1100.0f);
+TEST_F(FpsCounterTest, UnchangedTextDoesNotRequireAnUpdate) {
+    RenderAfter(10ms);
+    ASSERT_TRUE(counter.IsDirty());
+    counter.ClearDirty();
+    RenderAfter(10ms);
+    EXPECT_FALSE(counter.IsDirty());
+    RenderAfter(30ms);
+    EXPECT_TRUE(counter.IsDirty());
+    EXPECT_STREQ("FPS: 60", counter.GetFormattedFps());
 }
 
-TEST_F(FpsCounterTest, VeryLowFps) {
-    // 1 FPS = 1.0s frame time
-    for (int i = 0; i < 60; ++i) {
-        counter.Update(1.0f);
-    }
-    float fps = counter.GetAverageFps();
-    EXPECT_GT(fps, 0.5f);
-    EXPECT_LT(fps, 2.0f);
+TEST_F(FpsCounterTest, OldFastFramesAgeOutAfterAFewSlowFrames) {
+    counter.SetUpdateFrequency(30);
+    RenderAfter(16666667ns, 60);
+    EXPECT_STREQ("FPS: 60", counter.GetFormattedFps());
+    RenderAfter(50ms, 10);
+    EXPECT_STREQ("FPS: 20", counter.GetFormattedFps());
 }
 
-TEST_F(FpsCounterTest, SmallSampleCount) {
-    FpsCounter small(1);
-    small.Update(0.016f);
-    float fps = small.GetAverageFps();
-    EXPECT_GT(fps, 50.0f);
-    EXPECT_LT(fps, 70.0f);
+TEST_F(FpsCounterTest, UsesElapsedTimeBetweenRenderedFrames) {
+    // Processing ticks between these renders never reach the counter.
+    RenderAfter(100ms, 12);
+    EXPECT_STREQ("FPS: 10", counter.GetFormattedFps());
+}
+
+TEST_F(FpsCounterTest, PreservesAFrameLongerThanTheWindow) {
+    RenderAfter(10ms, 12);
+    RenderAfter(1s);
+    EXPECT_STREQ("FPS: 1", counter.GetFormattedFps());
+    RenderAfter(10ms);
+    EXPECT_STREQ("FPS: 100", counter.GetFormattedFps());
+}
+
+TEST_F(FpsCounterTest, ResetDiscardsSamplesAndKeepsConfiguredFrequency) {
+    counter.SetUpdateFrequency(3);
+    RenderAfter(1ms, 60);
+    EXPECT_STREQ("FPS: 1000", counter.GetFormattedFps());
+    counter.Reset();
+    EXPECT_EQ(3u, counter.GetUpdateFrequency());
+    EXPECT_STREQ("FPS: --", counter.GetFormattedFps());
+    RenderAfter(5s);
+    EXPECT_STREQ("FPS: --", counter.GetFormattedFps());
+    RenderAfter(10ms, 3);
+    EXPECT_STREQ("FPS: 100", counter.GetFormattedFps());
+}
+
+TEST_F(FpsCounterTest, ZeroSettingsAreClampedToOne) {
+    FpsCounter small(0);
+    small.SetUpdateFrequency(0);
+    EXPECT_EQ(1u, small.GetUpdateFrequency());
+    small.RecordFrame(now);
+    small.RecordFrame(now + 10ms);
+    small.RecordFrame(now + 30ms);
+    EXPECT_STREQ("FPS: 50", small.GetFormattedFps());
 }
