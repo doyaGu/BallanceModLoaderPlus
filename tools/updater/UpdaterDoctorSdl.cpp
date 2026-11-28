@@ -1,4 +1,4 @@
-#include "Platform/PeImage.h"
+#include "Platform/FileSystemNative.h"
 #include "UpdaterDoctor.h"
 #include "UpdaterPaths.h"
 #include "UpdaterSdl.h"
@@ -8,7 +8,6 @@
 #if BML_RUNTIME_SDL
 #include <SDL3/SDL.h>
 #else
-#include "Platform/FileSystemNative.h"
 #include <Windows.h>
 #include <cstdio>
 #endif

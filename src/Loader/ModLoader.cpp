@@ -1,6 +1,6 @@
 #include "BML/Abi.h"
 #ifdef _WIN32
-#include "Platform/PeImage.h"
+#include "Platform/FileSystemNative.h"
 #endif
 #include "Api/HandleSequence.h"
 #include "Loader/ModLoader.h"

@@ -3,6 +3,7 @@
 #include <SDL3/SDL_iostream.h>
 #endif
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -11,6 +12,8 @@ namespace BML::Platform {
 // SDL does not expose or when the caller needs an exact native error code.
 std::string CanonicalPath(const std::string &path);
 bool IsLink(const std::string &path);
+bool MatchesPeImage(const std::filesystem::path &path, std::string_view architecture,
+                    bool executable);
 bool RemoveFile(const std::string &path);
 #ifdef _WIN32
 bool ReadFileBytes(const std::wstring &path, std::string &out, std::uint32_t &error);
