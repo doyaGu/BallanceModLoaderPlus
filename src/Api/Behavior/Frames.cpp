@@ -283,7 +283,9 @@ private:
         record.Phase = BML_BEHAVIOR_PHASE_EXECUTION;
         record.NativeResult = frame.Fault.NativeCode;
         std::string storage;
-        const std::string_view message = Utf8Text(frame.Fault.Message, storage);
+        const auto &fault = frame.Fault.Message;
+        const std::string_view message = IsUtf8(fault.data(), fault.size())
+            ? std::string_view(fault) : Utf8Text(fault, storage);
         record.MessageLength = static_cast<std::uint32_t>(message.size());
         if (!Append(message.data(), message.size(), record.MessageOffset))
             return false;

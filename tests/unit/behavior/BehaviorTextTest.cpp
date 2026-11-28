@@ -12,13 +12,16 @@ constexpr unsigned Chinese = 936;
 
 TEST(BehaviorText, KeepsAsciiUnchanged) {
     std::string storage;
-    EXPECT_EQ(NativeText("Level_01.NMO", Chinese), "Level_01.NMO");
+    std::string native;
+    EXPECT_TRUE(EncodeNativeText("Level_01.NMO", native, Chinese));
+    EXPECT_EQ(native, "Level_01.NMO");
     EXPECT_EQ(Utf8Text("Level_01.NMO", storage, Chinese), "Level_01.NMO");
 }
 
-TEST(BehaviorText, PreservesUtf8RegardlessOfTheOldCodePageHint) {
+TEST(BehaviorText, RoundTripsInTheSelectedRuntime) {
     const std::string level = "\xe5\x85\xb3\xe5\x8d\xa1";
-    const std::string native = NativeText(level, Chinese);
+    std::string native;
+    ASSERT_TRUE(EncodeNativeText(level, native, Chinese));
 #if BML_RUNTIME_SDL
     EXPECT_EQ(native, level);
 #else
@@ -28,12 +31,13 @@ TEST(BehaviorText, PreservesUtf8RegardlessOfTheOldCodePageHint) {
     EXPECT_EQ(Utf8Text(native, storage, Chinese), level);
 
     const std::string cafe = "caf\xc3\xa9";
+    ASSERT_TRUE(EncodeNativeText(cafe, native, Western));
 #if BML_RUNTIME_SDL
-    EXPECT_EQ(NativeText(cafe, Western), cafe);
+    EXPECT_EQ(native, cafe);
 #else
-    EXPECT_EQ(NativeText(cafe, Western), "caf\xe9");
+    EXPECT_EQ(native, "caf\xe9");
 #endif
-    EXPECT_EQ(Utf8Text(cafe, storage, Western), cafe);
+    EXPECT_EQ(Utf8Text(native, storage, Western), cafe);
 }
 
 TEST(BehaviorText, RejectsMalformedUtf8InsteadOfDecodingItAsAcp) {
@@ -51,12 +55,30 @@ TEST(BehaviorText, RejectsMalformedUtf8InsteadOfDecodingItAsAcp) {
     EXPECT_FALSE(IsUtf8("\xf4\x90\x80\x80", 4));
 }
 
-TEST(BehaviorText, KeepsTextTheCodePageCannotHold) {
-    const std::string pass = "\xe5\x85\xb3";
-    EXPECT_EQ(NativeText(pass, Western), pass);
+TEST(BehaviorText, RejectsInputTheEngineCannotRepresent) {
+    const std::string text = "\xe5\x85\xb3";
+    std::string native = "previous result";
+#if BML_RUNTIME_SDL
+    EXPECT_TRUE(EncodeNativeText(text, native, Western));
+    EXPECT_EQ(native, text);
+#else
+    EXPECT_FALSE(EncodeNativeText(text, native, Western));
+    EXPECT_EQ(native, "previous result");
+#endif
+    EXPECT_FALSE(EncodeNativeText("\xc0\x80", native, Western));
+}
+
+TEST(BehaviorText, InterpretsOverlappingSequencesByRuntime) {
     std::string storage;
-    EXPECT_EQ(Utf8Text(pass, storage, Western), pass);
-    EXPECT_TRUE(storage.empty());
+    const std::string bytes = "\xc3\xa9";
+#if BML_RUNTIME_SDL
+    EXPECT_EQ(Utf8Text(bytes, storage, Chinese), bytes);
+#else
+    EXPECT_EQ(Utf8Text(bytes, storage, Chinese), "\xe8\x8c\x85");
+    std::string native;
+    ASSERT_TRUE(EncodeNativeText("\xe8\x8c\x85", native, Chinese));
+    EXPECT_EQ(native, bytes);
+#endif
 }
 
 } // namespace

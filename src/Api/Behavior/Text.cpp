@@ -97,9 +97,12 @@ bool IsUtf8(const char *data, std::size_t size) noexcept {
 }
 
 #if BML_RUNTIME_SDL
-std::string NativeText(std::string_view utf8, unsigned codePage) {
+bool EncodeNativeText(std::string_view utf8, std::string &native, unsigned codePage) {
     (void) codePage;
-    return std::string(utf8);
+    if (!IsUtf8(utf8.data(), utf8.size()))
+        return false;
+    native.assign(utf8);
+    return true;
 }
 
 std::string_view Utf8Text(std::string_view native, std::string &storage,
@@ -111,27 +114,35 @@ std::string_view Utf8Text(std::string_view native, std::string &storage,
 }
 
 #else
-std::string NativeText(std::string_view utf8, unsigned codePage) {
-    if (IsAscii(utf8) || utf8.size() > static_cast<std::size_t>(INT_MAX))
-        return std::string(utf8);
+bool EncodeNativeText(std::string_view utf8, std::string &native, unsigned codePage) {
     const unsigned page = codePage == ActiveCodePage ? GetACP() : codePage;
+    if (IsAscii(utf8) || page == CP_UTF8) {
+        if (!IsUtf8(utf8.data(), utf8.size()))
+            return false;
+        native.assign(utf8);
+        return true;
+    }
+    if (utf8.size() > static_cast<std::size_t>(INT_MAX))
+        return false;
     std::wstring wide;
-    std::string native;
-    if (page == CP_UTF8 ||
-        !Widen(utf8, CP_UTF8, MB_ERR_INVALID_CHARS, wide) ||
-        !Narrow(wide, page, true, native))
-        return std::string(utf8);
-    return native;
+    std::string converted;
+    if (!Widen(utf8, CP_UTF8, MB_ERR_INVALID_CHARS, wide) ||
+        !Narrow(wide, page, true, converted))
+        return false;
+    native.swap(converted);
+    return true;
 }
 
 std::string_view Utf8Text(std::string_view native, std::string &storage,
                           unsigned codePage) {
-    if (IsUtf8(native.data(), native.size()))
+    if (IsAscii(native))
+        return native;
+    const unsigned page = codePage == ActiveCodePage ? GetACP() : codePage;
+    if (page == CP_UTF8 && IsUtf8(native.data(), native.size()))
         return native;
     std::wstring wide;
     if (native.size() > static_cast<std::size_t>(INT_MAX) ||
-        !Widen(native, codePage == ActiveCodePage ? CP_ACP : codePage, 0,
-               wide) ||
+        !Widen(native, page, MB_ERR_INVALID_CHARS, wide) ||
         !Narrow(wide, CP_UTF8, false, storage)) {
         storage.clear();
     }

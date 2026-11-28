@@ -15,12 +15,12 @@ inline constexpr unsigned ActiveCodePage = 0;
 
 bool IsUtf8(const char *data, std::size_t size) noexcept;
 
-// Text the code page cannot represent keeps its UTF-8 bytes.
-std::string NativeText(std::string_view utf8,
-                       unsigned codePage = ActiveCodePage);
+// Returns false when the engine cannot represent the UTF-8 input.
+bool EncodeNativeText(std::string_view utf8, std::string &native,
+                      unsigned codePage = ActiveCodePage);
 
-// Returns the text itself when it is already UTF-8, as names set by UTF-8
-// callers are, and otherwise the converted text held in storage.
+// Decodes engine text according to its runtime, even if ACP bytes happen to
+// form a valid UTF-8 sequence.
 std::string_view Utf8Text(std::string_view native, std::string &storage,
                           unsigned codePage = ActiveCodePage);
 

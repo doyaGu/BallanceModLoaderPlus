@@ -50,7 +50,8 @@ void WriteMessage(BML_BehaviorStatus &out, const std::string &message) noexcept 
     std::string storage;
     std::string_view text = message;
     try {
-        text = Utf8Text(message, storage);
+        if (!IsUtf8(message.data(), message.size()))
+            text = Utf8Text(message, storage);
     } catch (...) {
     }
     out.MessageLength = text.size() > UINT32_MAX
@@ -191,8 +192,7 @@ bool ReadString(BML_BehaviorString value, std::string &out,
 bool ReadNativeString(BML_BehaviorString value, std::string &out) {
     if (!ReadString(value, out))
         return false;
-    out = NativeText(out);
-    return true;
+    return EncodeNativeText(out, out);
 }
 
 CKGUID Guid(BML_BehaviorGuid value) noexcept {
