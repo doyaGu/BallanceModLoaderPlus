@@ -9,13 +9,55 @@
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
-#ifndef _WIN32
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <chrono>
+#include <thread>
+#else
 #include <unistd.h>
 #endif
 
 static void Require(bool condition, const char *message) {
     if (!condition) throw std::runtime_error(message);
 }
+
+#ifdef _WIN32
+static HANDLE OpenConfigReader(const std::wstring &path) {
+    const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                       nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    Require(handle != INVALID_HANDLE_VALUE, "open config reader without delete sharing");
+    return handle;
+}
+
+static void CheckConfigPublication(const std::wstring &path, const std::wstring &directory) {
+    using namespace std::chrono_literals;
+    HANDLE reader = OpenConfigReader(path);
+    std::uint32_t error = 0;
+    const bool publishedWhileBusy = utils::WriteFileBytesAtomicW(path, "blocked", error);
+    ::CloseHandle(reader);
+    Require(!publishedWhileBusy && (error == ERROR_ACCESS_DENIED ||
+            error == ERROR_SHARING_VIOLATION || error == ERROR_LOCK_VIOLATION),
+            "Win32 denied publication while the reader holds the file");
+    std::string content;
+    Require(utils::ReadFileBytesW(path, content) && content == "after",
+            "blocked publication preserves the original config");
+
+    reader = OpenConfigReader(path);
+    std::jthread closeReader([&] {
+        const auto deadline = std::chrono::steady_clock::now() + 500ms;
+        while (utils::ListFilesW(directory, L"config.txt.tmp-*").empty() &&
+               std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(1ms);
+        std::this_thread::sleep_for(25ms);
+        ::CloseHandle(reader);
+    });
+    Require(utils::WriteFileBytesAtomicW(path, "retried", error),
+            "atomic config publication recovers after a transient reader");
+    Require(utils::ReadFileBytesW(path, content) && content == "retried",
+            "the complete config is visible after publication");
+}
+#endif
 
 int main(int argc, char **argv) {
     std::wstring root;
@@ -37,9 +79,16 @@ int main(int argc, char **argv) {
         Require(utils::ReadFileBytesW(path, bytes) && bytes == "before", "failed publication preserves config");
         Require(utils::WriteFileBytesAtomicW(path, "after", error), "replace config");
         Require(utils::ReadFileBytesW(path, bytes) && bytes == "after", "replacement data");
+#ifdef _WIN32
+        CheckConfigPublication(path, directory);
+#endif
         Require(utils::WriteFileBytesAtomicW(path, {}, error), "empty config");
         Require(utils::ReadFileBytesW(path, bytes) && bytes.empty(), "read empty config");
-        Require(utils::ListFilesW(directory).size() == 1, "temporary files cleaned");
+        const auto fileNames = utils::ListFilesW(directory);
+        if (fileNames.size() != 1)
+            for (const auto &name : fileNames)
+                std::cerr << utils::Utf16ToUtf8(name) << '\n';
+        Require(fileNames.size() == 1 && fileNames.front() == L"config.txt", "temporary files cleaned");
         Require(!utils::ReadFileBytesW(path + L".missing", bytes, error) && error == BML::Platform::FileError::NotFound, "missing-file classification");
         Require(!utils::WriteFileBytesAtomicW(utils::CombinePathW(root, L"absent/file"), "x", error), "missing parent write fails");
         std::wstring resolved;

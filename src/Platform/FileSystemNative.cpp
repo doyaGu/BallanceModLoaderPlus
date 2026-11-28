@@ -182,21 +182,42 @@ bool SyncFile(SDL_IOStream *stream) {
 #endif
 }
 #endif
+#ifdef _WIN32
+bool PublishFile(const std::wstring &source, const std::wstring &destination,
+                 bool replace, std::uint32_t &error) {
+    const DWORD flags = MOVEFILE_WRITE_THROUGH | (replace ? MOVEFILE_REPLACE_EXISTING : 0);
+    constexpr unsigned attempts = 12;
+    constexpr DWORD retryDelayMs = 10;
+    for (unsigned attempt = 0; attempt < attempts; ++attempt) {
+        if (::MoveFileExW(source.c_str(), destination.c_str(), flags)) {
+            error = FileError::Success;
+            return true;
+        }
+        error = ::GetLastError();
+        // A reader that omitted FILE_SHARE_DELETE can make Windows return
+        // ERROR_ACCESS_DENIED instead of ERROR_SHARING_VIOLATION.
+        if (error != ERROR_ACCESS_DENIED && error != ERROR_SHARING_VIOLATION &&
+            error != ERROR_LOCK_VIOLATION)
+            return false;
+        if (attempt + 1 < attempts)
+            ::Sleep(retryDelayMs);
+    }
+    return false;
+}
+#endif
+
 bool PublishFile(const std::string &source, const std::string &destination,
                  bool replace, std::uint32_t &error) {
 #ifdef _WIN32
-    const auto from = utils::Utf8ToUtf16(source);
-    const auto to = utils::Utf8ToUtf16(destination);
-    const DWORD flags = MOVEFILE_WRITE_THROUGH | (replace ? MOVEFILE_REPLACE_EXISTING : 0);
-    const bool published = MoveFileExW(from.c_str(), to.c_str(), flags) != 0;
+    return PublishFile(utils::Utf8ToUtf16(source), utils::Utf8ToUtf16(destination),
+                       replace, error);
 #else
     const bool published = replace ? std::rename(source.c_str(), destination.c_str()) == 0
                                    : ::link(source.c_str(), destination.c_str()) == 0;
-#endif
     error = published ? FileError::Success : LastFileError();
     return published;
+#endif
 }
-
 bool SetWorkingDirectory(const std::string &path) {
 #ifdef _WIN32
     return SetCurrentDirectoryW(utils::Utf8ToUtf16(path).c_str()) != 0;

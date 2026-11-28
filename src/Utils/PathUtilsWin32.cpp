@@ -1,6 +1,7 @@
 #include "PathUtils.h"
 #include "PathLexical.h"
 #include "PathUtilsDetail.h"
+#include "Platform/FileSystemNative.h"
 #include "StringUtils.h"
 
 #include <filesystem>
@@ -1228,13 +1229,9 @@ std::wstring GetParentDirectoryW(const std::wstring &path) {
 
         // Do not copy/delete or move the original aside. The sibling is on the
         // same volume, so publication is one rename, including replacement.
-        const DWORD flags = MOVEFILE_WRITE_THROUGH | (replaceExisting ? MOVEFILE_REPLACE_EXISTING : 0);
-        if (!::MoveFileExW(replacement.Path.c_str(), destination.c_str(), flags)) {
-            error = ::GetLastError();
+        if (!BML::Platform::PublishFile(replacement.Path, destination, replaceExisting, error))
             return false;
-        }
         replacement.Owned = false;
-        error = ERROR_SUCCESS;
         return true;
     }
 

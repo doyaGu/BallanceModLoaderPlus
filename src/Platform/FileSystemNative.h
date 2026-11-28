@@ -14,6 +14,8 @@ bool IsLink(const std::string &path);
 bool RemoveFile(const std::string &path);
 #ifdef _WIN32
 bool ReadFileBytes(const std::wstring &path, std::string &out, std::uint32_t &error);
+bool PublishFile(const std::wstring &source, const std::wstring &destination,
+                 bool replace, std::uint32_t &error);
 bool EncodePathForCodePage(std::wstring_view path, std::uint32_t codePage, std::string &out);
 std::wstring ShortPath(const std::wstring &path);
 #endif
