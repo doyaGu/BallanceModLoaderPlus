@@ -1589,9 +1589,13 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
     BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
                         "bool Replace(const string &in script, Edit@+ edit, bool each = false)",
                         &ScriptBehaviorSubmission::ReplaceScripts);
-    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
-                        "bool ReadInstallations(array<Installation@> &out installations) const",
-                        &ScriptBehaviorSubmission::ReadInstallations);
+    // AngelScript 2.38 keeps a generated array of BML-owned handles alive as
+    // part of the config group that registers its signature. Validate the type
+    // at the call site so the script module owns the template instance.
+    BML_BEHAVIOR_REGISTER(engine->RegisterObjectMethod(
+        "Submission", "bool ReadInstallations(? &out installations) const",
+        asFUNCTION(ReadInstallations), asCALL_GENERIC),
+        "BML::Behavior::Submission::ReadInstallations");
     BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
                         "string get_ApplyError() const", &ScriptBehaviorSubmission::ApplyError);
     BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",

@@ -222,6 +222,14 @@ class BehaviorInstallationsProbe {
             Require(controlled.Replace("Event_handler", controlledBody), "Identical replacement was refused");
             step = 18;
         } else if (step == 18 && controlled.State == BML::Behavior::SubmissionState::Applied) {
+            bool wrongTypeRejected = false;
+            try {
+                array<int> wrongType;
+                controlled.ReadInstallations(wrongType);
+            } catch {
+                wrongTypeRejected = true;
+            }
+            Require(wrongTypeRejected, "ReadInstallations accepted an incompatible output array");
             array<BML::Behavior::Installation@> entries;
             int value = 0;
             Require(controlled.RequestedEnabled && controlled.ReadInstallations(entries) &&

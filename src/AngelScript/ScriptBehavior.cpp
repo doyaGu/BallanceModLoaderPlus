@@ -3545,6 +3545,31 @@ private:
     std::shared_ptr<SubmissionResource> m_Submission;
 };
 
+#pragma push_macro("GetObject")
+#undef GetObject
+void ReadInstallations(asIScriptGeneric *call) try {
+    call->SetReturnByte(false);
+    auto *engine = call->GetEngine();
+    const int typeId = call->GetArgTypeId(0);
+    auto *type = engine->GetTypeInfoById(typeId);
+    auto *element = engine->GetTypeInfoByName("BML::Behavior::Installation");
+    constexpr int handleFlags = asTYPEID_OBJHANDLE | asTYPEID_HANDLETOCONST;
+    if (typeId < 0 || (typeId & handleFlags) || !type || !element ||
+        type->GetSubTypeCount() != 1 || type->GetSubTypeId() != (element->GetTypeId() | asTYPEID_OBJHANDLE) ||
+        type != engine->GetTypeInfoByDecl("array<BML::Behavior::Installation@>")) {
+        ScriptStringInterop::RaiseActiveException(
+            "ReadInstallations expects an output array<BML::Behavior::Installation@>.");
+        return;
+    }
+    auto *submission = static_cast<const ScriptBehaviorSubmission *>(call->GetObject());
+    call->SetReturnByte(submission->ReadInstallations(call->GetArgAddress(0)));
+} catch (const std::bad_alloc &) {
+    ScriptStringInterop::RaiseActiveException("Out of memory reading Behavior installations.");
+} catch (...) {
+    ScriptStringInterop::RaiseActiveException("Could not read Behavior installations.");
+}
+#pragma pop_macro("GetObject")
+
 ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyGraph(
     const std::string &name, ScriptBehaviorGraph *graph, int ownership) const {
     return ApplyGraphWithState(name, graph, ownership, true);

@@ -105,6 +105,11 @@ def run(args):
             raise RuntimeError(f"Probe produced no result (Player exit {exit_code}); logs: {directory}")
         result = json.loads(result_path.read_text(encoding="utf-8"))
         log = (runtime / "ModLoader" / "ModLoader.log").read_text(encoding="utf-8", errors="replace")
+        if host_abi.get("scripts", False) and (
+                "Registered BML AngelScript bindings" not in log or
+                "Unregistered BML AngelScript bindings" not in log or
+                "Failed to unregister BML AngelScript bindings" in log):
+            raise RuntimeError(f"Script extension lifecycle regression; logs: {directory}")
         if args.script_examples:
             for marker in ("BML single-file script smoke loaded resource=true",
                            "BML zip script smoke loaded resource=true"):

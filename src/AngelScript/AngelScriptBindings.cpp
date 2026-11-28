@@ -2991,6 +2991,8 @@ void BML_UnregisterAngelScriptBindings(ModContext *context) {
     context->SetAngelScriptExtensionRegistered(false);
     context->SetAngelScriptBindingsRegistered(false);
     g_NextRegistrationAttemptTick = 0;
+    if (context->GetLogger())
+        context->GetLogger()->Info("Unregistered BML AngelScript bindings");
 }
 
 #else

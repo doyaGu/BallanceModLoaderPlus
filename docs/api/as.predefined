@@ -16737,7 +16737,7 @@ class Submission {
     bool SetEnabled(bool enabled);
     bool Replace(BML::Behavior::Graph@ graph, BML::Behavior::Edit@ edit);
     bool Replace(const string&in script, BML::Behavior::Edit@ edit, bool each = false);
-    bool ReadInstallations(BML::Behavior::Installation@[]&out installations) const;
+    bool ReadInstallations(?&out installations) const;
     string get_ApplyError() const;
     string get_RestoreError() const;
     BML::Behavior::Installation@ Find(BML::Behavior::ObjectRef@ graph = null) const;
