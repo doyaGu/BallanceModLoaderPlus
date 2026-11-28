@@ -1,4 +1,5 @@
 #include "Platform/FileSystemNative.h"
+#include "Platform/Module.h"
 #include "UpdaterDoctor.h"
 #include "UpdaterPaths.h"
 #include "UpdaterSdl.h"

@@ -1,7 +1,4 @@
 #include "BML/Abi.h"
-#ifdef _WIN32
-#include "Platform/FileSystemNative.h"
-#endif
 #include "Api/HandleSequence.h"
 #include "Loader/ModLoader.h"
 #include "Loader/ModContext.h"

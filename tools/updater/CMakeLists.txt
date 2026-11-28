@@ -41,7 +41,7 @@ function(bml_configure_updater target key_x key_y)
         BML_UPDATER_PLATFORM="${BML_TARGET_PLATFORM}" BML_UPDATER_ARCH="${BML_TARGET_ARCH}"
         BML_UPDATER_PUBLIC_KEY_X="${key_x}" BML_UPDATER_PUBLIC_KEY_Y="${key_y}")
     target_link_libraries(${target} PUBLIC BML_CryptoUtils BML_JsonUtils
-        BML_PathUtils BML_StringUtils zip ${_bml_transport})
+        BML_Platform BML_PathUtils BML_StringUtils zip ${_bml_transport})
     set_target_properties(${target} PROPERTIES FOLDER Tools)
 endfunction()
 add_library(BMLUpdaterCore STATIC ${_bml_updater_sources})

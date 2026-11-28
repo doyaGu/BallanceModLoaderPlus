@@ -186,6 +186,9 @@ def main():
             saved_loader = (game / loader_relative).read_bytes()
             (game / loader_relative).write_bytes(b"invalid binary")
             assert "wrong-format-or-architecture" in updater("doctor", success=False)
+            if args.platform == "windows":
+                shutil.copyfile(args.player_fixture, game / loader_relative)
+                assert "wrong-format-or-architecture" in updater("doctor", success=False)
             (game / loader_relative).write_bytes(saved_loader)
             for unsupported in ({"mod_api": "unknown"}, {"mod_api_major": 2}):
                 put_json(stage / "ModLoader/BML.abi.json", {**stage_abi, **unsupported})

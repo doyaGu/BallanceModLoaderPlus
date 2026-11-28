@@ -1,7 +1,9 @@
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -15,6 +17,8 @@ namespace BML::Platform {
 using ModuleIdentity = const void *;
 ModuleIdentity ModuleFromAddress(const void *address) noexcept;
 std::string ModulePath(const void *address);
+bool MatchesPeImage(const std::filesystem::path &path, std::string_view architecture,
+                    bool executable);
 
 class Module {
 public:
