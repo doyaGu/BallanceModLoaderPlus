@@ -86,6 +86,8 @@ def run(args):
             env["BML_SCRIPT_API_DUMP"] = str(directory / "bml-script-api.as")
         env["BML_EXPECT_MODS"] = ",".join(args.expect_mod + identities)
         env["BML_EXPECT_SCRIPTS"] = "1" if scripts else "0"
+        if args.ckas_self_test:
+            env["CKAS_SELFTEST_MARKER"] = str(directory / "ckas-self-test.txt")
         if args.benchmark_api:
             env["BML_BENCHMARK_API"] = "1"
         with (directory / "player-output.log").open("wb") as log:
@@ -110,6 +112,11 @@ def run(args):
                 "Unregistered BML AngelScript bindings" not in log or
                 "Failed to unregister BML AngelScript bindings" in log):
             raise RuntimeError(f"Script extension lifecycle regression; logs: {directory}")
+        if args.ckas_self_test:
+            marker_path = Path(env["CKAS_SELFTEST_MARKER"])
+            if not marker_path.is_file() or not {"status=ok", "stage=complete"}.issubset(
+                    marker_path.read_text(encoding="utf-8").splitlines()):
+                raise RuntimeError(f"CKAngelScript startup self-tests did not pass; logs: {directory}")
         if args.script_examples:
             for marker in ("BML single-file script smoke loaded resource=true",
                            "BML zip script smoke loaded resource=true"):
@@ -156,6 +163,8 @@ if __name__ == "__main__":
                         help="Also verify documentation examples with a matching documentation checkout")
     parser.add_argument("--without-script-consumers", action="store_true",
                         help="Exercise extension registration and teardown without script modules")
+    parser.add_argument("--ckas-self-test", action="store_true",
+                        help="Require CKAngelScript startup self-tests in the same Player")
     parser.add_argument("--benchmark-api", action="store_true", help="Measure common SDK calls in Player")
     arguments = parser.parse_args()
     if arguments.tutorial_examples:

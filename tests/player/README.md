@@ -131,6 +131,9 @@ gameplay path in the examples.
 When a prepared runtime is supplied to the standalone CMake project, CTest
 registers the normal three-cycle probe, three-cycle empty-consumer registration
 probe, and a one-cycle example check for script-enabled runtimes.
+If CKAngelScript was built with `CKAS_BUILD_SELF_TESTS=ON`, enable
+`BML_TEST_CKAS_STARTUP_SELFTESTS` to run the startup self-tests in the same
+Player as BML and verify that gameplay hooks still install and Player exits cleanly.
 
 To refresh editor declarations from the actual registered runtime:
 

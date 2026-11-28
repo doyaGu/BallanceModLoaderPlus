@@ -19,6 +19,7 @@ if(BML_TEST_CKAS_INCLUDE AND BML_TEST_AS_INCLUDE)
 endif()
 
 set(BML_SDL_PLAYER_ROOT "" CACHE PATH "Prepared SDL Player runtime with matching BML and game assets")
+option(BML_TEST_CKAS_STARTUP_SELFTESTS "Test CKAngelScript startup self-tests with BML in Player" OFF)
 if(BML_SDL_PLAYER_ROOT)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     enable_testing()
@@ -45,6 +46,16 @@ if(BML_SDL_PLAYER_ROOT)
                 --output "${CMAKE_CURRENT_BINARY_DIR}/example-runs"
                 --script-examples --repeat 1 --timeout 90)
         set_tests_properties(BMLSdlScriptExamplesTest PROPERTIES TIMEOUT 120 LABELS "integration;player;sdl;script")
+        if(BML_TEST_CKAS_STARTUP_SELFTESTS)
+            add_test(NAME BMLSdlCkasStartupSelfTest
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/RunPostProcessTest.py"
+                    --runtime "${BML_SDL_PLAYER_ROOT}"
+                    --probe "$<TARGET_FILE:SdlPostProcessProbe>"
+                    --output "${CMAKE_CURRENT_BINARY_DIR}/ckas-self-test-runs"
+                    --ckas-self-test --without-script-consumers --repeat 1)
+            set_tests_properties(BMLSdlCkasStartupSelfTest PROPERTIES
+                RUN_SERIAL TRUE TIMEOUT 90 LABELS "integration;player;sdl;script;behavior")
+        endif()
     endif()
     set_tests_properties(BMLSdlPostProcessRuntimeTest PROPERTIES TIMEOUT 240 LABELS "integration;player;sdl")
 endif()

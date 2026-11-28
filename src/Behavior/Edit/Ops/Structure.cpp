@@ -144,7 +144,7 @@ Status CKEdit::Transaction::CreateNodes() {
 // DETACH/DELETE callbacks.
 Status CKEdit::Transaction::Replace() {
     std::unordered_set<CKObject *> installedPorts;
-    std::unordered_set<CKBehavior *> originalNodes;
+    std::unordered_set<CKObject *> originalNodes;
     std::unordered_set<CKParameter *> privateState;
     const auto slots = [](const Layout &layout, SlotKind kind) {
         std::vector<const SlotInfo *> result;
@@ -255,8 +255,9 @@ Status CKEdit::Transaction::Replace() {
             return false;
         if (privateState.contains(parameter))
             return true;
-        CKBehavior *owner = CKBehavior::Cast(parameter->GetOwner());
-        return owner && originalNodes.contains(owner) &&
+        // The global parameter inventory can include unrelated owners being deleted.
+        // Membership only needs the owner address.
+        return originalNodes.contains(parameter->GetOwner()) &&
             !m_ReplacementPorts.contains(parameter);
     };
 
