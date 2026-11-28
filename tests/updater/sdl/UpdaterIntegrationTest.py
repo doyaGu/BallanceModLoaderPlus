@@ -9,11 +9,13 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import ssl
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import zipfile
 import importlib.util
 
@@ -29,6 +31,39 @@ def run(*command, env=None, success=True):
 def put_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def check_download_deadline(updater, root):
+    destination = root / "fault-download.zip"
+    destination.write_bytes(b"existing")
+    accepted = threading.Event()
+    done = threading.Event()
+    with socket.create_server(("127.0.0.1", 0)) as server:
+        server.settimeout(4)
+
+        def stall_tls():
+            with server.accept()[0] as client:
+                client.settimeout(3)
+                if client.recv(4096):
+                    accepted.set()
+                done.wait(8)
+
+        worker = threading.Thread(target=stall_tls, daemon=True)
+        worker.start()
+        try:
+            start = time.monotonic()
+            url = f"https://127.0.0.1:{server.getsockname()[1]}/archive.zip"
+            env = {**os.environ, "BML_TEST_UPDATER_DEADLINE": "1"}
+            result = subprocess.run([str(updater), "--test-download", url, str(destination)],
+                                    env=env, capture_output=True, text=True, timeout=5)
+            assert not result.returncode == 0 and "total deadline" in result.stdout, result.stdout
+            assert accepted.is_set(), "download never entered the stalled TLS request"
+            assert time.monotonic() - start < 5
+            assert destination.read_bytes() == b"existing"
+            assert not list(root.glob("fault-download.zip.download-*"))
+        finally:
+            done.set()
+            worker.join(5)
 
 
 def main():
@@ -58,6 +93,8 @@ def main():
     player_name = "Player.exe" if args.platform == "windows" else "Player"
     with tempfile.TemporaryDirectory(prefix="bml-updater-https-") as temporary:
         root = Path(temporary).resolve()
+        if args.runtime == "virtools":
+            check_download_deadline(args.updater, root)
         game = root / ("中文 游戏" if args.runtime == "sdl" else "game")
         stage = root / "staged"
         output = root / "server"
