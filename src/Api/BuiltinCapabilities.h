@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <string>
 
-class BMLMod;
 class Logger;
 class ModContext;
 
@@ -17,8 +16,8 @@ class ObjectRefs;
 }
 
 /* Registers the reads behind the loader's own interface structs. */
-void RegisterBuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects, Logger *logger);
-void UnregisterBuiltinCapabilities(BMLMod &mod);
+void RegisterBuiltinCapabilities(ModContext &context, Logger &logger);
+void UnregisterBuiltinCapabilities(ModContext &context);
 
 /* The scene interface in Scene.h answers out of these. Opaque CK references
  * are owned by the API seam rather than by the gameplay reads. */

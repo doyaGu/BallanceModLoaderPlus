@@ -1049,16 +1049,14 @@ void QueueTest() {
 
 namespace UiAutomation {
 
-void Start(BMLMod &mod) {
+void Start(ModContext &runtime, BMLMod &mod) {
     if (g_Engine || g_Armed)
         return;
 
     const char *resultPath = std::getenv("BML_UI_AUTOMATION_RESULT");
     const char *scenarioName = std::getenv("BML_UI_AUTOMATION_SCENARIO");
     const char *sessionPath = std::getenv("BML_UI_AUTOMATION_SESSION");
-    Logger *logger = nullptr;
-    if (ModContext *runtime = mod.GetRuntimeContext())
-        logger = runtime->GetLogger();
+    Logger *logger = runtime.GetLogger();
     if (logger) {
         logger->Info("UI automation: gate=game-menu requested=%s",
                      HasText(resultPath) ? "true" : "false");
@@ -1077,7 +1075,7 @@ void Start(BMLMod &mod) {
 
     g_Mod = &mod;
     g_Logger = logger;
-    g_Runtime = mod.GetRuntimeContext();
+    g_Runtime = &runtime;
     g_InitialHudMode = mod.GetHUD();
     g_ResultPath = resultPath;
     g_ScenarioName = scenario->Name;

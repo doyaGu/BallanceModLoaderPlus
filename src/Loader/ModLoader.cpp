@@ -275,8 +275,8 @@ bool ModLoader::HasLiveDependents(const ModRecord *provider) const {
     for (const auto &entry : m_CNativeMods) {
         if (entry.first == provider || !entry.second->HasInstance())
             continue;
-        if (provider == (m_BMLMod ? &m_BMLMod->Registration() : nullptr) ||
-            provider == (m_BallTypeMod ? &m_BallTypeMod->Registration() : nullptr))
+        if (provider == m_BuiltinRecord.get() ||
+            provider == m_BallTypeRecord.get())
             return true;
         for (const auto &dep : entry.second->Dependencies())
             if (id == dep.Id)
@@ -291,8 +291,8 @@ bool ModLoader::HasLiveDependents(const ModRecord *provider) const {
             continue;
         if (!script->IsLoaded())
             continue;
-        if (provider == (m_BMLMod ? &m_BMLMod->Registration() : nullptr) ||
-            provider == (m_BallTypeMod ? &m_BallTypeMod->Registration() : nullptr))
+        if (provider == m_BuiltinRecord.get() ||
+            provider == m_BallTypeRecord.get())
             return true;
         for (const auto &d : ReadDependencies(candidate))
             if (d.Id == id)
@@ -325,7 +325,7 @@ void ModLoader::ProcessFailedNativeMods() {
         }
         if (!m_Context.PrepareModUnload(native.GetID()))
             continue;
-        if (Config *config = m_Context.GetConfig(&native.Registration());
+        if (::Config *config = m_Context.GetConfig(&native.Registration());
             config && !m_Context.RemoveConfig(config))
             continue;
         m_Context.GetConfigApi().CleanupOwner(native.Registration());
@@ -396,8 +396,8 @@ std::wstring ModLoader::GetModRootDirectory(const char *modId) const {
     }
 #endif
 
-    if (mod == (m_BMLMod ? &m_BMLMod->Registration() : nullptr) ||
-        mod == (m_BallTypeMod ? &m_BallTypeMod->Registration() : nullptr))
+    if (mod == m_BuiltinRecord.get() ||
+        mod == m_BallTypeRecord.get())
         return ModuleDirectoryFromAddress(reinterpret_cast<const void *>(&BML_GetModContext));
     return {};
 }
@@ -536,9 +536,11 @@ void ModLoader::UnloadMods() {
 
     delete m_BallTypeMod;
     m_BallTypeMod = nullptr;
+    m_BallTypeRecord.reset();
 
     delete m_BMLMod;
     m_BMLMod = nullptr;
+    m_BuiltinRecord.reset();
 
 #if BML_ENABLE_ANGELSCRIPT
     m_ScriptMods.clear();
@@ -1270,7 +1272,7 @@ ModRecord *ModLoader::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate
     m_ScriptMods.push_back(std::move(scriptMod));
     ModRecord *mod = &m_ScriptMods.back()->Registration();
     if (!RegisterMod(mod)) {
-        if (Config *config = m_Context.GetConfig(mod))
+        if (::Config *config = m_Context.GetConfig(mod))
             m_Context.RemoveConfig(config);
         m_ScriptMods.pop_back();
         return nullptr;
@@ -1665,15 +1667,6 @@ bool ModLoader::UnloadMod(const std::string &id) {
     return true;
 }
 
-bool ModLoader::RegisterBuiltinMods() {
-    m_BMLMod = new BMLMod(&m_Context);
-    if (!RegisterMod(m_BMLMod ? &m_BMLMod->Registration() : nullptr))
-        return false;
-
-    m_BallTypeMod = new NewBallTypeMod(&m_Context);
-    return RegisterMod(m_BallTypeMod ? &m_BallTypeMod->Registration() : nullptr);
-}
-
 bool ModLoader::RegisterMod(ModRecord *mod, const std::shared_ptr<void> &dllHandle) {
     // Allow registering built-in mods that don't come from a DLL (dllHandle can be null).
     if (!mod) {
@@ -1844,7 +1837,7 @@ std::string ModLoader::GetNativeModOwnerId(
             if (auto *script = BML::ScriptModRuntime::GetCurrentScriptMod())
                 invoked = &script->Registration();
 #endif
-        if (owner == invoked || (owner == &m_BMLMod->Registration() && !invoked))
+        if (owner == invoked || (owner == m_BuiltinRecord.get() && !invoked))
             return requested->first;
         return {};
     }
@@ -1929,7 +1922,7 @@ bool ModLoader::UnregisterMod(ModRecord *mod) {
 
         // Config persistence needs the live Mod id, so detach and destroy the
         // loader-owned config before the Mod instance or its DLL goes away.
-        if (Config *config = m_Context.GetConfig(mod); config && !m_Context.RemoveConfig(config)) {
+        if (::Config *config = m_Context.GetConfig(mod); config && !m_Context.RemoveConfig(config)) {
             if (m_Context.GetLogger())
                 m_Context.GetLogger()->Error("Failed to detach config before unloading mod %s.", modIdCopy.c_str());
             return false;
@@ -1979,6 +1972,8 @@ bool ModLoader::UnregisterMod(ModRecord *mod) {
 
         m_Context.GetConfigApi().CleanupOwner(*mod);
         DestroyNativeMod(mod);
+        if (mod == m_BallTypeRecord.get())
+            std::erase_if(m_ModContexts, [mod](const auto &entry) { return entry.second == mod; });
         m_Context.RemoveModDataPath(mod);
 
         return true;

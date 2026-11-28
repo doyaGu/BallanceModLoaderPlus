@@ -832,7 +832,8 @@ TEST_F(AnsiPaletteTest, LoaderDirProviderGetSet) {
     EXPECT_EQ(AnsiPalette::GetLoaderDirProvider(), nullptr);
     // restore and confirm
     AnsiPalette::SetLoaderDirProvider(prev);
-    EXPECT_EQ(AnsiPalette::GetLoaderDirProvider(), prev);
+    ASSERT_TRUE(AnsiPalette::GetLoaderDirProvider());
+    EXPECT_EQ(AnsiPalette::GetLoaderDirProvider()(), prev());
 }
 
 TEST_F(AnsiPaletteTest, SetThemeOptionInvalidValuesRejected) {

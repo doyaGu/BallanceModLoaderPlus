@@ -2,9 +2,13 @@
 #define BML_BMLMOD_H
 
 #include <cstddef>
+#include <functional>
+#include <memory>
+#include <unordered_map>
 
-#include "Loader/ModRecord.h"
 #include "BML/Behavior.hpp"
+#include "BML/Version.h"
+#include "CKAll.h"
 
 #include "Console/Console.h"
 #include "CustomMaps/CustomMaps.h"
@@ -14,20 +18,39 @@
 #include "ModMenu/ModMenu.h"
 #include "ModMenu/ModsMenuEntry.h"
 
-class ModContext;
+class Config;
+class Logger;
+namespace BML { class GameFontCatalog; }
+namespace BML::UI { class FontRuntime; }
 struct FontCommandContext;
 
 class BMLMod {
 public:
-    ModRecord &Registration() noexcept { return m_Record; }
+    // The Loader composes these capabilities for its built-in features.
+    // Runtime Context, registration identity and callback ownership stay with the Loader.
+    class Host {
+    public:
+        virtual ~Host() = default;
+        virtual CKContext &Engine() = 0;
+        virtual Config &Settings() = 0;
+        virtual Logger &Log() = 0;
+        virtual ModMenu &Menu() = 0;
+        virtual BML::UI::FontRuntime *UiFonts() = 0;
+        virtual BML::GameFontCatalog &GameFonts() = 0;
+        virtual std::string LoaderDirectory() = 0;
+        virtual void StartFeatures(CustomMaps &, GameEventHooks &, GameplayTweaks &,
+                                   Console &, HUDRuntime &, FontCommandContext) = 0;
+        virtual void StopFeatures() = 0;
+        virtual void LoadOptionsEntry(ModsMenuEntry &, BML::Behavior::Session &, CKBehavior *) = 0;
+        virtual void ScheduleFontAcquisition(std::function<void()> callback) = 0;
+        virtual void SetWidescreen(bool enabled) = 0;
+        virtual void RenderDevTools() = 0;
+#if BML_ENABLE_UI_AUTOMATION
+        virtual void StartUiAutomation(BMLMod &) = 0;
+#endif
+    };
 
-    const ModRecord &Registration() const noexcept { return m_Record; }
-
-    explicit BMLMod(ModContext *context);
-
-    // The builtin capabilities read the BML mod's bound runtime, never the
-    // ambient BML_GetModContext() singleton.
-    ModContext *GetRuntimeContext() const;
+    explicit BMLMod(std::unique_ptr<Host> host);
 
     const char *GetID() { return "BML"; }
 
@@ -41,8 +64,6 @@ public:
         return "Implementation of functions provided by Ballance Mod Loader."
                "\n\n https://github.com/doyaGu/BallanceModLoaderPlus";
     }
-
-    BMLVersion GetBMLVersion() { return {}; }
 
     void OnLoad();
     void OnUnload();
@@ -77,8 +98,6 @@ public:
     void OpenMapMenu();
     void CloseMapMenu();
 
-    int GetHSScore();
-
     void ApplyFrameRateSettings();
     void AdjustFrameRate(bool sync = false, float limit = 60.0f);
 
@@ -98,8 +117,7 @@ public:
     float GetSRTime() const;
 
 private:
-    ModContext *m_BML;
-    ModRecord m_Record;
+    std::unique_ptr<Host> m_Host;
 
     enum ApplyWhen : unsigned {
         OnDemand = 0,
@@ -146,9 +164,9 @@ private:
     CKTimeManager *m_TimeManager = nullptr;
     CK_ID m_GameplayTimer = 0;
     CKBEHAVIORFCT m_GameplayTimerFunction = nullptr;
+    static std::unordered_map<CKContext *, BMLMod *> s_GameplayTimerOwners;
 
     HUDRuntime m_HUD;
-    ModMenu m_ModMenu;
     CustomMaps m_CustomMaps;
     GameEventHooks m_GameEventHooks;
     GameplayTweaks m_GameplayTweaks;

@@ -16,7 +16,6 @@
 
 #include "BML/TypeConvert.h"
 
-#include "Mods/BMLMod.h"
 #include "Api/ObjectRefs.h"
 #include "Logging/Logger.h"
 #include "Loader/ModContext.h"
@@ -25,10 +24,8 @@ namespace {
 
 class BuiltinCapabilities {
 public:
-    BuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects)
-        : m_Mod(mod), m_Objects(objects) {}
-
-    ModContext *Context() const { return GetContext(); }
+    explicit BuiltinCapabilities(ModContext &context)
+        : m_Context(context), m_Objects(context.ObjectRefs()) {}
 
     int ReadSceneObject(BML_ObjectRef reference, BML_SceneObjectInfo &out) {
         CKObject *object = m_Objects.Resolve(reference);
@@ -169,7 +166,7 @@ public:
     }
 
 private:
-    ModContext *GetContext() const { return m_Mod.GetRuntimeContext(); }
+    ModContext *GetContext() const { return &m_Context; }
 
     // outLength is the whole length, so text too long for the buffer is detectable
     // instead of silently short.
@@ -275,36 +272,30 @@ private:
         return BML::CKData::ReadString(array, row, column, outValue);
     }
 
-    BMLMod &m_Mod;
+    ModContext &m_Context;
     BML::ObjectRefs &m_Objects;
 };
 
-std::unordered_map<BMLMod *, std::unique_ptr<BuiltinCapabilities>> g_Capabilities;
+std::unordered_map<ModContext *, BuiltinCapabilities> g_Capabilities;
 
 BuiltinCapabilities *Find(ModContext &context) {
-    for (const auto &[mod, capabilities] : g_Capabilities) {
-        (void)mod;
-        if (capabilities && capabilities->Context() == &context)
-            return capabilities.get();
-    }
-    return nullptr;
+    const auto found = g_Capabilities.find(&context);
+    return found != g_Capabilities.end() ? &found->second : nullptr;
 }
 
 } // namespace
 
-void RegisterBuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects, Logger *logger) {
-    UnregisterBuiltinCapabilities(mod);
+void RegisterBuiltinCapabilities(ModContext &context, Logger &logger) {
     try {
-        g_Capabilities.emplace(&mod, std::make_unique<BuiltinCapabilities>(mod, objects));
+        g_Capabilities.try_emplace(&context, context);
     } catch (const std::bad_alloc &) {
-        if (logger)
-            logger->Warn("Failed to register the built-in capabilities: %s",
-                         BML_GetErrorString(BML_ERROR_OUT_OF_MEMORY));
+        logger.Warn("Failed to register the built-in capabilities: %s",
+                    BML_GetErrorString(BML_ERROR_OUT_OF_MEMORY));
     }
 }
 
-void UnregisterBuiltinCapabilities(BMLMod &mod) {
-    g_Capabilities.erase(&mod);
+void UnregisterBuiltinCapabilities(ModContext &context) {
+    g_Capabilities.erase(&context);
 }
 
 // Every interface thunk and every script binding reaches these reads through

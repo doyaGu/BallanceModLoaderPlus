@@ -41,7 +41,10 @@ public:
                         nullptr,
                         0,
                         0};
-        m_MinimumVersion = implementation.GetBMLVersion();
+        if constexpr (requires { implementation.GetBMLVersion(); })
+            m_MinimumVersion = implementation.GetBMLVersion();
+        else
+            m_MinimumVersion = {};
     }
 
     const char *GetID() const noexcept { return m_Definition.Id; }

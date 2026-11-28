@@ -36,7 +36,7 @@ AnsiPalette::LoaderDirProvider AnsiPalette::s_LoaderDirProvider = nullptr;
 AnsiPalette::LogProvider AnsiPalette::s_LogProvider = nullptr;
 
 void AnsiPalette::SetLoaderDirProvider(LoaderDirProvider provider) {
-    s_LoaderDirProvider = provider;
+    s_LoaderDirProvider = std::move(provider);
 }
 
 AnsiPalette::LoaderDirProvider AnsiPalette::GetLoaderDirProvider() { return s_LoaderDirProvider; }

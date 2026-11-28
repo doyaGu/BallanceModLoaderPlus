@@ -330,6 +330,8 @@ share the Behavior Runtime used by the owner-scoped authoring projection.
 ## Source ownership
 
 - src/BML.cpp composes the loader; src/Mods/ contains its bundled Mods.
+  Loader/BuiltinMods.cpp owns their registration and composes the host capabilities
+  used by the Built-in Loader Mod. NewBallType uses the public Mod and CK interfaces.
 - src/Loader/ModLoader.* owns Mod discovery, invocation, and lifecycle;
   ModContext.* owns runtime services and private built-in/script adapters; ModManager.*
   connects both to CK manager lifecycle.

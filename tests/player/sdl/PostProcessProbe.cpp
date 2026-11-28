@@ -28,6 +28,9 @@ public:
     static BML::Mod::Definition Define(){return {"SdlPostProcessProbe","SDL PostProcess regression","1.0.0","BML tests","Checks the shipped loader frame ordering and input edges",BML_VERSION,{}};}
     void OnLoad(const BML::Mod::Context &context) override {
         m_Context=context;
+        Require(context.FindMod("BML").Take().Read().Take().Definition.Id == "BML" &&
+                context.FindMod("NewBallType").Take().Read().Take().Definition.Id == "NewBallType",
+                "Loader-owned built-in registrations");
 #ifdef BML_TEST_SCRIPT_REFLECTION
         if (const char *dump = std::getenv("BML_SCRIPT_API_DUMP"))
             Write(dump, DumpBmlScriptApi(context));

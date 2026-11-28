@@ -141,14 +141,12 @@ set(BML_PUBLIC_HEADERS
 )
 
 set(BML_MODS_PRIVATE_HEADERS
-        Mods/BMLCommand.h
         Mods/BMLConfigMigration.h
         Mods/BMLMod.h
         Mods/NewBallTypeMod.h
 )
 
 set(BML_MODS_SOURCES
-        Mods/BMLCommand.cpp
         Mods/BMLConfigMigration.cpp
         Mods/BMLMod.cpp
         Mods/NewBallTypeMod.cpp
@@ -167,6 +165,7 @@ set(BML_LOADER_PRIVATE_HEADERS
 
 set(BML_LOADER_SOURCES
         Loader/ModRecord.cpp
+        Loader/BuiltinMods.cpp
         Loader/ModContext.cpp
         Loader/ModInvocationGate.cpp
         Loader/ModLoader.cpp
@@ -223,10 +222,12 @@ set(BML_DATA_SHARE_SOURCES
 )
 
 set(BML_DIAGNOSTICS_PRIVATE_HEADERS
+        Diagnostics/BMLCommand.h
         Diagnostics/SystemReport.h
 )
 
 set(BML_DIAGNOSTICS_SOURCES
+        Diagnostics/BMLCommand.cpp
         Diagnostics/SystemReport.cpp
 )
 

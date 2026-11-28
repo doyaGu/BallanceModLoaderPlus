@@ -17,6 +17,7 @@
 #include <oniguruma.h>
 
 #include "BML/BML.h"
+#include "Api/BuiltinCapabilities.h"
 #include "Timer/TimerScheduler.h"
 #include "Api/InterfaceRegistry.h"
 #include "Api/CommandApi.h"
@@ -883,7 +884,7 @@ void ModContext::SaveShellEnvironment() {
     }
 }
 
-Config *ModContext::AddConfig(std::unique_ptr<Config> config) {
+::Config *ModContext::AddConfig(std::unique_ptr<::Config> config) {
     if (!config)
         return nullptr;
 
@@ -902,7 +903,7 @@ Config *ModContext::AddConfig(std::unique_ptr<Config> config) {
         recovered = true;
         break;
     }
-    Config *rawConfig = config.get();
+    ::Config *rawConfig = config.get();
     if (!recovered)
         LoadConfig(rawConfig);
 
@@ -915,7 +916,7 @@ Config *ModContext::AddConfig(std::unique_ptr<Config> config) {
     return m_ConfigStore.Add(modId, mod, std::move(config));
 }
 
-bool ModContext::RemoveConfig(Config *config) {
+bool ModContext::RemoveConfig(::Config *config) {
     if (!config)
         return false;
 
@@ -925,7 +926,7 @@ bool ModContext::RemoveConfig(Config *config) {
 
     const std::string modId = mod->GetID();
     m_DetachedConfigs.reserve(m_DetachedConfigs.size() + 1);
-    std::unique_ptr<Config> removed;
+    std::unique_ptr<::Config> removed;
     {
         std::lock_guard<std::mutex> lock(m_ConfigMutex);
         removed = m_ConfigStore.Remove(modId, mod, config);
@@ -959,7 +960,7 @@ bool ModContext::RemoveConfig(Config *config) {
     return true;
 }
 
-Config *ModContext::GetConfig(ModRecord *mod) {
+::Config *ModContext::GetConfig(ModRecord *mod) {
     if (!mod)
         return nullptr;
 
@@ -967,7 +968,7 @@ Config *ModContext::GetConfig(ModRecord *mod) {
     return m_ConfigStore.Find(mod);
 }
 
-bool ModContext::LoadConfig(Config *config) {
+bool ModContext::LoadConfig(::Config *config) {
     if (!config)
         return false;
 
@@ -978,7 +979,7 @@ bool ModContext::LoadConfig(Config *config) {
     std::wstring configPath = m_LoaderDir;
     configPath.append(L"\\Configs\\").append(utils::ToWString(mod->GetID())).append(L".cfg");
     const bool loaded = config->Load(configPath.c_str());
-    if (config->GetLoadStatus() == Config::LoadStatus::Failed && m_Logger) {
+    if (config->GetLoadStatus() == ::Config::LoadStatus::Failed && m_Logger) {
         m_Logger->Error("Could not load config for mod %s (error %lu). Existing values are preserved; "
                         "missing settings use defaults. Saving is disabled until the file is repaired and reloaded.",
                         config->GetModID().c_str(), static_cast<unsigned long>(config->GetLoadError()));
@@ -986,7 +987,7 @@ bool ModContext::LoadConfig(Config *config) {
     return loaded;
 }
 
-bool ModContext::SaveConfig(Config *config, bool snapshotModMetadata) {
+bool ModContext::SaveConfig(::Config *config, bool snapshotModMetadata) {
     if (!config)
         return false;
 
@@ -1003,13 +1004,13 @@ bool ModContext::SaveConfig(Config *config, bool snapshotModMetadata) {
 }
 
 void ModContext::SnapshotConfigMetadata() {
-    std::vector<Config *> configs;
+    std::vector<::Config *> configs;
     {
         std::lock_guard<std::mutex> lock(m_ConfigMutex);
         configs = m_ConfigStore.Snapshot();
     }
 
-    for (Config *config : configs) {
+    for (::Config *config : configs) {
         if (!config)
             continue;
         try {
@@ -1044,18 +1045,18 @@ void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
                 ++it;
         }
     }
-    std::vector<Config *> configs;
+    std::vector<::Config *> configs;
     {
         std::lock_guard<std::mutex> lock(m_ConfigMutex);
         configs = m_ConfigStore.Snapshot();
     }
 
-    for (Config *config : configs) {
+    for (::Config *config : configs) {
         if (!config)
             continue;
 
         ModRecord *mod = config->GetMod();
-        std::vector<Config::PendingNotification> notifications = config->TakePendingNotifications();
+        std::vector<::Config::PendingNotification> notifications = config->TakePendingNotifications();
         if (dispatchNotifications && mod) {
             for (const auto &notification : notifications) {
                 m_Loader.DispatchConfigChange(mod, notification.Category.c_str(),
@@ -1282,7 +1283,8 @@ float ModContext::GetSRScore() {
 }
 
 int ModContext::GetHSScore() {
-    return m_Loader.GetBuiltinMod() ? m_Loader.GetBuiltinMod()->GetHSScore() : 0;
+    int score = 0;
+    return ReadBuiltinGameplayHighScore(*this, score) == BML_OK ? score : 0;
 }
 
 int ModContext::GetHUD() {
@@ -1798,8 +1800,7 @@ bool ModContext::RegisterModOwner(const std::string &ownerId) noexcept {
 #if BML_ENABLE_ANGELSCRIPT
     // Script engine convenience calls use the built-in Mod's Session. The
     // owner-scoped authoring projection opens its own Sessions separately.
-    ModRecord *builtin =
-        m_Loader.GetBuiltinMod() ? &m_Loader.GetBuiltinMod()->Registration() : nullptr;
+    ModRecord *builtin = m_Loader.GetBuiltinRecord();
     if (!builtin || ownerId != builtin->GetID())
         return true;
     try {

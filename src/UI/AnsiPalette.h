@@ -1,6 +1,7 @@
 ﻿#ifndef BML_ANSI_PALETTE_H
 #define BML_ANSI_PALETTE_H
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -14,7 +15,7 @@ public:
     AnsiPalette();
 
     // Callback provider types
-    using LoaderDirProvider = std::wstring (*)();
+    using LoaderDirProvider = std::function<std::wstring()>;
     using LogProvider = void (*)(int level, const char *message);
 
     // Ensure default palette is built and file overrides applied once.

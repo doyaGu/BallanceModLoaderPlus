@@ -1,15 +1,13 @@
-#include "Mods/BMLCommand.h"
+#include "Diagnostics/BMLCommand.h"
 
 #include "BML/BML.h"
 #include "Loader/ModContext.h"
 #include "Loader/ModRecord.h"
 #include "Diagnostics/SystemReport.h"
 
-namespace {
-void SendLine(ModContext &bml, const std::string &line) {
+static void SendLine(ModContext &bml, const std::string &line) {
     const std::string message = line + '\n';
     bml.SendIngameMessage(message.c_str());
-}
 }
 
 void BMLCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {

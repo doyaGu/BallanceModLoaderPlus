@@ -1,5 +1,5 @@
-#ifndef BML_MODS_BML_COMMAND_H
-#define BML_MODS_BML_COMMAND_H
+#ifndef BML_DIAGNOSTICS_BML_COMMAND_H
+#define BML_DIAGNOSTICS_BML_COMMAND_H
 
 #include "Console/CommandRecord.h"
 
@@ -25,4 +25,4 @@ private:
     ModContext *m_Context = nullptr;
 };
 
-#endif // BML_MODS_BML_COMMAND_H
+#endif // BML_DIAGNOSTICS_BML_COMMAND_H

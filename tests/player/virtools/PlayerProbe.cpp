@@ -25,6 +25,9 @@ void Require(bool condition, const char *message) {
 class PlayerProbe final : public BML::Mod::Instance {
 public:
     void OnLoad(const BML::Mod::Context &ctx) override {
+        Require(ctx.FindMod("BML").Take().Read().Take().Definition.Id == "BML" &&
+                ctx.FindMod("NewBallType").Take().Read().Take().Definition.Id == "NewBallType",
+                "Loader-owned built-in registrations are missing");
         auto property = ctx.Config().DeclareProperty(
             {"Test", "Chinese", std::string("initial")}).Take();
         if (std::getenv("BML_PORT_CHECK_CONFIG")) {

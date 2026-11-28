@@ -88,6 +88,7 @@ public:
     BML::ModInvocationGate &InvocationGate() { return m_ModInvocationGate; }
 
     BMLMod *GetBuiltinMod() const { return m_BMLMod; }
+    ModRecord *GetBuiltinRecord() const { return m_BuiltinRecord.get(); }
     NewBallTypeMod *GetBallTypeMod() const { return m_BallTypeMod; }
 
 #if BML_ENABLE_ANGELSCRIPT
@@ -231,6 +232,8 @@ private:
     std::atomic<bool> m_ShuttingDown{false};
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
+    std::unique_ptr<ModRecord> m_BuiltinRecord;
+    std::unique_ptr<ModRecord> m_BallTypeRecord;
 #if BML_ENABLE_ANGELSCRIPT
     std::vector<std::unique_ptr<BML::ScriptMod>> m_ScriptMods;
     std::unique_ptr<BML::ScriptDevToolsService> m_ScriptDevTools;

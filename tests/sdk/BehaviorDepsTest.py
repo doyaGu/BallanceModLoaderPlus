@@ -15,6 +15,22 @@ def includes(path: Path) -> set[str]:
     ))
 
 
+def check_mod_dependencies(root: Path, source: Path) -> None:
+    private_modules = {"Api", "Hooks", "Loader", "Platform"}
+    for directory in (root / "mods", source / "Mods"):
+        for path in directory.rglob("*"):
+            if path.suffix not in {".h", ".hpp", ".cpp"}:
+                continue
+            for include in includes(path):
+                candidates = (path.parent / include, directory / include, source / include)
+                for candidate in candidates:
+                    if not candidate.is_file() or not candidate.resolve().is_relative_to(source):
+                        continue
+                    module = candidate.resolve().relative_to(source).parts[0]
+                    if directory == root / "mods" or module in private_modules:
+                        fail(f"Mod {path.relative_to(root)} reaches a private host module: {include}")
+
+
 def check_adapter_dependencies(root: Path, source: Path) -> None:
     paths = [source / "Hooks/RenderHookWin32.cpp", *(source / "Engine").glob("*")]
     for path in paths:
@@ -35,6 +51,7 @@ def main() -> None:
     root = Path(args.source_root).resolve()
     source = root / "src"
     behavior = source / "Behavior"
+    check_mod_dependencies(root, source)
     check_adapter_dependencies(root, source)
     block_names = {
         "ObjectLoad",

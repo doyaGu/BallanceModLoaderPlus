@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "BML/Behavior.hpp"
-#include "Loader/ModRecord.h"
+#include "BML/Mod.hpp"
 #include "BML/Version.h"
 
 struct TypeRegistration { std::string m_Owner; bool m_Applied = false; };
@@ -67,11 +67,7 @@ struct ModulInfo : TypeRegistration {
 
 class NewBallTypeMod {
 public:
-    ModRecord &Registration() noexcept { return m_Record; }
-
-    const ModRecord &Registration() const noexcept { return m_Record; }
-
-    explicit NewBallTypeMod(ModContext *bml) : m_BML(bml), m_Record(bml) { m_Record.Bind(*this); }
+    void BindContext(BML::Mod::Context context) noexcept { m_Context = context; }
 
     const char *GetID() { return "NewBallType"; }
 
@@ -82,8 +78,6 @@ public:
     const char *GetAuthor() { return "doyaGu & Gamepiaynmo"; }
 
     const char *GetDescription() { return "Implementation of registering new ball types."; }
-
-    BMLVersion GetBMLVersion() { return {}; }
 
     void OnLoad();
     void OnUnload();
@@ -113,8 +107,7 @@ public:
     void RegisterModul(const std::string &owner, const char *modulName);
 
 private:
-    ModContext *m_BML;
-    ModRecord m_Record;
+    BML::Mod::Context m_Context;
 
     CKDataArray *m_PhysicsBall = nullptr;
     CKGroup *m_AllBalls = nullptr;
