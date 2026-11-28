@@ -72,7 +72,13 @@ public:
             m_Tick = tick;
             if (m_Plan)
                 CheckPlanReplacement(ctx);
-            if (!m_Requested && now - m_Menu > std::chrono::milliseconds(300)) {
+            if (!m_OpenedLevelMenu && now - m_Menu > std::chrono::milliseconds(300)) {
+                Require(MenuButtonVisible(*engine, "M_Main_But_1"), "main menu buttons were never shown");
+                ActivateMenuAction(ctx, *engine, "Menu_Main", "Start");
+                m_OpenedLevelMenu = true;
+            }
+            if (m_OpenedLevelMenu && !m_Requested && MenuButtonVisible(*engine, "M_Start_But_01")) {
+                Require(!MenuButtonVisible(*engine, "M_Main_But_1"), "main menu buttons remained after Start");
                 CheckNativeGameplayTimer(ctx, *engine);
                 auto *level = CKDataArray::Cast(engine->GetObjectByNameAndClass("CurrentLevel", CKCID_DATAARRAY));
                 auto *handler = CKBehavior::Cast(engine->GetObjectByNameAndClass("Event_handler", CKCID_BEHAVIOR));
@@ -84,10 +90,19 @@ public:
                     Require(ctx.Commands().ExecuteLine("map load \"中文地图.nmo\"").Take() == 0,
                             "Chinese map command failed");
                 } else {
-                    auto *messages = engine->GetMessageManager();
-                    messages->SendMessageSingle(messages->AddMessageType("Load Level"), handler->GetOwner());
+                    // The first Send Message sends Load Level, then the stock graph hides the menu and exits.
+                    ActivateMenuAction(ctx, *engine, "Menu_Start", "Send Message");
                 }
                 m_Requested = true;
+            }
+            if (m_Level != Clock::time_point{} && !m_CheckedMenuExit &&
+                now - m_Level > std::chrono::milliseconds(250)) {
+                Require(!MenuButtonVisible(*engine, "M_Main_But_1") &&
+                        !MenuButtonVisible(*engine, "M_Start_But_01") &&
+                        !MenuButtonVisible(*engine, "M_Start_But_Back"),
+                        "menu buttons remained after level start");
+                (void)ctx.LogInfo("Win32 menu exit PASS");
+                m_CheckedMenuExit = true;
             }
             if (m_Level != Clock::time_point{} && !m_CheckedTweaks && std::getenv("BML_PORT_CHECK_TWEAKS")) {
                 CheckGameplayTweaks(ctx, *engine);
@@ -133,6 +148,26 @@ public:
     }
 
 private:
+    static bool MenuButtonVisible(CKContext &engine, const char *name) {
+        auto *button = engine.GetObjectByNameAndClass(const_cast<CKSTRING>(name), CKCID_2DENTITY);
+        Require(button, "missing retail menu button");
+        return button->IsVisible() == CKSHOW;
+    }
+
+    static void ActivateMenuAction(const BML::Mod::Context &ctx, CKContext &engine,
+                                   const char *scriptName, const char *actionName) {
+        using namespace BML::Behavior;
+        auto *script = CKBehavior::Cast(engine.GetObjectByNameAndClass(const_cast<CKSTRING>(scriptName), CKCID_BEHAVIOR));
+        Require(script, "missing retail menu script");
+        auto session = Session::Open().Take();
+        auto graph = session.Inspect(script, View::Logical).Take();
+        const auto action = graph.Find(Named(actionName, 0)).Take().Object();
+        auto *node = BML::Engine::BorrowObject<CKBehavior>(ctx, action).Take();
+        Require(node, "missing retail menu action");
+        node->ActivateInput(0);
+        node->Activate();
+    }
+
     void CheckSkippedFrames(const BML::Mod::Context &ctx) {
         constexpr unsigned frames = 60;
         if (m_RenderFrame == 0) {
@@ -383,7 +418,8 @@ private:
     std::optional<BML::Behavior::Submission> m_Plan;
     std::optional<BML::Behavior::Edit::Port> m_PlanLocal;
     unsigned m_RenderFrame = 0, m_Renders = 0, m_LastRenderCount = 0;
-    bool m_Requested = false, m_Done = false, m_CheckedTweaks = false;
+    bool m_OpenedLevelMenu = false, m_Requested = false, m_CheckedMenuExit = false;
+    bool m_Done = false, m_CheckedTweaks = false;
 };
 }
 

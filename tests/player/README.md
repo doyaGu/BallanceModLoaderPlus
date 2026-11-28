@@ -13,7 +13,9 @@ cmake --install build/virtools-player-probe --config Release --prefix C:/accepta
 ```
 
 Start Player with the copy's `Bin` as its working directory. The Mod logs its
-verdict and exits after the first level starts. For a second run, set
+verdict and exits after the first level starts. It opens the stock level
+menu and verifies that buttons from both menus are hidden in gameplay. For
+a second run, set
 `BML_PORT_CHECK_CONFIG=1` to check the UTF-8 value saved in the first run. Set
 `BML_PORT_CHECK_MAP=1` and place a valid `中文地图.nmo` under `ModLoader/Maps`
 to exercise the custom-map route. The probe reloads its companion Building
