@@ -1,5 +1,5 @@
 #include "Api/BuiltinCapabilities.h"
-#include "StringUtils.h"
+#include "Api/Behavior/Text.h"
 
 #include <CKDataArray.h>
 #include <algorithm>
@@ -62,7 +62,10 @@ public:
             return BML_ERROR_OBJECT_INVALID;
         out.Id = static_cast<int>(object->GetID());
         out.ClassId = static_cast<int>(object->GetClassID());
-        WriteText(out.Name, out.NameLength, object->GetName());
+        std::string storage;
+        const char *name = object->GetName();
+        const auto utf8 = BML::Api::Behavior::Utf8Text(name ? name : "", storage);
+        WriteText(out.Name, out.NameLength, utf8);
         out.Visible = object->IsVisible() != FALSE ? 1 : 0;
         out.Dynamic = object->IsDynamic() != FALSE ? 1 : 0;
         return BML_OK;
@@ -86,7 +89,10 @@ public:
         ModContext *context = GetContext();
         if (!context || !context->GetCKContext())
             return BML_ERROR_UNAVAILABLE;
-        out = m_Objects.Issue(context->GetCKContext()->GetObjectByName(const_cast<char *>(name)));
+        std::string native;
+        if (!BML::Api::Behavior::EncodeNativeText(name, native))
+            return BML_ERROR_INVALID_PARAMETER;
+        out = m_Objects.Issue(context->GetCKContext()->GetObjectByName(native.data()));
         return BML_OK;
     }
 
@@ -94,8 +100,11 @@ public:
         ModContext *context = GetContext();
         if (!context || !context->GetCKContext())
             return BML_ERROR_UNAVAILABLE;
+        std::string native;
+        if (!BML::Api::Behavior::EncodeNativeText(name, native))
+            return BML_ERROR_INVALID_PARAMETER;
         out = m_Objects.Issue(context->GetCKContext()->GetObjectByNameAndClass(
-            const_cast<char *>(name), static_cast<CK_CLASSID>(classId)));
+            native.data(), static_cast<CK_CLASSID>(classId)));
         return BML_OK;
     }
 
@@ -191,13 +200,16 @@ private:
     // outLength is the whole length, so text too long for the buffer is detectable
     // instead of silently short.
     template <std::size_t Capacity>
-    static void WriteText(char (&buffer)[Capacity], int &outLength, const char *text) {
-        const std::size_t length = text ? std::strlen(text) : 0u;
-        const std::size_t copied = (std::min)(length, Capacity - 1u);
-        if (copied != 0u)
-            std::memcpy(buffer, text, copied);
+    static void WriteText(char (&buffer)[Capacity], int &outLength, std::string_view text) {
+        std::size_t copied = (std::min)(text.size(), Capacity - 1u);
+        if (copied < text.size()) {
+            while (copied && (static_cast<unsigned char>(text[copied]) & 0xc0u) == 0x80u)
+                --copied;
+        }
+        if (copied)
+            std::memcpy(buffer, text.data(), copied);
         buffer[copied] = 0;
-        outLength = static_cast<int>(length);
+        outLength = static_cast<int>(text.size());
     }
 
     // The array a gameplay read works on, or null when there is nothing to read:
@@ -289,11 +301,8 @@ private:
         std::string native;
         if (!BML::Api::ReadDataArrayText(array, row, column, native))
             return false;
-#if BML_RUNTIME_SDL
-        outValue = std::move(native);
-#else
-        outValue = utils::ToString(utils::ToWString(native, false));
-#endif
+        std::string storage;
+        outValue = BML::Api::Behavior::Utf8Text(native, storage);
         return true;
     }
 

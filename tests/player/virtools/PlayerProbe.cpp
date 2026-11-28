@@ -2,6 +2,9 @@
 #include <BML/Behavior.hpp>
 #include <BML/Gameplay.h>
 #include <BML/UI.h>
+#include <BML/Scene.h>
+#include <Windows.h>
+#undef GetObject
 
 #include "../GameplayTimerCheck.hpp"
 #include <chrono>
@@ -80,6 +83,7 @@ public:
             if (m_OpenedLevelMenu && !m_Requested && MenuButtonVisible(*engine, "M_Start_But_01")) {
                 Require(!MenuButtonVisible(*engine, "M_Main_But_1"), "main menu buttons remained after Start");
                 CheckNativeGameplayTimer(ctx, *engine);
+                CheckSceneNames(ctx, *engine);
                 auto *level = CKDataArray::Cast(engine->GetObjectByNameAndClass("CurrentLevel", CKCID_DATAARRAY));
                 auto *handler = CKBehavior::Cast(engine->GetObjectByNameAndClass("Event_handler", CKCID_BEHAVIOR));
                 Require(level && handler && handler->GetOwner(), "missing level objects");
@@ -166,6 +170,44 @@ private:
         Require(node, "missing retail menu action");
         node->ActivateInput(0);
         node->Activate();
+    }
+
+    static void CheckSceneNames(const BML::Mod::Context &ctx, CKContext &engine) {
+        struct Name {
+            const wchar_t *Wide;
+            const char *Utf8;
+        };
+        constexpr Name candidates[] = {{L"Probe_\u8305", "Probe_\xe8\x8c\x85"},
+                                       {L"Probe_\u00e9", "Probe_\xc3\xa9"},
+                                       {L"Probe_\u3042", "Probe_\xe3\x81\x82"},
+                                       {L"Probe_\u0416", "Probe_\xd0\x96"}};
+        char native[64]{};
+        const char *utf8 = nullptr;
+        const UINT codePage = GetACP();
+        for (const auto &name : candidates) {
+            BOOL substituted = FALSE;
+            const bool utf8CodePage = codePage == CP_UTF8;
+            const int length = WideCharToMultiByte(codePage, utf8CodePage ? 0 : WC_NO_BEST_FIT_CHARS,
+                name.Wide, -1, native, sizeof(native), nullptr, utf8CodePage ? nullptr : &substituted);
+            if (length && !substituted) {
+                utf8 = name.Utf8;
+                break;
+            }
+        }
+        Require(utf8, "no non-ASCII probe name fits the active code page");
+        auto *object = engine.CreateObject(CKCID_GROUP, native);
+        Require(object, "cannot create native name probe");
+        BML_ObjectRef byName{}, byClass{};
+        Require(BML::Scene::FindObject(utf8, byName) == BML_OK &&
+                BML::Scene::FindObject(utf8, CKCID_GROUP, byClass) == BML_OK &&
+                byName.Domain != 0 && byName.Domain == byClass.Domain &&
+                byName.Slot == byClass.Slot && byName.Generation == byClass.Generation,
+                "Scene could not find the original code-page name from UTF-8");
+        BML::Scene::ObjectInfo info{};
+        Require(BML::Scene::ReadObject(byName, info) == BML_OK && info.Name == utf8,
+                "Scene did not return the original code-page name as UTF-8");
+        engine.DestroyObject(object);
+        (void)ctx.LogInfo("Win32 Scene UTF-8 name round trip PASS");
     }
 
     void CheckSkippedFrames(const BML::Mod::Context &ctx) {
