@@ -18,6 +18,10 @@ def check_projection(args, name, alter_image, expected):
     for path in (args.probe, Path(str(args.probe) + ".abi.json")):
         shutil.copy2(path, mods)
     shutil.copy2(args.prototype, game / "BuildingBlocks")
+    scripts = (game / "BuildingBlocks/AngelScript.dll").is_file()
+    if scripts:
+        smoke = Path(__file__).resolve().parents[2] / "smoke/AngelScript/BMLAngelScriptSmoke"
+        shutil.copytree(smoke, mods / smoke.name)
 
     settings = loader / "Configs/BML.cfg"
     settings.parent.mkdir(parents=True, exist_ok=True)
@@ -34,7 +38,10 @@ def check_projection(args, name, alter_image, expected):
                                 stderr=subprocess.STDOUT, timeout=50)
 
     log = (loader / "ModLoader.log").read_text(encoding="utf-8", errors="replace")
-    for marker in (expected, "Win32 menu exit PASS", "Win32 gameplay probe PASS", "Win32 unload PASS", "Goodbye!"):
+    markers = [expected, "Win32 menu exit PASS", "Win32 gameplay probe PASS", "Win32 unload PASS", "Goodbye!"]
+    if scripts:
+        markers.append("BML DataArray text smoke: PASS")
+    for marker in markers:
         if marker not in log or result.returncode != 0:
             raise RuntimeError(f"{name} projection regression: missing {marker!r} or exit {result.returncode}; {fixture}")
     print(f"PASS {name}: {fixture}", flush=True)

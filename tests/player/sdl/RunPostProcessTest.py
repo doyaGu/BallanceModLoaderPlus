@@ -119,9 +119,10 @@ def run(args):
                 raise RuntimeError(f"CKAngelScript startup self-tests did not pass; logs: {directory}")
         if args.script_examples:
             for marker in ("BML single-file script smoke loaded resource=true",
-                           "BML zip script smoke loaded resource=true"):
+                           "BML zip script smoke loaded resource=true",
+                           "BML DataArray text smoke: PASS"):
                 if marker not in log:
-                    raise RuntimeError(f"Script resource regression ({marker}); logs: {directory}")
+                    raise RuntimeError(f"Script example regression ({marker}); logs: {directory}")
         result.update(exit_code=exit_code,
                       script_examples=len(identities),
                       probe_sha256=hashlib.sha256(args.probe.read_bytes()).hexdigest(),

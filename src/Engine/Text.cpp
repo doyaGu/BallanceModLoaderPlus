@@ -1,18 +1,16 @@
-#include "Api/Behavior/Text.h"
+#include "Engine/Text.h"
 
 #include <climits>
-#include <cstdint>
+#include "StringUtils.h"
 
 #if !BML_RUNTIME_SDL
 #include <windows.h>
 #endif
 
-namespace BML::Api::Behavior {
+namespace BML::CKText {
 
 #if !BML_RUNTIME_SDL
-namespace {
-
-bool IsAscii(std::string_view text) noexcept {
+static bool IsAscii(std::string_view text) noexcept {
     for (const char byte : text) {
         if (static_cast<unsigned char>(byte) >= 0x80u)
             return false;
@@ -20,7 +18,7 @@ bool IsAscii(std::string_view text) noexcept {
     return true;
 }
 
-bool Widen(std::string_view text, unsigned codePage, DWORD flags,
+static bool Widen(std::string_view text, unsigned codePage, DWORD flags,
            std::wstring &out) {
     const int size = static_cast<int>(text.size());
     const int wideSize = MultiByteToWideChar(
@@ -34,7 +32,7 @@ bool Widen(std::string_view text, unsigned codePage, DWORD flags,
 
 // An exact conversion fails instead of substituting a best-fit or default
 // character. UTF-8 accepts neither check, and needs neither.
-bool Narrow(const std::wstring &wide, unsigned codePage, bool exact,
+static bool Narrow(const std::wstring &wide, unsigned codePage, bool exact,
             std::string &out) {
     const int wideSize = static_cast<int>(wide.size());
     const DWORD flags = exact ? WC_NO_BEST_FIT_CHARS : 0;
@@ -50,56 +48,12 @@ bool Narrow(const std::wstring &wide, unsigned codePage, bool exact,
         !usedDefault;
 }
 
-} // namespace
-
 #endif
-
-bool IsUtf8(const char *data, std::size_t size) noexcept {
-    if (!data && size)
-        return false;
-    for (std::size_t index = 0; index < size;) {
-        const unsigned char first = static_cast<unsigned char>(data[index++]);
-        if (first < 0x80)
-            continue;
-        unsigned continuation = 0;
-        std::uint32_t codepoint = 0;
-        if ((first & 0xe0u) == 0xc0u) {
-            continuation = 1;
-            codepoint = first & 0x1fu;
-            if (codepoint < 2)
-                return false;
-        } else if ((first & 0xf0u) == 0xe0u) {
-            continuation = 2;
-            codepoint = first & 0x0fu;
-        } else if ((first & 0xf8u) == 0xf0u) {
-            continuation = 3;
-            codepoint = first & 0x07u;
-            if (codepoint > 4)
-                return false;
-        } else {
-            return false;
-        }
-        if (continuation > size - index)
-            return false;
-        for (unsigned part = 0; part < continuation; ++part) {
-            const unsigned char byte = static_cast<unsigned char>(data[index++]);
-            if ((byte & 0xc0u) != 0x80u)
-                return false;
-            codepoint = (codepoint << 6) | (byte & 0x3fu);
-        }
-        if ((continuation == 2 && codepoint < 0x800u) ||
-            (continuation == 3 && codepoint < 0x10000u) ||
-            codepoint > 0x10ffffu ||
-            (codepoint >= 0xd800u && codepoint <= 0xdfffu))
-            return false;
-    }
-    return true;
-}
 
 #if BML_RUNTIME_SDL
 bool EncodeNativeText(std::string_view utf8, std::string &native, unsigned codePage) {
     (void) codePage;
-    if (!IsUtf8(utf8.data(), utf8.size()))
+    if (!utils::IsValidUtf8(utf8))
         return false;
     native.assign(utf8);
     return true;
@@ -108,7 +62,7 @@ bool EncodeNativeText(std::string_view utf8, std::string &native, unsigned codeP
 std::string_view Utf8Text(std::string_view native, std::string &storage,
                           unsigned codePage) {
     (void) codePage;
-    if (IsUtf8(native.data(), native.size())) return native;
+    if (utils::IsValidUtf8(native)) return native;
     storage.clear();
     return storage;
 }
@@ -117,7 +71,7 @@ std::string_view Utf8Text(std::string_view native, std::string &storage,
 bool EncodeNativeText(std::string_view utf8, std::string &native, unsigned codePage) {
     const unsigned page = codePage == ActiveCodePage ? GetACP() : codePage;
     if (IsAscii(utf8) || page == CP_UTF8) {
-        if (!IsUtf8(utf8.data(), utf8.size()))
+        if (!utils::IsValidUtf8(utf8))
             return false;
         native.assign(utf8);
         return true;
@@ -138,7 +92,7 @@ std::string_view Utf8Text(std::string_view native, std::string &storage,
     if (IsAscii(native))
         return native;
     const unsigned page = codePage == ActiveCodePage ? GetACP() : codePage;
-    if (page == CP_UTF8 && IsUtf8(native.data(), native.size()))
+    if (page == CP_UTF8 && utils::IsValidUtf8(native))
         return native;
     std::wstring wide;
     if (native.size() > static_cast<std::size_t>(INT_MAX) ||
@@ -151,4 +105,4 @@ std::string_view Utf8Text(std::string_view native, std::string &storage,
 
 #endif
 
-} // namespace BML::Api::Behavior
+} // namespace BML::CKText

@@ -258,8 +258,9 @@ graph Edits for Patches and Plans. Sessions survive world reset; world-bound
 objects and callbacks do not. The C, C++, and script layers use one native
 implementation: the C++ facade encodes calls into the C table, and the
 AngelScript layer projects that facade without including a Loader Behavior or
-facade Detail header. Text crosses the SDL engine and table boundaries as UTF-8;
-there is no original Windows ACP conversion in this branch. Native Mods use the versioned C
+facade Detail header. Text in the function table is UTF-8. The shared CK text adapter
+converts at calls into retail Virtools, where CK uses the active code page.
+SDL uses UTF-8 at the CK boundary as well. Native Mods use the versioned C
 Mod protocol; their C++ authoring wrappers remain inside each Mod.
 
 **Behavior Plan Instance** — A revisioned view of one Plan installation in a
@@ -335,6 +336,8 @@ share the Behavior Runtime used by the owner-scoped authoring projection.
 - src/Api/ adapts public BML interfaces to private implementations.
   src/Api/Behavior/ holds the Behavior C table and the Codec that reads and
   writes its records.
+- src/Engine/ holds the shared CK text and DataArray adapters used by the native
+  interfaces and script bindings.
 - src/AngelScript/ owns script adapters, including Script Engine Calls;
   per-owner Behavior authoring remains a client of the public facade.
 - src/Behavior/ owns Sessions, Prototypes, graph authoring, Runtime, and the

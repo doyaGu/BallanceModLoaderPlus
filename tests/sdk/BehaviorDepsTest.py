@@ -15,6 +15,17 @@ def includes(path: Path) -> set[str]:
     ))
 
 
+def check_adapter_dependencies(root: Path, source: Path) -> None:
+    for path in (source / "Engine").glob("*"):
+        if path.suffix not in {".h", ".cpp"}:
+            continue
+        for include in includes(path):
+            if include.startswith(("Api/", "Behavior/", "Loader/", "Logging/")):
+                fail(f"Engine adapter {path.relative_to(root)} reaches a higher layer: {include}")
+        if "BML_GetModContext" in path.read_text(encoding="utf-8"):
+            fail(f"Engine adapter {path.relative_to(root)} acquires the ambient Loader context")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", required=True)
@@ -23,6 +34,7 @@ def main() -> None:
     root = Path(args.source_root).resolve()
     source = root / "src"
     behavior = source / "Behavior"
+    check_adapter_dependencies(root, source)
     block_names = {
         "ObjectLoad",
         "Physicalize",

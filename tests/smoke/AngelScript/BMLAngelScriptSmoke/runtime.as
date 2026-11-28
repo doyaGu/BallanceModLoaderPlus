@@ -19,6 +19,47 @@ void LeaveSmokeMenuPage(BML::MenuPageLeaveReason reason) {
   ++menuPageLeaveCount;
 }
 
+string CheckDataArrayText(CKContext@ host) {
+  if (host is null) return "FAIL: no CK context";
+  CKObject@ object = host.CreateObject(CKCID_DATAARRAY, "__BML_DataArrayTextProbe");
+  CKDataArray@ table = cast<CKDataArray>(object);
+  if (table is null) return "FAIL: cannot create the DataArray";
+  // Append is supported by both CK runtimes when the table starts empty.
+  table.InsertColumn(-1, CKARRAYTYPE_STRING, "Text");
+  table.InsertRow(-1);
+
+  array<string> candidates = {"café", "茅", "あ", "Ж"};
+  const bool hasCell = table.GetRowCount() == 1 && table.GetColumnCount() == 1;
+  string result = hasCell ? "FAIL: no representable non-ASCII value"
+                          : "FAIL: could not create a one-cell string table";
+  for (uint i = 0; hasCell && i < candidates.length(); ++i) {
+    const string text = candidates[i];
+    if (!BML::CK::SetString(table, 0, 0, text)) continue;
+    string embeddedNul = "before after";
+    embeddedNul[6] = 0;
+    if (BML::CK::GetString(table, 0, 0, "missing") != text)
+      result = "FAIL: non-ASCII string changed on read";
+    else if (BML::CK::SetString(table, 0, 0, embeddedNul))
+      result = "FAIL: embedded NUL accepted";
+    else if (BML::CK::GetString(table, 0, 0, "missing") != text)
+      result = "FAIL: rejected write changed the stored value";
+    else if (BML::CK::GetColumnName(table, 0) != "Text" ||
+             BML::CK::FindColumn(table, "Text") != 0)
+      result = "FAIL: column name lookup failed";
+    else if (BML::CK::GetString(table, 1, 0, "missing") != "missing")
+      result = "FAIL: missing cell did not use the default";
+    else if (!BML::CK::SetString(table, 0, 0, "") ||
+             !BML::CK::GetString(table, 0, 0, "missing").isEmpty())
+      result = "FAIL: cannot round-trip an empty string";
+    else
+      result = "PASS";
+    break;
+  }
+  CKDependencies dependencies;
+  host.DestroyObject(object, 0, dependencies);
+  return result;
+}
+
 [bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.4.0" reload="auto" description="Smoke test for BML's built-in AngelScript capability APIs."]
 [bml.require id="BML" version="0.4.0"]
 class BMLBindingsSmokeMod {
@@ -43,6 +84,7 @@ class BMLBindingsSmokeMod {
 
     CKContext@ host;
     BML::Engine::BorrowContext(ctx, host);
+    ctx.LogInfo("BML DataArray text smoke: " + CheckDataArrayText(host));
     CKObject@ raw = host is null
         ? null
         : host.CreateObject(CKCID_OBJECT, "__BML_RawHandleValidityProbe");

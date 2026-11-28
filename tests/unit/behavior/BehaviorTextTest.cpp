@@ -2,9 +2,9 @@
 
 #include <gtest/gtest.h>
 
-#include "Api/Behavior/Text.h"
+#include "Engine/Text.h"
 
-namespace BML::Api::Behavior {
+namespace BML::CKText {
 namespace {
 
 constexpr unsigned Western = 1252;
@@ -50,9 +50,10 @@ TEST(BehaviorText, RejectsMalformedUtf8InsteadOfDecodingItAsAcp) {
     EXPECT_EQ(Utf8Text("caf\xe9", storage, Western), "caf\xc3\xa9");
     EXPECT_EQ(Utf8Text("\xb9\xd8\xbf\xa8", storage, Chinese), "\xe5\x85\xb3\xe5\x8d\xa1");
 #endif
-    EXPECT_FALSE(IsUtf8("\xc0\x80", 2));
-    EXPECT_FALSE(IsUtf8("\xed\xa0\x80", 3));
-    EXPECT_FALSE(IsUtf8("\xf4\x90\x80\x80", 4));
+    std::string encoded;
+    EXPECT_FALSE(EncodeNativeText("\xc0\x80", encoded));
+    EXPECT_FALSE(EncodeNativeText("\xed\xa0\x80", encoded));
+    EXPECT_FALSE(EncodeNativeText("\xf4\x90\x80\x80", encoded));
 }
 
 TEST(BehaviorText, RejectsInputTheEngineCannotRepresent) {
@@ -82,4 +83,4 @@ TEST(BehaviorText, InterpretsOverlappingSequencesByRuntime) {
 }
 
 } // namespace
-} // namespace BML::Api::Behavior
+} // namespace BML::CKText

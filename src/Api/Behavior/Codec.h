@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "Api/Behavior/Text.h"
 #include "BML/Behavior.h"
 #include "Behavior/FrameStore.h"
 #include "Behavior/Install/Installations.h"

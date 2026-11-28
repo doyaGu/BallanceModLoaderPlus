@@ -1,19 +1,15 @@
-#ifndef BML_API_BEHAVIOR_TEXT_H
-#define BML_API_BEHAVIOR_TEXT_H
+#ifndef BML_ENGINE_TEXT_H
+#define BML_ENGINE_TEXT_H
 
-#include <cstddef>
 #include <string>
 #include <string_view>
 
-// Virtools keeps names and string parameters in the active code page, and the
-// Behavior internals keep that text as the engine stores it. bml.behavior
-// carries UTF-8, so the Codec converts text at the boundary.
-namespace BML::Api::Behavior {
+// SDL uses UTF-8 for CK strings. Retail Virtools uses the active code page.
+// Convert at the CK boundary so the rest of BML stays in UTF-8.
+namespace BML::CKText {
 
 // CP_ACP. Tests pass an explicit code page.
 inline constexpr unsigned ActiveCodePage = 0;
-
-bool IsUtf8(const char *data, std::size_t size) noexcept;
 
 // Returns false when the engine cannot represent the UTF-8 input.
 bool EncodeNativeText(std::string_view utf8, std::string &native,
@@ -24,6 +20,6 @@ bool EncodeNativeText(std::string_view utf8, std::string &native,
 std::string_view Utf8Text(std::string_view native, std::string &storage,
                           unsigned codePage = ActiveCodePage);
 
-} // namespace BML::Api::Behavior
+} // namespace BML::CKText
 
-#endif // BML_API_BEHAVIOR_TEXT_H
+#endif // BML_ENGINE_TEXT_H

@@ -24,10 +24,10 @@ def stage_examples(mods, tutorials=False):
                         archive.write(path, path.relative_to(source))
         else:
             shutil.copytree(source, target, symlinks=False)
-        entries = [p for p in source.rglob("*.as") if "[bml.mod" in p.read_text()]
+        entries = [p for p in source.rglob("*.as") if "[bml.mod" in p.read_text(encoding="utf-8")]
         if len(entries) != 1:
             raise RuntimeError(f"Expected one Mod definition: {source}")
-        identities.append(re.search(r'\[bml\.mod\s+id="([^"]+)"', entries[0].read_text())[1])
+        identities.append(re.search(r'\[bml\.mod\s+id="([^"]+)"', entries[0].read_text(encoding="utf-8"))[1])
     if tutorials:
         course = ROOT / "docs/zh-CN/script-mod-tutorial"
         for source in sorted(course.glob("*.md")):

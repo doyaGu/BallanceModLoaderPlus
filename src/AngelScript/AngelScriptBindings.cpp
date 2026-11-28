@@ -1,4 +1,3 @@
-#include "Api/Behavior/Text.h"
 #include "BML/Gameplay.h"
 #include "AngelScriptBindings.h"
 
@@ -16,7 +15,7 @@
 
 #if BML_ENABLE_ANGELSCRIPT
 
-#include "Api/BuiltinCapabilities.h"
+#include "Engine/DataArray.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -660,34 +659,16 @@ static int BMLAS_CK_GetDataArrayColumnCount(CKDataArray *array) {
     return array ? array->GetColumnCount() : 0;
 }
 
-static std::string BMLAS_CK_GetDataArrayColumnName(CKDataArray *array, int column) {
-    if (!array || column < 0 || column >= array->GetColumnCount())
-        return "";
-    const char *name = array->GetColumnName(column);
-    return name ? name : "";
-}
-
 static int BMLAS_CK_FindDataArrayColumn(CKDataArray *array, const std::string &name) {
-    if (!array)
-        return -1;
-    const int count = array->GetColumnCount();
-    for (int i = 0; i < count; ++i) {
-        const char *columnName = array->GetColumnName(i);
-        if (columnName && name == columnName)
-            return i;
-    }
-    return -1;
+    return BML::CKData::FindColumn(array, name);
 }
 
 static std::string BMLAS_CK_GetDataArrayString(CKDataArray *array,
                                                int row,
                                                int column,
                                                const std::string &defaultValue) {
-    std::string native;
-    if (!BML::Api::ReadDataArrayText(array, row, column, native))
-        return defaultValue;
-    std::string utf8;
-    return std::string(BML::Api::Behavior::Utf8Text(native, utf8));
+    std::string value;
+    return BML::CKData::ReadString(array, row, column, value) ? value : defaultValue;
 }
 
 static bool BMLAS_CK_GetDataArrayBool(CKDataArray *array, int row, int column, bool defaultValue) {
@@ -715,10 +696,7 @@ static bool BMLAS_CK_SetDataArrayString(CKDataArray *array,
                                         int row,
                                         int column,
                                         const std::string &value) {
-    if (!BMLAS_CK_HasDataArrayCell(array, row, column))
-        return false;
-    std::string copy = value;
-    return array->SetElementStringValue(row, column, copy.empty() ? const_cast<char *>("") : &copy[0]) != 0;
+    return BML::CKData::WriteString(array, row, column, value);
 }
 
 static bool BMLAS_CK_SetDataArrayBool(CKDataArray *array, int row, int column, bool value) {
@@ -2098,7 +2076,7 @@ static const ScriptGlobalFunctionRegistration kCkFunctionRegistrations[] = {
     {"CK3dEntity@ BorrowParent(CK3dEntity@ entity)", "BML::CK::BorrowParent", asFUNCTION(BMLAS_Get3dEntityParent), asCALL_CDECL},
     {"int GetRowCount(CKDataArray@ array)", "BML::CK::GetRowCount", asFUNCTION(BMLAS_CK_GetDataArrayRowCount), asCALL_CDECL},
     {"int GetColumnCount(CKDataArray@ array)", "BML::CK::GetColumnCount", asFUNCTION(BMLAS_CK_GetDataArrayColumnCount), asCALL_CDECL},
-    {"string GetColumnName(CKDataArray@ array, int column)", "BML::CK::GetColumnName", BML_AS_GENERIC_FUNCTION(&BMLAS_CK_GetDataArrayColumnName), asCALL_GENERIC},
+    {"string GetColumnName(CKDataArray@ array, int column)", "BML::CK::GetColumnName", BML_AS_GENERIC_FUNCTION(&BML::CKData::ColumnName), asCALL_GENERIC},
     {"int FindColumn(CKDataArray@ array, const string &in name)", "BML::CK::FindColumn", BML_AS_GENERIC_FUNCTION(&BMLAS_CK_FindDataArrayColumn), asCALL_GENERIC},
     {"string GetString(CKDataArray@ array, int row, int column, const string &in defaultValue = \"\")", "BML::CK::GetString", BML_AS_GENERIC_FUNCTION(&BMLAS_CK_GetDataArrayString), asCALL_GENERIC},
     {"bool GetBool(CKDataArray@ array, int row, int column, bool defaultValue = false)", "BML::CK::GetBool", asFUNCTION(BMLAS_CK_GetDataArrayBool), asCALL_CDECL},

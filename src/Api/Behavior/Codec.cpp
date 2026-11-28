@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "BML/TypeConvert.h"
+#include "Engine/Text.h"
 #include "Loader/ModContext.h"
+#include "StringUtils.h"
 
 namespace BML::Api::Behavior {
 namespace {
@@ -50,8 +52,8 @@ void WriteMessage(BML_BehaviorStatus &out, const std::string &message) noexcept 
     std::string storage;
     std::string_view text = message;
     try {
-        if (!IsUtf8(message.data(), message.size()))
-            text = Utf8Text(message, storage);
+        if (!utils::IsValidUtf8(message))
+            text = CKText::Utf8Text(message, storage);
     } catch (...) {
     }
     out.MessageLength = text.size() > UINT32_MAX
@@ -180,7 +182,7 @@ bool FitsStrided(std::size_t count, std::size_t stride,
 bool ReadString(BML_BehaviorString value, std::string &out,
                 bool allowNul) {
     if ((!value.Data && value.Length) ||
-        !IsUtf8(value.Data, value.Length))
+        !utils::IsValidUtf8(std::string_view(value.Data ? value.Data : "", value.Length)))
         return false;
     if (!allowNul && value.Length &&
         std::memchr(value.Data, '\0', value.Length))
@@ -192,7 +194,7 @@ bool ReadString(BML_BehaviorString value, std::string &out,
 bool ReadNativeString(BML_BehaviorString value, std::string &out) {
     if (!ReadString(value, out))
         return false;
-    return EncodeNativeText(out, out);
+    return CKText::EncodeNativeText(out, out);
 }
 
 CKGUID Guid(BML_BehaviorGuid value) noexcept {

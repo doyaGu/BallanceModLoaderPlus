@@ -8,18 +8,12 @@
 #include <cstddef>
 #include <string>
 
-class CKDataArray;
 class BMLMod;
 class Logger;
 class ModContext;
 
 namespace BML {
 class ObjectRefs;
-}
-
-namespace BML::Api {
-// Formats a CK cell in the engine's encoding for conversion at the API boundary.
-bool ReadDataArrayText(CKDataArray *array, int row, int column, std::string &value);
 }
 
 /* Registers the reads behind the loader's own interface structs. */

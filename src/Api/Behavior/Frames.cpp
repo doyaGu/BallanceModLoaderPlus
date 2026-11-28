@@ -8,6 +8,8 @@
 #include <string_view>
 
 #include "BML/ImcWire.hpp"
+#include "Engine/Text.h"
+#include "StringUtils.h"
 
 namespace BML::Api::Behavior {
 namespace {
@@ -166,7 +168,7 @@ private:
             record.Index = out.Index;
             record.Occurrence = out.Occurrence;
             std::string storage;
-            const std::string_view name = Utf8Text(out.Name, storage);
+            const std::string_view name = CKText::Utf8Text(out.Name, storage);
             record.NameLength = static_cast<std::uint32_t>(name.size());
             if (!Append(name.data(), name.size(), record.NameOffset))
                 return false;
@@ -193,7 +195,7 @@ private:
             record.Type = {pout.TypeGuid1, pout.TypeGuid2};
             record.Kind = PublicPoutKind(pout.Kind);
             std::string storage;
-            const std::string_view name = Utf8Text(pout.Name, storage);
+            const std::string_view name = CKText::Utf8Text(pout.Name, storage);
             record.NameLength = static_cast<std::uint32_t>(name.size());
             if (!Append(name.data(), name.size(), record.NameOffset) ||
                 !AddPoutValue(pout, record))
@@ -226,7 +228,7 @@ private:
             break;
         case PoutKind::Utf8: {
             std::string storage;
-            const std::string_view text = Utf8Text(pout.Text, storage);
+            const std::string_view text = CKText::Utf8Text(pout.Text, storage);
             record.ValueSize = static_cast<std::uint32_t>(text.size());
             return Append(text.data(), text.size(), record.ValueOffset);
         }
@@ -284,8 +286,8 @@ private:
         record.NativeResult = frame.Fault.NativeCode;
         std::string storage;
         const auto &fault = frame.Fault.Message;
-        const std::string_view message = IsUtf8(fault.data(), fault.size())
-            ? std::string_view(fault) : Utf8Text(fault, storage);
+        const std::string_view message = utils::IsValidUtf8(fault)
+            ? std::string_view(fault) : CKText::Utf8Text(fault, storage);
         record.MessageLength = static_cast<std::uint32_t>(message.size());
         if (!Append(message.data(), message.size(), record.MessageOffset))
             return false;

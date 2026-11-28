@@ -10,6 +10,7 @@
 
 #include "BML/ImcWire.hpp"
 #include "Behavior/Pattern.h"
+#include "Engine/Text.h"
 #include "Loader/ModContext.h"
 
 namespace BML::Api::Behavior {
@@ -46,7 +47,7 @@ public:
 
     bool Text(std::string_view native, BML_BehaviorText &text) {
         std::string storage;
-        const std::string_view value = Utf8Text(native, storage);
+        const std::string_view value = CKText::Utf8Text(native, storage);
         if (value.size() > UINT32_MAX || m_Bytes.size() > UINT32_MAX ||
             value.size() > UINT32_MAX - m_Bytes.size())
             return false;
@@ -456,7 +457,7 @@ bool AddGraphValue(const GraphValue &source, BehaviorPayload &payload,
         if (!native)
             return false;
         std::string storage;
-        const std::string_view value = Utf8Text(*native, storage);
+        const std::string_view value = CKText::Utf8Text(*native, storage);
         if (value.size() > UINT32_MAX)
             return false;
         record.ValueSize = static_cast<std::uint32_t>(value.size());
@@ -559,7 +560,7 @@ bool WriteWatchValue(const GraphValue &source,
         const auto *native = std::get_if<std::string>(&source.Data);
         if (!native)
             return false;
-        const std::string_view value = Utf8Text(*native, storage);
+        const std::string_view value = CKText::Utf8Text(*native, storage);
         out.Value.Data.Utf8 = {value.data(),
             static_cast<std::uint32_t>(value.size())};
         return value.size() <= UINT32_MAX;

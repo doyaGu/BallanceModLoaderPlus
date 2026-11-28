@@ -137,7 +137,8 @@ add_bml_test(BehaviorValueTest
 add_bml_test(BehaviorTextTest
         SOURCES
         BehaviorTextTest.cpp
-        ${BML_SOURCE_DIR}/Api/Behavior/Text.cpp
+        ${BML_SOURCE_DIR}/Engine/Text.cpp
+        DEPENDENCIES BML_StringUtils
 )
 
 # Exercise the production graph adapter against a real CK context. The test

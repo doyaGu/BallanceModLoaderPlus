@@ -1,5 +1,6 @@
 #include "Api/BuiltinCapabilities.h"
-#include "Api/Behavior/Text.h"
+#include "Engine/DataArray.h"
+#include "Engine/Text.h"
 
 #include <CKDataArray.h>
 #include <algorithm>
@@ -20,33 +21,6 @@
 #include "Logging/Logger.h"
 #include "Loader/ModContext.h"
 
-bool BML::Api::ReadDataArrayText(CKDataArray *array, int row, int column, std::string &value) {
-    if (!array || row < 0 || row >= array->GetRowCount() ||
-        column < 0 || column >= array->GetColumnCount())
-        return false;
-#if BML_RUNTIME_SDL
-    const int size = array->GetElementStringValue(row, column, nullptr, 0);
-#else
-    const int size = array->GetElementStringValue(row, column, nullptr);
-#endif
-    if (size <= 0)
-        return false;
-
-    std::string result(static_cast<std::size_t>(size), '\0');
-#if BML_RUNTIME_SDL
-    const int read = array->GetElementStringValue(row, column, result.data(), size);
-#else
-    const int read = array->GetElementStringValue(row, column, result.data());
-#endif
-    if (read <= 0 && result.front() == '\0')
-        return false;
-    const auto terminator = result.find('\0');
-    if (terminator != std::string::npos)
-        result.resize(terminator);
-    value = std::move(result);
-    return true;
-}
-
 namespace {
 
 class BuiltinCapabilities {
@@ -64,7 +38,7 @@ public:
         out.ClassId = static_cast<int>(object->GetClassID());
         std::string storage;
         const char *name = object->GetName();
-        const auto utf8 = BML::Api::Behavior::Utf8Text(name ? name : "", storage);
+        const auto utf8 = BML::CKText::Utf8Text(name ? name : "", storage);
         WriteText(out.Name, out.NameLength, utf8);
         out.Visible = object->IsVisible() != FALSE ? 1 : 0;
         out.Dynamic = object->IsDynamic() != FALSE ? 1 : 0;
@@ -90,7 +64,7 @@ public:
         if (!context || !context->GetCKContext())
             return BML_ERROR_UNAVAILABLE;
         std::string native;
-        if (!BML::Api::Behavior::EncodeNativeText(name, native))
+        if (!BML::CKText::EncodeNativeText(name, native))
             return BML_ERROR_INVALID_PARAMETER;
         out = m_Objects.Issue(context->GetCKContext()->GetObjectByName(native.data()));
         return BML_OK;
@@ -101,7 +75,7 @@ public:
         if (!context || !context->GetCKContext())
             return BML_ERROR_UNAVAILABLE;
         std::string native;
-        if (!BML::Api::Behavior::EncodeNativeText(name, native))
+        if (!BML::CKText::EncodeNativeText(name, native))
             return BML_ERROR_INVALID_PARAMETER;
         out = m_Objects.Issue(context->GetCKContext()->GetObjectByNameAndClass(
             native.data(), static_cast<CK_CLASSID>(classId)));
@@ -298,12 +272,7 @@ private:
     }
 
     static bool ReadString(CKDataArray *array, int row, int column, std::string &outValue) {
-        std::string native;
-        if (!BML::Api::ReadDataArrayText(array, row, column, native))
-            return false;
-        std::string storage;
-        outValue = BML::Api::Behavior::Utf8Text(native, storage);
-        return true;
+        return BML::CKData::ReadString(array, row, column, outValue);
     }
 
     BMLMod &m_Mod;
