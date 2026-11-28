@@ -1,7 +1,7 @@
 #include "Utils/CryptoUtils.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
-#include <SDL3/SDL.h>
+#include <chrono>
 #include <gtest/gtest.h>
 #include <array>
 #include <algorithm>
@@ -88,16 +88,13 @@ TEST(CryptoTest, NullArgumentsFailWithoutWriting) {
 }
 
 TEST(CryptoTest, SdlFileHashHandlesUnicodeEmptyAndMultipleBlocks) {
-    const auto path = utils::CombinePathW(utils::GetTempPathW(), L"bml-crypto-\u6d4b\u8bd5-" + std::to_wstring(SDL_GetTicksNS()));
-    const auto utf8 = utils::Utf16ToUtf8(path);
+    const auto path = utils::CombinePathW(utils::GetTempPathW(), L"bml-crypto-\u6d4b\u8bd5-" + std::to_wstring(std::chrono::steady_clock::now().time_since_epoch().count()));
     for (size_t size : {size_t{0}, size_t{3}, size_t{55}, size_t{56}, size_t{64}, size_t{16384}, size_t{16385}}) {
         const std::string data(size, 'a');
-        SDL_IOStream *file = SDL_IOFromFile(utf8.c_str(), "wb");
-        ASSERT_NE(file, nullptr);
-        ASSERT_EQ(SDL_WriteIO(file, data.data(), data.size()), data.size());
-        ASSERT_TRUE(SDL_CloseIO(file));
+        uint32_t error{};
+        ASSERT_TRUE(utils::WriteFileBytesAtomicW(path, data, error));
         EXPECT_EQ(utils::Sha256FileHex(path), utils::Sha256Hex(data));
     }
-    ASSERT_TRUE(SDL_RemovePath(utf8.c_str()));
+    ASSERT_TRUE(utils::DeleteFileW(path));
     EXPECT_TRUE(utils::Sha256FileHex(path).empty());
 }

@@ -8,7 +8,11 @@
 #include "AngelScript/ScriptDevToolsService.h"
 #endif
 
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL_time.h>
+#else
+#include <Windows.h>
+#endif
 
 #include "Loader/ModContext.h"
 
@@ -47,11 +51,6 @@ void Logger::Error(const char *fmt, ...) {
 
 void Logger::Log(const char *level, const char *fmt, va_list args) {
     auto *ctx = BML_GetModContext();
-    SDL_DateTime sys{};
-    SDL_Time now{};
-    SDL_GetCurrentTime(&now);
-    SDL_TimeToDateTime(now, &sys, true);
-
     std::string message;
     if (fmt) {
         va_list sizeArgs;
@@ -69,8 +68,19 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
     }
 
     char timestamp[64];
+#if BML_RUNTIME_SDL
+    SDL_DateTime sys{};
+    SDL_Time now{};
+    SDL_GetCurrentTime(&now);
+    SDL_TimeToDateTime(now, &sys, true);
     std::snprintf(timestamp, sizeof(timestamp), "[%02d/%02d/%d %02d:%02d:%02d.%03d] ",
                   sys.month, sys.day, sys.year, sys.hour, sys.minute, sys.second, sys.nanosecond / 1000000);
+#else
+    SYSTEMTIME sys{};
+    GetLocalTime(&sys);
+    std::snprintf(timestamp, sizeof(timestamp), "[%02d/%02d/%d %02d:%02d:%02d.%03d] ",
+                  sys.wMonth, sys.wDay, sys.wYear, sys.wHour, sys.wMinute, sys.wSecond, sys.wMilliseconds);
+#endif
     if (ctx) ctx->WriteLogLine(std::string(timestamp) + "[" + m_ModName + "/" + level + "]: " + message);
 
 #if BML_ENABLE_ANGELSCRIPT

@@ -10,6 +10,9 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 #include "Utils/CryptoUtils.h"
 #include "Utils/PathUtils.h"
@@ -34,6 +37,13 @@ std::wstring FoldPathKeyW(std::wstring path) {
 
 std::string FoldSectionKey(std::string value) {
     std::replace(value.begin(), value.end(), '\\', '/');
+#ifdef _WIN32
+    auto utf16 = utils::Utf8ToUtf16(value);
+    if (!utf16.empty()) {
+        CharLowerBuffW(utf16.data(), static_cast<DWORD>(utf16.size()));
+        return utils::Utf16ToUtf8(utf16);
+    }
+#endif
     return value;
 }
 

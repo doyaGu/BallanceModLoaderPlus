@@ -29,7 +29,7 @@ uint32_t Packed(BML_Color c) {
 }
 
 BML_Color Unpacked(uint32_t c) {
-    VxColor v(c);
+    VxColor v(static_cast<CKDWORD>(c));
     return {v.r, v.g, v.b, v.a};
 }
 } // namespace
@@ -474,7 +474,7 @@ int GuiApi::Process(ModContext &ctx, ModRecord &owner, BML_ObjectRef ref) {
 
 #undef BML_GUI_FIND
 
-void GuiApi::ObjectsToBeDeleted(const uint32_t *ids, int count) noexcept {
+void GuiApi::ObjectsToBeDeleted(const CK_ID *ids, int count) noexcept {
     if (!m_Storage || !ids || count <= 0)
         return;
     for (auto &[slot, p] : m_Storage->Elements) {

@@ -2,13 +2,12 @@
 
 English | [简体中文](README_zh-CN.md)
 
-BML+ **0.4.0** loads Native and AngelScript Mods into **Ballanced's SDL Player**.
+BML+ **0.4.0** loads Native and AngelScript Mods into **Ballanced's SDL Player** and the Win32 **BallancePlayer 0.3.9**.
 It supplies Mod lifecycle events, configuration, commands, input, UI, Behavior authoring,
 resources and inter-Mod communication.
 
-This checkout is the `sdl` branch. It builds a **dynamic** Loader for the SDL CK2
-and VxMath runtime. The original Windows Player and its old C++ Mod ABI are
-maintained separately. Static Player integration is not implemented here.
+Both builds use the BML+ 0.4 Mod API and dynamic Loader. BallancePlayer Win32
+uses the Virtools 2.1 engine and an x86 build.
 
 ## Choose your task
 
@@ -22,14 +21,14 @@ maintained separately. Static Player integration is not implemented here.
 | Check what has actually been validated | [Support and validation](docs/en/validation.md) |
 | Prepare a release | [Release runbook](RELEASING.md) |
 
-Use a runtime and SDK built for the same SDL target. A generic “latest” BML
+Use a runtime and SDK built for the same target. A generic “latest” BML
 archive may belong to another runtime; check `ModLoader/BML.abi.json` in the game
 and `share/BML/BML.abi.json` in the SDK. If a matching package is unavailable,
 build this branch against the matching Ballanced `sdl` sources.
 
 ## Runtime and SDK
 
-Extract the **runtime** into the game root. The Loader goes in `Managers`,
+Extract the **runtime** into the game root. The Loader goes in `Managers` on SDL and `BuildingBlocks` on Virtools,
 CKAngelScript in `BuildingBlocks`, and Mods in `ModLoader/Mods`. Keep Player's
 CK2, VxMath and SDL libraries. An SDK is a separate development package; do not
 extract it over a game installation.
@@ -64,6 +63,23 @@ Scripts are enabled by default. CMake fetches the pinned CKAngelScript SDL
 revision, which builds with AngelScript 2.39.0. Set `CKANGELSCRIPT_ROOT` to use a
 local checkout or `-DBML_ENABLE_ANGELSCRIPT=OFF` for a script-free build. See the
 contribution guide for SDK setup, installation and Player tests.
+
+### Build for BallancePlayer Win32
+
+Use Visual Studio 2022 and the Virtools 2.1 SDK at
+`175bcb12d829c687359b90615be53524cdba0132`. With scripting enabled,
+`CKANGELSCRIPT_ROOT` is the unpacked CKAngelScript 0.5.0 Win32 release.
+
+```powershell
+cmake -S . -B build/virtools -G "Visual Studio 17 2022" -A Win32 -DBML_RUNTIME=virtools -DVIRTOOLS_SDK_PATH=C:/sdk/Virtools-SDK-2.1 -DCKANGELSCRIPT_ROOT=C:/sdk/CKAngelScript-0.5.0 -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
+cmake --build build/virtools --config Release --parallel
+cmake --install build/virtools --config Release --prefix build/virtools-runtime --component BMLRuntime
+cmake --install build/virtools --config Release --prefix build/virtools-sdk
+```
+
+Use `-DBML_ENABLE_ANGELSCRIPT=OFF` in a separate build for a script-free runtime.
+Player acceptance uses the dynamic BallancePlayer at `52bcdc9` and a copy of
+the game data. [Player acceptance](tests/player/README.md)
 
 ## Project links
 

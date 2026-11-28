@@ -2,11 +2,94 @@
 
 #include "Hooks/BehaviorFunctionPatch.h"
 #include "Hooks/HookLifecycle.h"
+#if !BML_RUNTIME_SDL
+#include "Hooks/VTablePatch.h"
+#include "Hooks/VTables.h"
+#endif
 #include "HookUtils.h"
 #include "Loader/ModContext.h"
 
 namespace {
 
+
+#if !BML_RUNTIME_SDL
+class CKIpionManager : public CKBaseManager {
+public:
+    virtual void Reset() = 0;
+};
+
+struct CP_CLASS_VTABLE_NAME(CKIpionManager) : public CP_CLASS_VTABLE_NAME(CKBaseManager)<CKIpionManager> {
+    CP_DECLARE_METHOD_PTR(CKIpionManager, void, Reset, ());
+};
+
+struct PhysicsHook {
+    static CKIpionManager *s_IpionManager;
+    static CP_CLASS_VTABLE_NAME(CKIpionManager) s_VTable;
+    static VTablePatch s_Patch;
+
+    static bool Hook(CKIpionManager *im) {
+        if (!im)
+            return false;
+        if (s_Patch.IsInstalled())
+            return s_IpionManager == im;
+
+        const std::size_t postProcessSlot =
+            offsetof(CP_CLASS_VTABLE_NAME(CKIpionManager), PostProcess) / sizeof(void *);
+        const VTablePatch::Request request = {
+            postProcessSlot,
+            utils::TypeErase(&PhysicsHook::CP_FUNC_HOOK_NAME(PostProcess)),
+        };
+        const VTablePatchResult result = s_Patch.Install(im, &request, 1);
+        if (!result) {
+            utils::OutputDebugA("BML PhysicsHook install failed: %s (entry %zu)\n",
+                                VTablePatch::GetErrorName(result.Code), result.EntryIndex);
+            return false;
+        }
+
+        s_VTable.PostProcess = utils::ForceReinterpretCast<decltype(s_VTable.PostProcess)>(
+            s_Patch.GetOriginal(postProcessSlot));
+        s_IpionManager = im;
+        return true;
+    }
+
+    static bool Unhook() {
+        const VTablePatchResult result = s_Patch.Remove();
+        if (!result) {
+            utils::OutputDebugA("BML PhysicsHook removal warning: %s (entry %zu)\n",
+                                VTablePatch::GetErrorName(result.Code), result.EntryIndex);
+        }
+
+        if (!s_Patch.IsInstalled()) {
+            s_IpionManager = nullptr;
+            s_VTable = {};
+            return true;
+        }
+        return false;
+    }
+
+    CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) {
+        auto *manager = reinterpret_cast<CKIpionManager *>(this);
+        return manager == s_IpionManager ? CK_OK : PostProcessOriginal(manager);
+    }
+
+    static CKERROR PostProcessOriginal(CKIpionManager *manager) {
+        if (!s_Patch.IsInstalled() || !manager || !s_VTable.PostProcess)
+            return CK_OK;
+        return CP_CALL_METHOD_PTR(manager, s_VTable.PostProcess);
+    }
+
+    static CKERROR PostProcessOriginal() {
+        return PostProcessOriginal(s_IpionManager);
+    }
+
+    static bool IsInstalled() { return s_Patch.IsInstalled(); }
+};
+
+CKIpionManager *PhysicsHook::s_IpionManager = nullptr;
+CP_CLASS_VTABLE_NAME(CKIpionManager) PhysicsHook::s_VTable = {};
+VTablePatch PhysicsHook::s_Patch;
+
+#endif
 
 #define FIXED 0
 #define FRICTION 1
@@ -125,6 +208,7 @@ int HookLifecycle::Physicalize(const CKBehaviorContext &behcontext) {
 }
 
 
+#if BML_RUNTIME_SDL
 bool HookLifecycle::AttachPhysicalize() {
     if (s_PhysicsOwner)
         return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
@@ -165,3 +249,58 @@ bool HookLifecycle::DetachPhysicalize() {
 bool HookLifecycle::OwnsPhysicalize() const {
     return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
 }
+#else
+void HookLifecycle::RunPhysicsPostProcess() {
+    if (s_PhysicsOwner != this || !PhysicsHook::IsInstalled())
+        return;
+    PhysicsHook::PostProcessOriginal();
+}
+
+bool HookLifecycle::AttachPhysicalize() {
+    if (s_PhysicsOwner)
+        return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
+    if (g_PhysicalizePatch.IsInstalled() || PhysicsHook::IsInstalled())
+        return false;
+
+    s_PhysicsOwner = this;
+    auto *im = (CKIpionManager *) m_Context.GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
+    if (!PhysicsHook::Hook(im))
+        utils::OutputDebugA("BML physics scheduling redirection is unavailable; CK2 will keep its normal order\n");
+
+    const BehaviorFunctionPatchResult result = g_PhysicalizePatch.Install(
+        PHYSICS_RT_PHYSICALIZE, &HookLifecycle::Physicalize);
+    if (!result) {
+        utils::OutputDebugA("BML Physicalize hook installation failed: %s\n",
+                            BehaviorFunctionPatch::GetErrorName(result.Code));
+        if (PhysicsHook::Unhook())
+            s_PhysicsOwner = nullptr;
+        return false;
+    }
+    return true;
+}
+
+bool HookLifecycle::DetachPhysicalize() {
+    if (s_PhysicsOwner != this)
+        return true;
+
+    const BehaviorFunctionPatchResult behaviorResult = g_PhysicalizePatch.Remove();
+    bool behaviorRemoved = static_cast<bool>(behaviorResult);
+    if (behaviorResult.Code == BehaviorFunctionPatchError::OwnershipLost) {
+        utils::OutputDebugA("BML Physicalize hook ownership changed; preserving the current function\n");
+        behaviorRemoved = true;
+    }
+
+    const bool physicsRemoved = PhysicsHook::Unhook();
+    if (physicsRemoved && behaviorRemoved)
+        s_PhysicsOwner = nullptr;
+    return physicsRemoved && behaviorRemoved;
+}
+
+bool HookLifecycle::OwnsPhysicsPostProcess() const {
+    return s_PhysicsOwner == this && PhysicsHook::IsInstalled();
+}
+
+bool HookLifecycle::OwnsPhysicalize() const {
+    return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
+}
+#endif

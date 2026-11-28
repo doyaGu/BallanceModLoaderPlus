@@ -7,13 +7,35 @@
 #include <sstream>
 
 
+#if !BML_RUNTIME_SDL
+#include <Windows.h>
+#include <MinHook.h>
+#endif
+
 namespace BML::Behavior::Internal {
 namespace {
 
 
+#if BML_RUNTIME_SDL
+std::uint64_t EncodeGuid(CKGUID guid) noexcept {
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(guid.d1)) << 32u) |
+           static_cast<std::uint32_t>(guid.d2);
+}
+
+CKGUID DecodeGuid(std::uint64_t value) noexcept {
+    return CKGUID(static_cast<int>(value >> 32u),
+                  static_cast<int>(value & 0xffffffffu));
+}
+
+#else
+using RemoveDeclaration = CKERROR(__cdecl *)(CKObjectDeclaration *);
+
 constexpr std::size_t kRetirementCapacity = 64;
 std::array<std::atomic<std::uint64_t>, kRetirementCapacity> g_Retirements{};
 std::atomic<bool> g_RetirementOverflow{false};
+RemoveDeclaration g_RemoveDeclaration = nullptr;
+void *g_RemoveTarget = nullptr;
+
 std::uint64_t EncodeGuid(CKGUID guid) noexcept {
     return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(guid.d1)) << 32u) |
            static_cast<std::uint32_t>(guid.d2);
@@ -40,6 +62,16 @@ void RecordRetirement(CKGUID guid) noexcept {
     g_RetirementOverflow.store(true, std::memory_order_release);
 }
 
+CKERROR __cdecl RemoveDeclarationHook(CKObjectDeclaration *declaration) {
+    const CKGUID guid = declaration ? declaration->GetGuid() : CKGUID();
+    const CKERROR result = g_RemoveDeclaration
+        ? g_RemoveDeclaration(declaration) : CKERR_INVALIDOBJECT;
+    if (result == CK_OK)
+        RecordRetirement(guid);
+    return result;
+}
+
+#endif
 
 std::string Safe(CKSTRING text) {
     return text ? text : "";
@@ -82,12 +114,46 @@ bool HasFlag(CKDWORD value, CKDWORD flag) noexcept {
 
 class CKPrototypeSource final : public PrototypeSource {
 public:
+#if BML_RUNTIME_SDL
     explicit CKPrototypeSource(CKContext *context) : m_Context(context) {
         m_TracksRetirement = true;
     }
 
     ~CKPrototypeSource() override {
     }
+
+#else
+    explicit CKPrototypeSource(CKContext *context) : m_Context(context) {
+        HMODULE ck2 = ::GetModuleHandleA("CK2.dll");
+        g_RemoveTarget = ck2 ? reinterpret_cast<void *>(::GetProcAddress(
+            ck2, "?CKRemovePrototypeDeclaration@@YAJPAVCKObjectDeclaration@@@Z"))
+                             : nullptr;
+        if (!g_RemoveTarget)
+            return;
+        const MH_STATUS created = MH_CreateHook(
+            g_RemoveTarget, reinterpret_cast<void *>(&RemoveDeclarationHook),
+            reinterpret_cast<void **>(&g_RemoveDeclaration));
+        if (created != MH_OK)
+            return;
+        if (MH_EnableHook(g_RemoveTarget) != MH_OK) {
+            MH_RemoveHook(g_RemoveTarget);
+            g_RemoveDeclaration = nullptr;
+            g_RemoveTarget = nullptr;
+            return;
+        }
+        m_TracksRetirement = true;
+    }
+
+    ~CKPrototypeSource() override {
+        if (m_TracksRetirement && g_RemoveTarget) {
+            MH_DisableHook(g_RemoveTarget);
+            MH_RemoveHook(g_RemoveTarget);
+        }
+        g_RemoveDeclaration = nullptr;
+        g_RemoveTarget = nullptr;
+    }
+
+#endif
 
     Status ReadDeclarations(std::vector<PrototypeInfo> &out) override {
         out.clear();
@@ -273,6 +339,7 @@ public:
 
     void TakeRetirements(std::vector<CKGUID> &out,
                          bool &retireAll) override {
+#if BML_RUNTIME_SDL
         out.clear();
         // Read registration identities before the catalog's count shortcut.
         // Same-version reloads and replacements may leave both count and
@@ -292,6 +359,17 @@ public:
                 out.push_back(DecodeGuid(guid));
         }
         m_Generations = std::move(current);
+#else
+        out.clear();
+        retireAll = g_RetirementOverflow.exchange(false,
+                                                   std::memory_order_acq_rel);
+        for (auto &slot : g_Retirements) {
+            const std::uint64_t encoded = slot.exchange(
+                0, std::memory_order_acq_rel);
+            if (encoded)
+                out.push_back(DecodeGuid(encoded));
+        }
+#endif
     }
 
     [[nodiscard]] bool TracksRetirement() const noexcept override {
@@ -301,7 +379,9 @@ public:
 private:
     CKContext *m_Context = nullptr;
     bool m_TracksRetirement = false;
+#if BML_RUNTIME_SDL
     std::unordered_map<std::uint64_t, CKQWORD> m_Generations;
+#endif
 };
 
 } // namespace

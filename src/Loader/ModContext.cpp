@@ -1,3 +1,4 @@
+#include "BML/Abi.h"
 #include "Api/ModApi.h"
 #include "Loader/ModContext.h"
 
@@ -6,7 +7,11 @@
 
 #include "Platform/Module.h"
 
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL.h>
+#else
+#include <Windows.h>
+#endif
 #include "Platform/FileSystemNative.h"
 
 #include <oniguruma.h>
@@ -354,7 +359,7 @@ bool ModContext::Init() {
     LoadShellEnvironment();
 
 #ifdef _DEBUG
-    m_Logger->Info("Runtime: sdl; loader image: %p", ModuleFromAddress(reinterpret_cast<const void *>(&BML_GetModContext)));
+    m_Logger->Info("Runtime: %s; loader image: %p", BML_RUNTIME_NAME, ModuleFromAddress(reinterpret_cast<const void *>(&BML_GetModContext)));
 #endif
 
     OnigEncoding encodings[3] = {ONIG_ENCODING_ASCII, ONIG_ENCODING_UTF8, ONIG_ENCODING_UTF16_LE};
@@ -388,7 +393,7 @@ bool ModContext::Init() {
     }
 
     if (!Overlay::ImGuiInitPlatform(m_CKContext)) {
-        m_Logger->Error("Failed to initialize SDL platform backend for ImGui");
+        m_Logger->Error("Failed to initialize the ImGui platform backend");
         Overlay::ImGuiDestroyContext();
         ShutdownHooks();
         onig_end();
@@ -1218,9 +1223,15 @@ void ModContext::AddTimerLoop(float delay, std::function<bool()> callback) {
 void ModContext::ExitGame() {
     OnExitGame();
     AddTimer(CKDWORD{1}, [this]() {
+#if BML_RUNTIME_SDL
         SDL_Event event{};
         event.type = SDL_EVENT_QUIT;
         SDL_PushEvent(&event);
+#else
+        // BallancePlayer's engine window dispatches this message to its exit handler.
+        constexpr UINT closePlayer = 0x5FA;
+        ::PostMessageW(static_cast<HWND>(m_CKContext->GetMainWindow()), closePlayer, 0, 0);
+#endif
     });
 }
 
@@ -1571,7 +1582,11 @@ void ModContext::InitDirectories() {
 
 void ModContext::InitLogger() {
     std::wstring logfilePath = utils::CombinePathW(m_LoaderDir, L"ModLoader.log");
+#if BML_RUNTIME_SDL
     m_LogStream = SDL_IOFromFile(utils::Utf16ToUtf8(logfilePath).c_str(), "wb");
+#else
+    m_LogStream = _wfopen(logfilePath.c_str(), L"wb");
+#endif
     auto *logger = new Logger("ModLoader");
     Logger::SetDefault(logger);
     m_Logger = logger;
@@ -1590,7 +1605,14 @@ void ModContext::ShutdownLogger() {
     Logger::SetDefault(nullptr);
     delete m_Logger;
     m_Logger = nullptr;
-    if (m_LogStream) { SDL_CloseIO(m_LogStream); m_LogStream = nullptr; }
+    if (m_LogStream) {
+#if BML_RUNTIME_SDL
+        SDL_CloseIO(m_LogStream);
+#else
+        std::fclose(m_LogStream);
+#endif
+        m_LogStream = nullptr;
+    }
 }
 
 bool ModContext::InitHooks() {
@@ -1619,6 +1641,13 @@ HookSnapshot ModContext::InspectHooks() const {
     return m_Hooks ? m_Hooks->Inspect() : HookSnapshot{};
 }
 
+
+#if !BML_RUNTIME_SDL
+void ModContext::RunPhysicsPostProcess() {
+    if (m_Hooks)
+        m_Hooks->RunPhysicsPostProcess();
+}
+#endif
 
 bool ModContext::AttachRenderHook(CKRenderContext *renderContext) {
     return m_Hooks && m_Hooks->AttachRender(renderContext);
@@ -1861,16 +1890,24 @@ void ModContext::SetModDataPath(const ModRecord *mod, const std::wstring &root) 
 
     constexpr std::array<int, 5> categories{
         DATA_PATH_IDX, DATA_PATH_IDX, DATA_PATH_IDX, BITMAP_PATH_IDX, SOUND_PATH_IDX};
-    constexpr std::array<const char *, 5> suffixes{
-        "", "3D Entities\\", "3D Entities\\PH\\", "Textures\\", "Sounds\\"};
-    std::string base = root.empty() ? std::string() : utils::Utf16ToAnsi(utils::ResolvePathW(root));
-    if (!base.empty() && base.back() != '\\')
-        base += '\\';
+    constexpr std::array<const wchar_t *, 5> suffixes{
+        L"", L"3D Entities", L"3D Entities\\PH", L"Textures", L"Sounds"};
+    const std::wstring base = root.empty() ? std::wstring() : utils::ResolvePathW(root);
     std::array<ModDataPathKey, 5> desired;
     for (std::size_t i = 0; i < desired.size(); ++i) {
         desired[i].first = categories[i];
-        const std::string path = base + suffixes[i];
-        if (!base.empty() && utils::DirectoryExistsA(path)) {
+        const auto directory = utils::CombinePathW(base, suffixes[i]);
+        if (!base.empty() && utils::DirectoryExistsW(directory)) {
+            std::string path;
+#if BML_RUNTIME_SDL
+            path = utils::Utf16ToUtf8(directory);
+#else
+            if (!utils::TryEncodePathForActiveCodePage(directory, path) &&
+                !utils::TryEncodePathForActiveCodePage(utils::GetShortPathW(directory), path))
+                continue;
+#endif
+            if (path.back() != '\\' && path.back() != '/')
+                path += '\\';
             desired[i].second = path;
             // Use the engine's spelling for an existing path so aliases share
             // the same registration and cannot remove each other's entry.
@@ -1952,9 +1989,15 @@ bool ModContext::CanScheduleTimer() const {
 
 void ModContext::WriteLogLine(const std::string &line) {
     if (m_LogStream) {
+#if BML_RUNTIME_SDL
         SDL_WriteIO(m_LogStream, line.data(), line.size());
         SDL_WriteIO(m_LogStream, "\n", 1);
         SDL_FlushIO(m_LogStream);
+#else
+        std::fwrite(line.data(), 1, line.size(), m_LogStream);
+        std::fputc('\n', m_LogStream);
+        std::fflush(m_LogStream);
+#endif
     }
 #ifdef _DEBUG
     std::fprintf(stdout, "%s\n", line.c_str());

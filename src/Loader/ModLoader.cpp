@@ -1,3 +1,7 @@
+#include "BML/Abi.h"
+#ifdef _WIN32
+#include "Platform/PeImage.h"
+#endif
 #include "Api/HandleSequence.h"
 #include "Loader/ModLoader.h"
 #include "Loader/ModContext.h"
@@ -10,7 +14,11 @@
 #include <system_error>
 #include <unordered_set>
 
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL_stdinc.h>
+#else
+#include <cstring>
+#endif
 #include "Platform/Module.h"
 #include "Platform/ModAbi.h"
 
@@ -1059,7 +1067,11 @@ size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring
     for (const auto &name : utils::ListFilesW(path)) {
         const auto fullPath = utils::CombinePathW(path, name);
         const auto ext = utils::Utf16ToUtf8(utils::GetExtensionW(fullPath));
+#if BML_RUNTIME_SDL
         if (SDL_strcasecmp(ext.c_str(), ".zip") == 0) {
+#else
+        if (_stricmp(ext.c_str(), ".zip") == 0) {
+#endif
             const auto dest = BuildZipExtractionDirectory(m_Context.GetDirectory(BML_DIR_TEMP), fullPath, nextPackage);
             if (!dest.empty() && utils::CreateFileTreeW(dest) && utils::ExtractZipW(fullPath, dest)) {
                 packages.emplace(fullPath, dest);
@@ -1067,7 +1079,11 @@ size_t ModLoader::ExploreMods(const std::wstring &path, std::vector<std::wstring
             } else {
                 m_Context.GetLogger()->Error("Failed to extract Mod package: %s", utils::Utf16ToUtf8(fullPath).c_str());
             }
+#if BML_RUNTIME_SDL
         } else if (SDL_strcasecmp(ext.c_str(), ".bmodp") == 0) {
+#else
+        } else if (_stricmp(ext.c_str(), ".bmodp") == 0) {
+#endif
             mods.push_back(fullPath);
         }
     }
@@ -1087,7 +1103,11 @@ size_t ModLoader::ExploreScriptMods(const std::wstring &path,
 
     for (const auto &name : utils::ListFilesW(path)) {
         const auto zipPath = utils::CombinePathW(path, name);
+#if BML_RUNTIME_SDL
         if (SDL_strcasecmp(utils::Utf16ToUtf8(utils::GetExtensionW(zipPath)).c_str(), ".zip") != 0)
+#else
+        if (_stricmp(utils::Utf16ToUtf8(utils::GetExtensionW(zipPath)).c_str(), ".zip") != 0)
+#endif
             continue;
         const auto extracted = packages.find(zipPath);
         if (extracted == packages.end())
@@ -1150,6 +1170,13 @@ std::shared_ptr<void> ModLoader::LoadLib(const wchar_t *path) {
         m_Context.GetLogger()->Error("Cannot load native Mod %s: %s", utils::Utf16ToUtf8(path).c_str(), error.c_str());
         return {};
     }
+#ifdef _WIN32
+    if (!BML::Platform::MatchesPeImage(path, BML_TARGET_ARCH, false)) {
+        m_Context.GetLogger()->Error("Cannot load native Mod %s: DLL format or architecture does not match %s",
+                                     utils::Utf16ToUtf8(path).c_str(), BML_TARGET_ARCH);
+        return {};
+    }
+#endif
     auto module = BML::Platform::Module::Open(utils::Utf16ToUtf8(path), error);
     if (!module || !module->Identity()) {
         m_Context.GetLogger()->Error("Failed to load native Mod %s: %s", utils::Utf16ToUtf8(path).c_str(), error.c_str());

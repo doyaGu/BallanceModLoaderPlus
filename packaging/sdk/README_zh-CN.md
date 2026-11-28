@@ -1,5 +1,13 @@
 # BML+ SDL SDK
 
+### BallancePlayer Win32
+
+Win32 SDK 对应使用 Virtools 2.1 的 BallancePlayer 0.3.9 动态 x86 版。
+用 Visual Studio 2022 和 `-A Win32` 配置 Mod。C Mod 只需这个 SDK。
+链接 `BML::Engine` 的 C++ Mod 还需通过
+`-DVIRTOOLS_SDK_PATH=<Virtools 2.1 SDK>` 指向构建 Loader 时使用的同一版本。
+Win32 Loader 由 Player 从 `BuildingBlocks/BMLPlus.dll` 加载。
+
 [English](README.md)
 
 本包用于 Mod 开发。游戏中安装配套的**运行时包**，SDK 留在独立源码工作区。
@@ -36,7 +44,8 @@ SDK 描述为 `share/BML/BML.abi.json`，部署前与游戏运行时描述比对
   只需 `BML::BML`。C 边界不传递 STL、虚表、异常或跨模块分配器所有权。
 - 直接访问 CK2/VxMath 才启用 `BML::Engine`，直接使用宿主 ImGui 才启用
   `BML::ImGui`。这些扩展须匹配引擎/ImGui ABI、编译器、标准库、运行库和构建配置。
-  用 `--package-root` 提供相应开发包，不得使用原 Virtools SDK。
+  用 `--package-root` 提供 SDL 开发包。Virtools Win32 通过
+  `VIRTOOLS_SDK_PATH` 选择匹配的 Virtools 2.1 SDK。
 - CK2、VxMath、SDL 和 ImGui 共享状态归 Player 所有。Mod 不得携带第二份 SDL，
   也不得再次静态链接引擎。
 

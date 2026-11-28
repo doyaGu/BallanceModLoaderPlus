@@ -1,7 +1,9 @@
 #include "FileSystemNative.h"
 #include "FileError.h"
 #include "StringUtils.h"
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL_properties.h>
+#endif
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -163,6 +165,7 @@ std::wstring ShortPath(const std::wstring &path) {
     return result;
 }
 #endif
+#if BML_RUNTIME_SDL
 bool SyncFile(SDL_IOStream *stream) {
     if (!SDL_FlushIO(stream)) return false;
     const auto properties = SDL_GetIOProperties(stream);
@@ -178,6 +181,7 @@ bool SyncFile(SDL_IOStream *stream) {
     return fd >= 0 && ::fsync(fd) == 0;
 #endif
 }
+#endif
 bool PublishFile(const std::string &source, const std::string &destination,
                  bool replace, std::uint32_t &error) {
 #ifdef _WIN32
@@ -192,6 +196,7 @@ bool PublishFile(const std::string &source, const std::string &destination,
     error = published ? FileError::Success : LastFileError();
     return published;
 }
+
 bool SetWorkingDirectory(const std::string &path) {
 #ifdef _WIN32
     return SetCurrentDirectoryW(utils::Utf8ToUtf16(path).c_str()) != 0;

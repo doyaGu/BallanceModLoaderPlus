@@ -741,12 +741,15 @@ def find_visual_studio_generator(cmake: str) -> str:
 
 def read_abi(path: Path) -> dict[str, Any]:
     abi = read_json(path)
+    runtime = abi.get("runtime")
+    target = (abi.get("platform"), abi.get("architecture"), abi.get("host_linkage"))
+    os_name, architecture, linkage = target
+    supported = ((runtime == "virtools" and target == ("windows", "x86", "dynamic")) or
+                 (runtime == "sdl" and os_name in ("windows", "linux", "macos")
+                  and architecture in ("x86", "x64", "arm64") and linkage in ("dynamic", "static")))
     if (
         abi.get("schema") not in (1, 2)
-        or abi.get("runtime") != "sdl"
-        or abi.get("platform") not in ("windows", "linux", "macos")
-        or abi.get("architecture") not in ("x86", "x64", "arm64")
-        or abi.get("host_linkage") not in ("dynamic", "static")
+        or not supported
         or not isinstance(abi.get("sdk_abi"), str)
         or not re.fullmatch(r"[0-9a-f]{64}", abi["sdk_abi"])
         or abi.get("configuration") not in CONFIGURATIONS
@@ -768,7 +771,7 @@ def sdk_abi(sdk: Path) -> dict[str, Any]:
     descriptor = sdk / "share/BML/BML.abi.json"
     if descriptor.is_file():
         return read_abi(descriptor)
-    raise BmlError(f"SDL SDK ABI descriptor is missing: {descriptor}")
+    raise BmlError(f"BML SDK ABI descriptor is missing: {descriptor}")
 
 
 def check_host(abi: dict[str, Any]) -> None:
@@ -790,20 +793,20 @@ def find_player(game: Path) -> Path:
     candidates = [game / "Bin" / name, game / name]
     players = [path for path in candidates if path.is_file()]
     if len(players) != 1:
-        raise BmlError(f"Expected one SDL Player in {game}; found {len(players)}: "
+        raise BmlError(f"Expected one Player in {game}; found {len(players)}: "
                        + ", ".join(str(path) for path in players))
     player = players[0]
     if os.name != "nt" and not os.access(player, os.X_OK):
         raise BmlError(f"Player is not executable: {player}")
     if player.parent == game and not (game / "base.cmo").is_file():
-        raise BmlError(f"A flat SDL Player layout requires base.cmo alongside Player: {game}")
+        raise BmlError(f"A flat Player layout requires base.cmo alongside Player: {game}")
     return player
 
 
 def game_abi(game: Path) -> dict[str, Any]:
     descriptor = game / "ModLoader/BML.abi.json"
     if not descriptor.is_file():
-        raise BmlError(f"SDL runtime ABI descriptor is missing: {descriptor}")
+        raise BmlError(f"BML runtime ABI descriptor is missing: {descriptor}")
     abi = read_abi(descriptor)
     check_host(abi)
     return abi
@@ -898,7 +901,7 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
 
     state_dir = root / ".bml"
     # Keep incompatible runtimes/SDKs/configurations out of the same CMake cache.
-    build_dir = state_dir / "build" / f"sdl-{abi['sdk_abi']}-{configuration}"
+    build_dir = state_dir / "build" / f"{abi['runtime']}-{abi['sdk_abi']}-{configuration}"
     if os.name == "nt" and generator.startswith("Visual Studio") and not str(build_dir).isascii():
         # The Visual Studio generator can fail before it writes a cache in
         # a non-ASCII binary directory, even with a supported source path.
@@ -1173,7 +1176,8 @@ def resolve_game(args: argparse.Namespace, settings: dict[str, Any]) -> Path:
     find_player(game)
     prefix, suffix = {"windows": ("", ".dll"), "linux": ("lib", ".so"),
                       "macos": ("lib", ".dylib")}[abi["platform"]]
-    require_file(game / "Managers" / f"{prefix}BMLPlus{suffix}", "BML+ loader")
+    loader_dir = "BuildingBlocks" if abi["runtime"] == "virtools" else "Managers"
+    require_file(game / loader_dir / f"{prefix}BMLPlus{suffix}", "BML+ loader")
     require_file(game / "BuildingBlocks" / f"{prefix}AngelScript{suffix}", "Script Mod runtime")
     return game
 

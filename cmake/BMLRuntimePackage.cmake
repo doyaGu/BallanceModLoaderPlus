@@ -15,11 +15,16 @@ function(bml_refresh_runtime_binary target destination)
             " COMPONENT BMLRuntime EXCLUDE_FROM_ALL)
     endif()
 endfunction()
-bml_refresh_runtime_binary(BML Managers)
+if(BML_RUNTIME_SDL)
+    set(_bml_loader_destination Managers)
+else()
+    set(_bml_loader_destination BuildingBlocks)
+endif()
+bml_refresh_runtime_binary(BML ${_bml_loader_destination})
 install(TARGETS BML
     RUNTIME_DEPENDENCY_SET BMLRuntimeDependencies
-    LIBRARY DESTINATION Managers COMPONENT BMLRuntime EXCLUDE_FROM_ALL
-    RUNTIME DESTINATION Managers COMPONENT BMLRuntime EXCLUDE_FROM_ALL)
+    LIBRARY DESTINATION ${_bml_loader_destination} COMPONENT BMLRuntime EXCLUDE_FROM_ALL
+    RUNTIME DESTINATION ${_bml_loader_destination} COMPONENT BMLRuntime EXCLUDE_FROM_ALL)
 set(_bml_runtime_targets BML)
 if(BML_WITH_ANGELSCRIPT AND TARGET CKAngelScript)
     bml_refresh_runtime_binary(CKAngelScript BuildingBlocks)
@@ -28,6 +33,9 @@ if(BML_WITH_ANGELSCRIPT AND TARGET CKAngelScript)
         LIBRARY DESTINATION BuildingBlocks COMPONENT BMLRuntime EXCLUDE_FROM_ALL
         RUNTIME DESTINATION BuildingBlocks COMPONENT BMLRuntime EXCLUDE_FROM_ALL)
     list(APPEND _bml_runtime_targets CKAngelScript)
+elseif(BML_WITH_ANGELSCRIPT AND NOT BML_RUNTIME_SDL)
+    install(FILES "${CKANGELSCRIPT_RUNTIME_DLL}"
+        DESTINATION BuildingBlocks COMPONENT BMLRuntime EXCLUDE_FROM_ALL)
 endif()
 install(RUNTIME_DEPENDENCY_SET BMLRuntimeDependencies
     # CMake matches the Windows dependency names in lowercase.
@@ -53,7 +61,7 @@ string(REGEX REPLACE "}$" ",\"version\":\"${PROJECT_VERSION}\",\"scripts\":${_bm
 file(GENERATE OUTPUT "${PROJECT_BINARY_DIR}/abi/$<CONFIG>/BML.runtime.abi.json" CONTENT "${_bml_runtime_abi}\n")
 install(FILES "${PROJECT_BINARY_DIR}/abi/$<CONFIG>/BML.runtime.abi.json"
     DESTINATION ModLoader RENAME BML.abi.json COMPONENT BMLRuntime EXCLUDE_FROM_ALL)
-set(BML_PLAYER_RUNTIME_DIR "" CACHE PATH "Existing staged SDL Player runtime for the bml-stage target")
+set(BML_PLAYER_RUNTIME_DIR "" CACHE PATH "Existing staged Player runtime for the bml-stage target")
 if(BML_PLAYER_RUNTIME_DIR)
     add_custom_target(bml-stage
         COMMAND "${CMAKE_COMMAND}" --install "${PROJECT_BINARY_DIR}"

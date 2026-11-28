@@ -26,8 +26,8 @@ class CameraUtilities : public BML::Mod::Instance {
     BML::Config::Property m_CamReset = {};
     BML::Config::Property m_CamOn = {};
 
-    ModSupport::Object<CK3dEntity> m_CamPos{};
-    ModSupport::Object<CK3dEntity> m_CamOrient{};
-    ModSupport::Object<CK3dEntity> m_CamOrientRef{};
-    ModSupport::Object<CK3dEntity> m_CamTarget{};
+    ModSupport::Object<CK3dEntity> m_CamPos{m_Context};
+    ModSupport::Object<CK3dEntity> m_CamOrient{m_Context};
+    ModSupport::Object<CK3dEntity> m_CamOrientRef{m_Context};
+    ModSupport::Object<CK3dEntity> m_CamTarget{m_Context};
 };

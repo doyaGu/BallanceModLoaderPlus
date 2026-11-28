@@ -316,12 +316,9 @@ void DebugUtilities::ChangeBallSpeed(float times) {
                           ->GetRealSource();
 
             for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                const int nameSize = m_PhysicsBall->GetElementStringValue(i, 0, nullptr, 0);
-                if (nameSize <= 1)
+                std::string ballName;
+                if (!BML::Platform::ReadDataArrayString(m_PhysicsBall.Get(), i, 0, ballName) || ballName.empty())
                     continue;
-                std::string ballName(nameSize, '\0');
-                m_PhysicsBall->GetElementStringValue(i, 0, ballName.data(), nameSize);
-                ballName.pop_back();
                 float force;
                 m_PhysicsBall->GetElementValue(i, 7, &force);
                 m_Forces[ballName] = force;
@@ -342,12 +339,9 @@ void DebugUtilities::ChangeBallSpeed(float times) {
             }
 
             for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                const int nameSize = m_PhysicsBall->GetElementStringValue(i, 0, nullptr, 0);
-                if (nameSize <= 1)
+                std::string ballName;
+                if (!BML::Platform::ReadDataArrayString(m_PhysicsBall.Get(), i, 0, ballName) || ballName.empty())
                     continue;
-                std::string ballName(nameSize, '\0');
-                m_PhysicsBall->GetElementStringValue(i, 0, ballName.data(), nameSize);
-                ballName.pop_back();
                 auto iter = m_Forces.find(ballName);
                 if (iter != m_Forces.end()) {
                     float force = iter->second;
@@ -380,7 +374,7 @@ void DebugUtilities::ResetBall() {
             m_DynamicPos->ActivateInput(1);
             m_DynamicPos->Activate();
 
-            m_Timers.AfterTicks(1, [this, curBall = ModSupport::Object(curBall)]() {
+            m_Timers.AfterTicks(1, [this, curBall = ModSupport::Object(m_Context, curBall)]() {
                 VxMatrix matrix;
                 m_CurLevel->GetElementValue(0, 3, &matrix);
                 curBall->SetWorldMatrix(matrix);
@@ -433,7 +427,7 @@ void DebugUtilities::SetSector(int sector) {
             m_CKContext->GetCurrentScene()->Activate(sectorMgr, true);
 
             m_Timers.EveryTicks(1, [this, sector, checkPoints,
-                                    sectorMgr = ModSupport::Object(sectorMgr)]() {
+                                    sectorMgr = ModSupport::Object(m_Context, sectorMgr)]() {
                 if (sectorMgr->IsActive())
                     return true;
 
@@ -459,7 +453,7 @@ void DebugUtilities::SetSector(int sector) {
                         ResetBall();
                     } else {
                         m_Timers.AfterTicks(
-                            2, [this, sector, checkPoints, flame = ModSupport::Object(flame)]() {
+                            2, [this, sector, checkPoints, flame = ModSupport::Object(m_Context, flame)]() {
                                 VxMatrix matrix;
                                 checkPoints->GetElementValue(sector - 1, 0, &matrix);
                                 flame->SetWorldMatrix(matrix);
@@ -606,9 +600,8 @@ void DebugUtilities::OnProcess_ResetBall() {
                 CKDataArray *ph = ModSupport::Find<CKDataArray>(m_Context, "PH");
                 for (int i = 0; i < ph->GetRowCount(); i++) {
                     CKBOOL set = true;
-                    char name[100] = {};
-                    ph->GetElementStringValue(i, 1, name, sizeof(name));
-                    if (!strcmp(name, "P_Extra_Point"))
+                    std::string name;
+                    if (BML::Platform::ReadDataArrayString(ph, i, 1, name) && name == "P_Extra_Point")
                         ph->SetElementValue(i, 4, &set);
                 }
 
@@ -618,15 +611,15 @@ void DebugUtilities::OnProcess_ResetBall() {
                     ModSupport::Find<CKBehavior>(m_Context, "Gameplay_SectorManager");
                 ModSupport::Engine(m_Context)->GetCurrentScene()->Activate(sectorMgr, true);
 
-                m_Timers.EveryTicks(1, [this, curBall = ModSupport::Object(curBall),
-                                        sectorMgr = ModSupport::Object(sectorMgr)]() {
+                m_Timers.EveryTicks(1, [this, curBall = ModSupport::Object(m_Context, curBall),
+                                        sectorMgr = ModSupport::Object(m_Context, sectorMgr)]() {
                     if (sectorMgr->IsActive())
                         return true;
 
                     m_DynamicPos->ActivateInput(1);
                     m_DynamicPos->Activate();
 
-                    m_Timers.AfterTicks(1, [this, curBall = ModSupport::Object(curBall)]() {
+                    m_Timers.AfterTicks(1, [this, curBall]() {
                         VxMatrix matrix;
                         m_CurLevel->GetElementValue(0, 3, &matrix);
                         curBall->SetWorldMatrix(matrix);

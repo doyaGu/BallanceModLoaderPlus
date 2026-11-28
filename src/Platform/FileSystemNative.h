@@ -1,5 +1,7 @@
 #pragma once
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL_iostream.h>
+#endif
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -15,7 +17,9 @@ bool ReadFileBytes(const std::wstring &path, std::string &out, std::uint32_t &er
 bool EncodePathForCodePage(std::wstring_view path, std::uint32_t codePage, std::string &out);
 std::wstring ShortPath(const std::wstring &path);
 #endif
+#if BML_RUNTIME_SDL
 bool SyncFile(SDL_IOStream *stream);
+#endif
 bool PublishFile(const std::string &source, const std::string &destination,
                  bool replace, std::uint32_t &error);
 bool SetWorkingDirectory(const std::string &path);

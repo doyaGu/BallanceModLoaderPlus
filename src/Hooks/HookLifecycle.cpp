@@ -62,6 +62,9 @@ HookSnapshot HookLifecycle::Inspect() const {
     HookSnapshot snapshot;
     snapshot.Input = m_Input && InputHookOwnsActive(*m_Input);
     snapshot.ObjectLoad = OwnsObjectLoad();
+#if !BML_RUNTIME_SDL
+    snapshot.PhysicsPostProcess = OwnsPhysicsPostProcess();
+#endif
     snapshot.Physicalize = OwnsPhysicalize();
     snapshot.RenderSkip = m_Render && m_Render->IsAttached();
     return snapshot;

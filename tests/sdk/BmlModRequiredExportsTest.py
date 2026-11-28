@@ -115,8 +115,8 @@ def main() -> int:
         run(configure)
 
         for target, missing_symbol in (
-            ("MissingEntry", "BMLEntry"),
-            ("MissingExit", "BMLExit"),
+            ("MissingEntry", "BML_GetModInterface"),
+            ("MissingExit", "BML_GetModInterface"),
         ):
             result = run(
                 [

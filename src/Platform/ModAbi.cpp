@@ -13,7 +13,7 @@ bool ValidateModAbi(const std::wstring &modulePath, std::string &error) {
     }
     const auto document = utils::JsonDocument::Parse(contents, error);
     auto *root = document.Root();
-    if(root&&yyjson_is_obj(root)&&utils::JsonGetInt(root,"schema")==1){error="Old SDL native Mod ABI; migrate to BML_GetModInterface and rebuild with the current SDK";return false;}
+    if(root&&yyjson_is_obj(root)&&utils::JsonGetInt(root,"schema")==1){error="Old native Mod ABI; migrate to BML_GetModInterface and rebuild with the current SDK";return false;}
     if (!root || !yyjson_is_obj(root) || utils::JsonGetInt(root, "schema") != BML_ABI_SCHEMA) {
         error = "Invalid native Mod ABI descriptor: " + error;
         return false;

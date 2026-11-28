@@ -1,6 +1,7 @@
 #include "CustomMaps/MapStaging.h"
 
-#include <SDL3/SDL.h>
+#include <chrono>
+#include <filesystem>
 #include "Platform/FileSystemNative.h"
 #include "Platform/FileError.h"
 #include "StringUtils.h"
@@ -16,13 +17,18 @@ namespace CustomMap {
 namespace {
 
 constexpr wchar_t StagingRootName[] = L"BMLPlus.Staging";
-constexpr std::uint32_t Utf8CodePage = 65001;
+#if BML_RUNTIME_SDL
+constexpr std::uint32_t StagingCodePage = 65001;
+#else
+// Relative staging names consist only of ASCII path components.
+constexpr std::uint32_t StagingCodePage = 20127;
+#endif
 
 std::wstring MakeSessionName() {
     wchar_t name[48]{};
     std::swprintf(name, sizeof(name) / sizeof(name[0]), L"%08lX-%016llX",
                   static_cast<unsigned long>(BML::Platform::ProcessId()),
-                  static_cast<unsigned long long>(SDL_GetTicksNS()));
+                  static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
     name[(sizeof(name) / sizeof(name[0])) - 1] = L'\0';
     return name;
 }
@@ -60,8 +66,13 @@ void MapStaging::Shutdown() {
     for (const std::wstring &file : m_RetainedFiles)
         DeleteOwnedFile(file);
     m_RetainedFiles.clear();
-    if (!m_SessionDirectory.empty()) SDL_RemovePath(utils::Utf16ToUtf8(m_SessionDirectory).c_str());
-    if (!m_RootDirectory.empty()) SDL_RemovePath(utils::Utf16ToUtf8(m_RootDirectory).c_str());
+    std::error_code ignored;
+    const auto removeEmptyDirectory = [&](const std::wstring &directory) {
+        if (!directory.empty())
+            std::filesystem::remove(std::filesystem::u8path(utils::Utf16ToUtf8(directory)), ignored);
+    };
+    removeEmptyDirectory(m_SessionDirectory);
+    removeEmptyDirectory(m_RootDirectory);
 
     m_TempDirectory.clear();
     m_RootDirectory.clear();
@@ -105,7 +116,7 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
         const std::wstring relativePath = utils::CombinePathW(m_RelativeDirectory, fileName);
         utils::CreateFileTreeW(m_SessionDirectory);
         if (utils::CopyFileW(sourcePath, destination) &&
-            utils::TryEncodePathForCodePage(relativePath, Utf8CodePage, staged.LoadPath) &&
+            utils::TryEncodePathForCodePage(relativePath, StagingCodePage, staged.LoadPath) &&
             CanResolve(pathManager, staged.LoadPath)) {
             staged.Attempt = attempt;
             m_PendingAttempt = attempt;
@@ -130,11 +141,22 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
         return false;
     }
 
-    if (!utils::TryEncodePathForCodePage(fallback, Utf8CodePage, staged.LoadPath)) {
+#if BML_RUNTIME_SDL
+    if (!utils::TryEncodePathForCodePage(fallback, StagingCodePage, staged.LoadPath)) {
         DiscardFile(fallback);
         error = "the fallback staging path is not representable in UTF-8";
         return false;
     }
+#else
+    if (!utils::TryEncodePathForActiveCodePage(fallback, staged.LoadPath)) {
+        const std::wstring shortPath = utils::GetShortPathW(fallback);
+        if (!utils::TryEncodePathForActiveCodePage(shortPath, staged.LoadPath)) {
+            DiscardFile(fallback);
+            error = "the fallback staging path is not representable in the active code page";
+            return false;
+        }
+    }
+#endif
 
     if (!CanResolve(pathManager, staged.LoadPath)) {
         DiscardFile(fallback);

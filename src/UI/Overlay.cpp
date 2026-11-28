@@ -8,8 +8,12 @@
 
 #include "imgui_internal.h"
 #include "UI/imgui_impl_ck2.h"
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL.h>
 #include "backends/imgui_impl_sdl3.h"
+#else
+#include "backends/imgui_impl_win32.h"
+#endif
 
 namespace Overlay {
     ImGuiContext *g_ImGuiContext = nullptr;
@@ -69,10 +73,19 @@ namespace Overlay {
     bool ImGuiInitPlatform(CKContext *context) {
         ImGuiContextScope scope;
 
+#if BML_RUNTIME_SDL
         auto *window = context ? static_cast<SDL_Window *>(context->GetMainWindow()) : nullptr;
         if (!window || !ImGui_ImplSDL3_InitForOther(window)) return false;
+#else
+        void *window = context ? context->GetMainWindow() : nullptr;
+        if (!window || !ImGui_ImplWin32_Init(window)) return false;
+#endif
         if (!PlatformInput::Attach(window)) {
+#if BML_RUNTIME_SDL
             ImGui_ImplSDL3_Shutdown();
+#else
+            ImGui_ImplWin32_Shutdown();
+#endif
             return false;
         }
 
@@ -100,7 +113,11 @@ namespace Overlay {
             return true;
 
         ImGuiContextScope scope;
+#if BML_RUNTIME_SDL
         ImGui_ImplSDL3_Shutdown();
+#else
+        ImGui_ImplWin32_Shutdown();
+#endif
         g_PlatformInitialized = false;
         return true;
     }
@@ -137,7 +154,11 @@ namespace Overlay {
             if (ModContextLease context; context) context->GetModLoader().ProcessFailedNativeMods();
 
             PlatformInput::ProcessEvents();
+#if BML_RUNTIME_SDL
             ImGui_ImplSDL3_NewFrame();
+#else
+            ImGui_ImplWin32_NewFrame();
+#endif
             ImGui_ImplCK2_NewFrame();
             ImGui::NewFrame();
 

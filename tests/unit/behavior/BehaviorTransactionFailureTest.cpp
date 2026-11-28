@@ -1,3 +1,4 @@
+#include "Behavior/Engine/Access.h"
 #include "Behavior/Engine/Message.h"
 #include "Behavior/Engine/Scope.h"
 #include "Behavior/Install/Installations.h"
@@ -71,7 +72,7 @@ int Send(CKContext *context, CKBehavior *behavior, CKDWORD message,
          const CKBehaviorContext *frame) {
     if (message == CKM_BEHAVIOREDITED && behavior == rejectGraph && rejectGraph) {
         rejectGraph = nullptr;
-        behavior->SetParent(foreignParent);
+        Engine::SetParentId(behavior, foreignParent);
         return CKERR_INVALIDPARAMETER;
     }
     Scope scope(context, behavior, frame);
@@ -115,7 +116,7 @@ TEST_F(BehaviorTransactionFailure, DeferredSubmissionSeparatesApplyAndInverseErr
     EXPECT_EQ(info.RestoreFailure.CkError, CKERR_INVALIDOBJECT);
     EXPECT_EQ(info.RestoreFailure.Details.Stage, Phase::Teardown);
     EXPECT_EQ(graph->GetSubBehaviorCount(), 1);
-    graph->SetParent(nullptr);
+    Engine::SetParentId(graph, nullptr);
     auto closed = edits.CloseSubmission(owner, submission);
     EXPECT_TRUE(closed) << closed.Message;
     EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
@@ -145,7 +146,7 @@ TEST_F(BehaviorTransactionFailure, QueuedNativePatchKeepsItsApplyDiagnostic) {
     ASSERT_TRUE(edits.Read(owner, patch, info));
     EXPECT_EQ(info.ApplyFailure.Code, Error::CallbackFailed);
     EXPECT_EQ(info.RestoreFailure.Code, Error::RevertConflict);
-    graph->SetParent(nullptr);
+    Engine::SetParentId(graph, nullptr);
     EXPECT_TRUE(edits.Close(owner, patch));
     EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
 }
@@ -173,7 +174,7 @@ TEST_F(BehaviorTransactionFailure, ScriptSelectionRetainsBothFaultsAndCanCloseAf
     EXPECT_EQ(info.ApplyFailure.Code, Error::CallbackFailed);
     EXPECT_EQ(info.RestoreFailure.Code, Error::RevertConflict);
     EXPECT_EQ(graph->GetSubBehaviorCount(), 1);
-    graph->SetParent(nullptr);
+    Engine::SetParentId(graph, nullptr);
     EXPECT_TRUE(edits.CloseSubmission(owner, submission));
     EXPECT_EQ(graph->GetSubBehaviorCount(), 0);
 }
@@ -254,9 +255,9 @@ TEST_F(BehaviorTransactionFailure, SubmissionSwitchesTwoScriptRulesOnTheSameHand
 
     foreignParent = MakeGraph("foreign parent");
     ASSERT_NE(foreignParent, nullptr);
-    energy->SetParent(foreignParent);
+    Engine::SetParentId(energy, foreignParent);
     const auto disabled = edits.SetSubmissionEnabled(owner, submission, false);
-    energy->SetParent(nullptr);
+    Engine::SetParentId(energy, nullptr);
     EXPECT_EQ(disabled.Code, Error::RevertConflict);
     ASSERT_TRUE(edits.ReadSubmission(owner, submission, info));
     EXPECT_FALSE(info.RequestedEnabled);

@@ -93,6 +93,13 @@ include("${PROJECT_SOURCE_DIR}/cmake/BMLBehaviorBlocksPublicSurface.cmake")
 bml_find_engine()
 
 if (BML_ENABLE_ANGELSCRIPT)
+    if(NOT BML_RUNTIME_SDL)
+        if(BML_BUILD_SCRIPT_RUNTIME)
+            message(FATAL_ERROR "Virtools uses the CKAngelScript 0.5.0 Win32 SDK and plugin")
+        endif()
+        find_file(CKANGELSCRIPT_RUNTIME_DLL NAMES AngelScript.dll
+            HINTS "${CKANGELSCRIPT_ROOT}" PATH_SUFFIXES bin BuildingBlocks NO_DEFAULT_PATH REQUIRED)
+    endif()
     if(BML_BUILD_SCRIPT_RUNTIME AND NOT TARGET CKAngelScript)
         # Keep the child's install/test settings scoped. All runtime plugins
         # share these exact CK2/VxMath targets and the same SDL library.
@@ -215,7 +222,7 @@ if (BML_BUILD_MODS)
     include("${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake")
     add_subdirectory(mods)
 endif ()
-if (BML_BUILD_UPDATER)
+if (BML_BUILD_UPDATER AND BML_RUNTIME_SDL)
     add_subdirectory(tools/updater)
 endif ()
 

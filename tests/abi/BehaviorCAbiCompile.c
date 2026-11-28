@@ -101,7 +101,7 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 244u);
+                        sizeof(BML_BehaviorInterface) == 264u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
                         BML_BEHAVIOR_INTERFACE_1_0_SIZE == 212u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,

@@ -149,15 +149,16 @@ class SpiritTrail : public BML::Mod::Instance {
     BML::Config::Property m_DeathReset = {};
 
     struct SpiritBall {
+        explicit SpiritBall(const BML::Mod::Context &context) : obj(context) {}
         std::string name;
         ModSupport::Object<CK3dObject> obj;
         std::vector<ModSupport::Object<CKMaterial>> materials;
     };
     std::vector<SpiritBall> m_DualBalls;
 
-    ModSupport::Object<CKDataArray> m_Energy{};
-    ModSupport::Object<CKDataArray> m_CurLevel{};
-    ModSupport::Object<CKDataArray> m_IngameParam{};
+    ModSupport::Object<CKDataArray> m_Energy{m_Context};
+    ModSupport::Object<CKDataArray> m_CurLevel{m_Context};
+    ModSupport::Object<CKDataArray> m_IngameParam{m_Context};
     float m_SRTimer = 0;
     bool m_SRActivated = false;
 };

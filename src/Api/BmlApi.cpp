@@ -1,6 +1,10 @@
 // Standalone BML.h utility exports. Runtime services use the versioned C tables;
 // BML.cpp keeps the CK plugin entries.
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL_stdinc.h>
+#else
+#include <cstring>
+#endif
 
 #include <limits>
 
@@ -519,7 +523,11 @@ int BML_CDECL BML_StartsWith(const char *str, const char *prefix, int caseSensit
     if (caseSensitive) {
         return strncmp(str, prefix, prefixLen) == 0 ? 1 : 0;
     } else {
+#if BML_RUNTIME_SDL
         return SDL_strncasecmp(str, prefix, prefixLen) == 0 ? 1 : 0;
+#else
+        return _strnicmp(str, prefix, prefixLen) == 0 ? 1 : 0;
+#endif
     }
 }
 
@@ -536,7 +544,11 @@ int BML_CDECL BML_EndsWith(const char *str, const char *suffix, int caseSensitiv
     if (caseSensitive) {
         return strcmp(strEnd, suffix) == 0 ? 1 : 0;
     } else {
+#if BML_RUNTIME_SDL
         return SDL_strcasecmp(strEnd, suffix) == 0 ? 1 : 0;
+#else
+        return _stricmp(strEnd, suffix) == 0 ? 1 : 0;
+#endif
     }
 }
 

@@ -1,4 +1,38 @@
-# SDL Player acceptance tests
+# Player acceptance tests
+
+## Virtools Win32
+
+Use a copy of the Ballance install with the dynamically linked BallancePlayer
+`52bcdc9` build. Extract the Win32 runtime into the copy and the SDK into a
+separate directory. Build the probe with VS 2022 and the shared SDK contract.
+
+```powershell
+cmake -S tests/player/virtools -B build/virtools-player-probe -G "Visual Studio 17 2022" -A Win32 -DCMAKE_PREFIX_PATH=C:/acceptance/sdk -DVIRTOOLS_SDK_PATH=C:/sdk/Virtools-SDK-2.1
+cmake --build build/virtools-player-probe --config Release
+cmake --install build/virtools-player-probe --config Release --prefix C:/acceptance/game/ModLoader
+```
+
+Start Player with the copy's `Bin` as its working directory. The Mod logs its
+verdict and exits after the first level starts. For a second run, set
+`BML_PORT_CHECK_CONFIG=1` to check the UTF-8 value saved in the first run. Set
+`BML_PORT_CHECK_MAP=1` and place a valid `中文地图.nmo` under `ModLoader/Maps`
+to exercise the custom-map route. The probe reloads its companion Building
+Block to check prototype identity. Set `BML_PORT_CHECK_EVENTS=1` to exercise
+pause, resume and restart through the live event handler. Set
+`BML_PORT_CHECK_RENDER=1` to skip every other frame for 60 updates. Set
+`BML_PORT_CHECK_TWEAKS=0` or `1` to check Lantern Alpha Test and the three
+Overclock paths against the corresponding Overclock value in `BML.cfg`.
+
+Enable `BML_TEST_VIRTOOLS_IME` for the Pinyin test. Install the resulting
+`VirtoolsImeProbe.bmodp` and its ABI sidecar in the disposable runtime and
+keep Player in the foreground. The test requires an enabled Microsoft Pinyin
+profile. It uses the profile within the Player process, types and cancels
+a composition, then verifies that a second composition commits exactly one
+`你好` to an ImGui input. Check the log for the Pinyin result. The Mod exits
+Player on completion, so run it separately from the gameplay probe.
+[Windows TSF profile activation](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofilemgr-activateprofile)
+
+## SDL Player
 
 The dynamic SDL regression builds `SdlPostProcessProbe` as an independent
 consumer of an **installed** SDK and runs disposable copies of a complete,

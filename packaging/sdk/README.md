@@ -1,5 +1,13 @@
 # BML+ SDL SDK
 
+### BallancePlayer Win32
+
+The Win32 SDK targets BallancePlayer 0.3.9 (the dynamic x86 build) with Virtools
+2.1. Configure SDK consumers with Visual Studio 2022 and `-A Win32`. C Mods
+require only this SDK. C++ Mods that link `BML::Engine` also need
+`-DVIRTOOLS_SDK_PATH=<Virtools 2.1 SDK>` pointing to the same SDK used for the
+Loader. The Win32 loader lives at `BuildingBlocks/BMLPlus.dll`.
+
 [简体中文](README_zh-CN.md)
 
 This package is for Mod development. Install the matching **runtime** in the game;
@@ -41,7 +49,8 @@ it with the installed runtime before replacing files.
 - Direct CK2/VxMath access opts into `BML::Engine`. Direct host ImGui access opts
   into `BML::ImGui`. These extensions require the matching engine/ImGui ABI,
   compiler, C++ standard library, runtime and build configuration. Supply matching
-  development packages with `--package-root`; never use the original Virtools SDK.
+  SDL development packages with `--package-root`. For Virtools Win32, use
+  `VIRTOOLS_SDK_PATH` to select the matching Virtools 2.1 SDK.
 - Player owns CK2, VxMath, SDL and ImGui state. Do not ship another SDL or
   statically link another engine into a Mod.
 

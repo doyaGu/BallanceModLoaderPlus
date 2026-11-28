@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cwchar>
 #include <filesystem>
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL_filesystem.h>
+#endif
 #include "Platform/FileSystemNative.h"
 
 #include "Logging/Logger.h"
@@ -175,33 +177,45 @@ MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, Logger
     if (depth <= 0)
         return ScanResult::Success;
 
-    struct Scan {
-        MapEntry *Maps;
-        int Depth;
-        Logger *Log;
-        const std::wstring &Root;
-    } scan{maps, depth, logger, rootPath};
-    const auto directory = utils::Utf16ToUtf8(maps->path);
-    const bool ok = SDL_EnumerateDirectory(directory.c_str(), [](void *data, const char *, const char *name) {
-        auto &scan = *static_cast<Scan *>(data);
+    auto scanEntry = [&](const std::wstring &filename) {
         try {
-            auto path = utils::CombinePathW(scan.Maps->path, utils::Utf8ToUtf16(name));
+            const auto name = utils::Utf16ToUtf8(filename);
+            auto path = utils::CombinePathW(maps->path, filename);
             std::wstring finalPath;
-            if (!utils::TryGetFinalPathInsideRootW(path, scan.Root, finalPath)) return SDL_ENUM_CONTINUE;
+            if (!utils::TryGetFinalPathInsideRootW(path, rootPath, finalPath)) return true;
             const bool dir = utils::DirectoryExistsW(path);
-            if (!dir && (!IsSupportedFileType(path) || !IsSupportedFileType(finalPath))) return SDL_ENUM_CONTINUE;
+            if (!dir && (!IsSupportedFileType(path) || !IsSupportedFileType(finalPath))) return true;
             // Do not recurse through directory links (cycles and repeated subtrees).
-            if (dir && BML::Platform::IsLink(utils::Utf16ToUtf8(path))) return SDL_ENUM_CONTINUE;
-            auto entry = std::make_unique<MapEntry>(scan.Maps, dir ? MAP_ENTRY_DIR : MAP_ENTRY_FILE);
+            if (dir && BML::Platform::IsLink(utils::Utf16ToUtf8(path))) return true;
+            auto entry = std::make_unique<MapEntry>(maps, dir ? MAP_ENTRY_DIR : MAP_ENTRY_FILE);
             entry->name = dir ? name : utils::RemoveExtensionUtf8(name);
             entry->path = std::move(path);
-            scan.Maps->children.push_back(entry.get());
+            maps->children.push_back(entry.get());
             auto *child = entry.release();
-            if (dir && ExploreMaps(child, scan.Depth - 1, scan.Log, scan.Root) == ScanResult::Failure)
-                return SDL_ENUM_FAILURE;
-            return SDL_ENUM_CONTINUE;
-        } catch (...) { return SDL_ENUM_FAILURE; }
-    }, &scan);
+            if (dir && ExploreMaps(child, depth - 1, logger, rootPath) == ScanResult::Failure)
+                return false;
+            return true;
+        } catch (...) { return false; }
+    };
+#if BML_RUNTIME_SDL
+    const auto directory = utils::Utf16ToUtf8(maps->path);
+    const bool ok = SDL_EnumerateDirectory(directory.c_str(), [](void *data, const char *, const char *name) {
+        try {
+            const auto &scan = *static_cast<const decltype(scanEntry) *>(data);
+            return scan(utils::Utf8ToUtf16(name)) ? SDL_ENUM_CONTINUE : SDL_ENUM_FAILURE;
+        } catch (...) {
+            return SDL_ENUM_FAILURE;
+        }
+    }, &scanEntry);
+#else
+    std::error_code error;
+    std::filesystem::directory_iterator it(maps->path, error), end;
+    for (; !error && it != end; it.increment(error)) {
+        if (!scanEntry(it->path().filename().native()))
+            return ScanResult::Failure;
+    }
+    const bool ok = !error;
+#endif
     if (!ok) return ScanResult::Failure;
     if (!maps->children.empty()) {
         try {

@@ -21,9 +21,9 @@ class BallSticky : public BML::Mod::Instance {
     void OnLoadLevelinit(XObjectArray *objArray);
     void OnEditScript_Gameplay_Ingame(CKBehavior *script);
 
-    ModSupport::Object<CK3dEntity> m_BallRef[2]{};
-    ModSupport::Object<CK3dEntity> m_CamTarget{};
-    ModSupport::Object<CKDataArray> m_CurLevel{};
+    ModSupport::Object<CK3dEntity> m_BallRef[2]{ModSupport::Object<CK3dEntity>{m_Context}, ModSupport::Object<CK3dEntity>{m_Context}};
+    ModSupport::Object<CK3dEntity> m_CamTarget{m_Context};
+    ModSupport::Object<CKDataArray> m_CurLevel{m_Context};
     float m_StickyImpulse = 0;
-    ModSupport::Object<CKParameter> m_StickyForce[2]{};
+    ModSupport::Object<CKParameter> m_StickyForce[2]{ModSupport::Object<CKParameter>{m_Context}, ModSupport::Object<CKParameter>{m_Context}};
 };

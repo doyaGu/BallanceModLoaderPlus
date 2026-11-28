@@ -19,20 +19,33 @@ TEST(BehaviorText, KeepsAsciiUnchanged) {
 TEST(BehaviorText, PreservesUtf8RegardlessOfTheOldCodePageHint) {
     const std::string level = "\xe5\x85\xb3\xe5\x8d\xa1";
     const std::string native = NativeText(level, Chinese);
+#if BML_RUNTIME_SDL
     EXPECT_EQ(native, level);
+#else
+    EXPECT_EQ(native, "\xb9\xd8\xbf\xa8");
+#endif
     std::string storage;
     EXPECT_EQ(Utf8Text(native, storage, Chinese), level);
 
     const std::string cafe = "caf\xc3\xa9";
+#if BML_RUNTIME_SDL
     EXPECT_EQ(NativeText(cafe, Western), cafe);
+#else
+    EXPECT_EQ(NativeText(cafe, Western), "caf\xe9");
+#endif
     EXPECT_EQ(Utf8Text(cafe, storage, Western), cafe);
 }
 
 TEST(BehaviorText, RejectsMalformedUtf8InsteadOfDecodingItAsAcp) {
     std::string storage = "stale conversion";
+#if BML_RUNTIME_SDL
     EXPECT_TRUE(Utf8Text("caf\xe9", storage, Western).empty());
     EXPECT_TRUE(storage.empty());
     EXPECT_TRUE(Utf8Text("\xb9\xd8\xbf\xa8", storage, Chinese).empty());
+#else
+    EXPECT_EQ(Utf8Text("caf\xe9", storage, Western), "caf\xc3\xa9");
+    EXPECT_EQ(Utf8Text("\xb9\xd8\xbf\xa8", storage, Chinese), "\xe5\x85\xb3\xe5\x8d\xa1");
+#endif
     EXPECT_FALSE(IsUtf8("\xc0\x80", 2));
     EXPECT_FALSE(IsUtf8("\xed\xa0\x80", 3));
     EXPECT_FALSE(IsUtf8("\xf4\x90\x80\x80", 4));

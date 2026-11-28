@@ -2,11 +2,10 @@
 
 [English](README.md) | 简体中文
 
-BML+ **0.4.0** 为 **Ballanced 的 SDL Player** 加载原生和 AngelScript Mod，提供生命周期事件、
+BML+ **0.4.0** 为 **Ballanced 的 SDL Player** 和 Win32 **BallancePlayer 0.3.9** 加载原生和 AngelScript Mod，提供生命周期事件、
 配置、命令、输入、UI、Behavior 编写、资源和跨 Mod 通信。
 
-当前是 `sdl` 分支，使用 SDL CK2 和 VxMath，支持**动态 Loader**。原版 Windows Player
-及其旧 C++ Mod ABI 由独立分支维护；本分支尚未实现静态 Player 集成。
+两种运行时共用 BML+ 0.4 Mod API 和动态 Loader。BallancePlayer Win32 使用 Virtools 2.1 和 x86 构建。
 
 ## 按任务开始
 
@@ -20,13 +19,13 @@ BML+ **0.4.0** 为 **Ballanced 的 SDL Player** 加载原生和 AngelScript Mod�
 | 查看实际支持与验收范围 | [支持与验证](docs/zh-CN/validation.md) |
 | 准备发布 | [发布手册（英文）](RELEASING.md) |
 
-使用同一 SDL 目标的运行时与 SDK。不要把通用“最新版”归档当作本分支的配套包：
+使用同一目标的运行时与 SDK。不要把通用“最新版”归档当作本分支的配套包：
 先核对游戏中的 `ModLoader/BML.abi.json` 和 SDK 的 `share/BML/BML.abi.json`。
 没有匹配的 SDL 包时，从本分支与对应 Ballanced `sdl` 源码构建。
 
 ## 运行时与 SDK
 
-**运行时**解压到游戏根目录：Loader 位于 `Managers`，CKAngelScript 位于
+**运行时**解压到游戏根目录。SDL Loader 位于 `Managers`，Virtools Loader 位于 `BuildingBlocks`。CKAngelScript 位于
 `BuildingBlocks`，Mod 位于 `ModLoader/Mods`。保留 Player 自带的 CK2、VxMath 和 SDL。
 SDK 是独立开发包，不要覆盖到游戏目录。
 
@@ -56,6 +55,22 @@ ctest --test-dir build/sdl -C Release --output-on-failure
 默认启用脚本。CMake 会获取固定的 CKAngelScript SDL 提交，并使用 AngelScript 2.39.0
 构建。设置 `CKANGELSCRIPT_ROOT` 可使用本地源码，设置 `-DBML_ENABLE_ANGELSCRIPT=OFF`
 可构建无脚本版本。匹配 SDK 的获取方式、组件安装和 Player 测试流程见开发指南。
+
+### 构建 BallancePlayer Win32 版
+
+使用 VS 2022 和 Virtools 2.1 SDK 的 `175bcb12d829c687359b90615be53524cdba0132` 提交。
+启用脚本时，`CKANGELSCRIPT_ROOT` 指向解包后的 CKAngelScript 0.5.0 Win32 版。
+
+```powershell
+cmake -S . -B build/virtools -G "Visual Studio 17 2022" -A Win32 -DBML_RUNTIME=virtools -DVIRTOOLS_SDK_PATH=C:/sdk/Virtools-SDK-2.1 -DCKANGELSCRIPT_ROOT=C:/sdk/CKAngelScript-0.5.0 -DBML_BUILD_MODS=ON -DBML_BUILD_TESTS=ON
+cmake --build build/virtools --config Release --parallel
+cmake --install build/virtools --config Release --prefix build/virtools-runtime --component BMLRuntime
+cmake --install build/virtools --config Release --prefix build/virtools-sdk
+```
+
+用独立构建目录并指定 `-DBML_ENABLE_ANGELSCRIPT=OFF` 可构建无脚本版。
+验收宿主使用 BallancePlayer `52bcdc9` 的动态构建及游戏数据副本。
+[Player 验收说明](tests/player/README.md)
 
 ## 项目链接
 

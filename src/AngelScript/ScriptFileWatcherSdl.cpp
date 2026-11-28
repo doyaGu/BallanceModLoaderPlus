@@ -148,10 +148,10 @@ void ScriptFileWatcherSdl::WorkerLoop(WatchState &state) {
                 auto previous = state.Files.find(path);
                 const uint32_t action = previous == state.Files.end() ? ScriptFileAdded : ScriptFileModified;
                 if (previous == state.Files.end() || !(stamp == previous->second))
-                    PushEvent({state.Root, utils::Utf8ToUtf16(path), action, false, state.Recursive});
+                    PushEvent({state.Root, utils::NormalizePathW(utils::Utf8ToUtf16(path)), action, false, state.Recursive});
             }
             for (const auto &[path, stamp] : state.Files)
-                if (!next.contains(path)) PushEvent({state.Root, utils::Utf8ToUtf16(path), ScriptFileRemoved, false, state.Recursive});
+                if (!next.contains(path)) PushEvent({state.Root, utils::NormalizePathW(utils::Utf8ToUtf16(path)), ScriptFileRemoved, false, state.Recursive});
             state.Files.swap(next);
         }
     } catch (...) {

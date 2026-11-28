@@ -1,3 +1,4 @@
+#include "Platform/CKDataArrayText.h"
 #ifndef BML_MODS_COMMON_MODSUPPORT_HPP
 #define BML_MODS_COMMON_MODSUPPORT_HPP
 
@@ -272,45 +273,42 @@ inline float ParseFloat(const std::string &v, float minimum = -FLT_MAX, float ma
     return std::clamp(float(std::atof(v.c_str())), minimum, maximum);
 }
 
-// CKObjectHandle supplies the engine's own lifetime generation. This local
-// convenience owns no CK object and invents no cross-module handle type.
+// Delayed actions keep a 0.4 object reference, which expires when CK deletes
+// the object or its scene is reset on either engine.
 template <class T> class Object {
 public:
-    Object() = default;
-
-    Object(std::nullptr_t) {}
-
-    Object(T *p) { *this = p; }
-
-    Object &operator=(T *p) {
-        m_Context = p ? p->GetCKContext() : nullptr;
-        m_Handle = p ? m_Context->GetObjectHandle(p->GetID()) : CKObjectHandle{};
-        return *this;
+    explicit Object(const BML::Mod::Context &context) : m_Context(&context) {}
+    Object(const BML::Mod::Context &context, T *object) : Object(context) {
+        *this = object;
     }
 
-    Object &operator=(std::nullptr_t) {
-        m_Context = nullptr;
+    Object &operator=(T *object) {
         m_Handle = {};
+        if (object) {
+            if (auto ref = BML::Engine::ReferenceObject(*m_Context, object))
+                m_Handle = ref.Value();
+        }
         return *this;
     }
 
     T *Get() const {
-        return m_Context ? static_cast<T *>(m_Context->GetObjectByHandle(m_Handle)) : nullptr;
+        if (!m_Handle.Domain)
+            return nullptr;
+        auto object = BML::Engine::BorrowObject<CKObject>(*m_Context, m_Handle);
+        return object ? static_cast<T *>(object.Value()) : nullptr;
     }
 
     operator T *() const { return Get(); }
-
     T *operator->() const {
-        auto *p = Get();
-        if (!p)
+        auto *object = Get();
+        if (!object)
             throw std::runtime_error("Game object no longer exists");
-        return p;
+        return object;
     }
 
 private:
-    CKContext *m_Context = nullptr;
-    CKObjectHandle m_Handle{};
+    const BML::Mod::Context *m_Context;
+    BML_ObjectRef m_Handle{};
 };
-template <class T> Object(T *) -> Object<T>;
 } // namespace ModSupport
 #endif

@@ -105,8 +105,24 @@ class WorkflowTest(unittest.TestCase):
 
     def test_sdl_missing_descriptor_is_rejected(self):
         (self.sdk / "share/BML/BML.abi.json").unlink()
-        with self.assertRaisesRegex(cli.BmlError, "SDL SDK ABI descriptor is missing"):
+        with self.assertRaisesRegex(cli.BmlError, "BML SDK ABI descriptor is missing"):
             cli.native_build_or_run(self.args, source_root / "scripts/bml.py", False, False)
+
+    def test_virtools_sdk_selects_win32_and_a_distinct_cache(self):
+        _, sdl_commands = self.build_with_recorder()
+        sdl_configure = sdl_commands[0]
+        self.abi.update(runtime="virtools", platform="windows", architecture="x86", host_linkage="dynamic")
+        path = self.sdk / "share/BML/BML.abi.json"
+        cli.write_json(path, self.abi)
+        self.args.generator = "Visual Studio 17 2022"
+        _, commands = self.build_with_recorder()
+        configure = commands[0]
+        self.assertEqual(configure[configure.index("-A") + 1], "Win32")
+        self.assertNotEqual(configure[configure.index("-B") + 1],
+                            sdl_configure[sdl_configure.index("-B") + 1])
+        cli.write_json(path, {**self.abi, "architecture": "x64"})
+        with self.assertRaisesRegex(cli.BmlError, "Invalid or unsupported BML ABI"):
+            cli.sdk_abi(self.sdk)
 
     def test_old_runtime_descriptor_is_rejected(self):
         path = self.sdk / "share/BML/BML.abi.json"

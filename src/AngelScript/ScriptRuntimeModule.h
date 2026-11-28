@@ -20,6 +20,11 @@ inline void *FindScriptRuntimeModule() {
 
 inline void *ScriptRuntimeSymbol(void *module, const char *name) {
     if (!module) return nullptr;
+    // CK2.1 declares its read-only export name as a mutable CKSTRING.
+#if !BML_RUNTIME_SDL
+    return static_cast<CKPluginDll *>(module)->GetFunctionPtr(const_cast<char *>(name));
+#else
     return static_cast<CKPluginDll *>(module)->GetFunctionPtr(name);
+#endif
 }
 }

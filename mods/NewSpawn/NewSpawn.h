@@ -124,17 +124,17 @@ class NewSpawn : public BML::Mod::Instance {
     bool spirit_enabled = false;
     CommandNewSpawn *cmdspawnp_ptr = nullptr;
 
-    ModSupport::Object<CKBehavior> m_dynamicPos{};
-    ModSupport::Object<CKBehavior> m_phyNewBall{};
-    ModSupport::Object<CKDataArray> m_curLevel{};
-    ModSupport::Object<CKDataArray> m_checkpoints{};
-    ModSupport::Object<CKDataArray> m_resetpoints{};
-    ModSupport::Object<CKDataArray> m_ingameParam{};
-    ModSupport::Object<CKParameter> m_curSector{};
+    ModSupport::Object<CKBehavior> m_dynamicPos{m_Context};
+    ModSupport::Object<CKBehavior> m_phyNewBall{m_Context};
+    ModSupport::Object<CKDataArray> m_curLevel{m_Context};
+    ModSupport::Object<CKDataArray> m_checkpoints{m_Context};
+    ModSupport::Object<CKDataArray> m_resetpoints{m_Context};
+    ModSupport::Object<CKDataArray> m_ingameParam{m_Context};
+    ModSupport::Object<CKParameter> m_curSector{m_Context};
 
     //[transport] Ball type
-    ModSupport::Object<CKParameter> m_curTrafo{};
-    ModSupport::Object<CKBehavior> m_setNewBall{};
+    ModSupport::Object<CKParameter> m_curTrafo{m_Context};
+    ModSupport::Object<CKBehavior> m_setNewBall{m_Context};
 
     //[transport] Map filename
     std::string map_filename_curlevel;

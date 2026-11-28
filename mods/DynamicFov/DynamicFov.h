@@ -24,10 +24,10 @@ class DynamicFov : public BML::Mod::Instance {
 
   private:
     std::vector<BML::Behavior::Instance> m_Hooks;
-    ModSupport::Object<CKCamera> m_InGameCam{};
-    ModSupport::Object<CKDataArray> m_CurLevel{};
-    ModSupport::Object<CKBehavior> m_IngameScript{};
-    ModSupport::Object<CKBehavior> m_DynamicPos{};
+    ModSupport::Object<CKCamera> m_InGameCam{m_Context};
+    ModSupport::Object<CKDataArray> m_CurLevel{m_Context};
+    ModSupport::Object<CKBehavior> m_IngameScript{m_Context};
+    ModSupport::Object<CKBehavior> m_DynamicPos{m_Context};
 
     bool m_IsActive = false;
     bool m_WasPaused = false;

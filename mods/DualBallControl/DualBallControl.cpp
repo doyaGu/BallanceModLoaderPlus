@@ -76,12 +76,9 @@ void DualBallControl::OnLoadObject(const BML::Mod::Context &,
     if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
         CKDataArray *physBall = ModSupport::Find<CKDataArray>(m_Context, "Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
-            const int nameSize = physBall->GetElementStringValue(i, 0, nullptr, 0);
-            if (nameSize <= 1)
+            std::string ballName;
+            if (!BML::Platform::ReadDataArrayString(physBall, i, 0, ballName) || ballName.empty())
                 continue;
-            std::string ballName(nameSize, '\0');
-            physBall->GetElementStringValue(i, 0, ballName.data(), nameSize);
-            ballName.pop_back();
             CK3dObject *ballObj = ModSupport::Find<CK3dObject>(m_Context, ballName.c_str());
             m_Balls.push_back(ballObj);
 
@@ -177,7 +174,7 @@ void DualBallControl::OnProcess(const BML::Mod::Context &) {
                 m_DynamicPos->ActivateInput(1);
                 m_DynamicPos->Activate();
 
-                m_Timers.AfterTicks(1, [this, curBall = ModSupport::Object(curBall)]() {
+                m_Timers.AfterTicks(1, [this, curBall = ModSupport::Object(m_Context, curBall)]() {
                     ReleaseDualBall();
 
                     CK3dEntity *dualBall = m_DualBalls[m_DualBallType];
@@ -294,7 +291,7 @@ void DualBallControl::OnPostLoadLevel(const BML::Mod::Context &) {
         CKScene *scene = ModSupport::Engine(m_Context)->GetCurrentScene();
 
         int counter = 0;
-        auto createFlame = [this, &counter, flame = ModSupport::Object(flame), &dep, allLevel,
+        auto createFlame = [this, &counter, flame = ModSupport::Object(m_Context, flame), &dep, allLevel,
                             scene]() {
             std::string suffix = "_Dual_" + std::to_string(counter++);
             auto *newFlame = (CK3dEntity *)ModSupport::Engine(m_Context)->CopyObject(

@@ -167,7 +167,7 @@ static bool ImGui_ImplCK2_ShouldUploadDrawSegment(const ImDrawCmd *commands,
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <SDL3/SDL_timer.h>
+#include <chrono>
 
 enum ImGui_ImplCK2_TextureFailure
 {
@@ -207,7 +207,6 @@ struct ImGui_ImplCK2_Data
     int TextureMaxHeight;
     ImGui_ImplCK2_TextureFailure LastTextureFailure;
     unsigned int LastTextureFailureCount;
-    ImU64 PerformanceFrequency;
     ImU64 TotalRenderTimeMicroseconds;
     ImU64 PeakRenderTimeMicroseconds;
     ImU64 RenderedFrameCount;
@@ -219,7 +218,7 @@ struct ImGui_ImplCK2_Data
     ImGui_ImplCK2_Data()
         : Context(NULL), RenderContext(NULL), FrameIndex(0), TextureMaxWidth(0), TextureMaxHeight(0),
           LastTextureFailure(ImGui_ImplCK2_TextureFailure_None), LastTextureFailureCount(0),
-          PerformanceFrequency(0), TotalRenderTimeMicroseconds(0), PeakRenderTimeMicroseconds(0),
+          TotalRenderTimeMicroseconds(0), PeakRenderTimeMicroseconds(0),
           RenderedFrameCount(0), TotalGeometryUploadFailureCount(0),
           TotalVertexBufferReleaseFailureCount(0), LastFrameMetrics{}
     {
@@ -303,8 +302,13 @@ public:
         for (int stage = 0; stage < CKRST_MAX_STAGES; ++stage)
         {
             CKTexture *texture = Context->GetTexture(stage);
-            if (texture)
+            if (texture) {
+#if BML_RUNTIME_SDL
                 Textures[stage] = Context->GetCKContext()->GetObjectHandle(texture->GetID());
+#else
+                Textures[stage] = texture->GetID();
+#endif
+            }
             TextureMatrices[stage] = Context->GetTextureMatrix(stage);
             for (int i = 0; i < IM_ARRAYSIZE(ImGui_ImplCK2_StageStates); ++i)
                 StageValues[stage][i] = Context->GetTextureStageState(ImGui_ImplCK2_StageStates[i], stage);
@@ -321,7 +325,11 @@ public:
                 RestoreStageState(stage, i);
         for (int stage = 0; stage < CKRST_MAX_STAGES; ++stage)
         {
+#if BML_RUNTIME_SDL
             CKTexture *texture = CKTexture::Cast(Context->GetCKContext()->GetObjectByHandle(Textures[stage]));
+#else
+            CKTexture *texture = CKTexture::Cast(Context->GetCKContext()->GetObject(Textures[stage]));
+#endif
             if (Context->GetTexture(stage) != texture)
                 Context->SetTexture(texture, FALSE, stage);
         }
@@ -350,7 +358,11 @@ private:
     CKRenderContext *Context;
     VxRect ViewRect;
     CKDWORD Values[IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates)] = {};
+#if BML_RUNTIME_SDL
     CKObjectHandle Textures[CKRST_MAX_STAGES] = {};
+#else
+    CK_ID Textures[CKRST_MAX_STAGES] = {};
+#endif
     VxMatrix TextureMatrices[CKRST_MAX_STAGES];
     CKDWORD StageValues[CKRST_MAX_STAGES][IM_ARRAYSIZE(ImGui_ImplCK2_StageStates)] = {};
 };
@@ -1192,13 +1204,12 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
     if (!bd || !bd->RenderContext)
         return;
 
-    const Uint64 start = SDL_GetPerformanceCounter();
+    const auto start = std::chrono::steady_clock::now();
     ImGui_ImplCK2_FrameMetrics metrics{};
     ImGui_ImplCK2_RenderDrawDataInternal(draw_data, bd, fb_width, fb_height, &metrics);
 
-    const Uint64 end = SDL_GetPerformanceCounter();
-    if (bd->PerformanceFrequency && end >= start)
-        metrics.RenderTimeMicroseconds = (end - start) * 1000000ULL / bd->PerformanceFrequency;
+    metrics.RenderTimeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start).count();
     bd->LastFrameMetrics = metrics;
     bd->TotalRenderTimeMicroseconds += metrics.RenderTimeMicroseconds;
     bd->TotalGeometryUploadFailureCount += metrics.GeometryUploadFailureCount;
@@ -1253,7 +1264,6 @@ bool ImGui_ImplCK2_Init(CKContext *context)
     bd->RenderContext = render_context;
     bd->TextureMaxWidth = texture_limits.Width;
     bd->TextureMaxHeight = texture_limits.Height;
-    bd->PerformanceFrequency = SDL_GetPerformanceFrequency();
 
     if (texture_limits.UsedFallback)
         utils::OutputDebugA("BML CK2 renderer received invalid texture limits; using %dx%d\n",

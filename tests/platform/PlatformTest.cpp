@@ -4,7 +4,6 @@
 #include "Platform/FileError.h"
 #include "Platform/Module.h"
 #include "Platform/ModAbi.h"
-#include <SDL3/SDL.h>
 #include <zip.h>
 #include <array>
 #include <cstdlib>
@@ -15,7 +14,7 @@
 #endif
 
 static void Require(bool condition, const char *message) {
-    if (!condition) throw std::runtime_error(std::string(message) + ": " + SDL_GetError());
+    if (!condition) throw std::runtime_error(message);
 }
 
 int main(int argc, char **argv) {
@@ -80,9 +79,10 @@ int main(int argc, char **argv) {
         Require(!BML::Platform::ValidateModAbi(modPath, abiError), "missing ABI rejected");
         Require(utils::WriteFileBytesAtomicW(modPath + L".abi.json", descriptor, error), "write ABI");
         Require(BML::Platform::ValidateModAbi(modPath, abiError), "matching ABI accepted");
-        const auto runtimeAt = descriptor.find("\"runtime\":\"sdl\"");
-        Require(runtimeAt != std::string::npos, "SDL descriptor");
-        descriptor.replace(runtimeAt, 15, "\"runtime\":\"win32\"");
+        const auto runtimeAt = descriptor.find("\"runtime\":\"");
+        Require(runtimeAt != std::string::npos, "runtime descriptor");
+        const auto value = runtimeAt + sizeof("\"runtime\":\"") - 1;
+        descriptor.replace(value, descriptor.find('"', value) - value, "wrong");
         Require(utils::WriteFileBytesAtomicW(modPath + L".abi.json", descriptor, error), "write wrong ABI");
         Require(!BML::Platform::ValidateModAbi(modPath, abiError) && abiError.find("runtime") != std::string::npos, "wrong runtime rejected");
         Require(utils::WriteFileBytesAtomicW(modPath + L".abi.json", "{", error), "write malformed ABI");

@@ -85,28 +85,28 @@ class DebugUtilities : public BML::Mod::Instance {
     BML::Config::Property m_AddLife = {};
     bool m_AddLifeCd = false;
 
-    ModSupport::Object<CKDataArray> m_PhysicsBall{};
-    ModSupport::Object<CKParameter> m_Force{};
+    ModSupport::Object<CKDataArray> m_PhysicsBall{m_Context};
+    ModSupport::Object<CKParameter> m_Force{m_Context};
     std::map<std::string, float> m_Forces;
 
     BML::Config::Property m_ResetBall = {};
-    ModSupport::Object<CKParameterLocal> m_BallForce[2]{};
-    ModSupport::Object<CKBehavior> m_SetNewBall{};
+    ModSupport::Object<CKParameterLocal> m_BallForce[2]{ModSupport::Object<CKParameterLocal>{m_Context}, ModSupport::Object<CKParameterLocal>{m_Context}};
+    ModSupport::Object<CKBehavior> m_SetNewBall{m_Context};
 
-    ModSupport::Object<CKParameter> m_CurTrafo{};
-    ModSupport::Object<CKDataArray> m_CurLevel{};
-    ModSupport::Object<CKDataArray> m_IngameParam{};
+    ModSupport::Object<CKParameter> m_CurTrafo{m_Context};
+    ModSupport::Object<CKDataArray> m_CurLevel{m_Context};
+    ModSupport::Object<CKDataArray> m_IngameParam{m_Context};
 
-    ModSupport::Object<CK3dEntity> m_CamOrientRef{};
-    ModSupport::Object<CK3dEntity> m_CamTarget{};
-    ModSupport::Object<CKParameter> m_CurSector{};
-    ModSupport::Object<CKBehavior> m_PhysicsNewBall{};
-    ModSupport::Object<CKBehavior> m_DynamicPos{};
+    ModSupport::Object<CK3dEntity> m_CamOrientRef{m_Context};
+    ModSupport::Object<CK3dEntity> m_CamTarget{m_Context};
+    ModSupport::Object<CKParameter> m_CurSector{m_Context};
+    ModSupport::Object<CKBehavior> m_PhysicsNewBall{m_Context};
+    ModSupport::Object<CKBehavior> m_DynamicPos{m_Context};
 
     BML::Config::Property m_AddBall[4] = {};
     int m_CurSel = -1;
-    ModSupport::Object<CK3dEntity> m_CurObj{};
-    ModSupport::Object<CK3dEntity> m_Balls[4]{};
+    ModSupport::Object<CK3dEntity> m_CurObj{m_Context};
+    ModSupport::Object<CK3dEntity> m_Balls[4]{ModSupport::Object<CK3dEntity>{m_Context}, ModSupport::Object<CK3dEntity>{m_Context}, ModSupport::Object<CK3dEntity>{m_Context}, ModSupport::Object<CK3dEntity>{m_Context}};
     std::vector<std::pair<int, CK3dEntity *>> m_TempBalls;
     BML::Config::Property m_MoveKeys[6] = {};
 };

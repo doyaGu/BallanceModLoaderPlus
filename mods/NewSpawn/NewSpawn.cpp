@@ -127,13 +127,9 @@ void NewSpawn::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjec
     if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
         CKDataArray *physBall = ModSupport::Find<CKDataArray>(m_Context, "Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
-            const int nameSize = physBall->GetElementStringValue(i, 0, nullptr, 0);
-            if (nameSize <= 1)
-                continue;
             SpiritBall ball;
-            ball.name.resize(nameSize, '\0');
-            physBall->GetElementStringValue(i, 0, ball.name.data(), nameSize);
-            ball.name.pop_back();
+            if (!BML::Platform::ReadDataArrayString(physBall, i, 0, ball.name) || ball.name.empty())
+                continue;
             ball.obj = ModSupport::Find<CK3dObject>(m_Context, ball.name.c_str());
 
             CKDependencies dep;
@@ -279,7 +275,7 @@ void NewSpawn::OnProcess(const BML::Mod::Context &) {
                 ctx->GetCurrentScene()->Activate(sectorMgr, true);
 
                 m_Timers.EveryTicks(
-                    1, [this, set_sector, sectorMgr = ModSupport::Object(sectorMgr), ctx]() {
+                    1, [this, set_sector, sectorMgr = ModSupport::Object(m_Context, sectorMgr), ctx]() {
                         if (sectorMgr->IsActive())
                             return true;
 
@@ -304,7 +300,7 @@ void NewSpawn::OnProcess(const BML::Mod::Context &) {
                                     msg, ModSupport::Find<CKGroup>(m_Context, "All_Sound"));
                             } else {
                                 m_Timers.AfterTicks(2, [this, set_sector, ctx,
-                                                        flame = ModSupport::Object(flame)]() {
+                                                        flame = ModSupport::Object(m_Context, flame)]() {
                                     VxMatrix matrix;
                                     m_checkpoints->GetElementValue(set_sector - 1, 0, &matrix);
                                     flame->SetWorldMatrix(matrix);
@@ -325,9 +321,8 @@ void NewSpawn::OnProcess(const BML::Mod::Context &) {
         CKDataArray *ph = ModSupport::Find<CKDataArray>(m_Context, "PH");
         for (int i = 0; i < ph->GetRowCount(); i++) {
             CKBOOL set = true;
-            char name[100] = {};
-            ph->GetElementStringValue(i, 1, name, sizeof(name));
-            if (!strcmp(name, "P_Extra_Point"))
+            std::string name;
+            if (BML::Platform::ReadDataArrayString(ph, i, 1, name) && name == "P_Extra_Point")
                 ph->SetElementValue(i, 4, &set);
         }
 
@@ -349,7 +344,7 @@ void NewSpawn::OnProcess(const BML::Mod::Context &) {
         m_dynamicPos->Activate();
         auto current_ball = get_curBall();
 
-        m_Timers.AfterTicks(2, [this, current_ball = ModSupport::Object(current_ball), mm,
+        m_Timers.AfterTicks(2, [this, current_ball = ModSupport::Object(m_Context, current_ball), mm,
                                 ballDeact]() {
             ModSupport::Unphysicalize(m_Behaviors, m_Context, current_ball);
 

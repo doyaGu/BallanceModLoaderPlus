@@ -25,8 +25,6 @@ class CommandScore {
                                 : std::vector<std::string>();
     };
 
-  private:
-    ModSupport::Object<CKDataArray> m_Energy{};
 };
 
 class CommandKill {
@@ -49,7 +47,6 @@ class CommandKill {
 
   private:
     DebugUtilities *m_Mod;
-    ModSupport::Object<CKBehavior> m_DeactivateBall{};
 };
 
 class CommandSetSpawn {
@@ -69,8 +66,6 @@ class CommandSetSpawn {
         return {};
     };
 
-  private:
-    ModSupport::Object<CKDataArray> m_CurLevel{};
 };
 
 class CommandWin {

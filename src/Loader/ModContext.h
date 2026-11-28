@@ -1,7 +1,11 @@
 #ifndef BML_MODCONTEXT_H
 #define BML_MODCONTEXT_H
 
+#if BML_RUNTIME_SDL
 struct SDL_IOStream;
+#else
+#include <cstdio>
+#endif
 
 #include <array>
 #include <atomic>
@@ -114,6 +118,9 @@ public:
 
     bool IsInited() const { return m_Inited; }
     HookSnapshot InspectHooks() const;
+#if !BML_RUNTIME_SDL
+    void RunPhysicsPostProcess();
+#endif
     bool AttachRenderHook(CKRenderContext *renderContext);
     bool DetachRenderHook();
     bool Init();
@@ -527,7 +534,11 @@ private:
     std::vector<BML::Shell::OutputSink *> m_OutputSinks;
     BML::DataShareStore *m_DataShare = nullptr;
 
-    struct SDL_IOStream *m_LogStream = nullptr;
+#if BML_RUNTIME_SDL
+    SDL_IOStream *m_LogStream = nullptr;
+#else
+    std::FILE *m_LogStream = nullptr;
+#endif
     Logger *m_Logger = nullptr;
 
     CKContext *m_CKContext = nullptr;

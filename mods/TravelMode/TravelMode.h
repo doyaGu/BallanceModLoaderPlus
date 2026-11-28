@@ -29,5 +29,5 @@ class TravelMode : public BML::Mod::Instance {
 
     float m_TravelSpeed = 0.2f;
     float m_RotateSpeed = 0.2f;
-    ModSupport::Object<CKCamera> m_TravelCam{};
+    ModSupport::Object<CKCamera> m_TravelCam{m_Context};
 };

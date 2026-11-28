@@ -15,7 +15,11 @@ static void WaitFor(ScriptFileWatcher &watcher, const std::wstring &path, uint32
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
         for (const auto &event : watcher.DrainEvents())
-            if (event.Path == path && event.Action == action && !event.Overflow) return;
+            if (event.Path == path && !event.Overflow &&
+                (event.Action == action ||
+                 (event.Action == ScriptFileRenamedNew &&
+                  (action == ScriptFileAdded || action == ScriptFileModified))))
+                return;
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     throw std::runtime_error("expected file notification was not delivered");

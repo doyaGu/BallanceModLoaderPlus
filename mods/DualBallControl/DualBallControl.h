@@ -85,9 +85,9 @@ class DualBallControl : public BML::Mod::Instance {
     std::vector<CK3dObject *> m_Balls;
     std::vector<CK3dObject *> m_DualBalls;
     std::vector<std::string> m_TrafoTypes;
-    ModSupport::Object<CKDataArray> m_Energy{};
-    ModSupport::Object<CKDataArray> m_CurLevel{};
-    ModSupport::Object<CKDataArray> m_IngameParam{};
+    ModSupport::Object<CKDataArray> m_Energy{m_Context};
+    ModSupport::Object<CKDataArray> m_CurLevel{m_Context};
+    ModSupport::Object<CKDataArray> m_IngameParam{m_Context};
 
     struct PhysicsBall {
         std::string surface;
@@ -98,16 +98,16 @@ class DualBallControl : public BML::Mod::Instance {
     std::vector<CK3dObject *> m_DualResets;
     std::vector<CK3dObject *> m_DualFlames;
     int m_DualBallType = 0;
-    ModSupport::Object<CKGroup> m_DepthTestCubes{};
+    ModSupport::Object<CKGroup> m_DepthTestCubes{m_Context};
 
-    ModSupport::Object<CK3dEntity> m_CamTarget{};
-    ModSupport::Object<CK3dEntity> m_CamMF{};
-    ModSupport::Object<CK3dEntity> m_CamPos{};
-    ModSupport::Object<CKTargetCamera> m_InGameCam{};
+    ModSupport::Object<CK3dEntity> m_CamTarget{m_Context};
+    ModSupport::Object<CK3dEntity> m_CamMF{m_Context};
+    ModSupport::Object<CK3dEntity> m_CamPos{m_Context};
+    ModSupport::Object<CKTargetCamera> m_InGameCam{m_Context};
 
-    ModSupport::Object<CKBehavior> m_SetNewBall{};
-    ModSupport::Object<CKBehavior> m_DynamicPos{};
-    ModSupport::Object<CKBehavior> m_DeactivateBall{};
-    ModSupport::Object<CKParameter> m_CurTrafo{};
-    ModSupport::Object<CKParameter> m_NearestTrafo{};
+    ModSupport::Object<CKBehavior> m_SetNewBall{m_Context};
+    ModSupport::Object<CKBehavior> m_DynamicPos{m_Context};
+    ModSupport::Object<CKBehavior> m_DeactivateBall{m_Context};
+    ModSupport::Object<CKParameter> m_CurTrafo{m_Context};
+    ModSupport::Object<CKParameter> m_NearestTrafo{m_Context};
 };

@@ -2,6 +2,7 @@
 #define BML_API_GUIAPI_H
 
 #include "BML/Gui.h"
+#include "CKTypes.h"
 #include <memory>
 #include <cstdint>
 
@@ -35,7 +36,7 @@ public:
     int SetKey(ModContext &, ModRecord &, BML_ObjectRef, uint32_t);
     int CharTyped(ModContext &, ModRecord &, BML_ObjectRef, uint32_t, BML_GuiEvent *);
     int Process(ModContext &, ModRecord &, BML_ObjectRef);
-    void ObjectsToBeDeleted(const uint32_t *, int) noexcept;
+    void ObjectsToBeDeleted(const CK_ID *, int) noexcept;
     void ResetWorld() noexcept;
     void Collect() noexcept;
     bool CleanupOwner(ModRecord &) noexcept;

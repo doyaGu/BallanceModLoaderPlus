@@ -199,6 +199,9 @@ CKERROR ModManager::PostProcess() {
     ImGuiFrameCompletion frameCompletion(*m_ModContext);
 
 
+#if !BML_RUNTIME_SDL
+    m_ModContext->RunPhysicsPostProcess();
+#endif
     m_ModContext->ProcessVirtoolsFrame();
 
     m_ModContext->OnProcess();

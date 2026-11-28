@@ -27,7 +27,8 @@ void MapScripts::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObj
     auto master = BML::Engine::BorrowObject<CKObject>(m_Context, event.MasterObject);
     CKObject *masterObj = master ? master.Value() : nullptr;
 
-#define FILL_MAP(FUNC) m_MapScripts[#FUNC] = ModSupport::Find<CKBehavior>(m_Context, "BML_" #FUNC)
+#define FILL_MAP(FUNC) m_MapScripts.insert_or_assign(#FUNC, \
+    ModSupport::Object(m_Context, ModSupport::Find<CKBehavior>(m_Context, "BML_" #FUNC)))
 
     if (isMap) {
         FILL_MAP(OnPostLoadLevel);
@@ -63,7 +64,8 @@ void MapScripts::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObj
 
 #define ACT_SCRIPT(FUNC)                                                                           \
     {                                                                                              \
-        CKBehavior *script = m_MapScripts[#FUNC];                                                  \
+        const auto found = m_MapScripts.find(#FUNC); \
+        CKBehavior *script = found == m_MapScripts.end() ? nullptr : found->second.Get();                                                  \
         if (script != nullptr) {                                                                   \
             CKBeObject *obj = script->GetOwner();                                                  \
             CKScene *scene = ModSupport::Engine(m_Context)->GetCurrentScene();                     \

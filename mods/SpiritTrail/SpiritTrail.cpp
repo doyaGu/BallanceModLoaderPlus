@@ -143,13 +143,9 @@ void SpiritTrail::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadOb
     if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
         CKDataArray *physBall = ModSupport::Find<CKDataArray>(m_Context, "Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
-            const int nameSize = physBall->GetElementStringValue(i, 0, nullptr, 0);
-            if (nameSize <= 1)
+            SpiritBall ball(m_Context);
+            if (!BML::Platform::ReadDataArrayString(physBall, i, 0, ball.name) || ball.name.empty())
                 continue;
-            SpiritBall ball;
-            ball.name.resize(nameSize, '\0');
-            physBall->GetElementStringValue(i, 0, ball.name.data(), nameSize);
-            ball.name.pop_back();
             ball.obj = ModSupport::Find<CK3dObject>(m_Context, ball.name.c_str());
 
             CKDependencies dep;
@@ -172,7 +168,7 @@ void SpiritTrail::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadOb
                     VxColor color = mat->GetDiffuse();
                     color.a = 0.5f;
                     mat->SetDiffuse(color);
-                    ball.materials.push_back(mat);
+                    ball.materials.emplace_back(m_Context, mat);
                     ModSupport::SetIC(m_Context, mat);
                 }
             }

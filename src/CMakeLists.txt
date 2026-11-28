@@ -140,10 +140,6 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/BMLAll.h
 )
 
-set(BML_ROOT_SOURCES
-        BML.cpp
-)
-
 set(BML_MODS_PRIVATE_HEADERS
         Mods/BMLCommand.h
         Mods/BMLConfigMigration.h
@@ -449,7 +445,6 @@ set(BML_HOOK_SOURCES
         Hooks/HookLifecycle.cpp
         Hooks/ObjectLoadHook.cpp
         Hooks/PhysicsHook.cpp
-        Hooks/RenderHook.cpp
 )
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
@@ -563,7 +558,6 @@ set(BML_PRIVATE_HEADERS
 )
 
 set(BML_SOURCES
-        ${BML_ROOT_SOURCES}
         ${BML_MODS_SOURCES}
         ${BML_LOADER_SOURCES}
         ${BML_API_SOURCES}
@@ -646,7 +640,11 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptTimerService.h
             AngelScript/generated/BMLImGuiAngelScriptBindings.h
     )
-    list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherSdl.cpp)
+    if(BML_RUNTIME_SDL)
+        list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherSdl.cpp)
+    else()
+        list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherWin32.cpp)
+    endif()
     list(APPEND BML_ANGELSCRIPT_SOURCES
             AngelScript/AngelScriptBindings.cpp
             AngelScript/CKAngelScriptAdapter.cpp
@@ -726,7 +724,6 @@ set(IMGUI_HEADERS
         ${IMGUI_SOURCE_DIR}/imstb_rectpack.h
         ${IMGUI_SOURCE_DIR}/imstb_textedit.h
         ${IMGUI_SOURCE_DIR}/imstb_truetype.h
-        ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.h
         ${IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.h
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.h
 )
@@ -741,13 +738,28 @@ set(IMGUI_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.cpp
 )
 
-list(APPEND BML_SOURCES
-    Hooks/InputHookSdl.cpp Hooks/InputVTable.h Hooks/InputVTableMsvc.h Hooks/VTablePatchSdl.cpp
-    UI/OverlayPlatformInputSdl.cpp UI/ImGuiFileSdl.cpp)
-list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
+if(BML_RUNTIME_SDL)
+    list(APPEND BML_SOURCES BML.cpp
+        Hooks/InputHookSdl.cpp Hooks/InputVTable.h Hooks/InputVTableMsvc.h Hooks/VTablePatchSdl.cpp
+        Hooks/RenderHook.cpp UI/OverlayPlatformInputSdl.cpp UI/ImGuiFileSdl.cpp)
+    list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
+else()
+    list(APPEND BML_SOURCES BMLWin32.cpp
+        Hooks/InputHookWin32.cpp Hooks/VTablePatchWin32.cpp Hooks/RenderHookWin32.cpp
+        UI/OverlayPlatformInputWin32.cpp Diagnostics/SystemReportWin32.cpp)
+    list(REMOVE_ITEM IMGUI_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.cpp)
+    list(APPEND IMGUI_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2_win32.cpp)
+    list(REMOVE_ITEM BML_SOURCES Diagnostics/SystemReport.cpp)
+    list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
+endif()
 
 if(WIN32)
-    list(APPEND BML_SOURCES UI/Ime/Runtime.cpp UI/Ime/NativePresentation.cpp UI/Ime/Tsf.cpp)
+    list(APPEND BML_SOURCES UI/Ime/NativePresentation.cpp UI/Ime/Tsf.cpp)
+    if(BML_RUNTIME_SDL)
+        list(APPEND BML_SOURCES UI/Ime/Runtime.cpp)
+    else()
+        list(APPEND BML_SOURCES UI/Ime/RuntimeWin32.cpp)
+    endif()
 else()
     list(REMOVE_ITEM BML_SOURCES BML.rc)
     list(APPEND BML_SOURCES UI/Ime/RuntimeSdl.cpp)
@@ -813,7 +825,11 @@ target_link_libraries(BML
         onig
 )
 
-target_link_libraries(BML PRIVATE SDL3::SDL3)
+if(BML_RUNTIME_SDL)
+    target_link_libraries(BML PRIVATE SDL3::SDL3)
+else()
+    target_link_libraries(BML PRIVATE minhook)
+endif()
 if(WIN32)
     target_link_libraries(BML PRIVATE imm32 comctl32 ole32 oleaut32 uuid)
 endif()
@@ -924,6 +940,10 @@ install(FILES
         "${PROJECT_SOURCE_DIR}/cmake/BMLImc.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
 )
+if(NOT BML_RUNTIME_SDL)
+    install(FILES "${PROJECT_SOURCE_DIR}/cmake/FindVirtoolsSDK.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML")
+endif()
 if(BML_RUNTIME STREQUAL "sdl" AND APPLE)
     install(FILES "${PROJECT_SOURCE_DIR}/cmake/FinalizeSdlMod.cmake"
             DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML")

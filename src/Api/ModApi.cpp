@@ -6,8 +6,12 @@
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScript/ScriptMod.h"
 #endif
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_iostream.h>
+#else
+#include <Windows.h>
+#endif
 #include <climits>
 
 namespace BML::Api {
@@ -159,13 +163,27 @@ int ResolveResource(ModContext &ctx, ModRecord &owner, const char *relative, std
     return path.empty() ? BML_ERROR_UNAVAILABLE : BML_OK;
 }
 
-int FileFailure() {
-    const auto error = Platform::LastFileError();
+int FileFailure(std::uint32_t error = Platform::LastFileError()) {
     if (error == Platform::FileError::NotFound)
         return BML_ERROR_NOT_FOUND;
     if (error == Platform::FileError::AccessDenied)
         return BML_ERROR_ACCESS_DENIED;
     return BML_ERROR_FAIL;
+}
+
+int IsResourceFile(const std::string &path, bool &isFile) {
+#if BML_RUNTIME_SDL
+    SDL_PathInfo info{};
+    if (!SDL_GetPathInfo(path.c_str(), &info))
+        return FileFailure();
+    isFile = info.type == SDL_PATHTYPE_FILE;
+#else
+    const auto attributes = GetFileAttributesW(utils::Utf8ToUtf16(path).c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+        return FileFailure();
+    isFile = (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+#endif
+    return BML_OK;
 }
 
 int BML_CDECL GetResourcePath(BML_ModContextHandle contextHandle, const char *relative,
@@ -175,10 +193,11 @@ int BML_CDECL GetResourcePath(BML_ModContextHandle contextHandle, const char *re
         const int code = ResolveResource(ctx, owner, relative, path);
         if (code != BML_OK)
             return code;
-        SDL_PathInfo info{};
-        if (!SDL_GetPathInfo(path.c_str(), &info))
-            return FileFailure();
-        if (info.type != SDL_PATHTYPE_FILE)
+        bool isFile = false;
+        const int probe = IsResourceFile(path, isFile);
+        if (probe != BML_OK)
+            return probe;
+        if (!isFile)
             return BML_ERROR_NOT_FOUND;
         return CopyText(path, buffer, capacity, required);
     });
@@ -194,12 +213,11 @@ int BML_CDECL ResourceExists(BML_ModContextHandle contextHandle, const char *rel
         const int code = ResolveResource(ctx, owner, relative, path);
         if (code != BML_OK)
             return code;
-        SDL_PathInfo info{};
-        if (!SDL_GetPathInfo(path.c_str(), &info)) {
-            const int error = FileFailure();
-            return error == BML_ERROR_NOT_FOUND ? BML_OK : error;
-        }
-        *out = info.type == SDL_PATHTYPE_FILE ? 1u : 0u;
+        bool isFile = false;
+        const int probe = IsResourceFile(path, isFile);
+        if (probe != BML_OK)
+            return probe == BML_ERROR_NOT_FOUND ? BML_OK : probe;
+        *out = isFile ? 1u : 0u;
         return BML_OK;
     });
 }
@@ -214,6 +232,7 @@ int BML_CDECL ReadResource(BML_ModContextHandle contextHandle, const char *relat
         const int code = ResolveResource(ctx, owner, relative, path);
         if (code != BML_OK)
             return code;
+#if BML_RUNTIME_SDL
         std::unique_ptr<SDL_IOStream, decltype(&SDL_CloseIO)> stream(
             SDL_IOFromFile(path.c_str(), "rb"), SDL_CloseIO);
         if (!stream)
@@ -227,6 +246,24 @@ int BML_CDECL ReadResource(BML_ModContextHandle contextHandle, const char *relat
         if (!size)
             return BML_OK;
         return SDL_ReadIO(stream.get(), buffer, *required) == *required ? BML_OK : BML_ERROR_FAIL;
+#else
+        const auto filename = utils::Utf8ToUtf16(path);
+        HANDLE handle = ::CreateFileW(filename.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return FileFailure();
+        std::unique_ptr<void, decltype(&CloseHandle)> stream(handle, CloseHandle);
+        LARGE_INTEGER size{};
+        if (!GetFileSizeEx(handle, &size) || size.QuadPart < 0 ||
+            static_cast<uint64_t>(size.QuadPart) > SIZE_MAX)
+            return BML_ERROR_FAIL;
+        *required = static_cast<size_t>(size.QuadPart);
+        if (capacity < *required)
+            return BML_ERROR_BUFFER_TOO_SMALL;
+        DWORD count = 0;
+        return !*required || (ReadFile(handle, buffer, static_cast<DWORD>(*required), &count, nullptr) &&
+                              count == *required) ? BML_OK : BML_ERROR_FAIL;
+#endif
     });
 }
 

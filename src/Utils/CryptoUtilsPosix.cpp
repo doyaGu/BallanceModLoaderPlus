@@ -54,8 +54,9 @@ bool Sha256File(const std::wstring &path, uint8_t out[32]) {
     std::array<uint8_t, 16384> buffer{};
     for (;;) {
         const size_t count = SDL_ReadIO(file.get(), buffer.data(), buffer.size());
+        if (count == 0)
+            break;
         state.Update(buffer.data(), count);
-        if (count < buffer.size()) break;
     }
     if (SDL_GetIOStatus(file.get()) != SDL_IO_STATUS_EOF) return false;
     state.Finish(out);

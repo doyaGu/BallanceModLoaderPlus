@@ -17,7 +17,7 @@ class DeformedWB : public BML::Mod::Instance {
     void OnStartLevel(const BML::Mod::Context &) override;
 
   private:
-    ModSupport::Object<CKMesh> m_BallMesh{};
+    ModSupport::Object<CKMesh> m_BallMesh{m_Context};
     std::vector<VxVector> m_Vertices;
     std::vector<VxVector> m_Normals;
     BML::Config::Property m_Enabled = {};
