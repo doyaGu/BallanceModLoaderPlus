@@ -8,7 +8,8 @@ import re
 import tempfile
 import zipfile
 
-from package_sdl_update import allowed_path, installed_files, loader_path, package_source, valid_update_target
+from package_sdl_update import (allowed_path, installed_files, loader_path, package_source,
+                                valid_update_target, validate_pe)
 
 
 def archive(path: Path, files: dict[str, Path]) -> None:
@@ -81,8 +82,14 @@ def main() -> int:
                 with zipfile.ZipFile(mods[path]) as package:
                     if not {name, f"{name}.abi.json"}.issubset(package.namelist()):
                         raise ValueError(f"Mod archive is missing its module or ABI sidecar: {module}")
+                    if platform == "windows":
+                        with package.open(name) as binary:
+                            validate_pe(binary, architecture, False, f"{module}/{name}")
             elif not module.endswith(".bmodp") or f"{path}.abi.json" not in mods:
                 raise ValueError(f"Mod is missing its ABI sidecar: {module}")
+            elif platform == "windows":
+                with mods[path].open("rb") as binary:
+                    validate_pe(binary, architecture, False, module)
 
         label = f"{version}-{abi['runtime']}-{platform}-{architecture}-dynamic"
         packages = {

@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -68,6 +69,53 @@ class PackageTest(unittest.TestCase):
                 self.assertFalse(self.output.exists())
             else:
                 self.assertEqual(packager.main(), 0)
+
+    @staticmethod
+    def pe_dll(bits):
+        data = bytearray(90)
+        data[:2] = b"MZ"
+        struct.pack_into("<I", data, 0x3c, 64)
+        data[64:68] = b"PE\0\0"
+        struct.pack_into("<H", data, 68, 0x14c if bits == 32 else 0x8664)
+        struct.pack_into("<HH", data, 86, 0x2000, 0x10b if bits == 32 else 0x20b)
+        return data
+
+    def test_virtools_rejects_x64_script_runtime_before_packaging(self):
+        self.abi.update(runtime="virtools", platform="windows", architecture="x86", scripts=True)
+        self.descriptor()
+        loader = self.stage / "BuildingBlocks/BMLPlus.dll"
+        plugin = loader.with_name("AngelScript.dll")
+        loader.parent.mkdir()
+        loader.write_bytes(self.pe_dll(32))
+        plugin.write_bytes(self.pe_dll(64))
+        self.manifest(self.abi_path, loader, plugin)
+
+        diagnostic = "PE binary does not match x86 target: AngelScript.dll"
+        self.invoke(error=diagnostic)
+        sdk = self.root / "sdk"
+        descriptor = sdk / "share/BML/BML.abi.json"
+        descriptor.parent.mkdir(parents=True)
+        descriptor.write_bytes(self.abi_path.read_bytes())
+        descriptor.with_name("mods.txt").write_text("Fixture.bmodp\n", encoding="utf-8")
+        mods = sdk / "Mods"
+        mods.mkdir()
+        (mods / "Fixture.bmodp").write_bytes(self.pe_dll(32))
+        (mods / "Fixture.bmodp.abi.json").write_text("{}", encoding="utf-8")
+
+        def release():
+            return subprocess.run([sys.executable, str(args.packager.with_name("package_sdl_release.py")),
+                                   "--stage", str(self.stage), "--sdk", str(sdk),
+                                   "--install-manifest", str(self.inventory), "--output", str(self.output)],
+                                  text=True, capture_output=True)
+
+        rejected = release()
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn(diagnostic, rejected.stderr)
+        self.assertFalse(self.output.exists())
+        plugin.write_bytes(self.pe_dll(32))
+        accepted = release()
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertEqual(len(list(self.output.glob("*.zip"))), 3)
 
     def test_stage_version_is_authoritative(self):
         self.invoke(version="0.4.1", error="does not match the stage version")

@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import struct
 import subprocess
 import tempfile
 import sys
@@ -79,8 +80,30 @@ def allowed_path(path: str, target: dict) -> bool:
         name.endswith((".dll", ".dylib", ".so")) or ".so." in name)
 
 
+def validate_pe(stream, architecture: str, executable: bool, name: str) -> None:
+    dos = stream.read(64)
+    if len(dos) != 64 or dos[:2] != b"MZ":
+        raise ValueError(f"Invalid PE binary: {name}")
+    offset, = struct.unpack_from("<I", dos, 0x3c)
+    if offset < len(dos):
+        raise ValueError(f"Invalid PE binary: {name}")
+    stream.seek(offset)
+    header = stream.read(26)
+    if len(header) != 26 or header[:4] != b"PE\0\0":
+        raise ValueError(f"Invalid PE binary: {name}")
+    machine, = struct.unpack_from("<H", header, 4)
+    flags, magic = struct.unpack_from("<HH", header, 22)
+    expected = {"x86": (0x14c, 0x10b), "x64": (0x8664, 0x20b), "arm64": (0xaa64, 0x20b)}
+    if (machine, magic) != expected[architecture] or bool(flags & 0x2000) == executable:
+        raise ValueError(f"PE binary does not match {architecture} target: {name}")
+
+
 def package_source(path: Path, stage: Path, selected: dict, target: dict) -> Path:
     if not path.is_symlink():
+        suffix = path.suffix.lower()
+        if target["platform"] == "windows" and suffix in {".dll", ".exe"}:
+            with path.open("rb") as binary:
+                validate_pe(binary, target["architecture"], suffix == ".exe", path.name)
         return path
     if (target["platform"] != "linux" or path.parent != stage / "Bin"
             or not re.fullmatch(r"[^/]+\.so(?:\.[0-9]+)*", path.name)):
