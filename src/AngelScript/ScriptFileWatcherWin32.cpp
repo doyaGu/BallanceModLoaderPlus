@@ -1,6 +1,7 @@
 #include "ScriptFileWatcherWin32.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 
 namespace BML {
@@ -13,7 +14,7 @@ class ScopedHandle {
 public:
     explicit ScopedHandle(HANDLE handle = nullptr) : m_Handle(handle) {}
     ~ScopedHandle() {
-        if (m_Handle)
+        if (m_Handle && m_Handle != INVALID_HANDLE_VALUE)
             ::CloseHandle(m_Handle);
     }
 
@@ -60,8 +61,6 @@ void ScriptFileWatcherWin32::StopWatches(std::vector<WatchState *> &watches) {
             continue;
         if (state->StopEvent)
             ::SetEvent(state->StopEvent);
-        if (state->Directory != INVALID_HANDLE_VALUE)
-            ::CancelIoEx(state->Directory, nullptr);
     }
 
     for (WatchState *state : watches) {
@@ -69,8 +68,10 @@ void ScriptFileWatcherWin32::StopWatches(std::vector<WatchState *> &watches) {
             continue;
         if (state->Worker.joinable())
             state->Worker.join();
-        if (state->Directory != INVALID_HANDLE_VALUE)
-            ::CloseHandle(state->Directory);
+#ifdef BML_TEST
+        if (state->InterruptEvent)
+            ::CloseHandle(state->InterruptEvent);
+#endif
         if (state->StopEvent)
             ::CloseHandle(state->StopEvent);
         delete state;
@@ -97,21 +98,19 @@ bool ScriptFileWatcherWin32::Watch(const std::wstring &root, bool recursive) {
     state->Root = root;
     state->Recursive = recursive;
     state->StopEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    state->Directory = ::CreateFileW(root.c_str(),
-                                     FILE_LIST_DIRECTORY,
-                                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                     nullptr,
-                                     OPEN_EXISTING,
-                                     FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
-                                     nullptr);
-    if (!state->StopEvent || state->Directory == INVALID_HANDLE_VALUE) {
-        if (state->Directory != INVALID_HANDLE_VALUE)
-            ::CloseHandle(state->Directory);
-        if (state->StopEvent)
-            ::CloseHandle(state->StopEvent);
+#ifdef BML_TEST
+    state->InterruptEvent = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!state->StopEvent || !state->InterruptEvent) {
+        std::vector<WatchState *> failed{state};
+        StopWatches(failed);
+        return false;
+    }
+#else
+    if (!state->StopEvent) {
         delete state;
         return false;
     }
+#endif
 
     bool duplicate = false;
     bool registered = false;
@@ -212,76 +211,96 @@ void ScriptFileWatcherWin32::WorkerLoop(WatchState *state, std::promise<bool> re
 
     try {
         std::vector<unsigned char> buffer(64 * 1024);
-        bool firstRead = true;
+        bool started = false;
         while (::WaitForSingleObject(state->StopEvent, 0) == WAIT_TIMEOUT) {
-            OVERLAPPED overlapped = {};
-            ScopedHandle eventHandle(::CreateEventW(nullptr, TRUE, FALSE, nullptr));
-            overlapped.hEvent = eventHandle.Get();
-            if (!overlapped.hEvent)
-                break;
-
-            const DWORD filter = FILE_NOTIFY_CHANGE_FILE_NAME |
-                                 FILE_NOTIFY_CHANGE_DIR_NAME |
-                                 FILE_NOTIFY_CHANGE_LAST_WRITE |
-                                 FILE_NOTIFY_CHANGE_SIZE;
-            const BOOL started = ::ReadDirectoryChangesW(state->Directory,
-                                                         buffer.data(),
-                                                         static_cast<DWORD>(buffer.size()),
-                                                         state->Recursive ? TRUE : FALSE,
-                                                         filter,
-                                                         nullptr,
-                                                         &overlapped,
-                                                         nullptr);
-            if (firstRead) {
-                firstRead = false;
-                ready.set_value(started != FALSE);
-            }
-            if (!started)
-                break;
-
-            HANDLE handles[2] = {state->StopEvent, overlapped.hEvent};
-            const DWORD wait = ::WaitForMultipleObjects(2, handles, FALSE, INFINITE);
-            if (wait == WAIT_OBJECT_0) {
-                CancelAndDrainOverlapped(state->Directory, overlapped);
-                break;
-            }
-            if (wait != WAIT_OBJECT_0 + 1) {
-                CancelAndDrainOverlapped(state->Directory, overlapped);
-                break;
-            }
-
-            DWORD bytes = 0;
-            if (!::GetOverlappedResult(state->Directory, &overlapped, &bytes, FALSE))
-                break;
-
-            if (bytes == 0) {
-                Event overflow;
-                overflow.Root = state->Root;
-                overflow.Path = state->Root;
-                overflow.Overflow = true;
-                overflow.Recursive = state->Recursive;
-                PushEvent(overflow);
-                continue;
-            }
-
-            size_t offset = 0;
-            while (offset < bytes) {
-                auto *info = reinterpret_cast<FILE_NOTIFY_INFORMATION *>(buffer.data() + offset);
-                Event event;
-                event.Root = state->Root;
-                event.Path = JoinWatchedPath(state->Root, info->FileName, info->FileNameLength);
-                event.Action = info->Action;
-                event.Recursive = state->Recursive;
-                PushEvent(event);
-                if (info->NextEntryOffset == 0)
+            ScopedHandle directory(::CreateFileW(
+                state->Root.c_str(), FILE_LIST_DIRECTORY,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr));
+            bool rescan = started;
+            while (directory.Get() != INVALID_HANDLE_VALUE) {
+                OVERLAPPED overlapped{};
+                ScopedHandle event(::CreateEventW(nullptr, TRUE, FALSE, nullptr));
+                overlapped.hEvent = event.Get();
+                constexpr DWORD filter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
+                                         FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE;
+                if (!overlapped.hEvent ||
+                    !::ReadDirectoryChangesW(directory.Get(), buffer.data(),
+                                             static_cast<DWORD>(buffer.size()),
+                                             state->Recursive, filter, nullptr, &overlapped, nullptr))
                     break;
-                offset += info->NextEntryOffset;
+
+                try {
+                    if (!started) {
+                        started = true;
+                        ready.set_value(true);
+                    } else if (rescan) {
+                        rescan = false;
+                        PushEvent(Event{state->Root, state->Root, 0, true, state->Recursive});
+                    }
+                } catch (...) {
+                    CancelAndDrainOverlapped(directory.Get(), overlapped);
+                    throw;
+                }
+
+                const HANDLE handles[] = {
+                    state->StopEvent, overlapped.hEvent,
+#ifdef BML_TEST
+                    state->InterruptEvent,
+#endif
+                };
+                const DWORD wait = ::WaitForMultipleObjects(
+                    static_cast<DWORD>(std::size(handles)), handles, FALSE, INFINITE);
+                if (wait != WAIT_OBJECT_0 + 1) {
+                    CancelAndDrainOverlapped(directory.Get(), overlapped);
+                    if (wait == WAIT_OBJECT_0)
+                        return;
+                    break;
+                }
+
+                DWORD bytes = 0;
+                if (!::GetOverlappedResult(directory.Get(), &overlapped, &bytes, FALSE))
+                    break;
+                if (!bytes) {
+                    PushEvent(Event{state->Root, state->Root, 0, true, state->Recursive});
+                    continue;
+                }
+
+                size_t offset = 0;
+                while (offset < bytes) {
+                    const auto *info = reinterpret_cast<const FILE_NOTIFY_INFORMATION *>(buffer.data() + offset);
+                    Event changed;
+                    changed.Root = state->Root;
+                    changed.Path = JoinWatchedPath(state->Root, info->FileName, info->FileNameLength);
+                    changed.Action = info->Action;
+                    changed.Recursive = state->Recursive;
+                    PushEvent(changed);
+                    if (info->NextEntryOffset == 0)
+                        break;
+                    offset += info->NextEntryOffset;
+                }
             }
+            if (!started) {
+                ready.set_value(false);
+                return;
+            }
+            if (::WaitForSingleObject(state->StopEvent, 100) != WAIT_TIMEOUT)
+                return;
         }
     } catch (...) {
-        // File watching is best-effort; a background watcher must not terminate the host process.
+        // A background watcher must not terminate the host process.
     }
 }
+
+#ifdef BML_TEST
+bool ScriptFileWatcherWin32::InterruptReadForTest(const std::wstring &root) {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    for (const auto *state : m_Watches)
+        if (SameRoot(state->Root, root))
+            return ::SetEvent(state->InterruptEvent) != FALSE;
+    return false;
+}
+#endif
 
 void ScriptFileWatcherWin32::PushEvent(const Event &event) {
     std::lock_guard<std::mutex> lock(m_Mutex);

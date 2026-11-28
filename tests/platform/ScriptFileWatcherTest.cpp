@@ -52,6 +52,20 @@ int main() {
         WaitFor(watcher, destination, ScriptFileAdded);
         Require(utils::DeleteFileW(destination), "delete script");
         WaitFor(watcher, destination, ScriptFileRemoved);
+#if !BML_RUNTIME_SDL
+        Require(watcher.InterruptReadForTest(root), "interrupt active overlapped read");
+        const auto recoveryDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        bool rescans = false;
+        while (!rescans && std::chrono::steady_clock::now() < recoveryDeadline) {
+            for (const auto &event : watcher.DrainEvents())
+                rescans = rescans || (event.Overflow && event.Root == root && event.Recursive);
+            if (!rescans)
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        Require(rescans, "reattached watch requests rescan");
+        Require(utils::WriteFileBytesAtomicW(source, "void Main() {}", error), "edit after watch recovery");
+        WaitFor(watcher, source, ScriptFileAdded);
+#endif
         Require(watcher.Unwatch(root), "stop watch");
         Require(!watcher.Unwatch(root), "watch removed exactly once");
         Require(watcher.Watch(root, false), "restart shallow watch");

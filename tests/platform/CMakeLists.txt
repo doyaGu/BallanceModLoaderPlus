@@ -14,5 +14,6 @@ endif()
 add_executable(BMLScriptFileWatcherTest ScriptFileWatcherTest.cpp
     "${BML_SOURCE_DIR}/AngelScript/${_bml_watcher_source}")
 target_link_libraries(BMLScriptFileWatcherTest PRIVATE BML_Platform)
+target_compile_definitions(BMLScriptFileWatcherTest PRIVATE BML_TEST)
 add_test(NAME BMLScriptFileWatcherTest COMMAND BMLScriptFileWatcherTest)
 set_tests_properties(BMLScriptFileWatcherTest PROPERTIES LABELS "platform;script" TIMEOUT 15)

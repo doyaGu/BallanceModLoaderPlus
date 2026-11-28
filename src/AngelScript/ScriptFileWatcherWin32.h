@@ -40,6 +40,7 @@ public:
     std::vector<Event> DrainEvents();
     uint64_t GetDroppedEventCount() const;
 #ifdef BML_TEST
+    bool InterruptReadForTest(const std::wstring &root);
     void PushOverflowEventForTest(const std::wstring &root, bool recursive = true);
 #endif
 
@@ -47,8 +48,10 @@ private:
     struct WatchState {
         std::wstring Root;
         bool Recursive = true;
-        HANDLE Directory = INVALID_HANDLE_VALUE;
         HANDLE StopEvent = nullptr;
+#ifdef BML_TEST
+        HANDLE InterruptEvent = nullptr;
+#endif
         std::thread Worker;
     };
 
