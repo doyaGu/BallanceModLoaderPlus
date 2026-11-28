@@ -14,6 +14,9 @@
 #include "Hooks/VTablePatch.h"
 #include "Hooks/VTables.h"
 #include "HookUtils.h"
+#include "CryptoUtils.h"
+#include "Loader/ModContext.h"
+#include "Logging/Logger.h"
 
 using RenderContextVTable = CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>;
 
@@ -114,6 +117,18 @@ void *FindProjectionUpdate(void **vtable) {
     MEMORY_BASIC_INFORMATION memory{};
     if (!module || !::VirtualQuery(vtable, &memory, sizeof(memory)) || memory.AllocationBase != module)
         return nullptr;
+    std::wstring path(32768, L'\0');
+    const DWORD length = ::GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
+    if (length == 0 || length >= path.size())
+        return nullptr;
+    path.resize(length);
+
+    // The RVA and CKRenderContext layout below belong to the retail Ballance
+    // renderer. A same-name DLL, even with the same PE machine, can differ.
+    constexpr auto retailRendererSha256 =
+        "5c8fc5c5c491ef347df24d98813584865bef240e66dbd325b26eb576cfecc590";
+    if (utils::Sha256FileHex(path) != retailRendererSha256)
+        return nullptr;
     return reinterpret_cast<unsigned char *>(module) + 0x6c68d;
 }
 
@@ -137,17 +152,22 @@ struct RenderHook::Impl {
         Impl *active = Active;
         if (!active || !active->OriginalProjection)
             return FALSE;
-        if (context != active->Context)
+        if (context != active->Context || !WidescreenFixEnabled)
             return active->OriginalProjection(context, force);
-        return reinterpret_cast<CKRenderContextHook *>(context)->UpdateProjection(force, WidescreenFixEnabled);
+        return reinterpret_cast<CKRenderContextHook *>(context)->UpdateProjection(force, true);
     }
 
     void AttachProjection() {
-        if (ProjectionTarget)
+        if (!WidescreenFixEnabled || ProjectionTarget)
             return;
         void *target = FindProjectionUpdate(VTable);
-        if (!target)
+        auto *runtime = BML_GetModContext();
+        auto *logger = runtime ? runtime->GetLogger() : nullptr;
+        if (!target) {
+            if (logger)
+                logger->Warn("Widescreen correction unavailable for this CK2_3D.dll");
             return;
+        }
         const MH_STATUS created = MH_CreateHook(target, reinterpret_cast<void *>(&UpdateProjection),
                                                reinterpret_cast<void **>(&OriginalProjection));
         if (created != MH_OK)
@@ -158,8 +178,9 @@ struct RenderHook::Impl {
             return;
         }
         ProjectionInstalled = true;
-        if (WidescreenFixEnabled)
-            InvalidateProjection(Context);
+        if (logger)
+            logger->Info("Widescreen correction enabled for the retail CK2_3D.dll");
+        InvalidateProjection(Context);
     }
 
     bool DetachProjection() {
@@ -295,6 +316,8 @@ void RenderHook::EnableWidescreenFix(bool enable) {
     if (Impl::WidescreenFixEnabled == enable)
         return;
     Impl::WidescreenFixEnabled = enable;
+    if (enable && Impl::Active && !Impl::Active->ProjectionTarget)
+        Impl::Active->AttachProjection();
     if (IsWidescreenFixAvailable())
         InvalidateProjection(Impl::Active->Context);
 }

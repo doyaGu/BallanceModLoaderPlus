@@ -25,6 +25,10 @@ pause, resume and restart through the live event handler. Set
 `BML_PORT_CHECK_TWEAKS=0` or `1` to check Lantern Alpha Test and the three
 Overclock paths against the corresponding Overclock value in `BML.cfg`.
 
+Set `BML_VIRTOOLS_PLAYER_ROOT` to the prepared runtime to enable
+`BMLVirtoolsProjectionTest`. It runs the SDK probe in two Player copies and
+checks the retail renderer and the fallback for an altered fingerprint.
+
 Enable `BML_TEST_VIRTOOLS_IME` for the Pinyin test. Install the resulting
 `VirtoolsImeProbe.bmodp` and its ABI sidecar in the disposable runtime and
 keep Player in the foreground. The test requires an enabled Microsoft Pinyin

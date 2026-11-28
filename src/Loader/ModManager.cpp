@@ -137,8 +137,10 @@ bool ModManager::StartRuntime() {
         }
         m_ModContext->GetLogger()->Warn("Render skip is unavailable for this render context");
     }
+#if BML_RUNTIME_SDL
     if (!RenderHook::IsWidescreenFixAvailable())
         m_ModContext->GetLogger()->Warn("Widescreen projection correction is unavailable for this CK2_3D implementation");
+#endif
 
     if (!Overlay::ImGuiInitRenderer(m_Context)) {
         m_ModContext->DetachRenderHook();

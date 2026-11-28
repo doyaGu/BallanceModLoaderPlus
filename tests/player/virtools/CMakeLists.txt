@@ -18,3 +18,17 @@ if(BML_TEST_VIRTOOLS_IME)
     target_link_libraries(VirtoolsImeProbe PRIVATE BML::Engine BML::ImGui ole32 uuid user32 comctl32)
     bml_install_mod(VirtoolsImeProbe)
 endif()
+
+set(BML_VIRTOOLS_PLAYER_ROOT "" CACHE PATH "Prepared retail Win32 Player runtime")
+if(BML_VIRTOOLS_PLAYER_ROOT)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    enable_testing()
+    add_test(NAME BMLVirtoolsProjectionTest
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/RunProjectionTest.py"
+            --runtime "${BML_VIRTOOLS_PLAYER_ROOT}"
+            --probe "$<TARGET_FILE:Win32Probe>"
+            --prototype "$<TARGET_FILE:VirtoolsPrototypeFixture>"
+            --output "${CMAKE_CURRENT_BINARY_DIR}/projection-runs")
+    set_tests_properties(BMLVirtoolsProjectionTest PROPERTIES
+        RUN_SERIAL TRUE TIMEOUT 120 LABELS "integration;player;virtools")
+endif()
