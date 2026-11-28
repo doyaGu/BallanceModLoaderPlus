@@ -11,7 +11,6 @@
 
 #include "Config/Config.h"
 #include "Loader/ModContext.h"
-#include "Hooks/RenderHook.h"
 #include "Gameplay/CheatCommand.h"
 #include "HUD/HUDCommand.h"
 #include "Mods/BMLCommand.h"
@@ -600,8 +599,8 @@ void BMLMod::ApplyFrameRateLimitSetting(BMLMod &mod, Property *property) {
         mod.AdjustFrameRate(true);
 }
 
-void BMLMod::ApplyWidescreenSetting(BMLMod &, Property *property) {
-    RenderHook::EnableWidescreenFix(property->GetBoolean());
+void BMLMod::ApplyWidescreenSetting(BMLMod &mod, Property *property) {
+    mod.m_BML->SetWidescreenFix(property->GetBoolean());
 }
 
 void BMLMod::InitGUI() {

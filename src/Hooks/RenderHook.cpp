@@ -99,3 +99,9 @@ void RenderHook::EnableWidescreenFix(bool enable) {
 bool RenderHook::IsWidescreenFixAvailable() {
     return Impl::Active && Impl::Active->Context();
 }
+
+RenderHook::WidescreenStatus RenderHook::GetWidescreenStatus() {
+    if (!Impl::WidescreenFixEnabled)
+        return WidescreenStatus::Disabled;
+    return IsWidescreenFixAvailable() ? WidescreenStatus::Active : WidescreenStatus::Pending;
+}

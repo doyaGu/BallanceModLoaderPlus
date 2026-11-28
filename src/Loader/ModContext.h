@@ -123,6 +123,7 @@ public:
 #endif
     bool AttachRenderHook(CKRenderContext *renderContext);
     bool DetachRenderHook();
+    void SetWidescreenFix(bool enable);
     bool Init();
     bool Shutdown();
 

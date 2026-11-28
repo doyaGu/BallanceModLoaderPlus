@@ -16,7 +16,8 @@ def includes(path: Path) -> set[str]:
 
 
 def check_adapter_dependencies(root: Path, source: Path) -> None:
-    for path in (source / "Engine").glob("*"):
+    paths = [source / "Hooks/RenderHookWin32.cpp", *(source / "Engine").glob("*")]
+    for path in paths:
         if path.suffix not in {".h", ".cpp"}:
             continue
         for include in includes(path):

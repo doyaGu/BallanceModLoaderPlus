@@ -15,8 +15,6 @@
 #include "Hooks/VTables.h"
 #include "HookUtils.h"
 #include "CryptoUtils.h"
-#include "Loader/ModContext.h"
-#include "Logging/Logger.h"
 
 using RenderContextVTable = CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>;
 
@@ -144,6 +142,7 @@ struct RenderHook::Impl {
     using ProjectionFunction = CKBOOL (__thiscall *)(CKRenderContext *, CKBOOL);
     ProjectionFunction OriginalProjection = nullptr;
     bool ProjectionInstalled = false;
+    WidescreenStatus ProjectionStatus = WidescreenStatus::Pending;
 
     static Impl *Active;
     static bool WidescreenFixEnabled;
@@ -161,25 +160,24 @@ struct RenderHook::Impl {
         if (!WidescreenFixEnabled || ProjectionTarget)
             return;
         void *target = FindProjectionUpdate(VTable);
-        auto *runtime = BML_GetModContext();
-        auto *logger = runtime ? runtime->GetLogger() : nullptr;
         if (!target) {
-            if (logger)
-                logger->Warn("Widescreen correction unavailable for this CK2_3D.dll");
+            ProjectionStatus = WidescreenStatus::UnsupportedRenderer;
             return;
         }
         const MH_STATUS created = MH_CreateHook(target, reinterpret_cast<void *>(&UpdateProjection),
                                                reinterpret_cast<void **>(&OriginalProjection));
-        if (created != MH_OK)
+        if (created != MH_OK) {
+            ProjectionStatus = WidescreenStatus::HookFailed;
             return;
+        }
         ProjectionTarget = target;
         if (MH_EnableHook(target) != MH_OK) {
             DetachProjection();
+            ProjectionStatus = WidescreenStatus::HookFailed;
             return;
         }
         ProjectionInstalled = true;
-        if (logger)
-            logger->Info("Widescreen correction enabled for the retail CK2_3D.dll");
+        ProjectionStatus = WidescreenStatus::Active;
         InvalidateProjection(Context);
     }
 
@@ -290,6 +288,7 @@ bool RenderHook::Detach() {
     m_Impl->VTable = nullptr;
     m_Impl->OriginalRender = nullptr;
     m_Impl->SkipNextRender = false;
+    m_Impl->ProjectionStatus = WidescreenStatus::Pending;
     return true;
 }
 
@@ -324,4 +323,10 @@ void RenderHook::EnableWidescreenFix(bool enable) {
 
 bool RenderHook::IsWidescreenFixAvailable() {
     return Impl::Active && Impl::Active->ProjectionInstalled;
+}
+
+RenderHook::WidescreenStatus RenderHook::GetWidescreenStatus() {
+    if (!Impl::WidescreenFixEnabled)
+        return WidescreenStatus::Disabled;
+    return Impl::Active ? Impl::Active->ProjectionStatus : WidescreenStatus::Pending;
 }

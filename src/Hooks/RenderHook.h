@@ -8,6 +8,8 @@ class CKRenderContext;
 
 class RenderHook {
 public:
+    enum class WidescreenStatus { Disabled, Pending, Active, UnsupportedRenderer, HookFailed };
+
     RenderHook();
     ~RenderHook();
 
@@ -25,6 +27,7 @@ public:
 
     static void EnableWidescreenFix(bool enable);
     static bool IsWidescreenFixAvailable();
+    static WidescreenStatus GetWidescreenStatus();
 
 private:
     struct Impl;

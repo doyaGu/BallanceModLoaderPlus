@@ -1649,8 +1649,39 @@ void ModContext::RunPhysicsPostProcess() {
 }
 #endif
 
+static void ReportRetailWidescreen(Logger &logger) {
+#if !BML_RUNTIME_SDL
+    switch (RenderHook::GetWidescreenStatus()) {
+    case RenderHook::WidescreenStatus::Active:
+        logger.Info("Widescreen correction enabled for the retail CK2_3D.dll");
+        break;
+    case RenderHook::WidescreenStatus::UnsupportedRenderer:
+        logger.Warn("Widescreen correction unavailable for this CK2_3D.dll");
+        break;
+    case RenderHook::WidescreenStatus::HookFailed:
+        logger.Warn("Widescreen correction could not install the projection hook");
+        break;
+    default:
+        break;
+    }
+#else
+    (void) logger;
+#endif
+}
+
 bool ModContext::AttachRenderHook(CKRenderContext *renderContext) {
-    return m_Hooks && m_Hooks->AttachRender(renderContext);
+    if (!m_Hooks || !m_Hooks->AttachRender(renderContext))
+        return false;
+    if (m_Logger)
+        ReportRetailWidescreen(*m_Logger);
+    return true;
+}
+
+void ModContext::SetWidescreenFix(bool enable) {
+    const auto previous = RenderHook::GetWidescreenStatus();
+    RenderHook::EnableWidescreenFix(enable);
+    if (m_Logger && previous != RenderHook::GetWidescreenStatus())
+        ReportRetailWidescreen(*m_Logger);
 }
 
 bool ModContext::DetachRenderHook() {
