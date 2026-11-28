@@ -34,16 +34,6 @@ namespace bmlupdater {
             return Result::Failure("HTTP request exceeded its total deadline");
         }
 
-        std::chrono::milliseconds NetworkTimeout() {
-#ifdef BML_UPDATER_NETWORK_TEST
-            wchar_t value[2]{};
-            if (GetEnvironmentVariableW(L"BML_TEST_UPDATER_DEADLINE", value, 2) == 1 &&
-                value[0] == L'1')
-                return std::chrono::milliseconds(750);
-#endif
-            return std::chrono::minutes(10);
-        }
-
         struct AsyncRequest {
             Handle Request;
             HANDLE Completed = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -202,8 +192,9 @@ namespace bmlupdater {
         }
 
         template <class Sink>
-        Result ReadResponse(const std::wstring &url, uint64_t limit, Sink sink) {
-            const auto deadline = Clock::now() + NetworkTimeout();
+        Result ReadResponse(const std::wstring &url, uint64_t limit,
+                            std::chrono::milliseconds timeout, Sink sink) {
+            const auto deadline = Clock::now() + timeout;
             Handle session, connection;
             std::array<char, 64 * 1024> buffer{};
             AsyncRequest request;
@@ -244,7 +235,7 @@ namespace bmlupdater {
     Result HttpGetUtf8(const std::wstring &url, std::string &body) {
         body.clear();
         std::string response;
-        auto result = ReadResponse(url, 16 * 1024 * 1024, [&](const char *data, DWORD read, uint64_t) {
+        auto result = ReadResponse(url, 16 * 1024 * 1024, DefaultHttpTimeout, [&](const char *data, DWORD read, uint64_t) {
             response.append(data, read);
             return Result::Success();
         });
@@ -254,7 +245,9 @@ namespace bmlupdater {
     }
 
     Result HttpDownloadFile(const std::wstring &url, const std::wstring &destination,
-                            ProgressCallback progress) {
+                            ProgressCallback progress, std::chrono::milliseconds timeout) {
+        if (timeout <= std::chrono::milliseconds::zero() || timeout > DefaultHttpTimeout)
+            return Result::Failure("Invalid HTTP timeout");
         if (!CreateDirectories(ParentPath(destination)) || BML::Platform::IsLink(PathUtf8(destination)))
             return Result::Failure("Unable to prepare download destination");
         static std::atomic<uint64_t> sequence{0};
@@ -267,7 +260,7 @@ namespace bmlupdater {
         if (download.File == INVALID_HANDLE_VALUE)
             return LastErrorResult("Unable to create download file");
         download.Path = temporary;
-        auto result = ReadResponse(url, 2ULL * 1024 * 1024 * 1024, [&](const char *data, DWORD read, uint64_t total) {
+        auto result = ReadResponse(url, 2ULL * 1024 * 1024 * 1024, timeout, [&](const char *data, DWORD read, uint64_t total) {
             DWORD written = 0;
             if (!WriteFile(download.File, data, read, &written, nullptr) || written != read)
                 return LastErrorResult("Unable to write download file");

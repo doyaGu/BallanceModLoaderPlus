@@ -49,7 +49,7 @@ size_t Write(void *data, size_t size, size_t count, void *opaque) {
         return bytes;
     } catch (...) { download.error = "Download callback failed"; return 0; }
 }
-Result Get(const std::wstring &url, Download &download) {
+Result Get(const std::wstring &url, Download &download, std::chrono::milliseconds timeout) {
     auto address = PathUtf8(url);
     auto valid = ValidateRemoteHttpsUrl(address, "URL");
     if (!valid.ok) return valid;
@@ -74,7 +74,7 @@ Result Get(const std::wstring &url, Download &download) {
     curl_easy_setopt(curl.get(), CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(curl.get(), CURLOPT_SSL_VERIFYHOST, 2L);
     curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT, 30L);
-    curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, 600L);
+    curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT_MS, static_cast<long>(timeout.count()));
     curl_easy_setopt(curl.get(), CURLOPT_LOW_SPEED_LIMIT, 1024L);
     curl_easy_setopt(curl.get(), CURLOPT_LOW_SPEED_TIME, 60L);
     curl_easy_setopt(curl.get(), CURLOPT_NOSIGNAL, 1L);
@@ -101,11 +101,14 @@ Result HttpGetUtf8(const std::wstring &url, std::string &body) {
     body.clear();
     Download download;
     download.limit = 16 * 1024 * 1024;
-    auto result = Get(url, download);
+    auto result = Get(url, download, DefaultHttpTimeout);
     if (result.ok) body = std::move(download.text);
     return result;
 }
-Result HttpDownloadFile(const std::wstring &url, const std::wstring &destination, ProgressCallback progress) {
+Result HttpDownloadFile(const std::wstring &url, const std::wstring &destination,
+                        ProgressCallback progress, std::chrono::milliseconds timeout) {
+    if (timeout <= std::chrono::milliseconds::zero() || timeout > DefaultHttpTimeout)
+        return Result::Failure("Invalid HTTP timeout");
     if (!CreateDirectories(ParentPath(destination)) || BML::Platform::IsLink(PathUtf8(destination)))
         return Result::Failure("Unable to prepare download destination");
     static std::atomic<uint64_t> sequence{0};
@@ -117,7 +120,7 @@ Result HttpDownloadFile(const std::wstring &url, const std::wstring &destination
     download.progress = std::move(progress);
     download.stream = SDL_IOFromFile(PathUtf8(temporary).c_str(), "wbx");
     if (!download.stream) return Result::Failure("Unable to create download file: " + std::string(SDL_GetError()));
-    auto result = Get(url, download);
+    auto result = Get(url, download, timeout);
     bool synced = result.ok && BML::Platform::SyncFile(download.stream);
     if (!SDL_CloseIO(download.stream)) synced = false;
     if (!result.ok) return result;

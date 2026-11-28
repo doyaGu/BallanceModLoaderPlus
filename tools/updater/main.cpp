@@ -16,9 +16,6 @@
 #include <vector>
 
 #include "UpdaterService.h"
-#ifdef BML_UPDATER_NETWORK_TEST
-#include "UpdaterNetwork.h"
-#endif
 
 namespace {
     std::string Narrow(const std::wstring &text) {
@@ -371,15 +368,7 @@ namespace {
     }
 }
 
-namespace {
-int RunUpdaterCli(int argc, wchar_t **argv) {
-#ifdef BML_UPDATER_NETWORK_TEST
-    if (argc == 4 && std::wstring_view(argv[1]) == L"--test-download") {
-        const auto result = bmlupdater::HttpDownloadFile(argv[2], argv[3]);
-        PrintResult(result);
-        return result.ok ? 0 : 1;
-    }
-#endif
+static int RunUpdaterCli(int argc, wchar_t **argv) {
     std::cout.setf(std::ios::unitbuf);
     auto context = bmlupdater::CreateDefaultContext();
     std::vector<wchar_t *> arguments;
@@ -392,7 +381,6 @@ int RunUpdaterCli(int argc, wchar_t **argv) {
     }
     bmlupdater::UpdaterService service(context);
     return RunCli(static_cast<int>(arguments.size()), arguments.data(), service);
-}
 }
 #ifdef _WIN32
 int wmain(int argc, wchar_t **argv) {

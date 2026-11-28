@@ -53,9 +53,8 @@ def check_download_deadline(updater, root):
         try:
             start = time.monotonic()
             url = f"https://127.0.0.1:{server.getsockname()[1]}/archive.zip"
-            env = {**os.environ, "BML_TEST_UPDATER_DEADLINE": "1"}
             result = subprocess.run([str(updater), "--test-download", url, str(destination)],
-                                    env=env, capture_output=True, text=True, timeout=5)
+                                    capture_output=True, encoding="utf-8", timeout=5)
             assert not result.returncode == 0 and "total deadline" in result.stdout, result.stdout
             assert accepted.is_set(), "download never entered the stalled TLS request"
             assert time.monotonic() - start < 5
@@ -69,6 +68,7 @@ def check_download_deadline(updater, root):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--updater", type=Path, required=True)
+    parser.add_argument("--network-probe", type=Path)
     parser.add_argument("--production-updater", type=Path, required=True)
     parser.add_argument("--shared-fixture", type=Path, required=True)
     parser.add_argument("--player-fixture", type=Path, required=True)
@@ -94,7 +94,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="bml-updater-https-") as temporary:
         root = Path(temporary).resolve()
         if args.runtime == "virtools":
-            check_download_deadline(args.updater, root)
+            assert args.network_probe is not None
+            check_download_deadline(args.network_probe.resolve(), root)
         game = root / ("中文 游戏" if args.runtime == "sdl" else "game")
         stage = root / "staged"
         output = root / "server"

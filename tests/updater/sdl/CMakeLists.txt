@@ -65,6 +65,7 @@ endif()
 add_test(NAME BMLUpdaterSdlIntegrationTest
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/UpdaterIntegrationTest.py"
         --updater "$<TARGET_FILE:UpdaterSdlTestRunner>"
+        --network-probe "$<TARGET_FILE:BMLUpdaterSdlTest>"
         --production-updater "${_bml_production_updater}"
         --shared-fixture "$<TARGET_FILE:BMLUpdaterDoctorBinaryFixture>"
         --player-fixture "$<TARGET_FILE:BMLUpdaterPlayerFixture>"

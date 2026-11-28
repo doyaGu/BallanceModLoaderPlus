@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "UpdaterManifest.h"
+#include "UpdaterNetwork.h"
 #include "UpdaterPaths.h"
 #include "UpdaterRemote.h"
 #include "UpdaterService.h"
@@ -444,6 +445,11 @@ static int RunTests(int argc, char **argv) {
 int main(int argc, char **argv) { return RunTests(argc, argv); }
 #else
 int wmain(int argc, wchar_t **argv) {
+    if (argc == 4 && std::wstring_view(argv[1]) == L"--test-download") {
+        const auto result = HttpDownloadFile(argv[2], argv[3], {}, std::chrono::milliseconds(750));
+        std::puts(result.message.c_str());
+        return result.ok ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
     std::vector<std::string> utf8;
     for (int i = 0; i < argc; ++i)
         utf8.push_back(utils::Utf16ToUtf8(argv[i]));
