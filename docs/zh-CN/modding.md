@@ -1,154 +1,117 @@
-# 为 BML+ 开发 Mod
+# 创建 Mod
 
-编写 Mod 时应使用已发布的 BML+ SDK。只有修改 Loader、SDK、脚本宿主或内建服务时
-才需要构建 BML+ 仓库。
+使用与 Player 匹配的 SDL SDK，把 SDK 放在游戏目录之外，不包含 BML 私有 `src/`
+头文件。功能适合脚本时从 Script Mod 开始；需要原生库、Engine/ImGui 扩展或已测量的
+性能需求时选择原生 Mod。
 
-不确定选择哪条路线时，先从脚本 Mod 开始。它不需要 C++ 构建，并具有最短的编辑、
-热重载和诊断循环。只有明确需要原生 Hook、原生内存、调用线程 RPC Handler 或
-性能敏感循环时，再进入原生路线。
-
-## 选择开发路线
-
-| 路线 | 适用场景 | 主要代价 |
+| 路线 | 入口 | 构建与部署 |
 | --- | --- | --- |
-| 脚本 Mod | 希望快速修改和测试，需要命令、配置、UI、玩法脚本、CKAngelScript 引擎访问，或不经 C++ 使用生成式 IMC Client/Provider。 | IMC 回调固定在游戏线程；不应承担不安全 Hook 或性能敏感的原生循环。 |
-| 原生 Mod | 需要 C++20、直接 Virtools 集成、原生 Hook、调用线程 IMC 执行，或必须严格控制热路径。 | 需要兼容 MSVC ABI 的 Win32 构建，并明确处理 DLL ABI 和所有权。 |
-| 原生插件加 CKAngelScript 扩展 | 脚本必须直接借用插件专有的原生对象，或调用无法表示为 IMC Record 的引擎原语。 | 原生插件必须通过 CKAngelScript 注册并维护该脚本接口。 |
+| 脚本 | `[bml.mod]` 类和 `BML::ModContext` 回调 | 配套 CKAngelScript；`.mod.as`、目录或 ZIP |
+| 原生 C++20 | `BML::Mod::Instance` + `BML_DEFINE_MOD` | 版本化 C 入口；`.bmodp` + ABI 伴随文件 |
+| 原生 C11 | `Mod.h` 的 `BML_GetModInterface` | 同一 C 协议和伴随文件 |
+| 原生/脚本服务 | 生成式 IMC RPC 和 Topic | `.imc`、审查后的 lock、语言绑定 |
+| 原生 provider C 表 | `Interface.hpp`、明确 provider 依赖 | 进程内 ABI 和 provider 寿命 |
 
-不要在 BML 中重新封装一套 CKAngelScript 已有的 Scene、Behavior、Component、
-Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命周期、配置、
-命令、Loader UI 和 Mod 级服务使用 BML+。
+`IMod`、`IBML`、`IConfig`、`IProperty`、`ICommand`、`ILogger`、`IMessageReceiver`
+均已移除。旧 SDL 源码先按[迁移指南](native-mod-migration.md)处理。
 
-## 开始编写脚本 Mod
+## 所有平台使用同一工作流
 
-1. 在平常保存源码的工作区中创建 Script Mod Project：
+Python 3.10+ 是共同入口，以下写法不依赖 shell 的续行规则：
 
-   ```bat
-   "<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
-   ```
+```text
+python /path/to/sdk/scripts/bml.py new script example.hello
+python /path/to/sdk/scripts/bml.py new native example.native
+```
 
-   命令会自动推导可读名称与作者，创建合法的类名、入口文件名和项目内
-   Developer Workflow。
+选择一条创建命令，进入生成的项目目录：
 
-2. 进入生成目录并运行 `.\bml run`。首次运行会询问 Ballance 目录，确认脚本运行时，
-   部署受管副本、启动 Player，并只显示这个 Mod 的新增日志。
-3. 编辑时保持 `bml run` 运行。每次保存都会同步到受管副本，Player 原有的热重载
-   继续生效。
-4. 运行 `.\bml pack` 生成 `dist/<项目名>.zip`，再在未安装开发副本的环境中测试。
+```text
+python bml.py build --bml-sdk /path/to/sdk
+python bml.py run --bml-sdk /path/to/sdk --ballance-root /path/to/game
+python bml.py pack
+```
 
-已有的目录 Script Mod 可用
-`"<BML-SDK>\scripts\bml.cmd" init --project "C:\path\to\mod"` 接入，原有源码不会
-被改写。已有单文件 Mod 需先移入独立目录；Player 对该目录的运行行为不变。
+Linux/macOS 也提供可执行的 `scripts/bml` 和项目 `./bml`；Windows 提供
+`scripts/bml.cmd` 和项目 `bml.cmd`。替换示例路径并为含空格的路径加引号。
+原生项目需要 CMake 和 C++20 编译器，脚本项目不需要原生编译器。
 
-先阅读[脚本 Mod 教程导读](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/)，
-需要准确声明时使用其中的 API 参考。支持脚本 Mod 的 SDK 会把同一套页面安装到
-`share/BML/docs/zh-CN`。
+工作流在 `.bml/` 保存本地设置。`build` 只准备产物；`run` 准备、部署受管理副本并启动
+Player。脚本 `run` 会持续同步保存的改动，触发游戏内热重载。原生模块为下次 Player
+运行重编译和部署，不会替换运行中的二进制。`pack` 在 `dist` 输出发布归档。
 
-## 开始编写原生 Mod
+`--configuration` 选择 SDK 支持的配置，必须与 SDK 匹配；`--package-root` 增加依赖
+前缀，`--generator` 选择 CMake 生成器。普通 C ABI Mod 不需要 CK2/ImGui 扩展头文件；
+选择扩展时再提供匹配的依赖开发包。
 
-1. 在存放源码项目的目录中打开终端，用 SDK 模板创建 Mod：
+游戏根目录包含 `base.cmo` 和 `Bin/Player` 或 `Player`；Windows 为 `Player.exe`。
+保留的参数名是 `--ballance-root`，传游戏根目录而不是 `Bin`。原生部署会核对 SDK 与游戏
+的 ABI 描述。
 
-   ```bat
-   "<BML-SDK>\scripts\bml.cmd" new native yourname.my-mod
-   ```
+## 已有项目
 
-   命令会让 CMake target、C++ 类名、源文件名和元数据保持一致，默认使用 `basic`
-   profile。下面三个 profile 会把跨 Mod API 的重复样板一起生成：
+已有工程可以采用工作流，不替换源码或 CMake：
 
-   ```bat
-   rem 发布类型安全的进程内函数表，并安装独立头文件包。
-   "<BML-SDK>\scripts\bml.cmd" new native yourname.value-provider ^
-     --profile interface-provider
+```text
+python /path/to/sdk/scripts/bml.py init example.existing --project /path/to/project
+```
 
-   rem 消费对应的包；包名、头文件路径和 Traits 名会自动推导。
-   "<BML-SDK>\scripts\bml.cmd" new native yourname.value-consumer ^
-     --profile interface-consumer --provider-id yourname.value-provider
+无法推断脚本目录时传 `--kind script`。单文件脚本先放入独立开发目录。
+添加的文件包括 `bml.mod.json`、`bml.py`、`bml`、`bml.cmd` 和被忽略的本地设置。
+原生 target 或文件名无法推断时使用 `--target`、`--artifact`。新建项目不会覆盖已有目录。
 
-   rem 定义生成式 IMC RPC provider，并同时生成已审核的 schema lock。
-   "<BML-SDK>\scripts\bml.cmd" new native yourname.remote-api ^
-     --profile imc-provider
-   ```
-
-   `interface-consumer` 必须提供 `--provider-id`；其余 profile 会拒绝这个参数，避免
-   拼错命令后静默生成错误依赖。也可以手动复制 `templates` 下的对应目录。
-
-2. 进入生成目录，只运行一条开发命令：
-
-   ```bat
-   .\bml run
-   ```
-
-   首次运行会询问 Virtools SDK 和 Ballance 目录。之后会选择本机最新的 Visual
-   Studio 生成器，配置 Win32，构建并部署
-   `RelWithDebInfo`，启动 Player，并在退出后只打印这个 Mod 本次新增的日志。两个
-   路径和生成器会缓存到已忽略的 `.bml/settings.json`；之后只需运行 `.\bml run`。
-3. 修改生成的源码，然后重复同一条命令。interface provider 修改
-   `api/*.bml-interface`；确认兼容变化后运行 `.\bml interface update`。生成的头文件
-   不需要手工维护。
-4. 原生接口会让 C++ 对象
-   跨越 DLL 边界，因此原生 Mod 必须与装载它的 Loader 链接同一套 MSVC 运行库。
-   `BMLPlus-<version>.zip` 中的运行时基于 Release 版 MSVC 运行库构建，Debug
-   `.bmodp` 与之不具备 ABI 兼容性；`RelWithDebInfo` 在使用兼容运行库的同时保留调试
-   信息。`bml_add_mod` 会把 Mod 的运行库固定为所配置 SDK 使用的那一套，并在
-   `CMAKE_MSVC_RUNTIME_LIBRARY` 与之冲突时直接让配置失败，所以两者不会在无声中错位。
-   `BMLPlus-SDK-<version>-Debug.zip` 是受支持的例外。它包含 Debug 版
-   `bin/BMLPlus.dll` 及其 `.pdb`，只要同时用这个 Debug Loader 覆盖
-   `BuildingBlocks/BMLPlus.dll`，Debug Mod 就是有效的。Loader 和所有已安装的原生
-   Mod 必须处于同一侧；测试待发布产物前要换回 Release 版 Loader。
-5. 发布前运行 `.\bml run --configuration Release` 并测试该产物，然后运行
-   `.\bml pack` 将 Release `.bmodp` 复制到 `dist`。只有在 CI 或排查构建系统本身时，
-   才需要使用生成 README 中的手工 CMake 命令。
-
-SDK 的 CMake 入口为：
+## 保留手工 CMake 流程
 
 ```cmake
+cmake_minimum_required(VERSION 3.25)
+project(MyMod LANGUAGES CXX)
 find_package(BML CONFIG REQUIRED)
-bml_add_mod(MyMod MyMod.cpp)
+bml_add_mod(MyMod src/MyMod.cpp)
 bml_install_mod(MyMod)
 ```
 
-增加所有权、回调、UI 或跨 Mod 服务前，先阅读[原生 Mod API 总览](native-mod-api.md)；
-某项能力有不止一种写法时，参见[原生 API 该走哪条路](native-api-routes.md)。
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/sdk -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+cmake --install build --config Release --prefix /path/to/game/ModLoader
+```
 
-## 两条路线共同遵守的规则
+`bml_add_mod` 链接核心 `BML::BML`，选择目标平台的模块类型并生成 ABI 伴随文件。
+直接使用 CK/Vx/ImGui 时再显式链接 `BML::Engine`、`BML::ImGui`。这些扩展的编译器、
+标准库、运行库、配置、SDL 和引擎必须与 Player 匹配。复用 Player 的 SDL；macOS 所需
+加载路径及签名处理由 SDK CMake 在构建时完成。
 
-- 保持 Mod id 稳定。其他 Mod 会用它声明依赖和服务所有权。
-- 在加载前声明依赖，不要在逐帧回调中临时寻找必需的 Mod。
-- CK 借用对象不转移所有权；关卡和对象变化后要重新验证。
-- 限制逐 Tick、渲染、引擎 Hook 和同步 RPC 中的工作量。
-- 开发期间记录一条明确的启动日志，并在干净的 `ModLoader/Mods` 目录中测试发布包。
-- 在 Mod README 中写明所需的 BML+、CKAngelScript、原生插件和依赖版本。
+## 示例和进阶 profile
 
-## 选择跨 Mod 通信方式
+SDK 安装 `examples/native-mod`、`native-c-mod`、`native-interface-provider`、
+`native-interface-consumer`；启用脚本时还安装 `script-mod`。基础 C++ 示例使用
+`ctx.Config()`、`ctx.Input()`、`ctx.Timers()`、`ctx.Commands()`。服务视图不拥有宿主；
+Registration 成员表达注册所有权。检查 Result，或使用 `Take()` 让当前模块回调屏障
+报告失败。
 
-| 需求 | 使用 |
-| --- | --- |
-| 同一进程内少量具名标量或字节值 | DataShare |
-| 原生和/或脚本 Mod 之间的类型化请求与响应、异步结果、Topic 或版本化数据 | 生成式 IMC 接口；两种语言都可以消费或提供 |
-| BML+ 内建的运行时、玩法、事件、UI 或速通服务 | 对应语言已有的 BML+ 类型化 API |
-| CKAngelScript runtime script 或 Component 之间通信 | 在执行模型合适时使用 CKAngelScript `Message` 或 `Async` |
+```text
+python /path/to/sdk/scripts/bml.py new native example.provider --profile interface-provider
+python /path/to/sdk/scripts/bml.py new native example.consumer --profile interface-consumer --provider-id example.provider
+python /path/to/sdk/scripts/bml.py new native example.imc --profile imc-provider
+```
 
-不要自定义 JSON 消息格式，也不要手写字段编号。编写 `.imc` 接口，由
-`bml_target_imc_api` 生成 C++ 和/或 AngelScript 绑定，并让 schema lock 与接口一起维护。参见
-[跨 Mod 通信](imc.md)和[创建类型化 IMC API](imc-author-guide.md)。
+原生 `.bml-interface` schema 使用 `python bml.py interface update` 更新有意的
+兼容变更，`interface check` 校验 lock。IMC `.imc` 则使用已配置的
+`bml_update_imc_locks` CMake target 更新锁。普通类型化原生/脚本服务使用 [IMC](imc-author-guide.md)，
+进程内基础设施使用原生 C 表；脚本确实需要无法由普通服务表示的原生类型时才写
+CKAngelScript 扩展。
 
-只有脚本必须直接借用插件专有原生对象，或调用无法表示为类型化 IMC 数据的引擎原语时，
-才增加 CKAngelScript 扩展。常规 native/script 服务边界应共用一份生成式 IMC 接口，
-不要再维护第二套手写 API。
+## 发布与验收
 
-## 性能与所有权
+原生 CLI `pack` 只归档模块和 ABI 描述；额外资源由项目自己的打包步骤处理，
+可参考仓库的 BallSticky/BMLModuls 包。脚本 `pack` 包含源码与资源。
 
-BML 回调和同步 IMC handler 通常在游戏线程执行。稳定的查询结果应缓存为 id 或可
-重新验证的引用；准备工作移出热回调；Topic 使用有界容量并监控丢弃数。
+- 原生：一起分发 `Name.bmodp`、`Name.bmodp.abi.json`，或将两者一起放入 ZIP。
+- 脚本：`.mod.as`、目录或 ZIP。不包含补全 stub、`.bml`、编译缓存、本机路径或凭据。
+- 资源：名称大小写精确、相对路径可移植、文本使用 UTF-8。路径优先使用 `/`，不假设
+  文件系统忽略大小写或 `wchar_t` 只有两个字节。
+- 移除开发部署副本后测试最终归档。覆盖依赖、输入/UI 所有权、清理、世界重置和重载失败。
+  构建通过与[游戏验收](validation.md)分别记录。
 
-需要修改引擎内部、高频执行、控制原生内存或提供高吞吐服务时使用原生 Mod。策略、
-配置和低频控制调用可以留在脚本层，使开发和调试更直接。
-
-## 发布
-
-- 原生 Mod 通常发布为 `.bmodp`，并同时导出 `BMLEntry(IBML*)` 和
-  `BMLExit(IMod*)`。
-- 脚本 Mod 发布为单个 `*.mod.as` 文件，或包含且只包含一个入口的 zip；
-  `.bmodp` 只属于原生 Mod。
-- 测试实际发布的产物，而不只是开发目录或 `RelWithDebInfo` 构建。
-- Mod README 应写明依赖、支持版本、安装、配置和有效的问题反馈方式。
+详见[原生 API](native-mod-api.md)、[脚本教程](script-mod-tutorial/README.md)、
+[Behavior](behavior-authoring.md)和 [API 路线](native-api-routes.md)。

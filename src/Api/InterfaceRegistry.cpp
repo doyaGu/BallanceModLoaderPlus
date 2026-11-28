@@ -57,7 +57,7 @@ int InterfaceRegistry::Unregister(
 
 int InterfaceRegistry::Find(
     const char *interfaceId, std::uint16_t majorVersion,
-    const void **out) const {
+    const void **out, std::string *owner) const {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     *out = nullptr;
@@ -72,6 +72,7 @@ int InterfaceRegistry::Find(
         idExists = true;
         if (entry.MajorVersion != majorVersion)
             continue;
+        if (owner) *owner = entry.OwnerId;
         *out = entry.Interface;
         return BML_OK;
     }

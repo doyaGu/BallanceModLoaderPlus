@@ -4,111 +4,11 @@
 #include <string>
 #include <unordered_map>
 
-#include "BML/IConfig.h"
+#include "Config/Config.h"
 #include "Console/CommandBarTheme.h"
 
 namespace {
-std::unordered_map<const IProperty *, BML_ConfigPropertyEditor> g_PropertyEditors;
-}
-
-BML_ConfigPropertyEditor BML_GetConfigPropertyEditor(const IProperty *property) {
-    const auto entry = g_PropertyEditors.find(property);
-    return entry == g_PropertyEditors.end() ? BML_CONFIG_EDITOR_DEFAULT : entry->second;
-}
-
-int BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor) {
-    if (!property || (editor != BML_CONFIG_EDITOR_DEFAULT &&
-                      editor != BML_CONFIG_EDITOR_COLOR &&
-                      editor != BML_CONFIG_EDITOR_CHOICE))
-        return 0;
-    g_PropertyEditors[property] = editor;
-    return 1;
-}
-
-namespace {
-
 using CommandBarTheme::Color;
-
-class TestProperty final : public IProperty {
-public:
-    const char *GetString() override { return m_Type == STRING ? m_String.c_str() : ""; }
-    bool GetBoolean() override { return false; }
-    int GetInteger() override { return 0; }
-    float GetFloat() override { return 0.0f; }
-    CKKEYBOARD GetKey() override { return static_cast<CKKEYBOARD>(0); }
-
-    void SetString(const char *value) override {
-        m_Type = STRING;
-        m_String = value ? value : "";
-    }
-    void SetBoolean(bool) override { m_Type = BOOLEAN; }
-    void SetInteger(int) override { m_Type = INTEGER; }
-    void SetFloat(float) override { m_Type = FLOAT; }
-    void SetKey(CKKEYBOARD) override { m_Type = KEY; }
-
-    void SetComment(const char *comment) override { m_Comment = comment ? comment : ""; }
-    void SetDefaultString(const char *value) override {
-        if (m_Type != STRING)
-            SetString(value);
-    }
-    void SetDefaultBoolean(bool value) override {
-        if (m_Type != BOOLEAN)
-            SetBoolean(value);
-    }
-    void SetDefaultInteger(int value) override {
-        if (m_Type != INTEGER)
-            SetInteger(value);
-    }
-    void SetDefaultFloat(float value) override {
-        if (m_Type != FLOAT)
-            SetFloat(value);
-    }
-    void SetDefaultKey(CKKEYBOARD value) override {
-        if (m_Type != KEY)
-            SetKey(value);
-    }
-
-    PropertyType GetType() override { return m_Type; }
-private:
-    PropertyType m_Type = NONE;
-    std::string m_String;
-    std::string m_Comment;
-};
-
-class TestConfig final : public IConfig {
-public:
-    bool HasCategory(const char *category) override {
-        return category && category == m_Category;
-    }
-    bool HasKey(const char *category, const char *key) override {
-        return category && key && category == m_Category && m_Properties.contains(key);
-    }
-    IProperty *GetProperty(const char *category, const char *key) override {
-        if (!category || !key)
-            return nullptr;
-        m_Category = category;
-        auto [entry, inserted] = m_Properties.try_emplace(key);
-        if (inserted)
-            entry->second = std::make_unique<TestProperty>();
-        return entry->second.get();
-    }
-    void SetCategoryComment(const char *category, const char *comment) override {
-        m_Category = category ? category : "";
-        m_CategoryComment = comment ? comment : "";
-    }
-
-    TestProperty *Property(const char *key) {
-        const auto entry = m_Properties.find(key);
-        return entry == m_Properties.end() ? nullptr : entry->second.get();
-    }
-    std::size_t PropertyCount() const { return m_Properties.size(); }
-
-private:
-    std::string m_Category;
-    std::string m_CategoryComment;
-    std::unordered_map<std::string, std::unique_ptr<TestProperty>> m_Properties;
-};
-
 TEST(CommandBarTheme, OneDarkUsesExpectedRoleColours) {
     constexpr CommandBarTheme::SyntaxPalette palette = CommandBarTheme::OneDark();
 
@@ -123,21 +23,23 @@ TEST(CommandBarTheme, OneDarkUsesExpectedRoleColours) {
 }
 
 TEST(CommandBarTheme, SettingsOwnRoleSchemaAndReadPalette) {
-    g_PropertyEditors.clear();
-    TestConfig config;
+    Config config(nullptr);
     CommandBarTheme::Settings settings;
     settings.Define(config);
 
-    EXPECT_EQ(CommandBarTheme::Settings::RoleCount, config.PropertyCount());
-    ASSERT_NE(nullptr, config.Property("Plain"));
+    EXPECT_EQ(CommandBarTheme::Settings::RoleCount,
+              config.GetCategory("CommandBarTheme")->GetPropertyCount());
+    ASSERT_NE(nullptr, config.GetProperty("CommandBarTheme", "Plain"));
     EXPECT_EQ(BML_CONFIG_EDITOR_COLOR,
-              BML_GetConfigPropertyEditor(config.Property("Plain")));
+              BML::ConfigMetadata::GetEditor(config.GetProperty("CommandBarTheme", "Plain")));
     EXPECT_EQ(CommandBarTheme::OneDark(), settings.ReadPalette());
-    EXPECT_TRUE(settings.Owns("CommandBarTheme", "Plain", config.Property("Plain")));
-    EXPECT_FALSE(settings.Owns("CommandBar", "Plain", config.Property("Plain")));
+    EXPECT_TRUE(
+        settings.Owns("CommandBarTheme", "Plain", config.GetProperty("CommandBarTheme", "Plain")));
+    EXPECT_FALSE(
+        settings.Owns("CommandBar", "Plain", config.GetProperty("CommandBarTheme", "Plain")));
 
-    config.Property("Plain")->SetString("#01020380");
-    config.Property("Error")->SetString("invalid");
+    config.GetProperty("CommandBarTheme", "Plain")->SetString("#01020380");
+    config.GetProperty("CommandBarTheme", "Error")->SetString("invalid");
     const CommandBarTheme::SyntaxPalette palette = settings.ReadPalette();
     EXPECT_EQ((Color{0x01, 0x02, 0x03, 0x80}), palette.plain);
     EXPECT_EQ(CommandBarTheme::OneDark().error, palette.error);

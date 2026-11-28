@@ -2,10 +2,9 @@
 
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/TT_Toolbox_RT.h"
-#include "BML/IBML.h"
-#include "BML/ILogger.h"
-
 #include "Loader/ModContext.h"
+#include "Logging/Logger.h"
+
 
 namespace Behavior = BML::Behavior;
 
@@ -86,8 +85,8 @@ Behavior::Result<Behavior::Node> FindFirstNeighbor(
 
 } // namespace
 
-void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
-                         IBML &bml, ILogger &logger) {
+void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script, ModContext &bml,
+                         Logger &logger) {
     if (m_Patch || m_Retiring) {
         m_PendingLoad = {&behavior, script ? script->GetID() : 0,
                          &bml, &logger};
@@ -98,9 +97,8 @@ void ModsMenuEntry::Load(Behavior::Session &behavior, CKBehavior *script,
     BeginLoad(behavior, script, bml, logger);
 }
 
-void ModsMenuEntry::BeginLoad(Behavior::Session &behavior,
-                              CKBehavior *script, IBML &bml,
-                              ILogger &logger) {
+void ModsMenuEntry::BeginLoad(Behavior::Session &behavior, CKBehavior *script, ModContext &bml,
+                              Logger &logger) {
     m_Context = bml.GetCKContext();
     m_BML = &bml;
     m_Logger = &logger;
@@ -520,18 +518,18 @@ void ModsMenuEntry::ResumePendingLoad() {
     m_PendingLoad = {};
     Clear(true);
     if (!pending.Behavior || !pending.Script ||
-        !pending.Bml || !pending.Logger) {
+        !pending.Bml || !pending.Log) {
         return;
     }
 
     CKContext *context = pending.Bml->GetCKContext();
     CKBehavior *script = Live<CKBehavior>(context, pending.Script);
     if (!script) {
-        pending.Logger->Error(
+        pending.Log->Error(
             "Cannot replace the Mods menu Patch because Menu_Options is no longer live");
         return;
     }
-    BeginLoad(*pending.Behavior, script, *pending.Bml, *pending.Logger);
+    BeginLoad(*pending.Behavior, script, *pending.Bml, *pending.Log);
 }
 
 void ModsMenuEntry::HideButton() {

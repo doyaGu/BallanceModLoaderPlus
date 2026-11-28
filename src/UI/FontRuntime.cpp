@@ -13,9 +13,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifdef _WIN32
 #include <Windows.h>
-#ifdef CompareString
-#undef CompareString
 #endif
 
 #include "imgui.h"
@@ -58,11 +57,11 @@ namespace {
     };
 
     bool EqualFace(const std::string &left, const std::string &right) {
-        return utils::CompareString(left, right) == 0;
+        return utils::CompareLocaleStrings(left, right) == 0;
     }
 
     bool FaceLess(const std::string &left, const std::string &right) {
-        return utils::CompareString(left, right) < 0;
+        return utils::CompareLocaleStrings(left, right) < 0;
     }
 
     bool ContainsFace(const std::vector<std::string> &faces, const std::string &candidate) {
@@ -95,6 +94,7 @@ namespace {
     }
 
     std::string ResolveWindowsFace(std::wstring_view filename) {
+#ifdef _WIN32
         std::array<wchar_t, MAX_PATH> windowsDirectory{};
         const UINT length = GetWindowsDirectoryW(windowsDirectory.data(),
                                                 static_cast<UINT>(windowsDirectory.size()));
@@ -105,6 +105,9 @@ namespace {
         path.append(L"\\Fonts\\");
         path.append(filename);
         return utils::FileExistsW(path) ? utils::Utf16ToUtf8(path) : std::string{};
+#else
+        return {};
+#endif
     }
 
     std::string FaceName(const std::string &path) {
@@ -345,6 +348,30 @@ void FontRuntime::Apply() {
     }
 
     if (m_RequestedProfile.UseWindowsFallbacks) {
+#ifndef _WIN32
+        // Prefer outline CJK fonts; ImGui's stb loader cannot decode Apple
+        // color emoji strikes. Missing candidates remain visible in diagnostics.
+#ifdef __APPLE__
+        constexpr const char *systemFonts[] = {
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/System/Library/Fonts/Apple Symbols.ttf",
+        };
+#else
+        constexpr const char *systemFonts[] = {
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+        };
+#endif
+        for (const char *path : systemFonts) {
+            if (!utils::FileExistsUtf8(path)) continue;
+            const bool loaded = LoadFallback(atlas, font, path,
+                m_RequestedProfile.FallbackReferenceSize, primaryAscent, loadedPaths);
+            next.Sources.push_back({FaceName(path), path, FontSourceOrigin::SystemCatalog, loaded});
+        }
+#else
         for (const WindowsFallbackFace &windowsFace : WindowsFallbackFaces) {
             const std::string path = ResolveWindowsFace(windowsFace.Filename);
             const bool loaded = LoadFallback(
@@ -353,6 +380,7 @@ void FontRuntime::Apply() {
             next.Sources.push_back({
                 windowsFace.Label, path, FontSourceOrigin::WindowsCatalog, loaded});
         }
+#endif
     }
 
     io.FontDefault = font;

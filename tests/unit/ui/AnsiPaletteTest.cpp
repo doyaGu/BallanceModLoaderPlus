@@ -72,8 +72,7 @@ protected:
     }
 
     static std::wstring ThemesDir() {
-        std::wstring p = g_TestLoaderDir; p.append(L"\\themes");
-        return p;
+        return utils::CombinePathW(g_TestLoaderDir, L"Themes");
     }
 };
 

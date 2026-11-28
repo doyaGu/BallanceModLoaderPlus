@@ -272,10 +272,10 @@ namespace utils {
 
     constexpr uint32_t kDefaultCompareFlags = kLinguisticIgnoreCase | kIgnoreWidth | kDigitsAsNumbers;
 
-    int CompareString(const std::wstring &a, const std::wstring &b,
+    int CompareLocaleStrings(const std::wstring &a, const std::wstring &b,
                       uint32_t flags = kDefaultCompareFlags, const std::wstring &localeName = std::wstring());
 
-    int CompareString(const std::string &aUtf8, const std::string &bUtf8,
+    int CompareLocaleStrings(const std::string &aUtf8, const std::string &bUtf8,
                       uint32_t flags = kDefaultCompareFlags, const std::wstring &localeName = std::wstring());
 } // namespace utils
 

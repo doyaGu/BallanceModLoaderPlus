@@ -7,7 +7,7 @@
 
 #include "CKSpriteText.h"
 
-namespace BGui {
+namespace BGuiHost {
 namespace {
 
 struct LegacyTextStyle {

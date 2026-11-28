@@ -1,194 +1,132 @@
 # 01 环境搭建
 
-本节的目标：把写脚本 mod 需要的东西全部装好，确认 BML 在 Ballance 里正常工作，确认编辑器能识别 BML 提供的 API。
+本教程针对本仓库 `sdl` 分支的 **Ballanced 动态 Player**。原 Windows Ballance
+及其原生 Mod ABI 属于另一条分支。先完成安装和最小脚本验证，再学习引擎对象。
+构建覆盖与未验收目标见[验证状态](../validation.md)。
 
-做完以后，能看到两个现象：游戏画面中上方有 BML 版本字样，`ModLoader/ModLoader.log` 日志文件存在且有内容。
+## Player、BML+ 与 CKAngelScript
 
-## BML 和 CKAS 是什么
-
-原版 Ballance 不会直接加载 `.mod.as` 脚本。BML 是脚本 mod 的运行环境，通过 Virtools 的 BuildingBlock 机制被 Player.exe 加载，然后接管一部分游戏流程，让外部代码能介入。
-
-CKAS 是由 `AngelScript.dll` 提供的脚本宿主，使用 AngelScript 语言。BML 通过
-CKAS 加载和管理脚本 Mod；脚本入口使用 `.mod.as` 后缀，并保存在指定目录中。
-
-它们的关系：
+三者的职责不同：Player 驱动游戏，BML+ 管理 Mod 及服务，CKAngelScript 提供脚本
+引擎与 CK/Vx 绑定。正式脚本包需要 `BML_ENABLE_ANGELSCRIPT=ON` 的运行时。
+关闭脚本支持的包仍能运行原生 Mod，但无法编译 `.mod.as`。
 
 ```text
-BallancePlayer
-  ├──加载──> BMLPlus.dll       管理 Mod 与游戏回调
-  └──加载──> AngelScript.dll   提供 CKAS 脚本宿主
-                 ▲
-                 └── BMLPlus.dll 通过 CKAS API 编译并运行脚本 Mod
-```
-
-BallancePlayer 从 `BuildingBlocks/` 装载 CK 插件。`BMLPlus.dll` 借此启动，并在
-`ModLoader/Mods/` 中发现单文件、目录或 zip 形式的脚本 Mod，再通过 CKAS 编译和
-注册其 `*.mod.as` 入口。脚本使用 BML API 完成日志、配置、命令和 Mod 生命周期
-工作；操作 Virtools 对象时使用 CKAS 提供的 CK/Vx 绑定。
-
-脚本 mod 的整个生命周期都在游戏进程内。Player 启动时发现新 mod；对于已经加载的目录或单文件 mod，保存源码后默认会由 watcher 自动热重载。新增 mod、修改 id 或改变依赖图时才需要重新启动 Player。
-
-## 需要准备的东西
-
-```text
-BML+ 运行时（BMLPlus-<version>.zip）
-BML+ SDK（BMLPlus-SDK-<version>-Release.zip）
-VS Code
-AngelScript Language Server（VS Code 扩展）
-as.predefined（API 描述文件）
-```
-
-其中，BML+ 运行时是游戏运行所必需的；SDK 提供模板、打包脚本、API 声明和离线
-作者文档。VS Code、AngelScript Language Server 和 `as.predefined` 只在写代码时
-使用，游戏运行不需要它们。运行时和 SDK 应使用相同版本。
-
-## 游戏目录
-
-后面提到"游戏目录"，指的是 Ballance 的安装根目录。打开它时，能看到这些内容：
-
-```text
-Bin/Player.exe
-3D Entities/
-BuildingBlocks/
-Textures/
-```
-
-`Player.exe` 在 `Bin/` 子目录里。接下来解压 BML 时，目标是游戏根目录这一层，不是 `Bin/`。
-
-## 安装 BML
-
-下载玩家用的 BML 发布包，例如：
-
-```text
-BMLPlus-<version>.zip
-```
-
-把压缩包里的内容解压到游戏目录。解压完成后，应该能看到：
-
-```text
-BuildingBlocks/BMLPlus.dll
-BuildingBlocks/AngelScript.dll
-ModLoader/
-```
-
-各部分的作用：
-
-| 路径 | 作用 |
-| --- | --- |
-| `BuildingBlocks/BMLPlus.dll` | BML 的核心。Player.exe 在启动时自动加载这个 DLL |
-| `BuildingBlocks/AngelScript.dll` | CKAS 脚本引擎。BML 用它来编译和运行 `.mod.as` 脚本 |
-| `ModLoader/` | BML 的工作目录，日志、配置和 mod 都放在这里 |
-
-这里有一个常见的错误。很多压缩工具解压时会自动创建一个和压缩包同名的子目录：
-
-```text
-Ballance/
-  BMLPlus-<version>/       <- 多出来的一层
-    BuildingBlocks/BMLPlus.dll
-```
-
-这是错的。正确的结构是：
-
-```text
-Ballance/
-  BuildingBlocks/BMLPlus.dll
-  BuildingBlocks/AngelScript.dll
+游戏根目录（包含 base.cmo）
+  Bin/Player                  或根目录 Player
+  Managers/<BML Loader>       Mod 生命周期与服务
+  BuildingBlocks/<AngelScript 插件>  CKAngelScript 共享运行时
   ModLoader/
+    BML.abi.json
+    Fonts/
+    Mods/
+    Configs/
+    ModLoader.log             首次成功启动后生成
 ```
 
-如果发现 BML 没生效，第一步就检查有没有多套目录。
+对应平台的文件名为：
 
-## 启动验证
+| 平台 | Loader（Managers） | CKAngelScript（BuildingBlocks） |
+| --- | --- | --- |
+| Windows | `BMLPlus.dll` | `AngelScript.dll` |
+| Linux | `libBMLPlus.so` | `libAngelScript.so` |
+| macOS | `libBMLPlus.dylib` | `libAngelScript.dylib` |
 
-启动 `Bin/Player.exe`。进入游戏画面后，看画面中上方。能看到：
+Windows Player 带 `.exe`。目录名、资源名和扩展名须保持大小写；Linux 文件系统
+尤其不能依赖 Windows 的不区分大小写行为。路径和脚本源码使用 UTF-8。
 
-```text
-BML Plus <version>
+## 安装配套运行时
+
+1. 准备能正常运行的完整 Ballanced SDL 游戏目录，先确认它能加载原有资源。
+2. 选择与 Player 平台、架构、动态链接方式和引擎 ABI 匹配的 BML+ 运行时包。
+   不要把原 Windows 包或另一个架构的文件混进来。
+3. 把包内 `Managers`、`BuildingBlocks`、`ModLoader` 等目录合并到游戏根目录。
+   `BMLPlus-<版本>/Managers` 多套一层时，Player 不会找到它。
+4. 保留自己的配置和 Mods。不要另复制 SDK 的 SDL、CK2 或 VxMath 动态库进游戏。
+5. 启动 Player，检查 Loader 界面和 `ModLoader/ModLoader.log`。日志应表明 BML
+   启动成功，脚本宿主没有 `ckas-host` 错误。
+
+详细安装和字体、输入法、权限处理见[使用 BML+](../using-bml.md)。
+SDK 是开发包，放在源码工作区，不要把它当运行时解压进游戏。
+
+启动失败时先运行随包工具（扁平布局去掉 `Bin/`；Windows 使用 `Updater.exe`）：
+
+```sh
+./Bin/Updater doctor --game-root "/path/to/game"
 ```
-
-这行字表示 `BMLPlus.dll` 已经被 Player.exe 成功加载，并且初始化没有出错。
-
-看不到这行字时，按下面排查：
 
 | 现象 | 检查 |
 | --- | --- |
-| 游戏能启动，但没有 `BML Plus <version>` | `BuildingBlocks/BMLPlus.dll` 是否在游戏根目录下的 BuildingBlocks 里 |
-| 解压后有 `BMLPlus-<version>/BuildingBlocks` | 多套了一层目录，把里面的内容移到游戏根目录 |
-| 启动时报 DLL 或运行库错误 | 安装 Microsoft Visual C++ 2015-2022 x86 运行库 |
-| 画面有 BML，但后续脚本功能异常 | `BuildingBlocks/AngelScript.dll` 是否存在 |
+| 没有 Loader 界面或日志 | Loader 是否在 `Managers`，目录是否多套一层 |
+| `ckas-host` 错误 | `BuildingBlocks` 中的脚本插件是否缺失或与引擎不匹配 |
+| 动态库或架构错误 | Player、Loader、脚本插件是否属于同一目标包；不要一律安装 x86 运行库 |
+| POSIX 无法启动 Player | 文件执行权限和依赖路径是否保留 |
+| 脚本编译失败 | 先修日志中的第一个编译错误，再看后续连带报错 |
 
-## ModLoader.log
+## 用 SDK 创建项目
 
-BML 启动后会在 `ModLoader/` 目录里生成日志文件：
+需要 Python 3.10+。用 `python` 或系统对应的 `python3` 运行，以下流程跨平台通用：
 
-```text
-ModLoader/ModLoader.log
+```sh
+python "/path/to/BML-SDK/scripts/bml.py" new script yourname.my-mod
+cd MyMod
+python bml.py build
+python bml.py run --ballance-root "/path/to/game"
 ```
 
-以后写脚本时，几乎所有问题都要从这个文件查。脚本有没有被找到、有没有编译错误、有没有执行到指定回调，全部会记录在里面。
+也可以用 POSIX `./bml` 或 Windows `bml.cmd`。`--ballance-root` 仍沿用这个参数名，
+填写包含 `base.cmo` 的根目录，而不是 `Bin`。首次运行会保存本机设置。
 
-建议用 VS Code 或其他文本编辑器打开这个文件，每次重启游戏后刷新查看。Notepad 也行，但它不会自动刷新。
+先不改模板源码。游戏内出现问候语，日志中出现加载消息，才算发现、编译和 `OnLoad`
+调用都成功。保持 `run` 与 Player 运行，保存源码会同步到受管理副本，并为已加载
+的目录 Mod 触发热重载。新增 Mod、修改 id 或依赖后须重启 Player。
 
-## Mods 目录
-
-BML 扫描脚本 mod 的位置是：
+加载失败时，在 BML 控制台依次检查：
 
 ```text
-ModLoader/Mods/
+script status
+script diag yourname.my-mod
+script logs error
 ```
 
-如果这个目录不存在，手动创建它。脚本 mod 放在这个目录下。
+打包使用 `python bml.py pack`，输出 `dist/` 下的 ZIP。开发工作区、已部署目录和
+发行 ZIP 不要以同一个 id 同时装入 `ModLoader/Mods`。
 
-快速入门时，一个脚本 mod 就是一个文件。例如：
+## 手动创建脚本
+
+不使用 SDK CLI 时，最小入口是 `ModLoader/Mods/HelloMod.mod.as`。
+只有 `*.mod.as` 才是 Mod 入口，普通 `.as` 用作被包含的辅助源码。
+Windows 请显示文件扩展名，避免误保存为 `.mod.as.txt`。
+
+目录包或 ZIP 中只能有一个入口；资源跟随各自的 Mod 根目录，不能依赖当前工作目录。
+具体布局见[脚本入门](README.md)与[发布](tutorial-21-publish.md)。
+
+## 编辑器补全
+
+VS Code 可使用 [AngelScript Language Server](https://github.com/sashi0034/angel-lsp)。
+把源项目目录作为工作区，将**配套 SDK** 的 `docs/api/as.predefined` 复制到工作区根目录：
 
 ```text
-ModLoader/Mods/HelloMod.mod.as
-```
-
-`.mod.as` 后缀是必须的。BML 通过这个后缀识别哪些文件是脚本 mod 入口。如果后缀不对（比如只写 `.as`），BML 会忽略这个文件。
-
-Windows 资源管理器默认隐藏文件扩展名。这会导致一种隐蔽的错误：你以为文件叫 `HelloMod.mod.as`，实际上它叫 `HelloMod.mod.as.txt`。建议在资源管理器的"查看"选项中打开"文件扩展名"。
-
-## VS Code 和 AngelScript Language Server
-
-在 VS Code 扩展市场搜索并安装 **AngelScript Language Server**（[sashi0034/angel-lsp](https://github.com/sashi0034/angel-lsp)）。它提供语法高亮、自动补全、类型检查和跳转到定义的功能。
-
-安装好之后，用 VS Code 打开 `ModLoader/Mods/` 目录作为工作区。然后把 `as.predefined` 文件放到这个目录里：
-
-```text
-ModLoader/Mods/
+MyMod/
   as.predefined
-  HelloMod.mod.as    <- 后面章节会创建
+  MyMod.mod.as
+  bml.mod.json
+  bml.py
 ```
 
-从 SDK 的 `docs/api/as.predefined` 复制该文件；没有 SDK 时也可以
-<a href="../../api/as.predefined">在线下载 <code>as.predefined</code></a>。把它放到
-上面的工作区目录。这个文件描述了 BML+ 和 CKAngelScript 对脚本公开的 API。
-AngelScript Language Server 读取后，编辑器就能识别 `BML::ModContext`、
-`BML::Logger`、`ImGui::Begin`、`CKDataArray` 等名称，并提供补全和类型检查。
+没有本地 SDK 时，可从[API 参考](../api.md)下载声明，并确认其与运行时相符。
+`as.predefined` 包含 CKAngelScript、BML+ 和 ImGui 的编辑器声明。
+它不在 Player 内执行，禁止 `#include` 到 Mod，也不要装进发行包。
+CLI 会排除这类编辑器文件。
 
-BML 本身不会加载 `as.predefined`，它纯粹是给编辑器用的。
+试着补全 `BML::UI::AddMessage`、`ctx.LogInfo`。方法使用 `ctx.IsValid()`、`input.IsValid()`；只读属性如 `ctx.ReloadPhase` 不加括号。编辑器检查不能替代真实 Player 编译。
 
-验证方法：在任意 `.mod.as` 文件里输入 `ctx.`（假设 `ctx` 是 `BML::ModContext`
-类型），确认能补全 `LogInfo`；再输入 `BML::UI::`，确认能补全 `AddMessage` 和
-`MainButton`。如果都能看到，说明 Language Server 工作正常。
+## 完成标准
 
-## 安装自检
+继续下一章前，应能完成以下步骤：
 
-继续下一节前，逐项确认：
+- 匹配的 Player 与 Loader 正常启动，日志无宿主加载错误。
+- 最小脚本显示问候语，`script status` 能找到它。
+- 修改问候语后成功热重载，日志能定位编译错误。
+- 编辑器能识别 BML 名称，发行 ZIP 不含补全声明。
 
-```text
-[ ] Ballance 能正常启动
-[ ] 游戏画面中上方能看到当前 BML Plus 版本
-[ ] BuildingBlocks/BMLPlus.dll 存在
-[ ] BuildingBlocks/AngelScript.dll 存在
-[ ] ModLoader/ModLoader.log 存在且有内容
-[ ] ModLoader/Mods/ 目录存在
-[ ] VS Code 已安装 AngelScript Language Server
-[ ] ModLoader/Mods/as.predefined 存在
-[ ] 编辑器里输入 ctx. 能看到 BML API 补全
-```
-
-全部确认后，环境搭建完成。
-
--> 下一节：[02 第一个 Mod](tutorial-02-hello-mod.md)
+下一节：[02 第一个 Mod](tutorial-02-hello-mod.md)。

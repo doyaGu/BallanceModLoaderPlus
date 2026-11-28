@@ -830,7 +830,7 @@ void HUDContainer::TickFade(float dt) {
 // HUD Implementation
 // =============================================================================
 
-HUD::HUD() : Bui::Window("HUD") {}
+HUD::HUD() : BuiHost::Window("HUD") {}
 
 HUD::~HUD() = default;
 

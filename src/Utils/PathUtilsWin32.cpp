@@ -1,0 +1,1429 @@
+#include "PathUtils.h"
+#include "PathLexical.h"
+#include "PathUtilsDetail.h"
+#include "Platform/FileSystemNative.h"
+#include "StringUtils.h"
+
+#include <filesystem>
+#include <fstream>
+#include <algorithm>
+#include <cstdio>
+#include <cwchar>
+#include <cwctype>
+#include <memory>
+#include <limits>
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#include <Shlwapi.h>
+#pragma comment(lib, "Shlwapi.lib")
+#include <zip.h>
+
+#undef max
+#undef min
+
+namespace utils {
+    namespace {
+        class ScopedFile {
+        public:
+            explicit ScopedFile(HANDLE handle) : m_Handle(handle) {}
+            ~ScopedFile() { Close(); }
+            ScopedFile(const ScopedFile &) = delete;
+            ScopedFile &operator=(const ScopedFile &) = delete;
+
+            HANDLE Get() const { return m_Handle; }
+            bool Close() {
+                if (m_Handle == INVALID_HANDLE_VALUE)
+                    return true;
+                if (!::CloseHandle(m_Handle))
+                    return false;
+                m_Handle = INVALID_HANDLE_VALUE;
+                return true;
+            }
+
+        private:
+            HANDLE m_Handle;
+        };
+
+        struct PendingReplacement {
+            std::wstring Path;
+            bool Owned = false;
+
+            ~PendingReplacement() {
+                if (Owned)
+                    ::DeleteFileW(Path.c_str());
+            }
+        };
+
+        constexpr DWORD kInitialPathBufferSize = MAX_PATH + 1;
+        template <typename CharT, typename Api>
+        std::basic_string<CharT> CallResizableWin32PathApi(Api api) {
+            std::vector<CharT> buffer(kInitialPathBufferSize, CharT{});
+            while (true) {
+                const DWORD copied = api(buffer.data(), static_cast<DWORD>(buffer.size()));
+                if (copied == 0) {
+                    return {};
+                }
+
+                if (copied < buffer.size()) {
+                    return std::basic_string<CharT>(buffer.data(), copied);
+                }
+
+                buffer.assign(static_cast<size_t>(copied) + 1, CharT{});
+            }
+        }
+
+        template <typename CharT, typename Api>
+        std::basic_string<CharT> CallResizableModulePathApi(Api api) {
+            std::vector<CharT> buffer(kInitialPathBufferSize, CharT{});
+            while (true) {
+                ::SetLastError(ERROR_SUCCESS);
+                const DWORD copied = api(buffer.data(), static_cast<DWORD>(buffer.size()));
+                if (copied == 0) {
+                    return {};
+                }
+
+                const DWORD lastError = ::GetLastError();
+                if (copied < buffer.size() - 1 || lastError != ERROR_INSUFFICIENT_BUFFER) {
+                    return std::basic_string<CharT>(buffer.data(), copied);
+                }
+
+                buffer.assign(buffer.size() * 2, CharT{});
+            }
+        }
+
+        std::wstring FoldPathCaseW(std::wstring path) {
+            std::transform(path.begin(), path.end(), path.begin(), [](wchar_t ch) {
+                return static_cast<wchar_t>(std::towlower(ch));
+            });
+            return path;
+        }
+
+        std::wstring StripExtendedPathPrefixW(std::wstring path) {
+            constexpr wchar_t uncPrefix[] = L"\\\\?\\UNC\\";
+            constexpr wchar_t dosPrefix[] = L"\\\\?\\";
+            if (path.compare(0, std::wcslen(uncPrefix), uncPrefix) == 0)
+                return L"\\\\" + path.substr(std::wcslen(uncPrefix));
+            if (path.compare(0, std::wcslen(dosPrefix), dosPrefix) == 0)
+                return path.substr(std::wcslen(dosPrefix));
+            return path;
+        }
+
+        struct ZipEntryWriteState {
+            FILE *file = nullptr;
+        };
+
+        struct ZipPlanEntry {
+            size_t index = 0;
+            std::wstring relativePath;
+            bool isDirectory = false;
+        };
+
+        size_t WriteZipEntryChunk(void *arg, uint64_t offset, const void *data, size_t size) {
+            auto *state = static_cast<ZipEntryWriteState *>(arg);
+            if (!state || !state->file || (!data && size > 0))
+                return 0;
+            if (_fseeki64(state->file, static_cast<__int64>(offset), SEEK_SET) != 0)
+                return 0;
+            if (size == 0)
+                return 0;
+            return fwrite(data, 1, size, state->file);
+        }
+
+        bool TryBuildSafeZipRelativePath(const char *entryName, std::wstring &relativePath) {
+            relativePath.clear();
+            if (!entryName || entryName[0] == '\0')
+                return false;
+
+            std::string name(entryName);
+            if (name.empty() || name[0] == '/' || name[0] == '\\')
+                return false;
+            if (name.size() >= 2 && name[1] == ':')
+                return false;
+            if (name.find('\\') != std::string::npos)
+                return false;
+
+            std::wstring relative;
+            size_t segmentStart = 0;
+            while (segmentStart < name.size()) {
+                const size_t separator = name.find('/', segmentStart);
+                const size_t segmentEnd = separator == std::string::npos ? name.size() : separator;
+                const std::string segment = name.substr(segmentStart, segmentEnd - segmentStart);
+
+                if (segment.empty()) {
+                    if (separator == std::string::npos && segmentStart == name.size() - 1)
+                        break;
+                    return false;
+                }
+                if (segment == "." || segment == "..")
+                    return false;
+
+                if (!relative.empty())
+                    relative += L"\\";
+                relative += Utf8ToUtf16(segment);
+
+                if (separator == std::string::npos)
+                    break;
+                segmentStart = separator + 1;
+            }
+
+            if (relative.empty())
+                return false;
+
+            relativePath = relative;
+            return true;
+        }
+
+        std::wstring BuildZipStagingDirectory(const std::wstring &dest) {
+            const std::wstring resolvedDest = ResolvePathW(dest);
+            const std::wstring parent = GetDirectoryW(resolvedDest);
+            const std::wstring leaf = GetFileNameW(resolvedDest);
+            if (parent.empty() || leaf.empty())
+                return {};
+
+            wchar_t suffix[64] = {};
+            _snwprintf(suffix,
+                       sizeof(suffix) / sizeof(suffix[0]),
+                       L".extracting-%lu-%lu",
+                       static_cast<unsigned long>(::GetCurrentProcessId()),
+                       static_cast<unsigned long>(::GetTickCount()));
+            suffix[(sizeof(suffix) / sizeof(suffix[0])) - 1] = L'\0';
+            return CombinePathW(parent, leaf + suffix);
+        }
+
+        bool CopyDirectoryContentsW(const std::wstring &source, const std::wstring &dest) {
+            std::error_code ec;
+            const std::filesystem::path sourcePath(source);
+            const std::filesystem::path destPath(dest);
+
+            std::filesystem::create_directories(destPath, ec);
+            if (ec)
+                return false;
+
+            for (std::filesystem::recursive_directory_iterator it(sourcePath, ec), end; it != end && !ec; it.increment(ec)) {
+                const std::filesystem::path relative = it->path().lexically_relative(sourcePath);
+                const std::filesystem::path target = destPath / relative;
+                if (it->is_directory(ec)) {
+                    if (ec)
+                        return false;
+                    std::filesystem::create_directories(target, ec);
+                    if (ec)
+                        return false;
+                } else if (it->is_regular_file(ec)) {
+                    if (ec)
+                        return false;
+                    std::filesystem::create_directories(target.parent_path(), ec);
+                    if (ec)
+                        return false;
+                    std::filesystem::copy_file(it->path(), target, std::filesystem::copy_options::overwrite_existing, ec);
+                    if (ec)
+                        return false;
+                }
+            }
+
+            return !ec;
+        }
+    } // namespace
+
+    // ========================================================================
+    // File existence checks (W-primary)
+    // ========================================================================
+
+    bool FileExistsA(const std::string &file) {
+        if (file.empty()) return false;
+        return FileExistsW(AnsiToUtf16(file));
+    }
+
+    bool FileExistsW(const std::wstring &file) {
+        if (file.empty())
+            return false;
+        DWORD attr = ::GetFileAttributesW(file.c_str());
+        return (attr != INVALID_FILE_ATTRIBUTES &&
+            !(attr & FILE_ATTRIBUTE_DIRECTORY));
+    }
+
+    bool FileExistsUtf8(const std::string &file) {
+        if (file.empty()) return false;
+        return FileExistsW(Utf8ToUtf16(file));
+    }
+
+    // ========================================================================
+    // Directory existence checks (W-primary)
+    // ========================================================================
+
+    bool DirectoryExistsA(const std::string &dir) {
+        if (dir.empty()) return false;
+        return DirectoryExistsW(AnsiToUtf16(dir));
+    }
+
+    bool DirectoryExistsW(const std::wstring &dir) {
+        if (dir.empty())
+            return false;
+        DWORD attr = ::GetFileAttributesW(dir.c_str());
+        return attr != INVALID_FILE_ATTRIBUTES &&
+               (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    }
+
+    bool DirectoryExistsUtf8(const std::string &dir) {
+        if (dir.empty()) return false;
+        return DirectoryExistsW(Utf8ToUtf16(dir));
+    }
+
+    // ========================================================================
+    // Path existence checks (W-primary)
+    // ========================================================================
+
+    bool PathExistsA(const std::string &path) {
+        if (path.empty()) return false;
+        return PathExistsW(AnsiToUtf16(path));
+    }
+
+    bool PathExistsW(const std::wstring &path) {
+        if (path.empty())
+            return false;
+        DWORD attr = ::GetFileAttributesW(path.c_str());
+        return attr != INVALID_FILE_ATTRIBUTES;
+    }
+
+    bool PathExistsUtf8(const std::string &path) {
+        if (path.empty()) return false;
+        return PathExistsW(Utf8ToUtf16(path));
+    }
+
+    // ========================================================================
+    // Directory creation (W-primary)
+    // ========================================================================
+
+    bool CreateDirectoryA(const std::string &dir) {
+        if (dir.empty()) return false;
+        return CreateDirectoryW(AnsiToUtf16(dir));
+    }
+
+    bool CreateDirectoryW(const std::wstring &dir) {
+        if (dir.empty())
+            return false;
+        if (DirectoryExistsW(dir))
+            return true;
+        return ::CreateDirectoryW(dir.c_str(), nullptr) == TRUE;
+    }
+
+    bool CreateDirectoryUtf8(const std::string &dir) {
+        if (dir.empty()) return false;
+        return CreateDirectoryW(Utf8ToUtf16(dir));
+    }
+
+    // ========================================================================
+    // Create directory tree (W-primary)
+    // ========================================================================
+
+    bool CreateFileTreeA(const std::string &path) {
+        if (path.empty()) return false;
+        return CreateFileTreeW(AnsiToUtf16(path));
+    }
+
+    bool CreateFileTreeW(const std::wstring &path) {
+        if (path.empty())
+            return false;
+
+        std::wstring normalizedPath = path;
+        std::replace(normalizedPath.begin(), normalizedPath.end(), L'/', L'\\');
+
+        size_t startPos = 0;
+
+        // Handle drive letter (e.g., "C:")
+        std::wstring drivePart;
+        if (normalizedPath.size() > 2 && normalizedPath[1] == L':') {
+            drivePart = normalizedPath.substr(0, 2);
+            startPos = 2;
+            if (normalizedPath.size() > 2 && normalizedPath[2] == L'\\')
+                startPos = 3;
+        }
+
+        // Split by backslashes
+        std::wstring currentPath = drivePart;
+        size_t pos;
+
+        while ((pos = normalizedPath.find(L'\\', startPos)) != std::wstring::npos) {
+            if (pos > startPos) {
+                std::wstring segment = normalizedPath.substr(startPos, pos - startPos);
+                currentPath += L"\\" + segment;
+
+                if (!DirectoryExistsW(currentPath)) {
+                    if (!CreateDirectoryW(currentPath))
+                        return false;
+                }
+            }
+            startPos = pos + 1;
+        }
+
+        // Handle the last segment
+        if (startPos < normalizedPath.size()) {
+            std::wstring segment = normalizedPath.substr(startPos);
+            currentPath += L"\\" + segment;
+
+            if (!DirectoryExistsW(currentPath)) {
+                if (!CreateDirectoryW(currentPath))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool CreateFileTreeUtf8(const std::string &path) {
+        if (path.size() < 3) return false;
+        return CreateFileTreeW(Utf8ToUtf16(path));
+    }
+
+    // ========================================================================
+    // File deletion (W-primary)
+    // ========================================================================
+
+    bool DeleteFileA(const std::string &path) {
+        if (path.empty()) return false;
+        return DeleteFileW(AnsiToUtf16(path));
+    }
+
+    bool DeleteFileW(const std::wstring &path) {
+        if (path.empty() || !FileExistsW(path))
+            return false;
+        return ::DeleteFileW(path.c_str()) == TRUE;
+    }
+
+    bool DeleteFileUtf8(const std::string &path) {
+        if (path.empty()) return false;
+        return DeleteFileW(Utf8ToUtf16(path));
+    }
+
+    // ========================================================================
+    // Directory deletion (W-primary)
+    // ========================================================================
+
+    bool DeleteDirectoryA(const std::string &path) {
+        if (path.empty()) return false;
+        return DeleteDirectoryW(AnsiToUtf16(path));
+    }
+
+    bool DeleteDirectoryW(const std::wstring &path) {
+        if (path.empty() || !DirectoryExistsW(path))
+            return false;
+        const DWORD rootAttr = ::GetFileAttributesW(path.c_str());
+        if (rootAttr == INVALID_FILE_ATTRIBUTES ||
+            (rootAttr & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+            return false;
+        }
+        if ((rootAttr & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+            return ::RemoveDirectoryW(path.c_str()) == TRUE;
+
+        WIN32_FIND_DATAW findData;
+        std::wstring searchMask = path + L"\\*";
+        HANDLE searchHandle = ::FindFirstFileExW(searchMask.c_str(), FindExInfoBasic, &findData, FindExSearchNameMatch,
+                                                 nullptr, 0);
+
+        if (searchHandle == INVALID_HANDLE_VALUE) {
+            if (::GetLastError() == ERROR_FILE_NOT_FOUND)
+                return ::RemoveDirectoryW(path.c_str()) == TRUE;
+            return false;
+        }
+
+        bool success = true;
+        do {
+            if (wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0)
+                continue;
+
+            std::wstring filePath = path + L'\\' + findData.cFileName;
+
+            const bool isDirectory = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+            const bool isReparsePoint = (findData.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+            if (isReparsePoint) {
+                success = (isDirectory
+                               ? ::RemoveDirectoryW(filePath.c_str()) == TRUE
+                               : ::DeleteFileW(filePath.c_str()) == TRUE) &&
+                          success;
+            } else if (isDirectory) {
+                success = DeleteDirectoryW(filePath) && success;
+            } else {
+                success = ::DeleteFileW(filePath.c_str()) == TRUE && success;
+            }
+        } while (::FindNextFileW(searchHandle, &findData));
+
+        ::FindClose(searchHandle);
+
+        if (success) {
+            success = ::RemoveDirectoryW(path.c_str()) == TRUE;
+        }
+
+        return success;
+    }
+
+    bool DeleteDirectoryUtf8(const std::string &path) {
+        if (path.empty()) return false;
+        return DeleteDirectoryW(Utf8ToUtf16(path));
+    }
+
+    // ========================================================================
+    // File copying (W-primary)
+    // ========================================================================
+
+    bool CopyFileA(const std::string &path, const std::string &dest) {
+        if (path.empty() || dest.empty()) return false;
+        return CopyFileW(AnsiToUtf16(path), AnsiToUtf16(dest));
+    }
+
+    bool CopyFileW(const std::wstring &path, const std::wstring &dest) {
+        if (!FileExistsW(path) || dest.empty())
+            return false;
+
+        std::wstring destDir = GetDirectoryW(dest);
+        if (!destDir.empty() && !DirectoryExistsW(destDir)) {
+            if (!CreateFileTreeW(destDir))
+                return false;
+        }
+
+        return ::CopyFileW(path.c_str(), dest.c_str(), FALSE) == TRUE;
+    }
+
+    bool CopyFileUtf8(const std::string &path, const std::string &dest) {
+        return CopyFileW(Utf8ToUtf16(path), Utf8ToUtf16(dest));
+    }
+
+    // ========================================================================
+    // File moving/renaming (W-primary)
+    // ========================================================================
+
+    bool MoveFileA(const std::string &path, const std::string &dest) {
+        if (path.empty() || dest.empty()) return false;
+        return MoveFileW(AnsiToUtf16(path), AnsiToUtf16(dest));
+    }
+
+    bool MoveFileW(const std::wstring &path, const std::wstring &dest) {
+        if (!PathExistsW(path) || dest.empty())
+            return false;
+
+        std::wstring destDir = GetDirectoryW(dest);
+        if (!destDir.empty() && !DirectoryExistsW(destDir)) {
+            if (!CreateFileTreeW(destDir))
+                return false;
+        }
+
+        return ::MoveFileExW(path.c_str(), dest.c_str(), MOVEFILE_COPY_ALLOWED | MOVEFILE_REPLACE_EXISTING) == TRUE;
+    }
+
+    bool MoveFileUtf8(const std::string &path, const std::string &dest) {
+        return MoveFileW(Utf8ToUtf16(path), Utf8ToUtf16(dest));
+    }
+
+    // ========================================================================
+    // Zip extraction
+    // ========================================================================
+
+    bool ExtractZipA(const std::string &path, const std::string &dest) {
+        return ExtractZipW(Utf8ToUtf16(path), Utf8ToUtf16(dest));
+    }
+
+    bool ExtractZipW(const std::wstring &path, const std::wstring &dest) {
+        if (!FileExistsW(path) || dest.empty())
+            return false;
+
+        FILE *fp = nullptr;
+        if (_wfopen_s(&fp, path.c_str(), L"rb") != 0 || !fp)
+            return false;
+
+        std::unique_ptr<FILE, decltype(&fclose)> filePtr(fp, &fclose);
+
+        fseek(fp, 0, SEEK_END);
+        long rawSize = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+
+        if (rawSize <= 0)
+            return false;
+
+        size_t size = static_cast<size_t>(rawSize);
+        std::vector<char> buffer(size);
+        if (fread(buffer.data(), sizeof(char), size, fp) != size)
+            return false;
+
+        struct zip_t *zip = zip_stream_open(buffer.data(), size, 0, 'r');
+        if (!zip)
+            return false;
+
+        bool ok = true;
+        const std::wstring resolvedDest = ResolvePathW(dest);
+        const std::wstring stagingDirectory = BuildZipStagingDirectory(resolvedDest);
+        if (stagingDirectory.empty()) {
+            zip_stream_close(zip);
+            return false;
+        }
+        if (PathExistsW(stagingDirectory) && !DeleteDirectoryW(stagingDirectory)) {
+            zip_stream_close(zip);
+            return false;
+        }
+        if (!CreateFileTreeW(stagingDirectory)) {
+            zip_stream_close(zip);
+            return false;
+        }
+
+        std::vector<ZipPlanEntry> plan;
+        const ssize_t total = zip_entries_total(zip);
+        if (total < 0)
+            ok = false;
+
+        for (ssize_t index = 0; ok && index < total; ++index) {
+            if (zip_entry_openbyindex(zip, static_cast<size_t>(index)) < 0) {
+                ok = false;
+                break;
+            }
+
+            std::wstring relativePath;
+            const char *entryName = zip_entry_name(zip);
+            const bool validName = TryBuildSafeZipRelativePath(entryName, relativePath);
+            const bool isDirectory = zip_entry_isdir(zip) != 0;
+            if (!validName) {
+                zip_entry_close(zip);
+                ok = false;
+                break;
+            }
+
+            const std::wstring outputPath = CombinePathW(resolvedDest, relativePath);
+            const std::wstring stagingPath = CombinePathW(stagingDirectory, relativePath);
+            if (!IsPathInsideRootW(outputPath, resolvedDest) ||
+                !IsPathInsideRootW(stagingPath, stagingDirectory)) {
+                zip_entry_close(zip);
+                ok = false;
+                break;
+            }
+
+            plan.push_back({static_cast<size_t>(index), relativePath, isDirectory});
+            zip_entry_close(zip);
+        }
+
+        for (const ZipPlanEntry &entry : plan) {
+            if (!ok)
+                break;
+            if (zip_entry_openbyindex(zip, entry.index) < 0) {
+                ok = false;
+                break;
+            }
+
+            const std::wstring outputPath = CombinePathW(stagingDirectory, entry.relativePath);
+            if (entry.isDirectory) {
+                ok = CreateFileTreeW(outputPath);
+                zip_entry_close(zip);
+                continue;
+            }
+
+            const std::wstring outputDirectory = GetDirectoryW(outputPath);
+            if (!outputDirectory.empty() && !CreateFileTreeW(outputDirectory)) {
+                zip_entry_close(zip);
+                ok = false;
+                break;
+            }
+
+            FILE *out = nullptr;
+            if (_wfopen_s(&out, outputPath.c_str(), L"wb") != 0 || !out) {
+                zip_entry_close(zip);
+                ok = false;
+                break;
+            }
+
+            ZipEntryWriteState state{out};
+            ok = zip_entry_extract(zip, WriteZipEntryChunk, &state) >= 0;
+            fclose(out);
+            zip_entry_close(zip);
+        }
+
+        zip_stream_close(zip);
+        if (ok) {
+            ok = CopyDirectoryContentsW(stagingDirectory, resolvedDest);
+        }
+        DeleteDirectoryW(stagingDirectory);
+        return ok;
+    }
+
+    bool ExtractZipUtf8(const std::string &path, const std::string &dest) {
+        return ExtractZipW(Utf8ToUtf16(path), Utf8ToUtf16(dest));
+    }
+
+    // ========================================================================
+    // Path manipulation (template-based)
+    // ========================================================================
+
+    std::string GetDriveA(const std::string &path) { return detail::GetDriveImpl<char>(path); }
+    std::wstring GetDriveW(const std::wstring &path) { return detail::GetDriveImpl<wchar_t>(path); }
+    std::string GetDriveUtf8(const std::string &path) { return detail::GetDriveImpl<char>(path); }
+
+    std::string GetDirectoryA(const std::string &path) { return detail::GetDirectoryImpl<char>(path); }
+    std::wstring GetDirectoryW(const std::wstring &path) { return detail::GetDirectoryImpl<wchar_t>(path); }
+    std::string GetDirectoryUtf8(const std::string &path) { return detail::GetDirectoryImpl<char>(path); }
+
+    std::pair<std::string, std::string> GetDriveAndDirectoryA(const std::string &path) { return detail::GetDriveAndDirectoryImpl<char>(path); }
+    std::pair<std::wstring, std::wstring> GetDriveAndDirectoryW(const std::wstring &path) { return detail::GetDriveAndDirectoryImpl<wchar_t>(path); }
+    std::pair<std::string, std::string> GetDriveAndDirectoryUtf8(const std::string &path) { return detail::GetDriveAndDirectoryImpl<char>(path); }
+
+    std::string GetFileNameA(const std::string &path) { return detail::GetFileNameImpl<char>(path); }
+    std::wstring GetFileNameW(const std::wstring &path) { return detail::GetFileNameImpl<wchar_t>(path); }
+    std::string GetFileNameUtf8(const std::string &path) { return detail::GetFileNameImpl<char>(path); }
+
+    std::string GetExtensionA(const std::string &path) { return detail::GetExtensionImpl<char>(path); }
+    std::wstring GetExtensionW(const std::wstring &path) { return detail::GetExtensionImpl<wchar_t>(path); }
+    std::string GetExtensionUtf8(const std::string &path) { return detail::GetExtensionImpl<char>(path); }
+
+    std::string RemoveExtensionA(const std::string &path) { return detail::RemoveExtensionImpl<char>(path); }
+    std::wstring RemoveExtensionW(const std::wstring &path) { return detail::RemoveExtensionImpl<wchar_t>(path); }
+    std::string RemoveExtensionUtf8(const std::string &path) { return detail::RemoveExtensionImpl<char>(path); }
+
+    std::string CombinePathA(const std::string &path1, const std::string &path2) { return detail::CombinePathImpl<char>(path1, path2); }
+    std::wstring CombinePathW(const std::wstring &path1, const std::wstring &path2) { return path::NativePath(path::Join(path::Path(path1), path::Path(path2))); }
+    std::string CombinePathUtf8(const std::string &path1, const std::string &path2) { return path::Join(path1, path2); }
+
+    std::string NormalizePathA(const std::string &path) { return detail::NormalizePathImpl<char>(path); }
+    std::wstring NormalizePathW(const std::wstring &value) { return path::NativePath(path::Lexical(path::Path(value))); }
+    std::string NormalizePathUtf8(const std::string &value) { return path::Lexical(value); }
+
+    std::wstring TrimTrailingSeparatorsW(const std::wstring &path) {
+        size_t length = path.size();
+        while (length > 3 && (path[length - 1] == L'\\' || path[length - 1] == L'/'))
+            --length;
+        return path.substr(0, length);
+    }
+
+std::wstring GetParentDirectoryW(const std::wstring &path) {
+    const std::wstring trimmed = TrimTrailingSeparatorsW(path);
+    const size_t separator = trimmed.find_last_of(L"\\/");
+    if (separator == std::wstring::npos)
+        return {};
+    if (separator == 2 && trimmed.size() == 3 && trimmed[1] == L':')
+        return {};
+
+    return trimmed.substr(0, separator);
+}
+
+    bool IsPathInsideRootW(const std::wstring &path, const std::wstring &root) {
+        if (path.empty() || root.empty())
+            return false;
+
+        const std::wstring foldedPath = FoldPathCaseW(TrimTrailingSeparatorsW(ResolvePathW(path)));
+        const std::wstring foldedRoot = FoldPathCaseW(TrimTrailingSeparatorsW(ResolvePathW(root)));
+        if (foldedPath.empty() || foldedRoot.empty())
+            return false;
+        if (foldedPath == foldedRoot)
+            return true;
+        if (foldedPath.size() <= foldedRoot.size())
+            return false;
+        return foldedPath.compare(0, foldedRoot.size(), foldedRoot) == 0 &&
+               (foldedPath[foldedRoot.size()] == L'\\' || foldedPath[foldedRoot.size()] == L'/');
+    }
+
+    bool TryGetFinalPathW(const std::wstring &path, std::wstring &finalPath) {
+        finalPath.clear();
+        if (path.empty())
+            return false;
+
+        HANDLE handle = ::CreateFileW(path.c_str(),
+                                      0,
+                                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                      nullptr,
+                                      OPEN_EXISTING,
+                                      FILE_FLAG_BACKUP_SEMANTICS,
+                                      nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return false;
+
+        std::vector<wchar_t> buffer(kInitialPathBufferSize, L'\0');
+        while (true) {
+            const DWORD copied = ::GetFinalPathNameByHandleW(handle,
+                                                             buffer.data(),
+                                                             static_cast<DWORD>(buffer.size()),
+                                                             FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+            if (copied == 0) {
+                ::CloseHandle(handle);
+                finalPath.clear();
+                return false;
+            }
+            if (copied < buffer.size()) {
+                ::CloseHandle(handle);
+                finalPath = ResolvePathW(StripExtendedPathPrefixW(std::wstring(buffer.data(), copied)));
+                return !finalPath.empty();
+            }
+            buffer.assign(static_cast<size_t>(copied) + 1, L'\0');
+        }
+    }
+
+    bool TryGetFinalPathInsideRootW(const std::wstring &path, const std::wstring &root,
+                                    std::wstring &finalPath) {
+        finalPath.clear();
+        std::wstring finalRoot;
+        if (!TryGetFinalPathW(root, finalRoot) || !TryGetFinalPathW(path, finalPath) ||
+            !IsPathInsideRootW(finalPath, finalRoot)) {
+            finalPath.clear();
+            return false;
+        }
+        return true;
+    }
+
+    bool TryEncodePathForCodePage(std::wstring_view path, std::uint32_t codePage,
+                                  std::string &encodedPath) {
+        encodedPath.clear();
+        if (path.empty() || path.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)()) ||
+            path.find(L'\0') != std::wstring_view::npos || !::IsValidCodePage(codePage)) {
+            return false;
+        }
+
+        const bool utf8 = codePage == CP_UTF8;
+        const DWORD flags = utf8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
+        BOOL usedDefaultCharacter = FALSE;
+        BOOL *usedDefault = utf8 ? nullptr : &usedDefaultCharacter;
+        const int sourceLength = static_cast<int>(path.size());
+        const int encodedLength = ::WideCharToMultiByte(
+            codePage, flags, path.data(), sourceLength, nullptr, 0, nullptr, usedDefault);
+        if (encodedLength <= 0 || usedDefaultCharacter)
+            return false;
+
+        std::string candidate(static_cast<std::size_t>(encodedLength), '\0');
+        usedDefaultCharacter = FALSE;
+        if (::WideCharToMultiByte(codePage, flags, path.data(), sourceLength,
+                                  candidate.data(), encodedLength, nullptr, usedDefault) != encodedLength ||
+            usedDefaultCharacter) {
+            return false;
+        }
+
+        const DWORD decodeFlags = utf8 ? MB_ERR_INVALID_CHARS : 0;
+        const int decodedLength = ::MultiByteToWideChar(
+            codePage, decodeFlags, candidate.data(), encodedLength, nullptr, 0);
+        if (decodedLength != sourceLength)
+            return false;
+
+        std::wstring decoded(static_cast<std::size_t>(decodedLength), L'\0');
+        if (::MultiByteToWideChar(codePage, decodeFlags, candidate.data(), encodedLength,
+                                  decoded.data(), decodedLength) != decodedLength ||
+            decoded != path) {
+            return false;
+        }
+
+        encodedPath = std::move(candidate);
+        return true;
+    }
+
+    bool TryEncodePathForActiveCodePage(std::wstring_view path, std::string &encodedPath) {
+        return TryEncodePathForCodePage(path, ::GetACP(), encodedPath);
+    }
+
+    std::wstring GetShortPathW(const std::wstring &path) {
+        if (path.empty())
+            return {};
+
+        const DWORD required = ::GetShortPathNameW(path.c_str(), nullptr, 0);
+        if (required == 0)
+            return {};
+
+        std::vector<wchar_t> buffer(static_cast<std::size_t>(required), L'\0');
+        const DWORD written = ::GetShortPathNameW(path.c_str(), buffer.data(), required);
+        if (written == 0 || written >= required)
+            return {};
+        return std::wstring(buffer.data(), written);
+    }
+
+    // ========================================================================
+    // Path validation (template-based)
+    // ========================================================================
+
+    bool IsPathValidA(const std::string &path) { return detail::IsPathValidImpl<char>(path); }
+    bool IsPathValidW(const std::wstring &path) { return detail::IsPathValidImpl<wchar_t>(path); }
+    bool IsPathValidUtf8(const std::string &path) { return IsValidUtf8(path) && IsPathValidW(Utf8ToUtf16(path)); }
+
+    // ========================================================================
+    // Path type checks (template-based)
+    // ========================================================================
+
+    bool IsAbsolutePathA(const std::string &path) { return detail::IsAbsolutePathImpl<char>(path); }
+    bool IsAbsolutePathW(const std::wstring &path) { return detail::IsAbsolutePathImpl<wchar_t>(path); }
+    bool IsAbsolutePathUtf8(const std::string &path) { return detail::IsAbsolutePathImpl<char>(path); }
+
+    bool IsRelativePathA(const std::string &path) { return !IsAbsolutePathA(path); }
+    bool IsRelativePathW(const std::wstring &path) { return !IsAbsolutePathW(path); }
+    bool IsRelativePathUtf8(const std::string &path) { return !IsAbsolutePathUtf8(path); }
+
+    bool IsPathRootedA(const std::string &path) { return detail::IsPathRootedImpl<char>(path); }
+    bool IsPathRootedW(const std::wstring &path) { return detail::IsPathRootedImpl<wchar_t>(path); }
+    bool IsPathRootedUtf8(const std::string &path) { return detail::IsPathRootedImpl<char>(path); }
+
+    // ========================================================================
+    // Path resolution (template-based)
+    // ========================================================================
+
+    std::string ResolvePathA(const std::string &path) { return detail::ResolvePathImpl<char>(path); }
+    std::wstring ResolvePathW(const std::wstring &path) { return path.empty() ? std::wstring{} :
+        NormalizePathW(IsAbsolutePathW(path) ? path : CombinePathW(GetCurrentDirectoryW(), path)); }
+    std::string ResolvePathUtf8(const std::string &path) { return path::Path(ResolvePathW(Utf8ToUtf16(path))); }
+
+    std::string MakeRelativePathA(const std::string &path, const std::string &basePath) { return detail::MakeRelativePathImpl<char>(path, basePath); }
+    std::wstring MakeRelativePathW(const std::wstring &path, const std::wstring &basePath) { return detail::MakeRelativePathImpl<wchar_t>(path, basePath); }
+    std::string MakeRelativePathUtf8(const std::string &path, const std::string &basePath) { return path::Slashes(detail::MakeRelativePathImpl<char>(path, basePath)); }
+
+    // ========================================================================
+    // System paths
+    // ========================================================================
+
+    std::string GetTempPathA() {
+        return CallResizableWin32PathApi<char>(
+            [](char *buffer, DWORD size) {
+                return ::GetTempPathA(size, buffer);
+            });
+    }
+
+    std::wstring GetTempPathW() {
+        return CallResizableWin32PathApi<wchar_t>(
+            [](wchar_t *buffer, DWORD size) {
+                return ::GetTempPathW(size, buffer);
+            });
+    }
+
+    std::string GetTempPathUtf8() {
+        return Utf16ToUtf8(GetTempPathW());
+    }
+
+    std::string GetCurrentDirectoryA() {
+        return CallResizableWin32PathApi<char>(
+            [](char *buffer, DWORD size) {
+                return ::GetCurrentDirectoryA(size, buffer);
+            });
+    }
+
+    std::wstring GetCurrentDirectoryW() {
+        return CallResizableWin32PathApi<wchar_t>(
+            [](wchar_t *buffer, DWORD size) {
+                return ::GetCurrentDirectoryW(size, buffer);
+            });
+    }
+
+    std::string GetCurrentDirectoryUtf8() {
+        return Utf16ToUtf8(GetCurrentDirectoryW());
+    }
+
+    bool SetCurrentDirectoryA(const std::string &path) {
+        if (path.empty()) return false;
+        return SetCurrentDirectoryW(AnsiToUtf16(path));
+    }
+
+    bool SetCurrentDirectoryW(const std::wstring &path) {
+        if (path.empty()) return false;
+        return ::SetCurrentDirectoryW(path.c_str()) == TRUE;
+    }
+
+    bool SetCurrentDirectoryUtf8(const std::string &path) {
+        return SetCurrentDirectoryW(Utf8ToUtf16(path));
+    }
+
+    std::string GetExecutablePathA() {
+        return CallResizableModulePathApi<char>(
+            [](char *buffer, DWORD size) {
+                return ::GetModuleFileNameA(nullptr, buffer, size);
+            });
+    }
+
+    std::wstring GetExecutablePathW() {
+        return CallResizableModulePathApi<wchar_t>(
+            [](wchar_t *buffer, DWORD size) {
+                return ::GetModuleFileNameW(nullptr, buffer, size);
+            });
+    }
+
+    std::string GetExecutablePathUtf8() {
+        return Utf16ToUtf8(GetExecutablePathW());
+    }
+
+    // ========================================================================
+    // File properties (W-primary)
+    // ========================================================================
+
+    int64_t GetFileSizeA(const std::string &path) {
+        if (path.empty()) return -1;
+        return GetFileSizeW(AnsiToUtf16(path));
+    }
+
+    int64_t GetFileSizeW(const std::wstring &path) {
+        if (!FileExistsW(path))
+            return -1;
+
+        WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+        if (!::GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fileInfo))
+            return -1;
+
+        LARGE_INTEGER size;
+        size.LowPart = fileInfo.nFileSizeLow;
+        size.HighPart = fileInfo.nFileSizeHigh;
+        return size.QuadPart;
+    }
+
+    int64_t GetFileSizeUtf8(const std::string &path) {
+        return GetFileSizeW(Utf8ToUtf16(path));
+    }
+
+    FileTime GetFileTimeA(const std::string &path) {
+        if (path.empty()) return {0, 0, 0};
+        return GetFileTimeW(AnsiToUtf16(path));
+    }
+
+    FileTime GetFileTimeW(const std::wstring &path) {
+        FileTime result = {0, 0, 0};
+
+        if (!PathExistsW(path))
+            return result;
+
+        WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+        if (!::GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fileInfo))
+            return result;
+
+        LARGE_INTEGER li;
+
+        li.LowPart = fileInfo.ftCreationTime.dwLowDateTime;
+        li.HighPart = fileInfo.ftCreationTime.dwHighDateTime;
+        result.creationTime = li.QuadPart;
+
+        li.LowPart = fileInfo.ftLastAccessTime.dwLowDateTime;
+        li.HighPart = fileInfo.ftLastAccessTime.dwHighDateTime;
+        result.lastAccessTime = li.QuadPart;
+
+        li.LowPart = fileInfo.ftLastWriteTime.dwLowDateTime;
+        li.HighPart = fileInfo.ftLastWriteTime.dwHighDateTime;
+        result.lastWriteTime = li.QuadPart;
+
+        return result;
+    }
+
+    FileTime GetFileTimeUtf8(const std::string &path) {
+        return GetFileTimeW(Utf8ToUtf16(path));
+    }
+
+    // ========================================================================
+    // File I/O
+    // ========================================================================
+
+    std::string ReadTextFileA(const std::string &path) {
+        if (!FileExistsA(path))
+            return "";
+
+        std::ifstream file(path);
+        if (!file.is_open())
+            return "";
+
+        return std::string(
+            std::istreambuf_iterator<char>(file),
+            std::istreambuf_iterator<char>()
+        );
+    }
+
+    std::wstring ReadTextFileW(const std::wstring &path) {
+        if (!FileExistsW(path))
+            return L"";
+
+        std::wifstream file(path.c_str());
+        if (!file.is_open())
+            return L"";
+
+        return std::wstring(
+            std::istreambuf_iterator<wchar_t>(file),
+            std::istreambuf_iterator<wchar_t>()
+        );
+    }
+
+    std::string ReadTextFileUtf8(const std::string &path) {
+        return ReadTextFileA(path);
+    }
+
+    bool WriteTextFileA(const std::string &path, const std::string &content) {
+        std::string dir = GetDirectoryA(path);
+        if (!dir.empty() && !DirectoryExistsA(dir)) {
+            if (!CreateFileTreeA(dir))
+                return false;
+        }
+
+        std::ofstream file(path);
+        if (!file.is_open())
+            return false;
+
+        file << content;
+        return file.good();
+    }
+
+    bool WriteTextFileW(const std::wstring &path, const std::wstring &content) {
+        std::wstring dir = GetDirectoryW(path);
+        if (!dir.empty() && !DirectoryExistsW(dir)) {
+            if (!CreateFileTreeW(dir))
+                return false;
+        }
+
+        std::wofstream file(path.c_str());
+        if (!file.is_open())
+            return false;
+
+        file << content;
+        return file.good();
+    }
+
+    bool WriteTextFileUtf8(const std::string &path, const std::string &content) {
+        return WriteTextFileA(path, content);
+    }
+
+    std::vector<uint8_t> ReadBinaryFileA(const std::string &path) {
+        if (!FileExistsA(path))
+            return {};
+
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open())
+            return {};
+
+        file.seekg(0, std::ios::end);
+        std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        std::vector<uint8_t> buffer(static_cast<size_t>(size));
+        if (file.read(reinterpret_cast<char *>(buffer.data()), size))
+            return buffer;
+
+        return {};
+    }
+
+    std::vector<uint8_t> ReadBinaryFileW(const std::wstring &path) {
+        if (!FileExistsW(path))
+            return {};
+
+        FILE *file = nullptr;
+        _wfopen_s(&file, path.c_str(), L"rb");
+        if (!file)
+            return {};
+
+        std::unique_ptr<FILE, decltype(&fclose)> filePtr(file, &fclose);
+
+        fseek(file, 0, SEEK_END);
+        long size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        if (size <= 0)
+            return {};
+
+        std::vector<uint8_t> buffer(static_cast<size_t>(size));
+        if (fread(buffer.data(), 1, size, file) == static_cast<size_t>(size))
+            return buffer;
+
+        return {};
+    }
+
+    std::vector<uint8_t> ReadBinaryFileUtf8(const std::string &path) {
+        return ReadBinaryFileW(Utf8ToUtf16(path));
+    }
+
+    bool ReadFileBytesW(const std::wstring &path, std::string &out) {
+        std::uint32_t error;
+        return ReadFileBytesW(path, out, error);
+    }
+
+    bool ReadFileBytesW(const std::wstring &path, std::string &out, std::uint32_t &error) {
+        out.clear();
+        error = ERROR_SUCCESS;
+        if (path.empty() || path.find(L'\0') != std::wstring::npos) {
+            error = ERROR_INVALID_NAME;
+            return false;
+        }
+        HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                      OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+        if (handle == INVALID_HANDLE_VALUE) {
+            error = ::GetLastError();
+            return false;
+        }
+        ScopedFile file(handle);
+        LARGE_INTEGER size;
+        if (!::GetFileSizeEx(file.Get(), &size)) {
+            error = ::GetLastError();
+            return false;
+        }
+        std::string bytes;
+        if (size.QuadPart < 0 || static_cast<std::uint64_t>(size.QuadPart) > bytes.max_size()) {
+            error = ERROR_FILE_TOO_LARGE;
+            return false;
+        }
+        bytes.resize(static_cast<std::size_t>(size.QuadPart));
+        std::size_t offset = 0;
+        while (offset < bytes.size()) {
+            const DWORD requested = static_cast<DWORD>(std::min<std::size_t>(
+                bytes.size() - offset, std::numeric_limits<DWORD>::max()));
+            DWORD read = 0;
+            if (!::ReadFile(file.Get(), bytes.data() + offset, requested, &read, nullptr)) {
+                error = ::GetLastError();
+                return false;
+            }
+            if (read == 0) {
+                error = ERROR_HANDLE_EOF;
+                return false;
+            }
+            offset += read;
+        }
+        out.swap(bytes);
+        return true;
+    }
+
+    bool ReadFileBytesUtf8(const std::string &path, std::string &out) {
+        return ReadFileBytesW(Utf8ToUtf16(path), out);
+    }
+
+    bool WriteFileBytesAtomicW(const std::wstring &path, std::string_view data,
+                               std::uint32_t &error, bool replaceExisting) {
+        error = ERROR_SUCCESS;
+        if (path.empty() || path.find(L'\0') != std::wstring::npos) {
+            error = ERROR_INVALID_NAME;
+            return false;
+        }
+        const DWORD required = ::GetFullPathNameW(path.c_str(), 0, nullptr, nullptr);
+        if (required == 0) {
+            error = ::GetLastError();
+            return false;
+        }
+        std::wstring destination(required, L'\0');
+        const DWORD copied = ::GetFullPathNameW(path.c_str(), required, destination.data(), nullptr);
+        if (copied == 0 || copied >= required) {
+            error = copied == 0 ? ::GetLastError() : ERROR_INSUFFICIENT_BUFFER;
+            return false;
+        }
+        destination.resize(copied);
+
+        static LONG sequence = 0;
+        PendingReplacement replacement;
+        HANDLE handle = INVALID_HANDLE_VALUE;
+        for (unsigned int attempt = 0; attempt < 64; ++attempt) {
+            replacement.Path = destination + L".tmp-" + std::to_wstring(::GetCurrentProcessId()) + L"-" +
+                               std::to_wstring(static_cast<unsigned long>(::InterlockedIncrement(&sequence)));
+            handle = ::CreateFileW(replacement.Path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (handle != INVALID_HANDLE_VALUE) {
+                replacement.Owned = true;
+                break;
+            }
+            error = ::GetLastError();
+            if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS)
+                return false;
+        }
+        if (handle == INVALID_HANDLE_VALUE)
+            return false;
+        ScopedFile file(handle);
+        std::size_t offset = 0;
+        while (offset < data.size()) {
+            const DWORD requested = static_cast<DWORD>(std::min<std::size_t>(
+                data.size() - offset, std::numeric_limits<DWORD>::max()));
+            DWORD written = 0;
+            if (!::WriteFile(file.Get(), data.data() + offset, requested, &written, nullptr)) {
+                error = ::GetLastError();
+                return false;
+            }
+            if (written == 0) {
+                error = ERROR_WRITE_FAULT;
+                return false;
+            }
+            offset += written;
+        }
+        if (!::FlushFileBuffers(file.Get()) || !file.Close()) {
+            error = ::GetLastError();
+            return false;
+        }
+
+        // Do not copy/delete or move the original aside. The sibling is on the
+        // same volume, so publication is one rename, including replacement.
+        if (!BML::Platform::PublishFile(replacement.Path, destination, replaceExisting, error))
+            return false;
+        replacement.Owned = false;
+        return true;
+    }
+
+    bool WriteBinaryFileA(const std::string &path, const std::vector<uint8_t> &data) {
+        std::string dir = GetDirectoryA(path);
+        if (!dir.empty() && !DirectoryExistsA(dir)) {
+            if (!CreateFileTreeA(dir))
+                return false;
+        }
+
+        std::ofstream file(path, std::ios::binary);
+        if (!file.is_open())
+            return false;
+
+        file.write(reinterpret_cast<const char *>(data.data()), data.size());
+        return file.good();
+    }
+
+    bool WriteBinaryFileW(const std::wstring &path, const std::vector<uint8_t> &data) {
+        std::wstring dir = GetDirectoryW(path);
+        if (!dir.empty() && !DirectoryExistsW(dir)) {
+            if (!CreateFileTreeW(dir))
+                return false;
+        }
+
+        FILE *file = nullptr;
+        _wfopen_s(&file, path.c_str(), L"wb");
+        if (!file)
+            return false;
+
+        std::unique_ptr<FILE, decltype(&fclose)> filePtr(file, &fclose);
+
+        return fwrite(data.data(), 1, data.size(), file) == data.size();
+    }
+
+    bool WriteBinaryFileUtf8(const std::string &path, const std::vector<uint8_t> &data) {
+        return WriteBinaryFileW(Utf8ToUtf16(path), data);
+    }
+
+    // ========================================================================
+    // Temporary files
+    // ========================================================================
+
+    std::string CreateTempFileA(const std::string &prefix) {
+        char tempPath[MAX_PATH];
+        char tempFileName[MAX_PATH];
+
+        DWORD pathLen = ::GetTempPathA(MAX_PATH, tempPath);
+        if (pathLen == 0 || pathLen > MAX_PATH) {
+            return "";
+        }
+
+        std::string prefixToUse = prefix.empty() ? "tmp" : prefix;
+        UINT uniqueNum = ::GetTempFileNameA(tempPath, prefixToUse.c_str(), 0, tempFileName);
+        if (uniqueNum == 0) {
+            return "";
+        }
+
+        return std::string(tempFileName);
+    }
+
+    std::wstring CreateTempFileW(const std::wstring &prefix) {
+        wchar_t tempPath[MAX_PATH];
+        wchar_t tempFileName[MAX_PATH];
+
+        DWORD pathLen = ::GetTempPathW(MAX_PATH, tempPath);
+        if (pathLen == 0 || pathLen > MAX_PATH) {
+            return L"";
+        }
+
+        std::wstring prefixToUse = prefix.empty() ? L"tmp" : prefix;
+        UINT uniqueNum = ::GetTempFileNameW(tempPath, prefixToUse.c_str(), 0, tempFileName);
+        if (uniqueNum == 0) {
+            return L"";
+        }
+
+        return std::wstring(tempFileName);
+    }
+
+    std::string CreateTempFileUtf8(const std::string &prefix) {
+        return Utf16ToUtf8(CreateTempFileW(Utf8ToUtf16(prefix)));
+    }
+
+    // ========================================================================
+    // Directory listing (W-primary)
+    // ========================================================================
+
+    std::vector<std::string> ListFilesA(const std::string &dir, const std::string &pattern) {
+        auto wideFiles = ListFilesW(AnsiToUtf16(dir), AnsiToUtf16(pattern));
+        std::vector<std::string> files;
+        files.reserve(wideFiles.size());
+        for (const auto &wf : wideFiles) {
+            files.push_back(Utf16ToAnsi(wf));
+        }
+        return files;
+    }
+
+    std::vector<std::wstring> ListFilesW(const std::wstring &dir, const std::wstring &pattern) {
+        std::vector<std::wstring> files;
+
+        if (!DirectoryExistsW(dir))
+            return files;
+
+        std::wstring searchPath = CombinePathW(dir, pattern);
+        WIN32_FIND_DATAW findData;
+        HANDLE hFind = FindFirstFileW(searchPath.c_str(), &findData);
+
+        if (hFind == INVALID_HANDLE_VALUE)
+            return files;
+
+        do {
+            if ((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+                files.push_back(findData.cFileName);
+            }
+        } while (FindNextFileW(hFind, &findData));
+
+        FindClose(hFind);
+        return files;
+    }
+
+    std::vector<std::string> ListFilesUtf8(const std::string &dir, const std::string &pattern) {
+        std::vector<std::wstring> wideFiles = ListFilesW(Utf8ToUtf16(dir), Utf8ToUtf16(pattern));
+        std::vector<std::string> files;
+        files.reserve(wideFiles.size());
+        for (const auto &wideFile : wideFiles) {
+            files.push_back(Utf16ToUtf8(wideFile));
+        }
+        return files;
+    }
+
+    bool ListFilePathsRecursiveW(const std::wstring &dir, std::vector<std::wstring> &files) {
+        files.clear();
+        if (!DirectoryExistsW(dir))
+            return false;
+
+        std::error_code ec;
+        for (std::filesystem::recursive_directory_iterator it(dir, ec), end;
+             it != end && !ec;
+             it.increment(ec)) {
+            if (it->is_regular_file(ec))
+                files.push_back(it->path().wstring());
+        }
+
+        if (!ec)
+            return true;
+
+        files.clear();
+        return false;
+    }
+
+    std::vector<std::string> ListDirectoriesA(const std::string &dir, const std::string &pattern) {
+        auto wideDirs = ListDirectoriesW(AnsiToUtf16(dir), AnsiToUtf16(pattern));
+        std::vector<std::string> directories;
+        directories.reserve(wideDirs.size());
+        for (const auto &wd : wideDirs) {
+            directories.push_back(Utf16ToAnsi(wd));
+        }
+        return directories;
+    }
+
+    std::vector<std::wstring> ListDirectoriesW(const std::wstring &dir, const std::wstring &pattern) {
+        std::vector<std::wstring> directories;
+
+        if (!DirectoryExistsW(dir))
+            return directories;
+
+        std::wstring searchPath = CombinePathW(dir, pattern);
+        WIN32_FIND_DATAW findData;
+        HANDLE hFind = FindFirstFileW(searchPath.c_str(), &findData);
+
+        if (hFind == INVALID_HANDLE_VALUE)
+            return directories;
+
+        do {
+            if ((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+                wcscmp(findData.cFileName, L".") != 0 &&
+                wcscmp(findData.cFileName, L"..") != 0) {
+                directories.push_back(findData.cFileName);
+            }
+        } while (FindNextFileW(hFind, &findData));
+
+        FindClose(hFind);
+        return directories;
+    }
+
+    std::vector<std::string> ListDirectoriesUtf8(const std::string &dir, const std::string &pattern) {
+        std::vector<std::wstring> wideDirs = ListDirectoriesW(Utf8ToUtf16(dir), Utf8ToUtf16(pattern));
+        std::vector<std::string> directories;
+        directories.reserve(wideDirs.size());
+        for (const auto &wideDir : wideDirs) {
+            directories.push_back(Utf16ToUtf8(wideDir));
+        }
+        return directories;
+    }
+}

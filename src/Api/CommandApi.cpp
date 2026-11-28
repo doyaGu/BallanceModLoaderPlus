@@ -1,4 +1,5 @@
 #include "Api/CommandApi.h"
+#include "Api/ModApi.h"
 
 #include <cstring>
 #include <exception>
@@ -6,14 +7,13 @@
 #include <utility>
 #include <vector>
 
-#include <intrin.h>
+#include "Platform/Module.h"
 
-#include "BML/IBML.h"
-#include "BML/ICommand.h"
+#include "Loader/ModContext.h"
+#include "Console/CommandRecord.h"
 #include "Console/CommandContext.h"
 #include "Console/Shell/ShellIo.h"
 #include "Console/Shell/ShellTypes.h"
-#include "Loader/ModContext.h"
 #include "Logging/Logger.h"
 #include "StringUtils.h"
 
@@ -37,16 +37,15 @@ int ServeOnMainThread(Body &&body) {
     }
 }
 
-class CallbackCommand final : public ICommand {
+class CallbackCommand final {
 public:
-    explicit CallbackCommand(const BML_CommandDefinition &definition)
-        : m_Name(definition.Name),
+    explicit CallbackCommand(ModContext &context, ModRecord *owner,
+                             const BML_CommandDefinition &definition)
+        : m_Context(context), m_Owner(owner), m_Name(definition.Name),
           m_Alias(definition.Alias ? definition.Alias : ""),
           m_Description(definition.Description ? definition.Description : ""),
-          m_Cheat((definition.Flags & BML_COMMAND_CHEAT) != 0),
-          m_UserData(definition.UserData),
-          m_Execute(definition.Execute),
-          m_Complete(definition.Complete),
+          m_Cheat((definition.Flags & BML_COMMAND_CHEAT) != 0), m_UserData(definition.UserData),
+          m_Execute(definition.Execute), m_Complete(definition.Complete),
           m_Release(definition.Release) {}
 
     ~CallbackCommand() {
@@ -58,10 +57,13 @@ public:
         }
     }
 
-    std::string GetName() override { return m_Name; }
-    std::string GetAlias() override { return m_Alias; }
-    std::string GetDescription() override { return m_Description; }
-    bool IsCheat() override { return m_Cheat; }
+    std::string GetName() { return m_Name; }
+
+    std::string GetAlias() { return m_Alias; }
+
+    std::string GetDescription() { return m_Description; }
+
+    bool IsCheat() { return m_Cheat; }
 
     const std::string &Name() const noexcept { return m_Name; }
     bool IsActive() const noexcept { return m_ActiveCalls != 0; }
@@ -70,9 +72,9 @@ public:
     }
     void AdoptUserData() noexcept { m_OwnsUserData = true; }
 
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(
-        IBML *bml, const std::vector<std::string> &args) override;
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                    const std::vector<std::string> &args);
 
 private:
     class ActiveCall {
@@ -93,6 +95,8 @@ private:
         CallbackCommand &m_Command;
     };
 
+    ModContext &m_Context;
+    ModRecord *m_Owner = nullptr;
     std::string m_Name;
     std::string m_Alias;
     std::string m_Description;
@@ -106,7 +110,7 @@ private:
 };
 
 struct OutputContext {
-    IBML *Bml = nullptr;
+    ModContext *Bml = nullptr;
 };
 
 struct CompletionContext {
@@ -183,7 +187,7 @@ std::vector<const char *> BuildArguments(const std::vector<std::string> &args) {
 int BML_CDECL RegisterCommand(
     const char *ownerId, const BML_CommandDefinition *definition,
     BML_CommandHandle *outHandle) {
-    const void *const callerAddress = _ReturnAddress();
+    const void *const callerAddress = BML_CALLER_ADDRESS();
     if (outHandle)
         *outHandle = BML_COMMAND_INVALID_HANDLE;
     if (!definition || !outHandle ||
@@ -192,17 +196,17 @@ int BML_CDECL RegisterCommand(
 
     return ServeOnMainThread([=](ModContext &context) {
         const std::string owner =
-            context.GetNativeModOwnerId(callerAddress, ownerId);
+            context.GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         if (!definition->Execute ||
-            !context.NativeModOwnsAddress(
+            !context.GetModLoader().NativeModOwnsAddress(
                 owner, reinterpret_cast<const void *>(definition->Execute)) ||
             (definition->Complete &&
-             !context.NativeModOwnsAddress(
+             !context.GetModLoader().NativeModOwnsAddress(
                  owner, reinterpret_cast<const void *>(definition->Complete))) ||
             (definition->Release &&
-             !context.NativeModOwnsAddress(
+             !context.GetModLoader().NativeModOwnsAddress(
                  owner, reinterpret_cast<const void *>(definition->Release))))
             return BML_ERROR_ACCESS_DENIED;
         return context.GetCommandApi().Register(owner, *definition, *outHandle);
@@ -211,13 +215,13 @@ int BML_CDECL RegisterCommand(
 
 int BML_CDECL UnregisterCommand(
     const char *ownerId, BML_CommandHandle handle) {
-    const void *const callerAddress = _ReturnAddress();
+    const void *const callerAddress = BML_CALLER_ADDRESS();
     if (handle == BML_COMMAND_INVALID_HANDLE)
         return BML_ERROR_INVALID_PARAMETER;
 
     return ServeOnMainThread([=](ModContext &context) {
         const std::string owner =
-            context.GetNativeModOwnerId(callerAddress, ownerId);
+            context.GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         return context.GetCommandApi().Unregister(owner, handle);
@@ -226,13 +230,13 @@ int BML_CDECL UnregisterCommand(
 
 int BML_CDECL SetCommandEnabled(
     const char *ownerId, BML_CommandHandle handle, int enabled) {
-    const void *const callerAddress = _ReturnAddress();
+    const void *const callerAddress = BML_CALLER_ADDRESS();
     if (handle == BML_COMMAND_INVALID_HANDLE)
         return BML_ERROR_INVALID_PARAMETER;
 
     return ServeOnMainThread([=](ModContext &context) {
         const std::string owner =
-            context.GetNativeModOwnerId(callerAddress, ownerId);
+            context.GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         return context.GetCommandApi().SetEnabled(owner, handle, enabled != 0);
@@ -345,7 +349,9 @@ BML_CommandCompletionRequest BuildCompletionRequest(
     };
 }
 
-void CallbackCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CallbackCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
+    if (!m_Context.GetModLoader().CanDispatchOwner(m_Owner)) { Shell::SetStatus(Shell::Status::Failure);return; }
+    auto ownerCall = m_Context.GetModLoader().LockModInvocation();
     ActiveCall active(*this);
     int status = Shell::Status::Failure;
     try {
@@ -353,8 +359,7 @@ void CallbackCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
         OutputContext output = {bml};
         const BML_CommandInvocation invocation =
             BuildInvocation(m_Name, args, arguments, output);
-        status = m_Execute ? m_Execute(m_UserData, &invocation)
-                           : Shell::Status::Failure;
+        status = m_Context.GetModLoader().InvokeAs(m_Owner,[&] {return m_Execute ? m_Execute(m_UserData, &invocation) : Shell::Status::Failure;});
     } catch (const std::exception &error) {
         Logger::GetDefault()->Error("Exception in command '%s': %s",
                                     m_Name.c_str(), error.what());
@@ -366,10 +371,11 @@ void CallbackCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
     Shell::SetStatus(status);
 }
 
-const std::vector<std::string> CallbackCommand::GetTabCompletion(
-    IBML *, const std::vector<std::string> &args) {
-    if (!m_Complete)
+const std::vector<std::string>
+CallbackCommand::GetTabCompletion(ModContext *, const std::vector<std::string> &args) {
+    if (!m_Complete || !m_Context.GetModLoader().CanDispatchOwner(m_Owner))
         return {};
+    auto ownerCall = m_Context.GetModLoader().LockModInvocation();
 
     ActiveCall active(*this);
     try {
@@ -383,7 +389,7 @@ const std::vector<std::string> CallbackCommand::GetTabCompletion(
             &completionContext,
             &AddCompletion,
         };
-        const int status = m_Complete(m_UserData, &request, &completion);
+        const int status = m_Context.GetModLoader().InvokeAs(m_Owner,[&] {return m_Complete(m_UserData, &request, &completion);});
         return status == BML_OK && completionContext.Status == BML_OK
             ? std::move(items)
             : std::vector<std::string>();
@@ -400,8 +406,9 @@ const std::vector<std::string> CallbackCommand::GetTabCompletion(
 } // namespace
 
 struct CommandApi::Entry {
-    Entry(std::string owner, const BML_CommandDefinition &definition)
-        : Owner(std::move(owner)), Command(definition) {}
+    Entry(ModContext &context, std::string owner, const BML_CommandDefinition &definition)
+        : Owner(std::move(owner)),
+          Command(context, context.GetModLoader().FindMod(Owner.c_str()), definition) {}
 
     std::string Owner;
     CallbackCommand Command;
@@ -443,12 +450,10 @@ int CommandApi::Register(const std::string &owner,
         if (candidate == BML_COMMAND_INVALID_HANDLE)
             return BML_ERROR_BUSY;
 
-        auto entry = std::make_shared<Entry>(owner, definition);
+        auto *ownerMod = m_Context.GetModLoader().FindMod(owner.c_str());
+        if(!ownerMod||!AcceptsModWork(m_Context,*ownerMod))return BML_ERROR_FROZEN;
+        auto entry = std::make_shared<Entry>(m_Context, owner, definition);
         Entry *registrar = entry.get();
-        const auto inserted = m_Entries.emplace(candidate, entry);
-        if (!inserted.second)
-            return BML_ERROR_BUSY;
-
         CommandContext::CommandInfo info;
         info.Name = definition.Name;
         info.Alias = definition.Alias ? definition.Alias : "";
@@ -459,10 +464,14 @@ int CommandApi::Register(const std::string &owner,
         info.Hidden = (definition.Flags & BML_COMMAND_HIDDEN) != 0;
         info.Enabled = (definition.Flags & BML_COMMAND_DISABLED) == 0;
         info.Handle = candidate;
+        const auto inserted = m_Entries.emplace(candidate, entry);
+        if (!inserted.second)
+            return BML_ERROR_BUSY;
+
         int result = BML_ERROR_FAIL;
         try {
             result = m_Context.RegisterCallbackCommand(
-                registrar, &registrar->Command, std::move(info), entry);
+                registrar, MakeCommandRecord(&registrar->Command, std::move(info), entry));
         } catch (...) {
             m_Entries.erase(candidate);
             throw;

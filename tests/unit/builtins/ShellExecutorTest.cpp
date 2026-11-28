@@ -25,7 +25,7 @@ namespace {
         std::function<void(FakeDispatcher &, const std::vector<std::string> &)> onInvoke;
         std::vector<OutputSink *> sinks;
 
-        // Simulates a command printing through IBML::SendIngameMessage.
+        // Simulates a command printing through ModContext::SendIngameMessage.
         void Print(std::string_view message) {
             if (!sinks.empty())
                 sinks.back()->Write(message);

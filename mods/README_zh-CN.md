@@ -1,27 +1,34 @@
-# 仓库内原生 Mod
+# SDL 原生 Mod
 
-[English](README.md) | 简体中文
+本分支构建十二个原生 Mod。配置时启用 `-DBML_BUILD_MODS=ON`，使用与 Player
+匹配的 SDL CK2/VxMath SDK。IVP v1 属于原版运行时，已从本分支移除；IVP v2 不再计划实现。
 
-这里收纳原 BallanceMods 工作区中的原生 Mod。EditorMode、TASSupport 和
-Experimental 下的 Mod 没有迁入；原工作区未改动。
-
-默认构建 BML+ 时不会构建这些 Mod。使用 Win32 配置并开启选项：
-
-```powershell
-cmake -S . -B build-mods -A Win32 -DBML_BUILD_MODS=ON
-cmake --build build-mods --config RelWithDebInfo
-cmake --install build-mods --config RelWithDebInfo --prefix build-mods-install
+```sh
+cmake -S . -B build-mods -DBML_RUNTIME=sdl -DBML_BUILD_MODS=ON
+cmake --build build-mods --config Release
+cmake --install build-mods --config Release --prefix build-mods-install
 ```
 
-IVP 的测试另由 `IVP_BUILD_TESTS` 控制，具体见 [IVP 构建说明](IVP/README.md#build-and-test)。
-每个 Mod 保留自己的源码和 CMake 文件；
-`cmake/BallanceMod.cmake` 统一处理构建和打包。`3D Entities` 资源会放进对应
-Mod 的 ZIP，而不是作为散文件安装。
+将 `.bmodp` 与 `.abi.json` 一起安装，或将资源 ZIP 放入 `ModLoader/Mods`。
+`BallStickyPackage` 和 `BMLModulsPackage` 负责重新生成资源包；安装清单位于
+`share/BML/mods.txt`。
 
-只修改资源后，可单独构建 `BallStickyPackage` 或 `BMLModulsPackage` 重新打包，
-无需重编译 DLL。不同构建配置的 ZIP 分别保存在对应 Mod 的构建目录中。
+## 清单
 
-安装树的 `Mods/` 下包含全部 13 个包，`share/BML/mods.txt` 是包清单。把需要的
-`.bmodp` 或 `.zip` 复制到游戏的 `ModLoader/Mods/` 即可启用。发布时另有可选的
-`BMLPlus-Mods-<version>.zip`，可在游戏根目录解压。BML+ 主安装包默认只启用
-CameraUtilities、DebugUtilities 和 TravelMode；Updater 不会改动已安装的 Mod。
+| Mod ID | 功能 |
+| --- | --- |
+| [BMLModuls](BMLModuls/) | 扩展游戏模块与资源 |
+| [BallSticky](BallSticky/) | 可爬墙的球类型与资源 |
+| [CameraUtilities](CameraUtilities/) | 相机控制 |
+| [DebugUtilities](DebugUtilities/) | 游戏调试工具 |
+| [DeformedWB](DeformedWB/) | 木球外观变形 |
+| [DualBallControl](DualBallControl/) | 双球地图支持 |
+| [DynamicFov](DynamicFov/) | 按球速调整视野 |
+| [MapScripts](MapScripts/) | 地图回调脚本 |
+| [NewSpawn](NewSpawn/) | 保存出生/传送位置 |
+| [Segment](Segment/) | 分段表现记录 |
+| [SpiritTrail](SpiritTrail/) | 半透明最佳记录回放 |
+| [TravelMode](TravelMode/) | 旅行模式 |
+
+十二个 Mod 已通过 macOS ARM64 SDK 构建和 Player 启动装载检查，尚不等于逐 Mod
+玩法验收。关卡切换、重置、热键与各自功能须单独验证，见[验证状态](../docs/zh-CN/validation.md)。

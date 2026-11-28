@@ -1,51 +1,44 @@
-#include <BML/ILogger.h>
-#include <BML/IMod.h>
-#include <BML/ModInterface.hpp>
+#include <BML/Mod.hpp>
+#include <BML/Interface.hpp>
+#include <stdexcept>
 
 #include <__PROVIDER_CLASS__/ValueInterface.h>
 
 namespace {
 
-class HelloMod final : public IMod {
+class HelloMod final : public BML::Mod::Instance {
 public:
-    explicit HelloMod(IBML *bml)
-        : IMod(bml),
-          m_Value(*this, BML___PROVIDER_SYMBOL___PROVIDER_ID,
-                  BMLVersion(BML___PROVIDER_SYMBOL___PROVIDER_VERSION_MAJOR,
-                             BML___PROVIDER_SYMBOL___PROVIDER_VERSION_MINOR,
-                             BML___PROVIDER_SYMBOL___PROVIDER_VERSION_PATCH)) {
-        AddDependency("BML");
-    }
-
-    const char *GetID() override { return "__MOD_ID_CPP__"; }
-    const char *GetVersion() override { return "__MOD_VERSION_CPP__"; }
-    const char *GetName() override { return "__MOD_NAME_CPP__"; }
-    const char *GetAuthor() override { return "__MOD_AUTHOR_CPP__"; }
-    const char *GetDescription() override { return "__MOD_DESCRIPTION_CPP__"; }
-    DECLARE_BML_VERSION;
-
-    void OnLoad() override {
+    void OnLoad(const BML::Mod::Context &ctx) override {
         const int openStatus = m_Value.Open();
-        int readStatus = BML_ERROR_INVALID_HANDLE;
+        if (openStatus != BML_OK)
+            throw std::runtime_error("Value interface lookup failed: " +
+                                     std::to_string(openStatus));
         int value = 0;
-        if (openStatus == BML_OK)
-            readStatus = m_Value->ReadValue(35, &value);
-        GetLogger()->Info(
-            "Native profile interface consumer: open_status=%d read_status=%d value=%d",
-            openStatus, readStatus, value);
+        const int readStatus = m_Value->ReadValue(35, &value);
+        (void)ctx.LogInfo("Native profile interface consumer: open_status=" + std::to_string(openStatus) +
+                    " read_status=" + std::to_string(readStatus) +
+                    " value=" + std::to_string(value));
+        if (readStatus != BML_OK)
+            throw std::runtime_error("Value interface read failed");
     }
 
-    void OnUnload() override {
+    void OnUnload(const BML::Mod::Context &ctx) override {
         m_Value.Reset();
-        GetLogger()->Info("Native profile interface consumer: reset=true");
+        (void)ctx.LogInfo("Native profile interface consumer: reset=true");
     }
 
 private:
-    BML::Interfaces::RequiredInterface<__PROVIDER_CLASS__Traits> m_Value;
+    BML::Interfaces::Reference<__PROVIDER_CLASS__Traits> m_Value;
 };
 
 } // namespace
 
-BML_MOD_ENTRY(IMod *) BMLEntry(IBML *bml) { return new HelloMod(bml); }
-
-BML_MOD_ENTRY(void) BMLExit(IMod *mod) { delete mod; }
+BML_DEFINE_MOD(HelloMod, {
+    .Id = "__MOD_ID_CPP__",
+    .Name = "__MOD_NAME_CPP__",
+    .Version = "__MOD_VERSION_CPP__",
+    .Author = "__MOD_AUTHOR_CPP__",
+    .Description = "__MOD_DESCRIPTION_CPP__",
+    .MinimumLoaderVersion = BML_VERSION,
+    .Dependencies = {{"BML"}, {BML___PROVIDER_SYMBOL___PROVIDER_ID, std::to_string(BML___PROVIDER_SYMBOL___PROVIDER_VERSION_MAJOR) + "." + std::to_string(BML___PROVIDER_SYMBOL___PROVIDER_VERSION_MINOR) + "." + std::to_string(BML___PROVIDER_SYMBOL___PROVIDER_VERSION_PATCH), false}},
+})

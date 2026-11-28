@@ -1,56 +1,54 @@
 #pragma once
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
 #include <map>
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
+class MapScripts : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-class MapScripts : public IMod {
-public:
-	explicit MapScripts(IBML* bml) : IMod(bml) {}
+  public:
+    void OnLoad(const BML::Mod::Context &context) override {
+        m_Context = context;
+        m_Timers = ModSupport::Timers(context);
+    }
 
-	const char *GetID() override { return "MapScripts"; }
-	const char *GetVersion() override { return BML_VERSION; }
-	const char *GetName() override { return "Map Scripts"; }
-	const char *GetAuthor() override { return "Gamepiaynmo"; }
-	const char *GetDescription() override { return "Activate callback scripts in maps."; }
-	DECLARE_BML_VERSION;
 
-	void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                      XObjectArray *objArray, CKObject *masterObj) override;
+    void OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) override;
 
-	void OnPostLoadLevel() override;
-	void OnStartLevel() override;
-	void OnPreResetLevel() override;
-	void OnPostResetLevel() override;
-	void OnPauseLevel() override;
-	void OnUnpauseLevel() override;
-	void OnPreExitLevel() override;
-	void OnPreNextLevel() override;
-	void OnDead() override;
-	void OnPreEndLevel() override;
-	void OnPostEndLevel() override;
+    void OnPostLoadLevel(const BML::Mod::Context &) override;
+    void OnStartLevel(const BML::Mod::Context &) override;
+    void OnPreResetLevel(const BML::Mod::Context &) override;
+    void OnPostResetLevel(const BML::Mod::Context &) override;
+    void OnPauseLevel(const BML::Mod::Context &) override;
+    void OnUnpauseLevel(const BML::Mod::Context &) override;
+    void OnPreExitLevel(const BML::Mod::Context &) override;
+    void OnPreNextLevel(const BML::Mod::Context &) override;
+    void OnDead(const BML::Mod::Context &) override;
+    void OnPreEndLevel(const BML::Mod::Context &) override;
+    void OnPostEndLevel(const BML::Mod::Context &) override;
 
-	void OnCounterActive() override;
-	void OnCounterInactive() override;
-	void OnBallNavActive() override;
-	void OnBallNavInactive() override;
-	void OnCamNavActive() override;
-	void OnCamNavInactive() override;
-	void OnBallOff() override;
-	void OnPreCheckpointReached() override;
-	void OnPostCheckpointReached() override;
-	void OnLevelFinish() override;
-	void OnGameOver() override;
-	void OnExtraPoint() override;
-	void OnPreSubLife() override;
-	void OnPostSubLife() override;
-	void OnPreLifeUp() override;
-	void OnPostLifeUp() override;
+    void OnCounterActive(const BML::Mod::Context &) override;
+    void OnCounterInactive(const BML::Mod::Context &) override;
+    void OnBallNavActive(const BML::Mod::Context &) override;
+    void OnBallNavInactive(const BML::Mod::Context &) override;
+    void OnCamNavActive(const BML::Mod::Context &) override;
+    void OnCamNavInactive(const BML::Mod::Context &) override;
+    void OnBallOff(const BML::Mod::Context &) override;
+    void OnPreCheckpointReached(const BML::Mod::Context &) override;
+    void OnPostCheckpointReached(const BML::Mod::Context &) override;
+    void OnLevelFinish(const BML::Mod::Context &) override;
+    void OnGameOver(const BML::Mod::Context &) override;
+    void OnExtraPoint(const BML::Mod::Context &) override;
+    void OnPreSubLife(const BML::Mod::Context &) override;
+    void OnPostSubLife(const BML::Mod::Context &) override;
+    void OnPreLifeUp(const BML::Mod::Context &) override;
+    void OnPostLifeUp(const BML::Mod::Context &) override;
 
-private:
-	std::map<void*, CKBehavior*> m_MapScripts;
+  private:
+    std::map<std::string, ModSupport::Object<CKBehavior>> m_MapScripts;
 };

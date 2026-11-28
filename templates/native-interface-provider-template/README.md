@@ -7,38 +7,33 @@ version constants, and provider metadata. The project publishes
 `HelloModInterface::Interface` for consumers.
 
 The sample `ReadValue` method returns `input + 7`. Replace it with your real API.
-Add methods to the definition file and run `.\bml interface update`; the lock
+Add methods to the definition file and run `python bml.py interface update`; the lock
 file rejects reordered or changed methods unless you deliberately bump the major
 version. Do not link consumers to this Mod binary.
 
-Run the complete local loop with:
+Use the SDL SDK matching Player’s platform, architecture, dynamic host and
+protocol ABI. Core API calls cross a C seam; direct engine/ImGui extensions also
+require a matching compiler, C++ runtime and build configuration.
+On POSIX run `./bml`; on Windows run `bml.cmd`.
 
-```bat
-.\bml run
+```sh
+python bml.py build
+python bml.py run --ballance-root "/path/to/game"
+python bml.py pack
 ```
 
-The first run asks for the two folders it needs and remembers them. Use the
-commands below for CI or build troubleshooting.
+For additional interface or engine development packages, pass
+`--package-root /path/to/prefix`. The native package contains `.bmodp` and its
+`.abi.json`; install both together. Player supplies CK2, VxMath and SDL. The SDK
+finalizes macOS load commands and signatures during the build.
 
-Configure and install the provider and its interface package:
+For a manual build:
 
-```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A Win32 `
-  -DCMAKE_PREFIX_PATH="<BML-SDK>" `
-  -DVIRTOOLS_SDK_PATH="<Virtools-SDK-2.1>" `
-  -DCMAKE_INSTALL_PREFIX="<provider-package>"
-cmake --build build --config RelWithDebInfo --target install
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/sdk -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+cmake --install build --config Release --prefix /path/to/game/ModLoader
 ```
 
-The Mod is installed under `Mods`; its header and CMake package are installed
-under `include` and `lib/cmake/HelloModInterface`. A matching consumer can be
-created with:
-
-```bat
-"<BML-SDK>\scripts\bml.cmd" new native yourname.consumer ^
-  --profile interface-consumer --provider-id __MOD_ID__
-```
-
-Point that consumer's `CMAKE_PREFIX_PATH` at both the BML SDK and this provider
-package. See `share/BML/docs/en/native-mod-api.md` for lifetime and versioning
-rules.
+Choose the configuration shipped by the SDK and its target architecture.
+Match the full compiler/runtime ABI when opting into engine or ImGui extensions.

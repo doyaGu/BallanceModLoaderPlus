@@ -1,0 +1,50 @@
+# Operate only on installed copies. Resolve package dependencies to the host's
+# Bin directory, including .bmodp modules, then renew Mach-O signatures.
+set(_root "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}")
+find_program(_otool otool REQUIRED)
+find_program(_install_name_tool install_name_tool REQUIRED)
+find_program(_codesign codesign REQUIRED)
+file(GLOB _runtime_libraries "${_root}/Bin/*.dylib")
+# Player's engine and SDL are already staged and signed. Keep their install IDs
+# intact, including the versioned IDs shared by Player and the native Mods.
+list(FILTER _runtime_libraries EXCLUDE REGEX "/lib(CK2|VxMath|SDL3)(\\.|-)")
+file(GLOB _modules "${_root}/Managers/*BML*.dylib" "${_root}/BuildingBlocks/*AngelScript*.dylib" "${_root}/ModLoader/Mods/*.bmodp")
+if(EXISTS "${_root}/Bin/Updater")
+    list(APPEND _modules "${_root}/Bin/Updater")
+endif()
+foreach(_binary IN LISTS _runtime_libraries _modules)
+    if(IS_SYMLINK "${_binary}")
+        continue()
+    endif()
+    execute_process(COMMAND "${_otool}" -L "${_binary}"
+        OUTPUT_VARIABLE _dependencies COMMAND_ERROR_IS_FATAL ANY)
+    string(REPLACE "\n" ";" _lines "${_dependencies}")
+    set(_changes "")
+    foreach(_line IN LISTS _lines)
+        if(_line MATCHES "^[\t ]+(.+) \\(compatibility version ")
+            set(_old "${CMAKE_MATCH_1}")
+            get_filename_component(_name "${_old}" NAME)
+            if(EXISTS "${_root}/Bin/${_name}" AND NOT _old STREQUAL "@rpath/${_name}")
+                list(APPEND _changes -change "${_old}" "@rpath/${_name}")
+            elseif(_name MATCHES "^libSDL3.*\\.dylib$" AND EXISTS "${_root}/${_name}")
+                if(NOT _old STREQUAL "@rpath/${_name}")
+                    list(APPEND _changes -change "${_old}" "@rpath/${_name}")
+                endif()
+            elseif(_name MATCHES "^libSDL3.*\\.dylib$" AND NOT EXISTS "${_root}/Bin/${_name}")
+                message(FATAL_ERROR "The Player package must provide ${_name}; refusing a second SDL instance")
+            endif()
+        endif()
+    endforeach()
+    if(_changes)
+        execute_process(COMMAND "${_install_name_tool}" ${_changes} "${_binary}"
+            COMMAND_ERROR_IS_FATAL ANY)
+    endif()
+    # Bin dependencies copied from a system package may have an absolute ID.
+    if(_binary IN_LIST _runtime_libraries)
+        get_filename_component(_name "${_binary}" NAME)
+        execute_process(COMMAND "${_install_name_tool}" -id "@rpath/${_name}" "${_binary}"
+            COMMAND_ERROR_IS_FATAL ANY)
+    endif()
+    execute_process(COMMAND "${_codesign}" --force --sign - "${_binary}"
+        COMMAND_ERROR_IS_FATAL ANY)
+endforeach()

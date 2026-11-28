@@ -8,7 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "BML/ICommand.h"
+#include "Console/CommandRecord.h"
+#include "ScriptRuntimeScope.h"
 #include "ScriptDiagnostic.h"
 
 class ModContext;
@@ -32,20 +33,51 @@ struct ScriptCommandDefinition {
     bool Enabled = true;
 };
 
+struct ScriptCommandFrame {
+    bool Active = true;
+    std::string Name, InvokedAs, Input, Prefix;
+    bool HasInput = false;
+    std::vector<std::string> Arguments;
+    unsigned ActiveArgument = 0;
+    ModContext *Context = nullptr;
+    std::vector<std::string> *Items = nullptr;
+    int Status = BML_OK;
+};
+
+class ScriptCommandInvocation {
+public:
+    std::shared_ptr<ScriptCommandFrame> Frame;
+    std::string GetName() const;
+    std::string GetInvokedAs() const;
+    unsigned GetArgumentCount() const;
+    int ReadArgument(unsigned index, std::string &out) const;
+    bool HasInput() const;
+    std::string GetInput() const;
+    int Write(const std::string &text) const;
+};
+
+class ScriptCommandCompletionRequest : public ScriptCommandInvocation {
+public:
+    unsigned GetActiveArgument() const;
+    std::string GetPrefix() const;
+};
+
 class ScriptCommandCompletion {
 public:
-    explicit ScriptCommandCompletion(std::vector<std::string> *items = nullptr) : m_Items(items) {}
-    void Add(const std::string &value) const;
+    ScriptCommandCompletion() = default;
+    explicit ScriptCommandCompletion(std::vector<std::string> *items);
+    std::shared_ptr<ScriptCommandFrame> Frame;
+    int Add(const std::string &value) const;
+    int ReadCount(unsigned &out) const;
+    int ReadCandidate(unsigned index, std::string &out) const;
     int GetCount() const;
     std::string At(int index) const;
-
-private:
-    std::vector<std::string> *m_Items = nullptr;
 };
 
 class ScriptCommandRef {
 public:
-    ScriptCommandRef(std::weak_ptr<ScriptCommandServiceState> state, std::string key, unsigned int generation);
+    ScriptCommandRef(std::weak_ptr<ScriptCommandServiceState> state, std::string key,
+                     unsigned int generation);
 
     void AddRef();
     void Release();
@@ -55,8 +87,10 @@ public:
     std::string GetAlias() const;
     bool IsCheat() const;
     bool IsEnabled() const;
-    bool SetEnabled(bool enabled);
-    bool Unregister();
+    int Read(CommandInfo &out) const;
+    int SetEnabled(bool enabled);
+    int Unregister();
+    std::shared_ptr<ScriptControlTicket> Ticket;
 
 private:
     int m_RefCount = 1;
@@ -71,19 +105,17 @@ public:
     ~ScriptCommandService();
 
     bool Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView);
-    ScriptCommandRef *Register(asIScriptObject *command);
-    ScriptCommandRef *Register(const ScriptCommandDefinition &definition,
-                               asIScriptFunction *execute,
-                               asIScriptFunction *complete);
+    int Register(const ScriptCommandDefinition &definition, asIScriptFunction *execute,
+                 asIScriptFunction *complete, ScriptCommandRef *&out);
     bool Unregister(const std::string &name);
     void Release(ScriptDiagnostic *diagnostic = nullptr);
     size_t GetActiveCount() const;
 
 #ifdef BML_TEST
-    ScriptCommandRef *AddTestCommandForRelease(
-        const std::string &name,
-        const std::string &alias = std::string(),
-        std::function<void(const std::vector<std::string> &)> execute = {});
+    ScriptCommandRef *
+    AddTestCommandForRelease(const std::string &name, const std::string &alias = std::string(),
+                             std::function<void(const std::vector<std::string> &)> execute = {},
+                             std::function<bool()> registerHost = {});
     bool InvokeTestCommandForRelease(const std::string &name,
                                      const std::vector<std::string> &args = {});
 #endif

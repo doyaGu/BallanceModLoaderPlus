@@ -28,7 +28,7 @@ struct CKEdit::Request {
 
     Kind Action = Kind::Apply;
     Ops Candidate;
-    std::shared_ptr<Patch::Journal> Patch;
+    std::shared_ptr<Patch::Journal> Journal;
 };
 
 Patch::Patch() = default;
@@ -55,6 +55,14 @@ Status Patch::Diagnostic() const {
     return m_Journal->LastStatus;
 }
 
+Status Patch::ApplyFailure() const {
+    return m_Journal ? m_Journal->ApplyFailure : Status{};
+}
+
+Status Patch::RestoreFailure() const {
+    return m_Journal ? m_Journal->RestoreFailure : Status{};
+}
+
 std::vector<RevertConflict> Patch::Conflicts() const {
     if (!m_Journal)
         return {};
@@ -74,7 +82,7 @@ void CKEdit::Queue(Request request) {
 }
 
 bool CKEdit::NeedsFrameProcessing() const noexcept {
-    return !m_LostOverlays.empty() || !m_Queue.empty();
+    return !m_Queue.empty();
 }
 
 Status CKEdit::Ready() const {
@@ -350,6 +358,59 @@ Status CKEdit::WriteValue(const Patch &patch, Port port,
     return Parameter::Write(m_Context, parameter, value);
 }
 
+Status CKEdit::WriteLocals(
+    const std::vector<std::pair<const Patch *, Port>> &writes,
+    const Parameter::Binding &value) const {
+    struct Snapshot {
+        CKParameterLocal *Destination;
+        CKParameterLocal *Previous;
+    };
+    std::vector<Snapshot> snapshots;
+    snapshots.reserve(writes.size());
+    struct Cleanup {
+        CKContext *Context;
+        const std::vector<Snapshot> &Snapshots;
+        ~Cleanup() {
+            for (const auto &entry : Snapshots)
+                Context->DestroyObject(entry.Previous);
+        }
+    } cleanup{m_Context, snapshots};
+
+    for (const auto &[patch, port] : writes) {
+        CKBehavior *behavior = nullptr;
+        SlotInfo slot;
+        Status status = ResolvePort(*patch, port, behavior, slot);
+        if (!status)
+            return status;
+        auto *local = slot.Kind == SlotKind::Local
+            ? behavior->GetLocalParameter(slot.NativeIndex) : nullptr;
+        if (!local)
+            return Failure(Error::GraphChanged, "The Edit input is unavailable.");
+        CKParameterLocal *previous = nullptr;
+        status = Parameter::Clone(m_Context, local, previous);
+        if (!status)
+            return status;
+        snapshots.push_back({local, previous});
+    }
+
+    for (std::size_t i = 0; i < snapshots.size(); ++i) {
+        Status status = Parameter::Write(m_Context, snapshots[i].Destination, value);
+        if (status)
+            continue;
+        CKERROR recovery = CK_OK;
+        for (std::size_t rollback = i + 1; rollback > 0; --rollback) {
+            const auto &entry = snapshots[rollback - 1];
+            const CKERROR copied = entry.Destination->CopyValue(entry.Previous, FALSE);
+            if (copied != CK_OK)
+                recovery = copied;
+        }
+        if (recovery != CK_OK)
+            return Failure(Error::RevertConflict, "The Edit input could not be restored.", recovery);
+        return status;
+    }
+    return {};
+}
+
 Status CKEdit::ApplyNow(const Ops &edit,
                         const std::shared_ptr<Patch::Journal> &patch) {
     Status status = Ready();
@@ -359,16 +420,16 @@ Status CKEdit::ApplyNow(const Ops &edit,
         return Failure(Error::InvalidState,
                        "The Patch journal is unavailable.");
     PublishingScope publishing(m_Publishing);
-    status = Transaction(*this, *patch).Apply(edit);
-    if (status) {
-        std::erase_if(m_Published,
-                      [&](const std::weak_ptr<Patch::Journal> &entry) {
-                          const auto journal = entry.lock();
-                          return !journal || journal == patch;
-                      });
+    // Track the journal before any native mutation or callback. If growing
+    // the registry fails the same key can be retried on an untouched graph.
+    std::erase_if(m_Published, [](const auto &entry) { return entry.expired(); });
+    try {
         m_Published.push_back(patch);
+    } catch (const std::bad_alloc &) {
+        return Failure(Error::CreateFailed, "Cannot retain the Behavior Patch journal.",
+                       CKERR_OUTOFMEMORY);
     }
-    return status;
+    return Transaction(*this, *patch).Apply(edit);
 }
 
 void CKEdit::CloseAdmission(Patch &patch) noexcept {
@@ -450,13 +511,15 @@ Status CKEdit::Apply(const Ops &edit, Patch &out,
 
     status = ApplyNow(edit, patch);
     patch->LastStatus = status;
+    if (!status)
+        patch->ApplyFailure = status;
     patch->State = status
         ? PatchState::Active
-        : status.Code == Error::RevertConflict
+        : !patch->RestoreFailure || status.Code == Error::RevertConflict
             ? PatchState::Conflicted : PatchState::Failed;
-    if (!status && status.Code != Error::RevertConflict)
+    if (patch->State == PatchState::Failed)
         patch->Callbacks.clear();
-    if (status || status.Code == Error::RevertConflict)
+    if (status || patch->State == PatchState::Conflicted)
         out.m_Journal = std::move(patch);
     return status;
 }
@@ -475,6 +538,7 @@ Status CKEdit::CloseNow(const std::shared_ptr<Patch::Journal> &patch) {
         status = Transaction(*this, *patch).Revert();
     }
     patch->LastStatus = status;
+    patch->RestoreFailure = status;
     patch->State = status.Code == Error::RevertConflict
         ? PatchState::Conflicted : PatchState::Closed;
     if (status.Code != Error::RevertConflict)
@@ -581,35 +645,15 @@ void CKEdit::InstallationDeleted(Patch &patch) {
     CloseAdmission(*journal);
     const std::uint64_t graphId =
         static_cast<std::uint32_t>(journal->Graph.Id);
-    const auto topology = m_Topology.find(graphId);
-    if (topology != m_Topology.end())
-        (void) topology->second.Remove(journal->Key);
-    if (m_Links) {
+    // The normal inverse still owns all surviving members. Mark missing
+    // overlay endpoints so it can reconnect their anchors at the safe point.
+    if (!journal->Splices.empty() || !journal->Redirects.empty()) {
         auto &lost = m_LostOverlays[graphId];
-        for (const auto &[link, ordinal] : journal->Splices) {
-            (void) link;
+        for (const auto &[link, ordinal] : journal->Splices)
             lost.emplace(journal->Key, ordinal);
-        }
-        for (const auto &[link, ordinal] : journal->Redirects) {
-            (void) link;
+        for (const auto &[link, ordinal] : journal->Redirects)
             lost.emplace(journal->Key, ordinal);
-        }
-        const auto infrastructure = m_Links->Patches.find(graphId);
-        if (infrastructure != m_Links->Patches.end())
-            infrastructure->second.erase(journal->Key);
     }
-    const auto relations = m_Relations.find(graphId);
-    if (relations != m_Relations.end())
-        (void) relations->second.Remove(journal->Key);
-    const auto active = m_Active.find(graphId);
-    if (active != m_Active.end())
-        active->second.erase(journal->Key);
-    if (journal->StructuralEditClaim)
-        m_StructuralEdits.erase(graphId);
-    journal->State = PatchState::Closed;
-    journal->Queued = false;
-    journal->Callbacks.clear();
-    patch.m_Journal.reset();
 }
 
 void CKEdit::ObjectsToBeDeleted(const CK_ID *ids, int count) {
@@ -618,7 +662,7 @@ void CKEdit::ObjectsToBeDeleted(const CK_ID *ids, int count) {
     const std::set<CK_ID> deleting(ids, ids + count);
 
     for (auto request = m_Queue.begin(); request != m_Queue.end();) {
-        const auto &journal = request->Patch;
+        const auto &journal = request->Journal;
         if (!journal || !deleting.contains(journal->Graph.Id)) {
             ++request;
             continue;
@@ -668,36 +712,11 @@ void CKEdit::ProcessFrame() {
 
     if (!m_Links)
         return;
-    for (auto graph = m_LostOverlays.begin();
-         graph != m_LostOverlays.end();) {
-        const std::uint64_t graphId = graph->first;
-        const auto root = m_Links->Roots.find(graphId);
-        CKBehavior *native = root != m_Links->Roots.end()
-            ? Resolve<CKBehavior>(m_Context, root->second, CKCID_BEHAVIOR)
-            : nullptr;
-        if (!native) {
-            graph = m_LostOverlays.erase(graph);
-            continue;
-        }
-        Status repaired = Materialize(graphId, native);
-        if (!repaired) {
-            ++graph;
-            continue;
-        }
-        auto sites = m_Links->Sites.find(graphId);
-        if (sites != m_Links->Sites.end()) {
-            for (const auto &key : graph->second)
-                sites->second.erase({key.first, key.second});
-        }
-        (void) PublishLogicalGraph(graphId);
-        graph = m_LostOverlays.erase(graph);
-    }
-
     // Requests queued while this batch runs wait for the next safe point.
     std::vector<Request> requests;
     requests.swap(m_Queue);
     for (Request &request : requests) {
-        const std::shared_ptr<Patch::Journal> &patch = request.Patch;
+        const std::shared_ptr<Patch::Journal> &patch = request.Journal;
         if (!patch)
             continue;
         patch->Queued = false;
@@ -725,13 +744,15 @@ void CKEdit::ProcessFrame() {
             Status status = ApplyNow(request.Candidate, patch);
             bool close = false;
             patch->LastStatus = status;
+            if (!status)
+                patch->ApplyFailure = status;
             close = patch->State == PatchState::Closing;
             if (!close) {
                 patch->State = status
                     ? PatchState::Active
-                    : status.Code == Error::RevertConflict
+                    : !patch->RestoreFailure || status.Code == Error::RevertConflict
                         ? PatchState::Conflicted : PatchState::Failed;
-                if (!status && status.Code != Error::RevertConflict)
+                if (patch->State == PatchState::Failed)
                     patch->Callbacks.clear();
             }
             if (close) {

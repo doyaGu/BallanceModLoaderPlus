@@ -1,40 +1,37 @@
 #pragma once
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
+class DynamicFov : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-class DynamicFov : public IMod {
-public:
-    explicit DynamicFov(IBML *bml) : IMod(bml) {}
+  public:
 
-    const char *GetID() override { return "DynamicFov"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "Dynamic Fov"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
-    const char *GetDescription() override { return "Dynamically adjust camera fov according to ball speed."; }
-    DECLARE_BML_VERSION;
 
-    void OnLoad() override;
-    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                      XObjectArray *objArray, CKObject *masterObj) override;
-    void OnLoadScript(const char *filename, CKBehavior *script) override;
-    void OnProcess() override;
-    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
+    void OnLoad(const BML::Mod::Context &) override;
+    void OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) override;
+    void OnLoadScript(const BML::Mod::Context &, const BML::Mod::LoadScriptEvent &event) override;
+    void OnProcess(const BML::Mod::Context &) override;
+    void OnModifyConfig(const BML::Mod::Context &, const BML::Mod::ConfigEvent &event) override;
 
-    void SetInactive() { m_BML->AddTimer(1ul, [this]() { m_IsActive = false; }); }
+    void SetInactive() {
+        m_Timers.AfterTicks(1, [this]() { m_IsActive = false; });
+    }
 
-private:
-    CKCamera *m_InGameCam = nullptr;
-    CKDataArray *m_CurLevel = nullptr;
-    CKBehavior *m_IngameScript = nullptr;
-    CKBehavior *m_DynamicPos = nullptr;
+  private:
+    std::vector<BML::Behavior::Instance> m_Hooks;
+    ModSupport::Object<CKCamera> m_InGameCam{m_Context};
+    ModSupport::Object<CKDataArray> m_CurLevel{m_Context};
+    ModSupport::Object<CKBehavior> m_IngameScript{m_Context};
+    ModSupport::Object<CKBehavior> m_DynamicPos{m_Context};
 
     bool m_IsActive = false;
     bool m_WasPaused = false;
     VxVector m_LastPos;
 
-    IProperty *m_Enabled = nullptr;
+    BML::Config::Property m_Enabled = {};
 };

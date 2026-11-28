@@ -5,7 +5,7 @@
 #include <optional>
 #include <string>
 
-#include "BML/IConfig.h"
+#include "Config/Config.h"
 
 namespace CommandBarTheme {
 namespace {
@@ -41,10 +41,10 @@ constexpr std::array<RoleDefinition, Settings::RoleCount> Roles{{
 
 } // namespace
 
-void Settings::Define(IConfig &config) {
+void Settings::Define(Config &config) {
     for (std::size_t index = 0; index < Roles.size(); ++index) {
         const RoleDefinition &role = Roles[index];
-        IProperty *property = config.GetProperty(Category, role.key);
+        Property *property = config.GetProperty(Category, role.key);
         m_Properties[index] = property;
         if (!property)
             continue;
@@ -52,13 +52,12 @@ void Settings::Define(IConfig &config) {
         const std::string defaultValue = UiColor::FormatHex(role.defaultColor);
         property->SetComment(role.comment);
         property->SetDefaultString(defaultValue.c_str());
-        BML_SetConfigPropertyEditor(property, BML_CONFIG_EDITOR_COLOR);
+        BML::ConfigMetadata::SetEditor(property, BML_CONFIG_EDITOR_COLOR);
     }
     config.SetCategoryComment(Category, "Command Bar Syntax Theme");
 }
 
-bool Settings::Owns(const char *category, const char *key,
-                    const IProperty *property) const {
+bool Settings::Owns(const char *category, const char *key, const Property *property) const {
     if (!category || !key || !property || std::strcmp(category, Category) != 0)
         return false;
 
@@ -72,7 +71,7 @@ bool Settings::Owns(const char *category, const char *key,
 SyntaxPalette Settings::ReadPalette() const {
     SyntaxPalette palette = DefaultPalette;
     for (std::size_t index = 0; index < Roles.size(); ++index) {
-        IProperty *property = m_Properties[index];
+        Property *property = m_Properties[index];
         if (!property)
             continue;
         const std::optional<Color> parsed = UiColor::ParseHex(property->GetString());

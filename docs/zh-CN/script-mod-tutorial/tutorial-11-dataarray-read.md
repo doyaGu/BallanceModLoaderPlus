@@ -10,7 +10,7 @@ DataArray 就是游戏内的电子表格。它有行有列，每个单元格可�
 
 ```text
 第一步：按名字获取表的句柄
-  -> ctx.BorrowDataArrayByName("表名")
+  -> BML::Scene::FindObject("表名", CKCID_DATAARRAY, out) -> Engine::BorrowObject
   -> 返回 CKDataArray@ 或 null
 
 第二步：确认表存在且有数据
@@ -57,7 +57,12 @@ DataArray 就是游戏内的电子表格。它有行有列，每个单元格可�
 ```angelscript
 void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
     if (event == BML::GAME_EVENT_START_LEVEL) {
-        CKDataArray@ table = ctx.BorrowDataArrayByName("CurrentLevel");
+        CKDataArray@ table;
+        BML::ObjectRef tableRef;
+        CKObject@ tableObject;
+                if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+            @table = cast<CKDataArray>(tableObject);
         if (table is null) {
             ctx.LogInfo("CurrentLevel not found");
             return;
@@ -116,14 +121,19 @@ int points = BML::CK::GetInt(table, 0, colPoints, 0);
 把读取和显示结合起来。保存为 `ModLoader/Mods/DataReadMod.mod.as`：
 
 ```angelscript
-[bml.mod id="dataread.script" name="DataArray Reader" version="1.0.0" author="Tutorial" bml="0.3.14" description="Read and display CurrentLevel"]
+[bml.mod id="dataread.script" name="DataArray Reader" version="1.0.0" author="Tutorial" bml="0.4.0" description="Read and display CurrentLevel"]
 class DataReadMod {
     private CKDataArray@ currentLevel = null;
     private bool showWindow = true;
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
         if (event == BML::GAME_EVENT_START_LEVEL) {
-            @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+            BML::ObjectRef currentLevelRef;
+            CKObject@ currentLevelObject;
+            @currentLevel = null;
+            if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+                BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+                @currentLevel = cast<CKDataArray>(currentLevelObject);
             if (currentLevel !is null) {
                 ctx.LogInfo("CurrentLevel found, rows=" + BML::CK::GetRowCount(currentLevel));
             }
@@ -210,7 +220,12 @@ class DataReadMod {
 ### 读取 AllLevel
 
 ```angelscript
-CKDataArray@ allLevel = ctx.BorrowDataArrayByName("AllLevel");
+CKDataArray@ allLevel;
+BML::ObjectRef allLevelRef;
+CKObject@ allLevelObject;
+if (BML::Scene::FindObject("AllLevel", CKCID_DATAARRAY, allLevelRef) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, allLevelRef, CKCID_DATAARRAY, allLevelObject) == BML::ERROR_OK)
+    @allLevel = cast<CKDataArray>(allLevelObject);
 if (allLevel !is null) {
     int rows = BML::CK::GetRowCount(allLevel);  // 通常 13
     for (int row = 0; row < rows; row++) {
@@ -244,7 +259,12 @@ private CKDataArray@ currentLevel = null;
 
 // 进入关卡时获取
 if (event == BML::GAME_EVENT_START_LEVEL) {
-    @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+    BML::ObjectRef currentLevelRef;
+    CKObject@ currentLevelObject;
+    @currentLevel = null;
+    if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+        BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+        @currentLevel = cast<CKDataArray>(currentLevelObject);
 }
 
 // 退出关卡时清空
@@ -253,7 +273,9 @@ if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL) {
 }
 ```
 
-为什么要缓存？因为 `BorrowDataArrayByName` 每次调用都要在场景中搜索。对于每帧都要读的表（如 CurrentLevel），缓存句柄后直接用省去了搜索开销。
+缓存可省去重复查找，但只适用于寿命明确、关卡内稳定的表；上例按关卡事件清空。
+需要跨世界或允许其他 Mod 删除/替换对象时，保存 CKAS 可验证引用，每次使用前重新解析。
+不要以 `!is null` 代替存活检查，详见[借用规则](ref-modcontext.md#borrow)。
 
 对于偶尔读一次的表（如 AllLevel，你可能只在关卡开始时读一次），临时获取也可以接受。
 
@@ -275,7 +297,9 @@ int cols = BML::CK::GetColumnCount(table);
 
 **"BorrowDataArrayByName 返回 null"**
 
-你可能还在菜单里。DataArray 是关卡对象，只在关卡运行时存在。确保你在 `GAME_EVENT_START_LEVEL` 之后才读取。
+表可能尚未装入、名字不符或当前世界没有该资源。基础 DataArray 可能在菜单中已存在，
+但当前关卡的数据还未就绪。关卡相关读取放在 `GAME_EVENT_START_LEVEL` 之后，
+并分别检查对象、行列和列类型。
 
 **"读出来的值是默认值（-1 或 '?'）"**
 

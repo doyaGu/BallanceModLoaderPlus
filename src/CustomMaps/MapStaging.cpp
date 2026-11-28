@@ -1,9 +1,10 @@
 #include "CustomMaps/MapStaging.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
+#include <chrono>
+#include <filesystem>
+#include "Platform/FileSystemNative.h"
+#include "Platform/FileError.h"
+#include "StringUtils.h"
 
 #include <utility>
 
@@ -16,12 +17,18 @@ namespace CustomMap {
 namespace {
 
 constexpr wchar_t StagingRootName[] = L"BMLPlus.Staging";
+#if BML_RUNTIME_SDL
+constexpr std::uint32_t StagingCodePage = 65001;
+#else
+// Relative staging names consist only of ASCII path components.
+constexpr std::uint32_t StagingCodePage = 20127;
+#endif
 
 std::wstring MakeSessionName() {
     wchar_t name[48]{};
-    _snwprintf(name, sizeof(name) / sizeof(name[0]), L"%08lX-%016llX",
-               static_cast<unsigned long>(::GetCurrentProcessId()),
-               static_cast<unsigned long long>(::GetTickCount64()));
+    std::swprintf(name, sizeof(name) / sizeof(name[0]), L"%08lX-%016llX",
+                  static_cast<unsigned long>(BML::Platform::ProcessId()),
+                  static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
     name[(sizeof(name) / sizeof(name[0])) - 1] = L'\0';
     return name;
 }
@@ -29,10 +36,7 @@ std::wstring MakeSessionName() {
 bool DeleteOwnedFile(const std::wstring &path) {
     if (path.empty())
         return true;
-    if (::DeleteFileW(path.c_str()) == TRUE)
-        return true;
-    const DWORD error = ::GetLastError();
-    return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+    return utils::DeleteFileW(path) || !utils::PathExistsW(path);
 }
 
 }
@@ -45,7 +49,7 @@ void MapStaging::Initialize(const std::wstring &gameDirectory,
                             const std::wstring &tempDirectory) {
     Shutdown();
 
-    const std::wstring binDirectory = utils::CombinePathW(gameDirectory, L"Bin");
+    const std::wstring binDirectory = utils::GetDirectoryW(utils::GetExecutablePathW());
     m_TempDirectory = tempDirectory;
     m_RootDirectory = utils::CombinePathW(binDirectory, StagingRootName);
     m_RelativeDirectory = utils::CombinePathW(StagingRootName, MakeSessionName());
@@ -62,10 +66,13 @@ void MapStaging::Shutdown() {
     for (const std::wstring &file : m_RetainedFiles)
         DeleteOwnedFile(file);
     m_RetainedFiles.clear();
-    if (!m_SessionDirectory.empty())
-        ::RemoveDirectoryW(m_SessionDirectory.c_str());
-    if (!m_RootDirectory.empty())
-        ::RemoveDirectoryW(m_RootDirectory.c_str());
+    std::error_code ignored;
+    const auto removeEmptyDirectory = [&](const std::wstring &directory) {
+        if (!directory.empty())
+            std::filesystem::remove(std::filesystem::u8path(utils::Utf16ToUtf8(directory)), ignored);
+    };
+    removeEmptyDirectory(m_SessionDirectory);
+    removeEmptyDirectory(m_RootDirectory);
 
     m_TempDirectory.clear();
     m_RootDirectory.clear();
@@ -92,8 +99,8 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
     }
 
     const std::wstring extension = utils::GetExtensionW(sourcePath);
-    if (_wcsicmp(extension.c_str(), L".nmo") != 0 &&
-        _wcsicmp(extension.c_str(), L".cmo") != 0) {
+    if (utils::CompareLocaleStrings(utils::Utf16ToUtf8(extension), ".nmo") != 0 &&
+        utils::CompareLocaleStrings(utils::Utf16ToUtf8(extension), ".cmo") != 0) {
         error = "only .nmo and .cmo maps can be staged";
         return false;
     }
@@ -107,8 +114,9 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
     if (!m_SessionDirectory.empty() && !m_RelativeDirectory.empty()) {
         const std::wstring destination = utils::CombinePathW(m_SessionDirectory, fileName);
         const std::wstring relativePath = utils::CombinePathW(m_RelativeDirectory, fileName);
+        utils::CreateFileTreeW(m_SessionDirectory);
         if (utils::CopyFileW(sourcePath, destination) &&
-            utils::TryEncodePathForCodePage(relativePath, 20127, staged.LoadPath) &&
+            utils::TryEncodePathForCodePage(relativePath, StagingCodePage, staged.LoadPath) &&
             CanResolve(pathManager, staged.LoadPath)) {
             staged.Attempt = attempt;
             m_PendingAttempt = attempt;
@@ -126,21 +134,29 @@ bool MapStaging::Prepare(const std::wstring &sourcePath, std::uint64_t attempt,
 
     const std::wstring fallback = utils::CombinePathW(
         utils::CombinePathW(m_TempDirectory, L"Maps"), fileName);
+    utils::CreateFileTreeW(utils::GetDirectoryW(fallback));
     if (!utils::CopyFileW(sourcePath, fallback)) {
         DiscardFile(fallback);
         error = "neither the game staging directory nor the fallback temp directory is writable";
         return false;
     }
 
+#if BML_RUNTIME_SDL
+    if (!utils::TryEncodePathForCodePage(fallback, StagingCodePage, staged.LoadPath)) {
+        DiscardFile(fallback);
+        error = "the fallback staging path is not representable in UTF-8";
+        return false;
+    }
+#else
     if (!utils::TryEncodePathForActiveCodePage(fallback, staged.LoadPath)) {
         const std::wstring shortPath = utils::GetShortPathW(fallback);
-        if (shortPath.empty() ||
-            !utils::TryEncodePathForActiveCodePage(shortPath, staged.LoadPath)) {
+        if (!utils::TryEncodePathForActiveCodePage(shortPath, staged.LoadPath)) {
             DiscardFile(fallback);
-            error = "the fallback staging path is not representable in the active code page and has no usable 8.3 path";
+            error = "the fallback staging path is not representable in the active code page";
             return false;
         }
     }
+#endif
 
     if (!CanResolve(pathManager, staged.LoadPath)) {
         DiscardFile(fallback);

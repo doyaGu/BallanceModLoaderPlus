@@ -1,4 +1,15 @@
+#ifdef _WIN32
 #include <Windows.h>
+#endif
+#include "PathUtils.h"
+#include "UpdaterPaths.h"
+#include "StringUtils.h"
+
+#ifndef _WIN32
+#define BML_UPDATER_COMMAND "Updater"
+#else
+#define BML_UPDATER_COMMAND "Updater.exe"
+#endif
 
 #include <iostream>
 #include <string>
@@ -8,13 +19,7 @@
 
 namespace {
     std::string Narrow(const std::wstring &text) {
-        if (text.empty()) {
-            return {};
-        }
-        const int count = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-        std::string out(static_cast<size_t>(count), '\0');
-        WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), count, nullptr, nullptr);
-        return out;
+        return utils::Utf16ToUtf8(text);
     }
 
     void PrintResult(const bmlupdater::Result &result) {
@@ -75,35 +80,36 @@ namespace {
         bmlupdater::UpdaterSourceConfig config;
         (void)service.GetSourceConfig(config);
         if (config.baseUrl.empty()) {
-            std::cout << "nextStep=Updater.exe configure <https-base-url>\n";
+            std::cout << "nextStep=" BML_UPDATER_COMMAND " configure <https-base-url>\n";
         } else {
-            std::cout << "nextStep=Updater.exe check\n";
+            std::cout << "nextStep=" BML_UPDATER_COMMAND " check\n";
         }
-        std::cout << "help=Updater.exe --help\n";
+        std::cout << "help=" BML_UPDATER_COMMAND " --help\n";
         return 0;
     }
 
     int PrintNoRemoteWork(const bmlupdater::Result &result, const bmlupdater::RemoteUpdateInfo &info) {
         if (info.latestVersion.empty()) {
-            std::cout << "nextStep=Updater.exe configure <https-base-url>\n";
+            std::cout << "nextStep=" BML_UPDATER_COMMAND " configure <https-base-url>\n";
         } else if (!info.updateAvailable) {
-            std::cout << "nextStep=Updater.exe update --force\n";
+            std::cout << "nextStep=" BML_UPDATER_COMMAND " update --force\n";
         }
         PrintResult(result);
         return result.ok ? 0 : 1;
     }
 
     void PrintUsage() {
+        std::cout << "--game-root <directory> selects a standard or flat runtime.\n";
         std::cout <<
             "BML+ Updater\n"
             "\n"
             "Common workflows:\n"
-            "  Updater.exe\n"
-            "  Updater.exe configure <https-base-url>\n"
-            "  Updater.exe check\n"
-            "  Updater.exe plan\n"
-            "  Updater.exe update\n"
-            "  Updater.exe apply-local <BMLPlus-Update-vX.Y.Z.zip>\n"
+            "  " BML_UPDATER_COMMAND "\n"
+            "  " BML_UPDATER_COMMAND " configure <https-base-url>\n"
+            "  " BML_UPDATER_COMMAND " check\n"
+            "  " BML_UPDATER_COMMAND " plan\n"
+            "  " BML_UPDATER_COMMAND " update\n"
+            "  " BML_UPDATER_COMMAND " apply-local <BMLPlus-Update-vX.Y.Z.zip>\n"
             "\n"
             "Commands:\n"
             "  overview\n"
@@ -160,7 +166,7 @@ namespace {
                     bmlupdater::UpdaterSourceConfig config;
                     (void)service.GetSourceConfig(config);
                     if (config.baseUrl.empty()) {
-                        std::cout << "nextStep=Updater.exe configure <https-base-url>\n";
+                        std::cout << "nextStep=" BML_UPDATER_COMMAND " configure <https-base-url>\n";
                     }
                 }
                 PrintResult(result);
@@ -185,7 +191,7 @@ namespace {
                 bmlupdater::Result result = service.SetSourceBaseUrl(Narrow(argv[urlIndex]), defaultChannel);
                 PrintResult(result);
                 if (result.ok) {
-                    std::cout << "nextStep=Updater.exe check\n";
+                    std::cout << "nextStep=" BML_UPDATER_COMMAND " check\n";
                 }
                 return result.ok ? 0 : 1;
             }
@@ -362,8 +368,36 @@ namespace {
     }
 }
 
+namespace {
+int RunUpdaterCli(int argc, wchar_t **argv) {
+    std::cout.setf(std::ios::unitbuf);
+    auto context = bmlupdater::CreateDefaultContext();
+    std::vector<wchar_t *> arguments;
+    for (int i = 0; i < argc; ++i) {
+        if (i > 0 && std::wstring_view(argv[i]) == L"--game-root") {
+            if (++i == argc) { std::cerr << "--game-root requires a directory\n"; return 2; }
+            context.gameRoot = utils::ResolvePathW(argv[i]);
+            context.updaterStateRoot = bmlupdater::DefaultStateRoot(context.gameRoot);
+        } else arguments.push_back(argv[i]);
+    }
+    bmlupdater::UpdaterService service(context);
+    return RunCli(static_cast<int>(arguments.size()), arguments.data(), service);
+}
+}
+#ifdef _WIN32
 int wmain(int argc, wchar_t **argv) {
     SetConsoleOutputCP(CP_UTF8);
-    bmlupdater::UpdaterService service(bmlupdater::CreateDefaultContext());
-    return RunCli(argc, argv, service);
+    return RunUpdaterCli(argc, argv);
 }
+#else
+int main(int argc, char **argv) {
+    std::vector<std::wstring> wide;
+    std::vector<wchar_t *> arguments;
+    for (int i = 0; i < argc; ++i) {
+        if (!utils::IsValidUtf8(argv[i])) { std::cerr << "Arguments must be UTF-8\n"; return 2; }
+        wide.push_back(utils::Utf8ToUtf16(argv[i]));
+    }
+    for (auto &argument : wide) arguments.push_back(argument.data());
+    return RunUpdaterCli(argc, arguments.data());
+}
+#endif

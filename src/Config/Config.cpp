@@ -1,4 +1,7 @@
+#include "Api/HandleSequence.h"
+#include <atomic>
 #include "Config/Config.h"
+#include "Loader/ModRecord.h"
 
 #include <algorithm>
 #include <cstring>
@@ -12,10 +15,7 @@
 #include <unordered_set>
 #include <utility>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
+#include "Platform/FileError.h"
 
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -32,7 +32,7 @@ namespace {
             std::string value;
             std::getline(line, value);
             utils::TrimString(value);
-            entry = {IProperty::STRING, std::move(value)};
+            entry = {PropertyType::STRING, std::move(value)};
             return true;
         }
 
@@ -45,17 +45,17 @@ namespace {
             bool value;
             if (!(number >> value))
                 return false;
-            entry = {IProperty::BOOLEAN, value};
+            entry = {PropertyType::BOOLEAN, value};
         } else if (type == "I" || type == "K") {
             int value;
             if (!(number >> value))
                 return false;
-            entry = {type == "I" ? IProperty::INTEGER : IProperty::KEY, value};
+            entry = {type == "I" ? PropertyType::INTEGER : PropertyType::KEY, value};
         } else if (type == "F") {
             float value;
             if (!(number >> value) || !std::isfinite(value))
                 return false;
-            entry = {IProperty::FLOAT, value};
+            entry = {PropertyType::FLOAT, value};
         } else {
             return false;
         }
@@ -65,14 +65,14 @@ namespace {
 }
 
 bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
-    error = ERROR_INVALID_NAME;
+    error = BML::Platform::FileError::InvalidName;
     if (!path || !*path)
         return false;
 
     std::string bytes;
     if (!utils::ReadFileBytesW(path, bytes, error))
         return false;
-    error = ERROR_INVALID_DATA;
+    error = BML::Platform::FileError::InvalidData;
     if (bytes.empty() || bytes.find('\0') != std::string::npos)
         return false;
 
@@ -88,13 +88,7 @@ bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
         // BML 0.3.13 accepted configuration files written in the active ANSI
         // code page. Convert those documents once so the next save publishes
         // canonical UTF-8. CP_UTF8 has no distinct legacy encoding to recover.
-        if (GetACP() == CP_UTF8 ||
-            bytes.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
-            return false;
-        }
-        bytes = utils::Utf16ToUtf8(utils::AnsiToUtf16(bytes));
-        if (bytes.empty() || !utils::IsValidUtf8(bytes))
-            return false;
+        return false;
     }
 
     ConfigData parsed;
@@ -142,7 +136,7 @@ bool ConfigData::Load(const wchar_t *path, std::uint32_t &error) {
     if (insideCategory || !pendingCategory.empty() || input.bad())
         return false;
     m_Categories.swap(parsed.m_Categories);
-    error = ERROR_SUCCESS;
+    error = BML::Platform::FileError::Success;
     return true;
 }
 
@@ -164,7 +158,7 @@ bool ConfigData::HasKey(const char *category, const char *key) const {
     return Find(category, key) != nullptr;
 }
 
-bool ConfigData::Set(const char *category, const char *key, IProperty::PropertyType type, ConfigValue value) {
+bool ConfigData::Set(const char *category, const char *key, PropertyType type, ConfigValue value) {
     if (!category || !key || !ConfigValueMatchesType(type, value))
         return false;
     m_Categories[category].insert_or_assign(key, Entry{type, std::move(value)});
@@ -178,7 +172,7 @@ bool ConfigData::Remove(const char *category, const char *key) {
     return group != m_Categories.end() && group->second.erase(key) != 0;
 }
 
-Config::Config(IMod *mod) : m_Mod(mod) {
+Config::Config(ModRecord *mod) : m_Mod(mod) {
     if (mod) {
         const char *id = mod->GetID();
         if (id)
@@ -203,13 +197,32 @@ Config::~Config() {
     m_CategoryMap.clear();
 }
 
+void Config::AttachMod(ModRecord *mod) {
+    // Retain values, not the retired owner's declaration schema. Prepare the
+    // source document before changing anything so allocation failure keeps the
+    // detached data available for another attempt.
+    ConfigData values;
+    for (const auto *category : m_Categories)
+        for (const auto *property : category->m_Properties)
+            if (property->m_Type != PropertyType::NONE)
+                values.Set(property->m_Category.c_str(), property->m_Key.c_str(),
+                           property->m_Type, property->m_Value);
+    m_LoadedValues = std::move(values);
+    for (auto *category : m_Categories) delete category;
+    m_Categories.clear();
+    m_CategoryMap.clear();
+    m_PendingNotifications.clear();
+    m_Mod = mod;
+    TouchSchema();
+}
+
 bool Config::Load(const wchar_t *path) {
     // Fail closed, including allocation exceptions. Only an actual missing
     // file or a complete successful load permits subsequent automatic saving.
     m_LoadStatus = LoadStatus::Failed;
-    m_LoadError = ERROR_INVALID_DATA;
+    m_LoadError = BML::Platform::FileError::InvalidData;
     if (!m_LoadedValues.Load(path, m_LoadError)) {
-        if (m_LoadError == ERROR_FILE_NOT_FOUND || m_LoadError == ERROR_PATH_NOT_FOUND)
+        if (m_LoadError == BML::Platform::FileError::NotFound || m_LoadError == BML::Platform::FileError::PathNotFound)
             m_LoadStatus = LoadStatus::Missing;
         m_SavePending = m_Dirty;
         return false;
@@ -225,7 +238,7 @@ bool Config::Load(const wchar_t *path) {
 
 void Config::RestoreProperty(Property &property) {
     const ConfigData::Entry *source = m_LoadedValues.Find(property.m_Category.c_str(), property.m_Key.c_str());
-    if (!source || (property.m_Type != IProperty::NONE && property.m_Type != source->Type))
+    if (!source || (property.m_Type != PropertyType::NONE && property.m_Type != source->Type))
         return;
     const bool typeChanged = property.m_Type != source->Type;
     const bool valueChanged = !ConfigValuesEqual(source->Type, property.m_Value, source->Value);
@@ -233,7 +246,7 @@ void Config::RestoreProperty(Property &property) {
         return;
     property.m_Value = source->Value;
     property.m_Type = source->Type;
-    if (source->Type == IProperty::STRING)
+    if (source->Type == PropertyType::STRING)
         property.m_Hash = utils::HashString(std::get<std::string>(source->Value).c_str());
     if (typeChanged)
         TouchSchema();
@@ -254,7 +267,7 @@ bool Config::Save(const wchar_t *path) {
         m_SaveError = m_LoadError;
         return false;
     }
-    m_SaveError = ERROR_INVALID_NAME;
+    m_SaveError = BML::Platform::FileError::InvalidName;
     if (!path || path[0] == L'\0')
         return false;
 
@@ -278,19 +291,19 @@ bool Config::Save(const wchar_t *path) {
             out << "\t# " << property->GetComment() << std::endl;
             out << "\t";
             switch (property->GetType()) {
-            case IProperty::STRING:
+            case PropertyType::STRING:
                 out << "S ";
                 break;
-            case IProperty::BOOLEAN:
+            case PropertyType::BOOLEAN:
                 out << "B ";
                 break;
-            case IProperty::FLOAT:
+            case PropertyType::FLOAT:
                 out << "F ";
                 break;
-            case IProperty::KEY:
+            case PropertyType::KEY:
                 out << "K ";
                 break;
-            case IProperty::INTEGER:
+            case PropertyType::INTEGER:
             default:
                 out << "I ";
                 break;
@@ -298,19 +311,19 @@ bool Config::Save(const wchar_t *path) {
 
             out << property->m_Key << " ";
             switch (property->GetType()) {
-            case IProperty::STRING:
+            case PropertyType::STRING:
                 out << property->GetString();
                 break;
-            case IProperty::BOOLEAN:
+            case PropertyType::BOOLEAN:
                 out << property->GetBoolean();
                 break;
-            case IProperty::FLOAT:
+            case PropertyType::FLOAT:
                 out << property->GetFloat();
                 break;
-            case IProperty::KEY:
+            case PropertyType::KEY:
                 out << static_cast<int>(property->GetKey());
                 break;
-            case IProperty::INTEGER:
+            case PropertyType::INTEGER:
             default:
                 out << property->GetInteger();
                 break;
@@ -339,7 +352,7 @@ std::vector<Config::PendingNotification> Config::TakePendingNotifications() {
     return pending;
 }
 
-Config::ApplyResult Config::ApplyEdits(const IMod *expectedOwner,
+Config::ApplyResult Config::ApplyEdits(const ModRecord *expectedOwner,
                                        std::uint64_t expectedSchemaRevision,
                                        const std::vector<Edit> &edits) {
     if (expectedOwner != m_Mod)
@@ -381,7 +394,7 @@ Config::ApplyResult Config::ApplyEdits(const IMod *expectedOwner,
         PreparedConfigEdit preparedEdit;
         preparedEdit.property = property;
         preparedEdit.value = edit.NewValue;
-        if (edit.ExpectedType == IProperty::STRING)
+        if (edit.ExpectedType == PropertyType::STRING)
             preparedEdit.hash = utils::HashString(std::get<std::string>(preparedEdit.value).c_str());
         prepared.push_back(std::move(preparedEdit));
 
@@ -400,7 +413,7 @@ Config::ApplyResult Config::ApplyEdits(const IMod *expectedOwner,
 
     for (PreparedConfigEdit &edit : prepared) {
         edit.property->m_Value.swap(edit.value);
-        if (edit.property->m_Type == IProperty::STRING)
+        if (edit.property->m_Type == PropertyType::STRING)
             edit.property->m_Hash = edit.hash;
         TouchValue();
     }
@@ -476,7 +489,7 @@ bool Config::RemoveProperty(const char *category, const char *key) {
     return true;
 }
 
-IProperty *Config::GetProperty(const char *category, const char *key) {
+Property *Config::GetProperty(const char *category, const char *key) {
     if (!category || !key)
         return nullptr;
 
@@ -582,7 +595,10 @@ bool Category::HasKey(const char *key) const {
 }
 
 Property::Property(Config *config, std::string category, std::string key) {
-    m_Type = NONE;
+    static std::atomic<uint64_t> next{1};
+    m_Identity = BML::Api::NextHandle(next);
+    if (!m_Identity) throw std::overflow_error("Config property identities exhausted");
+    m_Type = PropertyType::NONE;
     m_Value = 0;
     m_Config = config;
     m_Category = std::move(category);
@@ -598,42 +614,31 @@ void Property::SetComment(const char *comment) {
         m_Config->TouchSchema();
 }
 
-BML_ConfigPropertyEditor BML_CDECL BML_GetConfigPropertyEditor(const IProperty *property) {
-    const auto *concrete = dynamic_cast<const Property *>(property);
-    return concrete ? concrete->GetEditorMetadata() : BML_CONFIG_EDITOR_DEFAULT;
+BML_ConfigPropertyEditor BML::ConfigMetadata::GetEditor(const Property *property) {
+    return property ? property->m_Editor : BML_CONFIG_EDITOR_DEFAULT;
 }
 
-int BML_CDECL BML_SetConfigPropertyEditor(IProperty *property, BML_ConfigPropertyEditor editor) {
-    auto *concrete = dynamic_cast<Property *>(property);
-    return concrete && concrete->SetEditorMetadata(editor) ? 1 : 0;
+int BML::ConfigMetadata::SetEditor(Property *property, BML_ConfigPropertyEditor editor) {
+    return property && property->SetEditorMetadata(editor) ? 1 : 0;
 }
 
-size_t BML_CDECL BML_GetConfigPropertyChoiceCount(const IProperty *property) {
-    const auto *concrete = dynamic_cast<const Property *>(property);
-    return concrete ? concrete->m_Choices.size() : 0;
+size_t BML::ConfigMetadata::ChoiceCount(const Property *property) {
+    return property ? property->m_Choices.size() : 0;
 }
 
-const char *BML_CDECL BML_GetConfigPropertyChoice(const IProperty *property, size_t index) {
-    const auto *concrete = dynamic_cast<const Property *>(property);
-    return concrete && index < concrete->m_Choices.size()
-        ? concrete->m_Choices[index].c_str()
-        : nullptr;
+const char *BML::ConfigMetadata::Choice(const Property *property, size_t index) {
+    return property && index < property->m_Choices.size() ? property->m_Choices[index].c_str()
+                                                          : nullptr;
 }
 
-int BML_CDECL BML_SetConfigPropertyChoices(IProperty *property,
-                                 const char *const choices[], size_t count) {
-    auto *concrete = dynamic_cast<Property *>(property);
-    if (!concrete)
+int BML::ConfigMetadata::SetChoices(Property *property, const char *const choices[], size_t count) {
+    if (!property)
         return 0;
     try {
-        return concrete->SetChoiceMetadata(choices, count) ? 1 : 0;
+        return property->SetChoiceMetadata(choices, count) ? 1 : 0;
     } catch (...) {
         return 0;
     }
-}
-
-BML_ConfigPropertyEditor Property::GetEditorMetadata() const {
-    return m_Editor;
 }
 
 bool Property::SetEditorMetadata(BML_ConfigPropertyEditor editor) {
@@ -676,42 +681,42 @@ bool Property::SetChoiceMetadata(const char *const choices[], std::size_t count)
 }
 
 const char *Property::GetString() {
-    if (m_Type != STRING)
+    if (m_Type != PropertyType::STRING)
         return "";
     const auto *value = std::get_if<std::string>(&m_Value);
     return value ? value->c_str() : "";
 }
 
 std::size_t Property::GetStringSize() {
-    if (GetType() != STRING)
+    if (GetType() != PropertyType::STRING)
         return 0;
     const auto *value = std::get_if<std::string>(&m_Value);
     return value ? value->size() : 0;
 }
 
 bool Property::GetBoolean() {
-    if (m_Type != BOOLEAN)
+    if (m_Type != PropertyType::BOOLEAN)
         return false;
     const auto *value = std::get_if<bool>(&m_Value);
     return value ? *value : false;
 }
 
 int Property::GetInteger() {
-    if (m_Type != INTEGER)
+    if (m_Type != PropertyType::INTEGER)
         return 0;
     const auto *value = std::get_if<int>(&m_Value);
     return value ? *value : 0;
 }
 
 float Property::GetFloat() {
-    if (m_Type != FLOAT)
+    if (m_Type != PropertyType::FLOAT)
         return 0.0f;
     const auto *value = std::get_if<float>(&m_Value);
     return value ? *value : 0.0f;
 }
 
 CKKEYBOARD Property::GetKey() {
-    if (m_Type != KEY)
+    if (m_Type != PropertyType::KEY)
         return static_cast<CKKEYBOARD>(0);
     const auto *value = std::get_if<int>(&m_Value);
     return value ? static_cast<CKKEYBOARD>(*value) : static_cast<CKKEYBOARD>(0);
@@ -724,9 +729,9 @@ void Property::SetString(const char *value) {
 
     const PropertyType previousType = m_Type;
     const auto *current = std::get_if<std::string>(&m_Value);
-    if (m_Type != STRING || !current || *current != newValue) {
+    if (m_Type != PropertyType::STRING || !current || *current != newValue) {
         m_Value = newValue;
-        m_Type = STRING;
+        m_Type = PropertyType::STRING;
         m_Hash = utils::HashString(value);
         SetModified(previousType);
     }
@@ -735,9 +740,9 @@ void Property::SetString(const char *value) {
 void Property::SetBoolean(bool value) {
     const PropertyType previousType = m_Type;
     const auto *current = std::get_if<bool>(&m_Value);
-    if (m_Type != BOOLEAN || !current || *current != value) {
+    if (m_Type != PropertyType::BOOLEAN || !current || *current != value) {
         m_Value = value;
-        m_Type = BOOLEAN;
+        m_Type = PropertyType::BOOLEAN;
         SetModified(previousType);
     }
 }
@@ -745,18 +750,19 @@ void Property::SetBoolean(bool value) {
 void Property::SetInteger(int value) {
     const PropertyType previousType = m_Type;
     const auto *current = std::get_if<int>(&m_Value);
-    if (m_Type != INTEGER || !current || *current != value) {
+    if (m_Type != PropertyType::INTEGER || !current || *current != value) {
         m_Value = value;
-        m_Type = INTEGER;
+        m_Type = PropertyType::INTEGER;
         SetModified(previousType);
     }
 }
 
 void Property::SetFloat(float value) {
     const PropertyType previousType = m_Type;
-    if (m_Type != FLOAT || !ConfigValuesEqual(FLOAT, m_Value, ConfigValue(value))) {
+    if (m_Type != PropertyType::FLOAT ||
+        !ConfigValuesEqual(PropertyType::FLOAT, m_Value, ConfigValue(value))) {
         m_Value = value;
-        m_Type = FLOAT;
+        m_Type = PropertyType::FLOAT;
         SetModified(previousType);
     }
 }
@@ -765,45 +771,45 @@ void Property::SetKey(CKKEYBOARD value) {
     const PropertyType previousType = m_Type;
     const int newValue = static_cast<int>(value);
     const auto *current = std::get_if<int>(&m_Value);
-    if (m_Type != KEY || !current || *current != newValue) {
+    if (m_Type != PropertyType::KEY || !current || *current != newValue) {
         m_Value = newValue;
-        m_Type = KEY;
+        m_Type = PropertyType::KEY;
         SetModified(previousType);
     }
 }
 
 void Property::SetValue(const Value &value) {
     switch (m_Type) {
-    case STRING: {
+    case PropertyType::STRING: {
         const auto *typed = std::get_if<std::string>(&value);
         if (typed)
             SetString(typed->c_str());
         break;
     }
-    case BOOLEAN: {
+    case PropertyType::BOOLEAN: {
         const auto *typed = std::get_if<bool>(&value);
         if (typed)
             SetBoolean(*typed);
         break;
     }
-    case INTEGER:
-    case KEY: {
+    case PropertyType::INTEGER:
+    case PropertyType::KEY: {
         const auto *typed = std::get_if<int>(&value);
         if (!typed)
             break;
-        if (m_Type == INTEGER)
+        if (m_Type == PropertyType::INTEGER)
             SetInteger(*typed);
         else
             SetKey(static_cast<CKKEYBOARD>(*typed));
         break;
     }
-    case FLOAT: {
+    case PropertyType::FLOAT: {
         const auto *typed = std::get_if<float>(&value);
         if (typed)
             SetFloat(*typed);
         break;
     }
-    case NONE:
+    case PropertyType::NONE:
     default:
         break;
     }
@@ -813,8 +819,8 @@ void Property::SetDefaultString(const char *value) {
     if (!value)
         value = "";
 
-    if (m_Type != STRING) {
-        m_Type = STRING;
+    if (m_Type != PropertyType::STRING) {
+        m_Type = PropertyType::STRING;
         m_Hash = utils::HashString(value);
         m_Value = value;
         if (m_Config)
@@ -823,8 +829,8 @@ void Property::SetDefaultString(const char *value) {
 }
 
 void Property::SetDefaultBoolean(bool value) {
-    if (m_Type != BOOLEAN) {
-        m_Type = BOOLEAN;
+    if (m_Type != PropertyType::BOOLEAN) {
+        m_Type = PropertyType::BOOLEAN;
         m_Value = value;
         if (m_Config)
             m_Config->TouchSchema();
@@ -832,8 +838,8 @@ void Property::SetDefaultBoolean(bool value) {
 }
 
 void Property::SetDefaultInteger(int value) {
-    if (m_Type != INTEGER) {
-        m_Type = INTEGER;
+    if (m_Type != PropertyType::INTEGER) {
+        m_Type = PropertyType::INTEGER;
         m_Value = value;
         if (m_Config)
             m_Config->TouchSchema();
@@ -841,8 +847,8 @@ void Property::SetDefaultInteger(int value) {
 }
 
 void Property::SetDefaultFloat(float value) {
-    if (m_Type != FLOAT) {
-        m_Type = FLOAT;
+    if (m_Type != PropertyType::FLOAT) {
+        m_Type = PropertyType::FLOAT;
         m_Value = value;
         if (m_Config)
             m_Config->TouchSchema();
@@ -850,8 +856,8 @@ void Property::SetDefaultFloat(float value) {
 }
 
 void Property::SetDefaultKey(CKKEYBOARD value) {
-    if (m_Type != KEY) {
-        m_Type = KEY;
+    if (m_Type != PropertyType::KEY) {
+        m_Type = PropertyType::KEY;
         m_Value = static_cast<int>(value);
         if (m_Config)
             m_Config->TouchSchema();
@@ -860,14 +866,14 @@ void Property::SetDefaultKey(CKKEYBOARD value) {
 
 std::size_t Property::GetHash() const {
     switch (m_Type) {
-    case STRING:
+    case PropertyType::STRING:
         return m_Hash;
-    case INTEGER:
-    case KEY:
+    case PropertyType::INTEGER:
+    case PropertyType::KEY:
         return static_cast<std::size_t>(std::get<int>(m_Value));
-    case BOOLEAN:
+    case PropertyType::BOOLEAN:
         return std::get<bool>(m_Value) ? 1 : 0;
-    case FLOAT: {
+    case PropertyType::FLOAT: {
         float f = std::get<float>(m_Value);
         std::uint32_t bits;
         std::memcpy(&bits, &f, sizeof(bits));
@@ -882,22 +888,22 @@ void Property::CopyValue(Property *o) {
     if (!o) return;
 
     switch (o->GetType()) {
-    case INTEGER:
+    case PropertyType::INTEGER:
         SetInteger(o->GetInteger());
         break;
-    case FLOAT:
+    case PropertyType::FLOAT:
         SetFloat(o->GetFloat());
         break;
-    case BOOLEAN:
+    case PropertyType::BOOLEAN:
         SetBoolean(o->GetBoolean());
         break;
-    case KEY:
+    case PropertyType::KEY:
         SetKey(o->GetKey());
         break;
-    case STRING:
+    case PropertyType::STRING:
         SetString(o->GetString());
         break;
-    case NONE:
+    case PropertyType::NONE:
     default:
         break;
     }

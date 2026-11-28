@@ -167,7 +167,7 @@ static bool ImGui_ImplCK2_ShouldUploadDrawSegment(const ImDrawCmd *commands,
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h>
+#include <chrono>
 
 enum ImGui_ImplCK2_TextureFailure
 {
@@ -207,7 +207,6 @@ struct ImGui_ImplCK2_Data
     int TextureMaxHeight;
     ImGui_ImplCK2_TextureFailure LastTextureFailure;
     unsigned int LastTextureFailureCount;
-    ImU64 PerformanceFrequency;
     ImU64 TotalRenderTimeMicroseconds;
     ImU64 PeakRenderTimeMicroseconds;
     ImU64 RenderedFrameCount;
@@ -219,7 +218,7 @@ struct ImGui_ImplCK2_Data
     ImGui_ImplCK2_Data()
         : Context(NULL), RenderContext(NULL), FrameIndex(0), TextureMaxWidth(0), TextureMaxHeight(0),
           LastTextureFailure(ImGui_ImplCK2_TextureFailure_None), LastTextureFailureCount(0),
-          PerformanceFrequency(0), TotalRenderTimeMicroseconds(0), PeakRenderTimeMicroseconds(0),
+          TotalRenderTimeMicroseconds(0), PeakRenderTimeMicroseconds(0),
           RenderedFrameCount(0), TotalGeometryUploadFailureCount(0),
           TotalVertexBufferReleaseFailureCount(0), LastFrameMetrics{}
     {
@@ -267,6 +266,29 @@ static const VXRENDERSTATETYPE ImGui_ImplCK2_RenderStates[] = {
     VXRENDERSTATE_STENCILENABLE,
     VXRENDERSTATE_CLIPPING,
     VXRENDERSTATE_LIGHTING,
+    VXRENDERSTATE_ALPHAFUNC,
+    VXRENDERSTATE_ALPHAREF,
+    VXRENDERSTATE_ZFUNC,
+    VXRENDERSTATE_TEXTUREPERSPECTIVE,
+    VXRENDERSTATE_TEXTUREFACTOR,
+};
+
+// Legacy combine setters change several explicit stage states. Restore their
+// values first, then the explicit states, with shared address before U/V/W.
+static const CKRST_TEXTURESTAGESTATETYPE ImGui_ImplCK2_StageStates[] = {
+    CKRST_TSS_TEXTUREMAPBLEND, CKRST_TSS_STAGEBLEND, CKRST_TSS_ADDRESS,
+    CKRST_TSS_OP, CKRST_TSS_ARG1, CKRST_TSS_ARG2,
+    CKRST_TSS_AOP, CKRST_TSS_AARG1, CKRST_TSS_AARG2,
+    CKRST_TSS_BUMPENVMAT00, CKRST_TSS_BUMPENVMAT01,
+    CKRST_TSS_BUMPENVMAT10, CKRST_TSS_BUMPENVMAT11,
+    CKRST_TSS_TEXCOORDINDEX,
+    CKRST_TSS_ADDRESSU, CKRST_TSS_ADDRESSV, CKRST_TSS_ADDRESW,
+    CKRST_TSS_BORDERCOLOR, CKRST_TSS_MAGFILTER, CKRST_TSS_MINFILTER,
+    CKRST_TSS_MIPMAPLODBIAS, CKRST_TSS_MAXMIPMLEVEL, CKRST_TSS_MAXANISOTROPY,
+    CKRST_TSS_BUMPENVLSCALE, CKRST_TSS_BUMPENVLOFFSET,
+    CKRST_TSS_TEXTURETRANSFORMFLAGS,
+    CKRST_TSS_COLORARG0, CKRST_TSS_ALPHAARG0, CKRST_TSS_RESULTARG0,
+    CKRST_TSS_CONSTANT, CKRST_TSS_COMPAREFUNC,
 };
 
 class ImGui_ImplCK2_RenderStateBackup
@@ -277,11 +299,47 @@ public:
         Context->GetViewRect(ViewRect);
         for (int i = 0; i < IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates); ++i)
             Values[i] = Context->GetState(ImGui_ImplCK2_RenderStates[i]);
+        for (int stage = 0; stage < CKRST_MAX_STAGES; ++stage)
+        {
+            CKTexture *texture = Context->GetTexture(stage);
+            if (texture) {
+#if BML_RUNTIME_SDL
+                Textures[stage] = Context->GetCKContext()->GetObjectHandle(texture->GetID());
+#else
+                Textures[stage] = texture->GetID();
+#endif
+            }
+            TextureMatrices[stage] = Context->GetTextureMatrix(stage);
+            for (int i = 0; i < IM_ARRAYSIZE(ImGui_ImplCK2_StageStates); ++i)
+                StageValues[stage][i] = Context->GetTextureStageState(ImGui_ImplCK2_StageStates[i], stage);
+        }
     }
 
     ~ImGui_ImplCK2_RenderStateBackup()
     {
         Context->SetViewRect(ViewRect);
+        // STAGEBLEND=0 can disable later stages. Finish all legacy writes
+        // before restoring any bindings or explicit states.
+        for (int stage = 0; stage < CKRST_MAX_STAGES; ++stage)
+            for (int i = 0; i < 2; ++i)
+                RestoreStageState(stage, i);
+        for (int stage = 0; stage < CKRST_MAX_STAGES; ++stage)
+        {
+#if BML_RUNTIME_SDL
+            CKTexture *texture = CKTexture::Cast(Context->GetCKContext()->GetObjectByHandle(Textures[stage]));
+#else
+            CKTexture *texture = CKTexture::Cast(Context->GetCKContext()->GetObject(Textures[stage]));
+#endif
+            if (Context->GetTexture(stage) != texture)
+                Context->SetTexture(texture, FALSE, stage);
+        }
+        for (int stage = 0; stage < CKRST_MAX_STAGES; ++stage)
+        {
+            for (int i = 2; i < IM_ARRAYSIZE(ImGui_ImplCK2_StageStates); ++i)
+                RestoreStageState(stage, i);
+            Context->SetTextureMatrix(TextureMatrices[stage], stage);
+        }
+        // SetTexture also changes alpha-test states.
         for (int i = 0; i < IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates); ++i)
             Context->SetState(ImGui_ImplCK2_RenderStates[i], Values[i]);
     }
@@ -290,9 +348,23 @@ public:
     ImGui_ImplCK2_RenderStateBackup &operator=(const ImGui_ImplCK2_RenderStateBackup &) = delete;
 
 private:
+    void RestoreStageState(int stage, int i)
+    {
+        const CKRST_TEXTURESTAGESTATETYPE state = ImGui_ImplCK2_StageStates[i];
+        if (Context->GetTextureStageState(state, stage) != StageValues[stage][i])
+            Context->SetTextureStageState(state, StageValues[stage][i], stage);
+    }
+
     CKRenderContext *Context;
     VxRect ViewRect;
     CKDWORD Values[IM_ARRAYSIZE(ImGui_ImplCK2_RenderStates)] = {};
+#if BML_RUNTIME_SDL
+    CKObjectHandle Textures[CKRST_MAX_STAGES] = {};
+#else
+    CK_ID Textures[CKRST_MAX_STAGES] = {};
+#endif
+    VxMatrix TextureMatrices[CKRST_MAX_STAGES];
+    CKDWORD StageValues[CKRST_MAX_STAGES][IM_ARRAYSIZE(ImGui_ImplCK2_StageStates)] = {};
 };
 #endif
 
@@ -671,7 +743,8 @@ static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data)
     CKRenderContext *dev = bd->RenderContext;
 
     // Setup viewport
-    VxRect viewport(0, 0, draw_data->DisplaySize.x, draw_data->DisplaySize.y);
+    VxRect viewport(0, 0, draw_data->DisplaySize.x * draw_data->FramebufferScale.x,
+                        draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
     dev->SetViewRect(viewport);
 
     // Setup render state: alpha-blending, no face culling, no depth testing, shade mode
@@ -701,6 +774,7 @@ static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data)
 }
 
 static VxDrawPrimitiveData *ImGui_ImplCK2_UploadVertices(CKRenderContext *dev,
+                                                         const ImDrawData *draw_data,
                                                          const ImDrawVert *vertices,
                                                          int vertex_count,
                                                          ImGui_ImplCK2_FrameMetrics *metrics,
@@ -735,10 +809,14 @@ static VxDrawPrimitiveData *ImGui_ImplCK2_UploadVertices(CKRenderContext *dev,
         XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
         XPtrStrided<CKDWORD> colors(data->ColorPtr, data->ColorStride);
         XPtrStrided<VxUV> uvs(data->TexCoordPtr, data->TexCoordStride);
+        const ImVec2 offset = draw_data->DisplayPos;
+        const ImVec2 scale = draw_data->FramebufferScale;
 
         for (int i = 0; i < vertex_count; ++i)
         {
-            positions->Set(vertices[i].pos.x, vertices[i].pos.y, 0.0f, 1.0f);
+            // ImGui uses pixel boundaries; CK2's XYZRHW pixel centers are at integer coordinates.
+            positions->Set((vertices[i].pos.x - offset.x) * scale.x - 0.5f,
+                           (vertices[i].pos.y - offset.y) * scale.y - 0.5f, 0.0f, 1.0f);
             *colors = IMGUI_COL_TO_ARGB(vertices[i].col);
             uvs->u = vertices[i].uv.x;
             uvs->v = vertices[i].uv.y;
@@ -913,6 +991,7 @@ static void ImGui_ImplCK2_RenderDrawDataInternal(ImDrawData *draw_data, ImGui_Im
 {
     CKRenderContext *dev = bd->RenderContext;
 
+    ImGui_ImplCK2_RenderStateBackup state_backup(dev);
     // Catch up with texture updates. Most of the times, the list will have 1 element with an OK status, aka nothing to do.
     // (This almost always points to ImGui::GetPlatformIO().Textures[] but is part of ImDrawData to allow overriding or disabling texture updates).
     if (draw_data->Textures != nullptr)
@@ -920,7 +999,6 @@ static void ImGui_ImplCK2_RenderDrawDataInternal(ImDrawData *draw_data, ImGui_Im
             if (tex->Status != ImTextureStatus_OK)
                 ImGui_ImplCK2_UpdateTexture(tex);
 
-    ImGui_ImplCK2_RenderStateBackup state_backup(dev);
 
     // Setup desired render state
     ImGui_ImplCK2_SetupRenderState(draw_data);
@@ -1039,7 +1117,7 @@ static void ImGui_ImplCK2_RenderDrawDataInternal(ImDrawData *draw_data, ImGui_Im
                 if (!segment_upload_attempted)
                 {
                     segment_data = ImGui_ImplCK2_UploadVertices(
-                        dev, vtx_buffer + segment.VertexOffset, (int)segment.VertexCount,
+                        dev, draw_data, vtx_buffer + segment.VertexOffset, (int)segment.VertexCount,
                         metrics, &abort_render);
                     segment_upload_attempted = true;
                 }
@@ -1065,7 +1143,7 @@ static void ImGui_ImplCK2_RenderDrawDataInternal(ImDrawData *draw_data, ImGui_Im
                     segment_data = NULL;
                 }
                 data = ImGui_ImplCK2_UploadVertices(
-                    dev, vtx_buffer + draw_slice->VertexOffset, (int)draw_slice->VertexCount,
+                    dev, draw_data, vtx_buffer + draw_slice->VertexOffset, (int)draw_slice->VertexCount,
                     metrics, &abort_render);
                 if (abort_render)
                     return;
@@ -1126,18 +1204,12 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
     if (!bd || !bd->RenderContext)
         return;
 
-    LARGE_INTEGER start{};
-    const bool timing_available = bd->PerformanceFrequency != 0 && QueryPerformanceCounter(&start);
+    const auto start = std::chrono::steady_clock::now();
     ImGui_ImplCK2_FrameMetrics metrics{};
     ImGui_ImplCK2_RenderDrawDataInternal(draw_data, bd, fb_width, fb_height, &metrics);
 
-    LARGE_INTEGER end{};
-    if (timing_available && QueryPerformanceCounter(&end) && end.QuadPart >= start.QuadPart)
-    {
-        metrics.RenderTimeMicroseconds = (ImU64)(end.QuadPart - start.QuadPart) * 1000000ULL /
-                                         bd->PerformanceFrequency;
-    }
-
+    metrics.RenderTimeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start).count();
     bd->LastFrameMetrics = metrics;
     bd->TotalRenderTimeMicroseconds += metrics.RenderTimeMicroseconds;
     bd->TotalGeometryUploadFailureCount += metrics.GeometryUploadFailureCount;
@@ -1192,9 +1264,6 @@ bool ImGui_ImplCK2_Init(CKContext *context)
     bd->RenderContext = render_context;
     bd->TextureMaxWidth = texture_limits.Width;
     bd->TextureMaxHeight = texture_limits.Height;
-    LARGE_INTEGER performance_frequency{};
-    if (QueryPerformanceFrequency(&performance_frequency) && performance_frequency.QuadPart > 0)
-        bd->PerformanceFrequency = (ImU64)performance_frequency.QuadPart;
 
     if (texture_limits.UsedFallback)
         utils::OutputDebugA("BML CK2 renderer received invalid texture limits; using %dx%d\n",

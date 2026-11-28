@@ -17,6 +17,7 @@ bool Contains(CKBehavior *graph, CKBehaviorLink *link);
 // this graph as its parent even though it is no longer a member.
 // Working storage is prepared before CK mutates the graph; priorities are
 // read after ATTACH callbacks complete.
+// SDL reads and arranges children through the public CK2 graph methods.
 CKERROR AddChild(CKBehavior *graph, CKBehavior *node);
 
 // Destroys every Link of the graph that starts or ends at the Node's IOs.
@@ -28,8 +29,8 @@ void DestroyConnectedLinks(CKContext *context, CKBehavior *graph,
 // in the owner's parent. Deleting the IO would only clear the Link's end.
 void DestroyConnectedLinks(CKContext *context, CKBehaviorIO *io);
 
-// A Link surviving its graph may retain a freed IO or a live IO whose owner
-// is gone. Detach without dereferencing either endpoint before native delete.
+// Retires a Link that has already left its graph. CK2's deletion lifecycle
+// detaches surviving endpoints and owners.
 CKERROR DestroyOrphanLink(CKContext *context, CKBehaviorLink *link);
 
 } // namespace BML::Behavior::Internal::Engine

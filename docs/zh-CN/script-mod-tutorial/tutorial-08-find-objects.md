@@ -56,8 +56,18 @@ Ballance 的关卡文件里，对象名有固定的前缀规律：
 两个最常用的查找入口：
 
 ```angelscript
-CK3dEntity@ entity = ctx.Borrow3dEntityByName("P_Extra_Point_01");
-CKGroup@ group = ctx.BorrowGroupByName("PC_Checkpoints");
+CK3dEntity@ entity;
+BML::ObjectRef entityRef;
+CKObject@ entityObject;
+if (BML::Scene::FindObject("P_Extra_Point_01", CKCID_3DENTITY, entityRef) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, entityRef, CKCID_3DENTITY, entityObject) == BML::ERROR_OK)
+    @entity = cast<CK3dEntity>(entityObject);
+CKGroup@ group;
+BML::ObjectRef groupRef;
+CKObject@ groupObject;
+if (BML::Scene::FindObject("PC_Checkpoints", CKCID_GROUP, groupRef) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, groupRef, CKCID_GROUP, groupObject) == BML::ERROR_OK)
+    @group = cast<CKGroup>(groupObject);
 ```
 
 找不到时返回 `null`。这是正常情况（比如还没进关卡），不是错误。使用前必须判空。
@@ -75,7 +85,7 @@ CKGroup@ group = ctx.BorrowGroupByName("PC_Checkpoints");
 保存为 `ModLoader/Mods/FindDemo.mod.as`：
 
 ```angelscript
-[bml.mod id="find.demo" name="Find Demo" version="1.0.0" author="Tutorial" bml="0.3.14" description="Find objects demo"]
+[bml.mod id="find.demo" name="Find Demo" version="1.0.0" author="Tutorial" bml="0.4.0" description="Find objects demo"]
 class FindDemo {
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
         if (event == BML::GAME_EVENT_START_LEVEL) {
@@ -97,7 +107,12 @@ class FindDemo {
     }
 
     private CK3dEntity@ BorrowActiveBall(const BML::ModContext &in ctx) {
-        CKDataArray@ currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+        CKDataArray@ currentLevel;
+        BML::ObjectRef currentLevelRef;
+        CKObject@ currentLevelObject;
+                if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+            @currentLevel = cast<CKDataArray>(currentLevelObject);
         if (currentLevel is null) return null;
 
         int col = BML::CK::FindColumn(currentLevel, "ActiveBall");
@@ -108,7 +123,12 @@ class FindDemo {
     }
 
     private void FindGroup(const BML::ModContext &in ctx) {
-        CKGroup@ checkpoints = ctx.BorrowGroupByName("PC_Checkpoints");
+        CKGroup@ checkpoints;
+        BML::ObjectRef checkpointsRef;
+        CKObject@ checkpointsObject;
+                if (BML::Scene::FindObject("PC_Checkpoints", CKCID_GROUP, checkpointsRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, checkpointsRef, CKCID_GROUP, checkpointsObject) == BML::ERROR_OK)
+            @checkpoints = cast<CKGroup>(checkpointsObject);
         if (checkpoints is null) {
             ctx.LogInfo("PC_Checkpoints not found");
             return;
@@ -134,7 +154,7 @@ class FindDemo {
 
 **FindBall**：从 `CurrentLevel` 表里取 `ActiveBall` 列。Ballance 的玩家球会在木球、纸球、石球之间切换，实际对象名可能是 `Ball_Wood`、`Ball_Paper` 或 `Ball_Stone`。不要写死其中一个名字；运行时表里记录的才是当前正在控制的球。
 
-**BorrowActiveBall**：`ctx.BorrowDataArrayByName("CurrentLevel")` 取得当前关卡状态表；`FindColumn(..., "ActiveBall")` 找到活动球所在列；`GetElementObject(0, col)` 读取这一格里的 CK 对象；最后用 `cast<CK3dEntity>` 转成 3D 实体。
+**BorrowActiveBall**：Scene::FindObject 和 Engine::BorrowObject 取得当前关卡状态表；`FindColumn(..., "ActiveBall")` 找到活动球所在列；`GetElementObject(0, col)` 读取这一格里的 CK 对象；最后用 `cast<CK3dEntity>` 转成 3D 实体。
 
 **FindGroup**：`PC_Checkpoints` 是 Ballance 里包含检查点标记的组。`checkpoints.GetObjectCount()` 返回成员数量，`checkpoints.GetObject(i)` 按索引取出第 i 个成员。
 

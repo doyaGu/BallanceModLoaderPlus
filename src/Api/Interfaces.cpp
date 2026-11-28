@@ -20,13 +20,18 @@
 #include "Api/BuiltinCapabilities.h"
 #include "Api/BehaviorApi.h"
 #include "Api/CommandApi.h"
+#include "Api/ModApi.h"
+#include "Api/BuiApi.h"
+#include "Api/GuiApi.h"
+#include "Api/InteropApi.h"
+#include "Api/GameplayRegistrationApi.h"
 #include "Api/InterfaceRegistry.h"
 #if BML_ENABLE_BEHAVIOR_TEST_INTERFACE
 #include "Api/BehaviorTestApi.h"
 #endif
 #include "Loader/ModContext.h"
 
-#include <intrin.h>
+#include "Platform/Module.h"
 #include <new>
 #include <string>
 
@@ -37,11 +42,11 @@ namespace {
 // being repeated in every thunk. Before that point the interface is still handed
 // out, because the table is static, and answers BML_ERROR_FAIL.
 template <typename Body>
-int Serve(Body &&body) {
-    ModContextLease context;
-    if (!context || !context->AreModsLoaded())
-        return BML_ERROR_FAIL;
+int Serve(Body &&body) noexcept {
     try {
+        ModContextLease context;
+        if (!context || !context->AreModsLoaded())
+            return BML_ERROR_FAIL;
         return body(*context);
     } catch (...) {
         return BML_ERROR_FAIL;
@@ -52,7 +57,7 @@ int Serve(Body &&body) {
 // the game thread, so they refuse calls from anywhere else rather than racing a
 // frame. Keeping one rule per interface also makes reads and writes predictable.
 template <typename Body>
-int ServeOnMainThread(Body &&body) {
+int ServeOnMainThread(Body &&body) noexcept {
     return Serve([&body](ModContext &context) {
         if (!context.IsMainThread())
             return BML_ERROR_WRONG_THREAD;
@@ -308,7 +313,7 @@ int BML_CDECL UIShowFPS(int visible) {
 
 int BML_CDECL ModMenuRegisterPage(
     const char *ownerId, const BML_ModMenuPage *page) {
-    const void *const callerAddress = _ReturnAddress();
+    const void *const callerAddress = BML_CALLER_ADDRESS();
     try {
         if (!page)
             return BML_ERROR_INVALID_PARAMETER;
@@ -323,22 +328,23 @@ int BML_CDECL ModMenuRegisterPage(
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
 
-        const std::string owner = context->GetNativeModOwnerId(callerAddress, ownerId);
+        const std::string owner =
+            context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
-        if (!context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Draw)))
+        if (!context->GetModLoader().NativeModOwnsAddress(
+                owner, reinterpret_cast<const void *>(page->Draw)))
             return BML_ERROR_ACCESS_DENIED;
-        if (page->Enter &&
-            !context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Enter))) {
-            return BML_ERROR_ACCESS_DENIED;
-        }
-        if (page->Leave &&
-            !context->NativeModOwnsAddress(owner, reinterpret_cast<const void *>(page->Leave))) {
+        if (page->Enter && !context->GetModLoader().NativeModOwnsAddress(
+                               owner, reinterpret_cast<const void *>(page->Enter))) {
             return BML_ERROR_ACCESS_DENIED;
         }
-        if (page->Release &&
-            !context->NativeModOwnsAddress(
-                owner, reinterpret_cast<const void *>(page->Release))) {
+        if (page->Leave && !context->GetModLoader().NativeModOwnsAddress(
+                               owner, reinterpret_cast<const void *>(page->Leave))) {
+            return BML_ERROR_ACCESS_DENIED;
+        }
+        if (page->Release && !context->GetModLoader().NativeModOwnsAddress(
+                                 owner, reinterpret_cast<const void *>(page->Release))) {
             return BML_ERROR_ACCESS_DENIED;
         }
         return context->GetModMenuPages().Register(owner, *page);
@@ -350,7 +356,7 @@ int BML_CDECL ModMenuRegisterPage(
 }
 
 int BML_CDECL ModMenuUnregisterPage(const char *ownerId, const char *pageId) {
-    const void *const callerAddress = _ReturnAddress();
+    const void *const callerAddress = BML_CALLER_ADDRESS();
     try {
         if (!pageId || pageId[0] == '\0')
             return BML_ERROR_INVALID_PARAMETER;
@@ -361,7 +367,8 @@ int BML_CDECL ModMenuUnregisterPage(const char *ownerId, const char *pageId) {
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
 
-        const std::string owner = context->GetNativeModOwnerId(callerAddress, ownerId);
+        const std::string owner =
+            context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         return context->GetModMenuPages().Unregister(owner, pageId);
@@ -401,6 +408,15 @@ const BML_GameplayInterface kGameplayInterface = {
     &GameplayReadResetpoint,
     &GameplayReadHighScore,
     &GameplayReadCheatEnabled,
+    &BML::Api::RegisterBallType,
+    &BML::Api::RegisterFloorType,
+    &BML::Api::RegisterModuleBall,
+    &BML::Api::RegisterModuleConvex,
+    &BML::Api::RegisterTrafo,
+    &BML::Api::RegisterModule,
+    &BML::Api::ReadGameplayState,
+    &BML::Api::EnableCheat,
+    &BML::Api::ExitGame,
 };
 
 const BML_SceneInterface kSceneInterface = {
@@ -410,6 +426,9 @@ const BML_SceneInterface kSceneInterface = {
     &SceneReadEntityTransform,
     &SceneFindObject,
     &SceneFindObjectOfClass,
+    &BML::Api::SetIC,
+    &BML::Api::RestoreIC,
+    &BML::Api::Show,
 };
 
 const BML_UIInterface kUIInterface = {
@@ -425,6 +444,8 @@ const BML_UIInterface kUIInterface = {
     &UISetHUDMode,
     &UIShowTitle,
     &UIShowFPS,
+    &BML::Api::SkipNextRender,
+    &BML::Api::SetWidescreenAdjustment,
 };
 
 const BML_ModMenuInterface ModMenuInterface = {
@@ -441,14 +462,21 @@ struct InterfaceEntry {
 };
 
 const InterfaceEntry kInterfaces[] = {
+    {BML_GUI_INTERFACE_ID, BML_GUI_INTERFACE_MAJOR, &BML::Api::GuiInterface()},
+    {BML_BUI_INTERFACE_ID, BML_BUI_INTERFACE_MAJOR, &BML::Api::BuiInterface()},
+    {BML_ENGINE_INTERFACE_ID, BML_ENGINE_INTERFACE_MAJOR, &BML::Api::EngineInterface()},
+    {BML_IMGUI_INTERFACE_ID, BML_IMGUI_INTERFACE_MAJOR, &BML::Api::ImGuiInterface()},
+    {BML_INPUT_INTERFACE_ID, BML_INPUT_INTERFACE_MAJOR, &BML::Api::InputInterface()},
+    {BML_TIMER_INTERFACE_ID, BML_TIMER_INTERFACE_MAJOR, &BML::Api::TimerInterface()},
+    {BML_CONFIG_INTERFACE_ID, BML_CONFIG_INTERFACE_MAJOR, &BML::Api::ConfigInterface()},
+    {BML_MOD_CONTEXT_INTERFACE_ID, BML_MOD_CONTEXT_INTERFACE_MAJOR,
+     &BML::Api::ModContextInterface()},
 #if BML_ENABLE_BEHAVIOR_TEST_INTERFACE
     {BML_BEHAVIOR_TEST_INTERFACE_ID, BML_BEHAVIOR_TEST_INTERFACE_MAJOR,
      &BML::Api::BehaviorTestInterface()},
 #endif
-    {BML_BEHAVIOR_INTERFACE_ID, BML_BEHAVIOR_INTERFACE_MAJOR,
-     &BML::Api::BehaviorInterface()},
-    {BML_COMMAND_INTERFACE_ID, BML_COMMAND_INTERFACE_MAJOR,
-     &BML::Api::CommandInterface()},
+    {BML_BEHAVIOR_INTERFACE_ID, BML_BEHAVIOR_INTERFACE_MAJOR, &BML::Api::BehaviorInterface()},
+    {BML_COMMAND_INTERFACE_ID, BML_COMMAND_INTERFACE_MAJOR, &BML::Api::CommandInterface()},
     {BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &kGameplayInterface},
     {BML_MOD_MENU_INTERFACE_ID, BML_MOD_MENU_INTERFACE_MAJOR, &ModMenuInterface},
     {BML_TIME_INTERFACE_ID, BML_TIME_INTERFACE_MAJOR, &kTimeInterface},
@@ -491,12 +519,37 @@ int BML_CDECL BML_GetInterface(const char *interfaceId, uint16_t majorVersion, c
     if (idExists)
         return BML_ERROR_VERSION_MISMATCH;
 
-    return kModInterfaces.Find(interfaceId, majorVersion, out);
+    const void *const caller = BML_CALLER_ADDRESS();
+    try {
+        ModContextLease context;
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        std::string providerId;
+        const void *table = nullptr;
+        const int code = kModInterfaces.Find(interfaceId, majorVersion, &table, &providerId);
+        if (code != BML_OK)
+            return code;
+        auto &loader = context->GetModLoader();
+        const auto consumerId = context->GetModLoader().GetNativeModOwnerId(caller, nullptr);
+        auto *consumer = context->GetModLoader().FindMod(consumerId.c_str());
+        auto *provider = context->GetModLoader().FindMod(providerId.c_str());
+        if (!loader.CanUseProvider(consumer, provider))
+            return provider && !loader.CanDispatchOwner(provider) ? BML_ERROR_FROZEN
+                                                                  : BML_ERROR_ACCESS_DENIED;
+        *out = table;
+        return BML_OK;
+    } catch (const std::bad_alloc &) {
+        return BML_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
 }
 
 int BML_CDECL BML_RegisterInterface(
     const char *ownerId, const void *interfacePtr) {
-    const void *const callerAddress = _ReturnAddress();
+    const void *const callerAddress = BML_CALLER_ADDRESS();
     try {
         if (!interfacePtr)
             return BML_ERROR_INVALID_PARAMETER;
@@ -508,7 +561,7 @@ int BML_CDECL BML_RegisterInterface(
             return BML_ERROR_WRONG_THREAD;
 
         const std::string resolved =
-            context->GetNativeModOwnerId(callerAddress, ownerId);
+            context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (resolved.empty() || (ownerId && resolved != ownerId))
             return BML_ERROR_ACCESS_DENIED;
 
@@ -516,19 +569,22 @@ int BML_CDECL BML_RegisterInterface(
         // unknown interface struct. Requiring both the struct and its id to
         // live in the provider DLL rules out stack/heap registrations and
         // makes automatic cleanup before FreeLibrary a sound lifetime rule.
-        if (!context->NativeModOwnsAddress(resolved, interfacePtr))
+        if (!context->GetModLoader().NativeModOwnsAddress(resolved, interfacePtr))
             return BML_ERROR_INVALID_PARAMETER;
         const auto *header =
             static_cast<const BML_InterfaceHeader *>(interfacePtr);
         if (header->StructSize < sizeof(BML_InterfaceHeader) ||
             header->MajorVersion == 0 || !header->InterfaceId)
             return BML_ERROR_INVALID_PARAMETER;
-        if (!context->NativeModOwnsAddress(resolved, header->InterfaceId) ||
+        if (!context->GetModLoader().NativeModOwnsAddress(resolved, header->InterfaceId) ||
             header->InterfaceId[0] == '\0') {
             return BML_ERROR_INVALID_PARAMETER;
         }
         if (IsBuiltinInterfaceId(header->InterfaceId))
             return BML_ERROR_ALREADY_EXISTS;
+        auto *owner = context->GetModLoader().FindMod(resolved.c_str());
+        if (!owner || !BML::Api::AcceptsModWork(*context, *owner))
+            return BML_ERROR_FROZEN;
         return kModInterfaces.Register(resolved, interfacePtr);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
@@ -539,7 +595,7 @@ int BML_CDECL BML_RegisterInterface(
 
 int BML_CDECL BML_UnregisterInterface(
     const char *ownerId, const char *interfaceId, uint16_t majorVersion) {
-    const void *const callerAddress = _ReturnAddress();
+    const void *const callerAddress = BML_CALLER_ADDRESS();
     try {
         if (!interfaceId || interfaceId[0] == '\0' || majorVersion == 0)
             return BML_ERROR_INVALID_PARAMETER;
@@ -553,9 +609,12 @@ int BML_CDECL BML_UnregisterInterface(
             return BML_ERROR_WRONG_THREAD;
 
         const std::string resolved =
-            context->GetNativeModOwnerId(callerAddress, ownerId);
+            context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (resolved.empty() || (ownerId && resolved != ownerId))
             return BML_ERROR_ACCESS_DENIED;
+        auto *owner = context->GetModLoader().FindMod(resolved.c_str());
+        if (owner && context->GetModLoader().HasLiveDependents(owner))
+            return BML_ERROR_BUSY;
         return kModInterfaces.Unregister(
             resolved, interfaceId, majorVersion);
     } catch (const std::bad_alloc &) {

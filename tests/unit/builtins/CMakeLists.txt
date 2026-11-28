@@ -13,20 +13,18 @@ add_bml_test(CommandInputTest
 add_bml_test(CommandBarThemeTest
         SOURCES
         CommandBarThemeTest.cpp
+        ${PROJECT_SOURCE_DIR}/tests/support/Logger.cpp
+        ${BML_SOURCE_DIR}/Config/Config.cpp
         ${BML_SOURCE_DIR}/Console/CommandBarTheme.cpp
         ${BML_SOURCE_DIR}/UI/ColorCodec.cpp
-)
-target_include_directories(CommandBarThemeTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+        DEPENDENCIES BMLUtils CK2 VxMath
 )
 
 add_bml_test(ModMenuSessionTest
         SOURCES
         ModMenuSessionTest.cpp
         ${BML_SOURCE_DIR}/ModMenu/ModMenuSession.cpp
-)
-target_include_directories(ModMenuSessionTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(ModMenuPagesTest
@@ -46,23 +44,27 @@ add_bml_test(HUDAnimationTest
         HUDAnimationTest.cpp
         ${BML_SOURCE_DIR}/HUD/HUDAnimation.cpp
         DEPENDENCIES
-        VirtoolsSDK::CK2
-        VirtoolsSDK::VxMath
+        CK2
+        VxMath
 )
 target_include_directories(HUDAnimationTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
 
-add_bml_test(MapCatalogTest
-        SOURCES
-        MapCatalogTest.cpp
-        ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
-        ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
-        DEPENDENCIES
-        BMLUtils
-)
+if(WIN32)
+    add_bml_test(MapCatalogTest
+            SOURCES
+            MapCatalogTest.cpp
+            ${PROJECT_SOURCE_DIR}/tests/support/Logger.cpp
+            ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
+            ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
+            DEPENDENCIES
+            BMLUtils
+    )
+endif()
 
 add_bml_test(MapMenuStateTest
         SOURCES
         MapMenuStateTest.cpp
+        ${PROJECT_SOURCE_DIR}/tests/support/Logger.cpp
         ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
         ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
         ${BML_SOURCE_DIR}/CustomMaps/MapMenuState.cpp
@@ -72,7 +74,6 @@ add_bml_test(MapMenuStateTest
 )
 target_include_directories(MapMenuStateTest BEFORE PRIVATE
         ${IMGUI_SOURCE_DIR}
-        ${VIRTOOLS_SDK_INCLUDE_DIR}
 )
 
 add_bml_test(SRTimerTest
@@ -170,9 +171,7 @@ add_bml_test(FilterCommandsTest
         DEPENDENCIES
         BMLUtils
         onig
-)
-target_include_directories(FilterCommandsTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+        CK2 VxMath
 )
 
 add_bml_test(ShellHistoryTest
@@ -197,3 +196,6 @@ add_bml_test(ShellCompletionTest
         BML_StringUtils
         utf8
 )
+
+# GTest includes the system regex.h on POSIX; use Oniguruma's namespaced type.
+target_compile_definitions(FilterCommandsTest PRIVATE ONIG_ESCAPE_REGEX_T_COLLISION)

@@ -7,7 +7,7 @@
 #include "PerLevelSegmentState.h"
 
 class SegmentGui {
-public:
+  public:
     SegmentGui(PerLevelSegmentState &state, const int level)
         : state_(state), current_level_name_(std::format("Level {}", level)) {}
 

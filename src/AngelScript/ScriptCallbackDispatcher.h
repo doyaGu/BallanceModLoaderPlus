@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "BML/ICommand.h"
-#include "BML/IMod.h"
+#include "Console/CommandRecord.h"
+#include "Loader/ModRecord.h"
 #include "ScriptApiSurface.h"
 #include "ScriptDiagnostic.h"
 
@@ -24,7 +24,7 @@ public:
     bool HasCallback(ScriptCallbackId id) const;
     bool HasOnProcess() const { return HasCallback(ScriptCallbackOnProcess); }
     bool HasOnRender() const { return HasCallback(ScriptCallbackOnRender); }
-    bool HasGameEvent() const { return HasCallback(ScriptCallbackOnGameEvent); }
+    bool HasGameEvent() const;
     void GetCallbackNames(std::vector<std::string> &out) const;
 
     bool CallOnLoad(ScriptDiagnostic &diagnostic);
@@ -45,15 +45,10 @@ public:
                         ScriptDiagnostic &diagnostic);
     bool CallLoadScript(const char *filename, CKBehavior *script, ScriptDiagnostic &diagnostic);
     bool CallCheatEnabled(bool enable, ScriptDiagnostic &diagnostic);
-    bool CallCommandEvent(bool beforeCommand,
-                          ICommand *command,
-                          const std::vector<std::string> &args,
-                          ScriptDiagnostic &diagnostic);
-    bool CallModifyConfig(const char *modId,
-                          const char *category,
-                          const char *key,
-                          IProperty *property,
-                          ScriptDiagnostic &diagnostic);
+    bool CallCommandEvent(bool beforeCommand, BML::CommandRecord *command,
+                          const std::vector<std::string> &args, ScriptDiagnostic &diagnostic);
+    bool CallModifyConfig(const char *modId, const char *category, const char *key,
+                          Property *property, ScriptDiagnostic &diagnostic);
     bool CallPhysicalize(CK3dEntity *target,
                          CKBOOL fixed,
                          float friction,
@@ -87,6 +82,8 @@ private:
     ScriptModRuntime *m_Runtime = nullptr;
     ScriptModContextView *m_ContextView = nullptr;
     CKAngelScriptMethod *m_Methods[ScriptCallbackCount] = {};
+    CKAngelScriptMethod *m_GameMethods[33] = {};
+    CKAngelScriptMethod *m_CommandMethods[2] = {};
 };
 
 } // namespace BML

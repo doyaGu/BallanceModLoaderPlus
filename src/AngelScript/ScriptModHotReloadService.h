@@ -8,7 +8,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ScriptFileWatcherWin32.h"
+#include "ScriptFileWatcher.h"
 #include "ScriptMod.h"
 
 class ModContext;
@@ -103,10 +103,10 @@ private:
     void AddDesiredWatch(std::unordered_map<std::wstring, WatchSpec> &desired,
                          const std::wstring &root,
                          bool recursive) const;
-    bool EventOverflowCanAffectMod(const ScriptFileWatcherWin32::Event &event, const ScriptMod *mod) const;
-    bool EventLooksRelevant(const ScriptFileWatcherWin32::Event &event, const ScriptMod *mod) const;
+    bool EventOverflowCanAffectMod(const ScriptFileWatcher::Event &event, const ScriptMod *mod) const;
+    bool EventLooksRelevant(const ScriptFileWatcher::Event &event, const ScriptMod *mod) const;
     std::vector<ScriptLibraryReloadPackage> GetActiveLibraryPackages(bool automaticOnly) const;
-    std::vector<ScriptLibraryReloadPackage> GetEventAffectedLibraryPackages(const ScriptFileWatcherWin32::Event &event,
+    std::vector<ScriptLibraryReloadPackage> GetEventAffectedLibraryPackages(const ScriptFileWatcher::Event &event,
                                                                             const ScriptMod *mod) const;
     bool EventBelongsToKnownMod(const std::wstring &path, const ScriptMod *mod) const;
     bool ModUsesLibrary(const ScriptMod *mod, const std::string &id, const std::string &version) const;
@@ -126,7 +126,7 @@ private:
                              const std::string &reason,
                              const ScriptModReloadOptions &options,
                              const ScriptModReloadResult &result);
-    void PublishNewModRestartRequired(const ScriptFileWatcherWin32::Event &event);
+    void PublishNewModRestartRequired(const ScriptFileWatcher::Event &event);
 
     // Both pointers are non-owning; ModContext outlives this object and its dev tools.
     ModContext *m_Context = nullptr;
@@ -138,7 +138,7 @@ private:
     std::unordered_map<std::string, PendingLibraryReload> m_PendingLibraries;
     std::unordered_map<std::wstring, WatchSpec> m_ActiveWatches;
     std::unordered_set<std::wstring> m_ReportedNewModRoots;
-    ScriptFileWatcherWin32 m_Watcher;
+    ScriptFileWatcher m_Watcher;
     uint64_t m_LastWatcherDroppedEvents = 0;
 };
 

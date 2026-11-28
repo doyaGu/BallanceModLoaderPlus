@@ -4,6 +4,7 @@
 #include "BML/Behavior/Session.hpp"
 #include "BML/Behavior/Detail/EditProgram.hpp"
 
+
 #include <algorithm>
 #include <functional>
 #include <limits>
@@ -444,23 +445,14 @@ inline bool ReadObserved(const BML_BehaviorGraphValue &source,
     return true;
 }
 
-inline Result<ObservedValue> ReadInstalledValue(
-    const std::shared_ptr<SessionState> &session,
-    BML_BehaviorPatch patch, BML_BehaviorPlan plan,
-    const BML_BehaviorPlanInstance *instance,
-    const BML_BehaviorPortRef &port) {
+template <class Read>
+inline Result<ObservedValue> ReadInstallationPayload(Read read) {
     try {
         BML_BehaviorGraphValue wire{};
         wire.StructSize = sizeof(wire);
         BML_BehaviorStatus status = EmptyStatus();
         std::uint32_t payloadSize = 0;
-        int code = patch
-            ? session->Api->ReadPatchValue(
-                  session->Handle, patch, &port, &wire, nullptr, 0,
-                  &payloadSize, &status)
-            : session->Api->ReadPlanInstanceValue(
-                  session->Handle, plan, instance, &port, &wire,
-                  nullptr, 0, &payloadSize, &status);
+        int code = read(&wire, nullptr, 0, &payloadSize, &status);
         code = WireCode(code, status);
         if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
             return Result<ObservedValue>::Failure(code, ReadStatus(status));
@@ -471,13 +463,7 @@ inline Result<ObservedValue> ReadInstalledValue(
             wire.StructSize = sizeof(wire);
             status = EmptyStatus();
             std::uint32_t written = 0;
-            code = patch
-                ? session->Api->ReadPatchValue(
-                      session->Handle, patch, &port, &wire, payload.data(),
-                      payloadSize, &written, &status)
-                : session->Api->ReadPlanInstanceValue(
-                      session->Handle, plan, instance, &port, &wire,
-                      payload.data(), payloadSize, &written, &status);
+            code = read(&wire, payload.data(), payloadSize, &written, &status);
             code = WireCode(code, status);
             if (code != BML_OK)
                 return Result<ObservedValue>::Failure(
@@ -497,6 +483,19 @@ inline Result<ObservedValue> ReadInstalledValue(
     } catch (...) {
         return Result<ObservedValue>::Failure(BML_ERROR_FAIL);
     }
+}
+
+inline Result<ObservedValue> ReadInstalledValue(
+    const std::shared_ptr<SessionState> &session,
+    BML_BehaviorPatch patch, BML_BehaviorPlan plan,
+    const BML_BehaviorPlanInstance *instance, const BML_BehaviorPortRef &port) {
+    return ReadInstallationPayload(
+        [&](auto *value, void *payload, auto capacity, auto *size, auto *status) {
+            return patch ? session->Api->ReadPatchValue(session->Handle, patch, &port,
+                               value, payload, capacity, size, status)
+                         : session->Api->ReadPlanInstanceValue(session->Handle, plan, instance,
+                               &port, value, payload, capacity, size, status);
+        });
 }
 
 inline bool ReadWatchValue(const BML_BehaviorWatchValue &source,
@@ -1789,6 +1788,464 @@ inline Result<Task> Call::Continue() {
                                  Detail::ReadStatus(status));
 }
 
+
+struct Submission::State {
+    std::shared_ptr<Detail::SessionState> Session;
+    BML_BehaviorSubmission Handle = nullptr;
+    std::vector<Detail::PatchSymbols> Edits;
+    std::uint64_t NextBinding = 1;
+
+    ~State() {
+        if (Handle)
+            (void) Session->Api->CloseSubmission(Session->Handle, Handle, nullptr);
+    }
+
+    bool OwnsSymbol(const std::weak_ptr<Detail::EditProgram> &author,
+                    std::uint32_t scope, std::uint32_t id, std::uint64_t binding) const {
+        const std::owner_less<std::weak_ptr<Detail::EditProgram>> before;
+        return std::any_of(Edits.begin(), Edits.end(), [&](const auto &edit) {
+            return edit.Binding == binding && id && id < edit.HandleLimit &&
+                scope < edit.HandleLimit && !before(author, edit.Edit) && !before(edit.Edit, author);
+        });
+    }
+
+    [[nodiscard]] Result<BML_BehaviorPortRef> Resolve(
+        const Edit::Port &port, std::uint64_t binding = 0) const {
+        const std::owner_less<std::weak_ptr<Detail::EditProgram>> before;
+        const auto it = std::find_if(Edits.begin(), Edits.end(),
+            [&](const Detail::PatchSymbols &edit) {
+                const std::weak_ptr<Detail::EditProgram> authored = edit.Edit;
+                return (!binding || binding == edit.Binding) &&
+                    port.m_Id && port.m_Id < edit.HandleLimit &&
+                    port.m_Scope < edit.HandleLimit &&
+                    !before(authored, port.m_Edit) && !before(port.m_Edit, authored);
+            });
+        if (it == Edits.end())
+            return Result<BML_BehaviorPortRef>::Failure(BML_ERROR_INVALID_PARAMETER);
+        BML_BehaviorPortRef wire{};
+        wire.StructSize = sizeof(wire);
+        wire.Graph = port.m_Scope;
+        wire.Handle = port.m_Id;
+        wire.Kind = port.m_Kind;
+        wire.Binding = it->Binding;
+        wire.Type = Detail::WireGuid(port.m_Type);
+        wire.Slot = Detail::Wire::From(port.m_Slot);
+        return Result<BML_BehaviorPortRef>::Success(wire);
+    }
+};
+
+inline Submission::operator bool() const noexcept {
+    return m_State && m_State->Handle;
+}
+
+inline Result<SubmissionInfo> Submission::Info() const {
+    if (!*this)
+        return Result<SubmissionInfo>::Failure(BML_ERROR_INVALID_HANDLE);
+    BML_BehaviorSubmissionInfo info{};
+    info.StructSize = sizeof(info);
+    info.RequestedEnabled = 1;
+    auto status = Detail::EmptyStatus();
+    const auto &session = m_State->Session;
+    const int code = Detail::WireCode(session->Api->ReadSubmission(
+        session->Handle, m_State->Handle, &info, &status), status);
+    if (code != BML_OK)
+        return Result<SubmissionInfo>::Failure(code, Detail::ReadStatus(status));
+    if (info.State < BML_BEHAVIOR_SUBMISSION_PENDING ||
+        info.State > BML_BEHAVIOR_SUBMISSION_CONFLICTED || info.RequestedEnabled > 1)
+        return Result<SubmissionInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    return Result<SubmissionInfo>::Success({
+        static_cast<SubmissionState>(info.State), Detail::ReadStatus(info.ApplyFailure),
+        Detail::ReadStatus(info.RestoreFailure), info.RequestedEnabled != 0});
+}
+
+inline Result<void> Submission::SetEnabled(bool enabled) {
+    if (!*this)
+        return Result<void>::Failure(BML_ERROR_INVALID_HANDLE);
+    const auto state = m_State;
+    const auto &session = state->Session;
+    if (!BML_IFACE_HAS(session->Api, BML_BehaviorInterface, SetSubmissionEnabled))
+        return Result<void>::Failure(BML_ERROR_VERSION_MISMATCH);
+    auto status = Detail::EmptyStatus();
+    const int code = Detail::WireCode(session->Api->SetSubmissionEnabled(
+        session->Handle, state->Handle, enabled, &status), status);
+    return code == BML_OK ? Result<void>::Success(Detail::ReadStatus(status))
+                          : Result<void>::Failure(code, Detail::ReadStatus(status));
+}
+
+namespace Detail {
+
+template <class T, class Read>
+Result<std::vector<T>> ReadSubmissionList(Read read) {
+    using Entries = Result<std::vector<T>>;
+    auto status = EmptyStatus();
+    std::uint32_t count = 0;
+    int code = WireCode(read(static_cast<T *>(nullptr), 0u, &count, &status), status);
+    if (code == BML_OK && !count)
+        return Entries::Success(std::vector<T>{});
+    if (code != BML_ERROR_BUFFER_TOO_SMALL || !count)
+        return Entries::Failure(code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code, ReadStatus(status));
+    try {
+        std::vector<T> entries(count);
+        const auto capacity = count;
+        status = EmptyStatus();
+        code = WireCode(read(entries.data(), capacity, &count, &status), status);
+        if (code != BML_OK || count > capacity)
+            return Entries::Failure(code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code, ReadStatus(status));
+        entries.resize(count);
+        return Entries::Success(std::move(entries));
+    } catch (const std::bad_alloc &) {
+        return Entries::Failure(BML_ERROR_OUT_OF_MEMORY);
+    }
+}
+
+inline bool ValidInstallation(const BML_BehaviorInstallation &receipt) {
+    return receipt.StructSize == sizeof(receipt) && !receipt.Reserved &&
+        receipt.Id && receipt.World && receipt.Revision && receipt.Binding &&
+        receipt.Graph.Domain && ValidObjectRef(receipt.Graph);
+}
+
+template <class Target, class Action>
+auto WithSubmissionDefinition(const std::shared_ptr<SessionState> &session,
+                              const std::vector<Target> &targets, std::uint64_t binding,
+                              bool verifySnapshots, BML_BehaviorSubmissionSpec &spec,
+                              Action action) {
+    using Outcome = decltype(action(std::declval<std::vector<PatchSymbols> &>()));
+    spec.Count = static_cast<std::uint32_t>(targets.size());
+    if constexpr (std::is_same_v<Target, PatchTarget>) {
+        auto compiled = PatchWire::Compile(session, targets, verifySnapshots, binding);
+        if (!compiled)
+            return Outcome::Failure(compiled.Code(), compiled.GetStatus());
+        auto wire = compiled.Take();
+        spec.Graphs = wire.Targets.data();
+        return action(wire.Symbols);
+    } else {
+        static_assert(std::is_same_v<Target, PlanRule>);
+        auto compiled = PlanWire::Compile(session, targets, binding);
+        if (!compiled)
+            return Outcome::Failure(compiled.Code(), compiled.GetStatus());
+        auto wire = compiled.Take();
+        spec.Scripts = wire.Rules.data();
+        return action(wire.Symbols);
+    }
+}
+
+} // namespace Detail
+
+inline Result<std::vector<Submission::Installation>> Submission::Installations() const {
+    using Entries = Result<std::vector<Installation>>;
+    if (!*this)
+        return Entries::Failure(BML_ERROR_INVALID_HANDLE);
+    const auto &session = m_State->Session;
+    if (!BML_IFACE_HAS(session->Api, BML_BehaviorInterface, ListInstallations))
+        return Entries::Failure(BML_ERROR_VERSION_MISMATCH);
+    auto result = Detail::ReadSubmissionList<BML_BehaviorInstallation>(
+        [&](auto *out, auto capacity, auto *count, auto *status) {
+            return session->Api->ListInstallations(session->Handle, m_State->Handle,
+                                                    out, capacity, count, status);
+        });
+    if (!result)
+        return Entries::Failure(result.Code(), result.GetStatus());
+    try {
+        std::vector<Installation> entries;
+        entries.reserve(result->size());
+        for (const auto &receipt : *result) {
+            if (!Detail::ValidInstallation(receipt))
+                return Entries::Failure(BML_ERROR_MALFORMED_MESSAGE);
+            entries.push_back(Installation(m_State, receipt));
+        }
+        return Entries::Success(std::move(entries));
+    } catch (const std::bad_alloc &) {
+        return Entries::Failure(BML_ERROR_OUT_OF_MEMORY);
+    }
+}
+
+template <class First, class... More>
+inline Result<void> Submission::Replace(First &&first, More &&...more) {
+    using Target = std::decay_t<First>;
+    static_assert((std::is_same_v<Target, std::decay_t<More>> && ...));
+    if (!*this)
+        return Result<void>::Failure(BML_ERROR_INVALID_HANDLE);
+    const auto state = m_State;
+    const auto &session = state->Session;
+    if (!BML_IFACE_HAS(session->Api, BML_BehaviorInterface, ReplaceSubmission))
+        return Result<void>::Failure(BML_ERROR_VERSION_MISMATCH);
+    try {
+        std::vector<Target> targets;
+        targets.reserve(1 + sizeof...(more));
+        targets.push_back(std::forward<First>(first));
+        (targets.push_back(std::forward<More>(more)), ...);
+        BML_BehaviorSubmissionSpec spec{};
+        spec.StructSize = sizeof(spec);
+        return Detail::WithSubmissionDefinition(session, targets, state->NextBinding, false, spec,
+            [&](auto &symbols) {
+                state->Edits.reserve(state->Edits.size() + symbols.size());
+                state->NextBinding = symbols.back().Binding + 1;
+                state->Edits.insert(state->Edits.end(),
+                    std::make_move_iterator(symbols.begin()), std::make_move_iterator(symbols.end()));
+                auto status = Detail::EmptyStatus();
+                const int code = Detail::WireCode(session->Api->ReplaceSubmission(
+                    session->Handle, state->Handle, &spec, &status), status);
+                return code == BML_OK ? Result<void>::Success(Detail::ReadStatus(status))
+                                      : Result<void>::Failure(code, Detail::ReadStatus(status));
+            });
+    } catch (const std::bad_alloc &) {
+        return Result<void>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    }
+}
+
+inline Result<Submission::Installation> Submission::Find(ObjectRef graph) const {
+    return FindBinding(graph, 0);
+}
+
+inline Result<Submission::Installation> Submission::Find(
+    ObjectRef graph, const Edit::Port &port) const {
+    if (!*this)
+        return Result<Installation>::Failure(BML_ERROR_INVALID_HANDLE);
+    const auto first = m_State->Resolve(port);
+    if (!first)
+        return Result<Installation>::Failure(first.Code(), first.GetStatus());
+    auto result = FindBinding(graph, first->Binding);
+    for (const auto &edit : m_State->Edits) {
+        if (edit.Binding == first->Binding || !m_State->Resolve(port, edit.Binding))
+            continue;
+        if (!result && result.GetStatus().Error != Error::QueryNotFound)
+            return result;
+        auto match = FindBinding(graph, edit.Binding);
+        if (!match) {
+            if (match.GetStatus().Error == Error::QueryNotFound)
+                continue;
+            return match;
+        }
+        if (result) {
+            Status status;
+            status.Error = Error::QueryAmbiguous;
+            status.Phase = Phase::Edit;
+            status.Message = "More than one installation matches the Edit Port.";
+            return Result<Installation>::Failure(BML_ERROR_FAIL, std::move(status));
+        }
+        result = std::move(match);
+    }
+    return result;
+}
+
+inline Result<Submission::Installation> Submission::FindBinding(
+    ObjectRef graph, std::uint64_t binding) const {
+    if (!*this)
+        return Result<Installation>::Failure(BML_ERROR_INVALID_HANDLE);
+    BML_BehaviorInstallation receipt{};
+    receipt.StructSize = sizeof(receipt);
+    auto status = Detail::EmptyStatus();
+    const auto &session = m_State->Session;
+    const int code = Detail::WireCode(session->Api->FindInstallation(
+        session->Handle, m_State->Handle, graph, binding, &receipt, &status), status);
+    if (code != BML_OK)
+        return Result<Installation>::Failure(code, Detail::ReadStatus(status));
+    if (receipt.StructSize < sizeof(receipt) || !receipt.Id || !receipt.World ||
+        !receipt.Revision || !receipt.Binding || !receipt.Graph.Domain ||
+        !Detail::ValidObjectRef(receipt.Graph))
+        return Result<Installation>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    return Result<Installation>::Success(Installation(m_State, receipt));
+}
+
+inline Submission::Installation::operator bool() const noexcept {
+    const auto state = m_State.lock();
+    if (!state || !state->Handle || !m_Receipt.Id)
+        return false;
+    BML_BehaviorInstallation current{};
+    current.StructSize = sizeof(current);
+    const auto &session = state->Session;
+    return session->Api->FindInstallation(session->Handle, state->Handle,
+               m_Receipt.Graph, m_Receipt.Binding, &current, nullptr) == BML_OK &&
+        current.Id == m_Receipt.Id && current.World == m_Receipt.World &&
+        current.Revision == m_Receipt.Revision;
+}
+
+inline Result<ObjectRef> Submission::Installation::Resolve(const Edit::Node &node) const {
+    const auto state = m_State.lock();
+    if (!state || !state->Handle)
+        return Result<ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
+    const auto &session = state->Session;
+    if (!BML_IFACE_HAS(session->Api, BML_BehaviorInterface, ResolveInstallationNode))
+        return Result<ObjectRef>::Failure(BML_ERROR_VERSION_MISMATCH);
+    if (!state->OwnsSymbol(node.m_Edit, node.m_Scope, node.m_Id, m_Receipt.Binding))
+        return Result<ObjectRef>::Failure(BML_ERROR_INVALID_PARAMETER);
+    const BML_BehaviorNodeRef ref{sizeof(ref), node.m_Scope, node.m_Id, m_Receipt.Binding};
+    auto status = Detail::EmptyStatus();
+    ObjectRef object{};
+    const int code = Detail::WireCode(session->Api->ResolveInstallationNode(
+        session->Handle, state->Handle, &m_Receipt, &ref, &object, &status), status);
+    if (code != BML_OK)
+        return Result<ObjectRef>::Failure(code, Detail::ReadStatus(status));
+    if (!object.Domain || !Detail::ValidObjectRef(object))
+        return Result<ObjectRef>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    return Result<ObjectRef>::Success(object);
+}
+
+inline Result<ObservedValue> Submission::Installation::Read(const Edit::Port &port) const {
+    const auto state = m_State.lock();
+    if (!state || !state->Handle)
+        return Result<ObservedValue>::Failure(BML_ERROR_INVALID_HANDLE);
+    const auto ref = state->Resolve(port, m_Receipt.Binding);
+    if (!ref)
+        return Result<ObservedValue>::Failure(ref.Code(), ref.GetStatus());
+    const auto &session = state->Session;
+    return Detail::ReadInstallationPayload(
+        [&](auto *value, void *payload, auto capacity, auto *size, auto *status) {
+            return session->Api->ReadInstallationValue(session->Handle, state->Handle,
+                &m_Receipt, &ref.Value(), value, payload, capacity, size, status);
+        });
+}
+
+inline Result<void> Submission::Installation::Set(const Edit::Port &port, const Value &value) const {
+    const auto state = m_State.lock();
+    if (!state || !state->Handle)
+        return Result<void>::Failure(BML_ERROR_INVALID_HANDLE);
+    const auto ref = state->Resolve(port, m_Receipt.Binding);
+    if (!ref)
+        return Result<void>::Failure(ref.Code(), ref.GetStatus());
+    const auto &session = state->Session;
+    const auto wire = Detail::Wire::From(value);
+    auto status = Detail::EmptyStatus();
+    const int code = Detail::WireCode(session->Api->WriteInstallationValue(
+        session->Handle, state->Handle, &m_Receipt, &ref.Value(), &wire, &status), status);
+    return code == BML_OK ? Result<void>::Success(Detail::ReadStatus(status))
+                          : Result<void>::Failure(code, Detail::ReadStatus(status));
+}
+
+inline Result<void> Submission::SetInput(const Edit::Port &port, const Value &value) const {
+    if (!*this)
+        return Result<void>::Failure(BML_ERROR_INVALID_HANDLE);
+    const auto &session = m_State->Session;
+    const auto wire = Detail::Wire::From(value);
+    auto status = Detail::EmptyStatus();
+    if (BML_IFACE_HAS(session->Api, BML_BehaviorInterface, ReadSubmissionBindings) &&
+        BML_IFACE_HAS(session->Api, BML_BehaviorInterface, SetSubmissionInputs)) {
+        auto bindings = Detail::ReadSubmissionList<std::uint64_t>(
+            [&](auto *out, auto capacity, auto *count, auto *readStatus) {
+                return session->Api->ReadSubmissionBindings(session->Handle, m_State->Handle,
+                                                             out, capacity, count, readStatus);
+            });
+        if (!bindings)
+            return Result<void>::Failure(bindings.Code(), bindings.GetStatus());
+        try {
+            std::vector<BML_BehaviorPortRef> ports;
+            for (const auto binding : *bindings) {
+                if (auto match = m_State->Resolve(port, binding); match)
+                    ports.push_back(match.Value());
+            }
+            if (ports.empty())
+                return Result<void>::Failure(BML_ERROR_INVALID_PARAMETER);
+            const int code = Detail::WireCode(session->Api->SetSubmissionInputs(
+                session->Handle, m_State->Handle, ports.data(),
+                static_cast<std::uint32_t>(ports.size()), &wire, &status), status);
+            return code == BML_OK ? Result<void>::Success(Detail::ReadStatus(status))
+                                  : Result<void>::Failure(code, Detail::ReadStatus(status));
+        } catch (const std::bad_alloc &) {
+            return Result<void>::Failure(BML_ERROR_OUT_OF_MEMORY);
+        }
+    }
+
+    const auto ref = m_State->Resolve(port);
+    if (!ref)
+        return Result<void>::Failure(ref.Code(), ref.GetStatus());
+    int code;
+    if (std::count_if(m_State->Edits.begin(), m_State->Edits.end(),
+            [&](const auto &edit) { return edit.Edit == port.m_Edit.lock(); }) == 1) {
+        code = session->Api->SetSubmissionInput(
+            session->Handle, m_State->Handle, &ref.Value(), &wire, &status);
+    } else {
+        if (!BML_IFACE_HAS(session->Api, BML_BehaviorInterface, SetSubmissionInputs))
+            return Result<void>::Failure(BML_ERROR_VERSION_MISMATCH);
+        try {
+            std::vector<BML_BehaviorPortRef> ports;
+            for (const auto &edit : m_State->Edits) {
+                auto match = m_State->Resolve(port, edit.Binding);
+                if (match)
+                    ports.push_back(match.Value());
+            }
+            code = session->Api->SetSubmissionInputs(session->Handle, m_State->Handle,
+                ports.data(), static_cast<std::uint32_t>(ports.size()), &wire, &status);
+        } catch (const std::bad_alloc &) {
+            return Result<void>::Failure(BML_ERROR_OUT_OF_MEMORY);
+        }
+    }
+    code = Detail::WireCode(code, status);
+    return code == BML_OK ? Result<void>::Success(Detail::ReadStatus(status))
+                          : Result<void>::Failure(code, Detail::ReadStatus(status));
+}
+
+inline Result<CloseState> Submission::Close() {
+    if (!*this)
+        return Result<CloseState>::Success(CloseState::Closed);
+    const auto &session = m_State->Session;
+    auto status = Detail::EmptyStatus();
+    const int code = Detail::WireCode(session->Api->CloseSubmission(
+        session->Handle, m_State->Handle, &status), status);
+    if (code == BML_OK) {
+        m_State->Handle = nullptr;
+        m_State.reset();
+        return Result<CloseState>::Success(CloseState::Closed, Detail::ReadStatus(status));
+    }
+    if (code == BML_ERROR_BUSY)
+        return Result<CloseState>::Success(CloseState::Closing);
+    return Result<CloseState>::Failure(code, Detail::ReadStatus(status));
+}
+
+template <class First, class... More>
+inline Result<Submission> Session::Apply(
+    std::string_view name, EditOwnership ownership, First &&first, More &&...more) const {
+    return Apply(name, ApplyOptions{ownership}, std::forward<First>(first),
+                 std::forward<More>(more)...);
+}
+
+template <class First, class... More>
+inline Result<Submission> Session::Apply(
+    std::string_view name, ApplyOptions options, First &&first, More &&...more) const {
+    using Target = std::decay_t<First>;
+    static_assert((std::is_same_v<Target, Detail::PatchTarget> ||
+                   std::is_same_v<Target, Detail::PlanRule>) &&
+                  (std::is_same_v<Target, std::decay_t<More>> && ...),
+                  "Apply requires On(Graph, Edit) entries or On(Scripts, Edit) entries.");
+    if (!m_State || !m_State->Api || !m_State->Handle)
+        return Result<Submission>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!BML_BEHAVIOR_HAS_1_1(m_State->Api))
+        return Result<Submission>::Failure(BML_ERROR_VERSION_MISMATCH);
+    if (name.empty())
+        return Result<Submission>::Failure(BML_ERROR_INVALID_PARAMETER);
+    if (!options.Enabled && !BML_IFACE_HAS(m_State->Api, BML_BehaviorInterface, SetSubmissionEnabled))
+        return Result<Submission>::Failure(BML_ERROR_VERSION_MISMATCH);
+    try {
+        std::vector<Target> targets;
+        targets.reserve(1 + sizeof...(more));
+        targets.push_back(std::forward<First>(first));
+        (targets.push_back(std::forward<More>(more)), ...);
+        Submission owned;
+        owned.m_State = std::make_shared<Submission::State>();
+        owned.m_State->Session = m_State;
+        BML_BehaviorSubmissionSpec spec{};
+        spec.StructSize = sizeof(spec);
+        spec.Name = Detail::Text(name);
+        spec.Ownership = static_cast<std::uint32_t>(options.Ownership);
+        spec.Reserved = options.Enabled ? 0 : BML_BEHAVIOR_SUBMIT_DISABLED;
+        auto status = Detail::EmptyStatus();
+        const auto submit = [&](auto &symbols) {
+            owned.m_State->NextBinding = symbols.back().Binding + 1;
+            owned.m_State->Edits = std::move(symbols);
+            const int code = Detail::WireCode(m_State->Api->SubmitEdit(
+                m_State->Handle, &spec, &owned.m_State->Handle, &status), status);
+            if (code != BML_OK || !owned)
+                return Result<Submission>::Failure(
+                    code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
+                    Detail::ReadStatus(status));
+            return Result<Submission>::Success(std::move(owned), Detail::ReadStatus(status));
+        };
+        return Detail::WithSubmissionDefinition(m_State, targets, 1, true, spec, submit);
+    } catch (const std::bad_alloc &) {
+        return Result<Submission>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Submission>::Failure(BML_ERROR_FAIL);
+    }
+}
 
 } // namespace BML::Behavior
 

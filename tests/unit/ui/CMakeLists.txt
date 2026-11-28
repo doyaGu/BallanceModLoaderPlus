@@ -1,3 +1,11 @@
+if(BML_RUNTIME_SDL)
+    set(_bml_imgui_file "${BML_SOURCE_DIR}/UI/ImGuiFileSdl.cpp")
+    set(_bml_imgui_renderer "${BML_SOURCE_DIR}/UI/imgui_impl_ck2.cpp")
+    set(_bml_imgui_deps SDL3::SDL3)
+else()
+    set(_bml_imgui_renderer "${BML_SOURCE_DIR}/UI/imgui_impl_ck2_win32.cpp")
+endif()
+
 add_bml_test(CursorVisibilityPolicyTest
         SOURCES CursorVisibilityPolicyTest.cpp
 )
@@ -5,11 +13,13 @@ add_bml_test(CursorVisibilityPolicyTest
 add_bml_test(ImGuiBackendTest
         SOURCES
         ImGuiBackendTest.cpp
-        ${BML_SOURCE_DIR}/UI/imgui_impl_ck2.cpp
+        ${_bml_imgui_renderer}
+        ${_bml_imgui_file}
         ${IMGUI_SOURCE_DIR}/imgui.cpp
         ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
         ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+        DEPENDENCIES ${_bml_imgui_deps}
 )
 target_include_directories(ImGuiBackendTest BEFORE PRIVATE
         ${IMGUI_SOURCE_DIR}
@@ -28,9 +38,12 @@ add_bml_test(ColorCodecTest
 add_bml_test(ImeStateTest
         SOURCES
         ImeStateTest.cpp
-        ${BML_SOURCE_DIR}/UI/Ime/NativePresentation.cpp
         ${BML_SOURCE_DIR}/UI/Ime/State.cpp
 )
+
+if(WIN32)
+    target_sources(ImeStateTest PRIVATE ${BML_SOURCE_DIR}/UI/Ime/NativePresentation.cpp)
+endif()
 
 add_bml_test(ImePresentationTest
         SOURCES
@@ -46,12 +59,14 @@ add_bml_test(FontRuntimeTest
         SOURCES
         FontRuntimeTest.cpp
         ${BML_SOURCE_DIR}/UI/FontRuntime.cpp
+        ${_bml_imgui_file}
         ${IMGUI_SOURCE_DIR}/imgui.cpp
         ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
         ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
         DEPENDENCIES
         BMLUtils
+        ${_bml_imgui_deps}
 )
 target_include_directories(FontRuntimeTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
 target_compile_definitions(FontRuntimeTest PRIVATE
@@ -63,14 +78,16 @@ add_bml_test(BuiMenuTest
         SOURCES
         BuiMenuTest.cpp
         ${BML_SOURCE_DIR}/UI/ImGuiStateRecovery.cpp
+        ${_bml_imgui_file}
         ${IMGUI_SOURCE_DIR}/imgui.cpp
         ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
         ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+        DEPENDENCIES CK2 VxMath
+        ${_bml_imgui_deps}
 )
 target_include_directories(BuiMenuTest BEFORE PRIVATE
         ${IMGUI_SOURCE_DIR}
-        ${VIRTOOLS_SDK_INCLUDE_DIR}
 )
 target_compile_definitions(BuiMenuTest PRIVATE IMGUI_EXPORT)
 
@@ -95,7 +112,7 @@ add_bml_test(LegacyTextFontTest
         LegacyTextFontTest.cpp
         ${BML_SOURCE_DIR}/UI/Gui/LegacyTextFont.cpp
         DEPENDENCIES
-        VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        CK2 VxMath
 )
 
 add_bml_test(AnsiTextTest
@@ -103,12 +120,14 @@ add_bml_test(AnsiTextTest
         AnsiTextTest.cpp
         ${BML_SOURCE_DIR}/UI/AnsiText.cpp
         ${BML_SOURCE_DIR}/UI/AnsiPalette.cpp
+        ${_bml_imgui_file}
         ${IMGUI_SOURCE_DIR}/imgui.cpp
         ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
         ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
         DEPENDENCIES
         BMLUtils
+        ${_bml_imgui_deps}
 )
 target_include_directories(AnsiTextTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
 target_compile_definitions(AnsiTextTest PRIVATE IMGUI_EXPORT)
@@ -118,10 +137,12 @@ add_bml_test(ImGuiStateRecoveryTest
         ImGuiStateRecoveryTest.cpp
         ${BML_SOURCE_DIR}/UI/ImGuiStateRecovery.cpp
         ${BML_SOURCE_DIR}/UI/ScriptImGui.cpp
+        ${_bml_imgui_file}
         ${IMGUI_SOURCE_DIR}/imgui.cpp
         ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
         ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+        DEPENDENCIES ${_bml_imgui_deps}
 )
 target_include_directories(ImGuiStateRecoveryTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
 target_compile_definitions(ImGuiStateRecoveryTest PRIVATE IMGUI_EXPORT)

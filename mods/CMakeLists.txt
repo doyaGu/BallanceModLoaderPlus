@@ -26,9 +26,6 @@ foreach(mod IN LISTS BML_TOOLING_MODS)
     list(APPEND BML_MOD_PACKAGES "${package_name}")
 endforeach()
 
-ballance_add_mod_directory(IVP Providers package_name)
-list(APPEND BML_MOD_PACKAGES "${package_name}")
-
 list(SORT BML_MOD_PACKAGES)
 string(REPLACE ";" "\n" BML_MOD_PACKAGE_LIST "${BML_MOD_PACKAGES}")
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/mods.txt"

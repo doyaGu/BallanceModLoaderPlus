@@ -3,11 +3,14 @@
 
 #include <string>
 #include <vector>
+#include "BML/Types.h"
+#include "BML/Config.h"
 
-#include "BML/ICommand.h"
-#include "BML/IMod.h"
+#include "Console/CommandRecord.h"
+#include "Loader/ModRecord.h"
 
 namespace BML {
+struct ScriptRuntimeScope;
 
 enum ScriptGameEvent {
     ScriptGameEventPreStartMenu = 0,
@@ -103,7 +106,7 @@ public:
     CKObject *BorrowMasterObject() const;
 
 private:
-    CKObject *ResolveObject(CK_ID id, CK_CLASSID classId) const;
+    CKObject *ResolveObject(BML_ObjectRef reference, CK_CLASSID classId) const;
 
     std::string m_Filename;
     bool m_IsMap = false;
@@ -113,8 +116,10 @@ private:
     bool m_ReuseMeshes = false;
     bool m_ReuseMaterials = false;
     bool m_Dynamic = false;
-    CKContext *m_Context = nullptr;
+
     std::vector<CK_ID> m_ObjectIds;
+    std::vector<BML_ObjectRef> m_ObjectRefs;
+    BML_ObjectRef m_MasterRef{};
     CK_ID m_MasterObjectId = 0;
 };
 
@@ -127,16 +132,16 @@ public:
     CKBehavior *BorrowScript() const;
 
 private:
-    CKContext *m_Context = nullptr;
+
     std::string m_Filename;
     CK_ID m_ScriptId = 0;
+    BML_ObjectRef m_ScriptRef{};
 };
 
 class ScriptCommandEventView {
 public:
     ScriptCommandEventView() = default;
-    ScriptCommandEventView(ScriptCommandEventPhase phase,
-                           ICommand *command,
+    ScriptCommandEventView(ScriptCommandEventPhase phase, BML::CommandRecord *command,
                            const std::vector<std::string> *args);
 
     ScriptCommandEventPhase GetPhase() const { return m_Phase; }
@@ -148,11 +153,14 @@ public:
     int GetArgCount() const;
     std::string GetArg(int index) const;
     std::string GetArgsText() const;
+    std::string GetInvokedAs() const { return m_InvokedAs; }
+    int ReadArgument(unsigned index, std::string &out) const;
     bool IsCheat() const;
 
 private:
     ScriptCommandEventPhase m_Phase = ScriptCommandEventPre;
     std::string m_CommandName;
+    std::string m_InvokedAs;
     std::vector<std::string> m_Args;
     bool m_IsCheat = false;
 };
@@ -160,12 +168,15 @@ private:
 class ScriptConfigEventView {
 public:
     ScriptConfigEventView() = default;
-    ScriptConfigEventView(const char *modId, const char *category, const char *key, IProperty *property);
+    ScriptConfigEventView(const char *modId, const char *category, const char *key,
+                          Property *property);
     std::string GetModId() const;
     std::string GetCategory() const;
     std::string GetKey() const;
     int GetType() const { return m_Type; }
     bool HasProperty() const { return m_HasProperty; }
+    BML_ConfigPropertyHandle PropertyHandle() const { return m_PropertyHandle; }
+    const std::weak_ptr<ScriptRuntimeScope> &PropertyScope() const { return m_PropertyScope; }
 
 private:
     std::string m_ModId;
@@ -173,6 +184,8 @@ private:
     std::string m_Key;
     int m_Type = 0;
     bool m_HasProperty = false;
+    BML_ConfigPropertyHandle m_PropertyHandle = 0;
+    std::weak_ptr<ScriptRuntimeScope> m_PropertyScope;
 };
 
 class ScriptPhysicalizeEventView {
@@ -217,25 +230,31 @@ public:
     float GetMassCenterX() const { return m_MassCenter.x; }
     float GetMassCenterY() const { return m_MassCenter.y; }
     float GetMassCenterZ() const { return m_MassCenter.z; }
-    VxVector GetMassCenter() const { return m_MassCenter; }
+    BML_Vec3 GetMassCenter() const { return {m_MassCenter.x, m_MassCenter.y, m_MassCenter.z}; }
+    bool HasCollisionGroup() const { return m_HasCollisionGroup; }
+    bool HasCollisionSurface() const { return m_HasCollisionSurface; }
+    BML_Vec3 GetSphereCenter(int index) const { auto v = GetBallCenter(index); return {v.x, v.y, v.z}; }
     int GetConvexCount() const { return m_ConvexCount; }
     CKMesh *BorrowConvexMesh(int index) const;
     int GetBallCount() const { return m_BallCount; }
     VxVector GetBallCenter(int index) const;
     float GetBallRadius(int index) const;
+    float GetSphereRadius(int index) const { return GetBallRadius(index); }
     int GetConcaveCount() const { return m_ConcaveCount; }
     CKMesh *BorrowConcaveMesh(int index) const;
 
 private:
-    CKObject *ResolveObject(CK_ID id, CK_CLASSID classId) const;
+    CKObject *ResolveObject(BML_ObjectRef reference, CK_CLASSID classId) const;
 
-    CKContext *m_Context = nullptr;
+
     CK_ID m_TargetId = 0;
+    BML_ObjectRef m_TargetRef{};
     std::string m_TargetName;
     bool m_Fixed = false;
     float m_Friction = 0.0f;
     float m_Elasticity = 0.0f;
     float m_Mass = 0.0f;
+    bool m_HasCollisionGroup = false, m_HasCollisionSurface = false;
     std::string m_CollisionGroup;
     bool m_StartFrozen = false;
     bool m_EnableCollision = false;
@@ -243,14 +262,14 @@ private:
     float m_LinearDamp = 0.0f;
     float m_RotDamp = 0.0f;
     std::string m_CollisionSurface;
-    VxVector m_MassCenter;
+    VxVector m_MassCenter = VxVector(0, 0, 0);
     int m_ConvexCount = 0;
-    std::vector<CK_ID> m_ConvexMeshIds;
+    std::vector<BML_ObjectRef> m_ConvexMeshRefs;
     int m_BallCount = 0;
     std::vector<VxVector> m_BallCenters;
     std::vector<float> m_BallRadii;
     int m_ConcaveCount = 0;
-    std::vector<CK_ID> m_ConcaveMeshIds;
+    std::vector<BML_ObjectRef> m_ConcaveMeshRefs;
 };
 
 class ScriptObjectEventView {
@@ -261,8 +280,9 @@ public:
     CK3dEntity *BorrowTarget() const;
 
 private:
-    CKContext *m_Context = nullptr;
+
     CK_ID m_TargetId = 0;
+    BML_ObjectRef m_TargetRef{};
     std::string m_TargetName;
 };
 

@@ -30,6 +30,7 @@ protected:
     }
 
     void Write(const std::wstring &path, const std::string &content) {
+        ASSERT_TRUE(utils::CreateFileTreeW(utils::GetDirectoryW(path)));
         ASSERT_TRUE(utils::WriteTextFileUtf8(utils::Utf16ToUtf8(path), content));
     }
 

@@ -8,22 +8,24 @@
 #include <vector>
 
 class Config;
-class IMod;
+class ModRecord;
 
 // Owns the config registry and keeps its id index consistent. ModContext
 // serializes access with m_Mutex; this class enforces owner identity and
 // container invariants, not synchronization.
 class ConfigStore {
-public:
+  public:
     bool Contains(const std::string &modId) const;
-    Config *Add(const std::string &modId, IMod *owner, std::unique_ptr<Config> config);
-    std::unique_ptr<Config> Remove(const std::string &modId, IMod *owner, Config *config);
-    Config *Find(const std::string &modId, const IMod *owner) const;
+    Config *Add(const std::string &modId, ModRecord *owner, std::unique_ptr<Config> config);
+    std::unique_ptr<Config> Remove(const std::string &modId, ModRecord *owner, Config *config);
+    Config *Find(const std::string &modId, const ModRecord *owner) const;
+    Config *Find(const ModRecord *owner) const noexcept;
     std::vector<Config *> Snapshot() const;
 
-private:
+  private:
     std::vector<std::unique_ptr<Config>> m_Configs;
     std::unordered_map<std::string, std::size_t> m_Index;
+    std::unordered_map<const ModRecord *, Config *> m_Owners;
 };
 
 #endif // BML_CONFIGSTORE_H

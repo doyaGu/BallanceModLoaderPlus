@@ -7,18 +7,19 @@ BML::UI::AddMessage("text");
 BML::UI::ClearMessages();
 ```
 
-`ClearMessages` 会清除当前消息板上的全部消息。
+这些管理操作返回错误码。`ClearMessages` 会清除当前消息板上的全部消息。
 
 ## HUD 控制
 
 ```angelscript
-int mode = BML::UI::GetHUDMode();
-BML::UI::SetHUDMode(mode);
+BML::UI::HUDState state;
+if (BML::UI::ReadHUDState(state) == BML::ERROR_OK)
+    BML::UI::SetHUDMode(state.Mode);
 BML::UI::ShowTitle(true);
 BML::UI::ShowFPS(true);
 ```
 
-如果 Mod 会修改 HUD 模式，应在加载时保存 `GetHUDMode()` 的结果，并在卸载时恢复。
+如果 Mod 会修改 HUD 模式，应在加载时检查 ReadHUDState(state) 并保存 state.Mode，并在卸载时恢复。
 
 ## Speedrun 计时
 
@@ -27,7 +28,9 @@ BML::Speedrun::SetTimerVisible(true);
 BML::Speedrun::ResetTimer();
 BML::Speedrun::StartTimer();
 BML::Speedrun::PauseTimer();
-float elapsed = BML::Speedrun::GetElapsedTime();
+BML::Speedrun::TimerState state;
+if (BML::Speedrun::ReadTimerState(state) != BML::ERROR_OK) return;
+float elapsed = state.ElapsedTime;
 ```
 
 Speedrun 计时是 Loader 的共享功能。只有确实需要控制计时流程的 Mod 才应调用修改函数。
@@ -46,16 +49,19 @@ BML::UI::CloseMapMenu();
 ## 文件路径
 
 ```angelscript
-string root = ctx.GetModRootUtf8();
-string path = ctx.ResolveModPathUtf8("data/message.txt");
-bool exists = ctx.ModFileExistsUtf8("data/message.txt");
-string content = ctx.ReadModTextFileUtf8("data/message.txt", "");
+string root; string path; bool exists = false; array<uint8> bytes;
+int code = ctx.GetDirectory(BML::DIR_MOD_ROOT, root);
+code = ctx.ResourceExists("data/message.txt", exists);
+if (code == BML::ERROR_OK && exists) {
+    code = ctx.GetResourcePath("data/message.txt", path);
+    code = ctx.ReadResource("data/message.txt", bytes);
+}
 ```
 
 规则：
 - 路径用正斜杠
 - 不要硬编码绝对路径
-- 读取前先检查 ModFileExistsUtf8
+- 读取和解析均检查状态；GetResourcePath 只解析已存在文件，构造新路径使用 Path::Combine
 
 ## 文件布局
 
@@ -83,7 +89,9 @@ ModLoader/Mods/
 
 ```angelscript
 BML::ObjectLoadOptions options;
-options.File = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), "3D Entities\\PH\\P_Ball_Wood.nmo");
+string game;
+if (ctx.GetDirectory(BML::DIR_GAME, game) != BML::ERROR_OK) return;
+options.File = BML::Path::Combine(game, "3D Entities/PH/P_Ball_Wood.nmo");
 options.Rename = true;
 options.MasterName = "UniqueObjectName";
 options.AddToScene = true;

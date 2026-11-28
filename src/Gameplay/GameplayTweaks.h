@@ -3,38 +3,38 @@
 
 #include "BML/Behavior.hpp"
 
-class IBML;
-class IConfig;
-class ILogger;
-class IProperty;
+class ModContext;
+class Config;
+class Logger;
+class Property;
 
 class GameplayTweaks {
 public:
-    void InitConfig(IConfig &config);
-    bool OnModifyConfig(const char *category, const char *key, IProperty *property);
+    void InitConfig(Config &config);
+    bool OnModifyConfig(const char *category, const char *key, Property *property);
 
-    void OnLoad(IBML &bml, ILogger &logger);
+    void OnLoad(ModContext &bml, Logger &logger);
     void OnUnload();
     void OnExitGame();
 
 private:
     void ApplyLanternAlphaTest(bool enabled);
-    bool ApplyLanternScript(bool enabled, bool warnIfUnavailable);
     bool ApplyOverclock(bool enabled, bool warnIfUnavailable);
     bool SetPlanEnabled(BML::Behavior::Plan &plan, bool enabled,
                         const char *name, bool warnIfUnavailable);
     void ClosePlan(BML::Behavior::Plan &plan, const char *name);
 
-    IBML *m_BML = nullptr;
-    ILogger *m_Logger = nullptr;
+    ModContext *m_BML = nullptr;
+    Logger *m_Logger = nullptr;
 
-    IProperty *m_LanternAlphaTest = nullptr;
-    IProperty *m_FixLifeBall = nullptr;
-    IProperty *m_Overclock = nullptr;
+    Property *m_LanternAlphaTest = nullptr;
+    Property *m_FixLifeBall = nullptr;
+    Property *m_Overclock = nullptr;
 
     BML::Behavior::Session m_Behavior;
-    BML::Behavior::Plan m_LanternPlan;
-    BML::Behavior::Plan m_OverclockPlan;
+    BML::Behavior::Submission m_Lantern;
+    BML::Behavior::Edit::Port m_LanternInput;
+    BML::Behavior::Submission m_OverclockSubmission;
     BML::Behavior::Plan m_ExtraLifePlan;
 };
 

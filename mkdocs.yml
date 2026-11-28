@@ -44,18 +44,28 @@ extra:
       link: https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/
       lang: zh
 
+validation:
+  links:
+    anchors: warn
+    unrecognized_links: warn
+
 nav:
   - Home: index.md
-  - Use BML+: using-bml.md
+  - Use BML+:
+      - Install and use: using-bml.md
+      - Updater and doctor: updater-sdl.md
+      - Support and validation: validation.md
   - Create mods:
       - Choose a route: modding.md
       - Native mods: native-mod-api.md
+      - Native migration: native-mod-migration.md
       - Behavior authoring: behavior-authoring.md
       - Which native API to use: native-api-routes.md
       - Script mods:
           - Start here: script-mod/index.md
           - Lifecycle and reload: script-mod/lifecycle.md
           - BML services: script-mod/services.md
+          - API migration: script-mod/migration.md
           - Engine and UI: script-mod/engine-ui.md
           - Communication: script-mod/communication.md
           - API reference: script-mod/api.md

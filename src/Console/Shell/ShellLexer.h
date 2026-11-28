@@ -90,7 +90,7 @@ namespace BML::Shell {
 
     // The text a word stands for before any expansion: quotes removed, escapes
     // resolved, variables and substitutions written back as source. This is what
-    // completion hands to ICommand::GetTabCompletion.
+    // completion hands to BML::CommandRecord::GetTabCompletion.
     std::string LiteralText(const std::vector<WordPart> &parts);
 
     // Source text for one part written back from its fields.

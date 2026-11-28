@@ -1,125 +1,89 @@
 # 命令、配置、定时器
 
-## 命令注册
+以下为当前 API。操作返回错误码，成功是 `BML::ERROR_OK`；旧源码逐项迁移见
+[迁移指南](migration.md)。完整签名见[运行时导出的声明](https://doyagu.github.io/BallanceModLoaderPlus/api/bml-script-mod-api.as)。
+
+## 命令
 
 ```angelscript
-BML::CommandDefinition def;
-def.Name = "hello";
-def.Alias = "h";
-def.Description = "Hello command";
-def.Usage = "hello [status|toggle]";
-def.Category = "Tutorial";
-def.Enabled = true;
-
-BML::CommandCallback@ execute = BML::CommandCallback(this.OnCommand);
-BML::CommandCompletionCallback@ complete = BML::CommandCompletionCallback(this.OnComplete);
-BML::CommandRef@ commandRef = ctx.RegisterCommand(def, execute, complete);
-```
-
-## 命令回调签名
-
-```angelscript
-funcdef void CommandCallback(const BML::ModContext &in ctx, const BML::CommandEvent &in event);
-funcdef void CommandCompletionCallback(const BML::ModContext &in ctx, const BML::CommandEvent &in event, BML::CommandCompletion &inout completions);
-```
-
-## CommandEvent 字段
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| CommandName | string | 命令名 |
-| ArgsText | string | 参数原文 |
-| ArgCount | int | 参数数量 |
-| GetArg(index) | string | 第 N 个参数 |
-| Phase | BML::CommandEventPhase | 执行阶段 |
-
-阶段值：`COMMAND_EVENT_PRE`、`COMMAND_EVENT_POST`、`COMMAND_EVENT_EXECUTE`、`COMMAND_EVENT_COMPLETE`。
-
-Script Command 的 shell 能力有意小于 Native `bml.command`：`Execute` 返回 `void`，
-`CommandEvent` 不提供管道输入和输出 writer。回调正常结束时该阶段视为成功，脚本回调失败
-时该阶段失败。需要自行返回 shell status，或显式读写 pipeline 数据时，应使用 Native
-Command 接口。
-
-## 补全
-
-```angelscript
-private void OnComplete(const BML::ModContext &in ctx, const BML::CommandEvent &in event, BML::CommandCompletion &inout completions) {
-    completions.Add("status");
-    completions.Add("toggle");
+BML::CommandRef@ command;
+void Setup(const BML::ModContext &in ctx) {
+    BML::CommandDefinition definition;
+    definition.Name = "hello";
+    definition.Description = "Hello command";
+    int code = ctx.Commands().Register(definition, BML::CommandExecute(Execute), command,
+                                       BML::CommandComplete(Complete));
+    if (code != BML::ERROR_OK) ctx.LogError("Register failed: " + code);
+}
+int Execute(const BML::ModContext &in ctx, const BML::CommandInvocation &in call) {
+    string action;
+    if (call.ArgumentCount > 0) call.ReadArgument(0, action);
+    return call.Write("hello " + action) == BML::ERROR_OK ? 0 : 1;
+}
+int Complete(const BML::ModContext &in ctx,
+             const BML::CommandCompletionRequest &in request,
+             const BML::CommandCompletion &in candidates) {
+    return candidates.Add("status");
 }
 ```
+
+执行回调返回非负业务退出码，负值按命令失败处理。Commands.ExecuteLine(line,status)
+返回 API 状态，业务退出码在 status 中。Invocation 的 Name 是规范名，InvokedAs 是
+用户实际输入的名称或别名，ArgumentCount/ReadArgument 不包含命令名。Input 是管道输入，
+HasInput() 区分没有输入与空输入。Write 只在回调期间可用。
+
+补全请求另有 ActiveArgument 和 Prefix；候选通过 Add/ReadCount/ReadCandidate 访问。
+失败会丢弃本次候选集合。Invocation、补全请求与 collector 即使复制也不能延长回调寿命。
+通知用的 CommandEvent 与这两种 authoring 回调不同，保留 OnCommandEvent 及前后通知点。
+
+`Find(name, CommandInfo &out)` 和 `ReadCommands(? &out)` 返回拥有数据的快照；后者传入
+array<BML::CommandInfo> 对象。CommandRef 的 Read/SetEnabled/Unregister 返回错误码。
+结束操作成功后，同一 owner 再次 Unregister 为幂等成功。
 
 ## 配置
 
 ```angelscript
-BML::Config@ config = ctx.BorrowConfig();
-config.SetCategoryComment("MyMod", "Settings");
-
-BML::ConfigProperty@ prop = config.GetProperty("MyMod", "ShowWindow");
-prop.SetDefaultBoolean(true);
-prop.SetComment("Show the window");
-bool show = prop.GetBoolean(true);
-// Later: prop.SetBoolean(newValue);
+BML::ConfigPropertyDefinition definition;
+definition.Category = "MyMod";
+definition.Key = "ShowWindow";
+definition.DefaultValue = BML::ConfigValue(true);
+definition.Comment = "Show the window";
+BML::ConfigProperty@ property;
+if (ctx.Config().DeclareProperty(definition, property) == BML::ERROR_OK) {
+    bool show = property.GetBoolean(true);
+    int code = property.Set(BML::ConfigValue(!show));
+}
 ```
 
-### ConfigProperty 方法
+ConfigValue 拥有 string/bool/int/float/CKKEYBOARD 或 NONE。严格 ReadString/ReadBoolean/
+ReadInteger/ReadFloat/ReadKey 不做隐式转换；Get*(fallback) 是属性上的显式回退读取。
+普通 int 不是按键类型。Read(ConfigPropertyInfo &out) 拥有 Definition 与 CurrentValue。
+Choices 被宿主复制；修改快照不会修改宿主。SetChoices 配合 CONFIG_EDITOR_CHOICE 提供
+字符串候选；CONFIG_EDITOR_COLOR 支持颜色文本。
 
-| 方法 | 说明 |
-| --- | --- |
-| SetDefaultBoolean/String/Integer/Float(v) | 设置默认值 |
-| SetComment(text) | 设置注释 |
-| SetEditor(CONFIG_EDITOR_COLOR) | 让字符串属性在 Mod 菜单中使用调色盘；支持 `#RRGGBB`、`#RRGGBBAA`，无效值仍可用文本框修复 |
-| SetChoices(values) + SetEditor(CONFIG_EDITOR_CHOICE) | 为字符串属性提供有限候选值，并在 Mod 菜单中使用 RadioButton |
-| GetBoolean/String/Integer/Float(default) | 读取，如未设置返回 default |
-| SetBoolean/String/Integer/Float(v) | 写入 |
-
-类型值：`CONFIG_PROPERTY_BOOLEAN`、`CONFIG_PROPERTY_STRING`、`CONFIG_PROPERTY_INTEGER`、`CONFIG_PROPERTY_FLOAT`、`CONFIG_PROPERTY_KEY`。
-
-配置文件自动生成在 `ModLoader/Configs/<mod-id>.cfg`。
+FindProperty 不创建属性。同一运行期重复声明不同类型会失败；第一次具体类型声明、
+NONE 初始化及异型 SetDefault 可能替换已加载的值。要先保留并检查旧类型，使用 NONE
+声明后严格 Read，再决定迁移。SetDefault(NONE) 也不是无操作。配置仍保存到
+ModLoader/Configs/<mod-id>.cfg。
 
 ## 定时器
 
-BML+ 会在脚本 Mod 卸载或热重载时取消它拥有的定时器。脚本 Mod 的所有回调中都不允许
-创建 CKAngelScript `Async::*` 任务，因为这种 detached 任务不归 Mod 生命周期管理，
-可能越过热重载继续运行。需要延迟到后续帧或周期执行时，应使用这里的 BML+ Timer。
-
-### 一次性
-
 ```angelscript
-BML::TimerCallback@ cb = BML::TimerCallback(this.OnTimeout);
-BML::TimerRef@ timerRef = ctx.SetTimeout(1000.0f, cb, "my-timeout");
-```
-
-回调签名：
-```angelscript
-private void OnTimeout(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
-    // event.Name = "my-timeout"
+BML::TimerRef@ timer;
+int code = ctx.Timers().SetIntervalTicks(1, BML::TimerLoopCallback(Tick), timer, "heartbeat");
+bool Tick(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
+    BML::TimerInfo info;
+    if (event.Read(info) != BML::ERROR_OK) return false;
+    return info.CompletedIterations < 10;
 }
 ```
 
-### 循环
+SetTimeout/SetTimeoutTicks 使用 void TimerCallback；SetInterval/SetIntervalTicks 使用
+bool TimerLoopCallback。完整 Definition 通过 Register(definition,callback,out) 注册。
+毫秒为非负有限 double，ticks、Handle、CompletedIterations 为 uint64，RemainingIterations
+为 int64。零延迟被接受但在后续 pump 执行。DEBOUNCE/THROTTLE 尚未实现。
 
-```angelscript
-BML::TimerLoopCallback@ cb = BML::TimerLoopCallback(this.OnInterval);
-BML::TimerRef@ timerRef = ctx.SetInterval(500.0f, cb, "my-interval");
-```
-
-回调签名：
-```angelscript
-private bool OnInterval(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
-    return true;  // true = 继续, false = 停止
-}
-```
-
-### TimerRef
-
-```angelscript
-timerRef.IsValid  // bool property
-timerRef.Cancel() // 取消定时器
-```
-
-### TimerEvent 字段
-
-| 字段 | 类型 |
-| --- | --- |
-| Name | string |
+TimerEvent.Read 读取捕获快照，退休后仍可读。TimerRef.Read/Pause/Resume 需要当前运行期；
+Cancel 成功后阻止后续分发，已经进入的回调可完成，其返回 true 不会复活定时器。
+同 owner 的结束操作可重复成功。脚本引用不是 RAII，丢弃 Ref 不取消；运行期退休会清理。
+固定回调不可挂起或 Await；CKAngelScript Async 任务不受 BML Mod 生命周期管理。

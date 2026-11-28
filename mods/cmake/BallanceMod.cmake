@@ -38,6 +38,8 @@ function(ballance_add_mod TARGET_NAME)
     endforeach()
 
     bml_add_mod(${TARGET_NAME} ${BALLANCE_MOD_SOURCES})
+    target_link_libraries(${TARGET_NAME} PRIVATE BML::Engine BML::ImGui)
+    target_include_directories(${TARGET_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/mods" "${BML_SOURCE_DIR}")
 
     if(BALLANCE_MOD_LIBRARIES)
         target_link_libraries(${TARGET_NAME} PRIVATE ${BALLANCE_MOD_LIBRARIES})
@@ -56,6 +58,10 @@ function(ballance_add_mod TARGET_NAME)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "$<TARGET_FILE:${TARGET_NAME}>" "${PACKAGE_DIRECTORY}")
     set(PACKAGE_ENTRIES "$<TARGET_FILE_NAME:${TARGET_NAME}>")
+    list(APPEND PACKAGE_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:${TARGET_NAME}>.abi.json" "${PACKAGE_DIRECTORY}")
+    list(APPEND PACKAGE_ENTRIES "$<TARGET_FILE_NAME:${TARGET_NAME}>.abi.json")
 
     foreach(RESOURCE IN LISTS BALLANCE_MOD_RESOURCES)
         if(IS_ABSOLUTE "${RESOURCE}")

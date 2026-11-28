@@ -3,7 +3,7 @@
 #include "Imc/ImcRuntime.h"
 #include "Loader/ModContext.h"
 
-#include <intrin.h>
+#include "Platform/Module.h"
 #include <new>
 #include <string>
 
@@ -30,7 +30,7 @@ int GuardImc(Function &&function) noexcept {
 
 BML_EXPORT int BML_CDECL BML_Imc_OpenClient(const char *ownerId,
                                              BML_ImcClient *outClient) {
-    const void *callerReturnAddress = _ReturnAddress();
+    const void *callerReturnAddress = BML_CALLER_ADDRESS();
     return GuardImc([&, callerReturnAddress] {
         if (!outClient)
             return BML_ERROR_INVALID_PARAMETER;
@@ -38,8 +38,8 @@ BML_EXPORT int BML_CDECL BML_Imc_OpenClient(const char *ownerId,
         ModContextLease context;
         if (!context)
             return BML_ERROR_FROZEN;
-        const std::string resolved = context->GetNativeImcOwnerId(
-            callerReturnAddress, ownerId);
+        const std::string resolved =
+            context->GetModLoader().GetNativeModOwnerId(callerReturnAddress, ownerId);
         if (resolved.empty() || (ownerId && resolved != ownerId))
             return BML_ERROR_ACCESS_DENIED;
         return context->GetImcRuntime().OpenClient(resolved, outClient);

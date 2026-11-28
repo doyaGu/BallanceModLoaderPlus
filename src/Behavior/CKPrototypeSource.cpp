@@ -3,19 +3,31 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <filesystem>
+#include "PathUtils.h"
 #include <sstream>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
 
+#if !BML_RUNTIME_SDL
+#include <Windows.h>
 #include <MinHook.h>
+#endif
 
 namespace BML::Behavior::Internal {
 namespace {
 
+
+#if BML_RUNTIME_SDL
+std::uint64_t EncodeGuid(CKGUID guid) noexcept {
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(guid.d1)) << 32u) |
+           static_cast<std::uint32_t>(guid.d2);
+}
+
+CKGUID DecodeGuid(std::uint64_t value) noexcept {
+    return CKGUID(static_cast<int>(value >> 32u),
+                  static_cast<int>(value & 0xffffffffu));
+}
+
+#else
 using RemoveDeclaration = CKERROR(__cdecl *)(CKObjectDeclaration *);
 
 constexpr std::size_t kRetirementCapacity = 64;
@@ -59,6 +71,8 @@ CKERROR __cdecl RemoveDeclarationHook(CKObjectDeclaration *declaration) {
     return result;
 }
 
+#endif
+
 std::string Safe(CKSTRING text) {
     return text ? text : "";
 }
@@ -100,6 +114,15 @@ bool HasFlag(CKDWORD value, CKDWORD flag) noexcept {
 
 class CKPrototypeSource final : public PrototypeSource {
 public:
+#if BML_RUNTIME_SDL
+    explicit CKPrototypeSource(CKContext *context) : m_Context(context) {
+        m_TracksRetirement = true;
+    }
+
+    ~CKPrototypeSource() override {
+    }
+
+#else
     explicit CKPrototypeSource(CKContext *context) : m_Context(context) {
         HMODULE ck2 = ::GetModuleHandleA("CK2.dll");
         g_RemoveTarget = ck2 ? reinterpret_cast<void *>(::GetProcAddress(
@@ -129,6 +152,8 @@ public:
         g_RemoveDeclaration = nullptr;
         g_RemoveTarget = nullptr;
     }
+
+#endif
 
     Status ReadDeclarations(std::vector<PrototypeInfo> &out) override {
         out.clear();
@@ -179,8 +204,7 @@ public:
             }
             if (dll) {
                 prototype.Provider.Path = dll->m_DllFileName.CStr();
-                prototype.Provider.Name = std::filesystem::path(
-                    prototype.Provider.Path).stem().string();
+                prototype.Provider.Name = utils::RemoveExtensionUtf8(utils::GetFileNameUtf8(prototype.Provider.Path));
             }
             if (prototype.Provider.Name.empty())
                 prototype.Provider.Name = prototype.Author;
@@ -315,6 +339,27 @@ public:
 
     void TakeRetirements(std::vector<CKGUID> &out,
                          bool &retireAll) override {
+#if BML_RUNTIME_SDL
+        out.clear();
+        // Read registration identities before the catalog's count shortcut.
+        // Same-version reloads and replacements may leave both count and
+        // addresses unchanged; the engine generation still distinguishes them.
+        retireAll = false;
+        std::unordered_map<std::uint64_t, CKQWORD> current;
+        const int count = CKGetPrototypeDeclarationCount();
+        current.reserve(static_cast<std::size_t>(count));
+        for (int i = 0; i < count; ++i) {
+            CKObjectDeclaration *declaration = CKGetPrototypeDeclaration(i);
+            if (declaration)
+                current.emplace(EncodeGuid(declaration->GetGuid()), declaration->GetGeneration());
+        }
+        for (const auto &[guid, generation] : m_Generations) {
+            const auto found = current.find(guid);
+            if (found == current.end() || found->second != generation)
+                out.push_back(DecodeGuid(guid));
+        }
+        m_Generations = std::move(current);
+#else
         out.clear();
         retireAll = g_RetirementOverflow.exchange(false,
                                                    std::memory_order_acq_rel);
@@ -324,6 +369,7 @@ public:
             if (encoded)
                 out.push_back(DecodeGuid(encoded));
         }
+#endif
     }
 
     [[nodiscard]] bool TracksRetirement() const noexcept override {
@@ -333,6 +379,9 @@ public:
 private:
     CKContext *m_Context = nullptr;
     bool m_TracksRetirement = false;
+#if BML_RUNTIME_SDL
+    std::unordered_map<std::uint64_t, CKQWORD> m_Generations;
+#endif
 };
 
 } // namespace

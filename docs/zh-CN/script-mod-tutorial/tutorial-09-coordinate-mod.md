@@ -21,7 +21,7 @@
 **怎么切换？** 用按键（F10）控制窗口显示和隐藏。
 
 这四个问题分别对应前面学过的：`OnGameEvent` 关卡事件、稳定数据源缓存、
-`OnProcess` + ImGui、`BorrowInputManager` 输入检测。
+`OnProcess` + ImGui、Input.ReadKeyboard 快照输入检测。
 
 ---
 
@@ -59,7 +59,7 @@ Z: 大约 0 到 10
 保存为 `ModLoader/Mods/CoordMod.mod.as`：
 
 ```angelscript
-[bml.mod id="coord.script" name="Coordinate Display" version="1.0.0" author="Tutorial" bml="0.3.14" description="Shows player ball position"]
+[bml.mod id="coord.script" name="Coordinate Display" version="1.0.0" author="Tutorial" bml="0.4.0" description="Shows player ball position"]
 class CoordMod {
     private CKDataArray@ currentLevel = null;
     private int activeBallColumn = -1;
@@ -72,7 +72,12 @@ class CoordMod {
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
         if (event == BML::GAME_EVENT_START_LEVEL) {
-            @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+            BML::ObjectRef currentLevelRef;
+            CKObject@ currentLevelObject;
+            @currentLevel = null;
+            if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+                BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+                @currentLevel = cast<CKDataArray>(currentLevelObject);
             activeBallColumn = currentLevel is null
                 ? -1
                 : BML::CK::FindColumn(currentLevel, "ActiveBall");
@@ -110,7 +115,8 @@ class CoordMod {
     }
 
     private void HandleInput(const BML::ModContext &in ctx) {
-        BML::InputHook@ input = ctx.BorrowInputManager();
+        BML::KeyboardState@ input;
+        if (ctx.Input().ReadKeyboard(input) != BML::ERROR_OK) return;
         if (input !is null && input.IsKeyPressed(CKKEY_F10)) {
             showWindow = !showWindow;
         }
@@ -144,7 +150,12 @@ private int activeBallColumn = -1;
 ```angelscript
 void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
     if (event == BML::GAME_EVENT_START_LEVEL) {
-        @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+        BML::ObjectRef currentLevelRef;
+        CKObject@ currentLevelObject;
+        @currentLevel = null;
+        if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+            @currentLevel = cast<CKDataArray>(currentLevelObject);
         activeBallColumn = currentLevel is null
             ? -1
             : BML::CK::FindColumn(currentLevel, "ActiveBall");
@@ -210,7 +221,8 @@ void OnProcess(const BML::ModContext &in ctx) {
 
 ```angelscript
 private void HandleInput(const BML::ModContext &in ctx) {
-    BML::InputHook@ input = ctx.BorrowInputManager();
+    BML::KeyboardState@ input;
+    if (ctx.Input().ReadKeyboard(input) != BML::ERROR_OK) return;
     if (input !is null && input.IsKeyPressed(CKKEY_F10)) {
         showWindow = !showWindow;
     }
@@ -261,8 +273,8 @@ Z: 3.78901
 | 日志有 `loaded` 但窗口不出现 | 没进关卡，或 `CurrentLevel.ActiveBall` 尚不可用 | 检查日志中的 `CurrentLevel.ActiveBall is unavailable`，并确认已进入正在游玩的关卡 |
 | 变球后坐标不更新 | 错误地把活动球保存成了成员变量 | 保持 `ball` 为 `OnProcess` 内的局部借用句柄，每帧重新读取单元格 |
 | 进入第二关后崩溃 | 漏掉了退出关卡前的清理 | 确认 `GAME_EVENT_PRE_EXIT_LEVEL` 中清空 `currentLevel` 并重置列号 |
-| 编译报 `VxVector` 未定义 | 极少见，一般是 BML 版本太旧 | 确认 bml 版本属性写的是 `0.3.14` 或更高 |
-| F10 按了没反应 | `input is null` | 确认 `BorrowInputManager()` 调用存在，且判空逻辑正确 |
+| 编译报 `VxVector` 未定义 | 极少见，一般是 BML 版本太旧 | 确认 bml 版本属性写的是 `0.4.0` 或更高 |
+| F10 按了没反应 | `input is null` | 确认 ReadKeyboard 调用成功，且快照查询正确 |
 
 ---
 

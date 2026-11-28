@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "BML/IBML.h"
+#include "Loader/ModContext.h"
 #include "Console/Shell/ShellTypes.h"
 
 namespace BML::Shell {
@@ -61,7 +61,7 @@ namespace BML::Shell {
         return t_Invocations.back().input;
     }
 
-    void Fail(IBML *bml, std::string_view message) {
+    void Fail(ModContext *bml, std::string_view message) {
         if (bml) {
             std::string line = "\x1b[31m";
             line.append(message.data(), message.size());

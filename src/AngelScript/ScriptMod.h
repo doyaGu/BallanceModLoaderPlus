@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
-#include "BML/ICommand.h"
-#include "BML/IMod.h"
+#include "Console/CommandRecord.h"
+#include "Loader/ModRecord.h"
 #include "UI/ScriptImGui.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptDiagnostic.h"
@@ -90,94 +90,78 @@ private:
     std::unique_ptr<State> m_State;
 };
 
-class ScriptMod final : public IMod {
+class ScriptMod final {
 public:
+    ModRecord &Registration() noexcept { return m_Record; }
+
+    const ModRecord &Registration() const noexcept { return m_Record; }
+
     ScriptMod(ModContext *context,
               ScriptModDefinition definition,
               ScriptModEntry entry,
               ScriptModRuntime runtime);
-    ~ScriptMod() override;
+    ~ScriptMod();
 
-    const char *GetID() override;
-    const char *GetVersion() override;
-    const char *GetName() override;
-    const char *GetAuthor() override;
-    const char *GetDescription() override;
-    BMLVersion GetBMLVersion() override;
+    const char *GetID();
+    const char *GetVersion();
+    const char *GetName();
+    const char *GetAuthor();
+    const char *GetDescription();
+    BMLVersion GetBMLVersion();
 
-    void OnLoad() override;
-    void OnUnload() override;
-    void OnLoadObject(const char *filename,
-                      CKBOOL isMap,
-                      const char *masterName,
-                      CK_CLASSID filterClass,
-                      CKBOOL addToScene,
-                      CKBOOL reuseMeshes,
-                      CKBOOL reuseMaterials,
-                      CKBOOL dynamic,
-                      XObjectArray *objArray,
-                      CKObject *masterObj) override;
-    void OnLoadScript(const char *filename, CKBehavior *script) override;
-    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
-    void OnPreStartMenu() override;
-    void OnPostStartMenu() override;
-    void OnExitGame() override;
-    void OnPreLoadLevel() override;
-    void OnPostLoadLevel() override;
-    void OnStartLevel() override;
-    void OnPreResetLevel() override;
-    void OnPostResetLevel() override;
-    void OnPauseLevel() override;
-    void OnUnpauseLevel() override;
-    void OnPreExitLevel() override;
-    void OnPostExitLevel() override;
-    void OnPreNextLevel() override;
-    void OnPostNextLevel() override;
-    void OnDead() override;
-    void OnPreEndLevel() override;
-    void OnPostEndLevel() override;
-    void OnCounterActive() override;
-    void OnCounterInactive() override;
-    void OnBallNavActive() override;
-    void OnBallNavInactive() override;
-    void OnCamNavActive() override;
-    void OnCamNavInactive() override;
-    void OnBallOff() override;
-    void OnPreCheckpointReached() override;
-    void OnPostCheckpointReached() override;
-    void OnLevelFinish() override;
-    void OnGameOver() override;
-    void OnExtraPoint() override;
-    void OnPreSubLife() override;
-    void OnPostSubLife() override;
-    void OnPreLifeUp() override;
-    void OnPostLifeUp() override;
-    void OnProcess() override;
-    void OnRender(CK_RENDER_FLAGS flags) override;
-    void OnCheatEnabled(bool enable) override;
-    void OnPhysicalize(CK3dEntity *target,
-                       CKBOOL fixed,
-                       float friction,
-                       float elasticity,
-                       float mass,
-                       const char *collGroup,
-                       CKBOOL startFrozen,
-                       CKBOOL enableColl,
-                       CKBOOL calcMassCenter,
-                       float linearDamp,
-                       float rotDamp,
-                       const char *collSurface,
-                       VxVector massCenter,
-                       int convexCnt,
-                       CKMesh **convexMesh,
-                       int ballCnt,
-                       VxVector *ballCenter,
-                       float *ballRadius,
-                       int concaveCnt,
-                       CKMesh **concaveMesh) override;
-    void OnUnphysicalize(CK3dEntity *target) override;
-    void OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) override;
-    void OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) override;
+    void OnLoad();
+    void OnUnload();
+    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName,
+                      CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes,
+                      CKBOOL reuseMaterials, CKBOOL dynamic, XObjectArray *objArray,
+                      CKObject *masterObj);
+    void OnLoadScript(const char *filename, CKBehavior *script);
+    void OnModifyConfig(const char *category, const char *key, Property *prop);
+    void OnPreStartMenu();
+    void OnPostStartMenu();
+    void OnExitGame();
+    void OnPreLoadLevel();
+    void OnPostLoadLevel();
+    void OnStartLevel();
+    void OnPreResetLevel();
+    void OnPostResetLevel();
+    void OnPauseLevel();
+    void OnUnpauseLevel();
+    void OnPreExitLevel();
+    void OnPostExitLevel();
+    void OnPreNextLevel();
+    void OnPostNextLevel();
+    void OnDead();
+    void OnPreEndLevel();
+    void OnPostEndLevel();
+    void OnCounterActive();
+    void OnCounterInactive();
+    void OnBallNavActive();
+    void OnBallNavInactive();
+    void OnCamNavActive();
+    void OnCamNavInactive();
+    void OnBallOff();
+    void OnPreCheckpointReached();
+    void OnPostCheckpointReached();
+    void OnLevelFinish();
+    void OnGameOver();
+    void OnExtraPoint();
+    void OnPreSubLife();
+    void OnPostSubLife();
+    void OnPreLifeUp();
+    void OnPostLifeUp();
+    void OnProcess();
+    void OnRender(CK_RENDER_FLAGS flags);
+    void OnCheatEnabled(bool enable);
+    void OnPhysicalize(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity,
+                       float mass, const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl,
+                       CKBOOL calcMassCenter, float linearDamp, float rotDamp,
+                       const char *collSurface, VxVector massCenter, int convexCnt,
+                       CKMesh **convexMesh, int ballCnt, VxVector *ballCenter, float *ballRadius,
+                       int concaveCnt, CKMesh **concaveMesh);
+    void OnUnphysicalize(CK3dEntity *target);
+    void OnPreCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args);
+    void OnPostCommandExecute(BML::CommandRecord *command, const std::vector<std::string> &args);
 
     bool IsFailed() const { return m_State.IsFailed(); }
     bool IsLoaded() const { return m_State.IsLoaded(); }
@@ -200,29 +184,10 @@ public:
     void LogInfo(const std::string &message);
     void LogWarn(const std::string &message);
     void LogError(const std::string &message);
-    bool HasConfigCategory(const std::string &category);
-    bool HasConfigKey(const std::string &category, const std::string &key);
-    IProperty *GetConfigProperty(const std::string &category, const std::string &key);
-    void SetConfigCategoryComment(const std::string &category, const std::string &comment);
     void SetLoadFailure(const std::string &diagnostic);
     void SetLoadFailure(const ScriptDiagnostic &diagnostic);
     void RecordScriptDiagnostic(const ScriptDiagnostic &diagnostic);
     bool IsInLoadCallback() const { return m_InLoadCallback; }
-    ScriptTimerRef *AddScriptTimer(asIScriptObject *timer);
-    ScriptTimerRef *AddScriptTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name);
-    ScriptTimerRef *AddScriptTimeoutMs(float delayMs, asIScriptFunction *callback, const std::string &name);
-    ScriptTimerRef *AddScriptIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name);
-    ScriptTimerRef *AddScriptIntervalMs(float delayMs, asIScriptFunction *callback, const std::string &name);
-    ScriptCommandRef *RegisterScriptCommand(asIScriptObject *command);
-    ScriptCommandRef *RegisterScriptCommand(const ScriptCommandDefinition &definition,
-                                            asIScriptFunction *execute,
-                                            asIScriptFunction *complete);
-    bool UnregisterScriptCommand(const std::string &name);
-    ScriptMenuPageRef *RegisterScriptMenuPage(
-        const ScriptMenuPageDefinition &definition,
-        asIScriptFunction *draw, asIScriptFunction *enter,
-        asIScriptFunction *leave);
-    bool UnregisterScriptMenuPage(const std::string &id);
     ScriptDataShareRequestRef *RequestScriptDataShare(asIScriptObject *request);
     ScriptDataShareRequestRef *RequestScriptDataShare(const std::string &key,
                                                       int type,
@@ -295,6 +260,9 @@ public:
         ScriptBehaviorEdit *body, int priority) {
         return m_Behavior.CreateScript(owner, name, body, priority);
     }
+    ScriptTimerService &TimersForAuthoring() { return m_Timers; }
+    ScriptCommandService &CommandsForAuthoring() { return m_Commands; }
+    ScriptMenuPageService &MenuPagesForAuthoring() { return m_MenuPages; }
     ScriptModContextView *BorrowContextView() { return &m_ContextView; }
     bool RegisterScriptBallType(const std::string &ballFile,
                                 const std::string &ballId,
@@ -399,6 +367,7 @@ private:
     void Fail(const ScriptDiagnostic &diagnostic);
     void ScheduleFailureCleanup();
     bool ReleaseScriptServices();
+    void FreezeScriptServices();
     bool ReleaseScriptMethodHandles();
     void ReleaseScriptImGuiState();
     bool ReleaseRuntime();
@@ -424,8 +393,10 @@ private:
 
     ModContext *m_Context = nullptr;
     ScriptModDefinition m_Definition;
+    ModRecord m_Record;
     ScriptModEntry m_Entry;
     ScriptModContextView m_ContextView;
+    std::shared_ptr<ScriptRuntimeScope> m_AuthorRuntime;
     ScriptModRuntime m_Runtime;
     ScriptCallbackDispatcher m_Callbacks;
     ScriptTimerService m_Timers;
@@ -459,7 +430,7 @@ private:
     std::vector<std::pair<std::string, std::string>> m_ActiveConfigEvents;
 };
 
-bool IsFailedScriptMod(const IMod *mod);
+bool IsFailedScriptMod(const ModRecord *mod);
 
 } // namespace BML
 

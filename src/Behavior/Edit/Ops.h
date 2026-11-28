@@ -184,7 +184,7 @@ struct InterfacePort {
 
 struct ResolvedPort {
     Node Owner;
-    Slot Selector;
+    Internal::Slot Selector;
     SlotInfo Slot;
     std::uint32_t Interface = 0;
     NativeRef Native;
@@ -312,6 +312,7 @@ public:
     void Flow(Port source, Port sink, int delay = 0,
               Cycle cycle = Cycle::Reject);
     void Set(Port target, Parameter::Binding value);
+    void SetLocalOverride(Port target, Parameter::Binding value);
     void Bind(Port target, Parameter::Binding value);
     void Bind(Port target, Port source);
     void Share(Port target, Port source);

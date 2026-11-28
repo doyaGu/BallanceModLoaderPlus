@@ -8,8 +8,12 @@ use the default template and ignore the specialized templates.
 - `native-mod-template`: basic CMake-based native `.bmodp` Mod template.
 
 Create it with `scripts/bml.py new native yourname.my-mod`. Generated projects contain
-`bml.mod.json`; their own `bml run` configures Win32, builds, deploys, starts
+`bml.mod.json`; their own `bml run` configures the SDK's runtime, builds, deploys, starts
 Player, and selects that Mod's log lines.
+
+Use `./bml` on Linux/macOS and `bml.cmd` on Windows. Core C ABI projects need a matching SDK; engine/ImGui extensions also need
+matching compiler/runtime and CK2/VxMath/SDL3 packages. `pack` puts the `.bmodp` and ABI
+descriptor together in a ZIP.
 
 ## Specialized native Mods
 
@@ -18,7 +22,7 @@ Use these only when two Mods need to communicate:
 - `native-interface-provider-template`: publishes a typed, versioned native
   interface and installs its independent header package.
 - `native-interface-consumer-template`: consumes that header package without
-  linking the provider DLL.
+  linking the provider module.
 - `native-imc-provider-template`: defines and implements a generated IMC RPC API.
 
 Select one with `scripts/bml.py new native <id> --profile ...`.

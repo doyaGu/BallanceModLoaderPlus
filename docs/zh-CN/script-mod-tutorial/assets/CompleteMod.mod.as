@@ -1,4 +1,4 @@
-[bml.mod id="complete.mod" name="Complete Mod" version="1.0.0" author="Tutorial" bml="0.3.14" description="A complete tutorial mod with config, command, UI, and physics"]
+[bml.mod id="complete.mod" name="Complete Mod" version="1.0.0" author="Tutorial" bml="0.4.0" description="A complete tutorial mod with config, command, UI, and physics"]
 class CompleteMod {
     // ---- 配置 ----
     private bool showWindow = true;
@@ -28,7 +28,7 @@ class CompleteMod {
 
     void OnUnload(const BML::ModContext &in ctx) {
         CleanupBall(ctx, "unload");
-        if (commandRef !is null && commandRef.IsValid) {
+        if (commandRef !is null && commandRef.IsValid()) {
             commandRef.Unregister();
         }
         ctx.LogInfo("CompleteMod unloaded");
@@ -57,24 +57,26 @@ class CompleteMod {
     // ==== 配置 ====
 
     private void LoadConfig(const BML::ModContext &in ctx) {
-        BML::Config@ config = ctx.BorrowConfig();
+        BML::Config@ config = ctx.Config();
         if (config is null) return;
 
         config.SetCategoryComment("CompleteMod", "Complete Mod settings");
 
-        @showWindowProp = config.GetProperty("CompleteMod", "ShowWindow");
-        if (showWindowProp !is null) {
-            showWindowProp.SetDefaultBoolean(true);
-            showWindowProp.SetComment("Show the status window.");
+        BML::ConfigPropertyDefinition showWindowDefinition;
+        showWindowDefinition.Category = "CompleteMod";
+        showWindowDefinition.Key = "ShowWindow";
+        showWindowDefinition.DefaultValue = BML::ConfigValue(true);
+        showWindowDefinition.Comment = "Show the status window.";
+        if (config.DeclareProperty(showWindowDefinition, showWindowProp) == BML::ERROR_OK)
             showWindow = showWindowProp.GetBoolean(true);
-        }
 
-        @autoSpawnProp = config.GetProperty("CompleteMod", "AutoSpawn");
-        if (autoSpawnProp !is null) {
-            autoSpawnProp.SetDefaultBoolean(false);
-            autoSpawnProp.SetComment("Spawn ball automatically on level start.");
+        BML::ConfigPropertyDefinition autoSpawnDefinition;
+        autoSpawnDefinition.Category = "CompleteMod";
+        autoSpawnDefinition.Key = "AutoSpawn";
+        autoSpawnDefinition.DefaultValue = BML::ConfigValue(false);
+        autoSpawnDefinition.Comment = "Spawn ball automatically on level start.";
+        if (config.DeclareProperty(autoSpawnDefinition, autoSpawnProp) == BML::ERROR_OK)
             autoSpawn = autoSpawnProp.GetBoolean(false);
-        }
     }
 
     // ==== 命令 ====
@@ -88,15 +90,15 @@ class CompleteMod {
         def.Category = "Tutorial";
         def.Enabled = true;
 
-        BML::CommandCallback@ execute = BML::CommandCallback(this.OnCommand);
-        BML::CommandCompletionCallback@ complete = BML::CommandCompletionCallback(this.CompleteCommand);
-        @commandRef = ctx.RegisterCommand(def, execute, complete);
+        BML::CommandExecute@ execute = BML::CommandExecute(this.OnCommand);
+        BML::CommandComplete@ complete = BML::CommandComplete(this.CompleteCommand);
+        ctx.Commands().Register(def, execute, commandRef, complete);
     }
 
-    private void OnCommand(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
+    private int OnCommand(const BML::ModContext &in ctx, const BML::CommandInvocation &in event) {
         string action = "status";
-        if (event.ArgCount > 0) {
-            action = event.GetArg(0);
+        if (event.ArgumentCount > 0) {
+            event.ReadArgument(0, action);
         }
 
         if (action == "spawn") {
@@ -114,16 +116,17 @@ class CompleteMod {
                          " physical=" + BoolText(ballPhysical) +
                          " force=" + BoolText(forceActive));
         }
-    }
+        return 0;
+  }
 
-    private void CompleteCommand(const BML::ModContext &in ctx,
-                                  const BML::CommandEvent &in event,
-                                  BML::CommandCompletion &inout completions) {
+    private int CompleteCommand(const BML::ModContext &in ctx,
+                                  const BML::CommandCompletionRequest &in event,
+                                  const BML::CommandCompletion &in completions) {
         completions.Add("spawn");
         completions.Add("despawn");
         completions.Add("push");
         completions.Add("status");
-        completions.Add("window");
+        return completions.Add("window");
     }
 
     // ==== ImGui 窗口 ====
@@ -132,8 +135,10 @@ class CompleteMod {
         ImGui::SetNextWindowSize(ImVec2(350.0f, 180.0f), ImGuiCond_Once);
 
         if (ImGui::Begin("Complete Mod", showWindow)) {
-            ImGui::TextUnformatted("Game: inLevel=" + BoolText(ctx.IsInLevel) +
-                                   " playing=" + BoolText(ctx.IsPlaying));
+            BML::Gameplay::State state;
+            if (BML::Gameplay::ReadState(state) == BML::ERROR_OK)
+                ImGui::TextUnformatted("Game: inLevel=" + BoolText(state.Playing || state.Paused) +
+                                      " playing=" + BoolText(state.Playing));
             ImGui::TextUnformatted("Ball: exists=" + BoolText(ball !is null) +
                                    " physical=" + BoolText(ballPhysical));
             ImGui::TextUnformatted("Force: active=" + BoolText(forceActive) +
@@ -158,8 +163,8 @@ class CompleteMod {
     // ==== 输入 ====
 
     private void HandleInput(const BML::ModContext &in ctx) {
-        BML::InputHook@ input = ctx.BorrowInputManager();
-        if (input is null) return;
+        BML::KeyboardState@ input;
+        if (ctx.Input().ReadKeyboard(input) != BML::ERROR_OK) return;
 
         if (input.IsKeyPressed(CKKEY_J)) {
             SpawnBall(ctx, "key");
@@ -179,8 +184,10 @@ class CompleteMod {
             CleanupBall(ctx, "respawn");
         }
 
-        string relativePath = "3D Entities\\PH\\P_Ball_Wood.nmo";
-        string resourcePath = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), relativePath);
+        string relativePath = "3D Entities/PH/P_Ball_Wood.nmo";
+        string gameDirectory;
+        if (ctx.GetDirectory(BML::DIR_GAME, gameDirectory) != BML::ERROR_OK) return;
+        string resourcePath = BML::Path::Combine(gameDirectory, relativePath);
         if (!BML::Path::IsFile(resourcePath)) {
             SetLast(ctx, "resource missing");
             return;
@@ -287,14 +294,9 @@ class CompleteMod {
     // ==== 工具函数 ====
 
     private CK3dEntity@ BorrowActiveBall(const BML::ModContext &in ctx) {
-        CKDataArray@ currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
-        if (currentLevel is null) return null;
-
-        int col = BML::CK::FindColumn(currentLevel, "ActiveBall");
-        if (col < 0) return null;
-
-        CKObject@ object = currentLevel.GetElementObject(0, col);
-        return cast<CK3dEntity>(object);
+        BML::Gameplay::LevelState level;
+        if (BML::Gameplay::ReadLevel(level) != BML::ERROR_OK) return null;
+        return cast<CK3dEntity>(level.BorrowActiveBall());
     }
 
     private CK3dEntity@ FindFirstEntity(BML::ObjectLoadResult@ result) {
@@ -307,8 +309,8 @@ class CompleteMod {
     }
 
     private void SaveBoolean(BML::ConfigProperty@ property, bool value) {
-        if (property !is null && property.IsValid) {
-            property.SetBoolean(value);
+        if (property !is null && property.IsValid()) {
+            property.Set(BML::ConfigValue(value));
         }
     }
 

@@ -1,6 +1,6 @@
-#include <BML/ILogger.h>
-#include <BML/IMod.h>
+#include <BML/Mod.hpp>
 #include <BML/Interface.hpp>
+#include <stdexcept>
 
 #include <BMLExample/ValueInterface.h>
 
@@ -13,36 +13,37 @@ int BML_CDECL ReadValue(int input, int *outValue) {
     return BML_OK;
 }
 
-constexpr auto kValueInterface =
-    BML::Interfaces::MakeInterface<BML_ExampleValueTraits>(BML_EXAMPLE_VALUE_INTERFACE_MINOR, &ReadValue);
+constexpr auto kValueInterface = BML::Interfaces::MakeInterface<BML_ExampleValueTraits>(
+    BML_EXAMPLE_VALUE_INTERFACE_MINOR, &ReadValue);
 
-class ValueProvider final : public IMod {
-public:
-    explicit ValueProvider(IBML *bml) : IMod(bml) { AddDependency("BML"); }
-
-    const char *GetID() override { return BML_EXAMPLE_VALUE_PROVIDER_ID; }
-    const char *GetVersion() override { return "1.0.0"; }
-    const char *GetName() override { return "BML Example Value Provider"; }
-    const char *GetAuthor() override { return "BML"; }
-    const char *GetDescription() override { return "Publishes the example.value native interface"; }
-    DECLARE_BML_VERSION;
-
-    void OnLoad() override {
+class ValueProvider final : public BML::Mod::Instance {
+  public:
+    void OnLoad(const BML::Mod::Context &ctx) override {
         const int status = m_Value.Open(kValueInterface);
-        GetLogger()->Info("Value interface publication status: %d", status);
+        if (status != BML_OK)
+            throw std::runtime_error("Interface publication failed: " + std::to_string(status));
+        (void)ctx.LogInfo(std::string("Value interface publication status: ") + std::to_string(status));
     }
 
-    void OnUnload() override {
+    void OnUnload(const BML::Mod::Context &ctx) override {
         const int status = m_Value.Close();
-        GetLogger()->Info("Value interface cleanup status: %d", status);
+        if (status != BML_OK && status != BML_ERROR_NOT_FOUND)
+            throw std::runtime_error("Registration cleanup failed: " + std::to_string(status));
+        (void)ctx.LogInfo(std::string("Value interface cleanup status: ") + std::to_string(status));
     }
 
-private:
+  private:
     BML::Interfaces::Publication<BML_ExampleValueTraits> m_Value;
 };
 
 } // namespace
 
-BML_MOD_ENTRY(IMod *) BMLEntry(IBML *bml) { return new ValueProvider(bml); }
-
-BML_MOD_ENTRY(void) BMLExit(IMod *mod) { delete mod; }
+BML_DEFINE_MOD(ValueProvider, {
+    .Id = BML_EXAMPLE_VALUE_PROVIDER_ID,
+    .Name = "BML Example Value Provider",
+    .Version = "1.0.0",
+    .Author = "BML",
+    .Description = "Publishes the example.value native interface",
+    .MinimumLoaderVersion = BML_VERSION,
+    .Dependencies = {{"BML", "", false}},
+})

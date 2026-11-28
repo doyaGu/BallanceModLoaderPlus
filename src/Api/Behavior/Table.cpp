@@ -1,7 +1,7 @@
 #include "Api/BehaviorApi.h"
 
 #include <cstdint>
-#include <intrin.h>
+#include "Platform/Module.h"
 #include <memory>
 #include <new>
 #include <string>
@@ -67,7 +67,7 @@ int OpenRunResult(const BML::Behavior::Internal::OpenRun &opened,
 int BML_BEHAVIOR_CALL OpenSession(BML_BehaviorString requestedOwner,
                                   BML_BehaviorSession *outSession,
                                   BML_BehaviorStatus *status) {
-    const void *caller = _ReturnAddress();
+    const void *caller = BML_CALLER_ADDRESS();
     if (!PrepareStatus(status) || !outSession)
         return BML_ERROR_INVALID_PARAMETER;
     *outSession = nullptr;
@@ -77,7 +77,7 @@ int BML_BEHAVIOR_CALL OpenSession(BML_BehaviorString requestedOwner,
             return BML_ERROR_INVALID_PARAMETER;
         if (!context.AreModsLoaded())
             return BML_ERROR_FROZEN;
-        const std::string owner = context.GetNativeModOwnerId(
+        const std::string owner = context.GetModLoader().GetNativeModOwnerId(
             caller, requested.empty() ? nullptr : requested.c_str());
         if (owner.empty() || (!requested.empty() && owner != requested))
             return BML_ERROR_ACCESS_DENIED;
@@ -733,14 +733,14 @@ int BML_BEHAVIOR_CALL SubmitPlan(
             return ReadFailure(result);
 
         Installations &installations = context.BehaviorInstallations();
-        PlanId id = 0;
-        result = installations.Submit(owner, std::move(name),
-                                      std::move(rules), id);
+        std::uintptr_t id = 0;
+        result = installations.SubmitEdit(owner, std::move(name), false,
+                                          {}, std::move(rules), id);
         if (!result)
             return ResultCode(result);
         *outPlan = PlanHandleOf(id);
         PlanInfo read;
-        if (info && installations.ReadPlan(owner, id, read))
+        if (info && installations.ReadPlan(owner, installations.SubmittedPlan(owner, id), read))
             WritePlanInfo(info, read);
         return BML_OK;
     });
@@ -757,7 +757,7 @@ int BML_BEHAVIOR_CALL ReadPlan(
             return ResultCode(result);
         PlanInfo read;
         result = context.BehaviorInstallations().ReadPlan(
-            owner, PlanIdOf(plan), read);
+            owner, context.BehaviorInstallations().SubmittedPlan(owner, PlanIdOf(plan)), read);
         if (!result)
             return ResultCode(result);
         WritePlanInfo(info, read);
@@ -777,7 +777,7 @@ int BML_BEHAVIOR_CALL ReadPlanFailures(
             return ResultCode(result);
         PlanInfo read;
         result = context.BehaviorInstallations().ReadPlan(
-            owner, PlanIdOf(plan), read);
+            owner, context.BehaviorInstallations().SubmittedPlan(owner, PlanIdOf(plan)), read);
         if (!result)
             return ResultCode(result);
         WriteFailures(failures, read.ApplyFailure, read.RestoreFailure);
@@ -800,7 +800,7 @@ int BML_BEHAVIOR_CALL ReadPlanInstances(
             return ResultCode(result);
         std::vector<Installations::PlanInstance> found;
         result = context.BehaviorInstallations().ReadPlanInstances(
-            owner, PlanIdOf(plan), found);
+            owner, context.BehaviorInstallations().SubmittedPlan(owner, PlanIdOf(plan)), found);
         if (!result)
             return ResultCode(result);
         return WritePlanInstances(found, instances, instanceCapacity,
@@ -816,8 +816,9 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
         SessionOwner owner;
         if (!ReadSessionOwner(session, context, owner, result))
             return ResultCode(result);
-        return ResultCode(context.BehaviorInstallations().ClosePlan(
-            owner, PlanIdOf(plan)));
+        auto &edits = context.BehaviorInstallations();
+        const auto id = PlanIdOf(plan);
+        return edits.SubmittedPlan(owner, id) ? ResultCode(edits.CloseSubmission(owner, id)) : BML_OK;
     });
 }
 
@@ -833,10 +834,11 @@ int BML_BEHAVIOR_CALL SetPlanActive(
         if (!ReadSessionOwner(session, context, owner, result))
             return ResultCode(result);
         Installations &installations = context.BehaviorInstallations();
-        result = installations.SetPlanActive(owner, PlanIdOf(plan),
-                                             active != 0);
+        if (!installations.SubmittedPlan(owner, PlanIdOf(plan)))
+            return BML_ERROR_INVALID_HANDLE;
+        result = installations.SetSubmissionEnabled(owner, PlanIdOf(plan), active != 0);
         PlanInfo read;
-        if (info && installations.ReadPlan(owner, PlanIdOf(plan), read))
+        if (info && installations.ReadPlan(owner, context.BehaviorInstallations().SubmittedPlan(owner, PlanIdOf(plan)), read))
             WritePlanInfo(info, read);
         return ResultCode(result);
     });
@@ -858,10 +860,9 @@ int BML_BEHAVIOR_CALL ReplacePlan(
         result = ReadScriptEdits(edits, editCount, context, rules);
         const bool decoded = static_cast<bool>(result);
         if (decoded)
-            result = installations.ReplacePlan(owner, PlanIdOf(plan),
-                                               std::move(rules));
+            result = installations.ReplaceSubmission(owner, PlanIdOf(plan), {}, std::move(rules));
         PlanInfo read;
-        if (info && installations.ReadPlan(owner, PlanIdOf(plan), read))
+        if (info && installations.ReadPlan(owner, context.BehaviorInstallations().SubmittedPlan(owner, PlanIdOf(plan)), read))
             WritePlanInfo(info, read);
         return decoded ? ResultCode(result) : ReadFailure(result);
     });
@@ -890,15 +891,15 @@ int BML_BEHAVIOR_CALL ApplyPatch(
             return ReadFailure(result);
 
         Installations &installations = context.BehaviorInstallations();
-        PatchId id = 0;
-        result = installations.Apply(owner, std::move(name),
-                                     std::move(targets), id);
+        std::uintptr_t id = 0;
+        result = installations.SubmitEdit(owner, std::move(name), false,
+                                          std::move(targets), {}, id);
         if (id)
             *outPatch = PatchHandleOf(id);
         if (!result)
             return ResultCode(result);
         PatchInfo read;
-        if (info && installations.Read(owner, id, read))
+        if (info && installations.Read(owner, installations.SubmittedPatch(owner, id), read))
             WritePatchInfo(info, read);
         return BML_OK;
     });
@@ -915,7 +916,7 @@ int BML_BEHAVIOR_CALL ReadPatch(
             return ResultCode(result);
         PatchInfo read;
         result = context.BehaviorInstallations().Read(
-            owner, PatchIdOf(patch), read);
+            owner, context.BehaviorInstallations().SubmittedPatch(owner, PatchIdOf(patch)), read);
         if (!result)
             return ResultCode(result);
         WritePatchInfo(info, read);
@@ -935,7 +936,7 @@ int BML_BEHAVIOR_CALL ReadPatchFailures(
             return ResultCode(result);
         PatchInfo read;
         result = context.BehaviorInstallations().Read(
-            owner, PatchIdOf(patch), read);
+            owner, context.BehaviorInstallations().SubmittedPatch(owner, PatchIdOf(patch)), read);
         if (!result)
             return ResultCode(result);
         WriteFailures(failures, read.ApplyFailure, read.RestoreFailure);
@@ -951,8 +952,9 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
         SessionOwner owner;
         if (!ReadSessionOwner(session, context, owner, result))
             return ResultCode(result);
-        return ResultCode(context.BehaviorInstallations().Close(
-            owner, PatchIdOf(patch)));
+        auto &edits = context.BehaviorInstallations();
+        const auto id = PatchIdOf(patch);
+        return edits.SubmittedPatch(owner, id) ? ResultCode(edits.CloseSubmission(owner, id)) : BML_OK;
     });
 }
 
@@ -968,9 +970,11 @@ int BML_BEHAVIOR_CALL SetPatchActive(
         if (!ReadSessionOwner(session, context, owner, result))
             return ResultCode(result);
         Installations &installations = context.BehaviorInstallations();
-        result = installations.SetActive(owner, PatchIdOf(patch), active != 0);
+        if (!installations.SubmittedPatch(owner, PatchIdOf(patch)))
+            return BML_ERROR_INVALID_HANDLE;
+        result = installations.SetSubmissionEnabled(owner, PatchIdOf(patch), active != 0);
         PatchInfo read;
-        if (info && installations.Read(owner, PatchIdOf(patch), read))
+        if (info && installations.Read(owner, context.BehaviorInstallations().SubmittedPatch(owner, PatchIdOf(patch)), read))
             WritePatchInfo(info, read);
         return ResultCode(result);
     });
@@ -992,10 +996,9 @@ int BML_BEHAVIOR_CALL ReplacePatch(
         result = ReadGraphEdits(edits, editCount, context, targets);
         const bool decoded = static_cast<bool>(result);
         if (decoded)
-            result = installations.Replace(owner, PatchIdOf(patch),
-                                           std::move(targets));
+            result = installations.ReplaceSubmission(owner, PatchIdOf(patch), std::move(targets), {});
         PatchInfo read;
-        if (info && installations.Read(owner, PatchIdOf(patch), read))
+        if (info && installations.Read(owner, context.BehaviorInstallations().SubmittedPatch(owner, PatchIdOf(patch)), read))
             WritePatchInfo(info, read);
         return decoded ? ResultCode(result) : ReadFailure(result);
     });
@@ -1047,7 +1050,7 @@ int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession session,
             return ResultCode(result);
         BML::Behavior::Internal::ObjectRef resolved;
         result = context.BehaviorInstallations().ResolveNode(
-            owner, PatchIdOf(patch), selected, resolved);
+            owner, context.BehaviorInstallations().SubmittedPatch(owner, PatchIdOf(patch)), selected, resolved);
         if (!result)
             return ResultCode(result);
         *outNode = PublicRef(resolved);
@@ -1075,7 +1078,7 @@ int BML_BEHAVIOR_CALL ResolvePlanInstanceNode(
             return ResultCode(result);
         BML::Behavior::Internal::ObjectRef resolved;
         result = context.BehaviorInstallations().ResolvePlanNode(
-            owner, PlanIdOf(plan), selected, selectedNode, resolved);
+            owner, context.BehaviorInstallations().SubmittedPlan(owner, PlanIdOf(plan)), selected, selectedNode, resolved);
         if (!result)
             return ResultCode(result);
         *outNode = PublicRef(resolved);
@@ -1101,7 +1104,7 @@ int BML_BEHAVIOR_CALL ReadPatchValue(
             return ResultCode(result);
         GraphValue read;
         result = context.BehaviorInstallations().ReadValue(
-            owner, PatchIdOf(patch), selected, read);
+            owner, context.BehaviorInstallations().SubmittedPatch(owner, PatchIdOf(patch)), selected, read);
         if (!result)
             return ResultCode(result);
         return WriteGraphValueResult(read, value, payload, payloadCapacity,
@@ -1125,7 +1128,7 @@ int BML_BEHAVIOR_CALL WritePatchValue(
         if (!ReadSessionOwner(session, context, owner, result))
             return ResultCode(result);
         result = context.BehaviorInstallations().WriteValue(
-            owner, PatchIdOf(patch), selected, binding);
+            owner, context.BehaviorInstallations().SubmittedPatch(owner, PatchIdOf(patch)), selected, binding);
         return ResultCode(result);
     });
 }
@@ -1151,7 +1154,7 @@ int BML_BEHAVIOR_CALL ReadPlanInstanceValue(
             return ResultCode(result);
         GraphValue read;
         result = context.BehaviorInstallations().ReadPlanValue(
-            owner, PlanIdOf(plan), selected, selectedPort, read);
+            owner, context.BehaviorInstallations().SubmittedPlan(owner, PlanIdOf(plan)), selected, selectedPort, read);
         if (!result)
             return ResultCode(result);
         return WriteGraphValueResult(read, value, payload, payloadCapacity,
@@ -1179,7 +1182,7 @@ int BML_BEHAVIOR_CALL WritePlanInstanceValue(
         if (!ReadSessionOwner(session, context, owner, result))
             return ResultCode(result);
         result = context.BehaviorInstallations().WritePlanValue(
-            owner, PlanIdOf(plan), selected, selectedPort, binding);
+            owner, context.BehaviorInstallations().SubmittedPlan(owner, PlanIdOf(plan)), selected, selectedPort, binding);
         return ResultCode(result);
     });
 }
@@ -1273,6 +1276,298 @@ int BML_BEHAVIOR_CALL CloseScript(BML_BehaviorSession session,
     });
 }
 
+int BML_BEHAVIOR_CALL SubmitEdit(
+    BML_BehaviorSession session, const BML_BehaviorSubmissionSpec *spec,
+    BML_BehaviorSubmission *out, BML_BehaviorStatus *status) {
+    if (!PrepareStatus(status) || !session || !HasStructSize(spec) || !out ||
+        (spec->Reserved & ~BML_BEHAVIOR_SUBMIT_DISABLED) || !spec->Count ||
+        bool(spec->Graphs) == bool(spec->Scripts) ||
+        (spec->Ownership != BML_BEHAVIOR_EDIT_OWNED_BY_GRAPH &&
+         spec->Ownership != BML_BEHAVIOR_EDIT_OWNED_BY_SUBMISSION))
+        return BML_ERROR_INVALID_PARAMETER;
+    *out = nullptr;
+    return Enter(status, [&](ModContext &context, Status &result) {
+        SessionOwner owner;
+        std::string name;
+        if (!ReadString(spec->Name, name) || name.empty())
+            return BML_ERROR_INVALID_PARAMETER;
+        if (!ReadSessionOwner(session, context, owner, result))
+            return ResultCode(result);
+        std::vector<Installations::Target> graphs;
+        std::vector<Installations::Rule> scripts;
+        result = spec->Graphs
+            ? ReadGraphEdits(spec->Graphs, spec->Count, context, graphs)
+            : ReadScriptEdits(spec->Scripts, spec->Count, context, scripts);
+        if (!result)
+            return ReadFailure(result);
+        std::uintptr_t id = 0;
+        result = context.BehaviorInstallations().SubmitEdit(
+            owner, std::move(name), spec->Ownership == BML_BEHAVIOR_EDIT_OWNED_BY_GRAPH,
+            std::move(graphs), std::move(scripts), id,
+            (spec->Reserved & BML_BEHAVIOR_SUBMIT_DISABLED) == 0);
+        *out = reinterpret_cast<BML_BehaviorSubmission>(id);
+        return ResultCode(result);
+    });
+}
+
+template <typename Action>
+int InSubmission(BML_BehaviorSession session, BML_BehaviorSubmission submission,
+                 BML_BehaviorStatus *status, Action action) {
+    if (!PrepareStatus(status) || !session || !submission)
+        return BML_ERROR_INVALID_PARAMETER;
+    return Enter(status, [&](ModContext &context, Status &result) {
+        SessionOwner owner;
+        if (!ReadSessionOwner(session, context, owner, result))
+            return ResultCode(result);
+        return action(context, owner, reinterpret_cast<std::uintptr_t>(submission), result);
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadSubmission(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    BML_BehaviorSubmissionInfo *out, BML_BehaviorStatus *status) {
+    if (!out || out->StructSize < BML_BEHAVIOR_SUBMISSION_INFO_1_2_SIZE)
+        return BML_ERROR_INVALID_PARAMETER;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            Installations::SubmissionInfo info;
+            result = context.BehaviorInstallations().ReadSubmission(owner, id, info);
+            if (result) {
+                out->State = static_cast<std::uint32_t>(info.State);
+                if (HasStructSize(out)) {
+                    out->RequestedEnabled = info.RequestedEnabled;
+                } else if (info.State == Installations::SubmissionState::Partial) {
+                    out->State = info.ApplyFailure ? BML_BEHAVIOR_SUBMISSION_APPLIED
+                                                   : BML_BEHAVIOR_SUBMISSION_FAILED;
+                } else if (info.State == Installations::SubmissionState::Conflicted) {
+                    out->State = BML_BEHAVIOR_SUBMISSION_FAILED;
+                } else if (out->State > BML_BEHAVIOR_SUBMISSION_FAILED) {
+                    out->State = BML_BEHAVIOR_SUBMISSION_PENDING;
+                }
+                out->ApplyFailure.StructSize = sizeof(out->ApplyFailure);
+                out->RestoreFailure.StructSize = sizeof(out->RestoreFailure);
+                WriteStatus(&out->ApplyFailure, info.ApplyFailure);
+                WriteStatus(&out->RestoreFailure, info.RestoreFailure);
+            }
+            return ResultCode(result);
+        });
+}
+
+int BML_BEHAVIOR_CALL CloseSubmission(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    BML_BehaviorStatus *status) {
+    return InSubmission(session, submission, status,
+        [](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            result = context.BehaviorInstallations().CloseSubmission(owner, id);
+            return ResultCode(result);
+        });
+}
+
+BML_BehaviorInstallation WriteInstallation(const Installations::InstalledEdit &entry) {
+    return {sizeof(BML_BehaviorInstallation), 0, PublicRef(entry.Value.Target),
+            entry.Value.Id, entry.Value.World, entry.Value.Revision, entry.Binding};
+}
+
+int BML_BEHAVIOR_CALL FindInstallation(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    BML_ObjectRef graph, std::uint64_t binding, BML_BehaviorInstallation *out,
+    BML_BehaviorStatus *status) {
+    if (!HasStructSize(out))
+        return BML_ERROR_INVALID_PARAMETER;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            Installations::InstalledEdit found;
+            result = context.BehaviorInstallations().FindInstallation(
+                owner, id, {graph.Domain, graph.Slot, graph.Generation}, binding, found);
+            if (result)
+                *out = WriteInstallation(found);
+            return ResultCode(result);
+        });
+}
+
+Installations::InstalledEdit ReadInstallation(const BML_BehaviorInstallation &from) {
+    return {{{from.Graph.Domain, from.Graph.Slot, from.Graph.Generation},
+             from.Id, from.World, from.Revision}, from.Binding};
+}
+
+int BML_BEHAVIOR_CALL SetSubmissionEnabled(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    std::uint32_t enabled, BML_BehaviorStatus *status) {
+    if (enabled > 1)
+        return BML_ERROR_INVALID_PARAMETER;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            result = context.BehaviorInstallations().SetSubmissionEnabled(owner, id, enabled != 0);
+            return ResultCode(result);
+        });
+}
+
+int BML_BEHAVIOR_CALL ReplaceSubmission(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    const BML_BehaviorSubmissionSpec *spec, BML_BehaviorStatus *status) {
+    if (!HasStructSize(spec) || spec->Ownership || spec->Reserved || spec->Name.Data ||
+        spec->Name.Length || !spec->Count || bool(spec->Graphs) == bool(spec->Scripts))
+        return BML_ERROR_INVALID_PARAMETER;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            std::vector<Installations::Target> graphs;
+            std::vector<Installations::Rule> scripts;
+            result = spec->Graphs
+                ? ReadGraphEdits(spec->Graphs, spec->Count, context, graphs)
+                : ReadScriptEdits(spec->Scripts, spec->Count, context, scripts);
+            if (!result)
+                return ReadFailure(result);
+            result = context.BehaviorInstallations().ReplaceSubmission(
+                owner, id, std::move(graphs), std::move(scripts));
+            return ResultCode(result);
+        });
+}
+
+int BML_BEHAVIOR_CALL ListInstallations(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    BML_BehaviorInstallation *out, std::uint32_t capacity, std::uint32_t *count,
+    BML_BehaviorStatus *status) {
+    if (!count || (capacity && !out))
+        return BML_ERROR_INVALID_PARAMETER;
+    *count = 0;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            std::vector<Installations::InstalledEdit> entries;
+            result = context.BehaviorInstallations().ListInstallations(owner, id, entries);
+            if (!result)
+                return ResultCode(result);
+            *count = static_cast<std::uint32_t>(entries.size());
+            if (capacity < *count)
+                return BML_ERROR_BUFFER_TOO_SMALL;
+            for (std::uint32_t i = 0; i < *count; ++i)
+                out[i] = WriteInstallation(entries[i]);
+            return BML_OK;
+        });
+}
+
+int BML_BEHAVIOR_CALL ResolveInstallationNode(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    const BML_BehaviorInstallation *installation, const BML_BehaviorNodeRef *node,
+    BML_ObjectRef *out, BML_BehaviorStatus *status) {
+    if (!HasStructSize(installation) || installation->Reserved || !node || !out)
+        return BML_ERROR_INVALID_PARAMETER;
+    *out = {};
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            Installations::SymbolRef selected;
+            if (!ReadNodeRef(*node, selected, result))
+                return ReadFailure(result);
+            BML::Behavior::Internal::ObjectRef found;
+            result = context.BehaviorInstallations().ResolveInstallationNode(
+                owner, id, ReadInstallation(*installation), selected, found);
+            if (result)
+                *out = PublicRef(found);
+            return ResultCode(result);
+        });
+}
+
+int BML_BEHAVIOR_CALL ReadSubmissionBindings(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    std::uint64_t *out, std::uint32_t capacity, std::uint32_t *count,
+    BML_BehaviorStatus *status) {
+    if (!count || (capacity && !out))
+        return BML_ERROR_INVALID_PARAMETER;
+    *count = 0;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            std::vector<std::uint64_t> bindings;
+            result = context.BehaviorInstallations().ReadSubmissionBindings(owner, id, bindings);
+            if (!result)
+                return ResultCode(result);
+            *count = static_cast<std::uint32_t>(bindings.size());
+            if (capacity < *count)
+                return BML_ERROR_BUFFER_TOO_SMALL;
+            for (std::uint32_t i = 0; i < *count; ++i)
+                out[i] = bindings[i];
+            return BML_OK;
+        });
+}
+
+int BML_BEHAVIOR_CALL ReadInstallationValue(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    const BML_BehaviorInstallation *installation, const BML_BehaviorPortRef *port,
+    BML_BehaviorGraphValue *value, void *payload, std::uint32_t capacity,
+    std::uint32_t *size, BML_BehaviorStatus *status) {
+    if (!HasStructSize(installation) || installation->Reserved || !port ||
+        !HasStructSize(value) || !size || (capacity && !payload))
+        return BML_ERROR_INVALID_PARAMETER;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            Installations::PortQuery query;
+            if (!ReadPortQuery(*port, query, result))
+                return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
+            GraphValue read;
+            result = context.BehaviorInstallations().ReadInstallation(
+                owner, id, ReadInstallation(*installation), query, read);
+            if (!result)
+                return ResultCode(result);
+            return WriteGraphValueResult(read, value, payload, capacity, size);
+        });
+}
+
+int WriteSubmissionValue(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    const BML_BehaviorInstallation *installation, const BML_BehaviorPortRef *port,
+    const BML_BehaviorValue *value, BML_BehaviorStatus *status) {
+    if (!port || !value)
+        return BML_ERROR_INVALID_PARAMETER;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            Installations::PortQuery query;
+            Parameter::Binding binding;
+            if (!ReadPortQuery(*port, query, result) ||
+                !ReadValue(*value, context, binding, result))
+                return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
+            auto &edits = context.BehaviorInstallations();
+            result = installation
+                ? edits.WriteInstallation(owner, id, ReadInstallation(*installation), query, binding)
+                : edits.SetInputs(owner, id, {&query, 1}, binding);
+            return ResultCode(result);
+        });
+}
+
+int BML_BEHAVIOR_CALL WriteInstallationValue(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    const BML_BehaviorInstallation *installation, const BML_BehaviorPortRef *port,
+    const BML_BehaviorValue *value, BML_BehaviorStatus *status) {
+    if (!HasStructSize(installation) || installation->Reserved)
+        return BML_ERROR_INVALID_PARAMETER;
+    return WriteSubmissionValue(session, submission, installation, port, value, status);
+}
+
+int BML_BEHAVIOR_CALL SetSubmissionInput(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    const BML_BehaviorPortRef *port, const BML_BehaviorValue *value,
+    BML_BehaviorStatus *status) {
+    return WriteSubmissionValue(session, submission, nullptr, port, value, status);
+}
+
+int BML_BEHAVIOR_CALL SetSubmissionInputs(
+    BML_BehaviorSession session, BML_BehaviorSubmission submission,
+    const BML_BehaviorPortRef *ports, std::uint32_t count,
+    const BML_BehaviorValue *value, BML_BehaviorStatus *status) {
+    if (!ports || !count || !value)
+        return BML_ERROR_INVALID_PARAMETER;
+    return InSubmission(session, submission, status,
+        [&](ModContext &context, const SessionOwner &owner, std::uintptr_t id, Status &result) {
+            Parameter::Binding binding;
+            if (!ReadValue(*value, context, binding, result))
+                return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
+            std::vector<Installations::PortQuery> queries(count);
+            for (std::size_t i = 0; i < count; ++i) {
+                if (!ReadPortQuery(ports[i], queries[i], result))
+                    return ReadFailure(result, BML_ERROR_INVALID_PARAMETER);
+            }
+            result = context.BehaviorInstallations().SetInputs(owner, id, queries, binding);
+            return ResultCode(result);
+        });
+}
+
 const BML_BehaviorInterface kBehaviorInterface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -1327,6 +1622,19 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &WritePlanInstanceValue,
     &ValidateBlock,
     &AttachHook,
+    &SubmitEdit,
+    &ReadSubmission,
+    &CloseSubmission,
+    &FindInstallation,
+    &ReadInstallationValue,
+    &WriteInstallationValue,
+    &SetSubmissionInput,
+    &SetSubmissionInputs,
+    &SetSubmissionEnabled,
+    &ReplaceSubmission,
+    &ListInstallations,
+    &ResolveInstallationNode,
+    &ReadSubmissionBindings,
 };
 
 } // namespace

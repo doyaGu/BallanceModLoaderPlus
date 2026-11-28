@@ -32,7 +32,12 @@ Ballance 的物理参数不是写死在代码里的。它们存储在名为 `Phy
 ```angelscript
 void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
     if (event == BML::GAME_EVENT_START_LEVEL) {
-        CKDataArray@ physBalls = ctx.BorrowDataArrayByName("Physicalize_Balls");
+        CKDataArray@ physBalls;
+        BML::ObjectRef physBallsRef;
+        CKObject@ physBallsObject;
+                if (BML::Scene::FindObject("Physicalize_Balls", CKCID_DATAARRAY, physBallsRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, physBallsRef, CKCID_DATAARRAY, physBallsObject) == BML::ERROR_OK)
+            @physBalls = cast<CKDataArray>(physBallsObject);
         if (physBalls !is null) {
             int rows = BML::CK::GetRowCount(physBalls);
             for (int i = 0; i < rows; i++) {
@@ -83,10 +88,10 @@ void OnPhysicalize(const BML::ModContext &in ctx,
 | `Friction` | 摩擦系数 | 0 到 1，越大越粗糙 |
 | `Elasticity` | 弹性系数 | 0 到 1，越大反弹越高 |
 | `Mass` | 质量 | 越大越难推动 |
-| `BallCount` | 球形碰撞体数量 | 通常为 1（球形物理化） |
+| `SphereCount` | 球形碰撞体数量 | 通常为 1（球形物理化） |
 | `CollisionSurface` | 碰撞面名称 | 用于确定碰撞形状的 Mesh 名 |
 
-如果 `BallCount > 0`，还可以用 `event.GetBallRadius(index)` 获取碰撞球的半径。
+如果 `SphereCount > 0`，还可以用 `event.GetSphereRadius(index)` 获取碰撞球的半径。
 
 ## Level 01 加载时会发生什么
 
@@ -118,7 +123,7 @@ void OnPhysicalize(const BML::ModContext &in ctx,
 新建 `ModLoader/Mods/PhysObserve.mod.as`：
 
 ```angelscript
-[bml.mod id="phys.observe" name="Physics Observer" version="1.0.0" author="Tutorial" bml="0.3.14" description="Observe physics parameters"]
+[bml.mod id="phys.observe" name="Physics Observer" version="1.0.0" author="Tutorial" bml="0.4.0" description="Observe physics parameters"]
 class PhysObserve {
     private int eventCount = 0;
 
@@ -141,15 +146,20 @@ class PhysObserve {
                       " elasticity=" + event.Elasticity +
                       " mass=" + event.Mass;
 
-        if (event.BallCount > 0) {
-            info += " radius=" + event.GetBallRadius(0);
+        if (event.SphereCount > 0) {
+            info += " radius=" + event.GetSphereRadius(0);
         }
 
         ctx.LogInfo(info);
     }
 
     private void ReadPhysTable(const BML::ModContext &in ctx) {
-        CKDataArray@ physBalls = ctx.BorrowDataArrayByName("Physicalize_Balls");
+        CKDataArray@ physBalls;
+        BML::ObjectRef physBallsRef;
+        CKObject@ physBallsObject;
+                if (BML::Scene::FindObject("Physicalize_Balls", CKCID_DATAARRAY, physBallsRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, physBallsRef, CKCID_DATAARRAY, physBallsObject) == BML::ERROR_OK)
+            @physBalls = cast<CKDataArray>(physBallsObject);
         if (physBalls is null) {
             ctx.LogInfo("Physicalize_Balls not found");
             return;
@@ -209,7 +219,7 @@ class PhysObserve {
 | 脚本不加载 | 文件名不是 `.mod.as` 结尾 | 改为 `PhysObserve.mod.as` |
 | 表为 null | 拼写错误或关卡未完全加载 | 检查 `Physicalize_Balls` 拼写，确认在 `GAME_EVENT_START_LEVEL` 时读取 |
 | 事件数为 0 | `OnPhysicalize` 函数签名不正确 | 确认参数类型完全匹配：`const BML::ModContext &in ctx, const BML::PhysicalizeEvent &in event` |
-| 看到事件但没有 radius | 某些对象不用球形碰撞体 | 正常现象，检查 `BallCount` 是否为 0 |
+| 看到事件但没有 radius | 某些对象不用球形碰撞体 | 正常现象，检查 `SphereCount` 是否为 0 |
 | 日志中表数据和事件参数不一致 | 可能有自定义行为图修改了参数 | 对于原版关卡，两者应该一致 |
 
 ## 本章要点

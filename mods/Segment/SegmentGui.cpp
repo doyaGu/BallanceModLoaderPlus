@@ -13,12 +13,9 @@ void SegmentGui::update() {
         ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * font_scale_);
     }
 
-    constexpr auto WinFlags = ImGuiWindowFlags_NoTitleBar |
-                              ImGuiWindowFlags_AlwaysAutoResize |
-                              ImGuiWindowFlags_NoScrollbar |
-                              ImGuiWindowFlags_NoFocusOnAppearing |
-                              ImGuiWindowFlags_NoBringToFrontOnFocus |
-                              ImGuiWindowFlags_NoNav;
+    constexpr auto WinFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize |
+                              ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
+                              ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNav;
 
     if (ImGui::Begin("Segments", nullptr, WinFlags)) {
         ImGui::TextUnformatted(current_level_name_.c_str());
@@ -42,8 +39,7 @@ void SegmentGui::update() {
                 auto &time_to_compare = state_.segment_target(i);
                 ImGui::PushID(static_cast<int>(i));
                 ImGui::SetNextItemWidth(-1.0f);
-                ImGui::DragFloat("##target", &time_to_compare,
-                                 0.1f, 0.0f, 1e6f,
+                ImGui::DragFloat("##target", &time_to_compare, 0.1f, 0.0f, 1e6f,
                                  time_to_compare >= 0.0f ? "%.3fs" : "----");
                 ImGui::PopID();
                 ImGui::TableSetColumnIndex(3);

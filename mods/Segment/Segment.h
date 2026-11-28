@@ -5,7 +5,8 @@
 #include <sstream>
 #include <fstream>
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
 #include "PerLevelSegmentState.h"
 #include "SegmentGui.h"
@@ -16,39 +17,31 @@ constexpr int SEG_MAJOR_VER = 2;
 constexpr int SEG_MINOR_VER = 1;
 constexpr int SEG_PATCH_VER = 6;
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
+class Segment : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
 
-class Segment : public IMod {
-public:
-    explicit Segment(IBML *bml);
+  public:
+    Segment();
 
-    const char *GetID() override { return "Segment"; }
-    const char *GetVersion() override { return SEG_VERSION.c_str(); }
-    const char *GetName() override { return "Segment"; }
-    const char *GetAuthor() override { return "Swung0x48"; }
-    const char *GetDescription() override {
-        return "A mod to display your gameplay performance split into each segment.";
-    }
-    DECLARE_BML_VERSION;
 
-    void OnLoad() override;
-    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
-    void OnPreEndLevel() override;
-    void OnCounterActive() override;
-    void OnCounterInactive() override;
-    void OnPauseLevel() override;
-    void OnUnpauseLevel() override;
-    void OnProcess() override;
-    void OnStartLevel() override;
-    void OnPreResetLevel() override;
-    void OnPostCheckpointReached() override;
-    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                              CKBOOL addtoscene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                              XObjectArray *objArray, CKObject *masterObj) override;
-    void OnPreExitLevel() override;
-    void OnGameOver() override;
-    void OnCheatEnabled(bool enable) override;
+    void OnLoad(const BML::Mod::Context &) override;
+    void OnModifyConfig(const BML::Mod::Context &, const BML::Mod::ConfigEvent &event) override;
+    void OnPreEndLevel(const BML::Mod::Context &) override;
+    void OnCounterActive(const BML::Mod::Context &) override;
+    void OnCounterInactive(const BML::Mod::Context &) override;
+    void OnPauseLevel(const BML::Mod::Context &) override;
+    void OnUnpauseLevel(const BML::Mod::Context &) override;
+    void OnProcess(const BML::Mod::Context &) override;
+    void OnStartLevel(const BML::Mod::Context &) override;
+    void OnPreResetLevel(const BML::Mod::Context &) override;
+    void OnPostCheckpointReached(const BML::Mod::Context &) override;
+    void OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) override;
+    void OnPreExitLevel(const BML::Mod::Context &) override;
+    void OnGameOver(const BML::Mod::Context &) override;
+    void OnCheatEnabled(const BML::Mod::Context &, const BML::Mod::CheatEvent &event) override;
 
     void ClearHistory() const {
         if (session_)
@@ -65,17 +58,15 @@ public:
             session_->gui.set_visible(false);
     }
 
-private:
-    const static inline std::string SEG_VERSION = std::format("{}.{}.{}", SEG_MAJOR_VER, SEG_MINOR_VER, SEG_PATCH_VER);
-    const static inline std::string RECORD_SAVE_PATH = "../ModLoader/Configs/SegmentRecords.json";
+  private:
+    std::string m_RecordSavePath;
 
     struct session {
-        session(const int current_level, const int sector_count): state(sector_count), gui(state, current_level) {
-        }
+        session(const int current_level, const int sector_count)
+            : state(sector_count), gui(state, current_level) {}
 
-        session(const std::string_view current_level_name, const int sector_count) : state(sector_count),
-            gui(state, current_level_name) {
-        }
+        session(const std::string_view current_level_name, const int sector_count)
+            : state(sector_count), gui(state, current_level_name) {}
 
         PerLevelSegmentState state;
         SegmentGui gui;
@@ -85,15 +76,13 @@ private:
     std::shared_ptr<session> session_;
     bool cheat_enabled_once_ = false;
 
-    IProperty *font_scale_ = nullptr;
-    IProperty *show_settings_ = nullptr;
+    BML::Config::Property font_scale_ = {};
+    BML::Config::Property show_settings_ = {};
 
-    enum class serialize_from_t {
-        Current,
-        Target
-    };
+    enum class serialize_from_t { Current, Target };
 
-    picojson::value serialize_sessions_to_pico(serialize_from_t serialize_from = serialize_from_t::Target) const;
+    picojson::value
+    serialize_sessions_to_pico(serialize_from_t serialize_from = serialize_from_t::Target) const;
 
     void save_pico_to_file(const picojson::value &v);
 
@@ -105,13 +94,13 @@ private:
 
     int get_current_level() const {
         int ret = 0;
-        m_BML->GetArrayByName("CurrentLevel")->GetElementValue(0, 0, &ret);
+        ModSupport::Find<CKDataArray>(m_Context, "CurrentLevel")->GetElementValue(0, 0, &ret);
         return ret;
     }
 
     int get_current_sector() const {
         int next_sector;
-        CKDataArray *array = m_BML->GetArrayByName("IngameParameter");
+        CKDataArray *array = ModSupport::Find<CKDataArray>(m_Context, "IngameParameter");
         if (!array)
             return -1;
         array->GetElementValue(0, 1, &next_sector);
@@ -129,7 +118,7 @@ private:
             else
                 name = std::format("Sector_{:02d}", i);
 
-            if (m_BML->GetGroupByName(name.c_str()) == nullptr)
+            if (ModSupport::Find<CKGroup>(m_Context, name.c_str()) == nullptr)
                 break;
 
             sector_count = i;

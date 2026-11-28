@@ -1108,9 +1108,9 @@ def imc_field_wire_type(api: ApiDefinition, field_type: str) -> str:
     return enum.underlying if enum is not None else field_type
 
 
-def imc_field_cpp_type(api: ApiDefinition, field_type: str) -> str:
+def imc_field_cpp_type(api: ApiDefinition, field_type: str, namespace: str) -> str:
     enum = enum_definition(api, field_type)
-    return camel(enum.name) if enum is not None else IMC_CPP_TYPES[field_type]
+    return f"BML::Imc::Generated::{namespace}::{camel(enum.name)}" if enum is not None else IMC_CPP_TYPES[field_type]
 
 
 def enum_cpp_literal(enum: EnumDefinition, value: int) -> str:
@@ -1435,7 +1435,7 @@ def emit_imc_header(api: ApiDefinition) -> str:
             member = camel(field.name)
             if field.optional:
                 lines.append(f"    bool Has{member} = false;")
-            lines.append(f"    {imc_field_cpp_type(api, field.type)} {member}{{}};")
+            lines.append(f"    {imc_field_cpp_type(api, field.type, namespace)} {member}{{}};")
         lines.extend(["};", ""])
         append_imc_codec(lines, record)
 

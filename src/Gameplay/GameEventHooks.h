@@ -3,22 +3,22 @@
 
 #include "BML/Behavior.hpp"
 
-class IBML;
-class ILogger;
-class IMessageReceiver;
+class ModContext;
+class Logger;
+class ModContext;
 
 class GameEventHooks {
 public:
-    void OnLoad(IBML &bml, ILogger &logger);
+    void OnLoad(ModContext &bml, Logger &logger);
     void OnUnload();
 
 private:
-    void RejectPlan(const char *reason) const;
+    void RejectSubmission(const char *reason) const;
 
     BML::Behavior::Session m_Behavior;
-    BML::Behavior::Plan m_Plan;
-    IMessageReceiver *m_Receiver = nullptr;
-    ILogger *m_Logger = nullptr;
+    BML::Behavior::Submission m_Submission;
+    ModContext *m_Receiver = nullptr;
+    Logger *m_Logger = nullptr;
 };
 
 #endif // BML_GAMEEVENTHOOKS_H

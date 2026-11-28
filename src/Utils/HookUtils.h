@@ -5,6 +5,7 @@ namespace utils {
     void OutputDebugA(const char *format, ...);
     void OutputDebugW(const wchar_t *format, ...);
 
+#if !BML_RUNTIME_SDL && defined(_WIN32)
     template<typename T>
     void *TypeErase(T target) {
         return *reinterpret_cast<void **>(&target);
@@ -28,7 +29,7 @@ namespace utils {
             return nullptr;
         }
     }
-
+#endif
 }
 
 #endif // BML_HOOKUTILS_H

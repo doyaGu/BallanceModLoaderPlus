@@ -3,13 +3,12 @@
 #include <algorithm>
 #include <cstdlib>
 
-#include "BML/IBML.h"
+#include "Loader/ModContext.h"
 #include "Console/Console.h"
 #include "Console/Shell/ShellIo.h"
-#include "Loader/ModContext.h"
 #include "StringUtils.h"
 
-void CommandHelp::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CommandHelp::Execute(ModContext *bml, const std::vector<std::string> &args) {
     const auto commands = BML_GetModContext()->GetCommandSnapshot();
     const std::size_t visibleCount = static_cast<std::size_t>(std::count_if(
         commands.begin(), commands.end(),
@@ -32,7 +31,7 @@ void CommandHelp::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
 }
 
-void CommandEcho::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CommandEcho::Execute(ModContext *bml, const std::vector<std::string> &args) {
     if (!bml) return;
 
     // No args -> print newline
@@ -136,7 +135,7 @@ bool CommandEcho::ApplyBackslashCTrunc(std::string &s) {
     return stop;
 }
 
-void CommandClear::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CommandClear::Execute(ModContext *bml, const std::vector<std::string> &args) {
     m_Console->ClearMessages();
 }
 
@@ -144,7 +143,7 @@ void CommandClear::Execute(IBML *bml, const std::vector<std::string> &args) {
 // history N          print the last N entries
 // history clear | -c forget everything
 // history -d N       forget entry N
-void CommandHistory::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CommandHistory::Execute(ModContext *bml, const std::vector<std::string> &args) {
     if (args.size() == 1) {
         m_Console->PrintHistory();
         return;
@@ -172,6 +171,6 @@ void CommandHistory::Execute(IBML *bml, const std::vector<std::string> &args) {
     BML::Shell::Fail(bml, "usage: history [N] | history clear | history -d N");
 }
 
-void CommandExit::Execute(IBML *bml, const std::vector<std::string> &args) {
+void CommandExit::Execute(ModContext *bml, const std::vector<std::string> &args) {
     bml->ExitGame();
 }

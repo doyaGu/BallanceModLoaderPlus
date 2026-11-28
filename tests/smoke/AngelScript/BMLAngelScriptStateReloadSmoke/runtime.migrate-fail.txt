@@ -6,7 +6,7 @@ void TraceStateHookPhase(BML::ReloadPhase expected, const string &in label) {
   }
 }
 
-[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="2.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for script hot reload migration failure."]
+[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="2.0.0" author="BML" bml="0.4.0" reload="auto" description="Smoke test for script hot reload migration failure."]
 class BMLStateReloadSmokeMod {
   void MigrateState(const string &in version, BML::StateBag@ state) {
     TraceStateHookPhase(BML::RELOAD_MIGRATE_STATE, "migrate-fail migrate");
@@ -14,7 +14,7 @@ class BMLStateReloadSmokeMod {
     if (!BML::BorrowCurrentContext(current)) {
       throw("migrate-fail could not borrow current context");
     }
-    current.SkipRenderForNextTick();
+    BML::UI::SkipNextRender(current);
     throw("intentional state reload migrate failure smoke");
   }
 
@@ -25,17 +25,15 @@ class BMLStateReloadSmokeMod {
   }
 
   void OnLoad(const BML::ModContext &in ctx) {
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
-      logger.Info("BML state reload smoke migrate-fail candidate should not load");
+    if (ctx.IsValid()) {
+      ctx.LogInfo("BML state reload smoke migrate-fail candidate should not load");
     }
   }
 
   void OnUnload(const BML::ModContext &in ctx) {
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
+    if (ctx.IsValid()) {
       const bool cleanupPhaseOk = ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_CLEANUP;
-      logger.Info("BML failed candidate cleanup phase: migrate=" + (cleanupPhaseOk ? "valid" : "unexpected"));
+      ctx.LogInfo("BML failed candidate cleanup phase: migrate=" + (cleanupPhaseOk ? "valid" : "unexpected"));
     }
   }
 }

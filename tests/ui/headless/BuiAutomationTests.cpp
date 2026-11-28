@@ -1,6 +1,6 @@
 #include <algorithm>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "UI/BuiInternal.h"
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -23,7 +23,7 @@ struct ColorStringState {
 
 struct ColorPopupState {
     std::string Value = "#61B0F0FF";
-    Bui::ColorPickerArea Area;
+    BuiHost::ColorPickerArea Area;
 };
 
 struct NavigationShortcutState {
@@ -81,9 +81,9 @@ struct ButtonFamilyState {
     int MinusCount = 0;
 };
 
-class LifecycleWindow final : public Bui::Window {
+class LifecycleWindow final : public BuiHost::Window {
 public:
-    LifecycleWindow() : Bui::Window("Bui Lifecycle") {}
+    LifecycleWindow() : BuiHost::Window("Bui Lifecycle") {}
 
     int DrawCount = 0;
     int HideCount = 0;
@@ -107,23 +107,23 @@ struct WindowState {
     LifecycleWindow Window;
 };
 
-class LandingPage final : public Bui::Page {
+class LandingPage final : public BuiHost::Page {
 public:
     LandingPage(ImGuiWindow **window, ImGuiID *firstItem, ImGuiID *item,
                 int *firstActivationCount, int *frameCount)
         : m_Window(window), m_FirstItem(firstItem), m_Item(item),
           m_FirstActivationCount(firstActivationCount), m_FrameCount(frameCount) {}
 
-    Bui::PageAction OnFrame() override {
+    BuiHost::PageAction OnFrame() override {
         ++*m_FrameCount;
         *m_Window = ImGui::GetCurrentWindow();
         *m_FirstItem = ImGui::GetID("Previous item");
-        if (Bui::MainButton("Previous item"))
+        if (BuiHost::MainButton("Previous item"))
             ++*m_FirstActivationCount;
         *m_Item = ImGui::GetID("Open options");
-        if (Bui::MainButton("Open options"))
-            return Bui::PageAction::Push("options");
-        return Bui::PageAction::None();
+        if (BuiHost::MainButton("Open options"))
+            return BuiHost::PageAction::Push("options");
+        return BuiHost::PageAction::None();
     }
 
 private:
@@ -134,17 +134,17 @@ private:
     int *m_FrameCount;
 };
 
-class OptionsPage final : public Bui::Page {
+class OptionsPage final : public BuiHost::Page {
 public:
     OptionsPage(ImGuiWindow **window, ImGuiID *item)
         : m_Window(window), m_Item(item) {}
 
-    Bui::PageAction OnFrame() override {
+    BuiHost::PageAction OnFrame() override {
         *m_Window = ImGui::GetCurrentWindow();
         *m_Item = ImGui::GetID("Back");
-        if (Bui::BackButton("Back"))
-            return Bui::PageAction::Back();
-        return Bui::PageAction::None();
+        if (BuiHost::BackButton("Back"))
+            return BuiHost::PageAction::Back();
+        return BuiHost::PageAction::None();
     }
 
 private:
@@ -171,12 +171,12 @@ struct MenuState {
     bool OpenPending = false;
     bool ImmediateOpenRequested = false;
     int OpenRequestFrame = -1;
-    Bui::Menu Menu;
+    BuiHost::Menu Menu;
 };
 
 void RenderMenu(MenuState &state) {
     if (state.HoldOpeningEnter)
-        Bui::LockNavigationKeyUntilRelease(ImGuiKey_Enter);
+        BuiHost::LockNavigationKeyUntilRelease(ImGuiKey_Enter);
     if (state.OpenRequested) {
         state.OpenPending = true;
         state.OpenRequestFrame = ImGui::GetFrameCount();
@@ -205,12 +205,12 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         ImGui::SetNextWindowSize(ImVec2(700.0f, 620.0f), ImGuiCond_Always);
         ImGui::Begin("Bui Widgets", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-        if (Bui::MainButton("Launch"))
+        if (BuiHost::MainButton("Launch"))
             ++state.LaunchCount;
-        Bui::LevelButton("Level 02", &state.Selected);
-        Bui::YesNoButton("Fullscreen", &state.Fullscreen);
-        Bui::InputIntButton("Lives", &state.Lives);
-        Bui::ColorButton("Accent", &state.Accent);
+        BuiHost::LevelButton("Level 02", &state.Selected);
+        BuiHost::YesNoButton("Fullscreen", &state.Fullscreen);
+        BuiHost::InputIntButton("Lives", &state.Lives);
+        BuiHost::ColorButton("Accent", &state.Accent);
 
         ImGui::End();
     };
@@ -269,7 +269,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         ColorStringState &state = ctx->GetVars<ColorStringState>();
         ImGui::SetNextWindowSize(ImVec2(700.0f, 240.0f), ImGuiCond_Always);
         ImGui::Begin("Bui Color String", nullptr, ImGuiWindowFlags_NoSavedSettings);
-        Bui::ColorStringButton("Theme color", &state.Value);
+        BuiHost::ColorStringButton("Theme color", &state.Value);
         ImGui::End();
     };
     test->TestFunc = [](ImGuiTestContext *ctx) {
@@ -300,7 +300,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
             ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.60f,
                    viewport->WorkPos.y + viewport->WorkSize.y * 0.82f),
         };
-        Bui::ColorStringButton("Accent", &state.Value, state.Area);
+        BuiHost::ColorStringButton("Accent", &state.Value, state.Area);
         ImGui::End();
     };
     test->TestFunc = [](ImGuiTestContext *ctx) {
@@ -312,7 +312,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         IM_CHECK_GT(imgui.OpenPopupStack.Size, 0);
         ImGuiWindow *popup = imgui.OpenPopupStack.back().Window;
         IM_CHECK(popup != nullptr);
-        const Bui::ColorPickerArea &page = ctx->GetVars<ColorPopupState>().Area;
+        const BuiHost::ColorPickerArea &page = ctx->GetVars<ColorPopupState>().Area;
         IM_CHECK_GE(popup->Pos.x, page.minimum.x);
         IM_CHECK_GE(popup->Pos.y, page.minimum.y);
         IM_CHECK_LE(popup->Pos.x + popup->Size.x, page.maximum.x);
@@ -332,11 +332,11 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         ImGui::SetNextWindowSize(ImVec2(700.0f, 240.0f), ImGuiCond_Always);
         ImGui::Begin("Bui Navigation Shortcuts", nullptr, ImGuiWindowFlags_NoSavedSettings);
         ImGui::InputText("Text", state.Text, IM_ARRAYSIZE(state.Text));
-        if (Bui::NavLeft(0.3f, 0.2f))
+        if (BuiHost::NavLeft(0.3f, 0.2f))
             ++state.PreviousCount;
-        if (Bui::NavRight(0.5f, 0.2f))
+        if (BuiHost::NavRight(0.5f, 0.2f))
             ++state.NextCount;
-        if (Bui::NavBack(0.1f, 0.2f))
+        if (BuiHost::NavBack(0.1f, 0.2f))
             ++state.BackCount;
         ImGui::End();
     };
@@ -370,16 +370,16 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         KeyboardButtonState &state = ctx->GetVars<KeyboardButtonState>();
         ImGui::SetNextWindowSize(ImVec2(700.0f, 360.0f), ImGuiCond_Always);
         ImGui::Begin("Bui Keyboard Buttons", nullptr, ImGuiWindowFlags_NoSavedSettings);
-        if (Bui::YesNoButton("Enabled", &state.Enabled))
+        if (BuiHost::YesNoButton("Enabled", &state.Enabled))
             ++state.EnabledChanges;
         const char *modes[] = {"First", "Second", "Third"};
-        if (Bui::RadioButton("Mode", &state.Mode, modes, IM_ARRAYSIZE(modes)))
+        if (BuiHost::RadioButton("Mode", &state.Mode, modes, IM_ARRAYSIZE(modes)))
             ++state.ModeChanges;
-        if (Bui::KeyButton("Binding", &state.Listening, &state.Chord))
+        if (BuiHost::KeyButton("Binding", &state.Listening, &state.Chord))
             ++state.BindingChanges;
-        if (Bui::NavLeft(0.3f, 0.8f))
+        if (BuiHost::NavLeft(0.3f, 0.8f))
             ++state.PreviousCount;
-        if (Bui::NavBack(0.5f, 0.8f))
+        if (BuiHost::NavBack(0.5f, 0.8f))
             ++state.BackCount;
         ImGui::End();
     };
@@ -434,7 +434,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         ImGui::PopID();
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         const int firstCommand = std::max(0, drawList->CmdBuffer.Size - 1);
-        Bui::InputTextButton("Text", state.Text, IM_ARRAYSIZE(state.Text));
+        BuiHost::InputTextButton("Text", state.Text, IM_ARRAYSIZE(state.Text));
         state.ButtonTexture = FindButtonTexture(drawList, firstCommand);
         ImGui::Button("After");
         ImGui::End();
@@ -472,7 +472,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         ImGui::Begin("Bui Shortcut Button", nullptr,
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav);
         ImGui::SetNextItemShortcut(ImGuiKey_RightArrow, ImGuiInputFlags_RouteGlobal);
-        if (Bui::RightButton("Enter"))
+        if (BuiHost::RightButton("Enter"))
             ++state.ActivationCount;
         ImGui::End();
     };
@@ -495,25 +495,25 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
         ButtonFamilyState &state = ctx->GetVars<ButtonFamilyState>();
         ImGui::SetNextWindowSize(ImVec2(700.0f, 700.0f), ImGuiCond_Always);
         ImGui::Begin("Bui Button Family", nullptr, ImGuiWindowFlags_NoSavedSettings);
-        if (Bui::MainButton("Main"))
+        if (BuiHost::MainButton("Main"))
             ++state.MainCount;
-        if (Bui::OkButton("Ok"))
+        if (BuiHost::OkButton("Ok"))
             ++state.OkCount;
-        if (Bui::BackButton("Back"))
+        if (BuiHost::BackButton("Back"))
             ++state.BackCount;
-        if (Bui::OptionButton("Option"))
+        if (BuiHost::OptionButton("Option"))
             ++state.OptionCount;
-        if (Bui::LevelButton("Level"))
+        if (BuiHost::LevelButton("Level"))
             ++state.LevelCount;
-        if (Bui::SmallButton("Small"))
+        if (BuiHost::SmallButton("Small"))
             ++state.SmallCount;
-        if (Bui::LeftButton("Left"))
+        if (BuiHost::LeftButton("Left"))
             ++state.LeftCount;
-        if (Bui::RightButton("Right"))
+        if (BuiHost::RightButton("Right"))
             ++state.RightCount;
-        if (Bui::PlusButton("Plus"))
+        if (BuiHost::PlusButton("Plus"))
             ++state.PlusCount;
-        if (Bui::MinusButton("Minus"))
+        if (BuiHost::MinusButton("Minus"))
             ++state.MinusCount;
         ImGui::End();
     };
@@ -550,7 +550,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
     };
     test->TestFunc = [](ImGuiTestContext *ctx) {
         MenuState &state = ctx->GetVars<MenuState>();
-        Bui::Menu &menu = state.Menu;
+        BuiHost::Menu &menu = state.Menu;
         ctx->Yield();
         IM_CHECK_NE(state.CurrentWindow, nullptr);
         IM_CHECK_NE(state.CurrentItem, 0u);
@@ -571,7 +571,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
     };
     test->TestFunc = [](ImGuiTestContext *ctx) {
         MenuState &state = ctx->GetVars<MenuState>();
-        Bui::Menu &menu = state.Menu;
+        BuiHost::Menu &menu = state.Menu;
         ctx->SetInputMode(ImGuiInputSource_Keyboard);
         ctx->Yield();
 
@@ -602,7 +602,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
     };
     test->TestFunc = [](ImGuiTestContext *ctx) {
         MenuState &state = ctx->GetVars<MenuState>();
-        Bui::Menu &menu = state.Menu;
+        BuiHost::Menu &menu = state.Menu;
         ctx->SetInputMode(ImGuiInputSource_Keyboard);
         ctx->Yield();
 
@@ -653,7 +653,7 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
     };
     test->TestFunc = [](ImGuiTestContext *ctx) {
         MenuState &state = ctx->GetVars<MenuState>();
-        Bui::Menu &menu = state.Menu;
+        BuiHost::Menu &menu = state.Menu;
         ctx->SetInputMode(ImGuiInputSource_Keyboard);
         ctx->Yield();
 

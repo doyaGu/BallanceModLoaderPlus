@@ -25,14 +25,18 @@
 
 #include "BML/Interface.h"
 #include "BML/Types.h"
+#include "BML/Mod.h"
 
 BML_BEGIN_CDECLS
 
 #pragma pack(push, 8)
 
+#define BML_OBJECT_HIDE 0u
+#define BML_OBJECT_SHOW 1u
+#define BML_OBJECT_HIERARCHICAL_HIDE 2u
 #define BML_SCENE_INTERFACE_ID "bml.scene"
 #define BML_SCENE_INTERFACE_MAJOR 1
-#define BML_SCENE_INTERFACE_MINOR 0
+#define BML_SCENE_INTERFACE_MINOR 1
 
 // Capacity of the Name buffer below, terminator included.
 #define BML_SCENE_NAME_CAPACITY 128u
@@ -76,11 +80,14 @@ typedef struct BML_SceneInterface {
     // a null ref and still answers BML_OK when nothing matches.
     int (BML_CDECL *FindObject)(const char *name, BML_ObjectRef *out);
 
-    // classId is a CK_CLASSID. This is the counterpart of the IBML GetXxxByName
-    // family: pass CKCID_3DOBJECT here instead of calling IBML::Get3dObjectByName.
+    // classId is a CK_CLASSID, for example CKCID_3DOBJECT to find a 3D object.
     // Writes a null ref and still answers BML_OK when nothing matches.
     int (BML_CDECL *FindObjectOfClass)(const char *name, int classId,
                                        BML_ObjectRef *out);
+    int (BML_CDECL *SetIC)(BML_ModContextHandle, BML_ObjectRef, uint32_t hierarchy);
+    int (BML_CDECL *RestoreIC)(BML_ModContextHandle, BML_ObjectRef, uint32_t hierarchy);
+    int (BML_CDECL *Show)(BML_ModContextHandle, BML_ObjectRef,
+        uint32_t option, uint32_t hierarchy);
 } BML_SceneInterface;
 
 #pragma pack(pop)
@@ -163,6 +170,23 @@ inline const BML_SceneInterface *Interface() {
 }
 
 } // namespace BML::Scene
+
+
+#include "BML/Mod.hpp"
+namespace BML::Scene {
+[[nodiscard]] inline int SetIC(const Mod::Context &ctx, BML_ObjectRef object, bool hierarchy = false) {
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_SceneInterface, SetIC) ? api->SetIC(ctx.Handle(), object, hierarchy ? 1u : 0u) : BML_ERROR_UNAVAILABLE;
+}
+[[nodiscard]] inline int RestoreIC(const Mod::Context &ctx, BML_ObjectRef object, bool hierarchy = false) {
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_SceneInterface, RestoreIC) ? api->RestoreIC(ctx.Handle(), object, hierarchy ? 1u : 0u) : BML_ERROR_UNAVAILABLE;
+}
+[[nodiscard]] inline int Show(const Mod::Context &ctx, BML_ObjectRef object, uint32_t option, bool hierarchy = false) {
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_SceneInterface, Show) ? api->Show(ctx.Handle(), object, option, hierarchy ? 1u : 0u) : BML_ERROR_UNAVAILABLE;
+}
+}
 
 #endif // __cplusplus
 

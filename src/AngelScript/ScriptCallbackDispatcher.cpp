@@ -8,6 +8,42 @@ namespace BML {
 
 namespace {
 
+static const char *kGameMethods[] = {
+    "OnPreStartMenu",
+    "OnPostStartMenu",
+    "OnExitGame",
+    "OnPreLoadLevel",
+    "OnPostLoadLevel",
+    "OnStartLevel",
+    "OnPreResetLevel",
+    "OnPostResetLevel",
+    "OnPauseLevel",
+    "OnUnpauseLevel",
+    "OnPreExitLevel",
+    "OnPostExitLevel",
+    "OnPreNextLevel",
+    "OnPostNextLevel",
+    "OnDead",
+    "OnPreEndLevel",
+    "OnPostEndLevel",
+    "OnCounterActive",
+    "OnCounterInactive",
+    "OnBallNavActive",
+    "OnBallNavInactive",
+    "OnCamNavActive",
+    "OnCamNavInactive",
+    "OnBallOff",
+    "OnPreCheckpointReached",
+    "OnPostCheckpointReached",
+    "OnLevelFinish",
+    "OnGameOver",
+    "OnExtraPoint",
+    "OnPreSubLife",
+    "OnPostSubLife",
+    "OnPreLifeUp",
+    "OnPostLifeUp",
+};
+
 static const ScriptCallbackDescriptor &Descriptor(ScriptCallbackId id) {
     return ScriptApiSurface::Callbacks().Data[static_cast<size_t>(id)];
 }
@@ -66,19 +102,7 @@ bool ScriptCallbackDispatcher::Cache(ScriptDiagnostic &diagnostic) {
     if (!RequireBound(diagnostic))
         return false;
 
-    for (CKAngelScriptMethod *method : m_Methods) {
-        if (!method)
-            continue;
-        ScriptDiagnostic releaseDiagnostic;
-        if (!Release(&releaseDiagnostic)) {
-            diagnostic = releaseDiagnostic;
-            if (diagnostic.Message.empty())
-                diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Unload,
-                                                  "Previous script callback handles could not be released.");
-            return false;
-        }
-        break;
-    }
+    if (!Release(&diagnostic)) return false;
 
     for (const ScriptCallbackDescriptor &descriptor : ScriptApiSurface::Callbacks()) {
         m_Methods[descriptor.Id] = m_Runtime->FindMethod(m_Context, descriptor.Declaration, diagnostic);
@@ -88,6 +112,16 @@ bool ScriptCallbackDispatcher::Cache(ScriptDiagnostic &diagnostic) {
             Release(nullptr);
             return false;
         }
+    }
+    for (size_t i = 0; i < std::size(kGameMethods); ++i) {
+        const std::string declaration = std::string("void ") + kGameMethods[i] + "(const BML::ModContext &in)";
+        m_GameMethods[i] = m_Runtime->FindMethod(m_Context, declaration.c_str(), diagnostic);
+        if (!m_GameMethods[i] && diagnostic.Status != CKAS_OK && !diagnostic.Message.empty()) { Release(nullptr); return false; }
+    }
+    const char *commands[] = {"void OnPreCommandExecute(const BML::ModContext &in, const BML::CommandEvent &in)", "void OnPostCommandExecute(const BML::ModContext &in, const BML::CommandEvent &in)"};
+    for (size_t i = 0; i < 2; ++i) {
+        m_CommandMethods[i] = m_Runtime->FindMethod(m_Context, commands[i], diagnostic);
+        if (!m_CommandMethods[i] && diagnostic.Status != CKAS_OK && !diagnostic.Message.empty()) { Release(nullptr); return false; }
     }
     return true;
 }
@@ -106,6 +140,15 @@ bool ScriptCallbackDispatcher::Release(ScriptDiagnostic *diagnostic) {
             ok = false;
         }
     }
+    const auto release = [&](CKAngelScriptMethod *&method) {
+        ScriptDiagnostic failure;
+        if (!m_Runtime->ReleaseMethod(m_Context, method, &failure)) {
+            if (ok) firstFailure = failure;
+            ok = false;
+        }
+    };
+    for (auto &method : m_GameMethods) release(method);
+    for (auto &method : m_CommandMethods) release(method);
     if (!ok && diagnostic)
         *diagnostic = firstFailure;
     return ok;
@@ -115,11 +158,21 @@ bool ScriptCallbackDispatcher::HasCallback(ScriptCallbackId id) const {
     return id >= 0 && id < ScriptCallbackCount && m_Methods[id] != nullptr;
 }
 
+bool ScriptCallbackDispatcher::HasGameEvent() const {
+    if (HasCallback(ScriptCallbackOnGameEvent)) return true;
+    for (auto *method : m_GameMethods) if (method) return true;
+    return false;
+}
+
 void ScriptCallbackDispatcher::GetCallbackNames(std::vector<std::string> &out) const {
     for (const ScriptCallbackDescriptor &descriptor : ScriptApiSurface::Callbacks()) {
         if (HasCallback(descriptor.Id) && descriptor.Name)
             out.emplace_back(descriptor.Name);
     }
+    for (size_t i = 0; i < std::size(kGameMethods); ++i)
+        if (m_GameMethods[i]) out.emplace_back(kGameMethods[i]);
+    if (m_CommandMethods[0]) out.emplace_back("OnPreCommandExecute");
+    if (m_CommandMethods[1]) out.emplace_back("OnPostCommandExecute");
 }
 
 bool ScriptCallbackDispatcher::CallContextOnly(ScriptCallbackId id, ScriptDiagnostic &diagnostic) {
@@ -169,13 +222,21 @@ bool ScriptCallbackDispatcher::CallOnProcess(ScriptDiagnostic &diagnostic) {
 }
 
 bool ScriptCallbackDispatcher::CallGameEvent(size_t eventIndex, ScriptDiagnostic &diagnostic) {
-    if (!HasCallback(ScriptCallbackOnGameEvent))
-        return true;
+    if (!HasGameEvent()) return true;
     if (!RequireBound(diagnostic))
         return false;
     if (eventIndex >= ScriptGameEventCount) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Callback, "Script game event index is out of range.");
         return false;
+    }
+    if (!HasCallback(ScriptCallbackOnGameEvent)) {
+        if (!m_GameMethods[eventIndex]) return true;
+        ContextOnlyCallArgs args{m_ContextView, &m_Runtime->GetApi()};
+        ScriptMethodCall call;
+        call.Method = m_GameMethods[eventIndex]; call.WriteArgs = WriteContextOnlyArgs;
+        call.UserData = &args; call.Phase = ScriptDiagnosticPhase::Callback;
+        call.FailurePrefix = kGameMethods[eventIndex];
+        return m_Runtime->CallMethod(m_Context, call, diagnostic);
     }
     int eventValue = static_cast<int>(eventIndex);
     return CallWithEvent(ScriptCallbackOnGameEvent, &eventValue, diagnostic);
@@ -239,22 +300,27 @@ bool ScriptCallbackDispatcher::CallCheatEnabled(bool enable, ScriptDiagnostic &d
     return CallWithEvent(ScriptCallbackOnCheatEnabled, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallCommandEvent(bool beforeCommand,
-                                                ICommand *command,
+bool ScriptCallbackDispatcher::CallCommandEvent(bool beforeCommand, BML::CommandRecord *command,
                                                 const std::vector<std::string> &args,
                                                 ScriptDiagnostic &diagnostic) {
-    if (!HasCallback(ScriptCallbackOnCommandEvent))
-        return true;
+    const size_t index = beforeCommand ? 0 : 1;
+    if (!HasCallback(ScriptCallbackOnCommandEvent) && !m_CommandMethods[index]) return true;
     if (!RequireBound(diagnostic))
         return false;
     ScriptCommandEventView event(beforeCommand ? ScriptCommandEventPre : ScriptCommandEventPost, command, &args);
+    if (!HasCallback(ScriptCallbackOnCommandEvent)) {
+        EventCallArgs args{m_ContextView, &event, &m_Runtime->GetApi()};
+        ScriptMethodCall call;
+        call.Method = m_CommandMethods[index]; call.WriteArgs = WriteEventObjectArgs;
+        call.UserData = &args; call.Phase = ScriptDiagnosticPhase::Callback;
+        call.FailurePrefix = beforeCommand ? "OnPreCommandExecute failed" : "OnPostCommandExecute failed";
+        return m_Runtime->CallMethod(m_Context, call, diagnostic);
+    }
     return CallWithEvent(ScriptCallbackOnCommandEvent, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallModifyConfig(const char *modId,
-                                                const char *category,
-                                                const char *key,
-                                                IProperty *property,
+bool ScriptCallbackDispatcher::CallModifyConfig(const char *modId, const char *category,
+                                                const char *key, Property *property,
                                                 ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnModifyConfig))
         return true;

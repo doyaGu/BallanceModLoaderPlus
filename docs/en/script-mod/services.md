@@ -1,240 +1,185 @@
-# BML services for script mods
+# Services for script Mods
 
-`BML::ModContext` is the per-mod entry point for logging, configuration,
-resources, input, commands, timers, mod lookup, and loader-owned services.
-Prefer the callback parameter over a global helper when both exist.
+Use the explicit `BML::ModContext` supplied to callbacks. `ctx.Config()`,
+`ctx.Input()`, `ctx.Timers()` and `ctx.Commands()` return views of the same
+Loader capabilities used by native Mods. A view remains valid throughout its
+physical script runtime, including after `OnLoad` updates diagnostic generation
+counters. Unload or replacement retires it permanently. A rollback binds a new
+runtime; it does not reactivate views stored by the old runtime.
 
-## ModContext
+Script operations that can fail return `int`: compare with `BML::ERROR_OK`.
+Outputs are usable only on success. Ref outputs are null on failure. Predicates,
+fallback getters, UI interaction booleans and the existing Behavior, IMC and
+DataShare contracts retain their documented meanings. An ordinary service error
+does not disable the Mod. An uncaught callback exception still follows the
+Loader's existing failure policy.
+
+This interface intentionally breaks the old authoring API. There are no old
+aliases, overloads or registration adapters. See [migration](migration.md).
+
+## Configuration
 
 ```angelscript
-void OnLoad(const BML::ModContext &in ctx) {
-  ctx.LogInfo("id=" + ctx.ModId);
+BML::ConfigProperty@ enabled;
 
-  BML::Config@ config = ctx.BorrowConfig();
-  if (config !is null) {
-    BML::ConfigProperty@ greeting = config.GetProperty("General", "Greeting");
-    if (greeting !is null)
-      greeting.SetDefaultString("hello");
-  }
+void Setup(const BML::ModContext &in ctx) {
+    BML::ConfigPropertyDefinition definition;
+    definition.Category = "General";
+    definition.Key = "Enabled";
+    definition.DefaultValue = BML::ConfigValue(true);
+    definition.Comment = "Enable this feature";
+    int code = ctx.Config().DeclareProperty(definition, enabled);
+    if (code != BML::ERROR_OK) {
+        ctx.LogError("DeclareProperty failed: " + code);
+        return;
+    }
+    bool active = enabled.GetBoolean(true);
 }
 ```
 
-Common capabilities include:
+`ConfigValue` owns its payload and has a `Type` property. `ReadString`,
+`ReadBoolean`, `ReadInteger`, `ReadFloat` and `ReadKey` require an exact type;
+NONE or a different type returns `ERROR_TYPE_MISMATCH`. An ordinary integer
+constructs INTEGER. Use `CKKEYBOARD` to construct a key value. `Get*(fallback)`
+on a property provides an explicit fallback instead of strict reading.
 
-- the current mod id, root, logger, and configuration;
-- BML/game state, directories, input, HUD, messages, and menus;
-- `FindMod`, `GetModCount`, and `GetMod`;
-- Timer and Command registration;
-- DataShare reads and requests;
-- CK manager and named-object borrowing;
-- typed runtime, gameplay, and event snapshots.
+`FindProperty` never creates a property. `Read(ConfigPropertyInfo &out)` returns
+an owned snapshot. `Set`, `SetDefault`, `SetComment`, `SetEditor` and `SetChoices`
+return status codes. Definition strings and choices are copied when accepted;
+editing a read snapshot does not edit the host. `Choices` defaults to an empty
+array; assigning null also means no choices.
 
-Use `LogInfo`, `LogWarn`, and `LogError` for ordinary per-Mod logging without
-creating a handle. `BorrowLogger()` remains available when code specifically
-needs a revalidating logger wrapper. `BorrowConfig()` returns a revalidating
-BML+ wrapper. Other `Borrow*` methods commonly expose non-owning CK or manager
-handles; do not keep those across callbacks.
+A repeated declaration of an already-declared incompatible type fails. The
+first typed declaration may replace a differently typed loaded value. Likewise,
+`SetDefault` preserves a same-type current value, but an untyped declaration can
+replace a differently typed current value, including with NONE. To inspect and
+preserve an old value before deciding how to migrate, first declare with the
+NONE default, then inspect `Read` and its strict value readers. Do not assume a
+typed declaration or `SetDefault` is unconditionally non-destructive.
 
-## Resources and paths
-
-Resolve files through the mod root so directory, single-file, and zip packages
-behave consistently:
+## Input
 
 ```angelscript
-void OnLoad(const BML::ModContext &in ctx) {
-  string root = ctx.GetModRootUtf8();
-  string text = ctx.ReadModTextFileUtf8("Resources/readme.txt", "");
-  if (ctx.ModFileExistsUtf8("Resources/settings.txt"))
-    ctx.LogInfo("resource root=" + root + " text=" + text);
+void Poll(const BML::ModContext &in ctx) {
+    BML::KeyboardState@ keyboard;
+    if (ctx.Input().ReadKeyboard(keyboard) == BML::ERROR_OK &&
+        keyboard.IsKeyPressed(uint(CKKEY_F9))) {
+        ctx.LogInfo("F9 pressed");
+    }
 }
 ```
 
-`ResolveModPathUtf8`, `ModFileExistsUtf8`, `ModDirectoryExistsUtf8`, and
-`ReadModTextFileUtf8` guard access to mod resources. `BML::Path` provides pure
-path operations such as `Combine`, `Normalize`, `FileName`, `Extension`,
-`RemoveExtension`, `IsAbsolute`, `IsRelative`, `Exists`, `IsFile`, and
-`IsDirectory`.
+`ReadKeyboard`, `ReadMouse` and `ReadJoystick` are the three state reads. Pass
+`uint(BML::INPUT_RAW)` to read beneath blocking. Neither form processes the
+engine or consumes its event queue. An absent device is a successful snapshot
+with `Attached == false`; an absent input manager is `ERROR_UNAVAILABLE`.
 
-Known BML+ paths are available through `GetDirectoryUtf8`, including
-`DIR_GAME`, `DIR_LOADER`, `DIR_CONFIG`, and `DIR_TEMP`. Prefer mod-relative
-resource paths for publishable assets.
-
-## Logging and configuration
-
-`Logger`, `Config`, and `ConfigProperty` expose `IsValid`. Stored wrapper
-handles remain usable only while their owning mod and property remain valid.
+`KeyboardState@` owns an immutable shared snapshot of all keys and events.
+Holding it across frames or runtime retirement keeps reading that capture. New
+reads share the Input module's cache; subsequent changes use copy-on-write.
+`ReadKey` rejects an index outside 256 keys with `ERROR_INVALID_PARAMETER`;
+`ReadEvent` rejects a missing event with `ERROR_NOT_FOUND`. The convenience
+predicates use `IsKeyUp == true` and the other four predicates false out of range.
+Native C/C++ keyboard spans still expire at the outer host invocation boundary.
 
 ```angelscript
-BML::ConfigProperty@ enabledProp;
-bool enabled = true;
-
-void OnLoad(const BML::ModContext &in ctx) {
-  BML::Config@ config = ctx.BorrowConfig();
-  if (config is null)
-    return;
-
-  @enabledProp = config.GetProperty("General", "Enabled");
-  if (enabledProp !is null) {
-    enabledProp.SetDefaultBoolean(true);
-    enabledProp.SetComment("Enable the example feature.");
-    enabled = enabledProp.GetBoolean(true);
-  }
-}
-
-void OnModifyConfig(const BML::ModContext &in ctx,
-                    const BML::ConfigEvent &in event) {
-  if (event.Category == "General" && event.Key == "Enabled") {
-    BML::ConfigProperty@ prop = event.BorrowProperty();
-    if (prop !is null)
-      enabled = prop.GetBoolean(enabled);
-  }
+BML::InputBlock@ keyboardBlock;
+int code = ctx.Input().AcquireBlock(uint(BML::INPUT_BLOCK_KEYBOARD), keyboardBlock);
+if (code == BML::ERROR_OK) {
+    // Release when the UI no longer needs the block.
+    code = keyboardBlock.Release();
 }
 ```
 
-Use typed getters, setters, and defaults for string, boolean, integer, float,
-and key values. `OnModifyConfig` suppresses recursive edits of the same property.
-For a colour setting, keep the stored value portable as a string and opt into
-the Mod Menu picker explicitly:
-
-```angelscript
-BML::ConfigProperty@ accent = config.GetProperty("Appearance", "Accent");
-accent.SetDefaultString("#61AFEF");
-accent.SetEditor(BML::CONFIG_EDITOR_COLOR);
-```
-
-The picker accepts `#RRGGBB` and `#RRGGBBAA`; an invalid stored value remains a
-text field so the player can repair it.
-
-For a finite string setting, provide its values and select the choice editor:
-
-```angelscript
-BML::ConfigProperty@ quality = config.GetProperty("Display", "Quality");
-quality.SetDefaultString("High");
-array<string> choices = {"Low", "Medium", "High"};
-quality.SetChoices(choices);
-quality.SetEditor(BML::CONFIG_EDITOR_CHOICE);
-```
-
-`SetChoices` copies the array and returns false for invalid duplicate values.
-
-## Input, state, UI commands, and speedrun timing
-
-Input is borrowed through `ctx.BorrowInputManager()` and used within the current
-callback:
-
-```angelscript
-void OnProcess(const BML::ModContext &in ctx) {
-  BML::InputHook@ input = ctx.BorrowInputManager();
-  if (input !is null && input.IsKeyPressed(CKKEY_F5))
-    BML::UI::AddMessage("F5 pressed by script");
-}
-```
-
-`ModContext` exposes `IsInGame`, `IsInLevel`, `IsPaused`, `IsPlaying`,
-`IsCheatEnabled`, `EnableCheat`, `ExitGame`, `ExecuteCommand`,
-`SkipRenderForNextTick`, `GetSRScore`, and `GetHSScore`.
-
-Loader-owned presentation commands live under `BML::UI`: messages, mod/map
-menus, HUD mode, title, and FPS. Speedrun timing is separate under
-`BML::Speedrun`: visibility, start, pause, reset, and elapsed time. These
-commands do not require an active ImGui frame. Drawing controls do; see
-[Engine and UI](engine-ui.md).
-
-Guard mutations that require an active level with an explicit state check.
-Defaults and no-ops prevent a host crash, but an explicit branch produces a
-clearer script and diagnostic.
-
-## Built-in typed snapshots
-
-`ModContext` exposes the current game-state flags, CK time, speedrun time, and
-cheat status. `BML::Gameplay::ReadHighScore` is available only in a level.
-`BML::Gameplay` also reads gameplay data that may be unavailable or use an
-unsupported layout, so those calls return a status. Outside an active script
-callback, gameplay reads return `BML::ERROR_UNAVAILABLE`.
-
-```angelscript
-BML::Gameplay::LevelState level;
-
-if (ctx.IsInLevel() && BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
-  CKObject@ ball = level.BorrowActiveBall();
-}
-```
-
-Catalog and checkpoint reads return complete script-owned arrays. Retain a
-snapshot while its source is stable instead of rebuilding it every frame.
-Loader events arrive synchronously through `OnGameEvent`. Copy only the state a
-mod needs to retain; there is no script-side event queue to open or poll.
+Dropping a script Ref does not release its block. Explicit `Release` or runtime
+retirement does. Each runtime releases only its own requests; nested blocks and
+other owners remain intact. Pause, cursor visibility/shape and keyboard
+repetition retain their shared-state semantics: callers must restore them.
 
 ## Timers
 
-BML+ owns registered timers for the script mod and cancels them at unload.
-CKAngelScript `Async::*` task creation is intentionally unavailable inside
-script-mod callbacks; those tasks have no script-mod lifetime owner. Use a BML+
-timer whenever work must continue in a later frame.
-Prefer callback timers for simple delays and intervals:
-
 ```angelscript
-void SayReady(const BML::ModContext &in ctx,
-              const BML::TimerEvent &in event) {
-  ctx.LogInfo("ready");
+BML::TimerRef@ timer;
+void SetupTimer(const BML::ModContext &in ctx) {
+    int code = ctx.Timers().SetIntervalTicks(
+        1, BML::TimerLoopCallback(OnTick), timer, "heartbeat");
+    if (code != BML::ERROR_OK) ctx.LogError("Timer registration failed: " + code);
 }
-
-bool Heartbeat(const BML::ModContext &in ctx,
-               const BML::TimerEvent &in event) {
-  ctx.LogInfo("heartbeat " + event.CompletedIterations);
-  return event.CompletedIterations < 5;
-}
-
-void OnLoad(const BML::ModContext &in ctx) {
-  ctx.SetTimeout(1000.0f, SayReady, "ready");
-  ctx.SetInterval(1000.0f, Heartbeat, "heartbeat");
+bool OnTick(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
+    BML::TimerInfo info;
+    if (event.Read(info) != BML::ERROR_OK) return false;
+    return info.CompletedIterations < 10;
 }
 ```
 
-Millisecond variants use `SetTimeout` and `SetInterval`; tick variants use
-`SetTimeoutTicks` and `SetIntervalTicks`. An interval callback returns `false`
-to stop. Use an AngelScript delegate to bind an object method.
+`Register(TimerDefinition, TimerLoopCallback, TimerRef &out)` supplies type,
+time base, delay, repeat count, priority and start-paused state. Timeout helpers
+use void callbacks; interval helpers use bool callbacks. Zero delay is accepted
+and executes in a later timer pump, never during registration. Milliseconds are
+finite, nonnegative doubles; ticks and notification counters retain 64 bits.
+DEBOUNCE/THROTTLE remain unimplemented by the existing scheduler.
 
-Implement `BML::Timer` when the timer needs object state, start-paused,
-repeat-count, or priority configuration. `TimerRef` supports validity checks,
-pause, resume, cancel, state, completed/remaining iterations, and progress.
+`TimerEvent.Read` reads a captured value, including after its owner retires.
+`TimerRef.Read`, `Pause` and `Resume` require a live owning runtime. `Cancel`
+stops new dispatch; an already-entered callback may finish. Returning true from
+that callback cannot restart a cancelled timer. Dropping a script TimerRef does
+not cancel; native C++ registrations retain their existing RAII cancellation.
 
-## Commands and completion
-
-Use `CommandDefinition` and delegates for a small command:
+## Commands
 
 ```angelscript
-void HelloExecute(const BML::ModContext &in ctx,
-                  const BML::CommandEvent &in event) {
-  ctx.LogInfo("hello " + event.ArgsText);
+BML::CommandRef@ command;
+void SetupCommand(const BML::ModContext &in ctx) {
+    BML::CommandDefinition definition;
+    definition.Name = "example";
+    int code = ctx.Commands().Register(
+        definition, BML::CommandExecute(Execute), command);
+    if (code != BML::ERROR_OK) ctx.LogError("Command registration failed: " + code);
 }
-
-void HelloComplete(const BML::ModContext &in ctx,
-                   const BML::CommandEvent &in event,
-                   BML::CommandCompletion &inout completions) {
-  completions.Add("world");
-}
-
-void OnLoad(const BML::ModContext &in ctx) {
-  BML::CommandDefinition def;
-  def.Name = "hello";
-  def.Alias = "h";
-  def.Description = "Print hello";
-  ctx.RegisterCommand(def, HelloExecute, HelloComplete);
+int Execute(const BML::ModContext &in ctx, const BML::CommandInvocation &in call) {
+    string argument;
+    if (call.ArgumentCount != 0) call.ReadArgument(0, argument);
+    return call.Write("input: " + call.Input) == BML::ERROR_OK ? 0 : 1;
 }
 ```
 
-Implement `BML::Command` when the command owns state or benefits from a single
-object. `Name` and `Execute` are required; alias, description, usage, cheat
-requirement, enabled state, and completion are optional. Duplicate names or
-aliases fail registration. Self-unregister is delayed until the callback
-returns.
+The execute callback returns a nonnegative command status; a negative return
+becomes command failure. `Commands.ExecuteLine(line, status &out)` separately
+returns an API status. `HasInput` distinguishes no pipe from an empty pipe.
+`Name` is canonical; `InvokedAs` is the typed name or alias. `ReadArgument`
+uses zero-based arguments after the command name.
 
-Script commands intentionally expose a smaller shell surface than native
-`bml.command`: `Execute` returns `void`, and `CommandEvent` does not carry
-pipeline input or an output writer. A callback that finishes normally counts as
-successful; a script callback failure makes the shell stage fail. Use the
-native Command interface when a command must choose its own shell status or
-consume and produce pipeline data explicitly.
+The optional complete delegate is
+`int Complete(const BML::ModContext &in, const BML::CommandCompletionRequest &in, const BML::CommandCompletion &in)`.
+It can inspect active argument and prefix and add/read candidates through the
+existing collector. Failure discards this completion's candidates. Invocation,
+request and completion copies expire together on callback return. Later sink
+operations return `ERROR_INVALID_HANDLE`; copy text to retain it.
 
-Next: [Engine and UI](engine-ui.md).
+`Find` reads one `CommandInfo`. For collections pass an actual
+`array<BML::CommandInfo>` object to `ReadCommands(? &out)`. Similarly, pass
+`array<BML::ModInfo>` to `ctx.ReadMods(? &out)`. The runtime checks the exact
+array type. A correct output is empty on failure and complete on success;
+wrong types return `ERROR_TYPE_MISMATCH` without array writes.
+
+## Resources, objects and cleanup
+
+`ctx.Owner`, `FindMod`, `GetDirectory`, `GetResourcePath`, `ReadResource` and
+`ResourceExists` use status plus outputs. `DIR_MOD_ROOT` is the entry/package
+root, including for scripts. `GetResourcePath` resolves existing files only;
+use the existing Path helpers to construct a path for a future file.
+
+Use the Scene, Gameplay, Time, Speedrun, UI and Engine namespaces for their
+capabilities. `BML::ObjectRef` is the existing domain/slot/generation identity,
+not an engine pointer. Borrowed CK objects and managers remain engine-owned;
+references reject deleted/reused objects and world resets. An owned record
+snapshot does not keep its engine objects alive.
+
+New work is frozen during unload. Cleanup remains available until service
+retirement. For the same logical owner, successful Cancel/Release/Unregister is
+idempotent, even after runtime retirement. Another owner is always denied.
+Pause/Resume/Read have no terminal exception. Failed live cleanup keeps the
+request for retry; the original host remains responsible for retired cleanup.
+Do not use public diagnostic Generation properties as authorization or lifetime
+checks. Gameplay type registration still requires the owner's `OnLoad` and uses
+the existing capture/validation/rollback transaction.

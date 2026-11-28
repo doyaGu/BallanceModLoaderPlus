@@ -2,13 +2,17 @@
 
 #include "Hooks/BehaviorFunctionPatch.h"
 #include "Hooks/HookLifecycle.h"
+#if !BML_RUNTIME_SDL
 #include "Hooks/VTablePatch.h"
 #include "Hooks/VTables.h"
+#endif
 #include "HookUtils.h"
 #include "Loader/ModContext.h"
 
 namespace {
 
+
+#if !BML_RUNTIME_SDL
 class CKIpionManager : public CKBaseManager {
 public:
     virtual void Reset() = 0;
@@ -84,6 +88,8 @@ struct PhysicsHook {
 CKIpionManager *PhysicsHook::s_IpionManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKIpionManager) PhysicsHook::s_VTable = {};
 VTablePatch PhysicsHook::s_Patch;
+
+#endif
 
 #define FIXED 0
 #define FRICTION 1
@@ -185,25 +191,65 @@ int HookLifecycle::Physicalize(const CKBehaviorContext &behcontext) {
         VxVector shiftMassCenter;
         beh->GetLocalParameterValue(3, &shiftMassCenter);
 
-        modContext->BroadcastCallback(&IMod::OnPhysicalize, target,
-                                               fixed, friction, elasticity, mass,
-                                               collisionGroup, startFrozen, enableCollision,
-                                               autoCalcMassCenter, linearSpeedDampening,
-                                               rotSpeedDampening,
-                                               collisionSurface, shiftMassCenter, convexCount,
-                                               convexMesh, ballCount, ballCenter,
-                                               ballRadius, concaveCount, concaveMesh);
+        modContext->GetModLoader().BroadcastCallback<ModEvent::OnPhysicalize>(
+            target, fixed, friction, elasticity, mass, collisionGroup, startFrozen, enableCollision,
+            autoCalcMassCenter, linearSpeedDampening, rotSpeedDampening, collisionSurface,
+            shiftMassCenter, convexCount, convexMesh, ballCount, ballCenter, ballRadius,
+            concaveCount, concaveMesh);
         delete[] convexMesh;
         delete[] ballCenter;
         delete[] ballRadius;
         delete[] concaveMesh;
     } else {
-        modContext->BroadcastCallback(&IMod::OnUnphysicalize, target);
+        modContext->GetModLoader().BroadcastCallback<ModEvent::OnUnphysicalize>(target);
     }
 
     return original(behcontext);
 }
 
+
+#if BML_RUNTIME_SDL
+bool HookLifecycle::AttachPhysicalize() {
+    if (s_PhysicsOwner)
+        return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
+    if (g_PhysicalizePatch.IsInstalled()
+    )
+        return false;
+
+    s_PhysicsOwner = this;
+
+    const BehaviorFunctionPatchResult result = g_PhysicalizePatch.Install(
+        PHYSICS_RT_PHYSICALIZE, &HookLifecycle::Physicalize);
+    if (!result) {
+        utils::OutputDebugA("BML Physicalize hook installation failed: %s\n",
+                            BehaviorFunctionPatch::GetErrorName(result.Code));
+            s_PhysicsOwner = nullptr;
+        return false;
+    }
+    return true;
+}
+
+bool HookLifecycle::DetachPhysicalize() {
+    if (s_PhysicsOwner != this)
+        return true;
+
+    const BehaviorFunctionPatchResult behaviorResult = g_PhysicalizePatch.Remove();
+    bool behaviorRemoved = static_cast<bool>(behaviorResult);
+    if (behaviorResult.Code == BehaviorFunctionPatchError::OwnershipLost) {
+        utils::OutputDebugA("BML Physicalize hook ownership changed; preserving the current function\n");
+        behaviorRemoved = true;
+    }
+
+    if (behaviorRemoved)
+        s_PhysicsOwner = nullptr;
+    return behaviorRemoved;
+}
+
+
+bool HookLifecycle::OwnsPhysicalize() const {
+    return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
+}
+#else
 void HookLifecycle::RunPhysicsPostProcess() {
     if (s_PhysicsOwner != this || !PhysicsHook::IsInstalled())
         return;
@@ -257,3 +303,4 @@ bool HookLifecycle::OwnsPhysicsPostProcess() const {
 bool HookLifecycle::OwnsPhysicalize() const {
     return s_PhysicsOwner == this && g_PhysicalizePatch.IsInstalled();
 }
+#endif

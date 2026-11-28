@@ -511,14 +511,14 @@ static bool ProcessQueuedDataShareCallback(const std::shared_ptr<ScriptDataShare
     return ok;
 }
 
-static void __cdecl OnDataShareRequest(const char *, const void *data, size_t size, void *userdata) {
+static void BML_CDECL OnDataShareRequest(const char *, const void *data, size_t size, void *userdata) {
     auto *cookie = static_cast<ScriptDataShareRequestCookie *>(userdata);
     if (!cookie)
         return;
     QueueDataShareRequest(cookie->State.lock(), cookie->Id, data, size);
 }
 
-static void __cdecl CleanupDataShareRequest(const char *, void *userdata) {
+static void BML_CDECL CleanupDataShareRequest(const char *, void *userdata) {
     auto *cookie = static_cast<ScriptDataShareRequestCookie *>(userdata);
     if (!cookie)
         return;

@@ -1,25 +1,30 @@
 # Ballance 脚本 Mod 编写指南
 
+本轮原生与脚本 API 对齐不提供旧作者接口兼容层。旧源码请先查看
+[迁移指南和逐入口清单](migration.md)；当前完整声明见
+[注册 API](https://doyagu.github.io/BallanceModLoaderPlus/api/bml-script-mod-api.as)。
+
 ## 五分钟快速开始
 
 不确定从哪里开始时，先完成这一段；不需要先理解句柄、Timer、IMC 或 Virtools
-对象。准备配套版本的 `BMLPlus-<version>.zip` 运行时和
-`BMLPlus-SDK-<version>-Release.zip` SDK。如果尚未安装运行时，先阅读
-[使用 BML+](../using-bml.md)。
+对象。准备与 Player 平台、架构、动态宿主和引擎 ABI 配套的 SDL 运行时与 SDK。
+如果尚未安装运行时，先阅读[使用 BML+](../using-bml.md)。
 
-1. 在平常保存源码的工作区中，让 SDK 生成并填写模板：
+1. 在平常保存源码的工作区中，用 Python 3.10+ 生成模板（也可手动复制模板）：
 
-   ```bat
-   "<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
+   ```sh
+   python "/path/to/BML-SDK/scripts/bml.py" new script yourname.my-mod
+   cd MyMod
+   python bml.py run --ballance-root "/path/to/game"
    ```
 
-   也可以继续手动复制 `templates/script-mod-template`。
-2. 进入生成目录运行 `.\bml run`；首次运行会询问 Ballance 目录并确认
-   `<Ballance>/BuildingBlocks/AngelScript.dll` 存在。
+   POSIX 也可使用 `./bml`，Windows 使用 `bml.cmd`。
+2. 游戏根目录须有 `Managers` 中的 BML、`BuildingBlocks` 中的 CKAngelScript
+   和 `ModLoader/BML.abi.json`。插件文件名随平台变化，见[环境搭建](tutorial-01-setup.md)。
 3. 不再修改生成的源码，让命令启动 Player，确认游戏内出现问候语，并在
    `ModLoader/ModLoader.log` 中找到 `My Mod loaded`。
 4. 保持生成的 id 稳定；以后修改 id 会成为另一个 Mod，并且需要重启一次。
-5. 保持 `bml run` 和 Player 运行，修改问候语并保存。Developer Workflow 会同步
+5. 保持 `python bml.py run` 和 Player 运行，修改问候语并保存。Developer Workflow 会同步
    源码，已加载的目录 Mod 会自动热重载。
 
 新增 Mod、修改 id 或修改依赖时需要重启 Player；普通源码修改不需要。加载失败时

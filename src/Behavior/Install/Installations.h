@@ -6,6 +6,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -69,6 +70,7 @@ public:
         friend bool operator==(const Symbol &, const Symbol &) = default;
     };
     using SymbolMap = std::map<SymbolRef, Symbol>;
+    using Inputs = std::map<SymbolRef, Parameter::Binding>;
 
     struct PortQuery {
         std::uint64_t Binding = 0;
@@ -84,12 +86,30 @@ public:
         InstallationInfo Value;
     };
 
+    struct InstalledEdit {
+        InstallationInfo Value;
+        std::uint64_t Binding = 0;
+        std::uint64_t NativeBinding = 0;
+    };
+
+    enum class SubmissionState {
+        Pending = 1, Applied, Failed, Disabled, Partial, Closing, Conflicted
+    };
+
+    struct SubmissionInfo {
+        SubmissionState State = SubmissionState::Pending;
+        Status ApplyFailure;
+        Status RestoreFailure;
+        bool RequestedEnabled = true;
+    };
+
     struct Target {
         ObjectRef Graph;
         std::uint64_t Fingerprint = 0;
         std::uint64_t Binding = 0;
         std::shared_ptr<const Program> Body;
         SymbolMap Symbols;
+        std::shared_ptr<Inputs> Values;
     };
 
     struct Rule {
@@ -97,7 +117,38 @@ public:
         std::uint64_t Binding = 0;
         std::shared_ptr<const Program> Body;
         SymbolMap Symbols;
+        std::shared_ptr<Inputs> Values;
     };
+
+    Status SubmitEdit(const SessionOwner &owner, std::string name, bool graphOwned,
+                      std::vector<Target> targets, std::vector<Rule> rules,
+                      std::uintptr_t &out, bool enabled = true);
+    Status SetSubmissionEnabled(const SessionOwner &owner, std::uintptr_t id, bool enabled);
+    Status ReplaceSubmission(const SessionOwner &owner, std::uintptr_t id,
+                             std::vector<Target> targets, std::vector<Rule> rules);
+    Status ReadSubmissionBindings(const SessionOwner &owner, std::uintptr_t id,
+                                  std::vector<std::uint64_t> &out) const;
+    Status ListInstallations(const SessionOwner &owner, std::uintptr_t id,
+                             std::vector<InstalledEdit> &out) const;
+    Status ResolveInstallationNode(const SessionOwner &owner, std::uintptr_t id,
+                                   const InstalledEdit &installed, const SymbolRef &node,
+                                   ObjectRef &out) const;
+    PatchId SubmittedPatch(const SessionOwner &owner, std::uintptr_t id) const;
+    PlanId SubmittedPlan(const SessionOwner &owner, std::uintptr_t id) const;
+    Status ReadSubmission(const SessionOwner &owner, std::uintptr_t id,
+                          SubmissionInfo &out) const;
+    Status FindInstallation(const SessionOwner &owner, std::uintptr_t id,
+                            const ObjectRef &graph, std::uint64_t binding,
+                            InstalledEdit &out) const;
+    Status ReadInstallation(const SessionOwner &owner, std::uintptr_t id,
+                            const InstalledEdit &installed, const PortQuery &port,
+                            GraphValue &out) const;
+    Status WriteInstallation(const SessionOwner &owner, std::uintptr_t id,
+                             const InstalledEdit &installed, const PortQuery &port,
+                             const Parameter::Binding &value);
+    Status SetInputs(const SessionOwner &owner, std::uintptr_t id,
+                     std::span<const PortQuery> ports, const Parameter::Binding &value);
+    Status CloseSubmission(const SessionOwner &owner, std::uintptr_t id);
 
     Installations(CKContext *context, Runtime &runtime,
                   PrototypeCatalog *catalog, GraphSource &graph,
@@ -123,8 +174,6 @@ public:
     // on it, since the Script root is destroyed right after.
     Status Define(const SessionOwner &owner, const ObjectRef &graph,
                   std::string name, Program edit, PatchId &out);
-    Status Apply(const SessionOwner &owner, std::string name,
-                 std::vector<Target> targets, PatchId &out);
     Status Read(const SessionOwner &owner, PatchId patch,
                 PatchInfo &out) const;
     // Issues a reference for a Node this Patch named. Busy while the Patch is
@@ -136,14 +185,9 @@ public:
     Status WriteValue(const SessionOwner &owner, PatchId patch,
                       const PortQuery &port,
                       const Parameter::Binding &value);
-    Status SetActive(const SessionOwner &owner, PatchId patch, bool active);
-    Status Replace(const SessionOwner &owner, PatchId patch,
-                   std::vector<Target> targets);
     Status Close(const SessionOwner &owner, PatchId patch);
 
     // Plans.
-    Status Submit(const SessionOwner &owner, std::string name,
-                  std::vector<Rule> rules, PlanId &out);
     Status ReadPlan(const SessionOwner &owner, PlanId plan,
                     PlanInfo &out) const;
     Status ReadPlanInstances(const SessionOwner &owner, PlanId plan,
@@ -157,9 +201,6 @@ public:
     Status WritePlanValue(const SessionOwner &owner, PlanId plan,
                           const PlanInstance &instance, const PortQuery &port,
                           const Parameter::Binding &value);
-    Status SetPlanActive(const SessionOwner &owner, PlanId plan, bool active);
-    Status ReplacePlan(const SessionOwner &owner, PlanId plan,
-                       std::vector<Rule> rules);
     Status ClosePlan(const SessionOwner &owner, PlanId plan);
 
     // One bare Script Selection with a single canonical body, for the Behavior
@@ -211,6 +252,7 @@ private:
         InstallGoal Goal = InstallGoal::Enabled;
         InstallRecovery Recovery = InstallRecovery::None;
         std::uint64_t Revision = 1;
+        std::uint64_t SettledRevision = 1;
         Status LastStatus;
         Status PrimaryFailure;
         Status RecoveryFailure;
@@ -262,17 +304,45 @@ private:
         bool TargetDeleted = false;
         // A Script body; see Define.
         bool Defines = false;
+        // Graph ownership begins at publication. Detaching releases the
+        // submission's handle without shortening any target's lifetime.
+        enum class Ownership { Submission, Graph, DetachedGraph };
+        Ownership Lifetime = Ownership::Submission;
+        std::set<std::size_t> RetiredTargets;
+        bool NeedsTargetCleanup = false;
         std::vector<Scope> Scopes;
         // Public handle -> resolved symbol in one installed scope.
         std::map<SymbolRef, ResolvedSymbol> Symbols;
     };
 
+    struct Submission {
+        SessionOwner Owner;
+        PatchId Patch = 0;
+        PlanId Plan = 0;
+        bool GraphOwned = false;
+        bool Closing = false;
+    };
+
+    Status ReadInstallations(const Submission &submission,
+                             std::vector<InstalledEdit> &out) const;
+    Status ValidateInstallation(const Submission &submission,
+                                 const InstalledEdit &installed,
+                                 std::uint64_t &binding) const;
+    void TransferToGraph(const Submission &submission);
+
     struct PlanRecord : Record<Rule> {
         static constexpr bool IsPlan = true;
 
+        struct Selection {
+            SelectionId Id = 0;
+            // The Plan's current public binding may change even when this
+            // Selection keeps its existing graph installations.
+            std::uint64_t Binding = 0;
+        };
+
         // The Selection that keeps each applied rule installed, parallel to
         // Applied.
-        std::vector<SelectionId> Selections;
+        std::vector<Selection> Selections;
     };
 
     [[nodiscard]] Status Ready() const;
@@ -284,10 +354,12 @@ private:
     static Status Validate(const std::vector<Target> &targets, bool replacing);
     static Status Validate(const std::vector<Rule> &rules, bool replacing);
 
+    Status Submit(const SessionOwner &owner, std::string name,
+                  std::vector<Rule> rules, PlanId &out, bool enabled);
     Status Apply(const SessionOwner &owner, std::string name,
                  std::vector<Target> targets, PatchId &out,
                  std::shared_ptr<const CallbackAdmission> parentAdmission,
-                 bool defines = false);
+                 bool defines = false, Status *recovery = nullptr, bool enabled = true);
     Status Install(PatchRecord &patch);
     Status InstallFrom(PatchRecord &patch,
                        const std::vector<Target> &definition,
@@ -298,14 +370,14 @@ private:
                         const ObjectRef &graph, const Program &edit,
                         std::uint32_t scope, std::size_t target,
                         PatchRecord &out,
-                        const SymbolMap *authorSymbols);
+                        const SymbolMap *authorSymbols, const Inputs *values);
     Status PublishScope(const SessionOwner &owner, const PatchKey &patch,
                         const ObjectRef &graph, const Program &edit,
                         Ops resolved,
                         Program::ResolvedSymbols compiled,
                         std::uint32_t scope, std::size_t target,
                         PatchRecord &out,
-                        const SymbolMap *authorSymbols);
+                        const SymbolMap *authorSymbols, const Inputs *values);
     Status Uninstall(PatchRecord &patch, std::size_t target);
     Status Uninstall(PlanRecord &plan, std::size_t rule);
     void CloseAdmission(PatchRecord &patch);
@@ -372,6 +444,8 @@ private:
     std::thread::id m_Thread;
     PatchId m_NextId = 1;
     PlanId m_NextPlanId = 1;
+    std::uintptr_t m_NextSubmission = 1;
+    std::map<std::uintptr_t, Submission> m_Submissions;
     std::map<PatchId, PatchRecord> m_Patches;
     std::map<PlanId, PlanRecord> m_Plans;
 };

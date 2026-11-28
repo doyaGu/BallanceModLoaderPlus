@@ -1,6 +1,6 @@
 add_bml_test(BehaviorAuthoringTest
         SOURCES BehaviorAuthoringTest.cpp
-        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorExecutionTest
@@ -26,18 +26,14 @@ add_bml_test(BehaviorSessionTest
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
         ${BML_SOURCE_DIR}/Behavior/Watch.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
-)
-target_include_directories(BehaviorSessionTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorPrototypeCatalogTest
         SOURCES
         BehaviorPrototypeCatalogTest.cpp
         ${BML_SOURCE_DIR}/Behavior/PrototypeCatalog.cpp
-)
-target_include_directories(BehaviorPrototypeCatalogTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorLifecycleTest
@@ -64,22 +60,17 @@ add_bml_test(BehaviorScriptTest
         BehaviorScriptTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Script.cpp
         ${BML_BEHAVIOR_PROGRAM_TEST_SOURCES}
-        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        DEPENDENCIES CK2 VxMath
 )
 target_compile_definitions(BehaviorScriptTest PRIVATE
         BML_BEHAVIOR_SCRIPT_DOMAIN_ONLY=1)
-target_include_directories(BehaviorScriptTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
-)
 
 add_bml_test(BehaviorCallbackTest
         SOURCES
         BehaviorCallbackTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
         ${BML_SOURCE_DIR}/Behavior/Blocks/Hook.cpp
-)
-target_include_directories(BehaviorCallbackTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorWatchTest
@@ -87,37 +78,35 @@ add_bml_test(BehaviorWatchTest
         BehaviorWatchTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Watch.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
-)
-target_include_directories(BehaviorWatchTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorTopologyTest
         SOURCES
         BehaviorTopologyTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Topology.cpp
-        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorRelationsTest
         SOURCES
         BehaviorRelationsTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Relations.cpp
-        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorSelectionTest
         SOURCES
         BehaviorSelectionTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Install/Selection.cpp
-        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorSelectionAllocationTest
         SOURCES
         BehaviorSelectionAllocationTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Install/Selection.cpp
-        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorOpsTest
@@ -128,27 +117,36 @@ add_bml_test(BehaviorOpsTest
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
         ${BML_SOURCE_DIR}/Behavior/Core/Value.cpp
-        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorProgramTest
         SOURCES
         BehaviorProgramTest.cpp
         ${BML_BEHAVIOR_PROGRAM_TEST_SOURCES}
-        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorValueTest
         SOURCES
         BehaviorValueTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Core/Value.cpp
-)
-target_include_directories(BehaviorValueTest PRIVATE
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+        DEPENDENCIES CK2 VxMath
 )
 
 add_bml_test(BehaviorTextTest
         SOURCES
         BehaviorTextTest.cpp
         ${BML_SOURCE_DIR}/Api/Behavior/Text.cpp
+)
+
+# Exercise the production graph adapter against a real CK context. The test
+# supplies the EDITED callback so it can change graph ownership during Apply.
+get_target_property(behavior_sources BML SOURCES)
+list(FILTER behavior_sources INCLUDE REGEX "^Behavior/.*[.]cpp$")
+list(FILTER behavior_sources EXCLUDE REGEX "/(CKPrototypeSource|Message|ScriptHelper|Sessions|Script|Text2DView|PhysicsForce)[.]cpp$")
+list(TRANSFORM behavior_sources PREPEND "${BML_SOURCE_DIR}/")
+add_bml_test(BehaviorTransactionFailureTest
+        SOURCES BehaviorTransactionFailureTest.cpp ${behavior_sources}
+        DEPENDENCIES CK2 VxMath
 )

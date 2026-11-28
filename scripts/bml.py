@@ -5,14 +5,17 @@ from __future__ import annotations
 
 import argparse
 import filecmp
+import hashlib
 import json
 import locale
 import os
 from pathlib import Path
+import platform
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any
 import zipfile
@@ -24,7 +27,7 @@ CONFIGURATIONS = ("Debug", "Release", "RelWithDebInfo")
 MOD_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)+$")
 TARGET_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.+-]*$")
 VERSION_PATTERN = re.compile(
-    r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
+    r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$"
 )
 TOKEN_PATTERN = re.compile(r"__[A-Z][A-Z0-9_]*__")
 TEXT_EXTENSIONS = {
@@ -54,6 +57,7 @@ SCRIPT_EXCLUDED_FILES = {
     ".gitignore",
     "Thumbs.db",
     "as.predefined",
+    "bml",
     "bml.cmd",
     "bml.mod.json",
     "bml.py",
@@ -77,9 +81,11 @@ def print_help(verbose: bool = False) -> None:
   bml pack                  Produce the publishable artifact in dist.
 
 First use:
-  <BML-SDK>\\scripts\\bml.cmd new script yourname.my-mod
+  Windows: <BML-SDK>\\scripts\\bml.cmd new script yourname.my-mod
+  POSIX:   <BML-SDK>/scripts/bml new script yourname.my-mod
   cd MyMod
-  .\\bml run
+  Windows: .\\bml run
+  POSIX:   ./bml run
 
 Native and Script Mods use the same commands. Their different build and reload
 behavior stays behind the workflow. Missing folders are requested once and
@@ -188,6 +194,15 @@ def require_file(path: Path, label: str) -> None:
         raise BmlError(f"{label} is missing: {path}")
 
 
+def find_sdk_config(sdk: Path) -> Path | None:
+    candidates = [sdk / directory / "cmake/BML/BMLConfig.cmake" for directory in ("lib", "lib64")]
+    candidates.extend((sdk / "lib").glob("*/cmake/BML/BMLConfig.cmake"))
+    configs = [path for path in candidates if path.is_file()]
+    if len(configs) > 1:
+        raise BmlError(f"Multiple BML packages in {sdk}; use one SDK per runtime and architecture.")
+    return configs[0] if configs else None
+
+
 def is_inside(path: Path, directory: Path) -> bool:
     try:
         common = Path(os.path.commonpath([path, directory]))
@@ -207,11 +222,10 @@ def validate_identity(mod_id: str, version: str, name: str, author: str) -> None
 
 
 def copy_workflow_files(script_path: Path, destination: Path) -> None:
-    launcher = script_path.with_name("bml.cmd")
-    require_file(script_path, "BML tool")
-    require_file(launcher, "BML launcher")
-    shutil.copy2(script_path, destination / "bml.py")
-    shutil.copy2(launcher, destination / "bml.cmd")
+    for filename in ("bml.py", "bml.cmd", "bml"):
+        source = script_path.with_name(filename)
+        require_file(source, "BML tool")
+        shutil.copy2(source, destination / filename)
 
 
 def create_native_mod(args: argparse.Namespace, script_path: Path) -> None:
@@ -299,6 +313,8 @@ def create_native_mod(args: argparse.Namespace, script_path: Path) -> None:
     cmake_text = cmake_path.read_text(encoding="utf-8").replace("1.0.0", version_core)
     source_text = source_path.read_text(encoding="utf-8")
     source_text = source_text.replace(f'return "{target}";', f'return "{cpp_string(mod_id)}";')
+    source_text = source_text.replace(f'definition.Id = "{target}";', f'definition.Id = "{cpp_string(mod_id)}";')
+    source_text = source_text.replace(f'.Id = "{target}",', f'.Id = "{cpp_string(mod_id)}",')
     source_text = source_text.replace('"Hello Mod"', f'"{cpp_string(name)}"')
     source_text = source_text.replace('"Template"', f'"{cpp_string(author)}"')
     source_text = source_text.replace('"1.0.0"', f'"{cpp_string(args.version)}"')
@@ -342,13 +358,12 @@ def create_native_mod(args: argparse.Namespace, script_path: Path) -> None:
         manifest["imc"] = ["api/service.imc"]
     write_json(destination / "bml.mod.json", manifest)
     (destination / ".gitignore").write_text(".bml/\nbuild/\n", encoding="utf-8")
-    local_sdk = str(sdk_root.resolve()) if (sdk_root / "lib/cmake/BML/BMLConfig.cmake").is_file() else ""
+    local_sdk = str(sdk_root.resolve()) if find_sdk_config(sdk_root) else ""
     write_json(
         destination / ".bml/settings.json",
         {
             "format": 1,
             "bmlSdk": local_sdk,
-            "virtoolsSdk": "",
             "ballanceRoot": "",
             "generator": "",
         },
@@ -360,7 +375,7 @@ def create_native_mod(args: argparse.Namespace, script_path: Path) -> None:
     print(f"  src/{target}.cpp")
     print("Run:")
     print(f"  cd \"{destination}\"")
-    print("  .\\bml run")
+    print("  .\\bml run" if os.name == "nt" else "  ./bml run")
 
 
 def find_script_entries(project: Path) -> list[Path]:
@@ -453,7 +468,7 @@ def create_script_mod(args: argparse.Namespace, script_path: Path) -> None:
     print(f"  {entry_path.name}")
     print("Run:")
     print(f"  cd \"{destination}\"")
-    print("  .\\bml run")
+    print("  .\\bml run" if os.name == "nt" else "  ./bml run")
 
 
 def find_local_sdk(script_path: Path, explicit: str | None = None) -> Path:
@@ -462,7 +477,7 @@ def find_local_sdk(script_path: Path, explicit: str | None = None) -> Path:
         if not candidate:
             continue
         path = Path(candidate).expanduser().resolve()
-        if (path / "lib/cmake/BML/BMLConfig.cmake").is_file():
+        if find_sdk_config(path):
             return path
     raise BmlError("Run init from an extracted BML+ SDK, or pass --bml-sdk.")
 
@@ -569,7 +584,7 @@ def init_existing_mod(args: argparse.Namespace, script_path: Path) -> None:
         print("  Existing script files were not changed.")
         print("\nRun:")
         print(f"  cd \"{project}\"")
-        print("  .\\bml run")
+        print("  .\\bml run" if os.name == "nt" else "  ./bml run")
         return
 
     require_file(cmake_path, "CMake project")
@@ -609,7 +624,6 @@ def init_existing_mod(args: argparse.Namespace, script_path: Path) -> None:
     settings_path = project / ".bml/settings.json"
     settings = read_json(settings_path) if settings_path.is_file() else {}
     settings.update({"format": 1, "bmlSdk": str(sdk)})
-    settings.setdefault("virtoolsSdk", "")
     settings.setdefault("ballanceRoot", "")
     settings.setdefault("generator", "")
     write_json(settings_path, settings)
@@ -619,11 +633,11 @@ def init_existing_mod(args: argparse.Namespace, script_path: Path) -> None:
     print("  Existing CMake and source files were not changed.")
     print("\nRun:")
     print(f"  cd \"{project}\"")
-    print("  .\\bml run")
+    print("  .\\bml run" if os.name == "nt" else "  ./bml run")
 
 
 def install_workflow_files(project: Path, script_path: Path) -> None:
-    for filename in ("bml.py", "bml.cmd"):
+    for filename in ("bml.py", "bml.cmd", "bml"):
         source = script_path.parent / filename
         destination = project / filename
         require_file(source, "BML tool")
@@ -686,11 +700,11 @@ def resolve_sdk(args: argparse.Namespace, script_path: Path, settings: dict[str,
         if not candidate:
             continue
         path = Path(candidate).expanduser().resolve()
-        if (path / "lib/cmake/BML/BMLConfig.cmake").is_file():
+        if find_sdk_config(path):
             return path
     entered = input("BML+ SDK folder: ").strip()
     path = Path(entered).expanduser().resolve() if entered else Path()
-    if entered and (path / "lib/cmake/BML/BMLConfig.cmake").is_file():
+    if entered and find_sdk_config(path):
         return path
     raise BmlError("That folder is not a BML+ SDK.")
 
@@ -725,9 +739,102 @@ def find_visual_studio_generator(cmake: str) -> str:
     return max(generators)[1]
 
 
+def read_abi(path: Path) -> dict[str, Any]:
+    abi = read_json(path)
+    runtime = abi.get("runtime")
+    target = (abi.get("platform"), abi.get("architecture"), abi.get("host_linkage"))
+    os_name, architecture, linkage = target
+    supported = ((runtime == "virtools" and target == ("windows", "x86", "dynamic")) or
+                 (runtime == "sdl" and os_name in ("windows", "linux", "macos")
+                  and architecture in ("x86", "x64", "arm64") and linkage in ("dynamic", "static")))
+    if (
+        abi.get("schema") not in (1, 2)
+        or not supported
+        or not isinstance(abi.get("sdk_abi"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", abi["sdk_abi"])
+        or abi.get("configuration") not in CONFIGURATIONS
+    ):
+        raise BmlError(f"Invalid or unsupported BML ABI descriptor: {path}")
+    if abi["schema"] == 2:
+        if abi.get("mod_api") != "bml.mod" or abi.get("mod_api_major") != 1:
+            raise BmlError(f"Unsupported native Mod C protocol: {path}")
+        for name in ("extensions", "extension_abis"):
+            values = abi.get(name, {})
+            if not isinstance(values, dict) or any(key not in ("engine", "imgui") or not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}-(Debug|Release|RelWithDebInfo|MinSizeRel)", value) for key, value in values.items()):
+                raise BmlError(f"Invalid native Mod extension ABI: {path}")
+        if path.name.endswith(".bmodp.abi.json") and "extensions" not in abi:
+            raise BmlError(f"Native Mod extension requirements are missing: {path}")
+    return abi
+
+
+def sdk_abi(sdk: Path) -> dict[str, Any]:
+    descriptor = sdk / "share/BML/BML.abi.json"
+    if descriptor.is_file():
+        return read_abi(descriptor)
+    raise BmlError(f"BML SDK ABI descriptor is missing: {descriptor}")
+
+
+def check_host(abi: dict[str, Any]) -> None:
+    host_platform = {"win32": "windows", "linux": "linux", "darwin": "macos"}.get(sys.platform)
+    host_arch = {"amd64": "x64", "x86_64": "x64", "aarch64": "arm64", "arm64": "arm64",
+                 "x86": "x86", "i386": "x86", "i686": "x86"}.get(platform.machine().lower())
+    compatible_architectures = {host_arch}
+    if host_platform == "windows" and host_arch in ("x64", "arm64"):
+        compatible_architectures.add("x86")
+    if abi["platform"] != host_platform or abi["architecture"] not in compatible_architectures:
+        raise BmlError(
+            f"This SDK/runtime targets {abi['platform']}/{abi['architecture']}; "
+            f"this workflow runs on {host_platform}/{host_arch}. Use a matching SDK/runtime."
+        )
+
+
+def find_player(game: Path) -> Path:
+    name = "Player.exe" if os.name == "nt" else "Player"
+    candidates = [game / "Bin" / name, game / name]
+    players = [path for path in candidates if path.is_file()]
+    if len(players) != 1:
+        raise BmlError(f"Expected one Player in {game}; found {len(players)}: "
+                       + ", ".join(str(path) for path in players))
+    player = players[0]
+    if os.name != "nt" and not os.access(player, os.X_OK):
+        raise BmlError(f"Player is not executable: {player}")
+    if player.parent == game and not (game / "base.cmo").is_file():
+        raise BmlError(f"A flat Player layout requires base.cmo alongside Player: {game}")
+    return player
+
+
+def game_abi(game: Path) -> dict[str, Any]:
+    descriptor = game / "ModLoader/BML.abi.json"
+    if not descriptor.is_file():
+        raise BmlError(f"BML runtime ABI descriptor is missing: {descriptor}")
+    abi = read_abi(descriptor)
+    check_host(abi)
+    return abi
+
+
+def check_abi_match(expected: dict[str, Any], actual: dict[str, Any], label: str) -> None:
+    fields = expected if expected.get("schema") == 1 else (
+        "runtime", "platform", "architecture", "host_linkage", "mod_api", "mod_api_major")
+    for field in fields:
+        if actual.get(field) != expected[field]:
+            raise BmlError(f"{label} ABI mismatch for {field}: expected {expected[field]!r}, got {actual.get(field)!r}.")
+    if expected.get("schema") == 2:
+        available = expected.get("extension_abis", {})
+        for extension, required in actual.get("extensions", {}).items():
+            if required and required != available.get(extension):
+                raise BmlError(f"{label} ABI mismatch for {extension}: expected {available.get(extension)!r}, got {required!r}.")
+
+
 def player_is_running() -> bool:
     if os.name != "nt":
-        return False
+        ps = shutil.which("ps")
+        if not ps:
+            raise BmlError("Cannot check running Players: ps was not found.")
+        try:
+            output = run_checked([ps, "-A", "-o", "comm="], "Could not check running Players")
+        except OSError as error:
+            raise BmlError(f"Could not check running Players: {error}") from error
+        return any(Path(line.strip()).name in ("Player", "Player.exe") for line in output.splitlines())
     tasklist = shutil.which("tasklist")
     if not tasklist:
         return False
@@ -742,18 +849,18 @@ def player_is_running() -> bool:
 def save_settings(
     root: Path,
     sdk: Path,
-    virtools: Path,
     game: Path | None,
     generator: str,
+    build_directory: Path,
 ) -> None:
     write_json(
         root / ".bml/settings.json",
         {
             "format": 1,
             "bmlSdk": str(sdk),
-            "virtoolsSdk": str(virtools),
             "ballanceRoot": str(game) if game else "",
             "generator": generator,
+            "buildDirectory": str(build_directory),
         },
     )
 
@@ -761,13 +868,13 @@ def save_settings(
 def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bool, launch: bool) -> Path:
     root, manifest, settings = project_state(args.project, script_path)
     sdk = resolve_sdk(args, script_path, settings)
-
-    virtools_value = args.virtools_sdk or settings.get("virtoolsSdk") or os.environ.get("VIRTOOLS_SDK_PATH")
-    if not virtools_value:
-        virtools_value = input("Virtools SDK folder: ").strip()
-    virtools = require_directory(virtools_value, "Virtools SDK")
-    if virtools is None:
-        raise BmlError("A Virtools SDK folder is required.")
+    abi = sdk_abi(sdk)
+    check_host(abi)
+    if abi["host_linkage"] != "dynamic":
+        raise BmlError("The SDL static-host SDK workflow is not implemented.")
+    configuration = args.configuration or abi["configuration"]
+    if abi["schema"] == 1 and configuration != abi["configuration"]:
+        raise BmlError(f"This SDK requires configuration {abi['configuration']}; got {configuration}.")
 
     game_value = getattr(args, "ballance_root", None) or settings.get("ballanceRoot") or os.environ.get("BML_BALLANCE_ROOT")
     if install and not game_value:
@@ -779,15 +886,31 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
     cmake = shutil.which("cmake")
     if not cmake:
         raise BmlError("CMake was not found. Install CMake and reopen this terminal.")
-    generator = args.generator or settings.get("generator") or find_visual_studio_generator(cmake)
-    if not generator.startswith("Visual Studio"):
-        raise BmlError(f"A Visual Studio generator is required; got '{generator}'.")
+    generator = args.generator or settings.get("generator")
+    if not generator:
+        if os.name == "nt":
+            generator = os.environ.get("CMAKE_GENERATOR") or find_visual_studio_generator(cmake)
+        else:
+            generator = os.environ.get("CMAKE_GENERATOR") or ("Ninja" if shutil.which("ninja") else "Unix Makefiles")
+    player = None
+    if install:
+        check_abi_match(abi, game_abi(game) or {}, "Game")
+        player = find_player(game)
     if install and player_is_running():
         raise BmlError("Ballance is running. Close it before replacing this native Mod.")
 
     state_dir = root / ".bml"
-    build_dir = state_dir / "build"
-    install_dir = game / "ModLoader" if install and game else state_dir / "stage"
+    # Keep incompatible runtimes/SDKs/configurations out of the same CMake cache.
+    build_dir = state_dir / "build" / f"{abi['runtime']}-{abi['sdk_abi']}-{configuration}"
+    if os.name == "nt" and generator.startswith("Visual Studio") and not str(build_dir).isascii():
+        # The Visual Studio generator can fail before it writes a cache in
+        # a non-ASCII binary directory, even with a supported source path.
+        cache_root = Path(tempfile.gettempdir()) / "BMLPlus"
+        if not str(cache_root).isascii():
+            raise BmlError("Use an ASCII path for TEMP when building this project with Visual Studio.")
+        cache_key = hashlib.sha256(f"{build_dir}\0{generator}".encode("utf-8")).hexdigest()
+        build_dir = cache_root / cache_key
+    install_dir = state_dir / "stage"
     prefixes = [sdk]
     if game:
         prefixes.append(game / "ModLoader")
@@ -805,13 +928,15 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
         str(build_dir),
         "-G",
         generator,
-        "-A",
-        "Win32",
-        f"-DBML_DIR={sdk / 'lib/cmake/BML'}",
-        f"-DVIRTOOLS_SDK_PATH={virtools}",
+        f"-DBML_DIR={find_sdk_config(sdk).parent}",
         f"-DCMAKE_PREFIX_PATH={';'.join(str(path) for path in prefixes)}",
         f"-DCMAKE_INSTALL_PREFIX={install_dir}",
     ]
+    configure.append(f"-DCMAKE_BUILD_TYPE={configuration}")
+    if generator.startswith("Visual Studio"):
+        configure.extend(["-A", {"x86": "Win32", "x64": "x64", "arm64": "ARM64"}[abi["architecture"]]])
+    if abi["platform"] == "macos":
+        configure.append(f"-DCMAKE_OSX_ARCHITECTURES={abi['architecture'] if abi['architecture'] != 'x64' else 'x86_64'}")
     run_checked(configure, "CMake setup failed", args.verbose)
     print(f"Building {manifest['target']}...")
     run_checked(
@@ -820,17 +945,26 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
             "--build",
             str(build_dir),
             "--config",
-            args.configuration,
+            configuration,
             "--target",
             "install",
         ],
         "Build failed",
         args.verbose,
     )
-    save_settings(root, sdk, virtools, game, generator)
+    save_settings(root, sdk, game, generator, build_dir)
     artifact = str(manifest.get("artifact") or manifest["target"])
     mod_path = install_dir / "Mods" / f"{artifact}.bmodp"
     require_file(mod_path, "Built Mod")
+    built_abi = read_abi(mod_path.with_suffix(".bmodp.abi.json"))
+    check_abi_match(abi, built_abi, "Built Mod")
+    if install:
+        check_abi_match(game_abi(game), built_abi, "Game")
+        if player_is_running():
+            raise BmlError("Ballance is running. Close it before replacing this native Mod.")
+        run_checked([cmake, "--install", str(build_dir), "--config", configuration,
+                     "--prefix", str(game / "ModLoader")], "Mod installation failed", args.verbose)
+        mod_path = game / "ModLoader/Mods" / mod_path.name
     print("Ready:")
     print(f"  {mod_path}")
     if not launch:
@@ -838,8 +972,7 @@ def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bo
 
     if game is None:
         raise BmlError("A Ballance folder is required to start the game.")
-    player = game / "Bin/Player.exe"
-    require_file(player, "Ballance Player")
+    player = player or find_player(game)
     log_path = game / "ModLoader/ModLoader.log"
     previous_lines = len(log_path.read_text(encoding="utf-8", errors="replace").splitlines()) if log_path.is_file() else 0
     print("Starting Ballance. Exit the game to return here...")
@@ -880,9 +1013,23 @@ def replace_output(source: Path, destination: Path, force: bool) -> None:
 def native_pack(args: argparse.Namespace, script_path: Path) -> None:
     root, manifest, _ = project_state(args.project, script_path)
     artifact = native_build_or_run(args, script_path, install=False, launch=False)
+    _, _, settings = project_state(args.project, script_path)
+    abi = sdk_abi(resolve_sdk(args, script_path, settings))
     name = str(manifest.get("artifact") or manifest["target"])
-    destination = output_path(args.output, root / "dist" / f"{name}.bmodp", ".bmodp")
-    replace_output(artifact, destination, args.force)
+    descriptor = artifact.with_suffix(".bmodp.abi.json")
+    check_abi_match(abi, read_abi(descriptor), "Packaged Mod")
+    destination = output_path(args.output, root / "dist" / f"{name}.zip", ".zip")
+    if destination.exists() and not args.force:
+        raise BmlError(f"Output already exists: {destination}. Pass --force to replace it.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.bml-write")
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.write(artifact, artifact.name)
+            archive.write(descriptor, descriptor.name)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
     print("Published:")
     print(f"  {destination}")
 
@@ -1023,9 +1170,15 @@ def resolve_game(args: argparse.Namespace, settings: dict[str, Any]) -> Path:
     game = require_directory(value, "Ballance folder")
     if game is None:
         raise BmlError("A Ballance folder is required to run the Mod.")
-    require_file(game / "Bin/Player.exe", "Ballance Player")
-    require_file(game / "BuildingBlocks/BMLPlus.dll", "BML+ loader")
-    require_file(game / "BuildingBlocks/AngelScript.dll", "Script Mod runtime")
+    abi = game_abi(game)
+    if abi["host_linkage"] != "dynamic":
+        raise BmlError("The SDL static-host script workflow is not implemented.")
+    find_player(game)
+    prefix, suffix = {"windows": ("", ".dll"), "linux": ("lib", ".so"),
+                      "macos": ("lib", ".dylib")}[abi["platform"]]
+    loader_dir = "BuildingBlocks" if abi["runtime"] == "virtools" else "Managers"
+    require_file(game / loader_dir / f"{prefix}BMLPlus{suffix}", "BML+ loader")
+    require_file(game / "BuildingBlocks" / f"{prefix}AngelScript{suffix}", "Script Mod runtime")
     return game
 
 
@@ -1042,7 +1195,7 @@ def script_run(args: argparse.Namespace, script_path: Path) -> None:
     print(f"Prepared {manifest['id']} ({changed} changed files)")
     print(f"Watching {root}")
 
-    player = game / "Bin/Player.exe"
+    player = find_player(game)
     log_path = game / "ModLoader/ModLoader.log"
     previous_lines = len(log_path.read_text(encoding="utf-8", errors="replace").splitlines()) if log_path.is_file() else 0
     fingerprint = script_fingerprint(root, manifest)
@@ -1075,6 +1228,8 @@ def script_run(args: argparse.Namespace, script_path: Path) -> None:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
+                if os.name != "nt":
+                    process.wait()
         raise
     lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines() if log_path.is_file() else []
     marker = f"[{manifest['id']}/"
@@ -1186,11 +1341,9 @@ def interface_action(args: argparse.Namespace, script_path: Path) -> None:
 def add_common_build_options(
     parser: argparse.ArgumentParser,
     include_game: bool = True,
-    default_configuration: str = "RelWithDebInfo",
 ) -> None:
     parser.add_argument("--project")
     parser.add_argument("--bml-sdk", dest="bml_sdk")
-    parser.add_argument("--virtools-sdk", dest="virtools_sdk")
     if include_game:
         parser.add_argument("--ballance-root", dest="ballance_root")
     parser.add_argument("--package-root", dest="package_root", action="append")
@@ -1198,7 +1351,6 @@ def add_common_build_options(
     parser.add_argument(
         "--configuration",
         choices=CONFIGURATIONS,
-        default=default_configuration,
     )
     parser.add_argument("--verbose", action="store_true")
 
@@ -1231,7 +1383,7 @@ def parse_command(argv: list[str]) -> tuple[str, argparse.Namespace]:
     elif command in ("run", "build"):
         add_common_build_options(parser)
     elif command == "pack":
-        add_common_build_options(parser, include_game=False, default_configuration="Release")
+        add_common_build_options(parser, include_game=False)
         parser.add_argument("--output")
         parser.add_argument("--force", action="store_true")
     elif command == "interface":
@@ -1245,6 +1397,12 @@ def parse_command(argv: list[str]) -> tuple[str, argparse.Namespace]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A redirected Windows console can use a code page that cannot represent
+    # some valid paths. Preserve the stream encoding and escape those characters.
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(errors="backslashreplace")
+
     arguments = list(sys.argv[1:] if argv is None else argv)
     if not arguments or arguments[0] in ("help", "-h", "--help"):
         print_help(any(value in ("--verbose", "-v") for value in arguments[1:]))

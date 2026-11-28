@@ -1,9 +1,10 @@
-#include "BML/Gui/Label.h"
+#include "UI/Gui/Label.h"
 
 #include "Loader/ModContext.h"
 #include "Behavior/Blocks/Text2DView.h"
+#include <stdexcept>
 
-using namespace BGui;
+using namespace BGuiHost;
 
 namespace {
 // Every function below writes or reads one Slot of the same Block, so each one
@@ -15,11 +16,13 @@ BML::Behavior::Internal::Text2DView::View Text(CKBehavior *block) {
 
 Label::Label(const char *name) : Element(name) {
     ModContext *context = BML_GetModContext();
+    if (!context || !context->GetScriptByName("Level_Init")) throw std::runtime_error("GUI labels require Level_Init");
     // ~Label destroys the Block itself, so no Run may own it.
     m_Text2d = context->BehaviorSessions().CreateUnmanaged(
         context->GetScriptByName("Level_Init"),
         BML::Behavior::Internal::BlockSpec::From(BML::Behavior::Internal::Text2DView::Options{
             m_2dEntity, context->GetGameFonts().Resolve(BML::GameFont::None)}));
+    if (!m_Text2d) throw std::runtime_error("GUI text Behavior creation failed");
 }
 
 Label::~Label() {
@@ -35,15 +38,14 @@ void Label::SetText(const char *text) {
     Text(m_Text2d).SetText(text);
 }
 
-ExecuteBB::FontType Label::GetFont() {
+BML::GameFont Label::GetFont() {
     const BML::GameFontCatalog &fonts = BML_GetModContext()->GetGameFonts();
-    return static_cast<ExecuteBB::FontType>(
-        fonts.Identify(Text(m_Text2d).Font()));
+    return fonts.Identify(Text(m_Text2d).Font());
 }
 
-void Label::SetFont(ExecuteBB::FontType font) {
+void Label::SetFont(BML::GameFont font) {
     const BML::GameFontCatalog &fonts = BML_GetModContext()->GetGameFonts();
-    Text(m_Text2d).SetFont(fonts.Resolve(static_cast<BML::GameFont>(font)));
+    Text(m_Text2d).SetFont(fonts.Resolve(font));
 }
 
 void Label::SetAlignment(int align) {

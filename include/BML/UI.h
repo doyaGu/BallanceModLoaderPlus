@@ -8,7 +8,7 @@
 // function here runs on the calling thread and touches UI state the loader draws
 // from the main thread, so every one of them, the read included, answers
 // BML_ERROR_WRONG_THREAD when called from any other thread. Nothing is queued for
-// the next frame: hand the work to the main thread yourself, from IMod::OnProcess
+// the next frame: hand the work to the main thread yourself, from Mod::Instance::OnProcess
 // or another loader callback.
 //
 // Each function answers BML_ERROR_INVALID_PARAMETER for a null argument and
@@ -16,12 +16,13 @@
 // parameter only when it answers BML_OK.
 //
 // None of this is ImGui. Unlike the Bui controls, which only work inside the
-// ImGui frame that the loader keeps open across IMod::OnProcess, these functions
+// ImGui frame that the loader keeps open across Mod::Instance::OnProcess, these functions
 // hand work to loader-owned UI and can be called from any main-thread callback.
 #ifndef BML_UI_H
 #define BML_UI_H
 
 #include "BML/Interface.h"
+#include "BML/Mod.h"
 
 BML_BEGIN_CDECLS
 
@@ -29,7 +30,7 @@ BML_BEGIN_CDECLS
 
 #define BML_UI_INTERFACE_ID "bml.ui"
 #define BML_UI_INTERFACE_MAJOR 1
-#define BML_UI_INTERFACE_MINOR 0
+#define BML_UI_INTERFACE_MINOR 1
 
 // Bits accepted by SetHUDMode and reported by ReadHUDState. These match the
 // HUD_TITLE, HUD_FPS, and HUD_SR values the script API exposes.
@@ -53,7 +54,7 @@ typedef struct BML_UIInterface {
     int (BML_CDECL *ReadHUDState)(BML_UIHUDState *out);
 
     // Appends one line to the loader's ingame message list, the same list
-    // IBML::SendIngameMessage writes to. Older lines scroll off on their own.
+    // the console writes to. Older lines scroll off on their own.
     int (BML_CDECL *AddMessage)(const char *message);
     int (BML_CDECL *ClearMessages)(void);
 
@@ -75,6 +76,8 @@ typedef struct BML_UIInterface {
     // change.
     int (BML_CDECL *ShowTitle)(int visible);
     int (BML_CDECL *ShowFPS)(int visible);
+    int (BML_CDECL *SkipNextRender)(BML_ModContextHandle);
+    int (BML_CDECL *SetWidescreenAdjustment)(BML_ModContextHandle, uint32_t enabled);
 } BML_UIInterface;
 
 #pragma pack(pop)
@@ -185,6 +188,19 @@ inline const BML_UIInterface *Interface() {
 }
 
 } // namespace BML::UI
+
+
+#include "BML/Mod.hpp"
+namespace BML::UI {
+[[nodiscard]] inline int SkipNextRender(const Mod::Context &ctx) {
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_UIInterface, SkipNextRender) ? api->SkipNextRender(ctx.Handle()) : BML_ERROR_UNAVAILABLE;
+}
+[[nodiscard]] inline int SetWidescreenAdjustment(const Mod::Context &ctx, bool enabled) {
+    const auto *api = Detail::Interface();
+    return BML_IFACE_HAS(api, BML_UIInterface, SetWidescreenAdjustment) ? api->SetWidescreenAdjustment(ctx.Handle(), enabled ? 1u : 0u) : BML_ERROR_UNAVAILABLE;
+}
+}
 
 #endif // __cplusplus
 

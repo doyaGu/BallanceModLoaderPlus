@@ -18,11 +18,11 @@ rendering initialization; `Stop()` deactivates them before rendering teardown.
 If owner cleanup cannot complete, the Loader retains the instance and DLL for a
 later stop attempt instead of releasing callable code.
 
-**Runtime Context** — The stable `ModContext : IBML` object passed to native
-and script Mods. It owns CK managers and services such as Config, Command,
-Behavior, IMC, DataShare, UI, directories, and logging. Its Mod queries and
-dependency methods delegate to the Mod Loader; it does not keep a second Mod
-registry.
+**Runtime Context** — The host-owned services reached through per-Mod native
+Context handles and private script/built-in adapters. It borrows CK managers and
+owns Config, Command, Behavior, IMC, DataShare, UI, directories, and logging.
+Mod identity, dependency declarations, and module ownership belong to the Mod
+Loader; Runtime Context composes that owner without duplicating its query surface.
 Public C API calls borrow the Context for their duration. Shutdown first stops
 Mods, then refuses new borrows before releasing services; an in-flight borrow
 prevents final destruction.
@@ -30,7 +30,7 @@ The Loader requests owner and registration cleanup through Context operations;
 it does not access Context-owned registries or locks directly.
 
 **In-tree Native Mods** — Optional Mod Projects under `mods/`. They build against
-the BML target in the same Win32 workspace but remain separate runtime DLLs;
+the BML target in the SDL workspace but remain separate runtime modules;
 building the loader alone does not build or install them.
 
 **Developer Workflow** — The SDK Python interface for creating or adopting a
@@ -52,14 +52,11 @@ drafts, and reconciliation; Presentation owns the native-looking menu layout.
 Bui::Menu owns route and Page lifecycle. An unregistered Mod still gets its
 standard details and Config presentation.
 
-**Config Property Editor** — Optional, non-persisted schema metadata attached
-through `BML_GetConfigPropertyEditor` / `BML_SetConfigPropertyEditor`, keeping
-the frozen IProperty vtable unchanged. It selects a Built-in Mod Menu editor
-without changing the stored value type. The default follows PropertyType; the
-colour editor keeps STRING storage while presenting `#RRGGBB` or `#RRGGBBAA`
-through Bui. The choice editor copies an ordered set of STRING values through
-the additive C interface and presents it through Bui::RadioButton; a stored
-value outside that set remains available until the player chooses another.
+**Config Property Editor** — Optional, non-persisted schema metadata shared by
+native and script configuration through the Config Module. It selects the
+Built-in Mod Menu editor without changing the stored value type. Colour and
+ordered choice editors retain STRING storage; a saved value outside the choice
+set remains available until the player chooses another.
 
 **Config Values** — File values are a source for settings declared by the current
 Mod, not a second runtime schema. Only declared categories and properties appear
@@ -73,8 +70,7 @@ contain no user Config files; a successful startup generates the complete curren
 settings. A missing file permits creation, while a failed read or invalid document
 blocks persistence until a valid reload. Saves flush a unique sibling file before
 atomic publication, keeping failed writes away from the live file.
-Legacy files in the active Windows ANSI code page are imported once and rewritten
-as UTF-8.
+Configuration files use UTF-8 across supported platforms.
 Automatic save requests are consumed before metadata or I/O work. A failed save
 keeps unsaved values but waits for a new change or explicit flush instead of
 retrying every frame.
@@ -102,13 +98,14 @@ surfaces.
 **Command Authoring** — The public versioned `bml.command` C Interface and its
 header-only C++ facade. A registration copies descriptive metadata, retains
 owner callbacks behind a checked handle, and supplies execution with explicit
-arguments, pipeline input, output, and shell status. Legacy `ICommand` remains
-a compatibility adapter rather than the growth path for Native Mods.
+arguments, pipeline input, output, and shell status. Console and script
+registrations use concrete command records containing copied metadata,
+execution/completion callbacks, and retained implementation lifetimes.
 
 **Command Registry** — The private Built-in Console Module shared by Native C,
-legacy C++, and AngelScript command adapters. It owns lookup, canonical
+built-in C++, and AngelScript command adapters. It owns lookup, canonical
 metadata, and enabled and hidden policy. An acquired command retains the
-lifetime token supplied by its adapter through pre-callbacks, execution,
+entire callback record and its lifetime token through pre-callbacks, execution,
 post-callbacks, or completion; removal only stops new lookup. Each adapter owns
 the final release of its foreign callback state. The Shell Executor owns
 parsing, expansion, pipelines, and conditional execution. Console owns shell
@@ -123,10 +120,10 @@ Parser.
 
 **DataShare Registry** — The process-wide, named byte store behind the public C
 API. Handles retain store instances; queued one-shot requests carry an owning
-Mod identity and are cancelled before that Mod DLL is released. The registry
+Mod identity and are cancelled before that Mod module is released. The registry
 owns byte values and request bookkeeping, not a typed schema or a callable Mod
 service. Callback and cleanup dispatch enters the shared Mod invocation gate
-before the DataShare callback lock, so owner retirement cannot race DLL unload
+before the DataShare callback lock, so owner retirement cannot race module unload
 or invert those locks.
 
 **Command Bar Feature Policy** — The private Built-in Console policy that
@@ -153,12 +150,8 @@ orchestration. Menu selection stays separate from loading, file staging, and
 Behavior edits.
 
 **Custom Map Staging** — The private Custom Maps Module that owns prepared map
-files and their directories. It first stages under the game `Bin` directory and
-passes CK an ASCII relative path, falling back to an exactly representable ACP
-or 8.3 path only when necessary. It tracks pending, loaded, and retained files;
-the load orchestrator reports the outcome without receiving cleanup ownership.
-A successful map remains staged until that level ends, while failed deletion is
-kept for a later cleanup attempt.
+files and their directories. It stages files using SDL filesystem operations and
+passes UTF-8 paths to CK2. It retains failed cleanup for a later attempt.
 
 **Custom Map Level Loader** — The private Custom Maps Module that reads the
 values to be changed, installs a Behavior Plan, and restores the previous values
@@ -170,18 +163,13 @@ script bindings.
 **Built-in Game Event Hooks** — Adapters from retail script and menu transitions
 to Mod lifecycle and gameplay callbacks. They do not own tweak state.
 
-**Engine Hook Lifecycle** — Private transactional ownership of Input, Physics,
-Object Load, and render interception for one Runtime Context. Process-wide
-patches record that Context as their owner, reject a second owner, and route
-callbacks through the recorded Context. Virtual-table changes validate the
-whole batch before installation and restore only slots still owned by BML+.
-Optional render and physics scheduling features degrade independently; failed
-teardown retains the Runtime Context rather than releasing code behind a live
-callback. Process bootstrap installs the CK behavior-prototype interception
-outside `DllMain`'s loader-lock initialization path.
-Widescreen correction hooks `UpdateProjection` and updates the native matrix
-cache, device projection, viewport, and 2D roots together. Option changes
-invalidate the owned Context's projection; no per-frame device override is used.
+**Engine Hook Lifecycle** — Private transactional ownership of SDL input,
+Object Load, Physicalize, and render interception for one Runtime Context.
+Input virtual-table changes preserve original methods and restore only slots
+still owned by BML+. Object Load and Physicalize use CK Behavior prototypes.
+Physics keeps the engine's default scheduling; Mod callbacks follow the built-in
+managers. Render skipping and widescreen adjustment use CK2 render options.
+Failed teardown retains the Runtime Context while callbacks still refer to it.
 
 **Runtime Diagnostics** — `Updater.exe doctor` reports installation and process
 requirements before BML+ loads. The private `bml system` command reports live
@@ -212,11 +200,9 @@ tests/ui/player/journeys/. Its descriptor selects the same source for the build
 and runner. The user-facing action must pass through visible UI or native input;
 fixtures may prepare data but cannot perform the action being tested.
 
-**Overlay Platform Input** — The Win32 window adapter for ImGui's platform
-backend. It observes the Player window tree and IME messages, but submits
-ordinary input only from the backend window. Its narrow queue hook recovers
-IME-consumed Tab navigation without rewriting or consuming the original
-message. The ImGui Win32 backend alone submits committed characters.
+**Overlay Platform Input** — The SDL event observer for ImGui's platform
+backend. It copies deferred text payloads and submits them on the game thread.
+Player owns event polling; observing input preserves the game's event stream.
 
 **Script ImGui Ownership** — Tracks ImGui interaction created by each Script
 Mod call. Script window ids include the owning Mod identity while preserving
@@ -230,13 +216,15 @@ before the next Mod runs. Native and Script callbacks share the same recovery
 mechanism; recovery contains a failed Mod without replacing normal balanced
 window lifecycle.
 
-**IME Runtime** — Mirrors composition through IMM32 and obtains modern
-candidate state and control through a UI-less TSF sink. It publishes immutable,
-revisioned frames and clears stale state on composition, focus, or lifecycle
-changes. It never draws ImGui or submits text.
+**IME Runtime** — Mirrors platform composition state and publishes immutable,
+revisioned frames. The Windows implementation retains IMM32 composition and a
+UI-less TSF candidate sink; the SDL implementation mirrors text-editing events.
+Composition clears on commit, cancellation, focus loss, or detachment. Native
+IME state remains separate from presentation and character submission.
 
-**IME Presentation** — Draws one in-game composition and candidate rail in
-windowed and true exclusive full-screen modes. Console may reserve the row
+**IME Presentation** — Draws the Windows in-game composition and candidate rail
+in windowed and exclusive full-screen modes; other SDL platforms can retain
+the system-native candidate window. Console may reserve the row
 below its command bar; other text fields use their caret and viewport. It owns
 measurement, layout, and drawing, not native IME state or character submission.
 
@@ -258,21 +246,21 @@ Overlay does not recreate these backend decisions.
 the current world. It is separate from the ImGui font atlas.
 
 **Legacy GUI Text** — The private style registry for BML::Gui::Text sprites
-backed by Windows font faces. It is separate from both ImGui and retail menu
+backed by engine-managed platform font faces. It is separate from both ImGui and retail menu
 fonts. See [font domain decision](docs/adr/0001-separate-font-domains.md).
 
 ## Behavior and engine access
 
-**Behavior Authoring** — The public Win32 C function table and its C++ and
+**Behavior Authoring** — The public C function table and its C++ and
 AngelScript authoring layers. An owner-scoped Session configures Blocks from
 registered Prototypes, runs them as Calls, Tasks, or Instances, and builds
 graph Edits for Patches and Plans. Sessions survive world reset; world-bound
 objects and callbacks do not. The C, C++, and script layers use one native
 implementation: the C++ facade encodes calls into the C table, and the
 AngelScript layer projects that facade without including a Loader Behavior or
-facade Detail header. Text crosses the table as UTF-8 and is converted to and
-from the engine's code page at that boundary. The legacy IMod interface still
-bootstraps Native Mods.
+facade Detail header. Text crosses the SDL engine and table boundaries as UTF-8;
+there is no original Windows ACP conversion in this branch. Native Mods use the versioned C
+Mod protocol; their C++ authoring wrappers remain inside each Mod.
 
 **Behavior Plan Instance** — A revisioned view of one Plan installation in a
 world. Symbolic Nodes and Ports can be resolved to checked Object References or
@@ -334,22 +322,23 @@ BML_ObjectRef values across the C and script seams. It observes CK deletion and
 world reset, rejecting stale identities. Destruction without CK notification is
 outside what it can observe.
 
-**ExecuteBB Adapter** — The API-side adapter that translates exported
-ExecuteBB calls into Blocks and runs them on the loader's own Behavior
-Session. The AngelScript ExecuteBB bindings delegate to it, so there is one
-frontend. Behavior Runtime does not depend on ExecuteBB.
+**Script Engine Calls** — The private script convenience calls that run Blocks
+on the built-in Mod's Behavior Session. They exist only with script support and
+share the Behavior Runtime used by the owner-scoped authoring projection.
 
 ## Source ownership
 
 - src/BML.cpp composes the loader; src/Mods/ contains its bundled Mods.
 - src/Loader/ModLoader.* owns Mod discovery, invocation, and lifecycle;
-  ModContext.* owns the runtime services and IBML entry point; ModManager.*
+  ModContext.* owns runtime services and private built-in/script adapters; ModManager.*
   connects both to CK manager lifecycle.
 - src/Api/ adapts public BML interfaces to private implementations.
   src/Api/Behavior/ holds the Behavior C table and the Codec that reads and
   writes its records.
+- src/AngelScript/ owns script adapters, including Script Engine Calls;
+  per-owner Behavior authoring remains a client of the public facade.
 - src/Behavior/ owns Sessions, Prototypes, graph authoring, Runtime, and the
-  legacy ScriptHelper implementation. Core/ holds Status, values, parameters,
+  CKScriptHelper implementation. Core/ holds Status, values, parameters,
   and layouts; Engine/ the CK2 primitives; Edit/ the Program, Ops, and
   Transaction; Install/ the Patch and Plan aggregate and Script selection.
   src/Behavior/Blocks/ holds private implementations tied to individual BBs.

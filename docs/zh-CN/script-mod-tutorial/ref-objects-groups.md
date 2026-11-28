@@ -3,10 +3,12 @@
 ## 查找 API
 
 ```angelscript
-CK3dEntity@ ctx.Borrow3dEntityByName(const string &in name);
-CKGroup@ ctx.BorrowGroupByName(const string &in name);
-CKDataArray@ ctx.BorrowDataArrayByName(const string &in name);
-CKBehavior@ ctx.BorrowScriptByName(const string &in name);
+BML::ObjectRef reference;
+CKObject@ object;
+if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, reference) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, reference, CKCID_DATAARRAY, object) == BML::ERROR_OK) {
+    CKDataArray@ table = cast<CKDataArray>(object);
+}
 ```
 
 ## 对象信息
@@ -22,7 +24,8 @@ bool BML::CK::IsDynamic(CKObject@ object);
 
 借用的 CK 句柄不拥有对象。对象删除、切换关卡或 CK reset 后，先用
 `BML::CK::IsValid()` 检查；它会在当前 CK 对象表中按地址确认对象仍然存活，
-不会为了验证而先解引用可能已经悬空的句柄。其他 `BML::CK` 查询应在检查通过后调用。
+不会为了验证而先解引用可能已经悬空的句柄。其他 `BML::CK` 查询应在检查通过后调用。地址存活检查不等于原对象身份验证；
+跨回调优先保存 CKAS 可验证引用，再在使用时解析，避免把后来复用地址的对象当成原对象。
 
 ## 位置和可见性
 
@@ -57,7 +60,12 @@ void BML::CK::RestoreIC(CKBeObject@ object, bool hierarchy = false);
 ## 组
 
 ```angelscript
-CKGroup@ group = ctx.BorrowGroupByName("P_Extra_Point");
+CKGroup@ group;
+BML::ObjectRef groupRef;
+CKObject@ groupObject;
+if (BML::Scene::FindObject("P_Extra_Point", CKCID_GROUP, groupRef) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, groupRef, CKCID_GROUP, groupObject) == BML::ERROR_OK)
+    @group = cast<CKGroup>(groupObject);
 if (group is null) return;
 
 int count = group.GetObjectCount();

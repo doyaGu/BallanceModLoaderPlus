@@ -23,17 +23,18 @@ of building overlapping wrappers:
 | Patch engine internals or expose a native service | Native plugin with a guarded CKAS extension if scripts need it |
 
 BML+ callbacks receive `BML::ModContext`, not `ScriptContext` or
-`CKBehaviorContext`. Use `ctx.BorrowCKContext()` only with APIs that accept a
+`CKBehaviorContext`. Use `BML::Engine::BorrowContext(ctx, ck)` only with APIs that accept a
 `CKContext@`. Do not fake one context as another.
 
 Raw `NativePointer`, `NativeBuffer`, DynCall/DynLoad/DynCallback, and writable
 native memory are escape hatches for proven native integration work. They are
-not a normal replacement for a missing plugin API.
+not a normal replacement for a missing plugin API. FFI availability depends on
+the matching CKAngelScript build; the default BML build does not enable DynCall.
 
 ## CK objects and durable identity
 
 Start with CKAngelScript `Scene`, `Behavior`, `BB`, and `Param`. BML+
-`ctx.Borrow*` calls provide convenient access to named CK objects and managers,
+Scene lookup and `BML::Engine::Borrow*` provide checked object references and manager access,
 but those handles are non-owning.
 
 Prefer CKAS references for identity that crosses callbacks:
@@ -42,19 +43,27 @@ Prefer CKAS references for identity that crosses callbacks:
 Entity3DRef@ ball;
 
 void OnLoad(const BML::ModContext &in ctx) {
-  CKContext@ ck = ctx.BorrowCKContext();
+  CKContext@ ck;
+  if (BML::Engine::BorrowContext(ctx, ck) != BML::ERROR_OK) return;
   @ball = Scene::FindEntity3D(ck, "Ball");
 }
 
 void OnProcess(const BML::ModContext &in ctx) {
-  if (ball is null || !ball.valid)
+  CKContext@ ck;
+  if (BML::Engine::BorrowContext(ctx, ck) != BML::ERROR_OK) return;
+  if (ck is null || ball is null || !ball.valid)
     return;
 
-  CK3dEntity@ entity = ball.Entity3D();
+  CK3dEntity@ entity = cast<CK3dEntity>(ck.GetObject(ball.id));
   if (entity !is null)
     entity.Translate(VxVector(0.0f, 0.0f, 0.1f));
 }
 ```
+
+This excerpt assumes a scene object named `Ball`; substitute a known object
+name or capture the reference when that scene is loaded. `Entity3DRef` exposes
+checked identity, not an `Entity3D()` raw-pointer method. After checking `valid`,
+resolve its `id` through the current CKContext and cast the borrowed result.
 
 Resolve raw CK handles close to the operation. Revalidate after deletion, level
 changes, and CK reset. `BML::CK::IsValid()` checks the handle address against
@@ -65,12 +74,16 @@ before passing a stored raw handle to the other `BML::CK` helpers.
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
-  CKDataArray@ array = ctx.BorrowDataArrayByName("Some_Array");
-  int column = BML::CK::FindColumn(array, "Name");
-  string value = BML::CK::GetString(array, 0, column, "");
+  BML::ObjectRef reference;
+  CKObject@ object;
+  if (BML::Scene::FindObject("Some_Array", CKCID_DATAARRAY, reference) != BML::ERROR_OK ||
+      BML::Engine::BorrowObject(ctx, reference, CKCID_DATAARRAY, object) != BML::ERROR_OK) return;
+  CKDataArray@ data = cast<CKDataArray>(object);
+  int column = BML::CK::FindColumn(data, "Name");
+  string value = BML::CK::GetString(data, 0, column, "");
 
   BML::ObjectLoadOptions options;
-  options.File = "3D Entities\\Example.nmo";
+  options.File = "3D Entities/Example.nmo";
   BML::ObjectLoadResult@ loaded = BML::CK::LoadObject(options);
   CKObject@ main = loaded is null ? null : loaded.BorrowMainObject();
 }
@@ -78,9 +91,10 @@ void OnLoad(const BML::ModContext &in ctx) {
 
 ## Content registration
 
-`RegisterBallType`, `RegisterFloorType`, and `RegisterModule` expose common
+`BML::Gameplay::RegisterBallType`, `RegisterFloorType`, `RegisterModuleBall`,
+`RegisterModuleConvex`, `RegisterTrafo` and `RegisterModule` expose common
 Ballance content registration. Call them from `OnLoad`; late registration
-returns `false`.
+returns `ERROR_ACCESS_DENIED`.
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
@@ -93,7 +107,7 @@ void OnLoad(const BML::ModContext &in ctx) {
   ball.Elasticity = 0.2f;
   ball.Mass = 1.0f;
   ball.Radius = 2.0f;
-  if (!ctx.RegisterBallType(ball))
+  if (BML::Gameplay::RegisterBallType(ctx, ball) != BML::ERROR_OK)
     ctx.LogWarn("failed to register ball type");
 }
 ```
@@ -102,7 +116,7 @@ Definitions are value objects. Keep asset paths mod-relative.
 
 ## Behavior authoring
 
-`BML::Behavior` is the Script Mod projection of the same Win32 authoring model
+`BML::Behavior` is the Script Mod projection of the same Behavior authoring model
 used by Native Mods. There is no Session to open: `Use`, `Find`, `Describe`,
 `Inspect`, `Edit`, and `CreateScript` bind to the current Script Mod and retire
 before unload or hot reload. A Script Patch currently targets one Graph and a
@@ -134,13 +148,28 @@ int OnBallHook(const BML::ModContext &in ctx,
 
 void OnLoad(const BML::ModContext &in ctx) {
   CKBehavior@ owner = ctx.BorrowScriptByName("Gameplay_Ingame");
-  CKBehavior@ source = FindSubBehaviorByName(owner, "Some_Behavior");
-  if (owner is null || source is null)
+  if (owner is null)
+    return;
+
+  CKBehavior@ source = null;
+  for (int i = 0; i < owner.GetSubBehaviorCount(); ++i) {
+    CKBehavior@ candidate = owner.GetSubBehavior(i);
+    if (candidate !is null && BML::CK::GetName(candidate) == "Some_Behavior") {
+      @source = candidate;
+      break;
+    }
+  }
+  if (source is null)
     return;
 
   @hook = ctx.InsertHookBlockAfter(owner, source, OnBallHook, "example hook");
 }
 ```
+
+The example searches direct children with existing CKBehavior methods; replace
+`Some_Behavior` with a verified node name. It does not rely on an implicit
+`FindSubBehaviorByName` helper. For nested or ambiguous graphs, use the existing
+Behavior inspection/selectors to choose the exact node.
 
 `CreateHookBlock` creates an unattached block. `InsertHookBlockAfter`,
 `InsertHookBlockBefore`, and `InsertHookBlockBetween` cover common one-input,

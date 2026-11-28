@@ -10,18 +10,17 @@
 #include <utility>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 #include "BML/DataShare.h"
-#include "BML/IBML.h"
-#include "BML/IConfig.h"
-#include "BML/ILogger.h"
+#include "Loader/ModContext.h"
+#include "Config/Config.h"
+#include "Logging/Logger.h"
 
 #include "Api/ObjectRefs.h"
 #include "CustomMaps/CustomMapLoad.h"
 #include "CustomMaps/LevelLoader.h"
 #include "CustomMaps/MapCatalog.h"
 #include "CustomMaps/MapCommand.h"
-#include "Loader/ModContext.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
 
@@ -124,7 +123,7 @@ CustomMaps::~CustomMaps() {
     ReleaseDataShare();
 }
 
-void CustomMaps::InitConfig(IConfig &config) {
+void CustomMaps::InitConfig(Config &config) {
     m_LevelNumber = config.GetProperty("CustomMap", "LevelNumber");
     m_ShowTooltip = config.GetProperty("CustomMap", "ShowTooltip");
     m_MaxDepth = config.GetProperty("CustomMap", "MaxDepth");
@@ -150,7 +149,7 @@ void CustomMaps::ApplyConfig() {
         m_Menu.SetMaxDepth(m_MaxDepth->GetInteger());
 }
 
-bool CustomMaps::OnModifyConfig(const char *category, const char *key, IProperty *property) {
+bool CustomMaps::OnModifyConfig(const char *category, const char *key, Property *property) {
     if (!property || std::strcmp(category ? category : "", "CustomMap") != 0)
         return false;
 
@@ -165,9 +164,8 @@ bool CustomMaps::OnModifyConfig(const char *category, const char *key, IProperty
     return property == m_LevelNumber && std::strcmp(key ? key : "", "LevelNumber") == 0;
 }
 
-void CustomMaps::OnLoad(IBML &bml, ILogger &logger,
-                        const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
-                        const std::wstring &tempDirectory) {
+void CustomMaps::OnLoad(ModContext &bml, Logger &logger, const std::wstring &gameDirectory,
+                        const std::wstring &loaderDirectory, const std::wstring &tempDirectory) {
     m_BML = &bml;
     m_CKContext = bml.GetCKContext();
     m_Logger = &logger;
@@ -191,7 +189,8 @@ void CustomMaps::OnLoad(IBML &bml, ILogger &logger,
     m_Menu.Init(m_MapsDirectory, logger);
     if (!m_Command)
         m_Command = std::make_unique<CustomMap::MapCommand>(*this);
-    bml.RegisterCommand(m_Command.get());
+    if (bml.RegisterCallbackCommand(this, BML::MakeCommandRecord(m_Command.get())) != BML_OK)
+        logger.Error("Failed to register the map command.");
 }
 
 void CustomMaps::OnUnload() {
@@ -234,8 +233,7 @@ void CustomMaps::BindMenuEntry() {
         if (menu) {
             auto exit = menu->Find(Behavior::Named("Exit", 0));
             if (exit) {
-                m_ExitStart = Resolve<CKBehavior>(
-                    dynamic_cast<ModContext *>(m_BML), exit->Object());
+                m_ExitStart = Resolve<CKBehavior>(m_BML, exit->Object());
             }
         }
     }
@@ -284,7 +282,7 @@ void CustomMaps::OnProcess() {
 
         if (ImGui::Begin("Button_Custom_Maps", nullptr, buttonFlags)) {
             ImGui::SetNextItemShortcut(ImGuiKey_RightArrow, ImGuiInputFlags_RouteGlobal);
-            if (Bui::RightButton("Enter_Custom_Maps")) {
+            if (BuiHost::RightButton("Enter_Custom_Maps")) {
                 m_ExitStart->ActivateInput(0);
                 m_ExitStart->Activate();
                 Open();

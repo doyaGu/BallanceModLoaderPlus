@@ -1,3 +1,25 @@
+#if BML_RUNTIME_SDL
+#include "Behavior/Engine/Access.h"
+
+namespace BML::Behavior::Internal::Engine {
+namespace {
+
+
+} // namespace
+
+
+void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept {
+    if (behavior)
+        behavior->SetParent(parent);
+}
+
+
+bool IsDelayed(CKBehaviorLink *link) noexcept {
+    return link && link->IsActivationPending();
+}
+
+} // namespace BML::Behavior::Internal::Engine
+#else
 #include "Behavior/Engine/Access.h"
 
 namespace BML::Behavior::Internal::Engine {
@@ -100,3 +122,4 @@ bool IsDelayed(CKBehaviorLink *link) noexcept {
 }
 
 } // namespace BML::Behavior::Internal::Engine
+#endif

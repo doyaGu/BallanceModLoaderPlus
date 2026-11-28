@@ -1,230 +1,60 @@
 #ifndef BML_SCRIPTMODCONTEXTVIEW_H
 #define BML_SCRIPTMODCONTEXTVIEW_H
 
+#include <memory>
 #include <string>
 
-#include "CKAll.h"
-#include "BML/InputHook.h"
+#include "BML/Mod.h"
 #include "ScriptModLifecycle.h"
 
-class ModContext;
-class IMod;
 class asIScriptFunction;
 class asIScriptObject;
 
 namespace BML {
-
-class ScriptMod;
-class ScriptCommandRef;
-struct ScriptCommandDefinition;
-class ScriptMenuPageRef;
-struct ScriptMenuPageDefinition;
+struct ScriptRuntimeScope;
 class ScriptDataShareRequestRef;
-class ScriptHookBlockRef;
 class ScriptImcRecord;
 class ScriptImcRequestRef;
 class ScriptImcSubscriptionRef;
 class ScriptImcProviderRef;
-class ScriptTimerRef;
 
 class ScriptModContextView {
 public:
-    ScriptModContextView() = default;
-    ScriptModContextView(ModContext *context, ScriptMod *owner);
+    void BindRuntime(const std::shared_ptr<ScriptRuntimeScope> &scope, BML_ModHandle owner) {
+        m_Runtime = scope;
+        m_RuntimeOwner = owner;
+    }
+    const std::weak_ptr<ScriptRuntimeScope> &RuntimeScope() const {
+        return m_Runtime;
+    }
+    BML_ModHandle RuntimeOwner() const {
+        return m_RuntimeOwner;
+    }
 
-    bool HasContext() const { return m_Context != nullptr; }
-    std::string GetModId() const;
-    std::string GetModName() const;
-    void LogInfo(const std::string &message) const;
-    void LogWarn(const std::string &message) const;
-    void LogError(const std::string &message) const;
     bool IsReloading() const;
     ScriptModReloadPhase GetReloadPhase() const;
     unsigned int GetReloadAttemptId() const;
     unsigned int GetModGeneration() const;
     unsigned int GetRuntimeGeneration() const;
-    CKContext *GetCKContext() const;
-    CKRenderContext *GetRenderContext() const;
-    CKAttributeManager *GetAttributeManager() const;
-    CKBehaviorManager *GetBehaviorManager() const;
-    CKCollisionManager *GetCollisionManager() const;
-    InputHook *GetInputManager() const;
-    CKMessageManager *GetMessageManager() const;
-    CKPathManager *GetPathManager() const;
-    CKParameterManager *GetParameterManager() const;
-    CKRenderManager *GetRenderManager() const;
-    CKSoundManager *GetSoundManager() const;
-    CKTimeManager *GetTimeManager() const;
-    bool IsInGame() const;
-    bool IsInLevel() const;
-    bool IsPaused() const;
-    bool IsPlaying() const;
-    bool IsCheatEnabled() const;
-    void EnableCheat(bool enable) const;
-    void ExitGame() const;
-    float GetSRScore() const;
-    int GetHSScore() const;
-    std::string GetDirectoryUtf8(int type) const;
-    float GetTimeMs() const;
-    float GetAbsoluteTimeMs() const;
-    float GetDeltaTimeMs() const;
-    unsigned int GetFrameCount() const;
-    bool IsObjectValid(CKObject *object) const;
-    int GetObjectId(CKObject *object) const;
-    std::string GetObjectName(CKObject *object) const;
-    int GetObjectClassId(CKObject *object) const;
-    bool IsObjectVisible(CKObject *object) const;
-    bool IsObjectDynamic(CKObject *object) const;
-    int GetBeObjectPriority(CKBeObject *object) const;
-    int GetBeObjectScriptCount(CKBeObject *object) const;
-    int GetBeObjectAttributeCount(CKBeObject *object) const;
-    VxVector Get3dEntityPosition(CK3dEntity *entity) const;
-    VxVector Get3dEntityScale(CK3dEntity *entity, bool local) const;
-    int Get3dEntityChildCount(CK3dEntity *entity) const;
-    CK3dEntity *Get3dEntityParent(CK3dEntity *entity) const;
-    CKDataArray *GetArrayByName(const std::string &name) const;
-    CKGroup *GetGroupByName(const std::string &name) const;
-    CKMaterial *GetMaterialByName(const std::string &name) const;
-    CKMesh *GetMeshByName(const std::string &name) const;
-    CK2dEntity *Get2dEntityByName(const std::string &name) const;
-    CK3dEntity *Get3dEntityByName(const std::string &name) const;
-    CK3dObject *Get3dObjectByName(const std::string &name) const;
-    CKCamera *GetCameraByName(const std::string &name) const;
-    CKTargetCamera *GetTargetCameraByName(const std::string &name) const;
-    CKLight *GetLightByName(const std::string &name) const;
-    CKTargetLight *GetTargetLightByName(const std::string &name) const;
-    CKSound *GetSoundByName(const std::string &name) const;
-    CKTexture *GetTextureByName(const std::string &name) const;
-    CKBehavior *GetScriptByName(const std::string &name) const;
-    void SetIC(CKBeObject *object, bool hierarchy) const;
-    void RestoreIC(CKBeObject *object, bool hierarchy) const;
-    void Show(CKBeObject *object, CK_OBJECT_SHOWOPTION show, bool hierarchy) const;
-    ScriptTimerRef *AddTimer(asIScriptObject *timer) const;
-    ScriptTimerRef *SetTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name) const;
-    ScriptTimerRef *SetTimeout(float delayMs, asIScriptFunction *callback, const std::string &name) const;
-    ScriptTimerRef *SetIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name) const;
-    ScriptTimerRef *SetInterval(float delayMs, asIScriptFunction *callback, const std::string &name) const;
-    ScriptCommandRef *RegisterCommand(asIScriptObject *command) const;
-    ScriptCommandRef *RegisterCommand(const ScriptCommandDefinition &definition,
-                                      asIScriptFunction *execute,
-                                      asIScriptFunction *complete) const;
-    bool UnregisterCommand(const std::string &name) const;
-    ScriptMenuPageRef *RegisterMenuPage(
-        const ScriptMenuPageDefinition &definition,
-        asIScriptFunction *draw, asIScriptFunction *enter,
-        asIScriptFunction *leave) const;
-    bool UnregisterMenuPage(const std::string &id) const;
     ScriptDataShareRequestRef *RequestDataShare(asIScriptObject *request) const;
-    ScriptDataShareRequestRef *RequestDataShare(const std::string &key,
-                                                int type,
+    ScriptDataShareRequestRef *RequestDataShare(const std::string &key, int type,
                                                 asIScriptFunction *callback,
                                                 const std::string &name) const;
     int IsImcRpcAvailable(const std::string &route, bool &available) const;
-    ScriptImcRequestRef *CallImc(const std::string &route,
-                                 const std::string &requestPayload,
-                                 const std::string &responsePayload,
-                                 const ScriptImcRecord &request,
-                                 asIScriptFunction *callback,
-                                 unsigned int timeoutMs) const;
-    ScriptImcSubscriptionRef *SubscribeImc(const std::string &topic,
-                                            const std::string &payload,
-                                            asIScriptFunction *callback,
-                                            unsigned int capacity) const;
-    int PublishImc(const std::string &topic,
-                   const std::string &payload,
-                   const ScriptImcRecord &message,
-                   std::uint64_t &delivered) const;
-    int GetImcSubscriberCount(const std::string &topic,
-                              std::uint64_t &count) const;
+    ScriptImcRequestRef *CallImc(const std::string &route, const std::string &requestPayload,
+                                 const std::string &responsePayload, const ScriptImcRecord &request,
+                                 asIScriptFunction *callback, unsigned int timeoutMs) const;
+    ScriptImcSubscriptionRef *SubscribeImc(const std::string &topic, const std::string &payload,
+                                           asIScriptFunction *callback,
+                                           unsigned int capacity) const;
+    int PublishImc(const std::string &topic, const std::string &payload,
+                   const ScriptImcRecord &message, std::uint64_t &delivered) const;
+    int GetImcSubscriberCount(const std::string &topic, std::uint64_t &count) const;
     ScriptImcProviderRef *OpenImcProvider() const;
-    ScriptHookBlockRef *CreateHookBlock(CKBehavior *ownerScript,
-                                        asIScriptFunction *callback,
-                                        const std::string &name,
-                                        int inputCount,
-                                        int outputCount) const;
-    ScriptHookBlockRef *InsertHookBlockAfter(CKBehavior *ownerScript,
-                                             CKBehavior *source,
-                                             asIScriptFunction *callback,
-                                             const std::string &name,
-                                             int sourceOutput,
-                                             int targetInput) const;
-    ScriptHookBlockRef *InsertHookBlockBefore(CKBehavior *ownerScript,
-                                              CKBehavior *target,
-                                              asIScriptFunction *callback,
-                                              const std::string &name,
-                                              int sourceOutput,
-                                              int targetInput) const;
-    ScriptHookBlockRef *InsertHookBlockBetween(CKBehavior *ownerScript,
-                                               CKBehavior *source,
-                                               CKBehavior *target,
-                                               asIScriptFunction *callback,
-                                               const std::string &name,
-                                               int sourceOutput,
-                                               int targetInput) const;
-    bool RegisterBallType(const std::string &ballFile,
-                          const std::string &ballId,
-                          const std::string &ballName,
-                          const std::string &objName,
-                          float friction,
-                          float elasticity,
-                          float mass,
-                          const std::string &collGroup,
-                          float linearDamp,
-                          float rotDamp,
-                          float force,
-                          float radius) const;
-    bool RegisterFloorType(const std::string &floorName,
-                           float friction,
-                           float elasticity,
-                           float mass,
-                           const std::string &collGroup,
-                           bool enableColl) const;
-    bool RegisterModulBall(const std::string &modulName,
-                           bool fixed,
-                           float friction,
-                           float elasticity,
-                           float mass,
-                           const std::string &collGroup,
-                           bool frozen,
-                           bool enableColl,
-                           bool calcMassCenter,
-                           float linearDamp,
-                           float rotDamp,
-                           float radius) const;
-    bool RegisterModulConvex(const std::string &modulName,
-                             bool fixed,
-                             float friction,
-                             float elasticity,
-                             float mass,
-                             const std::string &collGroup,
-                             bool frozen,
-                             bool enableColl,
-                             bool calcMassCenter,
-                             float linearDamp,
-                             float rotDamp) const;
-    bool RegisterTrafo(const std::string &modulName) const;
-    bool RegisterModul(const std::string &modulName) const;
-    std::string GetModRootUtf8() const;
-    std::string ResolveModPathUtf8(const std::string &relativePath) const;
-    bool ModFileExistsUtf8(const std::string &relativePath) const;
-    bool ModDirectoryExistsUtf8(const std::string &relativePath) const;
-    std::string ReadModTextFileUtf8(const std::string &relativePath, const std::string &defaultValue) const;
-    int GetCommandCount() const;
-    std::string GetCommandName(int index) const;
-    std::string GetCommandAlias(int index) const;
-    std::string GetCommandDescription(int index) const;
-    bool HasCommand(const std::string &name) const;
-    bool IsCommandCheat(const std::string &name) const;
-    int GetGlobalModCount() const;
-    std::string GetGlobalModId(int index) const;
-    void ExecuteCommand(const std::string &command) const;
-    void SkipRenderForNextTick() const;
 
 private:
-    ModContext *m_Context = nullptr;
-    ScriptMod *m_Owner = nullptr;
+    std::weak_ptr<ScriptRuntimeScope> m_Runtime;
+    BML_ModHandle m_RuntimeOwner = 0;
 };
-
 } // namespace BML
-
 #endif

@@ -1,18 +1,18 @@
 #include "Mods/BMLCommand.h"
 
 #include "BML/BML.h"
-#include "BML/IBML.h"
-#include "BML/IMod.h"
+#include "Loader/ModContext.h"
+#include "Loader/ModRecord.h"
 #include "Diagnostics/SystemReport.h"
 
 namespace {
-    void SendLine(IBML &bml, const std::string &line) {
-        const std::string message = line + '\n';
-        bml.SendIngameMessage(message.c_str());
-    }
+void SendLine(ModContext &bml, const std::string &line) {
+    const std::string message = line + '\n';
+    bml.SendIngameMessage(message.c_str());
+}
 }
 
-void BMLCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+void BMLCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
     if (!bml)
         return;
 
@@ -28,18 +28,19 @@ void BMLCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
 
     bml->SendIngameMessage("Ballance Mod Loader Plus " BML_VERSION);
-    bml->SendIngameMessage((std::to_string(bml->GetModCount()) + " Mods Installed:").data());
+    bml->SendIngameMessage(
+        (std::to_string(bml->GetModLoader().GetModCount()) + " Mods Installed:").data());
 
-    int count = bml->GetModCount();
+    int count = bml->GetModLoader().GetModCount();
     for (int i = 0; i < count; ++i) {
-        auto *mod = bml->GetMod(i);
+        auto *mod = bml->GetModLoader().GetMod(i);
         std::string str = std::string("  ") + mod->GetID() + ": " + mod->GetName() + " " + mod->GetVersion() + " by " + mod->GetAuthor();
         bml->SendIngameMessage(str.data());
     }
 }
 
-const std::vector<std::string> BMLCommand::GetTabCompletion(
-    IBML *, const std::vector<std::string> &args) {
+const std::vector<std::string> BMLCommand::GetTabCompletion(ModContext *,
+                                                            const std::vector<std::string> &args) {
     if (args.size() == 2)
         return {"system"};
     return {};

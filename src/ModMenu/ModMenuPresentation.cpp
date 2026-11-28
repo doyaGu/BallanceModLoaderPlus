@@ -9,7 +9,7 @@
 #include <variant>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 
 #include "ModMenu/ModMenuModel.h"
 #include "UI/BuiInternal.h"
@@ -60,7 +60,7 @@ namespace {
             ImGui::SetCursorScreenPos(Position(x, y));
         }
 
-        Bui::ColorPickerArea Area(const TextPanelLayout &layout) const {
+        BuiHost::ColorPickerArea Area(const TextPanelLayout &layout) const {
             return {
                 Position(layout.x, layout.y),
                 Position(layout.x + layout.width, layout.y + layout.height),
@@ -157,15 +157,15 @@ namespace {
         const ImVec2 size = viewport.Size(layout.width, layout.height);
 
         TextPanelStyleScope textPanelStyle;
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, BuiHost::GetMenuColor());
         viewport.SetCursor(layout.x, layout.y);
         if (resetScroll)
             ImGui::SetNextWindowScroll(ImVec2(-1.0f, 0.0f));
         if (ImGui::BeginChild(id, size, ImGuiChildFlags_None, TextPanelFlags)) {
             const float textWidth = ImGui::GetContentRegionAvail().x;
-            Bui::WrappedText(title, textWidth);
+            BuiHost::WrappedText(title, textWidth);
             if (text && text[0] != '\0')
-                Bui::WrappedText(text, textWidth);
+                BuiHost::WrappedText(text, textWidth);
         }
         ImGui::EndChild();
         ImGui::PopStyleColor();
@@ -314,8 +314,8 @@ struct ModMenuPresentation::State {
         modPagination.Update(static_cast<int>(mods.size()), PageSize);
         if (mods.empty()) {
             viewport.SetCursor(ListX, ListY);
-            Bui::WrappedText("No Mods are currently available.",
-                             Bui::GetButtonSize(Bui::BUTTON_MAIN).x);
+            BuiHost::WrappedText("No Mods are currently available.",
+                             BuiHost::GetButtonSize(BuiHost::BUTTON_MAIN).x);
             return false;
         }
 
@@ -332,7 +332,7 @@ struct ModMenuPresentation::State {
                 focusFirstListItem = false;
             }
             ImGui::PushID(mod.owner.id.c_str());
-            const bool pressed = Bui::MainButton(mod.name.c_str());
+            const bool pressed = BuiHost::MainButton(mod.name.c_str());
             ImGui::PopID();
             if (pressed && model.SelectMod(mod.owner)) {
                 observedOwner.reset();
@@ -340,11 +340,11 @@ struct ModMenuPresentation::State {
             }
         }
 
-        if (modPagination.CanPrevious() && Bui::NavLeft()) {
+        if (modPagination.CanPrevious() && BuiHost::NavLeft()) {
             modPagination.Previous();
             focusFirstListItem = true;
         }
-        if (modPagination.CanNext() && Bui::NavRight()) {
+        if (modPagination.CanNext() && BuiHost::NavRight()) {
             modPagination.Next();
             focusFirstListItem = true;
         }
@@ -366,17 +366,17 @@ struct ModMenuPresentation::State {
 
         if (drawContents) {
             const float textWidth = ImGui::GetContentRegionAvail().x;
-            Bui::WrappedText(document.name.c_str(), textWidth, 0.0f, 1.2f);
-            Bui::WrappedText(authorLine.c_str(), textWidth);
-            Bui::WrappedText(versionLine.c_str(), textWidth);
-            Bui::WrappedText(statusLine.c_str(), textWidth);
+            BuiHost::WrappedText(document.name.c_str(), textWidth, 0.0f, 1.2f);
+            BuiHost::WrappedText(authorLine.c_str(), textWidth);
+            BuiHost::WrappedText(versionLine.c_str(), textWidth);
+            BuiHost::WrappedText(statusLine.c_str(), textWidth);
             if (!document.diagnostic.empty()) {
-                Bui::WrappedText("Diagnostic:", textWidth);
-                Bui::WrappedText(document.diagnostic.c_str(), textWidth);
+                BuiHost::WrappedText("Diagnostic:", textWidth);
+                BuiHost::WrappedText(document.diagnostic.c_str(), textWidth);
             }
             if (!document.description.empty()) {
                 ImGui::NewLine();
-                Bui::WrappedText(document.description.c_str(), textWidth);
+                BuiHost::WrappedText(document.description.c_str(), textWidth);
             }
         }
         ImGui::EndChild();
@@ -389,8 +389,8 @@ struct ModMenuPresentation::State {
         if (actionCount == 0) {
             comment.Clear();
             viewport.SetCursor(DetailsX, DetailsY);
-            Bui::WrappedText("No configurable options.",
-                             Bui::GetButtonSize(Bui::BUTTON_LEVEL).x);
+            BuiHost::WrappedText("No configurable options.",
+                             BuiHost::GetButtonSize(BuiHost::BUTTON_LEVEL).x);
             return ModMenuRouteAction::None;
         }
 
@@ -419,7 +419,7 @@ struct ModMenuPresentation::State {
             ImGui::PushID(static_cast<int>(detailsAction.index()));
             ImGui::PushID(id.c_str());
             bool selected = true;
-            const bool pressed = Bui::LevelButton(label.c_str(), &selected);
+            const bool pressed = BuiHost::LevelButton(label.c_str(), &selected);
             if (ImGui::IsItemHovered() || ImGui::IsItemFocused()) {
                 if (category)
                     comment.ObserveDetailsAction(category->key, label, description);
@@ -448,12 +448,12 @@ struct ModMenuPresentation::State {
         }
 
         bool pageChanged = false;
-        if (detailsPagination.CanPrevious() && Bui::NavLeft(0.35f, 0.59f)) {
+        if (detailsPagination.CanPrevious() && BuiHost::NavLeft(0.35f, 0.59f)) {
             detailsPagination.Previous();
             focusFirstListItem = true;
             pageChanged = true;
         }
-        if (detailsPagination.CanNext() && Bui::NavRight(0.6138f, 0.59f)) {
+        if (detailsPagination.CanNext() && BuiHost::NavRight(0.6138f, 0.59f)) {
             detailsPagination.Next();
             focusFirstListItem = true;
             pageChanged = true;
@@ -468,11 +468,11 @@ struct ModMenuPresentation::State {
     void DrawKeySetting(ModMenuModel &model, const ModMenuSettingKey &key,
                         const char *label, int source) {
         bool capturing = keyCapture && *keyCapture == key;
-        ImGuiKeyChord chord = Bui::CKKeyToImGuiKey(static_cast<CKKEYBOARD>(source));
-        if (Bui::KeyButton(label, &capturing, &chord) && !capturing) {
+        ImGuiKeyChord chord = BuiHost::CKKeyToImGuiKey(static_cast<CKKEYBOARD>(source));
+        if (BuiHost::KeyButton(label, &capturing, &chord) && !capturing) {
             chord &= ~ImGuiMod_Mask_;
             model.EditSetting(
-                key, static_cast<int>(Bui::ImGuiKeyToCKKey(static_cast<ImGuiKey>(chord))));
+                key, static_cast<int>(BuiHost::ImGuiKeyToCKKey(static_cast<ImGuiKey>(chord))));
         }
 
         if (capturing)
@@ -489,10 +489,10 @@ struct ModMenuPresentation::State {
             ImGui::PushStyleColor(ImGuiCol_Text, *textColor);
 
         if (!source) {
-            ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
+            ImGui::Dummy(BuiHost::GetButtonSize(BuiHost::BUTTON_OPTION));
         } else {
             switch (setting.type) {
-            case IProperty::STRING: {
+            case PropertyType::STRING: {
                 std::string next = std::get<std::string>(*source);
                 bool changed = false;
                 if (setting.editor == BML_CONFIG_EDITOR_CHOICE &&
@@ -502,48 +502,48 @@ struct ModMenuPresentation::State {
                     int selectedIndex = selected == setting.choices.end()
                         ? 0
                         : static_cast<int>(selected - setting.choices.begin());
-                    if (Bui::RadioButton(setting.label.c_str(), &selectedIndex,
+                    if (BuiHost::RadioButton(setting.label.c_str(), &selectedIndex,
                                          setting.choices, "None")) {
                         next = setting.choices[static_cast<std::size_t>(selectedIndex)];
                         changed = true;
                     }
                 } else if (setting.editor == BML_CONFIG_EDITOR_COLOR) {
-                    const Bui::ColorPickerArea pickerArea = viewport.Area(SettingsColorPickerArea);
-                    changed = Bui::ColorStringButton(
+                    const BuiHost::ColorPickerArea pickerArea = viewport.Area(SettingsColorPickerArea);
+                    changed = BuiHost::ColorStringButton(
                         setting.label.c_str(), &next, pickerArea);
                 } else {
-                    changed = Bui::InputTextButton(setting.label.c_str(), &next);
+                    changed = BuiHost::InputTextButton(setting.label.c_str(), &next);
                 }
                 if (changed)
                     model.EditSetting(setting.key, std::move(next));
                 break;
             }
-            case IProperty::BOOLEAN: {
+            case PropertyType::BOOLEAN: {
                 bool next = std::get<bool>(*source);
                 const bool previous = next;
-                Bui::YesNoButton(setting.label.c_str(), &next);
+                BuiHost::YesNoButton(setting.label.c_str(), &next);
                 if (next != previous)
                     model.EditSetting(setting.key, next);
                 break;
             }
-            case IProperty::INTEGER: {
+            case PropertyType::INTEGER: {
                 int next = std::get<int>(*source);
-                if (Bui::InputIntButton(setting.label.c_str(), &next))
+                if (BuiHost::InputIntButton(setting.label.c_str(), &next))
                     model.EditSetting(setting.key, next);
                 break;
             }
-            case IProperty::KEY:
+            case PropertyType::KEY:
                 DrawKeySetting(model, setting.key, setting.label.c_str(), std::get<int>(*source));
                 break;
-            case IProperty::FLOAT: {
+            case PropertyType::FLOAT: {
                 float next = std::get<float>(*source);
-                if (Bui::InputFloatButton(setting.label.c_str(), &next))
+                if (BuiHost::InputFloatButton(setting.label.c_str(), &next))
                     model.EditSetting(setting.key, next);
                 break;
             }
-            case IProperty::NONE:
+            case PropertyType::NONE:
             default:
-                ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
+                ImGui::Dummy(BuiHost::GetButtonSize(BuiHost::BUTTON_OPTION));
                 break;
             }
         }
@@ -559,8 +559,8 @@ struct ModMenuPresentation::State {
         if (category.settings.empty()) {
             comment.Clear();
             viewport.SetCursor(ListX, ListY);
-            Bui::WrappedText("No settings in this category.",
-                             Bui::GetButtonSize(Bui::BUTTON_MAIN).x);
+            BuiHost::WrappedText("No settings in this category.",
+                             BuiHost::GetButtonSize(BuiHost::BUTTON_MAIN).x);
             return;
         }
 
@@ -587,13 +587,13 @@ struct ModMenuPresentation::State {
             ImGui::PopID();
         }
 
-        if (settingPagination.CanPrevious() && Bui::NavLeft()) {
+        if (settingPagination.CanPrevious() && BuiHost::NavLeft()) {
             settingPagination.Previous();
             focusFirstListItem = true;
             keyCapture.reset();
             comment.Clear();
         }
-        if (settingPagination.CanNext() && Bui::NavRight()) {
+        if (settingPagination.CanNext() && BuiHost::NavRight()) {
             settingPagination.Next();
             focusFirstListItem = true;
             keyCapture.reset();
@@ -607,15 +607,15 @@ struct ModMenuPresentation::State {
     }
 
     void DrawPendingActions(ModMenuModel &model) {
-        const float buttonWidth = Bui::GetButtonSizeInCoord(Bui::BUTTON_SMALL).x;
+        const float buttonWidth = BuiHost::GetButtonSizeInCoord(BuiHost::BUTTON_SMALL).x;
         viewport.SetCursor(0.5f - (buttonWidth + 0.04f), 0.85f);
         ImGui::BeginDisabled(!model.GetSession().CanApply());
-        if (Bui::SmallButton("Save"))
+        if (BuiHost::SmallButton("Save"))
             model.RequestApply();
         ImGui::EndDisabled();
 
         viewport.SetCursor(0.54f, 0.85f);
-        if (Bui::SmallButton("Revert"))
+        if (BuiHost::SmallButton("Revert"))
             model.RequestRevert();
 
         const char *failure = ErrorText(model);
@@ -625,9 +625,9 @@ struct ModMenuPresentation::State {
         }
     }
 
-    Bui::Pagination modPagination;
-    Bui::Pagination detailsPagination;
-    Bui::Pagination settingPagination;
+    BuiHost::Pagination modPagination;
+    BuiHost::Pagination detailsPagination;
+    BuiHost::Pagination settingPagination;
     std::optional<ModMenuOwner> observedOwner;
     std::uint64_t observedSchemaRevision = 0;
     std::uint64_t observedPageRevision = 0;
@@ -652,10 +652,10 @@ void ModMenuPresentation::Reset() {
 
 ModMenuRouteAction ModMenuPresentation::DrawModListPage(ModMenuModel &model) {
     m_State->BeginFrame();
-    Bui::Title("Mod List");
+    BuiHost::Title("Mod List");
     if (m_State->DrawModList(model))
         return ModMenuRouteAction::OpenDetails;
-    return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
+    return BuiHost::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
 }
 
 ModMenuRouteAction ModMenuPresentation::DrawDetailsPage(ModMenuModel &model) {
@@ -663,13 +663,13 @@ ModMenuRouteAction ModMenuPresentation::DrawDetailsPage(ModMenuModel &model) {
     model.SynchronizeSelected();
     const ModMenuDocument *document = model.GetSession().GetDocument();
     if (!document) {
-        Bui::Title("Mod unavailable");
+        BuiHost::Title("Mod unavailable");
         const char *failure = ErrorText(model);
         if (failure[0] != '\0') {
             DrawTextPanel(m_State->viewport, "ModError", DetailsCommentPanel,
                           "Mod unavailable", failure);
         }
-        return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
+        return BuiHost::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
     }
 
     m_State->ObserveDocument(*document);
@@ -677,7 +677,7 @@ ModMenuRouteAction ModMenuPresentation::DrawDetailsPage(ModMenuModel &model) {
     const ModMenuRouteAction action = m_State->DrawDetailsActions(model, *document);
     if (action != ModMenuRouteAction::None)
         return action;
-    return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
+    return BuiHost::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
 }
 
 ModMenuPagePresentationResult ModMenuPresentation::DrawPage(
@@ -686,13 +686,13 @@ ModMenuPagePresentationResult ModMenuPresentation::DrawPage(
     const std::string &notice) {
     m_State->BeginFrame();
     if (status != ModMenuPageStatus::Ready) {
-        Bui::Title("Page unavailable");
+        BuiHost::Title("Page unavailable");
         m_State->viewport.SetCursor(ListX, ListY);
-        Bui::WrappedText(PageStatusMessage(status),
-                         Bui::GetButtonSize(Bui::BUTTON_MAIN).x);
+        BuiHost::WrappedText(PageStatusMessage(status),
+                         BuiHost::GetButtonSize(BuiHost::BUTTON_MAIN).x);
         ModMenuPagePresentationResult result;
         result.status = status;
-        if (Bui::NavBack())
+        if (BuiHost::NavBack())
             result.navigation.action = BML_MOD_MENU_PAGE_BACK;
         return result;
     }
@@ -726,20 +726,20 @@ ModMenuPagePresentationResult ModMenuPresentation::DrawPage(
     }
 
     if (result != BML_OK) {
-        Bui::Title("Page unavailable");
+        BuiHost::Title("Page unavailable");
         m_State->viewport.SetCursor(ListX, ListY);
-        Bui::WrappedText(result == BML_ERROR_NOT_FOUND
+        BuiHost::WrappedText(result == BML_ERROR_NOT_FOUND
                              ? "This page is no longer registered."
                              : "The Mod could not draw this page.",
-                         Bui::GetButtonSize(Bui::BUTTON_MAIN).x);
+                         BuiHost::GetButtonSize(BuiHost::BUTTON_MAIN).x);
         ModMenuPagePresentationResult failed;
         failed.status = result == BML_ERROR_NOT_FOUND
             ? ModMenuPageStatus::Unavailable : ModMenuPageStatus::DrawFailed;
-        if (Bui::NavBack())
+        if (BuiHost::NavBack())
             failed.navigation.action = BML_MOD_MENU_PAGE_BACK;
         return failed;
     }
-    if (navigation.action == BML_MOD_MENU_PAGE_NONE && Bui::NavBack())
+    if (navigation.action == BML_MOD_MENU_PAGE_NONE && BuiHost::NavBack())
         navigation.action = BML_MOD_MENU_PAGE_BACK;
     return {std::move(navigation), ModMenuPageStatus::Ready};
 }
@@ -753,7 +753,7 @@ ModMenuRouteAction ModMenuPresentation::DrawSettingsPage(ModMenuModel &model) {
         ? std::get_if<ModMenuCategoryDocument>(action)
         : nullptr;
     const bool dirtyAtFrameStart = model.GetSession().IsDirty();
-    Bui::Title("Mod Options", 0.13f, 1.5f,
+    BuiHost::Title("Mod Options", 0.13f, 1.5f,
                dirtyAtFrameStart ? IM_COL32(255, 255, 128, 255) : IM_COL32_WHITE);
 
     if (document && action && category)
@@ -764,5 +764,5 @@ ModMenuRouteAction ModMenuPresentation::DrawSettingsPage(ModMenuModel &model) {
         return ModMenuRouteAction::None;
     }
 
-    return Bui::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
+    return BuiHost::NavBack() ? ModMenuRouteAction::Back : ModMenuRouteAction::None;
 }

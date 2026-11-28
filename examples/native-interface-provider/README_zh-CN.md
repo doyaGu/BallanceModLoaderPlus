@@ -2,24 +2,21 @@
 
 [English](README.md)
 
-这是一个独立的提供方工程。它会构建原生 Mod，并把共享头发布为 CMake package
-`BMLExampleValue`。
+该独立工程构建 C 协议原生 Mod，并发布名为 `BMLExampleValue` 的独立纯头文件
+CMake 包。开发包安装前缀和玩家部署目录分开：
 
-```powershell
-$generator = "Visual Studio 17 2022"
-cmake -S . -B build -G $generator -A Win32 `
-  -DBML_DIR="<BML-SDK>/lib/cmake/BML" `
-  -DVIRTOOLS_SDK_PATH="<Virtools-SDK-2.1>" `
-  -DCMAKE_INSTALL_PREFIX="<Provider-Package>"
-cmake --build build --config RelWithDebInfo
-cmake --install build --config RelWithDebInfo
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH="/path/to/BML-SDK" -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+cmake --install build --config Release --prefix "/path/to/provider-package"
 ```
 
-安装结果包括：
+产物包括 `Mods/BMLExampleValueProvider.bmodp` 与 `.bmodp.abi.json`，
+`include/BMLExample/ValueInterface.h`，以及
+`lib/cmake/BMLExampleValue/BMLExampleValueConfig.cmake` 和 targets。
+开发者拿头文件/CMake 包；玩家只需把 `Mods` 中模块及其描述复制进配套游戏的
+`ModLoader/Mods`。
 
-- `Mods/BMLExampleValueProvider.bmodp`；
-- `include/BMLExample/ValueInterface.h`；
-- `lib/cmake/BMLExampleValue/BMLExampleValueConfig.cmake` 及其 target 文件。
-
-面向开发者发布 interface package，面向玩家把 `.bmodp` 安装进 Ballance。使用方只编译
-链接 `BMLExampleValue::Interface`，不会链接提供方二进制。
+使用方链接 `BMLExampleValue::Interface`，不链接提供方二进制。
+`Definition::Dependencies` 建立运行时保留关系，消费者先卸载。
+本例只需核心 C ABI，不需要 Engine/ImGui 扩展。见[使用方](../native-interface-consumer/README_zh-CN.md)。

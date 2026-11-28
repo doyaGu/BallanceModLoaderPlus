@@ -2,7 +2,7 @@
 
 #include "Loader/ModContext.h"
 
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "Hooks/HookLifecycle.h"
 #include "Hooks/InputCursor.h"
 #include "Hooks/RenderHook.h"
@@ -15,9 +15,22 @@
 namespace {
 class ImGuiFrameCompletion {
 public:
+    explicit ImGuiFrameCompletion(ModContext &context) : m_Context(&context) {}
+
+    void FinishInput() {
+        ModContext *context = m_Context;
+        m_Context = nullptr;
+        if (context) {
+            if (auto *input = context->GetInputManager())
+                input->Process();
+        }
+    }
     ~ImGuiFrameCompletion() {
+        FinishInput();
         Overlay::ImGuiEndFrame();
     }
+private:
+    ModContext *m_Context;
 };
 } // namespace
 
@@ -108,8 +121,10 @@ void ModManager::SynchronizeUiFonts() {
 }
 
 bool ModManager::StartRuntime() {
-    if (!m_ModContext || m_RenderContext)
-        return m_RenderContext != nullptr;
+    if (!m_ModContext || !m_ModContext->IsInited())
+        return false;
+    if (m_RenderContext)
+        return true;
 
     CKRenderContext *renderContext = m_Context->GetPlayerRenderContext();
     if (!renderContext)
@@ -140,6 +155,9 @@ bool ModManager::StartRuntime() {
         return false;
     }
 
+    if (auto *input = m_ModContext->GetInputManager())
+        DeferInputPostProcess(*input, true);
+
     SynchronizeUiFonts();
     Overlay::ImGuiNewFrame();
     return true;
@@ -148,6 +166,9 @@ bool ModManager::StartRuntime() {
 bool ModManager::StopRuntime() {
     if (!m_ModContext)
         return true;
+
+    if (auto *input = m_ModContext->GetInputManager())
+        DeferInputPostProcess(*input, false);
 
     bool stopped = true;
     if (m_RenderContext) {
@@ -175,10 +196,12 @@ CKERROR ModManager::PostProcess() {
     // context, but the physics, mod, and input work below is not drawing and still has to
     // run on a frame that has no context to draw into.
     Overlay::ImGuiContextScope scope;
-    ImGuiFrameCompletion frameCompletion;
+    ImGuiFrameCompletion frameCompletion(*m_ModContext);
 
+
+#if !BML_RUNTIME_SDL
     m_ModContext->RunPhysicsPostProcess();
-
+#endif
     m_ModContext->ProcessVirtoolsFrame();
 
     m_ModContext->OnProcess();
@@ -194,7 +217,7 @@ CKERROR ModManager::PostProcess() {
         SetOverlayCursorVisible(false);
     }
 
-    inputHook->Process();
+    frameCompletion.FinishInput();
 #if BML_ENABLE_UI_AUTOMATION
     // Test actions can reset or exit Virtools. Run them only after Render and
     // after the final per-frame pointer use, never from inside ImGuiRender().

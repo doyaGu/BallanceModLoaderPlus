@@ -85,6 +85,14 @@ std::uint64_t Sessions::RegisterOwner(std::string ownerId) {
     return generation;
 }
 
+void Sessions::StopOwnerAdmission(const std::string &ownerId) noexcept {
+    if(std::this_thread::get_id()!=m_Thread)return;
+    auto owner=m_Owners.find(ownerId);
+    if(owner==m_Owners.end()||owner->second.State!=OwnerState::Active)return;
+    owner->second.State=OwnerState::Retiring;
+    for(auto &[id,session]:m_Sessions)if(session.OwnerId==ownerId)session.Admission->Close();
+}
+
 void Sessions::RetireOwner(const std::string &ownerId) {
     if (std::this_thread::get_id() != m_Thread)
         return;

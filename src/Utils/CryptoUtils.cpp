@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 #pragma comment(lib, "bcrypt.lib")
@@ -49,6 +50,10 @@ namespace utils {
     bool HmacSha256(const uint8_t *key, size_t keyLength,
                     const uint8_t *data, size_t dataLength,
                     uint8_t outDigest[32]) {
+        if (!outDigest || (!key && keyLength) || (!data && dataLength) ||
+            keyLength > std::numeric_limits<ULONG>::max() ||
+            dataLength > std::numeric_limits<ULONG>::max())
+            return false;
         BCRYPT_ALG_HANDLE algorithm = nullptr;
         BCRYPT_HASH_HANDLE hash = nullptr;
 
@@ -85,7 +90,7 @@ namespace utils {
     }
 
     bool Sha256(const uint8_t *data, size_t dataLength, uint8_t outDigest[32]) {
-        if (!outDigest || (!data && dataLength > 0)) {
+        if (!outDigest || (!data && dataLength) || dataLength > std::numeric_limits<ULONG>::max()) {
             return false;
         }
 
@@ -253,7 +258,7 @@ namespace utils {
                     const uint8_t *salt, size_t saltLength,
                     const uint8_t *info, size_t infoLength,
                     uint8_t *outBytes, size_t outLength) {
-        if (!outBytes) {
+        if (!outBytes || (!ikm && ikmLength) || (!salt && saltLength) || (!info && infoLength)) {
             return false;
         }
 

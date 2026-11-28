@@ -1,0 +1,78 @@
+if(NOT DEFINED BALLANCE_MOD_CMAKE)
+    get_filename_component(SOURCE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+    set(BALLANCE_MOD_CMAKE "${SOURCE_ROOT}/mods/cmake/BallanceMod.cmake")
+endif()
+if(NOT DEFINED WORK_ROOT OR WORK_ROOT STREQUAL "")
+    message(FATAL_ERROR "NativeModResourcePackageTest needs WORK_ROOT")
+endif()
+file(TO_CMAKE_PATH "${BALLANCE_MOD_CMAKE}" BALLANCE_MOD_CMAKE)
+
+function(run)
+    execute_process(COMMAND ${ARGV} RESULT_VARIABLE result
+            OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "Command failed: ${ARGV}\n${output}\n${error}")
+    endif()
+endfunction()
+
+foreach(PROFILE sdl)
+    set(source "${WORK_ROOT}/${PROFILE}/source")
+    set(build "${WORK_ROOT}/${PROFILE}/build")
+    set(extract "${WORK_ROOT}/${PROFILE}/extract")
+    file(REMOVE_RECURSE "${extract}")
+    file(MAKE_DIRECTORY "${source}/3D Entities" "${extract}")
+    file(WRITE "${source}/3D Entities/测试.txt" "resource payload\n")
+    file(WRITE "${source}/Mod.cpp" [=[
+#ifdef _WIN32
+extern "C" __declspec(dllexport) int FixtureEntry() { return 7; }
+#else
+extern "C" int FixtureEntry() { return 7; }
+#endif
+]=])
+    # Supply the SDK's artifact contract independently of engine/compiler ABI
+    # checks. This test exercises the resource packager and its consumers.
+    set(project [=[
+cmake_minimum_required(VERSION 3.25)
+project(ResourcePackageFixture LANGUAGES CXX)
+add_library(BML::Engine INTERFACE IMPORTED)
+add_library(BML::ImGui INTERFACE IMPORTED)
+set(BML_RUNTIME "@PROFILE@")
+function(bml_add_mod target)
+    add_library(${target} MODULE ${ARGN})
+    set_target_properties(${target} PROPERTIES PREFIX "" SUFFIX ".bmodp")
+    file(GENERATE OUTPUT "$<TARGET_FILE:${target}>.abi.json"
+            CONTENT "{\"schema\":1,\"runtime\":\"sdl\",\"token\":\"fixture\"}\n")
+endfunction()
+include("@BALLANCE_MOD_CMAKE@")
+ballance_add_mod(Fixture SOURCES Mod.cpp RESOURCES "3D Entities")
+]=])
+    string(CONFIGURE "${project}" project @ONLY)
+    file(WRITE "${source}/CMakeLists.txt" "${project}")
+    set(generator_args)
+    if(DEFINED GENERATOR AND NOT GENERATOR STREQUAL "")
+        list(APPEND generator_args -G "${GENERATOR}")
+    endif()
+    if(DEFINED GENERATOR_PLATFORM AND NOT GENERATOR_PLATFORM STREQUAL "")
+        list(APPEND generator_args -A "${GENERATOR_PLATFORM}")
+    endif()
+    run("${CMAKE_COMMAND}" -S "${source}" -B "${build}"
+            ${generator_args} -DCMAKE_BUILD_TYPE=Release)
+    run("${CMAKE_COMMAND}" --build "${build}" --config Release --target FixturePackage)
+    set(archive "${build}/Release/Fixture.zip")
+    run("${CMAKE_COMMAND}" -E chdir "${extract}" "${CMAKE_COMMAND}" -E tar xf "${archive}")
+    if(NOT EXISTS "${extract}/Fixture.bmodp")
+        message(FATAL_ERROR "${PROFILE}: package is missing the native module")
+    endif()
+    file(READ "${extract}/3D Entities/测试.txt" resource)
+    if(NOT resource STREQUAL "resource payload\n")
+        message(FATAL_ERROR "${PROFILE}: resource paths or bytes changed")
+    endif()
+    if(NOT EXISTS "${extract}/Fixture.bmodp.abi.json")
+        message(FATAL_ERROR "SDL resource ZIP is missing the native ABI descriptor")
+    endif()
+    file(READ "${extract}/Fixture.bmodp.abi.json" abi)
+    if(NOT abi STREQUAL "{\"schema\":1,\"runtime\":\"sdl\",\"token\":\"fixture\"}\n")
+        message(FATAL_ERROR "SDL package changed the SDK ABI descriptor")
+    endif()
+endforeach()
+message(STATUS "SDL ABI sidecar and resource package layout passed")

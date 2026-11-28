@@ -1,583 +1,101 @@
 #include "ScriptModContextView.h"
-
-#include <angelscript.h>
-
-#include "BML/IMod.h"
-#include "BML/ILogger.h"
-#include "Loader/ModContext.h"
-#include "ScriptFacadeAccess.h"
-#include "ScriptFunctionSupport.h"
+#include "ScriptRuntimeScope.h"
 #include "ScriptMod.h"
-#include "ScriptModRuntime.h"
 
 namespace BML {
-
-ScriptModContextView::ScriptModContextView(ModContext *context, ScriptMod *owner)
-    : m_Context(context), m_Owner(owner) {}
-
-std::string ScriptModContextView::GetModId() const {
-    return m_Owner ? m_Owner->GetID() : "";
-}
-
-std::string ScriptModContextView::GetModName() const {
-    return m_Owner ? m_Owner->GetName() : "";
-}
-
-void ScriptModContextView::LogInfo(const std::string &message) const {
-    if (m_Owner)
-        m_Owner->LogInfo(message);
-}
-
-void ScriptModContextView::LogWarn(const std::string &message) const {
-    if (m_Owner)
-        m_Owner->LogWarn(message);
-}
-
-void ScriptModContextView::LogError(const std::string &message) const {
-    if (m_Owner)
-        m_Owner->LogError(message);
-}
-
 bool ScriptModContextView::IsReloading() const {
-    return m_Owner && m_Owner->GetReloadPhase() != ScriptModReloadPhase::None;
+    ScriptRuntimeAccess access(*this);
+    return access.Code() == BML_OK && access.Owner().GetReloadPhase() != ScriptModReloadPhase::None;
 }
 
 ScriptModReloadPhase ScriptModContextView::GetReloadPhase() const {
-    return m_Owner ? m_Owner->GetReloadPhase() : ScriptModReloadPhase::None;
+    ScriptRuntimeAccess access(*this);
+    return access.Code() == BML_OK ? access.Owner().GetReloadPhase() : ScriptModReloadPhase::None;
 }
 
 unsigned int ScriptModContextView::GetReloadAttemptId() const {
-    return m_Owner ? m_Owner->GetReloadAttemptId() : 0;
+    ScriptRuntimeAccess access(*this);
+    return access.Code() == BML_OK ? access.Owner().GetReloadAttemptId() : 0;
 }
 
 unsigned int ScriptModContextView::GetModGeneration() const {
-    return m_Owner ? m_Owner->GetModGeneration() : 0;
+    ScriptRuntimeAccess access(*this);
+    return access.Code() == BML_OK ? access.Owner().GetModGeneration() : 0;
 }
 
 unsigned int ScriptModContextView::GetRuntimeGeneration() const {
-    return m_Owner ? m_Owner->GetRuntimeGeneration() : 0;
-}
-
-CKContext *ScriptModContextView::GetCKContext() const {
-    return m_Context ? m_Context->GetCKContext() : nullptr;
-}
-
-CKRenderContext *ScriptModContextView::GetRenderContext() const {
-    return m_Context ? m_Context->GetRenderContext() : nullptr;
-}
-
-CKAttributeManager *ScriptModContextView::GetAttributeManager() const {
-    return m_Context ? m_Context->GetAttributeManager() : nullptr;
-}
-
-CKBehaviorManager *ScriptModContextView::GetBehaviorManager() const {
-    return m_Context ? m_Context->GetBehaviorManager() : nullptr;
-}
-
-CKCollisionManager *ScriptModContextView::GetCollisionManager() const {
-    return m_Context ? m_Context->GetCollisionManager() : nullptr;
-}
-
-InputHook *ScriptModContextView::GetInputManager() const {
-    return m_Context ? m_Context->GetInputManager() : nullptr;
-}
-
-CKMessageManager *ScriptModContextView::GetMessageManager() const {
-    return m_Context ? m_Context->GetMessageManager() : nullptr;
-}
-
-CKPathManager *ScriptModContextView::GetPathManager() const {
-    return m_Context ? m_Context->GetPathManager() : nullptr;
-}
-
-CKParameterManager *ScriptModContextView::GetParameterManager() const {
-    return m_Context ? m_Context->GetParameterManager() : nullptr;
-}
-
-CKRenderManager *ScriptModContextView::GetRenderManager() const {
-    return m_Context ? m_Context->GetRenderManager() : nullptr;
-}
-
-CKSoundManager *ScriptModContextView::GetSoundManager() const {
-    return m_Context ? m_Context->GetSoundManager() : nullptr;
-}
-
-CKTimeManager *ScriptModContextView::GetTimeManager() const {
-    return m_Context ? m_Context->GetTimeManager() : nullptr;
-}
-
-bool ScriptModContextView::IsInGame() const {
-    return m_Context && m_Context->IsIngame();
-}
-
-bool ScriptModContextView::IsInLevel() const {
-    return m_Context && m_Context->IsInLevel();
-}
-
-bool ScriptModContextView::IsPaused() const {
-    return m_Context && m_Context->IsPaused();
-}
-
-bool ScriptModContextView::IsPlaying() const {
-    return m_Context && m_Context->IsPlaying();
-}
-
-bool ScriptModContextView::IsCheatEnabled() const {
-    return m_Context && m_Context->IsCheatEnabled();
-}
-
-void ScriptModContextView::EnableCheat(bool enable) const {
-    if (m_Context)
-        m_Context->EnableCheat(enable);
-}
-
-void ScriptModContextView::ExitGame() const {
-    if (m_Context)
-        m_Context->ExitGame();
-}
-
-float ScriptModContextView::GetSRScore() const {
-    return m_Context ? m_Context->GetSRScore() : 0.0f;
-}
-
-int ScriptModContextView::GetHSScore() const {
-    return m_Context ? m_Context->GetHSScore() : 0;
-}
-
-std::string ScriptModContextView::GetDirectoryUtf8(int type) const {
-    if (!m_Context)
-        return "";
-    const char *directory = m_Context->GetDirectoryUtf8(static_cast<DirectoryType>(type));
-    return directory ? directory : "";
-}
-
-float ScriptModContextView::GetTimeMs() const {
-    return ScriptFacadeAccess::GetTimeMs(GetTimeManager());
-}
-
-float ScriptModContextView::GetAbsoluteTimeMs() const {
-    return ScriptFacadeAccess::GetAbsoluteTimeMs(GetTimeManager());
-}
-
-float ScriptModContextView::GetDeltaTimeMs() const {
-    return ScriptFacadeAccess::GetDeltaTimeMs(GetTimeManager());
-}
-
-unsigned int ScriptModContextView::GetFrameCount() const {
-    return ScriptFacadeAccess::GetFrameCount(GetTimeManager());
-}
-
-bool ScriptModContextView::IsObjectValid(CKObject *object) const {
-    return ScriptFacadeAccess::IsObjectValid(GetCKContext(), object);
-}
-
-int ScriptModContextView::GetObjectId(CKObject *object) const {
-    return ScriptFacadeAccess::GetObjectId(object);
-}
-
-std::string ScriptModContextView::GetObjectName(CKObject *object) const {
-    return ScriptFacadeAccess::GetObjectName(object);
-}
-
-int ScriptModContextView::GetObjectClassId(CKObject *object) const {
-    return ScriptFacadeAccess::GetObjectClassId(object);
-}
-
-bool ScriptModContextView::IsObjectVisible(CKObject *object) const {
-    return ScriptFacadeAccess::IsObjectVisible(object);
-}
-
-bool ScriptModContextView::IsObjectDynamic(CKObject *object) const {
-    return ScriptFacadeAccess::IsObjectDynamic(object);
-}
-
-int ScriptModContextView::GetBeObjectPriority(CKBeObject *object) const {
-    return ScriptFacadeAccess::GetBeObjectPriority(object);
-}
-
-int ScriptModContextView::GetBeObjectScriptCount(CKBeObject *object) const {
-    return ScriptFacadeAccess::GetBeObjectScriptCount(object);
-}
-
-int ScriptModContextView::GetBeObjectAttributeCount(CKBeObject *object) const {
-    return ScriptFacadeAccess::GetBeObjectAttributeCount(object);
-}
-
-VxVector ScriptModContextView::Get3dEntityPosition(CK3dEntity *entity) const {
-    return ScriptFacadeAccess::Get3dEntityPosition(entity);
-}
-
-VxVector ScriptModContextView::Get3dEntityScale(CK3dEntity *entity, bool local) const {
-    return ScriptFacadeAccess::Get3dEntityScale(entity, local);
-}
-
-int ScriptModContextView::Get3dEntityChildCount(CK3dEntity *entity) const {
-    return ScriptFacadeAccess::Get3dEntityChildCount(entity);
-}
-
-CK3dEntity *ScriptModContextView::Get3dEntityParent(CK3dEntity *entity) const {
-    return ScriptFacadeAccess::Get3dEntityParent(entity);
-}
-
-CKDataArray *ScriptModContextView::GetArrayByName(const std::string &name) const {
-    return m_Context ? m_Context->GetArrayByName(name.c_str()) : nullptr;
-}
-
-CKGroup *ScriptModContextView::GetGroupByName(const std::string &name) const {
-    return m_Context ? m_Context->GetGroupByName(name.c_str()) : nullptr;
-}
-
-CKMaterial *ScriptModContextView::GetMaterialByName(const std::string &name) const {
-    return m_Context ? m_Context->GetMaterialByName(name.c_str()) : nullptr;
-}
-
-CKMesh *ScriptModContextView::GetMeshByName(const std::string &name) const {
-    return m_Context ? m_Context->GetMeshByName(name.c_str()) : nullptr;
-}
-
-CK2dEntity *ScriptModContextView::Get2dEntityByName(const std::string &name) const {
-    return m_Context ? m_Context->Get2dEntityByName(name.c_str()) : nullptr;
-}
-
-CK3dEntity *ScriptModContextView::Get3dEntityByName(const std::string &name) const {
-    return m_Context ? m_Context->Get3dEntityByName(name.c_str()) : nullptr;
-}
-
-CK3dObject *ScriptModContextView::Get3dObjectByName(const std::string &name) const {
-    return m_Context ? m_Context->Get3dObjectByName(name.c_str()) : nullptr;
-}
-
-CKCamera *ScriptModContextView::GetCameraByName(const std::string &name) const {
-    return m_Context ? m_Context->GetCameraByName(name.c_str()) : nullptr;
-}
-
-CKTargetCamera *ScriptModContextView::GetTargetCameraByName(const std::string &name) const {
-    return m_Context ? m_Context->GetTargetCameraByName(name.c_str()) : nullptr;
-}
-
-CKLight *ScriptModContextView::GetLightByName(const std::string &name) const {
-    return m_Context ? m_Context->GetLightByName(name.c_str()) : nullptr;
-}
-
-CKTargetLight *ScriptModContextView::GetTargetLightByName(const std::string &name) const {
-    return m_Context ? m_Context->GetTargetLightByName(name.c_str()) : nullptr;
-}
-
-CKSound *ScriptModContextView::GetSoundByName(const std::string &name) const {
-    return m_Context ? m_Context->GetSoundByName(name.c_str()) : nullptr;
-}
-
-CKTexture *ScriptModContextView::GetTextureByName(const std::string &name) const {
-    return m_Context ? m_Context->GetTextureByName(name.c_str()) : nullptr;
-}
-
-CKBehavior *ScriptModContextView::GetScriptByName(const std::string &name) const {
-    return m_Context ? m_Context->GetScriptByName(name.c_str()) : nullptr;
-}
-
-void ScriptModContextView::SetIC(CKBeObject *object, bool hierarchy) const {
-    if (m_Context && object)
-        m_Context->SetIC(object, hierarchy);
-}
-
-void ScriptModContextView::RestoreIC(CKBeObject *object, bool hierarchy) const {
-    if (m_Context && object)
-        m_Context->RestoreIC(object, hierarchy);
-}
-
-void ScriptModContextView::Show(CKBeObject *object, CK_OBJECT_SHOWOPTION show, bool hierarchy) const {
-    if (m_Context && object)
-        m_Context->Show(object, show, hierarchy);
-}
-
-ScriptTimerRef *ScriptModContextView::AddTimer(asIScriptObject *timer) const {
-    if (m_Owner)
-        return m_Owner->AddScriptTimer(timer);
-    return nullptr;
-}
-
-ScriptTimerRef *ScriptModContextView::SetTimeoutTicks(unsigned int delayTicks,
-                                                      asIScriptFunction *callback,
-                                                      const std::string &name) const {
-    return m_Owner ? m_Owner->AddScriptTimeoutTicks(delayTicks, callback, name) : nullptr;
-}
-
-ScriptTimerRef *ScriptModContextView::SetTimeout(float delayMs,
-                                                 asIScriptFunction *callback,
-                                                 const std::string &name) const {
-    return m_Owner ? m_Owner->AddScriptTimeoutMs(delayMs, callback, name) : nullptr;
-}
-
-ScriptTimerRef *ScriptModContextView::SetIntervalTicks(unsigned int delayTicks,
-                                                       asIScriptFunction *callback,
-                                                       const std::string &name) const {
-    return m_Owner ? m_Owner->AddScriptIntervalTicks(delayTicks, callback, name) : nullptr;
-}
-
-ScriptTimerRef *ScriptModContextView::SetInterval(float delayMs,
-                                                  asIScriptFunction *callback,
-                                                  const std::string &name) const {
-    return m_Owner ? m_Owner->AddScriptIntervalMs(delayMs, callback, name) : nullptr;
-}
-
-ScriptCommandRef *ScriptModContextView::RegisterCommand(asIScriptObject *command) const {
-    if (m_Owner)
-        return m_Owner->RegisterScriptCommand(command);
-    return nullptr;
-}
-
-ScriptCommandRef *ScriptModContextView::RegisterCommand(const ScriptCommandDefinition &definition,
-                                                        asIScriptFunction *execute,
-                                                        asIScriptFunction *complete) const {
-    return m_Owner ? m_Owner->RegisterScriptCommand(definition, execute, complete) : nullptr;
-}
-
-bool ScriptModContextView::UnregisterCommand(const std::string &name) const {
-    return m_Owner && m_Owner->UnregisterScriptCommand(name);
-}
-
-ScriptMenuPageRef *ScriptModContextView::RegisterMenuPage(
-    const ScriptMenuPageDefinition &definition,
-    asIScriptFunction *draw, asIScriptFunction *enter,
-    asIScriptFunction *leave) const {
-    return m_Owner ? m_Owner->RegisterScriptMenuPage(
-        definition, draw, enter, leave) : nullptr;
-}
-
-bool ScriptModContextView::UnregisterMenuPage(const std::string &id) const {
-    return m_Owner && m_Owner->UnregisterScriptMenuPage(id);
+    ScriptRuntimeAccess access(*this);
+    return access.Code() == BML_OK ? access.Owner().GetRuntimeGeneration() : 0;
 }
 
 ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(asIScriptObject *request) const {
-    if (m_Owner)
-        return m_Owner->RequestScriptDataShare(request);
+    ScriptRuntimeAccess access(*this);
+    if (access.Code() == BML_OK)
+        return access.Owner().RequestScriptDataShare(request);
     return nullptr;
 }
 
-ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(const std::string &key,
-                                                                  int type,
+ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(const std::string &key, int type,
                                                                   asIScriptFunction *callback,
                                                                   const std::string &name) const {
-    return m_Owner ? m_Owner->RequestScriptDataShare(key, type, callback, name) : nullptr;
-}
-
-int ScriptModContextView::IsImcRpcAvailable(const std::string &route,
-                                            bool &available) const {
-    available = false;
-    return m_Owner
-               ? m_Owner->IsScriptImcRpcAvailable(route, available)
-               : BML_ERROR_INVALID_HANDLE;
-}
-
-ScriptImcRequestRef *ScriptModContextView::CallImc(
-    const std::string &route, const std::string &requestPayload,
-    const std::string &responsePayload, const ScriptImcRecord &request,
-    asIScriptFunction *callback, unsigned int timeoutMs) const {
-    return m_Owner
-               ? m_Owner->CallScriptImc(route, requestPayload, responsePayload,
-                                        request, callback, timeoutMs)
+    ScriptRuntimeAccess access(*this);
+    return access.Code() == BML_OK
+               ? access.Owner().RequestScriptDataShare(key, type, callback, name)
                : nullptr;
 }
 
-ScriptImcSubscriptionRef *ScriptModContextView::SubscribeImc(
-    const std::string &topic, const std::string &payload,
-    asIScriptFunction *callback, unsigned int capacity) const {
-    return m_Owner
-               ? m_Owner->SubscribeScriptImc(topic, payload, callback, capacity)
-                 : nullptr;
+int ScriptModContextView::IsImcRpcAvailable(const std::string &route, bool &available) const {
+    ScriptRuntimeAccess access(*this);
+    available = false;
+    return access.Code() == BML_OK ? access.Owner().IsScriptImcRpcAvailable(route, available)
+                                   : access.Code();
 }
 
-int ScriptModContextView::PublishImc(const std::string &topic,
-                                     const std::string &payload,
+ScriptImcRequestRef *
+ScriptModContextView::CallImc(const std::string &route, const std::string &requestPayload,
+                              const std::string &responsePayload, const ScriptImcRecord &request,
+                              asIScriptFunction *callback, unsigned int timeoutMs) const {
+    ScriptRuntimeAccess access(*this);
+    return access.Code() == BML_OK
+               ? access.Owner().CallScriptImc(route, requestPayload, responsePayload, request,
+                                              callback, timeoutMs)
+               : nullptr;
+}
+
+ScriptImcSubscriptionRef *ScriptModContextView::SubscribeImc(const std::string &topic,
+                                                             const std::string &payload,
+                                                             asIScriptFunction *callback,
+                                                             unsigned int capacity) const {
+    ScriptRuntimeAccess access(*this);
+    return access.Code() == BML_OK
+               ? access.Owner().SubscribeScriptImc(topic, payload, callback, capacity)
+               : nullptr;
+}
+
+int ScriptModContextView::PublishImc(const std::string &topic, const std::string &payload,
                                      const ScriptImcRecord &message,
                                      std::uint64_t &delivered) const {
-    if (!m_Owner) {
+    ScriptRuntimeAccess access(*this);
+    if (access.Code() != BML_OK) {
         delivered = 0;
-        return BML_ERROR_INVALID_HANDLE;
+        return access.Code();
     }
-    return m_Owner->PublishScriptImc(topic, payload, message, delivered);
+    return access.Owner().PublishScriptImc(topic, payload, message, delivered);
 }
 
-int ScriptModContextView::GetImcSubscriberCount(
-    const std::string &topic, std::uint64_t &count) const {
-    if (!m_Owner) {
+int ScriptModContextView::GetImcSubscriberCount(const std::string &topic,
+                                                std::uint64_t &count) const {
+    ScriptRuntimeAccess access(*this);
+    if (access.Code() != BML_OK) {
         count = 0;
-        return BML_ERROR_INVALID_HANDLE;
+        return access.Code();
     }
-    return m_Owner->GetScriptImcSubscriberCount(topic, count);
+    return access.Owner().GetScriptImcSubscriberCount(topic, count);
 }
 
 ScriptImcProviderRef *ScriptModContextView::OpenImcProvider() const {
-    return m_Owner ? m_Owner->OpenScriptImcProvider() : nullptr;
-}
-
-ScriptHookBlockRef *ScriptModContextView::CreateHookBlock(CKBehavior *ownerScript,
-                                                          asIScriptFunction *callback,
-                                                          const std::string &name,
-                                                          int inputCount,
-                                                          int outputCount) const {
-    return m_Owner ? m_Owner->CreateScriptHookBlock(ownerScript, callback, name, inputCount, outputCount) : nullptr;
-}
-
-ScriptHookBlockRef *ScriptModContextView::InsertHookBlockAfter(CKBehavior *ownerScript,
-                                                               CKBehavior *source,
-                                                               asIScriptFunction *callback,
-                                                               const std::string &name,
-                                                               int sourceOutput,
-                                                               int targetInput) const {
-    return m_Owner ? m_Owner->InsertScriptHookBlockAfter(ownerScript, source, callback, name, sourceOutput, targetInput) : nullptr;
-}
-
-ScriptHookBlockRef *ScriptModContextView::InsertHookBlockBefore(CKBehavior *ownerScript,
-                                                                CKBehavior *target,
-                                                                asIScriptFunction *callback,
-                                                                const std::string &name,
-                                                                int sourceOutput,
-                                                                int targetInput) const {
-    return m_Owner ? m_Owner->InsertScriptHookBlockBefore(ownerScript, target, callback, name, sourceOutput, targetInput) : nullptr;
-}
-
-ScriptHookBlockRef *ScriptModContextView::InsertHookBlockBetween(CKBehavior *ownerScript,
-                                                                 CKBehavior *source,
-                                                                 CKBehavior *target,
-                                                                 asIScriptFunction *callback,
-                                                                 const std::string &name,
-                                                                 int sourceOutput,
-                                                                 int targetInput) const {
-    return m_Owner ? m_Owner->InsertScriptHookBlockBetween(ownerScript, source, target, callback, name, sourceOutput, targetInput) : nullptr;
-}
-
-bool ScriptModContextView::RegisterBallType(const std::string &ballFile,
-                                            const std::string &ballId,
-                                            const std::string &ballName,
-                                            const std::string &objName,
-                                            float friction,
-                                            float elasticity,
-                                            float mass,
-                                            const std::string &collGroup,
-                                            float linearDamp,
-                                            float rotDamp,
-                                            float force,
-                                            float radius) const {
-    return m_Owner && m_Owner->RegisterScriptBallType(ballFile, ballId, ballName, objName, friction, elasticity, mass,
-                                                      collGroup, linearDamp, rotDamp, force, radius);
-}
-
-bool ScriptModContextView::RegisterFloorType(const std::string &floorName,
-                                             float friction,
-                                             float elasticity,
-                                             float mass,
-                                             const std::string &collGroup,
-                                             bool enableColl) const {
-    return m_Owner && m_Owner->RegisterScriptFloorType(floorName, friction, elasticity, mass, collGroup, enableColl);
-}
-
-bool ScriptModContextView::RegisterModulBall(const std::string &modulName,
-                                             bool fixed,
-                                             float friction,
-                                             float elasticity,
-                                             float mass,
-                                             const std::string &collGroup,
-                                             bool frozen,
-                                             bool enableColl,
-                                             bool calcMassCenter,
-                                             float linearDamp,
-                                             float rotDamp,
-                                             float radius) const {
-    return m_Owner && m_Owner->RegisterScriptModulBall(modulName, fixed, friction, elasticity, mass, collGroup,
-                                                       frozen, enableColl, calcMassCenter, linearDamp, rotDamp, radius);
-}
-
-bool ScriptModContextView::RegisterModulConvex(const std::string &modulName,
-                                               bool fixed,
-                                               float friction,
-                                               float elasticity,
-                                               float mass,
-                                               const std::string &collGroup,
-                                               bool frozen,
-                                               bool enableColl,
-                                               bool calcMassCenter,
-                                               float linearDamp,
-                                               float rotDamp) const {
-    return m_Owner && m_Owner->RegisterScriptModulConvex(modulName, fixed, friction, elasticity, mass, collGroup,
-                                                         frozen, enableColl, calcMassCenter, linearDamp, rotDamp);
-}
-
-bool ScriptModContextView::RegisterTrafo(const std::string &modulName) const {
-    return m_Owner && m_Owner->RegisterScriptTrafo(modulName);
-}
-
-bool ScriptModContextView::RegisterModul(const std::string &modulName) const {
-    return m_Owner && m_Owner->RegisterScriptModul(modulName);
-}
-
-std::string ScriptModContextView::GetModRootUtf8() const {
-    return m_Owner ? m_Owner->GetRootDirectoryUtf8() : "";
-}
-
-std::string ScriptModContextView::ResolveModPathUtf8(const std::string &relativePath) const {
-    return m_Owner ? m_Owner->ResolveResourcePathUtf8(relativePath) : "";
-}
-
-bool ScriptModContextView::ModFileExistsUtf8(const std::string &relativePath) const {
-    return m_Owner && m_Owner->ModFileExistsUtf8(relativePath);
-}
-
-bool ScriptModContextView::ModDirectoryExistsUtf8(const std::string &relativePath) const {
-    return m_Owner && m_Owner->ModDirectoryExistsUtf8(relativePath);
-}
-
-std::string ScriptModContextView::ReadModTextFileUtf8(const std::string &relativePath,
-                                                      const std::string &defaultValue) const {
-    return m_Owner ? m_Owner->ReadModTextFileUtf8(relativePath, defaultValue) : defaultValue;
-}
-
-int ScriptModContextView::GetCommandCount() const {
-    return m_Context ? m_Context->GetCommandCount() : 0;
-}
-
-std::string ScriptModContextView::GetCommandName(int index) const {
-    CommandContext::CommandInfo info;
-    return m_Context && m_Context->GetCommandInfo(index, info) ? info.Name : "";
-}
-
-std::string ScriptModContextView::GetCommandAlias(int index) const {
-    CommandContext::CommandInfo info;
-    return m_Context && m_Context->GetCommandInfo(index, info) ? info.Alias : "";
-}
-
-std::string ScriptModContextView::GetCommandDescription(int index) const {
-    CommandContext::CommandInfo info;
-    return m_Context && m_Context->GetCommandInfo(index, info) ? info.Description : "";
-}
-
-bool ScriptModContextView::HasCommand(const std::string &name) const {
-    CommandContext::CommandInfo info;
-    return m_Context && m_Context->FindCommandInfo(name.c_str(), info);
-}
-
-bool ScriptModContextView::IsCommandCheat(const std::string &name) const {
-    CommandContext::CommandInfo info;
-    return m_Context && m_Context->FindCommandInfo(name.c_str(), info) && info.Cheat;
-}
-
-int ScriptModContextView::GetGlobalModCount() const {
-    return m_Context ? m_Context->GetModCount() : 0;
-}
-
-std::string ScriptModContextView::GetGlobalModId(int index) const {
-    IMod *mod = m_Context ? m_Context->GetMod(index) : nullptr;
-    return mod ? mod->GetID() : "";
-}
-
-void ScriptModContextView::ExecuteCommand(const std::string &command) const {
-    if (m_Context)
-        m_Context->ExecuteCommand(command.c_str());
-}
-
-void ScriptModContextView::SkipRenderForNextTick() const {
-    if (m_Context)
-        m_Context->SkipRenderForNextTick();
+    ScriptRuntimeAccess access(*this);
+    return access.Code() == BML_OK ? access.Owner().OpenScriptImcProvider() : nullptr;
 }
 
 } // namespace BML

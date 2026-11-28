@@ -25,21 +25,27 @@ void Logger::Error(const char *fmt, ...) {}
 void Logger::Log(const char *, const char *, va_list) {}
 
 // Simple test command
-class TestCommand : public ICommand {
+class TestCommand {
 public:
     explicit TestCommand(const char *name, const char *alias = "")
         : m_Name(name), m_Alias(alias) {}
 
-    std::string GetName() override { return m_Name; }
-    std::string GetAlias() override { return m_Alias; }
-    std::string GetDescription() override { return "Test command"; }
-    bool IsCheat() override { return m_Cheat; }
+    std::string GetName() { return m_Name; }
+
+    std::string GetAlias() { return m_Alias; }
+
+    std::string GetDescription() { return "Test command"; }
+
+    bool IsCheat() { return m_Cheat; }
     void SetCheat(bool cheat) { m_Cheat = cheat; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override {
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args) {
         m_LastArgs = args;
         m_ExecuteCount++;
     }
-    const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &) override {
+
+    const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                    const std::vector<std::string> &) {
         return {};
     }
 
@@ -71,7 +77,7 @@ protected:
         return cmd;
     }
 
-    bool Register(ICommand *command, const void *registrar = nullptr) {
+    bool Register(TestCommand *command, const void *registrar = nullptr) {
         return ctx->RegisterCommand(registrar ? registrar : this, command);
     }
 
@@ -128,7 +134,7 @@ TEST_F(CommandContextTest, InvocationUsesRegisteredMetadataSnapshot) {
 
     BML::CommandContext::CommandCall call;
     ASSERT_TRUE(ctx->AcquireCommand("TP", call));
-    EXPECT_EQ(command, call.Command);
+    EXPECT_EQ(command, call.Command->UserData);
     EXPECT_TRUE(call.Info.Cheat);
 }
 
@@ -169,7 +175,7 @@ TEST_F(CommandContextTest, ExtendedMetadataAndEnabledStateLiveInRegistry) {
 
     BML::CommandContext::CommandCall call;
     ASSERT_TRUE(ctx->AcquireCommand("tp", call));
-    EXPECT_EQ(command, call.Command);
+    EXPECT_EQ(command, call.Command->UserData);
     EXPECT_EQ(registered.Usage, call.Info.Usage);
     EXPECT_EQ(registered.Category, call.Info.Category);
     EXPECT_EQ(registered.Hidden, call.Info.Hidden);
@@ -191,7 +197,7 @@ TEST_F(CommandContextTest, DroppedConflictingAliasIsNotReportedAsActive) {
     BML::CommandContext::CommandInfo info;
     ASSERT_TRUE(ctx->GetCommandInfoByName("second", info));
     EXPECT_TRUE(info.Alias.empty());
-    EXPECT_EQ(first, ctx->GetCommandByName("shared"));
+    EXPECT_EQ(first, ctx->GetCommandByName("shared")->UserData);
 }
 
 TEST_F(CommandContextTest, RegisterNullCommand) {
@@ -216,8 +222,8 @@ TEST_F(CommandContextTest, RegisterWithAlias) {
     auto *cmd = MakeCommand("teleport", "tp");
     EXPECT_TRUE(Register(cmd));
 
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("teleport"));
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("tp"));
+    EXPECT_EQ(cmd, ctx->GetCommandByName("teleport")->UserData);
+    EXPECT_EQ(cmd, ctx->GetCommandByName("tp")->UserData);
 }
 
 TEST_F(CommandContextTest, RegisterWithSymbolAlias) {
@@ -226,10 +232,10 @@ TEST_F(CommandContextTest, RegisterWithSymbolAlias) {
     EXPECT_TRUE(Register(cmd));
     EXPECT_TRUE(Register(punctuationCmd));
 
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("help"));
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("?"));
-    EXPECT_EQ(static_cast<ICommand *>(punctuationCmd), ctx->GetCommandByName("repeat"));
-    EXPECT_EQ(static_cast<ICommand *>(punctuationCmd), ctx->GetCommandByName("!"));
+    EXPECT_EQ(cmd, ctx->GetCommandByName("help")->UserData);
+    EXPECT_EQ(cmd, ctx->GetCommandByName("?")->UserData);
+    EXPECT_EQ(punctuationCmd, ctx->GetCommandByName("repeat")->UserData);
+    EXPECT_EQ(punctuationCmd, ctx->GetCommandByName("!")->UserData);
 }
 
 TEST_F(CommandContextTest, RegisterRejectsInvalidAliasWithoutAddingCommand) {
@@ -256,8 +262,8 @@ TEST_F(CommandContextTest, AliasConflictKeepsCommandRegisteredByName) {
     ASSERT_TRUE(Register(first));
     ASSERT_TRUE(Register(second));
 
-    EXPECT_EQ(static_cast<ICommand *>(first), ctx->GetCommandByName("tp"));
-    EXPECT_EQ(static_cast<ICommand *>(second), ctx->GetCommandByName("teleport-home"));
+    EXPECT_EQ(first, ctx->GetCommandByName("tp")->UserData);
+    EXPECT_EQ(second, ctx->GetCommandByName("teleport-home")->UserData);
 }
 
 // Name validation
@@ -309,7 +315,7 @@ TEST_F(CommandContextTest, GetCommandByName) {
     auto *cmd = MakeCommand("hello");
     Register(cmd);
 
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("hello"));
+    EXPECT_EQ(cmd, ctx->GetCommandByName("hello")->UserData);
     EXPECT_EQ(nullptr, ctx->GetCommandByName("nonexistent"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName(nullptr));
     EXPECT_EQ(nullptr, ctx->GetCommandByName(""));
@@ -319,17 +325,17 @@ TEST_F(CommandContextTest, GetCommandByNameIsCaseInsensitive) {
     auto *cmd = MakeCommand("Teleport", "Tp");
     ASSERT_TRUE(Register(cmd));
 
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("teleport"));
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("TELEPORT"));
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("tp"));
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("TP"));
+    EXPECT_EQ(cmd, ctx->GetCommandByName("teleport")->UserData);
+    EXPECT_EQ(cmd, ctx->GetCommandByName("TELEPORT")->UserData);
+    EXPECT_EQ(cmd, ctx->GetCommandByName("tp")->UserData);
+    EXPECT_EQ(cmd, ctx->GetCommandByName("TP")->UserData);
 }
 
 TEST_F(CommandContextTest, GetCommandByNameIsCaseInsensitiveForUtf8) {
     auto *cmd = MakeCommand("\xC3\x84pfel");
     ASSERT_TRUE(Register(cmd));
 
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("\xC3\xA4PFEL"));
+    EXPECT_EQ(cmd, ctx->GetCommandByName("\xC3\xA4PFEL")->UserData);
 }
 
 TEST_F(CommandContextTest, GetCommandByIndex) {
@@ -338,8 +344,8 @@ TEST_F(CommandContextTest, GetCommandByIndex) {
     Register(cmd1);
     Register(cmd2);
 
-    EXPECT_EQ(static_cast<ICommand *>(cmd1), ctx->GetCommandByIndex(0));
-    EXPECT_EQ(static_cast<ICommand *>(cmd2), ctx->GetCommandByIndex(1));
+    EXPECT_EQ(cmd1, ctx->GetCommandByIndex(0)->UserData);
+    EXPECT_EQ(cmd2, ctx->GetCommandByIndex(1)->UserData);
     EXPECT_EQ(nullptr, ctx->GetCommandByIndex(99));
 }
 
@@ -363,8 +369,8 @@ TEST_F(CommandContextTest, UnregisterAllowsReplacementWithoutOldLookup) {
     EXPECT_EQ(nullptr, ctx->GetCommandByName("rs"));
 
     ASSERT_TRUE(Register(newCmd));
-    EXPECT_EQ(static_cast<ICommand *>(newCmd), ctx->GetCommandByName("reload-smoke"));
-    EXPECT_EQ(static_cast<ICommand *>(newCmd), ctx->GetCommandByName("rs2"));
+    EXPECT_EQ(newCmd, ctx->GetCommandByName("reload-smoke")->UserData);
+    EXPECT_EQ(newCmd, ctx->GetCommandByName("rs2")->UserData);
     EXPECT_EQ(nullptr, ctx->GetCommandByName("rs"));
     EXPECT_EQ(1u, ctx->GetCommandCount());
 }
@@ -399,7 +405,7 @@ TEST_F(CommandContextTest, OnlyRegistrarCanUnregisterCommand) {
 
     EXPECT_EQ(BML::CommandContext::UnregisterResult::AccessDenied,
               Unregister("tp", &otherRegistrar));
-    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("teleport"));
+    EXPECT_EQ(cmd, ctx->GetCommandByName("teleport")->UserData);
     EXPECT_EQ(BML::CommandContext::UnregisterResult::Success, Unregister("tp"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("teleport"));
 }
@@ -418,7 +424,7 @@ TEST_F(CommandContextTest, UnregisterCommandsRemovesOnlyRegistrarCommands) {
     EXPECT_EQ(nullptr, ctx->GetCommandByName("first"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("f"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("second"));
-    EXPECT_EQ(static_cast<ICommand *>(other), ctx->GetCommandByName("o"));
+    EXPECT_EQ(other, ctx->GetCommandByName("o")->UserData);
     EXPECT_EQ(1u, ctx->GetCommandCount());
 }
 
@@ -431,9 +437,9 @@ TEST_F(CommandContextTest, CommandsStaySortedAfterRegistration) {
     Register(cmd2);
     Register(cmd3);
 
-    EXPECT_EQ(static_cast<ICommand *>(cmd2), ctx->GetCommandByIndex(0)); // aaa
-    EXPECT_EQ(static_cast<ICommand *>(cmd3), ctx->GetCommandByIndex(1)); // mmm
-    EXPECT_EQ(static_cast<ICommand *>(cmd1), ctx->GetCommandByIndex(2)); // zzz
+    EXPECT_EQ(cmd2, ctx->GetCommandByIndex(0)->UserData); // aaa
+    EXPECT_EQ(cmd3, ctx->GetCommandByIndex(1)->UserData); // mmm
+    EXPECT_EQ(cmd1, ctx->GetCommandByIndex(2)->UserData); // zzz
 }
 
 // Clear
@@ -493,29 +499,29 @@ TEST_F(CommandContextTest, OutputFFormatting) {
     EXPECT_EQ("Hello world, count=42", captured);
 }
 
-TEST(ICommandParse, ParseFloatKeepsNegativeValuesByDefault) {
-    EXPECT_FLOAT_EQ(-1.5f, ICommand::ParseFloat("-1.5"));
-    EXPECT_FLOAT_EQ(-1000.0f, ICommand::ParseFloat("-1000"));
-    EXPECT_FLOAT_EQ(0.0f, ICommand::ParseFloat("0"));
-    EXPECT_FLOAT_EQ(1.5f, ICommand::ParseFloat("1.5"));
+TEST(CommandArguments, ParseFloatKeepsNegativeValuesByDefault) {
+    EXPECT_FLOAT_EQ(-1.5f, BML::CommandArguments::ParseFloat("-1.5"));
+    EXPECT_FLOAT_EQ(-1000.0f, BML::CommandArguments::ParseFloat("-1000"));
+    EXPECT_FLOAT_EQ(0.0f, BML::CommandArguments::ParseFloat("0"));
+    EXPECT_FLOAT_EQ(1.5f, BML::CommandArguments::ParseFloat("1.5"));
 }
 
-TEST(ICommandParse, ParseFloatClampsToExplicitBounds) {
-    EXPECT_FLOAT_EQ(-1.0f, ICommand::ParseFloat("-5", -1.0f, 1.0f));
-    EXPECT_FLOAT_EQ(1.0f, ICommand::ParseFloat("5", -1.0f, 1.0f));
-    EXPECT_FLOAT_EQ(0.25f, ICommand::ParseFloat("0.25", -1.0f, 1.0f));
+TEST(CommandArguments, ParseFloatClampsToExplicitBounds) {
+    EXPECT_FLOAT_EQ(-1.0f, BML::CommandArguments::ParseFloat("-5", -1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(1.0f, BML::CommandArguments::ParseFloat("5", -1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(0.25f, BML::CommandArguments::ParseFloat("0.25", -1.0f, 1.0f));
 }
 
-TEST(ICommandParse, ParseIntegerClampsToExplicitBounds) {
-    EXPECT_EQ(-3, ICommand::ParseInteger("-7", -3, 3));
-    EXPECT_EQ(3, ICommand::ParseInteger("7", -3, 3));
-    EXPECT_EQ(-7, ICommand::ParseInteger("-7"));
+TEST(CommandArguments, ParseIntegerClampsToExplicitBounds) {
+    EXPECT_EQ(-3, BML::CommandArguments::ParseInteger("-7", -3, 3));
+    EXPECT_EQ(3, BML::CommandArguments::ParseInteger("7", -3, 3));
+    EXPECT_EQ(-7, BML::CommandArguments::ParseInteger("-7"));
 }
 
-TEST(ICommandParse, ParseBooleanAcceptsKnownTruthyTokens) {
-    EXPECT_TRUE(ICommand::ParseBoolean("true"));
-    EXPECT_TRUE(ICommand::ParseBoolean("on"));
-    EXPECT_TRUE(ICommand::ParseBoolean("1"));
-    EXPECT_FALSE(ICommand::ParseBoolean("false"));
-    EXPECT_FALSE(ICommand::ParseBoolean("TRUE"));
+TEST(CommandArguments, ParseBooleanAcceptsKnownTruthyTokens) {
+    EXPECT_TRUE(BML::CommandArguments::ParseBoolean("true"));
+    EXPECT_TRUE(BML::CommandArguments::ParseBoolean("on"));
+    EXPECT_TRUE(BML::CommandArguments::ParseBoolean("1"));
+    EXPECT_FALSE(BML::CommandArguments::ParseBoolean("false"));
+    EXPECT_FALSE(BML::CommandArguments::ParseBoolean("TRUE"));
 }

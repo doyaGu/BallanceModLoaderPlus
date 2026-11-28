@@ -14,7 +14,7 @@ namespace Behavior = BML::Behavior;
 namespace CustomMap {
 
 LevelLoader::Transaction::Transaction(
-    Behavior::Plan::Instance instance, Behavior::Edit::Port mapFile,
+    Behavior::Submission::Installation instance, Behavior::Edit::Port mapFile,
     Behavior::Edit::Port levelRow, Behavior::Edit::Port loadCustom,
     Snapshot previous)
     : m_Instance(std::move(instance)),
@@ -101,7 +101,7 @@ Behavior::Result<void> LevelLoader::Install(Behavior::Session &behavior) {
                        Behavior::Error::OwnerUnavailable,
                        "Behavior authoring is unavailable.");
     }
-    if (m_Plan || m_Retiring) {
+    if (m_Submission || m_Retiring) {
         return Failure(BML_ERROR_BUSY, Behavior::Error::Busy,
                        "The custom map level-loader Plan is already active.");
     }
@@ -127,9 +127,9 @@ Behavior::Result<void> LevelLoader::Install(Behavior::Session &behavior) {
     level.Reconnect(entry, selector.Out(1), originalFirst.In(0));
     level.Flow(selector.Out(0), loader.In(0));
 
-    auto submitted = behavior.Plan(
-        "Custom map level loader", Behavior::Scripts::One("Levelinit_build"),
-        edit);
+    auto submitted = behavior.Apply(
+        "Custom map level loader", Behavior::EditOwnership::Submission,
+        Behavior::On(Behavior::Scripts::One("Levelinit_build"), edit));
     if (!submitted) {
         return Behavior::Result<void>::Failure(submitted.Code(),
                                                submitted.GetStatus());
@@ -138,7 +138,7 @@ Behavior::Result<void> LevelLoader::Install(Behavior::Session &behavior) {
     m_MapFile = mapFile;
     m_LevelRow = levelRow;
     m_LoadCustom = loadCustom;
-    m_Plan = submitted.Take();
+    m_Submission = submitted.Take();
     return Behavior::Result<void>::Success(submitted.GetStatus());
 }
 
@@ -155,36 +155,24 @@ Behavior::Result<void> LevelLoader::Refresh() {
         return Behavior::Result<void>::Success();
     if (m_Instance)
         return Behavior::Result<void>::Success();
-    if (!m_Plan)
+    if (!m_Submission)
         return Behavior::Result<void>::Success();
 
-    auto instances = m_Plan.Instances();
-    if (!instances) {
-        return Behavior::Result<void>::Failure(
-            instances.Code(), instances.GetStatus());
-    }
-    if (instances->empty()) {
-        auto info = m_Plan.Info();
-        if (!info) {
-            return Behavior::Result<void>::Failure(
-                info.Code(), info.GetStatus());
-        }
-        const Behavior::Status &failure =
-            info->ApplyFailure.Error != Behavior::Error::None
-                ? info->ApplyFailure
-                : info->LastStatus;
-        if (failure.Error != Behavior::Error::None) {
-            return Behavior::Result<void>::Failure(BML_ERROR_FAIL, failure);
-        }
+    auto instance = m_Submission.Find();
+    if (!instance) {
+        if (instance.GetStatus().Error != Behavior::Error::QueryNotFound)
+            return Behavior::Result<void>::Failure(instance.Code(), instance.GetStatus());
+        auto info = m_Submission.Info();
+        if (!info)
+            return Behavior::Result<void>::Failure(info.Code(), info.GetStatus());
+        if (info->RestoreFailure.Error != Behavior::Error::None)
+            return Behavior::Result<void>::Failure(BML_ERROR_FAIL, info->RestoreFailure);
+        if (info->ApplyFailure.Error != Behavior::Error::None)
+            return Behavior::Result<void>::Failure(BML_ERROR_FAIL, info->ApplyFailure);
         return Behavior::Result<void>::Success();
     }
-    if (instances->size() != 1) {
-        return Failure(
-            BML_ERROR_INVALID_PARAMETER, Behavior::Error::TargetCardinality,
-            "The custom map level-loader Plan matched more than one Script.");
-    }
 
-    m_Instance = std::move(instances->front());
+    m_Instance = instance.Take();
     return Behavior::Result<void>::Success();
 }
 
@@ -237,20 +225,20 @@ Behavior::Result<Behavior::CloseState> LevelLoader::Close() {
     m_Instance.reset();
     m_Retiring = true;
     m_ClosePending = false;
-    if (!m_Plan) {
+    if (!m_Submission) {
         ClearPorts();
         m_Retiring = false;
         return Behavior::Result<Behavior::CloseState>::Success(
             Behavior::CloseState::Closed);
     }
 
-    auto closed = m_Plan.Close();
+    auto closed = m_Submission.Close();
     if (!closed)
         return closed;
     if (closed.Value() == Behavior::CloseState::Closing) {
         m_ClosePending = true;
     } else {
-        m_Plan = {};
+        m_Submission = {};
         ClearPorts();
         m_Retiring = false;
     }
@@ -271,7 +259,7 @@ bool LevelLoader::IsRetiring() const noexcept {
 
 template <class T>
 Behavior::Result<T> LevelLoader::Read(
-    const Behavior::Plan::Instance &instance,
+    const Behavior::Submission::Installation &instance,
     const Behavior::Edit::Port &port, std::string_view name) {
     auto observed = instance.Read(port);
     if (!observed) {

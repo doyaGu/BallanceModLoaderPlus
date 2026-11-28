@@ -53,7 +53,7 @@ IMC 有三层公开接口；生成层按语言提供两种门面：
 | 生成的 `*_imc.hpp` | 类型化载荷、编解码器、Client、Provider、Future 和 Subscription |
 | 生成的 `*_imc.as` | 面向 ASMod Client/Provider 的同一套类型与路由；传输细节留在 `BML::Detail` |
 | `BML/Imc.hpp` | 面向自定义集成的通用 C++ RAII 包装，以及生成的绑定复用的 Client、Subscription 和 RPC 机制 |
-| `BML/Imc.h` | 跨 DLL 使用的固定布局 C ABI |
+| `BML/Imc.h` | 跨动态模块 使用的固定布局 C ABI |
 
 C ABI 只导出 `BML_Imc_*` 函数，并只使用 C 标量、固定布局结构体、字节区间、
 回调和不透明句柄。C++ 类、异常、RTTI 对象和由分配器持有的值不会跨模块边界。

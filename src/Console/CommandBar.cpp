@@ -13,7 +13,7 @@
 #include <imgui_internal.h>
 #include <misc/cpp/imgui_stdlib.h>
 
-#include "BML/ICommand.h"
+#include "Console/CommandRecord.h"
 #include "Console/CommandContext.h"
 #include "Console/CommandInput.h"
 #include "Console/Shell/ShellEnvironment.h"
@@ -845,16 +845,16 @@ void CommandBar::ToggleCommandBar(bool on) {
         if (IsVisible())
             return;
         Show();
-        Bui::BlockKeyboardInput(this);
+        BuiHost::BlockKeyboardInput(this);
     } else {
         if (!IsVisible())
             return;
         Hide();
-        if (ImGuiContext *context = Bui::GetImGuiContext()) {
-            Bui::ImGuiContextScope scope(context);
+        if (ImGuiContext *context = BuiHost::GetImGuiContext()) {
+            BuiHost::ImGuiContextScope scope(context);
             ImGui::SetWindowFocus(nullptr);
         }
-        Bui::UnblockKeyboardAfterRelease(this);
+        BuiHost::UnblockKeyboardAfterRelease(this);
     }
 }
 

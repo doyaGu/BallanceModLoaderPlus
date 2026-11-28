@@ -1,5 +1,5 @@
 // Commands the shell itself provides: set, alias, unalias, true, false, xargs.
-// They are ordinary ICommand objects registered by the console, so help lists
+// They are ordinary BML::CommandRecord objects registered by the console, so help lists
 // them and Tab completes them like everything else.
 #ifndef BML_SHELL_BUILTINS_H
 #define BML_SHELL_BUILTINS_H
@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "BML/ICommand.h"
+#include "Console/CommandRecord.h"
 
 namespace BML::Shell {
     class Environment;
@@ -16,81 +16,117 @@ namespace BML::Shell {
     // Runs one already-split command; what xargs calls for every batch.
     using InvokeFunction = std::function<int(const std::vector<std::string> &args, const std::string *input)>;
 
-    class CommandSet final : public ICommand {
+    class CommandSet final {
     public:
         explicit CommandSet(Environment &environment) : m_Environment(environment) {}
 
-        std::string GetName() override { return "set"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "List, set, or erase shell variables ($NAME)."; }
-        bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+        std::string GetName() { return "set"; }
+
+        std::string GetAlias() { return ""; }
+
+        std::string GetDescription() { return "List, set, or erase shell variables ($NAME)."; }
+
+        bool IsCheat() { return false; }
+
+        void Execute(ModContext *bml, const std::vector<std::string> &args);
+        const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                        const std::vector<std::string> &args);
 
     private:
         Environment &m_Environment;
     };
 
-    class CommandAlias final : public ICommand {
+    class CommandAlias final {
     public:
         explicit CommandAlias(Environment &environment) : m_Environment(environment) {}
 
-        std::string GetName() override { return "alias"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Define or list command aliases."; }
-        bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+        std::string GetName() { return "alias"; }
+
+        std::string GetAlias() { return ""; }
+
+        std::string GetDescription() { return "Define or list command aliases."; }
+
+        bool IsCheat() { return false; }
+
+        void Execute(ModContext *bml, const std::vector<std::string> &args);
+        const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                        const std::vector<std::string> &args);
 
     private:
         Environment &m_Environment;
     };
 
-    class CommandUnalias final : public ICommand {
+    class CommandUnalias final {
     public:
         explicit CommandUnalias(Environment &environment) : m_Environment(environment) {}
 
-        std::string GetName() override { return "unalias"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Remove command aliases."; }
-        bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+        std::string GetName() { return "unalias"; }
+
+        std::string GetAlias() { return ""; }
+
+        std::string GetDescription() { return "Remove command aliases."; }
+
+        bool IsCheat() { return false; }
+
+        void Execute(ModContext *bml, const std::vector<std::string> &args);
+        const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                        const std::vector<std::string> &args);
 
     private:
         Environment &m_Environment;
     };
 
-    class CommandTrue final : public ICommand {
+    class CommandTrue final {
     public:
-        std::string GetName() override { return "true"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Do nothing, successfully."; }
-        bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override {}
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &) override { return {}; }
+        std::string GetName() { return "true"; }
+
+        std::string GetAlias() { return ""; }
+
+        std::string GetDescription() { return "Do nothing, successfully."; }
+
+        bool IsCheat() { return false; }
+
+        void Execute(ModContext *bml, const std::vector<std::string> &args) {}
+
+        const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                        const std::vector<std::string> &) {
+            return {};
+        }
     };
 
-    class CommandFalse final : public ICommand {
+    class CommandFalse final {
     public:
-        std::string GetName() override { return "false"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Do nothing, unsuccessfully."; }
-        bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &) override { return {}; }
+        std::string GetName() { return "false"; }
+
+        std::string GetAlias() { return ""; }
+
+        std::string GetDescription() { return "Do nothing, unsuccessfully."; }
+
+        bool IsCheat() { return false; }
+
+        void Execute(ModContext *bml, const std::vector<std::string> &args);
+
+        const std::vector<std::string> GetTabCompletion(ModContext *,
+                                                        const std::vector<std::string> &) {
+            return {};
+        }
     };
 
-    class CommandXargs final : public ICommand {
+    class CommandXargs final {
     public:
         explicit CommandXargs(InvokeFunction invoke) : m_Invoke(std::move(invoke)) {}
 
-        std::string GetName() override { return "xargs"; }
-        std::string GetAlias() override { return ""; }
-        std::string GetDescription() override { return "Run a command with piped text as its arguments."; }
-        bool IsCheat() override { return false; }
-        void Execute(IBML *bml, const std::vector<std::string> &args) override;
-        const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+        std::string GetName() { return "xargs"; }
+
+        std::string GetAlias() { return ""; }
+
+        std::string GetDescription() { return "Run a command with piped text as its arguments."; }
+
+        bool IsCheat() { return false; }
+
+        void Execute(ModContext *bml, const std::vector<std::string> &args);
+        const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                        const std::vector<std::string> &args);
 
         // Splits input into items: on delimiter when given, else on whitespace and
         // newlines with empty items dropped.

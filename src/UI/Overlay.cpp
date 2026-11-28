@@ -1,3 +1,4 @@
+#include "Loader/ModContext.h"
 #include "UI/Overlay.h"
 
 #include "UI/Ime/Presentation.h"
@@ -5,15 +6,14 @@
 
 #include "CKContext.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-
 #include "imgui_internal.h"
 #include "UI/imgui_impl_ck2.h"
-#define IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
+#if BML_RUNTIME_SDL
+#include <SDL3/SDL.h>
+#include "backends/imgui_impl_sdl3.h"
+#else
 #include "backends/imgui_impl_win32.h"
+#endif
 
 namespace Overlay {
     ImGuiContext *g_ImGuiContext = nullptr;
@@ -60,7 +60,8 @@ namespace Overlay {
             ImGuiEndFrame();
         }
         ImGuiShutdownRenderer(nullptr);
-        ImGuiShutdownPlatform(nullptr);
+        if (!ImGuiShutdownPlatform(nullptr))
+            return;
 
         g_ImGuiContext = nullptr;
         g_DrawDataReady = false;
@@ -72,11 +73,19 @@ namespace Overlay {
     bool ImGuiInitPlatform(CKContext *context) {
         ImGuiContextScope scope;
 
-        HWND window = context ? static_cast<HWND>(context->GetMainWindow()) : nullptr;
-        if (!window || !ImGui_ImplWin32_Init(window))
-            return false;
+#if BML_RUNTIME_SDL
+        auto *window = context ? static_cast<SDL_Window *>(context->GetMainWindow()) : nullptr;
+        if (!window || !ImGui_ImplSDL3_InitForOther(window)) return false;
+#else
+        void *window = context ? context->GetMainWindow() : nullptr;
+        if (!window || !ImGui_ImplWin32_Init(window)) return false;
+#endif
         if (!PlatformInput::Attach(window)) {
+#if BML_RUNTIME_SDL
+            ImGui_ImplSDL3_Shutdown();
+#else
             ImGui_ImplWin32_Shutdown();
+#endif
             return false;
         }
 
@@ -96,20 +105,21 @@ namespace Overlay {
         return true;
     }
 
-    void ImGuiShutdownPlatform(CKContext *context) {
+    bool ImGuiShutdownPlatform(CKContext *context) {
         (void) context;
-        if (!g_PlatformInitialized) {
-            if (!PlatformInput::Detach())
-                ::OutputDebugStringA("BML: Unable to detach Overlay platform input.\n");
-            return;
-        }
+        if (!PlatformInput::Detach())
+            return false;
+        if (!g_PlatformInitialized)
+            return true;
 
         ImGuiContextScope scope;
-
-        if (!PlatformInput::Detach())
-            ::OutputDebugStringA("BML: Unable to detach Overlay platform input.\n");
+#if BML_RUNTIME_SDL
+        ImGui_ImplSDL3_Shutdown();
+#else
         ImGui_ImplWin32_Shutdown();
+#endif
         g_PlatformInitialized = false;
+        return true;
     }
 
     void ImGuiShutdownRenderer(CKContext *context) {
@@ -139,7 +149,16 @@ namespace Overlay {
                 ImGui::EndFrame();
             }
 
+            // Old draw data has now been discarded and no business callback is
+            // active. Fault cleanup may release code/resources used by that data.
+            if (ModContextLease context; context) context->GetModLoader().ProcessFailedNativeMods();
+
+            PlatformInput::ProcessEvents();
+#if BML_RUNTIME_SDL
+            ImGui_ImplSDL3_NewFrame();
+#else
             ImGui_ImplWin32_NewFrame();
+#endif
             ImGui_ImplCK2_NewFrame();
             ImGui::NewFrame();
 
@@ -168,7 +187,20 @@ namespace Overlay {
         }
     }
 
+    void ImGuiDiscardDrawData() {
+        ImGuiContextScope scope;
+        if (!scope.IsActive()) return;
+        ImGuiEndFrame();
+        g_DrawDataReady = false;
+        if (ImDrawData *data = ImGui::GetDrawData()) data->Valid = false;
+    }
+
     void ImGuiOnRender() {
+        ModContextLease context;
+        if (!context) return;
+        // Custom draw callbacks are module code too. A reentrant Stop may not
+        // unload them while the backend is consuming their command list.
+        auto invocation = context->GetModLoader().LockModInvocation();
         if (g_DrawDataReady) {
             ImGuiContextScope scope;
             ImGui_ImplCK2_RenderDrawData(ImGui::GetDrawData());

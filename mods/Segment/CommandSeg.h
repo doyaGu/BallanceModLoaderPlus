@@ -1,23 +1,29 @@
 #pragma once
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
 #include "Segment.h"
 
-class CommandSeg : public ICommand {
-public:
+class CommandSeg {
+  public:
+    static BML::Command::Definition Define() {
+        BML::Command::Definition d;
+        d.Name = "segment";
+        d.Alias = "seg";
+        d.Description = "Command for segment.";
+        d.Cheat = false;
+        return d;
+    }
+
     explicit CommandSeg(Segment *segment);
 
-    std::string GetName() override { return "segment"; }
-    std::string GetAlias() override { return "seg"; }
-    std::string GetDescription() override { return "Command for segment."; }
-    bool IsCheat() override { return false; }
+    void Execute(const BML::Mod::Context &context, const std::vector<std::string> &args);
 
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
+    const std::vector<std::string> GetTabCompletion(const BML::Mod::Context &context,
+                                                    const std::vector<std::string> &args) {
         return args.size() == 2 ? std::vector<std::string>{"clear"} : std::vector<std::string>{};
     }
 
-private:
+  private:
     Segment *segment_;
 };

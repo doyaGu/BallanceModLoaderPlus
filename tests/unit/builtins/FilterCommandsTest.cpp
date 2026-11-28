@@ -2,7 +2,10 @@
 
 #include <memory>
 
+// GTest may include the system regex.h, which declares a different re_registers.
+#define re_registers OnigRegisters
 #include <oniguruma.h>
+#undef re_registers
 
 #include "Console/Shell/FilterCommands.h"
 #include "Console/Shell/ShellBuiltins.h"
@@ -10,6 +13,13 @@
 #include "Console/Shell/ShellIo.h"
 #include "Console/Shell/ShellTypes.h"
 #include "Logging/Logger.h"
+#include "Loader/ModContext.h"
+
+void ModContext::SendIngameMessage(const char *) {}
+
+BML::CommandRecord *ModContext::FindCommand(const char *) const {
+    return nullptr;
+}
 
 // Stub Logger: CommandContext.cpp is linked for its name validation only.
 Logger *Logger::m_DefaultLogger = nullptr;

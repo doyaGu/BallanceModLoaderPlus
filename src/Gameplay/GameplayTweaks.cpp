@@ -4,23 +4,12 @@
 #include <utility>
 
 #include "BML/Guids/TT_ParticleSystems_RT.h"
-#include "BML/IBML.h"
-#include "BML/IConfig.h"
-#include "BML/ILogger.h"
+#include "Loader/ModContext.h"
+#include "Config/Config.h"
+#include "Logging/Logger.h"
 
 namespace {
 namespace Behavior = BML::Behavior;
-
-Behavior::Edit LanternAlphaTest(bool enabled) {
-    Behavior::Edit edit;
-    auto mapping = edit.Root()
-        .Require("set Mapping and Textures")
-        .Graph();
-    auto lantern = mapping.Require("Set Mat Laterne").Graph();
-    const auto alpha = lantern.Require("Set Alpha Test");
-    lantern.Bind(alpha.Pin(0, CKPGUID_BOOL), enabled);
-    return edit;
-}
 
 Behavior::Edit OverclockIngame() {
     Behavior::Edit edit;
@@ -51,7 +40,7 @@ Behavior::Edit OverclockEnergy() {
 }
 }
 
-void GameplayTweaks::InitConfig(IConfig &config) {
+void GameplayTweaks::InitConfig(Config &config) {
     m_LanternAlphaTest = config.GetProperty("Tweak", "LanternAlphaTest");
     m_FixLifeBall = config.GetProperty("Tweak", "FixLifeBallFreeze");
     m_Overclock = config.GetProperty("Tweak", "Overclock");
@@ -67,8 +56,7 @@ void GameplayTweaks::InitConfig(IConfig &config) {
     m_Overclock->SetDefaultBoolean(false);
 }
 
-bool GameplayTweaks::OnModifyConfig(const char *category, const char *key,
-                                    IProperty *property) {
+bool GameplayTweaks::OnModifyConfig(const char *category, const char *key, Property *property) {
     if (!property || std::strcmp(category ? category : "", "Tweak") != 0)
         return false;
     if (property == m_LanternAlphaTest &&
@@ -78,7 +66,7 @@ bool GameplayTweaks::OnModifyConfig(const char *category, const char *key,
     }
     if (property == m_Overclock &&
         std::strcmp(key ? key : "", "Overclock") == 0) {
-        // The Plan outlives each world, so a change made in the menu must
+        // The submission outlives each world, so a change made in the menu must
         // reach it too; it applies once the next level's scripts load.
         (void) ApplyOverclock(property->GetBoolean(), true);
         return true;
@@ -97,7 +85,7 @@ bool GameplayTweaks::OnModifyConfig(const char *category, const char *key,
     return false;
 }
 
-void GameplayTweaks::OnLoad(IBML &bml, ILogger &logger) {
+void GameplayTweaks::OnLoad(ModContext &bml, Logger &logger) {
     m_BML = &bml;
     m_Logger = &logger;
 
@@ -113,37 +101,42 @@ void GameplayTweaks::OnLoad(IBML &bml, ILogger &logger) {
 
     const bool lanternEnabled = m_LanternAlphaTest &&
         m_LanternAlphaTest->GetBoolean();
-    Behavior::Edit lanternEdit = LanternAlphaTest(lanternEnabled);
-    auto lantern = m_Behavior.Plan(
-        "Lantern alpha test",
-        Behavior::On(Behavior::Scripts::One("Levelinit_build"),
-                     lanternEdit));
-    if (lantern)
-        m_LanternPlan = lantern.Take();
-    else
-        m_Logger->Warn("Lantern alpha-test Plan is unavailable: %s",
+    Behavior::Edit lanternEdit;
+    auto lanternGraph = lanternEdit.Root()
+        .Require("set Mapping and Textures").Graph()
+        .Require("Set Mat Laterne").Graph();
+    const auto alpha = lanternGraph.Require("Set Alpha Test");
+    const auto enabled = lanternGraph.AppendLocal("Lantern Alpha Test", CKPGUID_BOOL);
+    lanternGraph.Set(enabled, lanternEnabled);
+    lanternGraph.Bind(alpha.Pin(0, CKPGUID_BOOL), enabled);
+    auto lantern = m_Behavior.Apply(
+        "Lantern alpha test", Behavior::EditOwnership::Submission,
+        Behavior::On(Behavior::Scripts::One("Levelinit_build"), lanternEdit));
+    if (lantern) {
+        m_Lantern = lantern.Take();
+        m_LanternInput = enabled;
+    } else {
+        m_Logger->Warn("Lantern alpha-test edit is unavailable: %s",
             lantern.GetStatus().Message.empty()
-                ? "Behavior Plan creation failed"
+                ? "Behavior Apply failed"
                 : lantern.GetStatus().Message.c_str());
+    }
 
     Behavior::Edit ingame = OverclockIngame();
     Behavior::Edit energy = OverclockEnergy();
-    auto overclock = m_Behavior.Plan(
-        "Overclock",
+    auto overclock = m_Behavior.Apply(
+        "Overclock", Behavior::ApplyOptions{
+            .Enabled = m_Overclock && m_Overclock->GetBoolean()},
         Behavior::On(Behavior::Scripts::One("Gameplay_Ingame"),
                      ingame),
         Behavior::On(Behavior::Scripts::One("Gameplay_Energy"),
                      energy));
     if (overclock) {
-        m_OverclockPlan = overclock.Take();
-        if (!m_Overclock || !m_Overclock->GetBoolean()) {
-            (void) SetPlanEnabled(m_OverclockPlan, false,
-                                  "Overclock", true);
-        }
+        m_OverclockSubmission = overclock.Take();
     } else {
-        m_Logger->Warn("Overclock Plan is unavailable: %s",
+        m_Logger->Warn("Overclock submission is unavailable: %s",
             overclock.GetStatus().Message.empty()
-                ? "Behavior Plan creation failed"
+                           ? "Behavior Apply failed"
                 : overclock.GetStatus().Message.c_str());
     }
 
@@ -180,15 +173,24 @@ void GameplayTweaks::OnLoad(IBML &bml, ILogger &logger) {
 
 void GameplayTweaks::OnUnload() {
     ClosePlan(m_ExtraLifePlan, "Life-ball freeze fix");
-    ClosePlan(m_OverclockPlan, "Overclock");
-    ClosePlan(m_LanternPlan, "Lantern alpha test");
+    auto overclock = m_OverclockSubmission.Close();
+    if (!overclock && m_Logger)
+        m_Logger->Error("Failed to restore Overclock: %s",
+                        overclock.GetStatus().Message.c_str());
+    m_OverclockSubmission = {};
+    auto lantern = m_Lantern.Close();
+    if (!lantern && m_Logger)
+        m_Logger->Error("Failed to restore the lantern alpha-test edit: %s",
+                        lantern.GetStatus().Message.c_str());
+    m_Lantern = {};
+    m_LanternInput = {};
     m_Behavior.Reset();
     m_Logger = nullptr;
     m_BML = nullptr;
 }
 
 void GameplayTweaks::OnExitGame() {
-    // Plans retain their definitions across the world reset and reconcile
+    // Script rules retain their definitions across the world reset and reconcile
     // against the next matching scripts. No per-world Patch collection exists.
 }
 
@@ -200,46 +202,31 @@ void GameplayTweaks::ApplyLanternAlphaTest(bool enabled) {
         material->SetAlphaFunc(VXCMP_GREATEREQUAL);
         material->SetAlphaRef(0);
     }
-    if (m_LanternPlan)
-        (void) ApplyLanternScript(enabled, true);
-}
-
-bool GameplayTweaks::ApplyLanternScript(bool enabled,
-                                        bool warnIfUnavailable) {
-    if (!m_LanternPlan)
-        return false;
-    Behavior::Edit edit = LanternAlphaTest(enabled);
-    auto replaced = m_LanternPlan.Replace(Behavior::On(
-        Behavior::Scripts::One("Levelinit_build"),
-        edit));
-    if (!replaced) {
-        if (warnIfUnavailable && m_Logger)
-            m_Logger->Warn("Lantern alpha-test graph could not be edited: %s",
-                replaced.GetStatus().Message.empty()
-                    ? "Behavior Plan replacement failed"
-                    : replaced.GetStatus().Message.c_str());
-        return false;
+    if (m_Lantern) {
+        const auto changed = m_Lantern.SetInput(m_LanternInput, enabled);
+        if (!changed && m_Logger)
+            m_Logger->Warn("Could not update the lantern alpha-test input: %s",
+                           changed.GetStatus().Message.c_str());
     }
-    if (m_Logger)
-        m_Logger->Info(
-            "Requested a lantern alpha-test Plan update");
-    return true;
 }
 
 bool GameplayTweaks::ApplyOverclock(bool enabled, bool warnIfUnavailable) {
-    if (!m_OverclockPlan) {
+    if (!m_OverclockSubmission) {
         if (enabled && warnIfUnavailable && m_Logger)
-            m_Logger->Warn("Overclock Plan is unavailable");
+            m_Logger->Warn("Overclock submission is unavailable");
         return !enabled;
     }
-    if (!SetPlanEnabled(m_OverclockPlan, enabled, "Overclock",
-                        warnIfUnavailable)) {
+    const auto changed = m_OverclockSubmission.SetEnabled(enabled);
+    if (!changed) {
+        if (warnIfUnavailable && m_Logger)
+            m_Logger->Warn("Overclock could not change state: %s",
+                           changed.GetStatus().Message.c_str());
         return false;
     }
     if (m_Logger)
         m_Logger->Info(enabled
-            ? "Requested the Overclock Behavior Plan"
-            : "Requested restoration of the Overclock Behavior Plan");
+            ? "Requested the Overclock Behavior edit"
+            : "Requested restoration of the Overclock Behavior edit");
     return true;
 }
 

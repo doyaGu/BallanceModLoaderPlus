@@ -1,96 +1,92 @@
-# BML+ SDK
+# BML+ SDL SDK
+
+### BallancePlayer Win32
+
+The Win32 SDK targets BallancePlayer 0.3.9 (the dynamic x86 build) with Virtools
+2.1. Configure SDK consumers with Visual Studio 2022 and `-A Win32`. C Mods
+require only this SDK. C++ Mods that link `BML::Engine` also need
+`-DVIRTOOLS_SDK_PATH=<Virtools 2.1 SDK>` pointing to the same SDK used for the
+Loader. The Win32 loader lives at `BuildingBlocks/BMLPlus.dll`.
 
 [简体中文](README_zh-CN.md)
 
-This archive is for Mod development. It is not the BML+ runtime package and
-must not be extracted into the Ballance directory.
+This package is for Mod development. Install the matching **runtime** in the game;
+keep the SDK in a separate source workspace. This branch supports dynamic SDL
+hosts. Static-host SDKs and original Windows binary Mods are not supported here.
 
-## Choose a route
+## Start a project
 
-### Script Mod
+Python 3.10+ is required. The following commands work in all supported shells
+(use `python3` if that is your Python executable):
 
-Start here unless you specifically need native hooks, native memory access, a
-generated IMC Provider, or a performance-critical native loop.
-
-1. Open [`share/BML/docs/en/modding.md`](share/BML/docs/en/modding.md).
-2. Create the Mod in your normal source workspace. Name and author are inferred
-   when omitted:
-
-   ```bat
-   "<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
-   ```
-
-3. Enter the project and run `bml run`. The first run asks for the Ballance
-   folder, deploys a managed copy, starts Player, and keeps source changes synced
-   for hot reload. Run `bml pack` to create `dist/<project>.zip`.
-
-You can copy [`templates/script-mod-template`](templates/script-mod-template)
-manually when scripting the setup yourself.
-
-After the template works, copy one directory from
-[`examples/script-mod`](examples/script-mod) to learn commands and config,
-input and UI, or game-state access from a runnable example.
-
-Script support is present when `templates/script-mod-template` and
-`docs/api/as.predefined` exist. The latter is an editor declaration file, not
-runtime source.
-
-### Native Mod
-
-Use the native route for operations that genuinely require C++, the Virtools
-SDK, or generated IMC services.
-
-1. Open [`share/BML/docs/en/modding.md`](share/BML/docs/en/modding.md).
-2. Create the project in your source workspace. Name and author are inferred
-   when omitted:
-
-   ```bat
-   "<BML-SDK>\scripts\bml.cmd" new native yourname.my-mod
-   ```
-
-3. Enter the project and run the complete development loop. Paths are remembered
-   locally after the first run:
-
-   ```bat
-   .\bml run
-   ```
-
-   The first run asks for the Virtools SDK and Ballance folders, then remembers
-   them. It builds and deploys the Mod, starts Player, waits for exit, and prints
-   only this Mod's new log lines. `bml.cmd` is a small Windows launcher for the
-   Python 3.10+ tool copied into the project as `bml.py`; it does not invoke
-   PowerShell.
-
-Already have a native Mod? Keep its source and CMake files:
-
-```bat
-"<BML-SDK>\scripts\bml.cmd" init owner.existing-mod --project "C:\path\to\mod"
+```sh
+python "/path/to/BML-SDK/scripts/bml.py" new native yourname.my-mod
+cd MyMod
+python bml.py build
+python bml.py run --ballance-root "/path/to/game"
+python bml.py pack
 ```
 
-This adds the local Python workflow without rewriting the project. Continuing
-to use CMake directly is also supported.
+Use `new script` for AngelScript. POSIX launchers are `scripts/bml` and project
+`./bml`; Windows launchers are `scripts/bml.cmd` and project `bml.cmd`.
+`--profile` selects `basic`, `interface-provider`, `interface-consumer`, or
+`imc-provider` for native projects. `python bml.py help --verbose` lists commands.
 
-You can also copy [`templates/native-mod-template`](templates/native-mod-template)
-manually.
+The game root contains `base.cmo`, with `Bin/Player` or a flat `Player` executable
+(`Player.exe` on Windows). It must include `ModLoader/BML.abi.json`. Do not pass
+its `Bin` subdirectory as the game root. `build` prepares artifacts; `run` also
+deploys and starts Player. Script `run` synchronizes saved sources for hot reload.
 
-For a native-only provider interface, see the two independent projects in
-[`examples/native-interface-provider`](examples/native-interface-provider) and
-[`examples/native-interface-consumer`](examples/native-interface-consumer).
-The provider uses `bml_add_interface_package`; the consumer obtains only the
-installed header target and never links the provider binary.
+## ABI and dependencies
 
-## Where things are
+Choose a package matching runtime, platform, architecture, host linkage and
+protocol/SDK ABI. `share/BML/BML.abi.json` describes the SDK; deployment compares
+it with the installed runtime before replacing files.
 
-| Path | Purpose |
-| --- | --- |
-| `templates/` | Runnable starting projects |
-| `examples/` | Focused follow-up examples |
-| `share/BML/docs/en/` | English Mod author documentation |
-| `share/BML/docs/zh-CN/` | Chinese Mod author documentation |
-| `docs/api/` | AngelScript editor declarations, when script support is enabled |
-| `include/`, `lib/` | Native headers, libraries, and CMake package files |
-| `share/BML/tools/` | Native interface and IMC code generators |
-| `scripts/` | Unified Native and Script Developer Workflow |
+- Core native Mods use the C11 protocol (`BML_GetModInterface`) and module-local
+  C++20 wrappers. They need only `BML::BML`; the core C seam does not expose C++
+  STL, virtual tables, exceptions or allocator ownership.
+- Direct CK2/VxMath access opts into `BML::Engine`. Direct host ImGui access opts
+  into `BML::ImGui`. These extensions require the matching engine/ImGui ABI,
+  compiler, C++ standard library, runtime and build configuration. Supply matching
+  SDL development packages with `--package-root`. For Virtools Win32, use
+  `VIRTOOLS_SDK_PATH` to select the matching Virtools 2.1 SDK.
+- Player owns CK2, VxMath, SDL and ImGui state. Do not ship another SDL or
+  statically link another engine into a Mod.
 
-Use the runtime release `BMLPlus-<version>.zip` to install BML+ into the game.
-Do not use an SDK archive as a runtime package.
+The CLI takes its default configuration from the descriptor. Override it only
+with a compatible SDK, using `--configuration`. `--generator` selects CMake's
+generator; Windows generators need a working compiler environment. Use a fresh
+build directory after changing compiler, architecture or SDK.
+
+On macOS the SDK normalizes Mod SDL load commands to `@rpath` and renews the
+ad hoc signature during linking. Deployment copies unchanged output. Apply any
+distribution signature after the build. The CMake helper needs CMake 3.19+;
+building BML+ itself requires CMake 3.25+.
+
+## Manual CMake build
+
+```cmake
+cmake_minimum_required(VERSION 3.19)
+project(MyMod LANGUAGES CXX)
+find_package(BML CONFIG REQUIRED)
+bml_add_mod(MyMod src/MyMod.cpp)
+bml_install_mod(MyMod)
+```
+
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH="/path/to/BML-SDK" -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+cmake --install build --config Release --prefix "/path/to/game/ModLoader"
+```
+
+Keep `.bmodp` and `.bmodp.abi.json` together. `pack` produces a ZIP with both
+and rejects accidental overwrite without `--force`. Native `pack` currently
+contains only that pair; projects with extra resources need their own CMake
+resource-package step. Script `pack` includes source/resources and excludes
+editor stubs and local settings. Copy that ZIP into `ModLoader/Mods`.
+Missing or incompatible sidecars are rejected before loading native code.
+
+The SDK is relocatable. Full guides live in `share/BML/docs`; editor declarations
+live in `docs/api`. See `examples/native-mod`, `examples/native-c-mod`, the
+interface provider/consumer pair, and (when enabled) `examples/script-mod`.

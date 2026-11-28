@@ -7,6 +7,13 @@
 #include <vector>
 
 namespace bmlupdater {
+    struct UpdateTarget {
+        std::string runtime;
+        std::string platform;
+        std::string architecture;
+        std::string hostLinkage;
+        bool operator==(const UpdateTarget &) const = default;
+    };
     struct Result {
         bool ok{false};
         std::string message;
@@ -29,6 +36,7 @@ namespace bmlupdater {
         std::string path;
         std::string sha256;
         uint64_t size{0};
+        uint32_t mode{0644};
     };
 
     struct RemoveFile {
@@ -38,6 +46,8 @@ namespace bmlupdater {
 
     struct UpdaterManifest {
         int schemaVersion{1};
+        UpdateTarget target;
+        std::string packageType;
         std::string version;
         std::string packageFileName;
         std::string packageSha256;
@@ -66,6 +76,7 @@ namespace bmlupdater {
         std::wstring backupPath;
         std::string expectedOldSha256;
         std::string newSha256;
+        bool operator==(const ApplyOperation &) const = default;
     };
 
     struct ApplyPlan {
@@ -90,6 +101,7 @@ namespace bmlupdater {
     };
 
     struct RemoteUpdateInfo {
+        UpdateTarget target;
         std::string channel;
         std::string channelUrl;
         std::string channelSignatureUrl;

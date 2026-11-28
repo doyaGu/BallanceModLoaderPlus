@@ -8,10 +8,11 @@
 #include "AngelScript/ScriptDevToolsService.h"
 #endif
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
+#if BML_RUNTIME_SDL
+#include <SDL3/SDL_time.h>
+#else
 #include <Windows.h>
+#endif
 
 #include "Loader/ModContext.h"
 
@@ -49,50 +50,43 @@ void Logger::Error(const char *fmt, ...) {
 }
 
 void Logger::Log(const char *level, const char *fmt, va_list args) {
-    SYSTEMTIME sys;
-    GetLocalTime(&sys);
-
     auto *ctx = BML_GetModContext();
-    FILE *logFile = ctx ? ctx->GetLogFile() : nullptr;
-
     std::string message;
     if (fmt) {
         va_list sizeArgs;
         va_copy(sizeArgs, args);
-        const int length = _vscprintf(fmt, sizeArgs);
+        const int length = std::vsnprintf(nullptr, 0, fmt, sizeArgs);
         va_end(sizeArgs);
         if (length >= 0) {
             std::vector<char> buffer(static_cast<size_t>(length) + 1);
             va_list formatArgs;
             va_copy(formatArgs, args);
-            vsnprintf_s(buffer.data(), buffer.size(), _TRUNCATE, fmt, formatArgs);
+            std::vsnprintf(buffer.data(), buffer.size(), fmt, formatArgs);
             va_end(formatArgs);
             message.assign(buffer.data());
         }
     }
 
-    FILE *outFiles[] = {
-#ifdef _DEBUG
-        stdout,
+    char timestamp[64];
+#if BML_RUNTIME_SDL
+    SDL_DateTime sys{};
+    SDL_Time now{};
+    SDL_GetCurrentTime(&now);
+    SDL_TimeToDateTime(now, &sys, true);
+    std::snprintf(timestamp, sizeof(timestamp), "[%02d/%02d/%d %02d:%02d:%02d.%03d] ",
+                  sys.month, sys.day, sys.year, sys.hour, sys.minute, sys.second, sys.nanosecond / 1000000);
+#else
+    SYSTEMTIME sys{};
+    GetLocalTime(&sys);
+    std::snprintf(timestamp, sizeof(timestamp), "[%02d/%02d/%d %02d:%02d:%02d.%03d] ",
+                  sys.wMonth, sys.wDay, sys.wYear, sys.wHour, sys.wMinute, sys.wSecond, sys.wMilliseconds);
 #endif
-        logFile
-    };
-
-    for (FILE *file: outFiles) {
-        if (!file) continue;
-
-        fprintf(file, "[%02d/%02d/%d %02d:%02d:%02d.%03d] ", sys.wMonth, sys.wDay,
-                sys.wYear, sys.wHour, sys.wMinute, sys.wSecond, sys.wMilliseconds);
-        fprintf(file, "[%s/%s]: ", m_ModName, level);
-        fputs(message.c_str(), file);
-        fputc('\n', file);
-        fflush(file);
-    }
+    if (ctx) ctx->WriteLogLine(std::string(timestamp) + "[" + m_ModName + "/" + level + "]: " + message);
 
 #if BML_ENABLE_ANGELSCRIPT
     if (ctx) {
-        if (auto *devTools = ctx->GetScriptDevTools())
-            devTools->PublishLogLine(level, m_ModName, message);
+        if (auto *devTools = ctx->GetModLoader().GetScriptDevTools())
+            devTools->PublishLogLine(level, m_ModName.c_str(), message);
     }
 #endif
 }

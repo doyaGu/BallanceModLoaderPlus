@@ -2,13 +2,9 @@
 
 #include <cwctype>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-#include <io.h>
+#include "Platform/FileSystemNative.h"
 
-#include "BML/ILogger.h"
+#include "Logging/Logger.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -19,9 +15,7 @@ namespace {
 bool IsReparsePoint(const std::wstring &path) {
     if (path.empty())
         return false;
-    const DWORD attributes = ::GetFileAttributesW(path.c_str());
-    return attributes != INVALID_FILE_ATTRIBUTES &&
-           (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+    return Platform::IsLink(utils::Utf16ToUtf8(path));
 }
 
 bool HasSiblingZipForReloadBase(const std::wstring &root, const std::wstring &baseName) {
@@ -60,30 +54,19 @@ bool TryParseScriptReloadArtifactName(const std::wstring &name,
 ScriptReloadCleanupResult CleanupStaleScriptReloadDirectoryChildren(const std::wstring &root,
                                                                     const wchar_t *marker,
                                                                     bool requireSiblingZip,
-                                                                    ILogger *logger) {
+                                                                    Logger *logger) {
     ScriptReloadCleanupResult result;
     if (root.empty() || !marker || !utils::DirectoryExistsW(root))
         return result;
 
-    const std::wstring pattern = utils::CombinePathW(root, L"*");
-    _wfinddata_t fileinfo = {};
-    auto handle = _wfindfirst(pattern.c_str(), &fileinfo);
-    if (handle == -1)
-        return result;
-
-    do {
-        if ((fileinfo.attrib & _A_SUBDIR) == 0)
-            continue;
-        if (wcscmp(fileinfo.name, L".") == 0 || wcscmp(fileinfo.name, L"..") == 0)
-            continue;
-
+    for (const auto &name : utils::ListDirectoriesW(root)) {
         std::wstring baseName;
-        if (!TryParseScriptReloadArtifactName(fileinfo.name, marker, &baseName))
+        if (!TryParseScriptReloadArtifactName(name, marker, &baseName))
             continue;
         if (requireSiblingZip && !HasSiblingZipForReloadBase(root, baseName))
             continue;
 
-        const std::wstring stale = utils::CombinePathW(root, fileinfo.name);
+        const std::wstring stale = utils::CombinePathW(root, name);
         if (IsReparsePoint(stale))
             continue;
 
@@ -96,14 +79,12 @@ ScriptReloadCleanupResult CleanupStaleScriptReloadDirectoryChildren(const std::w
                              utils::Utf16ToUtf8(stale).c_str());
             }
         }
-    } while (_wfindnext(handle, &fileinfo) == 0);
-
-    _findclose(handle);
+    }
     return result;
 }
 
 ScriptReloadCleanupResult CleanupStaleScriptReloadArtifacts(const std::wstring &modsRoot,
-                                                            ILogger *logger) {
+                                                            Logger *logger) {
     ScriptReloadCleanupResult result;
     ScriptReloadCleanupResult snapshotResult =
         CleanupStaleScriptReloadDirectoryChildren(utils::CombinePathW(utils::GetTempPathW(), L"BMLScriptReload"),

@@ -3,8 +3,7 @@
 
 #include <cstddef>
 
-#include "BML/IMod.h"
-#include "BML/IBML.h"
+#include "Loader/ModRecord.h"
 #include "BML/Behavior.hpp"
 
 #include "Console/Console.h"
@@ -18,45 +17,55 @@
 class ModContext;
 struct FontCommandContext;
 
-class BMLMod : public IMod {
+class BMLMod {
 public:
+    ModRecord &Registration() noexcept { return m_Record; }
+
+    const ModRecord &Registration() const noexcept { return m_Record; }
+
     explicit BMLMod(ModContext *context);
 
     // The builtin capabilities read the BML mod's bound runtime, never the
     // ambient BML_GetModContext() singleton.
     ModContext *GetRuntimeContext() const;
 
-    const char *GetID() override { return "BML"; }
-    const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "Ballance Mod Loader"; }
-    const char *GetAuthor() override { return "doyaGu & Gamepiaynmo & YingChe"; }
-    const char *GetDescription() override {
+    const char *GetID() { return "BML"; }
+
+    const char *GetVersion() { return BML_VERSION; }
+
+    const char *GetName() { return "Ballance Mod Loader"; }
+
+    const char *GetAuthor() { return "doyaGu & Gamepiaynmo & YingChe"; }
+
+    const char *GetDescription() {
         return "Implementation of functions provided by Ballance Mod Loader."
                "\n\n https://github.com/doyaGu/BallanceModLoaderPlus";
     }
-    DECLARE_BML_VERSION;
 
-    void OnLoad() override;
-    void OnUnload() override;
+    BMLVersion GetBMLVersion() { return {}; }
+
+    void OnLoad();
+    void OnUnload();
     void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName,
-                      CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials,
-                      CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) override;
-    void OnLoadScript(const char *filename, CKBehavior *script) override;
-    void OnProcess() override;
-    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
+                      CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes,
+                      CKBOOL reuseMaterials, CKBOOL dynamic, XObjectArray *objArray,
+                      CKObject *masterObj);
+    void OnLoadScript(const char *filename, CKBehavior *script);
+    void OnProcess();
+    void OnPlayerRender();
+    void OnModifyConfig(const char *category, const char *key, Property *prop);
 
-
-    void OnPreStartMenu() override;
-    void OnPostStartMenu() override;
-    void OnExitGame() override;
-    void OnPreLoadLevel() override;
-    void OnStartLevel() override;
-    void OnPostExitLevel() override;
-    void OnPauseLevel() override;
-    void OnUnpauseLevel() override;
-    void OnBallNavActive() override;
-    void OnCounterActive() override;
-    void OnCounterInactive() override;
+    void OnPreStartMenu();
+    void OnPostStartMenu();
+    void OnExitGame();
+    void OnPreLoadLevel();
+    void OnStartLevel();
+    void OnPostExitLevel();
+    void OnPauseLevel();
+    void OnUnpauseLevel();
+    void OnBallNavActive();
+    void OnCounterActive();
+    void OnCounterInactive();
 
     void AddIngameMessage(const char *msg);
     void ClearIngameMessages();
@@ -89,6 +98,9 @@ public:
     float GetSRTime() const;
 
 private:
+    ModContext *m_BML;
+    ModRecord m_Record;
+
     enum ApplyWhen : unsigned {
         OnDemand = 0,
         Startup = 1U << 0,
@@ -99,8 +111,8 @@ private:
     struct Setting {
         const char *category;
         const char *key;
-        IProperty *BMLMod::*property;
-        void (*apply)(BMLMod &mod, IProperty *property);
+        Property *BMLMod::*property;
+        void (*apply)(BMLMod &mod, Property *property);
         unsigned when;
         bool requiresIngame;
     };
@@ -108,25 +120,32 @@ private:
     static const Setting *GetSettings(std::size_t &count);
     void BindSettings();
     void ApplySettings(ApplyWhen when);
-    void ApplySetting(const Setting &setting, IProperty *property);
+    void ApplySetting(const Setting &setting, Property *property);
 
     void InitConfigs();
     void InitGUI();
     FontCommandContext GetFontCommandContext() const;
     void ConfigureUiFonts();
     void RefreshFontChoices();
-    static void ApplyUiFontSetting(BMLMod &mod, IProperty *property);
-    static void ApplyUnlockFrameRateSetting(BMLMod &mod, IProperty *property);
-    static void ApplyFrameRateLimitSetting(BMLMod &mod, IProperty *property);
-    static void ApplyWidescreenSetting(BMLMod &mod, IProperty *property);
+    static void ApplyUiFontSetting(BMLMod &mod, Property *property);
+    static void ApplyUnlockFrameRateSetting(BMLMod &mod, Property *property);
+    static void ApplyFrameRateLimitSetting(BMLMod &mod, Property *property);
+    static void ApplyWidescreenSetting(BMLMod &mod, Property *property);
 
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
     void AcquireGameFonts();
 
     void OnProcess_Menu();
 
+    void BindGameplayTimer(CKBehavior *script);
+    void UnbindGameplayTimer();
+    CKBehavior *GetGameplayTimer() const;
+    static int ExecuteGameplayTimer(const CKBehaviorContext &context);
+
     CKContext *m_CKContext = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
+    CK_ID m_GameplayTimer = 0;
+    CKBEHAVIORFCT m_GameplayTimerFunction = nullptr;
 
     HUDRuntime m_HUD;
     ModMenu m_ModMenu;
@@ -144,17 +163,16 @@ private:
     bool m_ShowImGuiDemo = false;
 #endif
 
-    IProperty *m_FontFilename = nullptr;
-    IProperty *m_FontSize = nullptr;
-    IProperty *m_FontFallbacks = nullptr;
-    IProperty *m_FontFallbackSize = nullptr;
-    IProperty *m_UseSystemFontFallbacks = nullptr;
-    IProperty *m_EnableIniSettings = nullptr;
+    Property *m_FontFilename = nullptr;
+    Property *m_FontSize = nullptr;
+    Property *m_FontFallbacks = nullptr;
+    Property *m_FontFallbackSize = nullptr;
+    Property *m_UseSystemFontFallbacks = nullptr;
+    Property *m_EnableIniSettings = nullptr;
 
-    IProperty *m_UnlockFPS = nullptr;
-    IProperty *m_FPSLimit = nullptr;
-    IProperty *m_WidescreenFix = nullptr;
-
+    Property *m_UnlockFPS = nullptr;
+    Property *m_FPSLimit = nullptr;
+    Property *m_WidescreenFix = nullptr;
 };
 
 #endif // BML_BMLMOD_H

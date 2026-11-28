@@ -300,6 +300,17 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
     BML_REGISTER_BEHAVIOR_ENUM(WatchState);
     BML_REGISTER_BEHAVIOR_ENUM_VALUE(WatchState, Active, Active);
     BML_REGISTER_BEHAVIOR_ENUM_VALUE(WatchState, Failed, Failed);
+    BML_REGISTER_BEHAVIOR_ENUM(EditOwnership);
+    BML_REGISTER_BEHAVIOR_ENUM_VALUE(EditOwnership, Graph, Graph);
+    BML_REGISTER_BEHAVIOR_ENUM_VALUE(EditOwnership, Submission, Submission);
+    BML_REGISTER_BEHAVIOR_ENUM(SubmissionState);
+    BML_REGISTER_BEHAVIOR_ENUM_VALUE(SubmissionState, Pending, Pending);
+    BML_REGISTER_BEHAVIOR_ENUM_VALUE(SubmissionState, Applied, Applied);
+    BML_REGISTER_BEHAVIOR_ENUM_VALUE(SubmissionState, Failed, Failed);
+    BML_REGISTER_BEHAVIOR_ENUM_VALUE(SubmissionState, Disabled, Disabled);
+    BML_REGISTER_BEHAVIOR_ENUM_VALUE(SubmissionState, Partial, Partial);
+    BML_REGISTER_BEHAVIOR_ENUM_VALUE(SubmissionState, Closing, Closing);
+    BML_REGISTER_BEHAVIOR_ENUM_VALUE(SubmissionState, Conflicted, Conflicted);
     BML_REGISTER_BEHAVIOR_ENUM(PatchState);
     BML_REGISTER_BEHAVIOR_ENUM_VALUE(PatchState, Pending, Pending);
     BML_REGISTER_BEHAVIOR_ENUM_VALUE(PatchState, Active, Active);
@@ -548,6 +559,8 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
     BML_BEHAVIOR_REF(ScriptBehaviorEditLink, "EditLink");
     BML_BEHAVIOR_REF(ScriptBehaviorEditPath, "EditPath");
     BML_BEHAVIOR_REF(ScriptBehaviorEditOperation, "Operation");
+    BML_BEHAVIOR_REF(ScriptBehaviorSubmission, "Submission");
+    BML_BEHAVIOR_REF(ScriptBehaviorInstallation, "Installation");
     BML_BEHAVIOR_REF(ScriptBehaviorPatch, "Patch");
     BML_BEHAVIOR_REF(ScriptBehaviorPlan, "Plan");
     BML_BEHAVIOR_REF(ScriptBehaviorScript, "Script");
@@ -1273,6 +1286,18 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
     BML_BEHAVIOR_METHOD(ScriptBehaviorEdit, "Edit", "EditGraph@ Root() const",
                         &ScriptBehaviorEdit::Root);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEdit, "Edit",
+                        "Submission@ Apply(const string &in name, Graph@+ graph, EditOwnership ownership) const",
+                        &ScriptBehaviorEdit::ApplyGraph);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorEdit, "Edit",
+                        "Submission@ Apply(const string &in name, const string &in script, EditOwnership ownership, bool each = false) const",
+                        &ScriptBehaviorEdit::ApplyScripts);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorEdit, "Edit",
+                        "Submission@ Apply(const string &in name, Graph@+ graph, EditOwnership ownership, bool enabled) const",
+                        &ScriptBehaviorEdit::ApplyGraphWithState);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorEdit, "Edit",
+                        "Submission@ Apply(const string &in name, const string &in script, EditOwnership ownership, bool each, bool enabled) const",
+                        &ScriptBehaviorEdit::ApplyScriptsWithState);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorEdit, "Edit",
                         "Plan@ Plan(const string &in name, const string &in script, bool each = false)",
                         &ScriptBehaviorEdit::Plan);
     BML_BEHAVIOR_METHOD(ScriptBehaviorEdit, "Edit",
@@ -1550,6 +1575,45 @@ int RegisterScriptBehavior(asIScriptEngine *engine, const char **errorMessage) {
     BML_BEHAVIOR_METHOD(ScriptBehaviorPlan, "Plan",
                         "bool Replace(const string &in script, Edit@+ edit, bool each = false)",
                         &ScriptBehaviorPlan::Replace);
+
+    BML_BEHAVIOR_DIRECT_METHOD(ScriptBehaviorSubmission, "Submission",
+                               "bool get_IsValid() const", IsValid);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "SubmissionState get_State() const", &ScriptBehaviorSubmission::State);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "bool get_RequestedEnabled() const", &ScriptBehaviorSubmission::RequestedEnabled);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "bool SetEnabled(bool enabled)", &ScriptBehaviorSubmission::SetEnabled);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "bool Replace(Graph@+ graph, Edit@+ edit)", &ScriptBehaviorSubmission::ReplaceGraph);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "bool Replace(const string &in script, Edit@+ edit, bool each = false)",
+                        &ScriptBehaviorSubmission::ReplaceScripts);
+    // AngelScript 2.38 keeps a generated array of BML-owned handles alive as
+    // part of the config group that registers its signature. Validate the type
+    // at the call site so the script module owns the template instance.
+    BML_BEHAVIOR_REGISTER(engine->RegisterObjectMethod(
+        "Submission", "bool ReadInstallations(? &out installations) const",
+        asFUNCTION(ReadInstallations), asCALL_GENERIC),
+        "BML::Behavior::Submission::ReadInstallations");
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "string get_ApplyError() const", &ScriptBehaviorSubmission::ApplyError);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "string get_RestoreError() const", &ScriptBehaviorSubmission::RestoreError);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "Installation@ Find(ObjectRef@+ graph = null) const", &ScriptBehaviorSubmission::Find);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "bool SetInput(EditPort@+ port, const Value &in value) const", &ScriptBehaviorSubmission::SetInput);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorSubmission, "Submission",
+                        "CloseState Close()", &ScriptBehaviorSubmission::Close);
+    BML_BEHAVIOR_DIRECT_METHOD(ScriptBehaviorInstallation, "Installation",
+                               "bool get_IsValid() const", IsValid);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorInstallation, "Installation",
+                        "ObjectRef@ Resolve(EditNode@+ node) const", &ScriptBehaviorInstallation::Resolve);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorInstallation, "Installation",
+                        "ObservedValue@ Read(EditPort@+ port) const", &ScriptBehaviorInstallation::Read);
+    BML_BEHAVIOR_METHOD(ScriptBehaviorInstallation, "Installation",
+                        "bool Set(EditPort@+ port, const Value &in value) const", &ScriptBehaviorInstallation::Set);
 
     BML_BEHAVIOR_DIRECT_METHOD(ScriptBehaviorScript, "Script",
                                "bool get_IsValid() const", IsValid);

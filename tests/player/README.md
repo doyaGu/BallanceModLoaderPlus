@@ -1,95 +1,148 @@
 # Player acceptance tests
 
-These tests start the real Ballance Player. Run only the scenario affected by a
-change; unit tests and headless UI checks do not verify Virtools behavior.
+## Virtools Win32
 
-Build the loader and the targets named by the selected runner, then pass the
-loader DLL to that runner. For example:
+Use a copy of the Ballance install with the dynamically linked BallancePlayer
+`52bcdc9` build. Extract the Win32 runtime into the copy and the SDK into a
+separate directory. Build the probe with VS 2022 and the shared SDK contract.
 
 ```powershell
-cmake --build build-dev --config RelWithDebInfo --target BML PlayerFlowDriver ExecuteBBTest
-powershell -ExecutionPolicy Bypass -File tests/player/Invoke-ExecuteBBTest.ps1 `
-  -BallanceRoot "<Ballance-root>" `
-  -BuildDll "build-dev/bin/RelWithDebInfo/BMLPlus.dll"
+cmake -S tests/player/virtools -B build/virtools-player-probe -G "Visual Studio 17 2022" -A Win32 -DCMAKE_PREFIX_PATH=C:/acceptance/sdk -DVIRTOOLS_SDK_PATH=C:/sdk/Virtools-SDK-2.1
+cmake --build build/virtools-player-probe --config Release
+cmake --install build/virtools-player-probe --config Release --prefix C:/acceptance/game/ModLoader
 ```
 
-Other focused runners are `Invoke-BehaviorAcceptanceTest.ps1`,
-`Invoke-BehaviorDeletionTest.ps1`,
-`Invoke-GameplayRouteTest.ps1`, `Invoke-InterfaceProviderTest.ps1`,
-`Invoke-NewBallTypeTest.ps1`, `Invoke-NativeModProfilesTest.ps1`,
-`Invoke-NoExitModTest.ps1`,
-`Invoke-PublicAuthoringTest.ps1`, and `Invoke-ScriptImcInteropTest.ps1`. Read
-each runner's required build targets before invoking it. `GameplayRouteTest`
-is not part of the 0.3.14 release scope and reports SKIPPED while its authored
-route is under review; a skipped result is never release evidence.
+Start Player with the copy's `Bin` as its working directory. The Mod logs its
+verdict and exits after the first level starts. For a second run, set
+`BML_PORT_CHECK_CONFIG=1` to check the UTF-8 value saved in the first run. Set
+`BML_PORT_CHECK_MAP=1` and place a valid `中文地图.nmo` under `ModLoader/Maps`
+to exercise the custom-map route. The probe reloads its companion Building
+Block to check prototype identity. Set `BML_PORT_CHECK_EVENTS=1` to exercise
+pause, resume and restart through the live event handler. Set
+`BML_PORT_CHECK_RENDER=1` to skip every other frame for 60 updates. Set
+`BML_PORT_CHECK_TWEAKS=0` or `1` to check Lantern Alpha Test and the three
+Overclock paths against the corresponding Overclock value in `BML.cfg`.
 
-The full Behavior acceptance runner requires a dedicated instrumented build
-configured with `-DBML_ENABLE_BEHAVIOR_TEST_INTERFACE=ON`. This private bridge
-is disabled by default and must not be used for release packages.
+Enable `BML_TEST_VIRTOOLS_IME` for the Pinyin test. Install the resulting
+`VirtoolsImeProbe.bmodp` and its ABI sidecar in the disposable runtime and
+keep Player in the foreground. The test requires an enabled Microsoft Pinyin
+profile. It uses the profile within the Player process, types and cancels
+a composition, then verifies that a second composition commits exactly one
+`你好` to an ImGui input. Check the log for the Pinyin result. The Mod exits
+Player on completion, so run it separately from the gameplay probe.
+[Windows TSF profile activation](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofilemgr-activateprofile)
 
-`Invoke-BehaviorDeletionTest.ps1` needs only `PlayerFlowDriver` and
-`BehaviorDeletionTest`. It accepts an ordinary release loader with or without
-AngelScript; no private bridge or fixture DLL is needed. The probe exercises
-mixed deferred deletion through the shipped BGui and Behavior interfaces,
-including Instance cleanup, nested graphs, root and owner deletion, deletion of
-an edited dynamic graph, orphan Links with surviving source IOs, journal-owned
-value snapshots, parked Nodes and their incident Links, replacement originals,
-and copied port and Link relations. It checks retained CK objects, not just
-stale interface handles, then returns through the
-game's Exit Level message before exiting. The full Behavior acceptance runner
-also includes this probe.
+## SDL Player
 
-`PlayerFlowDriver` drives the retail menu and level flow. Each installed probe
-Mod reports one result through `BMLPlayerProbeRead`; probes that need gameplay
-input also expose `BMLPlayerProbeStart`. The driver does not decide which probes
-to run. `BMLPlayerHarness.psm1` backs up and restores touched game files and
-logs, starts Player, and collects the probe results. Close an existing Player
-process before a runner replaces its DLL.
+The dynamic SDL regression builds `SdlPostProcessProbe` as an independent
+consumer of an **installed** SDK and runs disposable copies of a complete,
+matching Player runtime with real game data.
 
-For visible ImGui journeys, use the separate [UI automation guide](../ui/README.md).
+```sh
+cmake -S tests/player/sdl -B build/sdl-postprocess-test \
+  -DCMAKE_PREFIX_PATH="/path/to/BML-SDK;/path/to/engine-sdk;/path/to/SDL-prefix" \
+  -DCMAKE_BUILD_TYPE=Release -DBML_SDL_PLAYER_ROOT="/path/to/prepared/runtime"
+cmake --build build/sdl-postprocess-test --config Release
+ctest --test-dir build/sdl-postprocess-test -C Release --output-on-failure
+```
 
-`Invoke-NativeZipResourcesTest.ps1` checks the package contract with ordinary
-native and script ZIPs. Configure with `-DBML_ENABLE_ANGELSCRIPT=ON`, build `BML`,
-`PlayerFlowDriver`, and `NativeZipResourcesTest`, then pass the loader DLL with
-`-BuildDll`. The native Mod reads its bundled file using `BML_GetModRootW`; the
-script Mod uses `ReadModTextFileUtf8`. Both resources must remain readable after
-startup, and the native resource must still be readable during unload. This
-test does not inspect loader state or game Behavior graphs.
+Use the CK2/VxMath exports and SDL3 package used to build BML+. Match their
+architecture, compiler/runtime and configuration because this probe uses
+engine/ImGui extensions. CTest runs Player three times. It requires
+a native desktop and working renderer, unlike `tests/ck2/sdl` dummy-video tests.
+Do not run multiple Player probes or update tests against the same fixture at
+once.
 
-Add `-Scenario mixed-reload` to put both Mods in one ZIP and reload the script
-twice through the public `script reload` command. `-Scenario wrapped-reload`
-places the script in a subdirectory. In both layouts the native and script
-resources must stay readable across both reloads and through native unload.
-The engine must also keep resolving native data from the native Mod's own root,
-even when the script moves away from their initially shared search paths.
-`-Scenario nested` places different `Shared.zip` archives in two outer ZIPs;
-neither may overwrite the other's native Mod or resource.
+The probe checks late PostProcess after default manager/physics work, Behavior
+safe-point ordering, 120 Process/physics ticks, and a one-shot request consumed
+by the next Render (119 render callbacks). Input checks cover seven phases of
+raw/filtered keyboard and mouse state, release edges, nested blocks and cleanup.
+It injects SDL events through Player’s normal queue and exits through the public
+`BML::Gameplay::ExitGame`. No menu driving is needed.
 
-Build `ScriptZipSearchPathsTest` for `-Scenario search-reload` and
-`-Scenario search-rollback`. These update an actual script ZIP, then resolve
-new data, bitmap and sound files through the public CKPathManager API, including
-inside the new script's OnLoad callback. A rejected OnLoad must restore the old
-resources, and neither case may leak search-path entries. The lifecycle signal
-uses a normal public command registration.
-Each scenario repeats three times. Add `-ResourceLayout Add` or `Remove` to
-introduce or remove the data, texture and sound subdirectories during reload.
-Counts must change by the exact number of directories, and rollback must
-restore the original layout and counts on every attempt.
+The SDK-built Mod must find Player’s SDL window. The runner records SHA-256 of
+original and staged binaries; they must match. It never patches binary
+relocations, signatures or load commands, and never changes the supplied runtime.
+Each run retains its verdict, Loader/Player logs and disposable runtime.
 
-Pass `-ScriptSupport Disabled` with a loader built using
-`-DBML_ENABLE_ANGELSCRIPT=OFF` to check native startup and unload for `separate`,
-`mixed-reload`, `wrapped-reload`, and `nested`. Mixed packages still contain
-their scripts, but no reload is requested: the public Mod lookup must find no
-script and the public `script status` command must report failure. Reload
-scenarios require enabled support.
+## Additional Mods and performance
 
-`-Scenario named` checks spaces in archive names and uppercase `.ZIP`
-extensions. `-Scenario malformed` includes an invalid archive beside the valid
-packages; its extraction must fail without hiding the valid Mods or creating a
-failed Script Mod. Both scenarios support either script build mode.
+Use the same runner with previously built Mods and explicit expected identities:
 
-Add `-WithoutScriptHost` to temporarily remove `AngelScript.dll` through the
-Player harness's backup/restore flow. Both loader builds must keep native
-resources readable and leave scripts unregistered; an enabled build must also
-report the missing host. The mixed package cases exercise startup/unload only
-when the host is absent.
+```sh
+python tests/player/sdl/RunPostProcessTest.py \
+  --runtime "/path/to/prepared/runtime" \
+  --probe "/path/to/SdlPostProcessProbe.bmodp" \
+  --mods-from "/path/to/test-mods" --expect-mod example.friendly \
+  --output "/path/to/artifacts" --repeat 3 --timeout 60
+```
+
+`--expect-mod` is repeatable and requires each identity to reach the loaded state.
+Include `DebugUtilities` in a script-enabled run to exercise cheat notifications
+before its ball force parameters exist.
+Include native ABI sidecars. Script-enabled runs automatically stage the probe’s
+script helpers; test native-only runtime/SDK builds separately. These helpers
+check strict ConfigValue reads and choices ownership, keyboard snapshot COW and
+retirement, zero-delay timers, full command notifications, successful reload and
+failed-candidate rollback, stale-view output clearing, terminal cleanup and an
+instant dependency query after the provider fails. Command contracts also reject
+malformed UTF-8 and embedded NUL before dispatch, preserve valid Chinese text
+and business exit codes, and read both ordinary and cheat command event flags.
+Native and script checks reject malformed metadata in all three descriptive
+fields, retry the same registration name, and distinguish invalid lookup names
+from valid names that are absent. The extended
+SDK fixture covers C/C++, all four native profiles, inter-Mod interfaces,
+configuration notifications, timer/command lifetimes, CK borrowing after object
+deletion, script dependencies and the twelve in-tree Mods.
+
+`--benchmark-api` adds repeated directory/key-name/blocked-keyboard measurements,
+with raw-keyboard reads as a control. Compare repeated runs with the same
+configuration, prepared assets and machine; do not turn one timing sample into
+a cross-platform performance claim.
+
+Loading every Mod is startup coverage. Full level transitions, each Mod’s game
+behavior, visual correctness and all input devices remain separate acceptance
+work. [Current evidence and pending targets](../../docs/en/validation.md).
+
+## Script API registration and examples
+
+`--without-script-consumers` leaves the extension enabled while staging no probe
+script modules. It checks registration and clean engine teardown, including the
+native value type that exposes ConfigPropertyDefinition.Choices through owned
+array accessors. This is separate from a build with scripting disabled.
+
+`--script-examples` compiles and loads the three SDK examples, template and
+positive smoke scripts (including a real ZIP with resources). It also
+compiles five reload/recovery source variants with their lifecycle methods
+renamed in the staged copy, so intentional exit/throw paths cannot run. Real
+runtime replacement and rollback are exercised by ScriptRuntimeProbe instead.
+`--tutorial-examples` additionally enables the complete tutorial asset and
+complete course code blocks; use it with documentation matching the API.
+Each expected identity must reach Loaded; a script compile failure cannot pass
+because Player still starts. These checks cover compilation/startup, not every
+gameplay path in the examples.
+
+When a prepared runtime is supplied to the standalone CMake project, CTest
+registers the normal three-cycle probe, three-cycle empty-consumer registration
+probe, and a one-cycle example check for script-enabled runtimes.
+
+To refresh editor declarations from the actual registered runtime:
+
+```sh
+python tests/player/sdl/RunPostProcessTest.py \
+  --runtime "/path/to/prepared/runtime" \
+  --probe "/path/to/SdlPostProcessProbe.bmodp" \
+  --output build/script-api-runs --repeat 1 \
+  --dump-api build/bml-script-api.as
+python tools/generate_script_api.py --export build/bml-script-api.as
+python tools/generate_script_api.py --export build/bml-script-api.as --check
+```
+
+The dump requires headers matching the runtime CKAngelScript. For a default BML
+build, set `BML_TEST_CKAS_INCLUDE` to `build/sdl/_deps/ckangelscript-src/include`
+and `BML_TEST_AS_INCLUDE` to the `angelscript/include` directory under
+`CKAS_ANGELSCRIPT_ROOT` in that BML build's cache. For a local checkout next to
+BML+, the probe can discover those paths automatically. The probe uses
+public runtime/engine reflection, not another registration list. The publisher
+restores @+ ownership markers from native declarations because reflection omits
+them, and replaces only the BML section of the editor baseline.

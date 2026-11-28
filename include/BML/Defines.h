@@ -1,11 +1,11 @@
 // The pieces every other public header starts from, and the error codes the loader
 // answers with. Nothing here does anything on its own, so a Mod includes it for
-// MOD_EXPORT and for the error codes rather than for its own sake.
+// BML_MOD_ENTRY and for the error codes rather than for its own sake.
 //
 // BML_EXPORT marks what the loader exports and turns into an import when a Mod compiles,
-// which is why a Mod must not define BML_EXPORTS. MOD_EXPORT is what the Mod's own
-// BMLEntry and BMLExit are marked with, since those two are what the loader looks for in
-// the .bmodp file. BML_BEGIN_CDECLS and BML_END_CDECLS wrap the plain C parts so the same
+// which is why a Mod must not define BML_EXPORTS. BML_MOD_ENTRY marks the Mod's
+// BML_GetModInterface entry with C linkage, export visibility and explicit cdecl.
+// BML_BEGIN_CDECLS and BML_END_CDECLS wrap the plain C parts so the same
 // header compiles as C and as C++.
 //
 // The error codes are one numbering shared by everything that answers with an int: 0 is
@@ -24,6 +24,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <float.h>
+#ifdef __cplusplus
+static_assert(sizeof(int) == 4 && sizeof(float) == 4 && sizeof(double) == 8,
+              "BML requires 32-bit int/float and 64-bit double");
+static_assert(FLT_RADIX == 2 && FLT_MANT_DIG == 24 && DBL_MANT_DIG == 53,
+              "BML requires IEEE binary32/binary64 floating point");
+#else
+_Static_assert(sizeof(int) == 4 && sizeof(float) == 4 && sizeof(double) == 8,
+               "BML requires 32-bit int/float and 64-bit double");
+_Static_assert(FLT_RADIX == 2 && FLT_MANT_DIG == 24 && DBL_MANT_DIG == 53,
+               "BML requires IEEE binary32/binary64 floating point");
+#endif
+
 #ifndef BML_BEGIN_CDECLS
 #ifdef __cplusplus
 #define BML_BEGIN_CDECLS extern "C" {
@@ -41,26 +54,38 @@
 #endif // !BML_END_CDECLS
 
 #ifndef BML_EXPORT
-#ifdef BML_EXPORTS
+#if defined(_WIN32) && defined(BML_EXPORTS)
 #define BML_EXPORT __declspec(dllexport)
-#else
+#elif defined(_WIN32)
 #define BML_EXPORT __declspec(dllimport)
+#else
+#define BML_EXPORT __attribute__((visibility("default")))
 #endif
 #endif
 
 #ifndef BML_CDECL
 #if defined(_MSC_VER)
 #define BML_CDECL __cdecl
+#elif defined(_WIN32) && defined(__i386__)
+#define BML_CDECL __attribute__((cdecl))
 #else
 #define BML_CDECL
 #endif
 #endif // !BML_CDECL
 
-// Legacy export prefix. New entry points should use BML_MOD_ENTRY so their
-// calling convention is independent of the Mod project's compiler defaults.
-#define MOD_EXPORT extern "C" __declspec(dllexport)
+// Mod entry points have C linkage, export visibility and an explicit calling convention.
+#if defined(_WIN32)
+#define BML_MOD_EXPORT __declspec(dllexport)
+#else
+#define BML_MOD_EXPORT __attribute__((visibility("default")))
+#endif
+#ifdef __cplusplus
+#define BML_EXTERN_C extern "C"
+#else
+#define BML_EXTERN_C
+#endif
 #define BML_MOD_ENTRY(return_type) \
-    extern "C" __declspec(dllexport) return_type BML_CDECL
+    BML_EXTERN_C BML_MOD_EXPORT return_type BML_CDECL
 
 #ifndef MAX_PATH
 #define MAX_PATH 260
@@ -93,7 +118,11 @@
 #endif
 
 // Alignment macros
+#if defined(_MSC_VER)
 #define BML_ALIGN(x) __declspec(align(x))
+#else
+#define BML_ALIGN(x) __attribute__((aligned(x)))
+#endif
 #define BML_CACHE_LINE_SIZE 64
 #define BML_CACHE_ALIGNED BML_ALIGN(BML_CACHE_LINE_SIZE)
 

@@ -73,6 +73,7 @@ public:
 
     std::uint64_t RegisterOwner(std::string ownerId);
     void RetireOwner(const std::string &ownerId);
+    void StopOwnerAdmission(const std::string &ownerId) noexcept;
 
     Status OpenSession(const std::string &ownerId, std::uintptr_t &sessionId);
     void CloseSession(std::uintptr_t sessionId);

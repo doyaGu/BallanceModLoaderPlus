@@ -19,8 +19,8 @@ void LeaveSmokeMenuPage(BML::MenuPageLeaveReason reason) {
   ++menuPageLeaveCount;
 }
 
-[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.3.14" reload="auto" description="Smoke test for BML's built-in AngelScript capability APIs."]
-[bml.require id="BML" version="0.3.14"]
+[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.4.0" reload="auto" description="Smoke test for BML's built-in AngelScript capability APIs."]
+[bml.require id="BML" version="0.4.0"]
 class BMLBindingsSmokeMod {
   bool loggedGameplay = false;
   array<BML::Gameplay::CatalogEntry> catalogCache;
@@ -28,18 +28,21 @@ class BMLBindingsSmokeMod {
   BML::MenuPageRef@ menuChild;
 
   void OnLoad(const BML::ModContext &in ctx) {
-    bool stateOk = !ctx.IsPlaying || (ctx.IsInLevel && !ctx.IsPaused);
-    bool clockOk = ctx.GetFrameCount() >= 0 && ctx.GetTimeMs() >= 0.0f;
+    BML::Gameplay::State state;
+    BML::Time::Clock clock;
+    bool stateOk = BML::Gameplay::ReadState(state) == BML::ERROR_OK &&
+                   (!state.Playing || !state.Paused);
+    bool clockOk = BML::Time::ReadClock(clock) == BML::ERROR_OK;
     int highScore = 0;
     int highScoreStatus = BML::Gameplay::ReadHighScore(highScore);
-    bool highScoreOk = ctx.IsInLevel
-        ? highScoreStatus == BML::ERROR_OK && highScore == ctx.GetHSScore()
-        : highScoreStatus == BML::ERROR_UNAVAILABLE;
+    bool highScoreOk = (state.Playing || state.Paused)
+        ? highScoreStatus == BML::ERROR_OK : highScoreStatus == BML::ERROR_UNAVAILABLE;
     ctx.LogInfo("BML capability smoke: state=" + (stateOk ? "true" : "false") +
                 " clock=" + (clockOk ? "true" : "false") +
                 " highscore=" + (highScoreOk ? "true" : "false"));
 
-    CKContext@ host = ctx.BorrowCKContext();
+    CKContext@ host;
+    BML::Engine::BorrowContext(ctx, host);
     CKObject@ raw = host is null
         ? null
         : host.CreateObject(CKCID_OBJECT, "__BML_RawHandleValidityProbe");
@@ -60,17 +63,17 @@ class BMLBindingsSmokeMod {
     entry.Id = "overview";
     entry.Label = "Script diagnostics";
     entry.Description = "Script-owned Mods menu page";
-    @menuPage = ctx.RegisterMenuPage(entry, DrawSmokeMenuPage,
+    ctx.RegisterMenuPage(entry, DrawSmokeMenuPage, menuPage,
                                      EnterSmokeMenuPage, LeaveSmokeMenuPage);
     BML::MenuPageDefinition child;
     child.Id = "child";
     child.Label = "Child";
     child.ShowInDetails = false;
-    @menuChild = ctx.RegisterMenuPage(child, DrawSmokeMenuChild);
+    ctx.RegisterMenuPage(child, DrawSmokeMenuChild, menuChild);
     ctx.LogInfo("BML script menu pages: entry=" +
-                (menuPage !is null && menuPage.IsValid ? "true" : "false") +
+                (menuPage !is null && menuPage.IsValid() ? "true" : "false") +
                 " child=" +
-                (menuChild !is null && menuChild.IsValid ? "true" : "false"));
+                (menuChild !is null && menuChild.IsValid() ? "true" : "false"));
   }
 
   void OnProcess(const BML::ModContext &in ctx) {

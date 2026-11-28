@@ -1,6 +1,9 @@
-#include "BML/Gui/Button.h"
+#include "UI/Gui/Button.h"
 
-using namespace BGui;
+#include "CK2dEntity.h"
+#include "VxRect.h"
+
+using namespace BGuiHost;
 
 CKMaterial *g_Up = nullptr;
 CKMaterial *g_Over = nullptr;
@@ -21,43 +24,43 @@ void Button::SetType(ButtonType type) {
     VxRect rect;
     switch (type) {
         case BUTTON_NORMAL:
-            SetFont(ExecuteBB::GAMEFONT_01);
+            SetFont(BML::GameFont::Normal);
             SetSize(Vx2DVector(0.3f, 0.0938f));
             rect = VxRect(0.0f, 0.51372f, 1.0f, 0.7451f);
             m_2dEntity->SetSourceRect(rect);
             break;
         case BUTTON_BACK:
-            SetFont(ExecuteBB::GAMEFONT_01);
+            SetFont(BML::GameFont::Normal);
             SetSize(Vx2DVector(0.1875f, 0.0938f));
             rect = VxRect(0.2392f, 0.75294f, 0.8666f, 0.98431f);
             m_2dEntity->SetSourceRect(rect);
             break;
         case BUTTON_SETTING:
-            SetFont(ExecuteBB::GAMEFONT_01);
+            SetFont(BML::GameFont::Normal);
             SetSize(Vx2DVector(0.3f, 0.1f));
             rect = VxRect(0.0f, 0.0f, 1.0f, 0.24706f);
             m_2dEntity->SetSourceRect(rect);
             break;
         case BUTTON_LEVEL:
-            SetFont(ExecuteBB::GAMEFONT_03);
+            SetFont(BML::GameFont::Small);
             SetSize(Vx2DVector(0.1938f, 0.05f));
             rect = VxRect(0.0f, 0.247f, 0.647f, 0.36863f);
             m_2dEntity->SetSourceRect(rect);
             break;
         case BUTTON_KEY:
-            SetFont(ExecuteBB::GAMEFONT_03);
+            SetFont(BML::GameFont::Small);
             SetSize(Vx2DVector(0.3f, 0.0396f));
             rect = VxRect(0.0f, 0.40785f, 1.0f, 0.51f);
             m_2dEntity->SetSourceRect(rect);
             break;
         case BUTTON_KEYSEL:
-            SetFont(ExecuteBB::GAMEFONT_03);
+            SetFont(BML::GameFont::Small);
             SetSize(Vx2DVector(0.1450f, 0.0396f));
             rect = VxRect(0.005f, 0.3804f, 0.4353f, 0.4549f);
             m_2dEntity->SetSourceRect(rect);
             break;
         case BUTTON_SMALL:
-            SetFont(ExecuteBB::GAMEFONT_03);
+            SetFont(BML::GameFont::Small);
             SetSize(Vx2DVector(0.0700f, 0.0354f));
             rect = VxRect(0.0f, 0.82353f, 0.226f, 0.9098f);
             m_2dEntity->SetSourceRect(rect);

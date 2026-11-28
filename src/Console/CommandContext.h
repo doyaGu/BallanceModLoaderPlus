@@ -10,24 +10,14 @@
 #include <vector>
 #include <unordered_map>
 
-#include "BML/ICommand.h"
+#include "Console/CommandRecord.h"
 
 namespace BML {
     typedef void (*CommandOutputCallback)(const char *line, void *userdata);
 
     class CommandContext {
     public:
-        struct CommandInfo {
-            std::string Name;
-            std::string Alias;
-            std::string Description;
-            std::string Usage;
-            std::string Category;
-            bool Cheat = false;
-            bool Hidden = false;
-            bool Enabled = true;
-            std::uint64_t Handle = 0;
-        };
+        using CommandInfo = BML::CommandInfo;
 
         enum class UnregisterResult {
             Success,
@@ -39,12 +29,12 @@ namespace BML {
         };
 
         struct CommandCall {
-            ICommand *Command = nullptr;
+            CommandRecord *Command = nullptr;
             CommandInfo Info;
 
         private:
             friend class CommandContext;
-            std::shared_ptr<void> Lifetime;
+            std::shared_ptr<CommandRecord> Lifetime;
         };
 
         CommandContext();
@@ -57,21 +47,29 @@ namespace BML {
         CommandContext &operator=(const CommandContext &rhs) = delete;
         CommandContext &operator=(CommandContext &&rhs) noexcept = delete;
 
-        bool RegisterCommand(const void *registrar, ICommand *cmd);
-        bool RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info);
-        bool RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info,
-                             std::shared_ptr<void> lifetime);
+        bool RegisterCommand(const void *registrar, std::shared_ptr<CommandRecord> command);
+
+        template <class T> bool RegisterCommand(const void *registrar, T *command) {
+            return RegisterCommand(registrar, MakeCommandRecord(command));
+        }
+
+        template <class T>
+        bool RegisterCommand(const void *registrar, T *command, CommandInfo info,
+                             std::shared_ptr<void> lifetime = {}) {
+            return RegisterCommand(
+                registrar, MakeCommandRecord(command, std::move(info), std::move(lifetime)));
+        }
         UnregisterResult UnregisterCommand(const void *registrar, const char *name);
         void UnregisterCommands(const void *registrar);
 
         std::size_t GetCommandCount() const;
-        ICommand *GetCommandByIndex(std::size_t index) const;
-        ICommand *GetCommandByName(const char *name) const;
+        CommandRecord *GetCommandByIndex(std::size_t index) const;
+        CommandRecord *GetCommandByName(const char *name) const;
         bool AcquireCommand(const char *name, CommandCall &call) const;
         std::vector<CommandInfo> GetCommandSnapshot() const;
         bool GetCommandInfoByIndex(std::size_t index, CommandInfo &info) const;
         bool GetCommandInfoByName(const char *name, CommandInfo &info) const;
-        bool SetCommandEnabled(ICommand *command, bool enabled);
+        bool SetCommandEnabled(const void *implementation, bool enabled);
 
         bool IsCheatEnabled() const noexcept { return m_CheatEnabled; }
         bool SetCheatEnabled(bool enabled) noexcept;
@@ -100,12 +98,10 @@ namespace BML {
 
     private:
         struct Entry {
-            ICommand *Command = nullptr;
+            std::shared_ptr<CommandRecord> Command;
             const void *Registrar = nullptr;
-            CommandInfo Info;
             std::string NameKey;
             std::string AliasKey;
-            std::shared_ptr<void> Lifetime;
         };
 
         struct CommandKeyHash {
@@ -124,7 +120,7 @@ namespace BML {
         };
 
         std::vector<Entry> m_Commands;
-        typedef std::unordered_map<std::string, ICommand *, CommandKeyHash, CommandKeyEqual>
+        typedef std::unordered_map<std::string, CommandRecord *, CommandKeyHash, CommandKeyEqual>
             CommandMap;
         CommandMap m_CommandMap;
         bool m_CheatEnabled = false;

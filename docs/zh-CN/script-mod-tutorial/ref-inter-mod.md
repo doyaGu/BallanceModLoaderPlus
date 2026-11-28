@@ -9,7 +9,8 @@ Client 或 Provider，并共享相同的 Record、路由、状态码和版本规
 脚本中读取 BML 自带能力时，直接使用有类型的接口：
 
 ```angelscript
-if (ctx.IsInLevel()) {
+BML::Gameplay::State state;
+if (BML::Gameplay::ReadState(state) == BML::ERROR_OK && (state.Playing || state.Paused)) {
   // 当前在关卡内，可继续读取 Gameplay 数据。
 }
 
@@ -25,7 +26,7 @@ if (BML::Gameplay::ReadCheckpointCount(checkpointCount) == BML::ERROR_OK) {
 ```
 
 可用的内置命名空间包括 `BML::Gameplay`、`BML::UI` 和
-`BML::Speedrun`。状态、时钟和作弊状态可从脚本回调的 `ModContext` 读取。
+`BML::Speedrun`。状态、时钟和作弊状态分别从 Gameplay、Time 命名空间读取。
 Virtools 场景查找和对象标识应使用 CKAngelScript 的 `Scene` 命名空间及其
 可重新验证的引用类型。Gameplay 读取直接复用进程内的数据读取器，但对应的 Ballance
 数据数组可能尚不可用或布局不受支持，因此仍返回明确的状态码。脚本只处理

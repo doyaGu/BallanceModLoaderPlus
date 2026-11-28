@@ -1,9 +1,7 @@
 #include "ScriptStringInterop.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
+#include "BML/Defines.h"
+#include "ScriptRuntimeModule.h"
 
 #include <cstdio>
 #include <vector>
@@ -27,22 +25,13 @@ asIStringFactory *GetStringFactory(asIScriptEngine *engine) {
     return factory;
 }
 
-using AsGetActiveContextFn = asIScriptContext *(__cdecl *)();
+using AsGetActiveContextFn = asIScriptContext *(BML_CDECL *)();
 
 AsGetActiveContextFn ResolveAsGetActiveContext() {
-    static AsGetActiveContextFn function = []() -> AsGetActiveContextFn {
-        HMODULE module = GetModuleHandleA("AngelScript.dll");
-        if (!module) {
-            return nullptr;
-        }
-
-        FARPROC proc = GetProcAddress(module, "asGetActiveContext");
-        if (!proc) {
-            proc = GetProcAddress(module, "_asGetActiveContext");
-        }
-        return reinterpret_cast<AsGetActiveContextFn>(proc);
-    }();
-    return function;
+    void *module = FindScriptRuntimeModule();
+    auto *function = ScriptRuntimeSymbol(module, "asGetActiveContext");
+    if (!function) function = ScriptRuntimeSymbol(module, "_asGetActiveContext");
+    return reinterpret_cast<AsGetActiveContextFn>(function);
 }
 
 } // namespace

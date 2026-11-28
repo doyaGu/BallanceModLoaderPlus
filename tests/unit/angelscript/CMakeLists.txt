@@ -1,25 +1,19 @@
 if (BML_WITH_ANGELSCRIPT)
-    if (WIN32)
-        add_bml_test(ScriptFileWatcherWin32Test
-                SOURCES
-                ScriptFileWatcherWin32Test.cpp
-                ${BML_SOURCE_DIR}/AngelScript/ScriptFileWatcherWin32.cpp
-        )
-
-        add_bml_test(ScriptModHotReloadPathFilterTest
-                SOURCES
-                ScriptModHotReloadPathFilterTest.cpp
-                ${BML_SOURCE_DIR}/AngelScript/ScriptModHotReloadPathFilter.cpp
-                DEPENDENCIES
-                BML_PathUtils
-        )
-    endif ()
+    add_bml_test(ScriptModHotReloadPathFilterTest
+            SOURCES
+            ScriptModHotReloadPathFilterTest.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptModHotReloadPathFilter.cpp
+            DEPENDENCIES BML_PathUtils
+            CK2 VxMath
+    )
 
     add_bml_test(ScriptServiceLifecycleTest
             SOURCES
             ScriptServiceLifecycleTest.cpp
+            ScriptCommandRegistrationTest.cpp
             ScriptServiceLifecycleStubs.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptCommandService.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptCallbackEvents.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptDataShareService.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptFunctionSupport.cpp
@@ -27,8 +21,10 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/ScriptTimerService.cpp
             ${BML_SOURCE_DIR}/Console/Shell/ShellIo.cpp
             ${BML_SOURCE_DIR}/DataShare/DataShare.cpp
+            ${BML_SOURCE_DIR}/Loader/ModInvocationGate.cpp
             DEPENDENCIES
             BML_StringUtils
+            CK2 VxMath
     )
     target_compile_options(ScriptServiceLifecycleTest PRIVATE
             $<$<CXX_COMPILER_ID:MSVC>:/Gy>
@@ -43,14 +39,7 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/CKAngelScriptAdapter.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptModState.cpp
-    )
-
-    add_bml_test(ScriptModDefinitionTest
-            SOURCES
-            ScriptModDefinitionTest.cpp
-            ${BML_SOURCE_DIR}/AngelScript/ScriptModDefinition.cpp
-            DEPENDENCIES
-            BML_StringUtils
+            DEPENDENCIES CK2 VxMath
     )
 
     add_bml_test(ScriptModRuntimeTest
@@ -61,6 +50,7 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptModLifecycle.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptModRuntime.cpp
+            DEPENDENCIES CK2 VxMath
     )
     target_compile_definitions(ScriptModRuntimeTest PRIVATE BML_SCRIPT_RUNTIME_TEST_ACCESS)
 
@@ -78,6 +68,7 @@ if (BML_WITH_ANGELSCRIPT)
             BML_PathUtils
             BML_StringUtils
             BML_CryptoUtils
+            CK2 VxMath
     )
 
     add_bml_test(ScriptSourceSnapshotBuilderTest
@@ -92,6 +83,7 @@ if (BML_WITH_ANGELSCRIPT)
             BML_PathUtils
             BML_StringUtils
             BML_CryptoUtils
+            CK2 VxMath
     )
 
     add_bml_test(ScriptStateBagTest
@@ -103,6 +95,7 @@ if (BML_WITH_ANGELSCRIPT)
     add_bml_test(ScriptReloadStagingCleanupTest
             SOURCES
             ScriptReloadStagingCleanupTest.cpp
+            ${PROJECT_SOURCE_DIR}/tests/support/Logger.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptReloadStagingCleanup.cpp
             DEPENDENCIES
             BML_PathUtils

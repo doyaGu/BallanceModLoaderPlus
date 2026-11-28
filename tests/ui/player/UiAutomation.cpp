@@ -14,8 +14,8 @@
 #include <string_view>
 #include <vector>
 
-#include "BML/Bui.h"
-#include "BML/ILogger.h"
+#include "UI/BuiHost.h"
+#include "Logging/Logger.h"
 #include "Loader/ModContext.h"
 #include "Mods/BMLMod.h"
 #include "player/UiTestFramework.h"
@@ -86,7 +86,7 @@ constexpr NativeMenuRoute OptionsToImGuiRoute = {
 
 ImGuiTestEngine *g_Engine = nullptr;
 BMLMod *g_Mod = nullptr;
-ILogger *g_Logger = nullptr;
+Logger *g_Logger = nullptr;
 ModContext *g_Runtime = nullptr;
 std::string g_ResultPath;
 std::string g_ScenarioName;
@@ -951,7 +951,7 @@ bool EnterLevelOneFromModList(ImGuiTestContext *ctx) {
 namespace {
 
 bool StartEngine() {
-    ImGuiContext *imguiContext = Bui::GetImGuiContext();
+    ImGuiContext *imguiContext = BuiHost::GetImGuiContext();
     if (!imguiContext)
         return false;
 
@@ -1056,7 +1056,7 @@ void Start(BMLMod &mod) {
     const char *resultPath = std::getenv("BML_UI_AUTOMATION_RESULT");
     const char *scenarioName = std::getenv("BML_UI_AUTOMATION_SCENARIO");
     const char *sessionPath = std::getenv("BML_UI_AUTOMATION_SESSION");
-    ILogger *logger = nullptr;
+    Logger *logger = nullptr;
     if (ModContext *runtime = mod.GetRuntimeContext())
         logger = runtime->GetLogger();
     if (logger) {
@@ -1176,7 +1176,7 @@ void AdvanceFrame() {
 
     ImGuiTestEngineIO &io = ImGuiTestEngine_GetIO(g_Engine);
     if (!io.IsRunningTests && ImGuiTestEngine_IsTestQueueEmpty(g_Engine)) {
-        ImGuiContext *imguiContext = Bui::GetImGuiContext();
+        ImGuiContext *imguiContext = BuiHost::GetImGuiContext();
         ImGuiTestEngine_Stop(g_Engine);
         const bool resultWritten = WriteScenarioResult();
         ImGuiTestEngine_UnbindImGuiContext(g_Engine, imguiContext);

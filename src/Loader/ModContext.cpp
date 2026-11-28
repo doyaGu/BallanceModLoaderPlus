@@ -1,19 +1,23 @@
+#include "BML/Abi.h"
+#include "Api/ModApi.h"
 #include "Loader/ModContext.h"
 
 #include <exception>
 #include <stdexcept>
 
-#include <intrin.h>
+#include "Platform/Module.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
+#if BML_RUNTIME_SDL
+#include <SDL3/SDL.h>
+#else
 #include <Windows.h>
+#endif
+#include "Platform/FileSystemNative.h"
 
 #include <oniguruma.h>
 
 #include "BML/BML.h"
-#include "BML/Timer.h"
+#include "Timer/TimerScheduler.h"
 #include "Api/InterfaceRegistry.h"
 #include "Api/CommandApi.h"
 #include "Console/Shell/ShellExecutor.h"
@@ -41,24 +45,14 @@ namespace {
     constexpr wchar_t kInstanceDirectoryName[] = L"Instance";
     constexpr wchar_t kShellStateFileName[] = L"CommandBar.shell.json";
 
-    HMODULE ModuleFromAddress(const void *address) {
-        if (!address)
-            return nullptr;
-
-        HMODULE module = nullptr;
-        if (!::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                                      GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                  reinterpret_cast<LPCSTR>(address),
-                                  &module)) {
-            return nullptr;
-        }
-        return module;
-    }
-
+    using BML::Platform::ModuleFromAddress;
     std::wstring ResolveGameDirectoryFromExecutable(const std::wstring &executablePath) {
         if (executablePath.empty())
             return {};
 
+        const auto executableDirectory = utils::GetParentDirectoryW(executablePath);
+        if (utils::FileExistsW(utils::CombinePathW(executableDirectory, L"base.cmo")))
+            return executableDirectory;
         return utils::GetParentDirectoryW(utils::GetParentDirectoryW(executablePath));
     }
 
@@ -71,7 +65,7 @@ namespace {
 
     std::wstring BuildFallbackTempDirectory(const std::wstring &baseTempDirectory, unsigned long processId) {
         wchar_t suffix[64] = {};
-        _snwprintf(suffix, sizeof(suffix) / sizeof(suffix[0]), L"BML-%lu", processId);
+        std::swprintf(suffix, sizeof(suffix) / sizeof(suffix[0]), L"BML-%lu", processId);
         suffix[(sizeof(suffix) / sizeof(suffix[0])) - 1] = L'\0';
         return utils::CombinePathW(baseTempDirectory, suffix);
     }
@@ -137,17 +131,17 @@ namespace {
         if (!context)
             return false;
 
-        owner = context->GetNativeModOwnerId(callerAddress, ownerId);
+        owner = context->GetModLoader().GetNativeModOwnerId(callerAddress, ownerId);
         if (owner.empty() || (ownerId && owner != ownerId))
             return false;
 
         if ((!callbackAddress ||
-             context->NativeModOwnsAddress(owner, callbackAddress)) &&
+             context->GetModLoader().NativeModOwnsAddress(owner, callbackAddress)) &&
             (!cleanupAddress ||
-             context->NativeModOwnsAddress(owner, cleanupAddress)))
+             context->GetModLoader().NativeModOwnsAddress(owner, cleanupAddress)))
             return true;
 
-        const HMODULE loader = ModuleFromAddress(
+        const auto loader = ModuleFromAddress(
             reinterpret_cast<const void *>(&BML_GetModContext));
         return loader && ModuleFromAddress(callerAddress) == loader &&
                ModuleFromAddress(callbackAddress) == loader &&
@@ -240,11 +234,26 @@ ModContext::ModContext(CKContext *context)
                       status.Message.c_str());
           }),
       m_PhysicsForce(context, m_Behaviors),
-      m_ExecuteBB(m_BehaviorSessions, m_PhysicsForce),
+#if BML_ENABLE_ANGELSCRIPT
+      m_ScriptEngineCalls(m_BehaviorSessions),
+#endif
       m_Loader(*this) {
     assert(context != nullptr);
     m_CommandApi = std::make_unique<BML::Api::CommandApi>(*this);
     m_ImcRuntime.SetInvocationGate(&m_Loader.InvocationGate());
+    m_ImcRuntime.SetOwnerAdmission(
+        [](void *data, const std::string &id, bool callback) noexcept {
+            try {
+                auto &ctx = *static_cast<ModContext *>(data);
+                auto *owner = ctx.GetModLoader().FindMod(id.c_str());
+                if (callback)
+                    return ctx.GetModLoader().CanDispatchOwner(owner);
+                return owner && BML::Api::AcceptsModWork(ctx, *owner);
+            } catch (...) {
+                return false;
+            }
+        },
+        this);
     m_CKContext = context;
     m_Hooks = std::make_unique<HookLifecycle>(*this);
     m_DataShare = DataShareStore::GetInstance("BML");
@@ -256,6 +265,19 @@ ModContext::ModContext(CKContext *context)
         g_ContextClosing.store(false, std::memory_order_release);
         g_ModContext.store(this, std::memory_order_release);
     }
+    DataShareStore::SetOwnerAdmission([](const std::string &id, bool callback) noexcept {
+        try {
+            ModContextLease ctx;
+            if (!ctx)
+                return false;
+            auto *owner = ctx->GetModLoader().FindMod(id.c_str());
+            if (callback)
+                return ctx->GetModLoader().CanDispatchOwner(owner);
+            return owner && BML::Api::AcceptsModWork(*ctx, *owner);
+        } catch (...) {
+            return false;
+        }
+    });
     DataShareStore::SetOwnerResolver(&ResolveDataShareOwner);
     DataShareStore::SetInvocationGate(&m_Loader.InvocationGate());
 }
@@ -298,6 +320,7 @@ ModContext::~ModContext() {
     m_ImcRuntime.SetInvocationGate(nullptr);
     if (m_DataShare) m_DataShare->Release();
     DataShareStore::SetInvocationGate(nullptr);
+    DataShareStore::SetOwnerAdmission(nullptr);
     DataShareStore::SetOwnerResolver(nullptr);
     ModContext *expected = this;
     (void) g_ModContext.compare_exchange_strong(expected, nullptr, std::memory_order_release);
@@ -336,9 +359,7 @@ bool ModContext::Init() {
     LoadShellEnvironment();
 
 #ifdef _DEBUG
-    m_Logger->Info("Player.exe Address: 0x%08x", ::GetModuleHandleA("Player.exe"));
-    m_Logger->Info("CK2.dll Address: 0x%08x", ::GetModuleHandleA("CK2.dll"));
-    m_Logger->Info("VxMath.dll Address: 0x%08x", ::GetModuleHandleA("VxMath.dll"));
+    m_Logger->Info("Runtime: %s; loader image: %p", BML_RUNTIME_NAME, ModuleFromAddress(reinterpret_cast<const void *>(&BML_GetModContext)));
 #endif
 
     OnigEncoding encodings[3] = {ONIG_ENCODING_ASCII, ONIG_ENCODING_UTF8, ONIG_ENCODING_UTF16_LE};
@@ -372,7 +393,7 @@ bool ModContext::Init() {
     }
 
     if (!Overlay::ImGuiInitPlatform(m_CKContext)) {
-        m_Logger->Error("Failed to initialize Win32 platform backend for ImGui");
+        m_Logger->Error("Failed to initialize the ImGui platform backend");
         Overlay::ImGuiDestroyContext();
         ShutdownHooks();
         onig_end();
@@ -389,9 +410,10 @@ bool ModContext::Init() {
 
 bool ModContext::Shutdown() {
     if (!IsInited()) {
-        if (m_Hooks && !ShutdownHooks()) {
+        if ((m_Hooks && !ShutdownHooks()) || !Overlay::ImGuiShutdownPlatform(nullptr)) {
             return false;
         }
+        Overlay::ImGuiDestroyContext();
         return CloseApiAccess();
     }
 
@@ -413,13 +435,18 @@ bool ModContext::Shutdown() {
         return false;
     }
 
+    if (!Overlay::ImGuiShutdownPlatform(m_CKContext)) {
+        m_Logger->Error("Cannot release the runtime Context while an Overlay input callback is still installed.");
+        return false;
+    }
+
     m_ImcRuntime.Shutdown();
     ResetVirtoolsWorld();
     m_GameFonts.Reset();
 
 #if BML_ENABLE_ANGELSCRIPT
-    if (GetScriptDevTools())
-        GetScriptDevTools()->Hide();
+    if (m_Loader.GetScriptDevTools())
+        m_Loader.GetScriptDevTools()->Hide();
     BML_UnregisterAngelScriptBindings(this);
 #endif
 
@@ -432,7 +459,6 @@ bool ModContext::Shutdown() {
             Overlay::ImGuiEndFrame();
         }
         Overlay::ImGuiShutdownRenderer(m_CKContext);
-        Overlay::ImGuiShutdownPlatform(m_CKContext);
         Overlay::ImGuiDestroyContext();
     }
 
@@ -494,12 +520,16 @@ void ModContext::Abandon() noexcept {
 }
 
 void ModContext::ResetVirtoolsWorld() {
+    RenderHook::ResetPendingSkip(m_CKContext);
     // Author Releases dropped by the teardown below run once it is done.
     BML::Behavior::Internal::ReleaseScope releases;
     m_GamePhase = GamePhase::FrontEnd;
     // Runtime owners close native state first. Public object references belong
     // to the API seam and are reset only after internal teardown is complete.
-    m_ExecuteBB.Reset();
+    m_GuiApi.ResetWorld();
+#if BML_ENABLE_ANGELSCRIPT
+    m_ScriptEngineCalls.Reset();
+#endif
     m_PhysicsForce.Reset();
     const BML::Behavior::Internal::Status plans =
         m_BehaviorInstallations.LeaveWorld();
@@ -509,6 +539,7 @@ void ModContext::ResetVirtoolsWorld() {
     m_BehaviorScripts.ResetWorld();
     m_BehaviorInstallations.ResetWorld();
     m_BehaviorSessions.ResetWorld();
+    m_BuiApi.Reset();
     m_ObjectRefs.Reset();
 }
 
@@ -516,6 +547,7 @@ void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
     BML::Behavior::Internal::ReleaseScope releases;
     // Runtime owners observe the deletion first; public references are the
     // final observer because they do not participate in native teardown.
+    m_GuiApi.ObjectsToBeDeleted(ids, count);
     m_PhysicsForce.ObjectsToBeDeleted(ids, count);
     if (ids && count > 0) {
         for (int index = 0; index < count; ++index)
@@ -567,7 +599,9 @@ void ModContext::ProcessVirtoolsFrame() {
         m_Logger->Error("Failed to reconcile Behavior Plans: %s",
                         plans.Message.c_str());
     m_BehaviorScripts.ProcessFrame();
-    m_ExecuteBB.ProcessFrame();
+#if BML_ENABLE_ANGELSCRIPT
+    m_ScriptEngineCalls.ProcessFrame();
+#endif
 }
 
 BML::Behavior::Internal::Status ModContext::RetireBehaviorState(
@@ -630,53 +664,14 @@ BML::Behavior::Internal::Status ModContext::RetireBehaviorOwner(
     return RetireBehaviorState(ownerId, BehaviorRetirement::Report);
 }
 
-void ModContext::RegisterCommand(ICommand *cmd) {
-    // Taken before the lock: this is a virtual the Mod calls across the DLL
-    // boundary, so the return address is in whichever module is registering.
-    void *const registrar = ModuleFromAddress(_ReturnAddress());
-
-    if (!IsMainThread()) {
-        if (m_Logger)
-            m_Logger->Error("RegisterCommand must run on the game thread.");
-        return;
-    }
-
-    if (RegisterOwnedCommand(registrar, cmd)) {
-        return;
-    }
-
-    if (!cmd) {
-        m_Logger->Error("Failed to register a null command.");
-        return;
-    }
-
-    m_Logger->Error(
-        "Failed to register command '%s'. Command names are case-insensitive and must be valid UTF-8 tokens without spaces.",
-        cmd->GetName().c_str());
-}
-
-bool ModContext::RegisterOwnedCommand(const void *registrar, ICommand *command) {
-    if (!IsMainThread() || !registrar || !command)
-        return false;
-
-    BML::CommandContext::CommandInfo info;
-    info.Name = command->GetName();
-    info.Alias = command->GetAlias();
-    info.Description = command->GetDescription();
-    info.Cheat = command->IsCheat();
-
-    std::lock_guard<std::mutex> lock(m_CommandMutex);
-    return m_CommandContext.RegisterCommand(registrar, command, std::move(info));
-}
-
-int ModContext::RegisterCallbackCommand(const void *registrar, ICommand *command,
-                                        BML::CommandContext::CommandInfo info,
-                                        std::shared_ptr<void> lifetime) {
+int ModContext::RegisterCallbackCommand(const void *registrar,
+                                        std::shared_ptr<BML::CommandRecord> command) {
     if (!IsMainThread())
         return BML_ERROR_WRONG_THREAD;
     if (!registrar || !command)
         return BML_ERROR_INVALID_PARAMETER;
 
+    auto &info = command->Info;
     std::lock_guard<std::mutex> lock(m_CommandMutex);
     if (m_CommandContext.GetCommandByName(info.Name.c_str()) ||
         (!info.Alias.empty() &&
@@ -687,9 +682,8 @@ int ModContext::RegisterCallbackCommand(const void *registrar, ICommand *command
 
     const std::string name = info.Name;
     try {
-        return m_CommandContext.RegisterCommand(registrar, command, std::move(info),
-                                                std::move(lifetime))
-            ? BML_OK : BML_ERROR_FAIL;
+        return m_CommandContext.RegisterCommand(registrar, std::move(command)) ? BML_OK
+                                                                               : BML_ERROR_FAIL;
     } catch (...) {
         (void) m_CommandContext.UnregisterCommand(registrar, name.c_str());
         throw;
@@ -728,43 +722,6 @@ bool ModContext::RetireCallbackCommands(const void *registrar) noexcept {
     }
 }
 
-BML::CommandContext::UnregisterResult ModContext::UnregisterOwnedCommand(
-    const void *registrar, const char *name) {
-    if (!IsMainThread() || m_CommandInvocationGate.IsCallActiveOnCurrentThread())
-        return BML::CommandContext::UnregisterResult::Busy;
-
-    auto invocationLock = m_CommandInvocationGate.LockMutation();
-    std::lock_guard<std::mutex> lock(m_CommandMutex);
-    return m_CommandContext.UnregisterCommand(registrar, name);
-}
-
-int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
-    if (!name || name[0] == '\0')
-        return BML_ERROR_INVALID_PARAMETER;
-    if (!IsMainThread())
-        return BML_ERROR_WRONG_THREAD;
-
-    void *const caller = ModuleFromAddress(callerAddress);
-
-    switch (UnregisterOwnedCommand(caller, name)) {
-        case BML::CommandContext::UnregisterResult::Success:
-            return BML_OK;
-        case BML::CommandContext::UnregisterResult::InvalidName:
-            return BML_ERROR_INVALID_PARAMETER;
-        case BML::CommandContext::UnregisterResult::NotFound:
-            return BML_ERROR_NOT_FOUND;
-        case BML::CommandContext::UnregisterResult::AccessDenied:
-            m_Logger->Error("Refused to unregister command '%s': it belongs to another module.", name);
-            return BML_ERROR_ACCESS_DENIED;
-        case BML::CommandContext::UnregisterResult::Busy:
-            return BML_ERROR_BUSY;
-        case BML::CommandContext::UnregisterResult::InternalError:
-            return BML_ERROR_FAIL;
-    }
-
-    return BML_ERROR_FAIL;
-}
-
 int ModContext::GetCommandCount() const {
     if (!IsMainThread())
         return 0;
@@ -772,14 +729,7 @@ int ModContext::GetCommandCount() const {
     return static_cast<int>(m_CommandContext.GetCommandCount());
 }
 
-ICommand *ModContext::GetCommand(int index) const {
-    if (!IsMainThread())
-        return nullptr;
-    std::lock_guard<std::mutex> lock(m_CommandMutex);
-    return m_CommandContext.GetCommandByIndex(index);
-}
-
-ICommand *ModContext::FindCommand(const char *name) const {
+BML::CommandRecord *ModContext::FindCommand(const char *name) const {
     if (!IsMainThread())
         return nullptr;
     std::lock_guard<std::mutex> lock(m_CommandMutex);
@@ -809,11 +759,11 @@ bool ModContext::FindCommandInfo(
     return m_CommandContext.GetCommandInfoByName(name, info);
 }
 
-bool ModContext::SetCommandEnabled(ICommand *command, bool enabled) {
+bool ModContext::SetCommandEnabled(const void *implementation, bool enabled) {
     if (!IsMainThread())
         return false;
     std::lock_guard<std::mutex> lock(m_CommandMutex);
-    return m_CommandContext.SetCommandEnabled(command, enabled);
+    return m_CommandContext.SetCommandEnabled(implementation, enabled);
 }
 
 std::vector<std::string> ModContext::CompleteCommand(
@@ -829,7 +779,7 @@ std::vector<std::string> ModContext::CompleteCommand(
     }
     std::vector<std::string> completions;
     if (call.Command && call.Info.Enabled)
-        completions = call.Command->GetTabCompletion(this, args);
+        completions = call.Command->Complete(this, args);
     m_CommandApi->FlushPending();
     return completions;
 }
@@ -889,13 +839,13 @@ int ModContext::InvokeCommandArgs(const std::vector<std::string> &args, const st
 
     int status = BML::Shell::Status::Failure;
     try {
-        BroadcastCallback(&IMod::OnPreCommandExecute, call.Command, args);
+        m_Loader.BroadcastCallback<ModEvent::OnPreCommandExecute>(call.Command, args);
         {
             BML::Shell::InvocationScope scope(input);
             call.Command->Execute(this, args);
             status = scope.Status();
         }
-        BroadcastCallback(&IMod::OnPostCommandExecute, call.Command, args);
+        m_Loader.BroadcastCallback<ModEvent::OnPostCommandExecute>(call.Command, args);
     } catch (const std::exception &e) {
         m_Logger->Error("Exception executing command '%s': %s", args[0].c_str(), e.what());
         WriteShellError(BML::Shell::FormatError("Error: Command failed - " + std::string(e.what())));
@@ -937,13 +887,24 @@ Config *ModContext::AddConfig(std::unique_ptr<Config> config) {
     if (!config)
         return nullptr;
 
-    IMod *mod = config->GetMod();
+    ModRecord *mod = config->GetMod();
     if (!mod)
         return nullptr;
 
     const std::string modId = mod->GetID();
+    bool recovered = false;
+    for (auto it = m_DetachedConfigs.begin(); it != m_DetachedConfigs.end(); ++it) {
+        if ((*it)->GetModID() != modId)
+            continue;
+        (*it)->AttachMod(mod);
+        config = std::move(*it);
+        m_DetachedConfigs.erase(it);
+        recovered = true;
+        break;
+    }
     Config *rawConfig = config.get();
-    LoadConfig(rawConfig);
+    if (!recovered)
+        LoadConfig(rawConfig);
 
     std::lock_guard<std::mutex> lock(m_ConfigMutex);
     if (m_ConfigStore.Contains(modId)) {
@@ -958,11 +919,12 @@ bool ModContext::RemoveConfig(Config *config) {
     if (!config)
         return false;
 
-    IMod *mod = config->GetMod();
+    ModRecord *mod = config->GetMod();
     if (!mod)
         return false;
 
     const std::string modId = mod->GetID();
+    m_DetachedConfigs.reserve(m_DetachedConfigs.size() + 1);
     std::unique_ptr<Config> removed;
     {
         std::lock_guard<std::mutex> lock(m_ConfigMutex);
@@ -988,26 +950,28 @@ bool ModContext::RemoveConfig(Config *config) {
                             modId.c_str());
     }
 
+    if (removed->IsDirty()) {
+        // All data is host-owned. Keep unsaved values without keeping a Mod's
+        // code or callbacks alive, and retry only at an explicit save point.
+        removed->DetachMod();
+        m_DetachedConfigs.push_back(std::move(removed));
+    }
     return true;
 }
 
-Config *ModContext::GetConfig(IMod *mod) {
+Config *ModContext::GetConfig(ModRecord *mod) {
     if (!mod)
         return nullptr;
 
-    // Resolve the key before taking the registry mutex: GetID is a virtual call
-    // into the Mod and may legally call back into the loader.
-    const std::string modId = mod->GetID();
-
     std::lock_guard<std::mutex> lock(m_ConfigMutex);
-    return m_ConfigStore.Find(modId, mod);
+    return m_ConfigStore.Find(mod);
 }
 
 bool ModContext::LoadConfig(Config *config) {
     if (!config)
         return false;
 
-    IMod *mod = config->GetMod();
+    ModRecord *mod = config->GetMod();
     if (!mod)
         return false;
 
@@ -1066,7 +1030,20 @@ void ModContext::SnapshotConfigMetadata() {
 }
 
 void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
-    auto invocationLock = LockModInvocation();
+    auto invocationLock = m_Loader.LockModInvocation();
+    if (saveAll) {
+        for (auto it = m_DetachedConfigs.begin(); it != m_DetachedConfigs.end();) {
+            bool saved = false;
+            try {
+                saved = (*it)->CanSave() && SaveConfig(it->get(), false);
+            } catch (...) {
+            }
+            if (saved)
+                it = m_DetachedConfigs.erase(it);
+            else
+                ++it;
+        }
+    }
     std::vector<Config *> configs;
     {
         std::lock_guard<std::mutex> lock(m_ConfigMutex);
@@ -1077,7 +1054,7 @@ void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
         if (!config)
             continue;
 
-        IMod *mod = config->GetMod();
+        ModRecord *mod = config->GetMod();
         std::vector<Config::PendingNotification> notifications = config->TakePendingNotifications();
         if (dispatchNotifications && mod) {
             for (const auto &notification : notifications) {
@@ -1146,57 +1123,6 @@ const char *ModContext::GetDirectoryUtf8(DirectoryType type) {
     return nullptr;
 }
 
-std::wstring ModContext::GetModRootDirectory(const void *callerAddress, const char *modId) const {
-    return m_Loader.GetModRootDirectory(callerAddress, modId);
-}
-
-#if BML_ENABLE_ANGELSCRIPT
-bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
-                                                       const BML::ScriptModDefinition &candidate,
-                                                       std::string &diagnostic,
-                                                       std::vector<BML::ScriptModReloadDiagnosticField> *fields) const {
-    return m_Loader.ValidateScriptModReloadDependencies(mod, candidate, diagnostic, fields);
-}
-
-bool ModContext::PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod, const std::string &oldId,
-                                                    const BML::ScriptModDefinition &candidate,
-                                                    std::string &diagnostic) {
-    return m_Loader.PromoteFailedScriptModPlaceholder(mod, oldId, candidate, diagnostic);
-}
-
-void ModContext::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod, const std::string &currentId,
-                                                    const BML::ScriptModDefinition &oldDefinition) {
-    m_Loader.RestoreFailedScriptModPlaceholder(mod, currentId, oldDefinition);
-}
-#endif
-
-int ModContext::GetModCount() { return m_Loader.GetModCount(); }
-IMod *ModContext::GetMod(int index) { return m_Loader.GetMod(index); }
-std::uint64_t ModContext::GetModGeneration(const IMod *mod) const { return m_Loader.GetModGeneration(mod); }
-std::uint64_t ModContext::GetModRegistryRevision() const { return m_Loader.GetModRegistryRevision(); }
-IMod *ModContext::FindMod(const char *id) const { return m_Loader.FindMod(id); }
-std::string ModContext::GetNativeImcOwnerId(const void *callerAddress, const char *ownerId) const {
-    return m_Loader.GetNativeImcOwnerId(callerAddress, ownerId);
-}
-std::string ModContext::GetNativeModOwnerId(const void *callerAddress, const char *ownerId) const {
-    return m_Loader.GetNativeModOwnerId(callerAddress, ownerId);
-}
-bool ModContext::NativeModOwnsAddress(const std::string &ownerId, const void *address) const {
-    return m_Loader.NativeModOwnsAddress(ownerId, address);
-}
-int ModContext::RegisterDependency(IMod *mod, const char *id, int major, int minor, int patch) {
-    return m_Loader.RegisterDependency(mod, id, major, minor, patch);
-}
-int ModContext::RegisterOptionalDependency(IMod *mod, const char *id, int major, int minor, int patch) {
-    return m_Loader.RegisterOptionalDependency(mod, id, major, minor, patch);
-}
-int ModContext::CheckDependencies(IMod *mod) const { return m_Loader.CheckDependencies(mod); }
-int ModContext::GetDependencyCount(IMod *mod) const { return m_Loader.GetDependencyCount(mod); }
-int ModContext::GetDependencyInfo(IMod *mod, int index, char *id, int idSize,
-                                  int *major, int *minor, int *patch, int *optional) const {
-    return m_Loader.GetDependencyInfo(mod, index, id, idSize, major, minor, patch, optional);
-}
-int ModContext::ClearDependencies(IMod *mod) { return m_Loader.ClearDependencies(mod); }
 
 BML_DataShare *ModContext::GetDataShare(const char *name) {
     if (!name || !*name)
@@ -1296,8 +1222,16 @@ void ModContext::AddTimerLoop(float delay, std::function<bool()> callback) {
 
 void ModContext::ExitGame() {
     OnExitGame();
-    AddTimer(1ul, [this]() {
-        ::PostMessage((HWND) m_CKContext->GetMainWindow(), 0x5FA, 0, 0);
+    AddTimer(CKDWORD{1}, [this]() {
+#if BML_RUNTIME_SDL
+        SDL_Event event{};
+        event.type = SDL_EVENT_QUIT;
+        SDL_PushEvent(&event);
+#else
+        // BallancePlayer's engine window dispatches this message to its exit handler.
+        constexpr UINT closePlayer = 0x5FA;
+        ::PostMessageW(static_cast<HWND>(m_CKContext->GetMainWindow()), closePlayer, 0, 0);
+#endif
     });
 }
 
@@ -1324,7 +1258,7 @@ void ModContext::CloseMapMenu() {
 
 void ModContext::EnableCheat(bool enable) {
     if (m_CommandContext.SetCheatEnabled(enable)) {
-        BroadcastCallback(&IMod::OnCheatEnabled, enable);
+        m_Loader.BroadcastCallback<ModEvent::OnCheatEnabled>(enable);
     }
 }
 
@@ -1401,35 +1335,39 @@ void ModContext::SkipRenderForNextTick() {
 void ModContext::RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
                                   float friction, float elasticity, float mass, const char *collGroup,
                                   float linearDamp, float rotDamp, float force, float radius) {
-    m_Loader.GetBallTypeMod()->RegisterBallType(ballFile, ballId, ballName, objName, friction, elasticity,
-                                    mass, collGroup, linearDamp, rotDamp, force, radius);
+    m_Loader.GetBallTypeMod()->RegisterBallType(m_Loader.InvokedOwnerId(), ballFile, ballId,
+                                                ballName, objName, friction, elasticity, mass,
+                                                collGroup, linearDamp, rotDamp, force, radius);
 }
 
 void ModContext::RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
                                    const char *collGroup, bool enableColl) {
-    m_Loader.GetBallTypeMod()->RegisterFloorType(floorName, friction, elasticity, mass, collGroup, enableColl);
+    m_Loader.GetBallTypeMod()->RegisterFloorType(m_Loader.InvokedOwnerId(), floorName, friction,
+                                                 elasticity, mass, collGroup, enableColl);
 }
 
 void ModContext::RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
                                    const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
                                    float linearDamp, float rotDamp, float radius) {
-    m_Loader.GetBallTypeMod()->RegisterModulBall(modulName, fixed, friction, elasticity, mass, collGroup,
-                                     frozen, enableColl, calcMassCenter, linearDamp, rotDamp, radius);
+    m_Loader.GetBallTypeMod()->RegisterModulBall(
+        m_Loader.InvokedOwnerId(), modulName, fixed, friction, elasticity, mass, collGroup, frozen,
+        enableColl, calcMassCenter, linearDamp, rotDamp, radius);
 }
 
 void ModContext::RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity, float mass,
                                      const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
                                      float linearDamp, float rotDamp) {
-    m_Loader.GetBallTypeMod()->RegisterModulConvex(modulName, fixed, friction, elasticity, mass, collGroup,
-                                       frozen, enableColl, calcMassCenter, linearDamp, rotDamp);
+    m_Loader.GetBallTypeMod()->RegisterModulConvex(m_Loader.InvokedOwnerId(), modulName, fixed,
+                                                   friction, elasticity, mass, collGroup, frozen,
+                                                   enableColl, calcMassCenter, linearDamp, rotDamp);
 }
 
 void ModContext::RegisterTrafo(const char *modulName) {
-    m_Loader.GetBallTypeMod()->RegisterTrafo(modulName);
+    m_Loader.GetBallTypeMod()->RegisterTrafo(m_Loader.InvokedOwnerId(), modulName);
 }
 
 void ModContext::RegisterModul(const char *modulName) {
-    m_Loader.GetBallTypeMod()->RegisterModul(modulName);
+    m_Loader.GetBallTypeMod()->RegisterModul(m_Loader.InvokedOwnerId(), modulName);
 }
 
 void ModContext::OnProcess() {
@@ -1440,9 +1378,12 @@ void ModContext::OnProcess() {
     BML_TryRegisterAngelScriptBindings(this);
     m_Loader.ProcessScriptState();
 #endif
+    m_GuiApi.Collect();
     m_ImcRuntime.Pump();
-    Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
-    BroadcastCallback(&IMod::OnProcess);
+    TimerScheduler::ProcessAll(m_TimeManager->GetMainTickCount(),
+                               m_TimeManager->GetAbsoluteTime() / 1000.0f);
+    m_TimerApi.FinishProcess();
+    m_Loader.BroadcastCallback<ModEvent::OnProcess>();
     FlushConfigChanges();
 }
 
@@ -1450,12 +1391,17 @@ void ModContext::OnRender(CKRenderContext *dev) {
     if (!IsInited() || !dev)
         return;
 
-    BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
+    if (dev == GetRenderContext()) {
+        if (auto *builtin = m_Loader.GetBuiltinMod())
+            builtin->OnPlayerRender();
+    }
+    m_Loader.BroadcastCallback<ModEvent::OnRender>(
+        static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
 }
 
 void ModContext::OnLoadGame() {
-    BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT,
-                      true, true, true, false, nullptr, nullptr);
+    m_Loader.BroadcastCallback<ModEvent::OnLoadObject>("base.cmo", false, "", CKCID_3DOBJECT, true,
+                                                       true, true, false, nullptr, nullptr);
 
     int scriptCnt = m_CKContext->GetObjectsCountByClassID(CKCID_BEHAVIOR);
     CK_ID *scripts = m_CKContext->GetObjectsListByClassID(CKCID_BEHAVIOR);
@@ -1463,168 +1409,159 @@ void ModContext::OnLoadGame() {
         auto *behavior = (CKBehavior *) m_CKContext->GetObject(scripts[i]);
         if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
             BehaviorScriptLoaded(behavior);
-            BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
+            m_Loader.BroadcastCallback<ModEvent::OnLoadScript>("base.cmo", behavior);
         }
     }
 }
 
 void ModContext::OnPreStartMenu() {
-    BroadcastMessage("PreStartMenu", &IMod::OnPreStartMenu);
+    m_Loader.BroadcastMessage<ModEvent::OnPreStartMenu>("PreStartMenu");
 }
 
 void ModContext::OnPostStartMenu() {
-    BroadcastMessage("PostStartMenu", &IMod::OnPostStartMenu);
+    m_Loader.BroadcastMessage<ModEvent::OnPostStartMenu>("PostStartMenu");
 }
 
 void ModContext::OnExitGame() {
-    BroadcastMessage("ExitGame", &IMod::OnExitGame);
+    m_Loader.BroadcastMessage<ModEvent::OnExitGame>("ExitGame");
 }
 
 void ModContext::OnPreLoadLevel() {
-    BroadcastMessage("PreLoadLevel", &IMod::OnPreLoadLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPreLoadLevel>("PreLoadLevel");
 }
 
 void ModContext::OnPostLoadLevel() {
-    BroadcastMessage("PostLoadLevel", &IMod::OnPostLoadLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPostLoadLevel>("PostLoadLevel");
 }
 
 void ModContext::OnStartLevel() {
     m_GamePhase = GamePhase::ActiveLevel;
-    BroadcastMessage("StartLevel", &IMod::OnStartLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnStartLevel>("StartLevel");
 }
 
 void ModContext::OnPreResetLevel() {
-    BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPreResetLevel>("PreResetLevel");
     m_GamePhase = GamePhase::Transitioning;
 }
 
 void ModContext::OnPostResetLevel() {
-    BroadcastMessage("PostResetLevel", &IMod::OnPostResetLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPostResetLevel>("PostResetLevel");
 }
 
 void ModContext::OnPauseLevel() {
     if (m_GamePhase == GamePhase::ActiveLevel)
         m_GamePhase = GamePhase::PausedLevel;
-    BroadcastMessage("PauseLevel", &IMod::OnPauseLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPauseLevel>("PauseLevel");
 }
 
 void ModContext::OnUnpauseLevel() {
     if (m_GamePhase == GamePhase::PausedLevel)
         m_GamePhase = GamePhase::ActiveLevel;
-    BroadcastMessage("UnpauseLevel", &IMod::OnUnpauseLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnUnpauseLevel>("UnpauseLevel");
 }
 
 void ModContext::OnPreExitLevel() {
-    BroadcastMessage("PreExitLevel", &IMod::OnPreExitLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPreExitLevel>("PreExitLevel");
 }
 
 void ModContext::OnPostExitLevel() {
     m_GamePhase = GamePhase::FrontEnd;
-    BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPostExitLevel>("PostExitLevel");
 }
 
 void ModContext::OnPreNextLevel() {
-    BroadcastMessage("PreNextLevel", &IMod::OnPreNextLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPreNextLevel>("PreNextLevel");
 }
 
 void ModContext::OnPostNextLevel() {
     m_GamePhase = GamePhase::Transitioning;
-    BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPostNextLevel>("PostNextLevel");
 }
 
 void ModContext::OnDead() {
     m_GamePhase = GamePhase::FrontEnd;
-    BroadcastMessage("Dead", &IMod::OnDead);
+    m_Loader.BroadcastMessage<ModEvent::OnDead>("Dead");
 }
 
 void ModContext::OnPreEndLevel() {
-    BroadcastMessage("PreEndLevel", &IMod::OnPreEndLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPreEndLevel>("PreEndLevel");
 }
 
 void ModContext::OnPostEndLevel() {
     m_GamePhase = GamePhase::FrontEnd;
-    BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
+    m_Loader.BroadcastMessage<ModEvent::OnPostEndLevel>("PostEndLevel");
 }
 
 void ModContext::OnCounterActive() {
-    BroadcastMessage("CounterActive", &IMod::OnCounterActive);
+    m_Loader.BroadcastMessage<ModEvent::OnCounterActive>("CounterActive");
 }
 
 void ModContext::OnCounterInactive() {
-    BroadcastMessage("CounterInactive", &IMod::OnCounterInactive);
+    m_Loader.BroadcastMessage<ModEvent::OnCounterInactive>("CounterInactive");
 }
 
 void ModContext::OnBallNavActive() {
-    BroadcastMessage("BallNavActive", &IMod::OnBallNavActive);
+    m_Loader.BroadcastMessage<ModEvent::OnBallNavActive>("BallNavActive");
 }
 
 void ModContext::OnBallNavInactive() {
-    BroadcastMessage("BallNavInactive", &IMod::OnBallNavInactive);
+    m_Loader.BroadcastMessage<ModEvent::OnBallNavInactive>("BallNavInactive");
 }
 
 void ModContext::OnCamNavActive() {
-    BroadcastMessage("CamNavActive", &IMod::OnCamNavActive);
+    m_Loader.BroadcastMessage<ModEvent::OnCamNavActive>("CamNavActive");
 }
 
 void ModContext::OnCamNavInactive() {
-    BroadcastMessage("CamNavInactive", &IMod::OnCamNavInactive);
+    m_Loader.BroadcastMessage<ModEvent::OnCamNavInactive>("CamNavInactive");
 }
 
 void ModContext::OnBallOff() {
-    BroadcastMessage("BallOff", &IMod::OnBallOff);
+    m_Loader.BroadcastMessage<ModEvent::OnBallOff>("BallOff");
 }
 
 void ModContext::OnPreCheckpointReached() {
-    BroadcastMessage("PreCheckpoint", &IMod::OnPreCheckpointReached);
+    m_Loader.BroadcastMessage<ModEvent::OnPreCheckpointReached>("PreCheckpoint");
 }
 
 void ModContext::OnPostCheckpointReached() {
-    BroadcastMessage("PostCheckpoint", &IMod::OnPostCheckpointReached);
+    m_Loader.BroadcastMessage<ModEvent::OnPostCheckpointReached>("PostCheckpoint");
 }
 
 void ModContext::OnLevelFinish() {
-    BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
+    m_Loader.BroadcastMessage<ModEvent::OnLevelFinish>("LevelFinish");
     m_GamePhase = GamePhase::Transitioning;
 }
 
 void ModContext::OnGameOver() {
-    BroadcastMessage("GameOver", &IMod::OnGameOver);
+    m_Loader.BroadcastMessage<ModEvent::OnGameOver>("GameOver");
 }
 
 void ModContext::OnExtraPoint() {
-    BroadcastMessage("ExtraPoint", &IMod::OnExtraPoint);
+    m_Loader.BroadcastMessage<ModEvent::OnExtraPoint>("ExtraPoint");
 }
 
 void ModContext::OnPreSubLife() {
-    BroadcastMessage("PreSubLife", &IMod::OnPreSubLife);
+    m_Loader.BroadcastMessage<ModEvent::OnPreSubLife>("PreSubLife");
 }
 
 void ModContext::OnPostSubLife() {
-    BroadcastMessage("PostSubLife", &IMod::OnPostSubLife);
+    m_Loader.BroadcastMessage<ModEvent::OnPostSubLife>("PostSubLife");
 }
 
 void ModContext::OnPreLifeUp() {
-    BroadcastMessage("PreLifeUp", &IMod::OnPreLifeUp);
+    m_Loader.BroadcastMessage<ModEvent::OnPreLifeUp>("PreLifeUp");
 }
 
 void ModContext::OnPostLifeUp() {
-    BroadcastMessage("PostLifeUp", &IMod::OnPostLifeUp);
+    m_Loader.BroadcastMessage<ModEvent::OnPostLifeUp>("PostLifeUp");
 }
 
 void ModContext::InitDirectories() {
-    wchar_t path[MAX_PATH];
-
-    // Set up working directory
-    _wgetcwd(path, MAX_PATH);
-    path[MAX_PATH - 1] = '\0';
-    m_WorkingDir = path;
-    m_WorkingDirUtf8 = utils::ToString(m_WorkingDir);
-
-    // Set up game directory
-    ::GetModuleFileNameW(nullptr, path, MAX_PATH);
-    path[MAX_PATH - 1] = '\0';
-    m_GameDir = ResolveGameDirectoryFromExecutable(path);
-    m_GameDirUtf8 = utils::ToString(m_GameDir);
+    m_WorkingDir = utils::GetCurrentDirectoryW();
+    m_WorkingDirUtf8 = utils::Utf16ToUtf8(m_WorkingDir);
+    m_GameDir = ResolveGameDirectoryFromExecutable(utils::GetExecutablePathW());
+    m_GameDirUtf8 = utils::Utf16ToUtf8(m_GameDir);
 
     // Set up loader directory
     m_LoaderDir = ResolveLoaderDirectory(m_GameDir);
@@ -1634,18 +1571,22 @@ void ModContext::InitDirectories() {
     // Set up temp directory
     m_TempDir = CreateInstanceTempDirectory(
         m_LoaderDir,
-        static_cast<unsigned long>(::GetCurrentProcessId()));
+        static_cast<unsigned long>(BML::Platform::ProcessId()));
     m_TempDirUtf8 = utils::ToString(m_TempDir);
 
     // Set up config directory
-    m_ConfigDir = m_LoaderDir + L"\\Configs";
+    m_ConfigDir = utils::CombinePathW(m_LoaderDir, L"Configs");
     utils::CreateFileTreeW(m_ConfigDir);
     m_ConfigDirUtf8 = utils::ToString(m_ConfigDir);
 }
 
 void ModContext::InitLogger() {
-    std::wstring logfilePath = m_LoaderDir + L"\\ModLoader.log";
-    m_Logfile = _wfopen(logfilePath.c_str(), L"w");
+    std::wstring logfilePath = utils::CombinePathW(m_LoaderDir, L"ModLoader.log");
+#if BML_RUNTIME_SDL
+    m_LogStream = SDL_IOFromFile(utils::Utf16ToUtf8(logfilePath).c_str(), "wb");
+#else
+    m_LogStream = _wfopen(logfilePath.c_str(), L"wb");
+#endif
     auto *logger = new Logger("ModLoader");
     Logger::SetDefault(logger);
     m_Logger = logger;
@@ -1664,9 +1605,13 @@ void ModContext::ShutdownLogger() {
     Logger::SetDefault(nullptr);
     delete m_Logger;
     m_Logger = nullptr;
-    if (m_Logfile) {
-        fclose(m_Logfile);
-        m_Logfile = nullptr;
+    if (m_LogStream) {
+#if BML_RUNTIME_SDL
+        SDL_CloseIO(m_LogStream);
+#else
+        std::fclose(m_LogStream);
+#endif
+        m_LogStream = nullptr;
     }
 }
 
@@ -1696,10 +1641,13 @@ HookSnapshot ModContext::InspectHooks() const {
     return m_Hooks ? m_Hooks->Inspect() : HookSnapshot{};
 }
 
+
+#if !BML_RUNTIME_SDL
 void ModContext::RunPhysicsPostProcess() {
     if (m_Hooks)
         m_Hooks->RunPhysicsPostProcess();
 }
+#endif
 
 bool ModContext::AttachRenderHook(CKRenderContext *renderContext) {
     return m_Hooks && m_Hooks->AttachRender(renderContext);
@@ -1712,7 +1660,7 @@ bool ModContext::DetachRenderHook() {
 bool ModContext::GetManagers() {
     m_AttributeManager = m_CKContext->GetAttributeManager();
     if (m_AttributeManager) {
-        m_Logger->Info("Get Attribute Manager pointer 0x%08x", m_AttributeManager);
+        m_Logger->Info("Get Attribute Manager pointer %p", static_cast<void *>(m_AttributeManager));
     } else {
         m_Logger->Info("Failed to get Attribute Manager");
         return false;
@@ -1720,7 +1668,7 @@ bool ModContext::GetManagers() {
 
     m_BehaviorManager = m_CKContext->GetBehaviorManager();
     if (m_BehaviorManager) {
-        m_Logger->Info("Get Behavior Manager pointer 0x%08x", m_BehaviorManager);
+        m_Logger->Info("Get Behavior Manager pointer %p", static_cast<void *>(m_BehaviorManager));
     } else {
         m_Logger->Info("Failed to get Behavior Manager");
         return false;
@@ -1728,7 +1676,7 @@ bool ModContext::GetManagers() {
 
     m_CollisionManager = (CKCollisionManager *) m_CKContext->GetManagerByGuid(COLLISION_MANAGER_GUID);
     if (m_CollisionManager) {
-        m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
+        m_Logger->Info("Get Collision Manager pointer %p", static_cast<void *>(m_CollisionManager));
     } else {
         m_Logger->Info("Failed to get Collision Manager");
         return false;
@@ -1736,7 +1684,7 @@ bool ModContext::GetManagers() {
 
     m_InputManager = (CKInputManager *) m_CKContext->GetManagerByGuid(INPUT_MANAGER_GUID);
     if (m_InputManager) {
-        m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputManager);
+        m_Logger->Info("Get Input Manager pointer %p", static_cast<void *>(m_InputManager));
     } else {
         m_Logger->Info("Failed to get Input Manager");
         return false;
@@ -1744,7 +1692,7 @@ bool ModContext::GetManagers() {
 
     m_MessageManager = m_CKContext->GetMessageManager();
     if (m_MessageManager) {
-        m_Logger->Info("Get Message Manager pointer 0x%08x", m_MessageManager);
+        m_Logger->Info("Get Message Manager pointer %p", static_cast<void *>(m_MessageManager));
     } else {
         m_Logger->Info("Failed to get Message Manager");
         return false;
@@ -1752,7 +1700,7 @@ bool ModContext::GetManagers() {
 
     m_PathManager = m_CKContext->GetPathManager();
     if (m_PathManager) {
-        m_Logger->Info("Get Path Manager pointer 0x%08x", m_PathManager);
+        m_Logger->Info("Get Path Manager pointer %p", static_cast<void *>(m_PathManager));
     } else {
         m_Logger->Info("Failed to get Path Manager");
         return false;
@@ -1760,7 +1708,7 @@ bool ModContext::GetManagers() {
 
     m_ParameterManager = m_CKContext->GetParameterManager();
     if (m_ParameterManager) {
-        m_Logger->Info("Get Parameter Manager pointer 0x%08x", m_ParameterManager);
+        m_Logger->Info("Get Parameter Manager pointer %p", static_cast<void *>(m_ParameterManager));
     } else {
         m_Logger->Info("Failed to get Parameter Manager");
         return false;
@@ -1768,7 +1716,7 @@ bool ModContext::GetManagers() {
 
     m_RenderManager = m_CKContext->GetRenderManager();
     if (m_RenderManager) {
-        m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
+        m_Logger->Info("Get Render Manager pointer %p", static_cast<void *>(m_RenderManager));
     } else {
         m_Logger->Info("Failed to get Render Manager");
         return false;
@@ -1776,7 +1724,7 @@ bool ModContext::GetManagers() {
 
     m_SoundManager = (CKSoundManager *) m_CKContext->GetManagerByGuid(SOUND_MANAGER_GUID);
     if (m_SoundManager) {
-        m_Logger->Info("Get Sound Manager pointer 0x%08x", m_SoundManager);
+        m_Logger->Info("Get Sound Manager pointer %p", static_cast<void *>(m_SoundManager));
     } else {
         m_Logger->Info("Failed to get Sound Manager");
         return false;
@@ -1784,7 +1732,7 @@ bool ModContext::GetManagers() {
 
     m_TimeManager = m_CKContext->GetTimeManager();
     if (m_TimeManager) {
-        m_Logger->Info("Get Time Manager pointer 0x%08x", m_TimeManager);
+        m_Logger->Info("Get Time Manager pointer %p", static_cast<void *>(m_TimeManager));
     } else {
         m_Logger->Info("Failed to get Time Manager");
         return false;
@@ -1816,13 +1764,15 @@ bool ModContext::RegisterModOwner(const std::string &ownerId) noexcept {
         return false;
     }
 
-    // The Loader's own Behavior work runs in the built-in Mod's Session. It
-    // opens with that owner and retires with it, after every other Mod.
-    IMod *builtin = m_Loader.GetBuiltinMod();
+#if BML_ENABLE_ANGELSCRIPT
+    // Script engine convenience calls use the built-in Mod's Session. The
+    // owner-scoped authoring projection opens its own Sessions separately.
+    ModRecord *builtin =
+        m_Loader.GetBuiltinMod() ? &m_Loader.GetBuiltinMod()->Registration() : nullptr;
     if (!builtin || ownerId != builtin->GetID())
         return true;
     try {
-        const BML::Behavior::Internal::Status opened = m_ExecuteBB.Open(ownerId);
+        const BML::Behavior::Internal::Status opened = m_ScriptEngineCalls.Open(ownerId);
         if (opened)
             return true;
         if (m_Logger)
@@ -1834,6 +1784,17 @@ bool ModContext::RegisterModOwner(const std::string &ownerId) noexcept {
     }
     RetireFailedModOwner(ownerId);
     return false;
+#else
+    return true;
+#endif
+}
+
+void ModContext::StopModWork(ModRecord *owner) noexcept {
+    try {
+        if (owner)
+            m_BehaviorSessions.StopOwnerAdmission(owner->GetID());
+    } catch (...) {
+    }
 }
 
 void ModContext::RetireFailedModOwner(const std::string &ownerId) noexcept {
@@ -1842,6 +1803,12 @@ void ModContext::RetireFailedModOwner(const std::string &ownerId) noexcept {
 }
 
 bool ModContext::PrepareModUnload(const std::string &ownerId) {
+    if (auto *owner = m_Loader.FindMod(ownerId.c_str())) {
+        m_TimerApi.CleanupOwner(*owner);
+        m_InputApi.CleanupOwner(*this, *owner);
+        m_BuiApi.CleanupOwner(*owner);
+        (void)m_GuiApi.CleanupOwner(*owner);
+    }
     if (!RetireBehaviorState(ownerId, BehaviorRetirement::Unload))
         return false;
     return CleanupModRegistrations(ownerId);
@@ -1877,6 +1844,13 @@ bool ModContext::CleanupModRegistrations(const std::string &ownerId) noexcept {
         cleaned = false;
     }
 
+    if (auto *types = m_Loader.GetBallTypeMod()) {
+        try {
+            types->CleanupOwner(ownerId);
+        } catch (...) {
+            cleaned = false;
+        }
+    }
     BML::Api::UnregisterInterfacesForOwner(ownerId);
     return cleaned;
 }
@@ -1905,27 +1879,35 @@ bool ModContext::UnregisterNativeCommands(const void *module) noexcept {
     }
 }
 
-void ModContext::ClearLegacyCommands() {
+void ModContext::ClearCommands() {
     std::lock_guard<std::mutex> lock(m_CommandMutex);
     m_CommandContext.ClearCommands();
 }
 
-void ModContext::SetModDataPath(const IMod *mod, const std::wstring &root) {
+void ModContext::SetModDataPath(const ModRecord *mod, const std::wstring &root) {
     if (!mod || !m_PathManager)
         return;
 
     constexpr std::array<int, 5> categories{
         DATA_PATH_IDX, DATA_PATH_IDX, DATA_PATH_IDX, BITMAP_PATH_IDX, SOUND_PATH_IDX};
-    constexpr std::array<const char *, 5> suffixes{
-        "", "3D Entities\\", "3D Entities\\PH\\", "Textures\\", "Sounds\\"};
-    std::string base = root.empty() ? std::string() : utils::Utf16ToAnsi(utils::ResolvePathW(root));
-    if (!base.empty() && base.back() != '\\')
-        base += '\\';
+    constexpr std::array<const wchar_t *, 5> suffixes{
+        L"", L"3D Entities", L"3D Entities\\PH", L"Textures", L"Sounds"};
+    const std::wstring base = root.empty() ? std::wstring() : utils::ResolvePathW(root);
     std::array<ModDataPathKey, 5> desired;
     for (std::size_t i = 0; i < desired.size(); ++i) {
         desired[i].first = categories[i];
-        const std::string path = base + suffixes[i];
-        if (!base.empty() && utils::DirectoryExistsA(path)) {
+        const auto directory = utils::CombinePathW(base, suffixes[i]);
+        if (!base.empty() && utils::DirectoryExistsW(directory)) {
+            std::string path;
+#if BML_RUNTIME_SDL
+            path = utils::Utf16ToUtf8(directory);
+#else
+            if (!utils::TryEncodePathForActiveCodePage(directory, path) &&
+                !utils::TryEncodePathForActiveCodePage(utils::GetShortPathW(directory), path))
+                continue;
+#endif
+            if (path.back() != '\\' && path.back() != '/')
+                path += '\\';
             desired[i].second = path;
             // Use the engine's spelling for an existing path so aliases share
             // the same registration and cannot remove each other's entry.
@@ -1992,7 +1974,7 @@ void ModContext::ReleaseModDataPath(const ModDataPathKey &path) {
     m_ModDataPathRegistrations.erase(registration);
 }
 
-void ModContext::RemoveModDataPath(const IMod *mod) {
+void ModContext::RemoveModDataPath(const ModRecord *mod) {
     const auto owner = m_ModDataPaths.find(mod);
     if (owner == m_ModDataPaths.end())
         return;
@@ -2003,4 +1985,21 @@ void ModContext::RemoveModDataPath(const IMod *mod) {
 
 bool ModContext::CanScheduleTimer() const {
     return IsInited() && m_TimeManager != nullptr && !m_Loader.IsShuttingDown();
+}
+
+void ModContext::WriteLogLine(const std::string &line) {
+    if (m_LogStream) {
+#if BML_RUNTIME_SDL
+        SDL_WriteIO(m_LogStream, line.data(), line.size());
+        SDL_WriteIO(m_LogStream, "\n", 1);
+        SDL_FlushIO(m_LogStream);
+#else
+        std::fwrite(line.data(), 1, line.size(), m_LogStream);
+        std::fputc('\n', m_LogStream);
+        std::fflush(m_LogStream);
+#endif
+    }
+#ifdef _DEBUG
+    std::fprintf(stdout, "%s\n", line.c_str());
+#endif
 }

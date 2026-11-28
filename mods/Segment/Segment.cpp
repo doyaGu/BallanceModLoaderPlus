@@ -2,59 +2,86 @@
 
 #include "CommandSeg.h"
 
-IMod *BMLEntry(IBML *bml) {
-    return new Segment(bml);
-}
+BML_DEFINE_MOD(Segment, {
+    .Id = "Segment",
+    .Name = "Segment",
+    .Version = std::format("{}.{}.{}", SEG_MAJOR_VER, SEG_MINOR_VER, SEG_PATCH_VER),
+    .Author = "Swung0x48",
+    .Description = "A mod to display your gameplay performance split into each segment.",
+    .MinimumLoaderVersion = BML_VERSION,
+})
 
-void BMLExit(IMod *mod) {
-    delete mod;
-}
+Segment::Segment() = default;
 
-Segment::Segment(IBML *bml) : IMod(bml) {}
+void Segment::OnLoad(const BML::Mod::Context &context) {
+    m_Context = context;
+    m_Timers = ModSupport::Timers(context);
+    m_Context.Config().SetCategoryComment("GUI", "GUI Settings").Take();
 
-void Segment::OnLoad() {
-    GetConfig()->SetCategoryComment("GUI", "GUI Settings");
+    font_scale_ = m_Context.Config()
+                      .DeclareProperty({"GUI", "FontScale", float(0.7f), "The font scale"})
+                      .Take();
 
-    font_scale_ = GetConfig()->GetProperty("GUI", "FontScale");
-    font_scale_->SetComment("The font scale");
-    font_scale_->SetDefaultFloat(0.7f);
+    show_settings_ =
+        m_Context.Config()
+            .DeclareProperty({"GUI", "ShowSettings", bool(false), "Show settings in window"})
+            .Take();
 
-    show_settings_ = GetConfig()->GetProperty("GUI", "ShowSettings");
-    show_settings_->SetComment("Show settings in window");
-    show_settings_->SetDefaultBoolean(false);
+    ModSupport::RegisterCommand(m_Context, m_Commands, std::make_shared<CommandSeg>(this));
 
-    m_BML->RegisterCommand(new CommandSeg(this));
-
+    m_RecordSavePath = m_Context.GetDirectory(BML_DIR_CONFIG).Value() + "/SegmentRecords.json";
     load_sessions_from_file();
 }
 
-void Segment::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
-    if (prop == font_scale_) {
+void Segment::OnModifyConfig(const BML::Mod::Context &, const BML::Mod::ConfigEvent &event) {
+    const auto *category = event.Category.data();
+    const auto *key = event.Key.data();
+    auto found = m_Context.Config().FindProperty(event.Category, event.Key);
+    if (!found)
+        return;
+    auto prop = found.Value();
+
+    if ((event.Category == "GUI" && event.Key == "FontScale")) {
         if (session_)
-            session_->gui.set_font_scale(font_scale_->GetFloat());
-	} else if (prop == show_settings_) {
-		if (session_)
-			session_->gui.set_settings_visible(show_settings_->GetBoolean());
-	}
+            session_->gui.set_font_scale(font_scale_.Get<float>());
+    } else if ((event.Category == "GUI" && event.Key == "ShowSettings")) {
+        if (session_)
+            session_->gui.set_settings_visible(show_settings_.Get<bool>());
+    }
 }
 
-void Segment::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                           CKBOOL addtoscene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                           XObjectArray *objArray, CKObject *masterObj) {
+void Segment::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) {
+    const char *filename = event.Filename.data();
+    const bool isMap = event.IsMap;
+    const char *masterName = event.MasterName.data();
+    const auto filterClass = static_cast<CK_CLASSID>(event.FilterClass);
+    const bool addToScene = event.AddToScene, addtoscene = event.AddToScene,
+               reuseMeshes = event.ReuseMeshes, reuseMaterials = event.ReuseMaterials,
+               dynamic = event.Dynamic;
+    XObjectArray objects;
+    for (auto ref : event.Objects) {
+        auto p = BML::Engine::BorrowObject<CKObject>(m_Context, ref);
+        if (p)
+            objects.PushBack(p.Value()->GetID());
+    }
+    auto *objArray = &objects;
+    auto master = BML::Engine::BorrowObject<CKObject>(m_Context, event.MasterObject);
+    CKObject *masterObj = master ? master.Value() : nullptr;
+
     if (!isMap)
         return;
     const int current_level = get_current_level();
     const int sector_count = get_sector_count();
 
     // TODO: S/L states
-    //state_ = std::make_unique<PerLevelSegmentState>(sector_count);
-    //gui_ = std::make_unique<SegmentGui>(*state_, get_current_level());
+    // state_ = std::make_unique<PerLevelSegmentState>(sector_count);
+    // gui_ = std::make_unique<SegmentGui>(*state_, get_current_level());
 
     if (sessions_.find(filename) == sessions_.end()) {
         if (!is_custom_map(filename))
             sessions_[filename] = std::make_shared<session>(current_level, sector_count);
         else {
-            CKPathSplitter splitter(const_cast<char*>(filename));
+            CKPathSplitter splitter(const_cast<char *>(filename));
             std::string name = std::format("\"{}\"", splitter.GetName());
             sessions_[filename] = std::make_shared<session>(name, sector_count);
         }
@@ -62,11 +89,11 @@ void Segment::OnLoadObject(const char *filename, CKBOOL isMap, const char *maste
 
     session_ = sessions_[filename];
     session_->gui.set_cursor_visible(true);
-    session_->gui.set_settings_visible(show_settings_->GetBoolean());
-    session_->gui.set_font_scale(font_scale_->GetFloat());
+    session_->gui.set_settings_visible(show_settings_.Get<bool>());
+    session_->gui.set_font_scale(font_scale_.Get<float>());
 }
 
-void Segment::OnPreExitLevel() {
+void Segment::OnPreExitLevel(const BML::Mod::Context &) {
     session_->gui.set_cursor_visible(false);
     session_->state.enable_counting(false);
     if (!cheat_enabled_once_)
@@ -75,21 +102,21 @@ void Segment::OnPreExitLevel() {
     cheat_enabled_once_ = false;
 }
 
-void Segment::OnGameOver() {
-    session_->state.enable_counting(false);
-}
+void Segment::OnGameOver(const BML::Mod::Context &) { session_->state.enable_counting(false); }
 
-void Segment::OnCheatEnabled(bool enable) {
+void Segment::OnCheatEnabled(const BML::Mod::Context &, const BML::Mod::CheatEvent &event) {
+    const bool enable = event.Enabled;
+
     if (enable) {
         cheat_enabled_once_ = true;
-        m_BML->SendIngameMessage("Cheat mode enabled. Segment will stop recording.");
-        m_BML->SendIngameMessage("Disable cheat mode to restore.");
+        BML::UI::AddMessage("Cheat mode enabled. Segment will stop recording.");
+        BML::UI::AddMessage("Disable cheat mode to restore.");
     } else {
-        m_BML->SendIngameMessage("Cheat mode disabled. Segment will now start recording.");
+        BML::UI::AddMessage("Cheat mode disabled. Segment will now start recording.");
     }
 }
 
-void Segment::OnPreEndLevel() {
+void Segment::OnPreEndLevel(const BML::Mod::Context &) {
     session_->state.enable_counting(false);
     session_->state.change_segment(get_current_sector() + 1);
     if (!cheat_enabled_once_)
@@ -98,38 +125,32 @@ void Segment::OnPreEndLevel() {
     cheat_enabled_once_ = false;
 }
 
-void Segment::OnCounterActive() {
-    session_->state.enable_counting(true);
-}
+void Segment::OnCounterActive(const BML::Mod::Context &) { session_->state.enable_counting(true); }
 
-void Segment::OnCounterInactive() {
+void Segment::OnCounterInactive(const BML::Mod::Context &) {
     session_->state.enable_counting(false);
 }
 
-void Segment::OnPauseLevel() {
-    session_->state.enable_counting(false);
-}
+void Segment::OnPauseLevel(const BML::Mod::Context &) { session_->state.enable_counting(false); }
 
-void Segment::OnUnpauseLevel() {
-    session_->state.enable_counting(true);
-}
+void Segment::OnUnpauseLevel(const BML::Mod::Context &) { session_->state.enable_counting(true); }
 
-void Segment::OnProcess() {
-    if (!m_BML->IsIngame())
+void Segment::OnProcess(const BML::Mod::Context &) {
+    if (!ModSupport::GameState().Ingame)
         return;
 
-    const float delta = m_BML->GetTimeManager()->GetLastDeltaTime();
+    const float delta = ModSupport::Engine(m_Context)->GetTimeManager()->GetLastDeltaTime();
     session_->state.update(delta / 1000.0f);
     session_->gui.update();
 }
 
-void Segment::OnStartLevel() {
-    cheat_enabled_once_ = m_BML->IsCheatEnabled();
+void Segment::OnStartLevel(const BML::Mod::Context &) {
+    cheat_enabled_once_ = ModSupport::CheatEnabled();
     session_->state.reset();
     session_->gui.set_cursor_visible(true);
 }
 
-void Segment::OnPreResetLevel() {
+void Segment::OnPreResetLevel(const BML::Mod::Context &) {
     session_->gui.set_cursor_visible(false);
     session_->state.enable_counting(false);
     if (!cheat_enabled_once_)
@@ -138,31 +159,31 @@ void Segment::OnPreResetLevel() {
     cheat_enabled_once_ = false;
 }
 
-void Segment::OnPostCheckpointReached() {
+void Segment::OnPostCheckpointReached(const BML::Mod::Context &) {
     session_->state.change_segment(get_current_sector());
 }
 
 picojson::value Segment::serialize_sessions_to_pico(serialize_from_t serialize_from) const {
     picojson::array records;
-    for (const auto &[path, session]: sessions_) {
+    for (const auto &[path, session] : sessions_) {
         picojson::object map_obj;
 
         picojson::object level_obj;
         picojson::array arr;
         const auto &state = session->state;
         switch (serialize_from) {
-            case serialize_from_t::Target:
-                for (size_t i = 0; i < state.size(); ++i) {
-                    arr.emplace_back(state.segment_target(i));
-                }
-                break;
-            case serialize_from_t::Current:
-                for (size_t i = 0; i < state.size(); ++i) {
-                    arr.emplace_back(state.segment(i));
-                }
-                break;
-            default:
-                assert(false);
+        case serialize_from_t::Target:
+            for (size_t i = 0; i < state.size(); ++i) {
+                arr.emplace_back(state.segment_target(i));
+            }
+            break;
+        case serialize_from_t::Current:
+            for (size_t i = 0; i < state.size(); ++i) {
+                arr.emplace_back(state.segment(i));
+            }
+            break;
+        default:
+            assert(false);
         }
 
         level_obj.emplace("name", session->gui.current_level_name_);
@@ -176,36 +197,39 @@ picojson::value Segment::serialize_sessions_to_pico(serialize_from_t serialize_f
 }
 
 void Segment::save_pico_to_file(const picojson::value &v) {
-    //std::string path = (std::filesystem::current_path() / RECORD_SAVE_PATH).lexically_normal().string();
-    std::ofstream fs(RECORD_SAVE_PATH, std::ios::trunc);
-    fs << v.serialize();
-    fs.close();
+    if (!BML_WriteTextFileUtf8(m_RecordSavePath.c_str(), v.serialize().c_str()))
+        (void)m_Context.LogError("Failed to save Segment records");
 }
 
 bool Segment::load_sessions_from_file() {
     picojson::value v;
-    std::ifstream fs(RECORD_SAVE_PATH);
+    char *text = BML_ReadTextFileUtf8(m_RecordSavePath.c_str());
+    if (!text)
+        return false;
+    std::string data(text);
+    BML_FreeString(text);
+    std::istringstream fs(data);
     fs >> v;
     std::string err = picojson::get_last_error();
     if (!err.empty()) {
-        GetLogger()->Warn("Error loading sessions from file.");
-        GetLogger()->Warn(err.c_str());
+        ModSupport::Log(m_Context, BML_LOG_WARN, "Error loading sessions from file.");
+        ModSupport::Log(m_Context, BML_LOG_WARN, "%s", err.c_str());
 
         sessions_.clear();
         return false;
     }
 
     if (!v.is<picojson::array>()) {
-        GetLogger()->Error("Outermost array in illegal form.");
+        ModSupport::Log(m_Context, BML_LOG_ERROR, "Outermost array in illegal form.");
 
         sessions_.clear();
         return false;
     }
     picojson::array records = v.get<picojson::array>();
 
-    for (const auto &record: records) {
+    for (const auto &record : records) {
         if (!record.is<picojson::object>()) {
-            GetLogger()->Error("Record object in illegal form.");
+            ModSupport::Log(m_Context, BML_LOG_ERROR, "Record object in illegal form.");
 
             sessions_.clear();
             return false;
@@ -214,7 +238,7 @@ bool Segment::load_sessions_from_file() {
 
         for (picojson::value::object::const_iterator i = map_obj.begin(); i != map_obj.end(); ++i) {
             if (!i->second.is<picojson::object>()) {
-                GetLogger()->Error("Level object in illegal form.");
+                ModSupport::Log(m_Context, BML_LOG_ERROR, "Level object in illegal form.");
 
                 sessions_.clear();
                 return false;
@@ -222,7 +246,8 @@ bool Segment::load_sessions_from_file() {
             picojson::object obj = i->second.get<picojson::object>();
 
             if (!obj.contains("name") || !obj["name"].is<std::string>()) {
-                GetLogger()->Error("Level object does not have \'name\' field.");
+                ModSupport::Log(m_Context, BML_LOG_ERROR,
+                                "Level object does not have \'name\' field.");
 
                 sessions_.clear();
                 return false;
@@ -230,7 +255,8 @@ bool Segment::load_sessions_from_file() {
             std::string name = obj["name"].get<std::string>();
 
             if (!obj.contains("segments") || !obj["segments"].is<picojson::array>()) {
-                GetLogger()->Error("Level object does not have \'segments\' field.");
+                ModSupport::Log(m_Context, BML_LOG_ERROR,
+                                "Level object does not have \'segments\' field.");
 
                 sessions_.clear();
                 return false;

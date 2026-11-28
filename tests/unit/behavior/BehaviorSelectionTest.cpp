@@ -21,7 +21,7 @@ ObjectRef Target(std::uint32_t slot, std::uint32_t generation = 1) {
 class FakeWorld final : public Selection::World {
 public:
     Status Install(const PatchKey &, const ObjectRef &target, Epoch epoch,
-                   Installation &out) override {
+                   Installation &out, Status &) override {
         Calls.push_back("+" + std::to_string(target.Slot) + "@" +
                         std::to_string(epoch));
         if (FailInstall.contains(target.Slot))
@@ -128,22 +128,24 @@ TEST(BehaviorSelection, SingleTargetPlanWithoutTargetsIsUnsatisfiedNotFailed) {
     EXPECT_TRUE(plan.Contains(Target(2)));
 }
 
-TEST(BehaviorSelection, RollsBackNewInstallationsAndKeepsTheCanonicalPlan) {
+TEST(BehaviorSelection, KeepsSuccessfulTargetsAndRetriesOnlyTheMissingInstance) {
     Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
     world.FailInstall.insert(2);
     const Status status = plan.Reconcile({Target(1), Target(2)}, 1, world);
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::CreateFailed);
-    EXPECT_EQ(plan.State(), PlanState::Unsatisfied);
-    EXPECT_EQ(plan.Size(), 0u);
-    EXPECT_TRUE(world.Live.empty());
+    EXPECT_EQ(plan.State(), PlanState::Partial);
+    EXPECT_EQ(plan.Size(), 1u);
+    ASSERT_EQ(world.Live.size(), 1u);
+    const auto first = world.Live.begin()->first;
     EXPECT_EQ(plan.LastStatus().Code, Error::CreateFailed);
     EXPECT_EQ(plan.ApplyFailure().Code, Error::CreateFailed);
     EXPECT_TRUE(plan.RestoreFailure());
 
     world.FailInstall.clear();
     ASSERT_TRUE(plan.Reconcile({Target(1), Target(2)}, 1, world));
+    EXPECT_TRUE(world.Live.contains(first));
     EXPECT_EQ(plan.State(), PlanState::Active);
     EXPECT_TRUE(plan.LastStatus());
     EXPECT_TRUE(plan.ApplyFailure());
@@ -199,23 +201,17 @@ TEST(BehaviorSelection, ClosesEveryIndependentInstallationWhenOneNeedsRepair) {
     EXPECT_EQ(world.Live.size(), 1u);
 }
 
-TEST(BehaviorSelection, KeepsOnlyRollbackConflictsAfterAnInstallFailure) {
+TEST(BehaviorSelection, ContinuesPastAFailedTargetInTheSamePass) {
     Selection plan({"mod", "patch"}, {"Gameplay_Events"});
     FakeWorld world;
-    world.FailInstall.insert(3);
-    world.FailClose.insert(1);
-
-    const Status status = plan.Reconcile(
-        {Target(1), Target(2), Target(3)}, 1, world);
-    EXPECT_FALSE(status);
-    EXPECT_EQ(status.Code, Error::RevertConflict);
-    EXPECT_EQ(plan.State(), PlanState::Conflicted);
-    EXPECT_EQ(plan.Size(), 1u);
-    EXPECT_EQ(world.Live.size(), 1u);
+    world.FailInstall.insert(2);
+    ASSERT_FALSE(plan.Reconcile({Target(1), Target(2), Target(3)}, 1, world));
+    EXPECT_EQ(plan.State(), PlanState::Partial);
     EXPECT_TRUE(plan.Contains(Target(1)));
-    EXPECT_EQ(plan.LastStatus().Code, Error::RevertConflict);
+    EXPECT_TRUE(plan.Contains(Target(3)));
+    EXPECT_FALSE(plan.Contains(Target(2)));
     EXPECT_EQ(plan.ApplyFailure().Code, Error::CreateFailed);
-    EXPECT_EQ(plan.RestoreFailure().Code, Error::RevertConflict);
+    EXPECT_TRUE(plan.RestoreFailure());
 }
 
 TEST(BehaviorSelection, RetirementIsIdempotentAndRejectsNewTargets) {
@@ -567,6 +563,65 @@ TEST(BehaviorSelections, AsksWhetherARetryIsAcceptedWithoutRetrying) {
     world->BusyClose.clear();
     ASSERT_TRUE(plans.ProcessFrame());
     EXPECT_EQ(plans.Size(), 0u);
+}
+
+TEST(BehaviorSelections, ReconcilesAReplacementRuleAndReturnsItsActualInstallFailure) {
+    Selections plans;
+    auto failing = std::make_shared<FakeWorld>();
+    auto waiting = std::make_shared<FakeWorld>();
+    SelectionId replacement = 0;
+    SelectionId unrelated = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 4, {"Gameplay_Events"}, failing, replacement));
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "energy"}, 4, {"Gameplay_Energy"}, waiting, unrelated));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Energy", Target(2)));
+    failing->FailInstall.insert(1);
+
+    EXPECT_EQ(plans.ReconcileNow(replacement).Code, Error::CreateFailed);
+    EXPECT_TRUE(waiting->Calls.empty());
+    PlanInfo info;
+    ASSERT_TRUE(plans.Read(replacement, info));
+    EXPECT_EQ(info.ApplyFailure.Code, Error::CreateFailed);
+    EXPECT_EQ(info.Instances, 0u);
+
+    ASSERT_TRUE(plans.ProcessFrame());
+    EXPECT_EQ(failing->Calls.size(), 1u);
+    EXPECT_EQ(waiting->Live.size(), 1u);
+}
+
+TEST(BehaviorSelections, ReinstallsALostInstallationWithoutReloadingItsScript) {
+    Selections plans;
+    auto world = std::make_shared<FakeWorld>();
+    SelectionId plan = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
+    ASSERT_TRUE(plans.ProcessFrame());
+    ASSERT_EQ(world->Live.size(), 1u);
+    const Installation lost = world->Live.begin()->first;
+
+    plans.InvalidateInstallation(lost);
+    PlanInfo info;
+    ASSERT_TRUE(plans.Read(plan, info));
+    EXPECT_EQ(info.State, PlanState::Reconciling);
+    EXPECT_EQ(info.Instances, 0u);
+    std::vector<InstallationInfo> current;
+    ASSERT_TRUE(plans.ReadInstallations("mod", 4, plan, current));
+    EXPECT_TRUE(current.empty());
+
+    world->BusyClose.insert(lost);
+    EXPECT_EQ(plans.ProcessFrame().Code, Error::Busy);
+    ASSERT_EQ(world->Live.size(), 1u);
+    EXPECT_TRUE(world->Live.contains(lost));
+
+    world->BusyClose.clear();
+    ASSERT_TRUE(plans.ProcessFrame());
+    ASSERT_TRUE(plans.ReadInstallations("mod", 4, plan, current));
+    ASSERT_EQ(current.size(), 1u);
+    EXPECT_EQ(current.front().Target, Target(1));
+    EXPECT_NE(current.front().Id, lost);
 }
 
 TEST(BehaviorSelections, KeepsItsWorldOnTheGameThread) {

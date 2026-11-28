@@ -106,7 +106,8 @@ ImGui::End();
 private bool showWindow = true;
 
 private void HandleWindowToggle(const BML::ModContext &in ctx) {
-    BML::InputHook@ input = ctx.BorrowInputManager();
+    BML::KeyboardState@ input;
+    if (ctx.Input().ReadKeyboard(input) != BML::ERROR_OK) return;
     if (input is null || !input.IsKeyPressed(CKKEY_F9)) {
         return;
     }
@@ -114,9 +115,9 @@ private void HandleWindowToggle(const BML::ModContext &in ctx) {
 }
 ```
 
-### BorrowInputManager 和 IsKeyPressed
+### 读取键盘快照 和 IsKeyPressed
 
-`ctx.BorrowInputManager()` 从 BML 上下文中借出输入管理器。返回值是一个句柄（`@` 表示句柄类型），如果系统尚未初始化完毕，可能返回 `null`，所以需要检查。
+`ctx.Input().ReadKeyboard(input)` 捕获当前键盘状态，成功才使用 out 快照。句柄拥有该捕获，后续读取不会改写它。
 
 `IsKeyPressed(CKKEY_F9)` 检测 F9 键是否在这一帧被「按下」。注意区分「按下」和「按住」：`IsKeyPressed` 在按键从未按到按下的那一帧返回 `true`，后续持续按住的帧返回 `false`。这样按一次 F9 只触发一次切换，不会出现快速反复切换的情况。
 
@@ -161,14 +162,14 @@ private void DrawWindow() {
 | 窗口不出现，日志无报错 | `OnProcess` 拼写错误或签名不对 | 确认方法签名为 `void OnProcess(const BML::ModContext &in ctx)` |
 | 窗口闪烁后消失 | `DrawWindow` 没有每帧被调用 | 确认 `DrawWindow()` 在 `OnProcess` 内部，没有被条件跳过 |
 | 窗口出现但无法拖动 | 使用了 `ImGuiCond_Always` 而不是 `ImGuiCond_Once` | 检查 `SetNextWindowPos` 的第二个参数 |
-| F9 无反应 | `HandleWindowToggle` 没有被调用，或 `BorrowInputManager` 返回 null | 在 `HandleWindowToggle` 开头加日志确认是否执行到 |
+| F9 无反应 | `HandleWindowToggle` 没有被调用，或 ReadKeyboard 失败 | 在 `HandleWindowToggle` 开头加日志确认是否执行到 |
 | FPS 一直显示 0 | `UpdateFps` 没有被调用，或 `ImGui::GetIO()` 返回 null | 确认 `UpdateFps()` 在 `OnProcess` 中，且在 `DrawWindow()` 之前 |
 | 折叠窗口后崩溃 | `End()` 被放在了 `if (Begin(...))` 内部 | 将 `End()` 移到 `if` 语句外面 |
 
 ## 完整脚本
 
 ```angelscript
-[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.14" description="Minimal tutorial script mod"]
+[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.4.0" description="Minimal tutorial script mod"]
 class HelloMod {
     private bool showWindow = true;
     private float fps = 0.0f;
@@ -185,7 +186,8 @@ class HelloMod {
     }
 
     private void HandleWindowToggle(const BML::ModContext &in ctx) {
-        BML::InputHook@ input = ctx.BorrowInputManager();
+        BML::KeyboardState@ input;
+        if (ctx.Input().ReadKeyboard(input) != BML::ERROR_OK) return;
         if (input is null || !input.IsKeyPressed(CKKEY_F9)) {
             return;
         }

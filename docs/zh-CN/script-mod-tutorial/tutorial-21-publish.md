@@ -2,6 +2,10 @@
 
 mod 在自己机器上跑通之后，下一步是让别的玩家也能用。
 
+本教程的发行目标是启用脚本的配套 SDL 动态运行时。脚本源码无需按 CPU 架构
+重编译，但所用 API、引擎资源和原生 provider 仍须匹配目标环境；不要把编辑器声明
+或字节码缓存当成通用运行时代码打包。
+
 ## 发布意味着什么
 
 发布之后，使用环境和本地开发不同：
@@ -19,7 +23,7 @@ mod 在自己机器上跑通之后，下一步是让别的玩家也能用。
 附加到入口类的元数据是 BML+ 识别和管理 Mod 的依据：
 
 ```angelscript
-[bml.mod id="complete.mod" name="Complete Mod" version="1.0.0" author="YourName" bml="0.3.14" description="A complete tutorial mod"]
+[bml.mod id="complete.mod" name="Complete Mod" version="1.0.0" author="YourName" bml="0.4.0" description="A complete tutorial mod"]
 class CompleteMod {
 }
 ```
@@ -71,9 +75,9 @@ class CompleteMod {
 
 ## BML+ 版本要求
 
-`bml="0.3.14"` 表示需要 BML+ 0.3.14 或更高版本。版本不满足时 Mod 不会被加载，日志会提示不匹配。
+`bml="0.4.0"` 表示需要 BML+ 0.4.0 或更高版本。版本不满足时 Mod 不会被加载，日志会提示不匹配。
 
-判断方法：检查用到的 API 是在哪个版本引入的。基础回调（`OnLoad`、`OnUnload`、`GetConfig`）可以保持较低要求；用了新 API 就更新到对应版本。不确定时写你开发环境的 BML 版本，至少保证测试过的环境匹配。
+判断方法：检查用到的 API 是在哪个版本引入的。基础回调（`OnLoad`、`OnUnload`）可以保持较低要求；用了新 API 就更新到对应版本。不确定时写你开发环境的 BML 版本，至少保证测试过的环境匹配。
 
 ---
 
@@ -117,8 +121,8 @@ CompleteMod/
 
 正式发布目录形式的 Mod 时，使用项目内的 Developer Workflow：
 
-```bat
-.\bml pack
+```sh
+python bml.py pack
 ```
 
 默认产物是 `dist/CompleteMod.zip`。自动化流程仍可通过 `--project` 和 `--output`
@@ -135,7 +139,7 @@ CompleteMod.zip
 ```
 
 用户把 `CompleteMod.zip` 直接放入 `ModLoader/Mods/` 即可，不需要手动解压。
-`.bmodp` 只用于原生 DLL Mod，不能作为脚本 Mod 的扩展名。
+`.bmodp` 只用于原生动态模块 Mod，不能作为脚本 Mod 的扩展名。
 
 打包器会自动排除 `dist`、编辑器设置、版本控制元数据、`as.predefined` 和 Python
 缓存文件。下面的源码与运行行为检查仍需作者自己完成。
@@ -187,7 +191,7 @@ CompleteMod.zip
 - 确认每个阶段 mod 的行为正常，没有残留对象或崩溃
 - 如果 mod 有 OnUnload 清理逻辑，确认卸载时不报错
 
-如果你声明了 `bml="0.3.14"` 但手头只有更新的 BML 版本，至少在发布说明中注明实际测试的版本。
+如果你声明了 `bml="0.4.0"` 但手头只有更新的 BML 版本，至少在发布说明中注明实际测试的版本。
 
 ---
 
@@ -200,12 +204,12 @@ CompleteMod.zip
 ```text
 Complete Mod v1.0.0
 
-需要：BML+ 0.3.14 或更新版本。
+需要：BML+ 0.4.0 或更新版本。
 安装：把 CompleteMod.zip 直接放入 ModLoader/Mods/，不要解压。
 命令：cmod [spawn|despawn|push|status|window]
 配置：ShowWindow, AutoSpawn
 卸载：删除 mod 文件。如需清掉设置，删除 ModLoader/Configs/complete.mod.cfg。
-已验证：Ballance Player + BML+ 0.3.14
+已验证：Ballance Player + BML+ 0.4.0
 ```
 
 每一条都是对用户的承诺：安装路径要写完整（不要假设用户知道 `Mods` 在哪）；命令和配置要列全（用户不一定会看源码）；卸载说明要包含配置文件路径。
@@ -232,7 +236,7 @@ Complete Mod v1.1.0
 配置的默认值必须在代码中设置：
 
 ```angelscript
-showWindowProp.SetDefaultBoolean(true);
+int code = showWindowProp.SetDefault(BML::ConfigValue(true));
 ```
 
 不要通过分发默认配置文件来提供初始值。原因：用户更新 mod 后，如果你的新配置文件覆盖了他的自定义设置，他会丢失个人配置。
@@ -242,11 +246,21 @@ showWindowProp.SetDefaultBoolean(true);
 如果新版本需要修改配置项名称（例如从 `OldKey` 改为 `NewKey`），必须写迁移代码：
 
 ```angelscript
-if (config.HasKey("MyMod", "OldKey") && !config.HasKey("MyMod", "NewKey")) {
-    BML::ConfigProperty@ old = config.GetProperty("MyMod", "OldKey");
-    BML::ConfigProperty@ new = config.GetProperty("MyMod", "NewKey");
-    if (old !is null && new !is null) {
-        new.SetBoolean(old.GetBoolean(true));
+bool oldExists = false, newExists = false;
+if (config.HasKey("MyMod", "OldKey", oldExists) == BML::ERROR_OK &&
+    config.HasKey("MyMod", "NewKey", newExists) == BML::ERROR_OK && oldExists && !newExists) {
+    BML::ConfigProperty@ oldProperty;
+    BML::ConfigProperty@ newProperty;
+    BML::ConfigPropertyDefinition definition;
+    definition.Category = "MyMod"; definition.Key = "NewKey";
+    definition.DefaultValue = BML::ConfigValue(true);
+    if (config.FindProperty("MyMod", "OldKey", oldProperty) == BML::ERROR_OK &&
+        config.DeclareProperty(definition, newProperty) == BML::ERROR_OK) {
+        BML::ConfigPropertyInfo info;
+        bool value = false;
+        if (oldProperty.Read(info) == BML::ERROR_OK &&
+            info.CurrentValue.ReadBoolean(value) == BML::ERROR_OK)
+            newProperty.Set(BML::ConfigValue(value));
     }
 }
 ```
@@ -340,13 +354,13 @@ Ballance 社区常见的发布平台：
 
 ### 配置依赖本机环境
 
-**现象**：别人下载后首次运行报错，找不到路径或缺少初始值。**解决**：所有默认值通过 `SetDefaultXxx()` 在代码中设置，不依赖外部文件。
+**现象**：别人下载后首次运行报错，找不到路径或缺少初始值。**解决**：所有默认值通过 ConfigPropertyDefinition.DefaultValue 在代码中声明，不依赖外部文件。
 
 ### zip 中的入口数量不正确
 
 **现象**：zip 放入 `Mods/` 后 BML 拒绝加载。**原因**：包内没有入口，或存在多个
 `*.mod.as` 入口。**解决**：让源目录顶层恰好保留一个入口，并使用 SDK 的
-`.\bml pack --force` 重新打包。
+`python bml.py pack --force` 重新打包。
 
 ### 残留调试代码
 
@@ -363,3 +377,5 @@ Ballance 社区常见的发布平台：
 mod 经过完整的发布流程：元数据正确、版本号递增、清洁测试通过、打包格式正确、发布说明完整。用户可以通过 zip 文件安装并正常使用。
 
 下一步：[22 排错索引](tutorial-22-troubleshooting.md)
+
+SetDefault 同类型保留当前值，但 NONE 或异型默认值可能替换它；迁移前严格读取旧类型，不能把 SetDefault 当成无损类型迁移。

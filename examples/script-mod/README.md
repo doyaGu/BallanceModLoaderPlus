@@ -16,3 +16,9 @@ verify the result above before changing the source. Do not install the whole
 These are focused examples, not application skeletons. Start a real Mod from
 the template, then copy only the part you need. The full guides are under
 `share/BML/docs/en/script-mod` and `share/BML/docs/zh-CN/script-mod-tutorial`.
+
+These examples use the aligned authoring API. Service operations return an int
+status plus out values; success is BML::ERROR_OK. Keep the explicit callback
+Context and use Config/Input/Timers/Commands views. A script Ref is not RAII: end
+requests explicitly or let its runtime retire them. See the migration guide in
+share/BML/docs/en/script-mod/migration.md; no old aliases are registered.

@@ -1,113 +1,46 @@
-# 原生 API 该走哪条路
+# 选择原生 API
 
-原生 Mod 有三种方式访问 Loader，部分能力可以由其中不止一种提供。本页给出每项
-能力有哪些写法、该优先选哪个，以及为什么会同时存在多种写法。IMC 不在这三种之内：
-它不承载任何 Loader 能力，也是 Mod 间普通服务的首选传输。只有需要直接函数指针或
-借用引擎对象的原生基础 Mod，才通过 BML 发布进程内 provider interface。普通场景见
-[跨 Mod 通信](imc.md)。
+原生作者使用版本化 C 表之上的 C++ wrapper；类、STL 和虚调用留在 Mod 模块内。
+C11 作者直接使用同一份 .h 表。原生和脚本共享同一份 Loader 服务状态。
 
-如果只想要一条规则：凡是要拿到引擎对象、或只有它们提供的能力，走旧式 `IBML` 与
-`IMod`；读取游戏状态、接收 Loader 事件、控制 Loader 自己的界面以及编写 Behavior，
-走 interface struct；向别的 Mod 发布普通服务时走 IMC。只有 ABI 和生命周期必须跟随
-提供者 DLL 的原生基础设施才使用 provider interface。
+| 需要 | 使用 |
+| --- | --- |
+| 身份、生命周期、原有游戏事件名 | Mod.h/.hpp、Instance、不可变 Definition |
+| 日志、目录、Mod 查询、资源 | Mod::Context |
+| 配置值和菜单编辑元数据 | Config::View / Property |
+| 一次、循环、有限重复计时器 | Timer::Registration，显式毫秒/tick |
+| 键鼠/手柄快照、计数屏蔽 | Input::View / Block，RAW 读取原始状态 |
+| 命令与补全 | Command::Registration |
+| 对象身份、场景状态 | Scene.h、已有 ObjectRef |
+| 游戏、作弊、分数、能量、关卡数据 | Gameplay.h |
+| CK 时钟/tick、计速器 | Time.h/.hpp、Speedrun.h |
+| 装载阶段球/地面/机关类型注册 | Gameplay 定义和显式 Context |
+| 下一次 Render 跳帧、宽屏 | UI::SkipNextRender / SetWidescreenAdjustment |
+| 初始条件、可见性 | Scene::SetIC / RestoreIC / Show |
+| 消息、HUD、Loader 菜单 | UI.h |
+| Mod 详情的自定义页面 | ModMenu::Page |
+| Ballance 风格即时 UI | Bui.hpp、本地 Window/Page/Menu |
+| 引擎 2D UI | Gui.hpp、本地 BGui 控制器 |
+| 原型、Block、执行、图编辑 | Behavior.hpp、Behavior/Blocks |
+| 直接 CK 对象/管理器 | Engine.hpp + BML::Engine，然后复用现有 CK2 API |
+| 直接使用宿主 ImGui | ImGui.hpp + BML::ImGui |
+| 高级控件 flags/callback | Bui/ImGui.hpp，依赖 Engine + ImGui |
+| BGui 的 Vx/CK 便利操作 | Gui/Engine.hpp，依赖 Engine |
+| 命名字节共享 | DataShare |
+| 原生/脚本类型化服务 | 生成的 IMC RPC/Topic/future |
+| 原生 provider 进程内 C 表 | Interface.hpp，并声明 provider 依赖 |
+| 既有文件/ZIP/编码/内存工具 | BML.h，按各自约定 BML_Free |
 
-## 为什么会有多种写法
+BMLAll.h 汇总核心。引擎相关 Blocks、ScriptHelper、Guids、TypeConvert 和直接 CK/ImGui
+访问需要显式扩展目标。IMod、IBML 和旧服务虚表已连同私有实现移除。内部身份使用组合的
+ModRecord；作者 Instance 的虚调用仅在 Mod 模块内发生。
 
-`IBML`、`IMod`、`IMessageReceiver`、`IConfig`、`ICommand` 都是带虚函数的 C++ 类，
-而 Mod 是跨 DLL 边界调用它们的。虚函数调用跳转到的槽位号在 Mod 编译时就已固定，
-因此新增、删除或重排任何一个虚函数都会移动它之后的全部槽位，已经构建好的
-`.bmodp` 会调到错误的函数上。Loader 用 `src/Loader/ModContext.cpp` 里的静态断言钉住这些
-槽位号，并在每次构建时把导出符号集与
-`tests/abi/legacy-native-exports-x86-msvc.txt` 比对。所以这些接口在当前发布线上是
-冻结的：不能再往里加东西。
+普通跨 Mod 服务用 IMC。确需进程内函数表的原生基础设施可以使用 provider C 表，消费者必须声明
+依赖。宿主先完成消费者卸载，再清理 provider；缓存一个未声明 provider 的指针不构成保活。
 
-interface struct 没有这个问题。BML 注册表交出的是一个函数指针结构体，Mod 通过唯一的
-导出 `BML_GetInterface` 按 id 和主版本号取用它，而这个结构体只会在末尾追加成员并
-提升次版本号。旧 Mod 继续调用自己编译时就有的那些成员；新 Mod 用 `BML_IFACE_HAS`
-询问正在运行的 Loader 有没有它之后才加进来的成员。这就是冻结之后新增的能力都以
-interface struct 形式出现的原因，而且每个都配了一层 inline C++ 命名空间，用起来和
-调用普通函数一样。
+新调用通常返回 BML_OK 或负错误码，Result 只拥有显式请求的值，事件视图仍为借用。
+主通知失败会停用 owner；普通服务错误、命令退出状态由调用方处理。
+旧 BML.h 工具保留其 0/1 约定，默认服务和引擎操作仍要求游戏线程。
 
-`BML.h` 里的 `BML_*` 函数是第三种写法。它们是纯 C，不涉及任何 vtable。新增项只放
-与游戏和 Loader 状态无关的工具：字符串、路径、文件、编码、内存分配和目录查询。
-其中仍保留少数补齐冻结 C++ 操作的旧导出；`BML_UnregisterCommand`、
-`BML_SetCommandStatus` 和 `BML_GetCommandInput` 继续服务 legacy `ICommand`，但这种拆分
-接口不再扩展。完整的现代 Command 能力由版本化 `bml.command` interface 提供。
-
-新 Loader 能力该落在哪一种，由一个问题决定：谁来提供它。Loader 提供、Mod 读取或
-驱动的，是内建 interface struct。与游戏和 Loader 状态无关的纯工具走 C 导出。
-Mod 间普通服务走 IMC；只有必须无编码传递
-进程内指针、且能要求所有使用方声明必需 Mod 依赖的原生基础 Mod，才调用
-`BML_RegisterInterface`。
-
-冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
-是唯一能拿到引擎对象的途径。
-
-脚本侧通过 `BML::Gameplay`、`BML::UI`、`BML::Speedrun` 使用相应能力，
-状态和时钟由 `ModContext` 提供；场景查找由 CKAngelScript 提供。脚本侧的
-`BML::Speedrun` 目前并不是原接口的投射：它的写法是 `SetTimerVisible`、
-`StartTimer`、`PauseTimer`、`ResetTimer`、`GetElapsedTime`，返回的是值或者什么都不
-返回，而不是状态码。脚本侧的投射是手写的，与 interface struct 之间没有任何校验，
-所以无论是缺的那项能力还是写法上的差异，都不会自动收敛。
-
-## 逐项能力对照
-
-`旧式 C++` 一列若未特别说明，均为 `IBML` 的成员。`新路线` 一列里写成
-`命名空间::函数` 的，是 interface struct 外面那层 inline C++，声明在 `include/BML/`
-下的同名头文件里；其余的是 `BML.h` 的 `BML_*` C 导出。
-
-| 能力 | 旧式 C++ | 新路线 | 选哪个 |
-| --- | --- | --- | --- |
-| CK 上下文、渲染上下文与各引擎管理器 | `GetCKContext`、`GetRenderContext`、`GetInputManager`、`GetTimeManager` 等 | 无 | 只有旧式 C++。interface struct 有意不交出引擎指针：指针无法带上一个对方能校验的生命期。 |
-| 游戏状态 | `IsIngame`、`IsPaused`、`IsPlaying` | 无 | 使用现有原生状态查询；Loader 的阶段机不公开。 |
-| CK 时间与帧计数 | `GetTimeManager()` 与 CK 时钟 | `Time::ReadClock` | 两者皆可。`MainTickCount` 是原始的 32 位 CK 计数器，会回绕。 |
-| 竞速用时 | `GetSRScore` | `Speedrun::ReadTimerState` | 两者皆可；单位为毫秒，不是分数。 |
-| highscore 数值 | `GetHSScore` | `Gameplay::ReadHighScore` | 后者校验 Energy，并在不处于活动或暂停关卡时返回不可用。 |
-| 启动、暂停、重置或显示竞速计时器 | 无 | `Speedrun::StartTimer`、`PauseTimer`、`ResetTimer`、`SetTimerVisible` | 只有 interface struct。 |
-| 按名字查找对象 | `Get3dObjectByName`、`GetGroupByName`、`GetMaterialByName` 等一整族 | `Scene::FindObject`，可带 class id | 拿到之后还要用 CK SDK 操作它，就走旧式 C++，因为它直接给出指针。`Scene::FindObject` 给出的是 `BML_ObjectRef`，适合只需要标识或转手传递的场合。 |
-| 读取对象的类、名字或变换 | 经指针使用 CK SDK | `Scene::ReadObject`、`Scene::ReadEntityTransform` | 两者皆可。 |
-| 关卡状态、能量、检查点、重置点、关卡目录 | `GetArrayByName` 加 `CKDataArray` 按列读取 | `Gameplay::ReadLevel`、`ReadEnergy`、`ReadCheckpoints`、`ReadResetpoints`、`ReadCatalog` | 走 interface struct。它已经知道游戏那些数组的列顺序，而这正是最容易写错的部分。集合类读取会整份拷贝，属于初始化或换关时做的事，不适合每帧调用。 |
-| 游戏内消息板 | `SendIngameMessage` | `UI::AddMessage`、`UI::ClearMessages` | 两者皆可。清空消息板只有门面能做。 |
-| HUD 各部分、Mod 菜单、地图菜单 | 无 | `UI::SetHUDMode`、`ShowTitle`、`ShowFPS`、`OpenModsMenu`、`CloseModsMenu`、`OpenMapMenu`、`CloseMapMenu` | 只有 interface struct。 |
-| 在 Mods 菜单中扩展自己的 Mod 详情页 | 无 | `ModMenu.hpp` 的 `BML::ModMenu::Page` | `ModMenu.h` 是纯 C 接口，C++ 封装单向建立在其上。可见页面添加原生风格的详情按钮；隐藏页面可由同一 Mod 的页面通过 Push 或 Replace 进入。脚本 Mod 可通过 `ModContext.RegisterMenuPage` 注册页面。 |
-| Loader 事件 | `IMod` 上的 `IMessageReceiver` 虚函数 | 无 | 处理同步回调；需要延后执行时，把必要数据复制到 Mod 自己拥有的存储中。 |
-| 作弊模式 | 写用 `EnableCheat`，读用 `IsCheatEnabled` | `Gameplay::ReadCheatEnabled` | 读两者皆可，写走旧式 C++。 |
-| 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | `Command.hpp` 的 `BML::Command::Registration`，底层为 `bml.command` | 新 Native Mod 使用版本化 Command 接口。它复制元数据、返回受所有者约束的句柄、在 DLL 卸载前自动清理，并显式传入管道输入与输出、直接返回 shell 状态。`BML.h` 的三个导出仅作为旧接口适配层保留。 |
-| 配置 | `IMod::GetConfig` 加 `IConfig`、`IProperty` | `BML_GetConfigPropertyEditor`、`BML_SetConfigPropertyEditor` 与候选值元数据函数 | 值仍走冻结的 C++ 接口；追加的 C 导出只附加不落盘的 Mod 菜单编辑器元数据，不改虚表。 |
-| 定时器 | `AddTimer`、`AddTimerLoop` | 无 | 只有旧式 C++。 |
-| 退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染 | `ExitGame`、`SetIC`、`RestoreIC`、`Show`、`RegisterBallType` 等注册族、`SkipRenderForNextTick` | 无 | 只有旧式 C++。 |
-| 已加载了哪些 Mod，以及依赖 | `GetModCount`、`GetMod`、`FindMod`、`RegisterDependency`、`CheckDependencies` | 无 | 只有旧式 C++。 |
-| 发现、配置、执行 Virtools Building Block，以及检查或编辑 Behavior Graph | 原始 CK SDK 与 `ExecuteBB` 兼容 helper | `Behavior.hpp` 的 `BML::Behavior` | 新代码使用 `BML::Behavior`。它负责 Prototype/Layout 校验、自持有 Frame、可校验对象引用、可恢复的 Patch/Plan 生命周期，以及访问已安装 Edit symbol 的 revisioned binding。只有明确自行承担这些 invariant 的引擎基础设施才直接使用 raw CK。 |
-| 把自己的接口发布给别的 Mod | 无 | IMC；原生基础 Mod 也可发布 BML provider interface | 普通 RPC/Topic 服务优先使用生成式 IMC。必须暴露直接或借用原生对象的纯 C 进程内函数表，C++ Mod 使用 `Interface.hpp` 加 `ModInterface.hpp`：底层仍是 C ABI，但发布所有权、类型化查询、状态码和提供方依赖生命周期由 authoring 层持有。共享头用 `bml_add_interface_package` 发布，不得导入提供者符号；脚本 Mod 不能发布或消费 provider interface。 |
-| 绘制自己的界面 | `Bui` 画 ImGui 控件，`BGui` 用游戏内 2D 实体 | 无 | 这两者都不是 `BML::UI`，后者控制的是 Loader 自己的界面，不画你的东西。 |
-| 字符串、路径、文件、内存分配 | 无 | `BML.h` 的 `BML_*` 函数 | 走 C 导出。它们返回的东西要用对应的 `BML_Free*` 释放，不能用 CRT 的 `free`。 |
-| Loader 的各个目录，以及自己 Mod 的安装目录 | 无 | `BML_GetLoaderPathW`、`BML_GetLoaderPathUtf8`、`BML_GetModRootW`、`BML_GetModRootUtf8`，同样是 `BML.h` 的 C 导出 | 走 C 导出。`IBML` 从来没有提供过这些。Loader 目录是借用指针，Mod 根目录是新分配的，只有后者需要释放。 |
-
-## 能不能混用
-
-混用是预期用法，同一个函数里同时用三种也可以。内建 interface struct 由 Loader
-实现，读的是 `IBML` 读的同一份状态；provider interface 则由所属原生 Mod 实现，
-只在该必需依赖保持加载期间有效。
-
-会显现出来的差异有三处：
-
-- **失败怎么报告。** 旧式 C++ 函数大多直接返回值或什么都不返回，`RegisterCommand`
-  失败时只写日志。interface struct 的函数一律返回状态：`BML_OK`，或者 `Defines.h`
-  里的某个负数错误码。它们外层的 inline C++ 包装带 `[[nodiscard]]`，要么处理这个
-  状态，要么显式转成 `(void)`。
-- **拿回来的是什么。** 旧式 C++ 查找给的是引擎指针，只在对象存活期间有效，且只能
-  在游戏线程上使用。门面给的是值：一个普通结构体，或者一个 Loader 在解析前能先
-  校验的 `BML_ObjectRef`。
-- **线程。** 旧式 C++ 接口只能在游戏线程上用。interface struct 的调用是在调用线程上
-  直接进入 Loader，不入队、也没有什么要等。Gameplay、Time、Command、
-  Speedrun、Scene 和 UI 从别的线程调用均返回 `BML_ERROR_WRONG_THREAD`。
-  Mod 菜单页面的注册也只能在游戏线程
-  进行，其绘制回调运行于 Loader 已打开的 ImGui 帧内。在 Loader 加载完 Mod 之前，它们全都返回
-  `BML_ERROR_FAIL`。
-
-## 延伸阅读
-
-- [原生 Mod API 概览](native-mod-api.md)
-- [Behavior 编写](behavior-authoring.md)
-- [跨 Mod 通信](imc.md)
-- [编写类型化 IMC 接口](imc-author-guide.md)
+参见[原生 API](native-mod-api.md)、[迁移](native-mod-migration.md)、
+[Behavior](behavior-authoring.md)、[IMC](imc.md)。

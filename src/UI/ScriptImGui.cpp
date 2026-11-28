@@ -37,7 +37,7 @@ void ClearMouseDownOwnership(ImGuiIO &io) {
 
 } // namespace
 
-std::string Overlay::MakeScriptImGuiWindowName(std::string_view name, std::string_view ownerId) {
+std::string MakeScriptImGuiWindowName(std::string_view name, std::string_view ownerId) {
     std::string scopedName;
     scopedName.reserve(name.size() * 3 + ownerId.size() * 2 + 14);
     scopedName.append(name);

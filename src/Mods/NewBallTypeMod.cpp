@@ -1,6 +1,6 @@
 #include "Mods/NewBallTypeMod.h"
 
-#include "BML/IBML.h"
+#include "Loader/ModContext.h"
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/Narratives.h"
 #include "BML/Scene.h"
@@ -19,7 +19,7 @@ namespace Behavior = BML::Behavior;
 namespace {
 
 struct BallBehavior {
-    const BallTypeInfo *Info = nullptr;
+    BallTypeInfo Info;
     Behavior::ObjectRef Ball{};
     Behavior::ObjectRef Reset{};
     std::string Used;
@@ -49,26 +49,26 @@ Behavior::Result<void> AddPhysicalize(
     for (const BallBehavior &ball : balls) {
         const auto ballName = graph.AppendPin(
             switchOnBall, "Pin", CKPGUID_STRING);
-        graph.Bind(ballName, ball.Info->m_ObjName);
+        graph.Bind(ballName, ball.Info.m_ObjName);
         const auto route = graph.AppendOut(switchOnBall, "Out");
 
         Behavior::Blocks::Physicalize::Options options;
-        if (ball.Info->m_Radius > 0.0f) {
+        if (ball.Info.m_Radius > 0.0f) {
             options.Geometry = Behavior::Blocks::Physicalize::Shape::Ball;
-            options.Radius = ball.Info->m_Radius;
+            options.Radius = ball.Info.m_Radius;
         }
         auto made = Behavior::Blocks::Physicalize::Make(session, options);
         if (!made) {
             return Behavior::Result<void>::Failure(
                 made.Code(), AddContext(
                     made.GetStatus(), "Could not create Physicalize for " +
-                    ball.Info->m_Name));
+                    ball.Info.m_Name));
         }
         const auto added = graph.Add(made.Value());
         graph.Share(added.Target(), physicalize.Target());
         for (int pin = 0; pin != 11; ++pin)
             graph.Share(added.Pin(pin), physicalize.Pin(pin));
-        if (ball.Info->m_Radius <= 0.0f)
+        if (ball.Info.m_Radius <= 0.0f)
             graph.Bind(added.Pin(11, CKPGUID_MESH), source.Pout(0));
 
         graph.Flow(route, added.In(0));
@@ -94,7 +94,7 @@ void ExtendResetBallPieces(Behavior::Edit::Graph graph,
     for (const BallBehavior &ball : balls) {
         const auto script = graph.AppendPin(
             scripts, "Pin", CKPGUID_STRING);
-        graph.Bind(script, "Ball_ResetPieces_" + ball.Info->m_Name);
+        graph.Bind(script, "Ball_ResetPieces_" + ball.Info.m_Name);
         inputs.push_back(graph.AppendIn(scripts, "In"));
         outputs.push_back(graph.AppendOut(sequencer, "Out"));
     }
@@ -164,7 +164,7 @@ Behavior::Result<void> BuildGameplayEdit(
         const auto added = setTrafo.Add(set);
         const auto value = setTrafo.AppendPin(
             added, "Attribute Value", CKPGUID_STRING);
-        setTrafo.Bind(value, ball.Info->m_ID);
+        setTrafo.Bind(value, ball.Info.m_ID);
         setTrafo.Splice(setTrafoExit, added);
     }
 
@@ -189,7 +189,7 @@ Behavior::Result<void> BuildGameplayEdit(
         trafo.Push(pieceResult, used);
         const auto pieceInput = pieces.AppendPin(
             pieceSwitch, "Pin", CKPGUID_STRING);
-        pieces.Bind(pieceInput, ball.Info->m_ID);
+        pieces.Bind(pieceInput, ball.Info.m_ID);
         const auto pieceRoute = pieces.AppendOut(pieceSwitch, "Out");
         const auto setUsed = pieces.Add(boolIdentity);
         pieces.Bind(setUsed.Pin(0), true);
@@ -256,19 +256,19 @@ Behavior::Result<void> BuildGameplayEdit(
     for (const BallBehavior &ball : balls) {
         const auto explosionId = explosion.AppendPin(
             explosionSwitch, "Pin", CKPGUID_STRING);
-        explosion.Bind(explosionId, ball.Info->m_ID);
+        explosion.Bind(explosionId, ball.Info.m_ID);
         const auto explosionRoute = explosion.AppendOut(
             explosionSwitch, "Out");
         const auto explosionName = explosion.AppendPin(
             explosionScripts, "Pin", CKPGUID_STRING);
         explosion.Bind(
-            explosionName, "Ball_Explosion_" + ball.Info->m_Name);
+            explosionName, "Ball_Explosion_" + ball.Info.m_Name);
         const auto explosionIn = explosion.AppendIn(explosionScripts, "In");
         explosion.Flow(explosionRoute, explosionIn);
 
         const auto ballId = setBall.AppendPin(
             ballSwitch, "Pin", CKPGUID_STRING);
-        setBall.Bind(ballId, ball.Info->m_ID);
+        setBall.Bind(ballId, ball.Info.m_ID);
         const auto ballRoute = setBall.AppendOut(ballSwitch, "Out");
         const auto ballObject = setBall.AppendPin(
             ballObjects, "Pin", CKPGUID_3DENTITY);
@@ -287,10 +287,10 @@ Behavior::Result<void> BuildGameplayEdit(
 void NewBallTypeMod::OnLoad() {
     auto opened = Behavior::Session::Open(GetID());
     if (!opened) {
-        GetLogger()->Error("Behavior authoring is unavailable for new ball types: %s",
-                           opened.GetStatus().Message.empty()
-                               ? "could not open the owner session"
-                               : opened.GetStatus().Message.c_str());
+        m_Record.GetLogger()->Error("Behavior authoring is unavailable for new ball types: %s",
+                                    opened.GetStatus().Message.empty()
+                                        ? "could not open the owner session"
+                                        : opened.GetStatus().Message.c_str());
         return;
     }
     m_Behavior = opened.Take();
@@ -330,11 +330,10 @@ void NewBallTypeMod::OnLoadScript(const char *filename, CKBehavior *script) {
 
     auto reference = m_Behavior.Reference(script);
     if (!reference) {
-        GetLogger()->Error("Cannot identify %s for Behavior authoring: %s",
-                           script->GetName(),
-                           reference.GetStatus().Message.empty()
-                               ? "object reference creation failed"
-                               : reference.GetStatus().Message.c_str());
+        m_Record.GetLogger()->Error(
+            "Cannot identify %s for Behavior authoring: %s", script->GetName(),
+            reference.GetStatus().Message.empty() ? "object reference creation failed"
+                                                  : reference.GetStatus().Message.c_str());
         return;
     }
     *target = reference.Value();
@@ -352,12 +351,18 @@ void NewBallTypeMod::OnExitGame() {
     m_BallPatchPending = false;
 }
 
-void NewBallTypeMod::RegisterBallType(const char *ballFile, const char *ballId, const char *ballName,
+void NewBallTypeMod::CleanupOwner(const std::string &owner) {
+    auto pending=[&](const auto &info){return info.m_Owner==owner&&!info.m_Applied;};
+    std::erase_if(m_BallTypes,pending);std::erase_if(m_FloorTypes,pending);
+    std::erase_if(m_ModulBalls,pending);std::erase_if(m_ModulConvexes,pending);std::erase_if(m_Moduls,pending);
+}
+
+void NewBallTypeMod::RegisterBallType(const std::string &owner, const char *ballFile, const char *ballId, const char *ballName,
                                       const char *objName, float friction, float elasticity, float mass,
                                       const char *collGroup, float linearDamp, float rotDamp, float force,
                                       float radius) {
-    m_BallTypes.emplace_back();
-    BallTypeInfo &info = m_BallTypes.back();
+    BallTypeInfo info{};
+    info.m_Owner=owner;
 
     info.m_File = ballFile;
     info.m_ID = ballId;
@@ -374,13 +379,14 @@ void NewBallTypeMod::RegisterBallType(const char *ballFile, const char *ballId, 
     info.m_RotDamp = rotDamp;
     info.m_Force = force;
 
-    GetLogger()->Info("Registered New Ball Type: %s", ballName);
+    m_BallTypes.push_back(std::move(info));
+    m_Record.GetLogger()->Info("Registered New Ball Type: %s", ballName);
 }
 
-void NewBallTypeMod::RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
+void NewBallTypeMod::RegisterFloorType(const std::string &owner, const char *floorName, float friction, float elasticity, float mass,
                                        const char *collGroup, bool enableColl) {
-    m_FloorTypes.emplace_back();
-    FloorTypeInfo &info = m_FloorTypes.back();
+    FloorTypeInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = floorName;
 
@@ -390,14 +396,15 @@ void NewBallTypeMod::RegisterFloorType(const char *floorName, float friction, fl
     info.m_CollGroup = collGroup;
     info.m_EnableColl = enableColl;
 
-    GetLogger()->Info("Registered New Floor Type: %s", floorName);
+    m_FloorTypes.push_back(std::move(info));
+    m_Record.GetLogger()->Info("Registered New Floor Type: %s", floorName);
 }
 
-void NewBallTypeMod::RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
+void NewBallTypeMod::RegisterModulBall(const std::string &owner, const char *modulName, bool fixed, float friction, float elasticity, float mass,
                                        const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
                                        float linearDamp, float rotDamp, float radius) {
-    m_ModulBalls.emplace_back();
-    ModulBallInfo &info = m_ModulBalls.back();
+    ModulBallInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = modulName;
 
@@ -413,14 +420,15 @@ void NewBallTypeMod::RegisterModulBall(const char *modulName, bool fixed, float 
     info.m_RotDamp = rotDamp;
     info.m_Radius = radius;
 
-    GetLogger()->Info("Registered New Modul Ball Type: %s", modulName);
+    m_ModulBalls.push_back(std::move(info));
+    m_Record.GetLogger()->Info("Registered New Modul Ball Type: %s", modulName);
 }
 
-void NewBallTypeMod::RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity,
+void NewBallTypeMod::RegisterModulConvex(const std::string &owner, const char *modulName, bool fixed, float friction, float elasticity,
                                          float mass, const char *collGroup, bool frozen, bool enableColl,
                                          bool calcMassCenter, float linearDamp, float rotDamp) {
-    m_ModulConvexes.emplace_back();
-    ModulConvexInfo &info = m_ModulConvexes.back();
+    ModulConvexInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = modulName;
 
@@ -435,27 +443,30 @@ void NewBallTypeMod::RegisterModulConvex(const char *modulName, bool fixed, floa
     info.m_LinearDamp = linearDamp;
     info.m_RotDamp = rotDamp;
 
-    GetLogger()->Info("Registered New Modul Convex Type: %s", modulName);
+    m_ModulConvexes.push_back(std::move(info));
+    m_Record.GetLogger()->Info("Registered New Modul Convex Type: %s", modulName);
 }
 
-void NewBallTypeMod::RegisterTrafo(const char *modulName) {
-    m_Moduls.emplace_back();
-    ModulInfo &info = m_Moduls.back();
+void NewBallTypeMod::RegisterTrafo(const std::string &owner, const char *modulName) {
+    ModulInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = modulName;
     info.m_Type = 0;
 
-    GetLogger()->Info("Registered New Ball Transformer Type: %s", modulName);
+    m_Moduls.push_back(std::move(info));
+    m_Record.GetLogger()->Info("Registered New Ball Transformer Type: %s", modulName);
 }
 
-void NewBallTypeMod::RegisterModul(const char *modulName) {
-    m_Moduls.emplace_back();
-    ModulInfo &info = m_Moduls.back();
+void NewBallTypeMod::RegisterModul(const std::string &owner, const char *modulName) {
+    ModulInfo info{};
+    info.m_Owner=owner;
 
     info.m_Name = modulName;
     info.m_Type = 1;
 
-    GetLogger()->Info("Registered New Modul Type: %s", modulName);
+    m_Moduls.push_back(std::move(info));
+    m_Record.GetLogger()->Info("Registered New Modul Type: %s", modulName);
 }
 
 void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
@@ -465,57 +476,54 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
     CK3dEntity *ballMF = m_BML->Get3dEntityByName("Balls_MF");
     CKContext *context = m_BML->GetCKContext();
     if (!m_Behavior || !context || !m_PhysicsBall || !m_AllBalls || !ballMF) {
-        GetLogger()->Error(
-            "Cannot load registered ball types: the Behavior session or base ball objects are unavailable");
+        m_Record.GetLogger()->Error("Cannot load registered ball types: the Behavior session or "
+                                    "base ball objects are unavailable");
         return;
     }
 
     for (BallTypeInfo &info: m_BallTypes) {
+        info.m_Applied=true;
         Behavior::Blocks::ObjectLoad::Options options;
         // Ball files are registered in the active code page, and Behavior
         // values are UTF-8.
         options.File = utils::Utf16ToUtf8(utils::AnsiToUtf16(path + info.m_File));
         auto block = Behavior::Blocks::ObjectLoad::Make(m_Behavior, options);
         if (!block) {
-            GetLogger()->Error(
-                "Cannot configure Object Load for ball type %s: %s",
-                info.m_Name.c_str(), block.GetStatus().Message.empty()
-                    ? "the Block was rejected"
-                    : block.GetStatus().Message.c_str());
+            m_Record.GetLogger()->Error(
+                "Cannot configure Object Load for ball type %s: %s", info.m_Name.c_str(),
+                block.GetStatus().Message.empty() ? "the Block was rejected"
+                                                  : block.GetStatus().Message.c_str());
             return;
         }
         auto called = block->Call("Load", Behavior::Signals(1).Pouts());
         if (!called) {
-            GetLogger()->Error(
-                "Cannot load ball type %s: %s", info.m_Name.c_str(),
-                called.GetStatus().Message.empty()
-                    ? "Object Load could not execute"
-                    : called.GetStatus().Message.c_str());
+            m_Record.GetLogger()->Error("Cannot load ball type %s: %s", info.m_Name.c_str(),
+                                        called.GetStatus().Message.empty()
+                                            ? "Object Load could not execute"
+                                            : called.GetStatus().Message.c_str());
             return;
         }
         Behavior::Call call = called.Take();
         auto captured = call.TakeFrames();
         if (!captured || captured->Empty()) {
-            GetLogger()->Error(
-                "Cannot load ball type %s: Object Load produced no Frame",
-                info.m_Name.c_str());
+            m_Record.GetLogger()->Error("Cannot load ball type %s: Object Load produced no Frame",
+                                        info.m_Name.c_str());
             return;
         }
         Behavior::Frames frames = captured.Take();
         const Behavior::Frame frame = frames[frames.Size() - 1];
         if (!frame.HasOut("Loaded") || frame.HasOut("Failed")) {
-            GetLogger()->Error(
+            m_Record.GetLogger()->Error(
                 "Cannot load ball type %s: Object Load did not activate Loaded",
                 info.m_Name.c_str());
             return;
         }
         auto loaded = frame.Pout<Behavior::ObjectList>("Loaded Objects");
         if (!loaded) {
-            GetLogger()->Error(
-                "Cannot read the objects loaded for ball type %s: %s",
-                info.m_Name.c_str(), loaded.GetStatus().Message.empty()
-                    ? "Loaded Objects is unavailable"
-                    : loaded.GetStatus().Message.c_str());
+            m_Record.GetLogger()->Error(
+                "Cannot read the objects loaded for ball type %s: %s", info.m_Name.c_str(),
+                loaded.GetStatus().Message.empty() ? "Loaded Objects is unavailable"
+                                                   : loaded.GetStatus().Message.c_str());
             return;
         }
 
@@ -562,7 +570,7 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
             !info.m_PiecesFrame ||
             !info.m_Explosion ||
             !info.m_Reset) {
-            GetLogger()->Error(
+            m_Record.GetLogger()->Error(
                 "Cannot register ball type %s: its loaded object set is incomplete",
                 info.m_Name.c_str());
             return;
@@ -588,7 +596,7 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
     }
 
     m_BallPatchPending = true;
-    GetLogger()->Info("New Ball Types Registered");
+    m_Record.GetLogger()->Info("New Ball Types Registered");
 }
 
 void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
@@ -598,6 +606,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     CKDataArray *physFloors = m_BML->GetArrayByName("Physicalize_Floors");
 
     for (ModulInfo &info: m_Moduls) {
+        info.m_Applied=true;
         phGroups->AddRow();
         int row = phGroups->GetRowCount() - 1;
         phGroups->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
@@ -607,6 +616,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     }
 
     for (FloorTypeInfo &info: m_FloorTypes) {
+        info.m_Applied=true;
         physFloors->AddRow();
         int row = physFloors->GetRowCount() - 1;
         physFloors->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
@@ -618,6 +628,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     }
 
     for (ModulConvexInfo &info: m_ModulConvexes) {
+        info.m_Applied=true;
         physConvexs->AddRow();
         int row = physConvexs->GetRowCount() - 1;
         physConvexs->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
@@ -641,6 +652,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     }
 
     for (ModulBallInfo &info: m_ModulBalls) {
+        info.m_Applied=true;
         physBalls->AddRow();
         int row = physBalls->GetRowCount() - 1;
         physBalls->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
@@ -666,13 +678,14 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
 
     m_BML->SetIC(phGroups);
 
-    GetLogger()->Info("New Modul & Floor Types Registered");
+    m_Record.GetLogger()->Info("New Modul & Floor Types Registered");
 }
 
 void NewBallTypeMod::OnLoadSounds(XObjectArray *objArray) {
     CKDataArray *ballSound = m_BML->GetArrayByName("BallSound");
 
     for (BallTypeInfo &info: m_BallTypes) {
+        info.m_Applied=true;
         std::string roll = "Roll_" + info.m_Name;
         std::string hit = "Hit_" + info.m_Name;
 
@@ -688,7 +701,7 @@ void NewBallTypeMod::OnLoadSounds(XObjectArray *objArray) {
         ballSound->SetElementStringValue(row, 7, (CKSTRING) ((hit + "_Dome").c_str()));
     }
 
-    GetLogger()->Info("New Ball Sounds Registered");
+    m_Record.GetLogger()->Info("New Ball Sounds Registered");
 }
 
 void NewBallTypeMod::InstallBallBehaviorPatch() {
@@ -699,11 +712,10 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
     if (m_BallPatch) {
         auto closed = m_BallPatch.Close();
         if (!closed) {
-            GetLogger()->Error(
-                "Cannot replace the new-ball Behavior Patch: %s",
-                closed.GetStatus().Message.empty()
-                    ? "the previous Patch could not be restored"
-                    : closed.GetStatus().Message.c_str());
+            m_Record.GetLogger()->Error("Cannot replace the new-ball Behavior Patch: %s",
+                                        closed.GetStatus().Message.empty()
+                                            ? "the previous Patch could not be restored"
+                                            : closed.GetStatus().Message.c_str());
             m_BallPatchPending = false;
             return;
         }
@@ -720,7 +732,7 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
     balls.reserve(m_BallTypes.size());
     for (const BallTypeInfo &info : m_BallTypes) {
         if (!info.m_BallObj || !info.m_Reset) {
-            GetLogger()->Error(
+            m_Record.GetLogger()->Error(
                 "Cannot author the new-ball graphs before ball type %s is loaded",
                 info.m_Name.c_str());
             m_BallPatchPending = false;
@@ -731,16 +743,15 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
         if (!ball || !reset) {
             const Behavior::Status &status = !ball
                 ? ball.GetStatus() : reset.GetStatus();
-            GetLogger()->Error(
-                "Cannot identify the objects for ball type %s: %s",
-                info.m_Name.c_str(), status.Message.empty()
-                    ? "object reference creation failed"
-                    : status.Message.c_str());
+            m_Record.GetLogger()->Error("Cannot identify the objects for ball type %s: %s",
+                                        info.m_Name.c_str(),
+                                        status.Message.empty() ? "object reference creation failed"
+                                                               : status.Message.c_str());
             m_BallPatchPending = false;
             return;
         }
         balls.push_back(
-            {&info, ball.Value(), reset.Value(),
+            {info, ball.Value(), reset.Value(),
              "__BML_NewBall_Used_" + info.m_ID});
     }
 
@@ -749,10 +760,9 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
     if (!eventGraph || !gameplayGraph) {
         const Behavior::Status &status = !eventGraph
             ? eventGraph.GetStatus() : gameplayGraph.GetStatus();
-        GetLogger()->Error(
-            "Cannot inspect the ball gameplay graphs: %s",
-            status.Message.empty() ? "graph inspection failed"
-                                   : status.Message.c_str());
+        m_Record.GetLogger()->Error("Cannot inspect the ball gameplay graphs: %s",
+                                    status.Message.empty() ? "graph inspection failed"
+                                                           : status.Message.c_str());
         m_BallPatchPending = false;
         return;
     }
@@ -761,8 +771,7 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
     const CKAttributeType trafoType = attributes
         ? attributes->GetAttributeTypeByName("TrafoType") : -1;
     if (trafoType < 0) {
-        GetLogger()->Error(
-            "Cannot author the new-ball graphs: TrafoType is unavailable");
+        m_Record.GetLogger()->Error("Cannot author the new-ball graphs: TrafoType is unavailable");
         m_BallPatchPending = false;
         return;
     }
@@ -773,11 +782,10 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
     auto gameplayBuilt = BuildGameplayEdit(
         m_Behavior, trafoType, balls, gameplayEdit);
     if (!gameplayBuilt) {
-        GetLogger()->Error(
-            "Cannot describe the new-ball graph changes: %s",
-            gameplayBuilt.GetStatus().Message.empty()
-                ? "Behavior block construction failed"
-                : gameplayBuilt.GetStatus().Message.c_str());
+        m_Record.GetLogger()->Error("Cannot describe the new-ball graph changes: %s",
+                                    gameplayBuilt.GetStatus().Message.empty()
+                                        ? "Behavior block construction failed"
+                                        : gameplayBuilt.GetStatus().Message.c_str());
         m_BallPatchPending = false;
         return;
     }
@@ -787,18 +795,17 @@ void NewBallTypeMod::InstallBallBehaviorPatch() {
         Behavior::On(eventGraph.Value(), eventEdit),
         Behavior::On(gameplayGraph.Value(), gameplayEdit));
     if (!applied) {
-        GetLogger()->Error(
-            "Cannot apply the new-ball graph changes: %s",
-            applied.GetStatus().Message.empty()
-                ? "the Patch was rejected"
-                : applied.GetStatus().Message.c_str());
+        m_Record.GetLogger()->Error("Cannot apply the new-ball graph changes: %s",
+                                    applied.GetStatus().Message.empty()
+                                        ? "the Patch was rejected"
+                                        : applied.GetStatus().Message.c_str());
         m_BallPatchPending = false;
         return;
     }
 
     m_BallPatch = applied.Take();
     m_BallPatchPending = false;
-    GetLogger()->Info("Applied the new-ball Behavior Patch");
+    m_Record.GetLogger()->Info("Applied the new-ball Behavior Patch");
 }
 
 void NewBallTypeMod::CloseBallBehaviorPatch(const char *operation) {
@@ -807,11 +814,9 @@ void NewBallTypeMod::CloseBallBehaviorPatch(const char *operation) {
 
     auto closed = m_BallPatch.Close();
     if (!closed) {
-        GetLogger()->Error(
-            "Cannot restore the new-ball Behavior Patch during %s: %s",
-            operation,
-            closed.GetStatus().Message.empty()
-                ? "the Patch could not be closed"
-                : closed.GetStatus().Message.c_str());
+        m_Record.GetLogger()->Error(
+            "Cannot restore the new-ball Behavior Patch during %s: %s", operation,
+            closed.GetStatus().Message.empty() ? "the Patch could not be closed"
+                                               : closed.GetStatus().Message.c_str());
     }
 }

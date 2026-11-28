@@ -132,12 +132,12 @@ void OnPhysicalize(const BML::ModContext &in ctx, const BML::PhysicalizeEvent &i
 | CollisionGroup | string |
 | StartFrozen | bool |
 | EnableCollision | bool |
-| AutoCalcMassCenter | bool |
+| CalcMassCenter | bool |
 | LinearDamp | float |
 | RotDamp | float |
 | CollisionSurface | string |
 | MassCenter | VxVector |
-| BallCount | int |
+| SphereCount | int |
 | ConvexCount | int |
 | ConcaveCount | int |
 
@@ -145,8 +145,8 @@ void OnPhysicalize(const BML::ModContext &in ctx, const BML::PhysicalizeEvent &i
 
 ```angelscript
 CK3dEntity@ event.BorrowTarget();
-VxVector event.GetBallCenter(int index);
-float event.GetBallRadius(int index);
+BML::Vec3 event.GetSphereCenter(int index);
+float event.GetSphereRadius(int index);
 CKMesh@ event.BorrowConvexMesh(int index);
 CKMesh@ event.BorrowConcaveMesh(int index);
 ```

@@ -4,8 +4,8 @@
 // two others, or take a link out of the way. The CK SDK can do all of that, and this is
 // the short way to write it.
 //
-// A Mod gets the script to work on from IBML::GetScriptByName or from
-// IMod::OnLoadScript, which is the moment the loader offers a script before the game has
+// A Mod resolves the script through Engine/Scene or its OnLoadScript event,
+// which is the moment the loader offers a script before the game has
 // run it and the only safe place to rewrite one. The names to look for are the ones
 // Virtools Dev shows, and the GUIDs for CreateBB are in BML/Guids.
 //
@@ -50,83 +50,374 @@
 
 #include <functional>
 
-#include "CKAll.h"
+#include "BML/Engine.hpp"
 
 #include "BML/Defines.h"
 
 namespace ScriptHelper {
-    BML_EXPORT bool FindBB(CKBehavior *script, std::function<bool(CKBehavior *)> callback, const char *name = nullptr,
-                           bool hierarchically = false,
-                           int inputCnt = -1, int outputCnt = -1, int inputParamCnt = -1, int outputParamCnt = -1);
-    BML_EXPORT CKBehavior *FindFirstBB(CKBehavior *script, const char *name = nullptr, bool hierarchically = false,
-                                       int inputCnt = -1, int outputCnt = -1, int inputParamCnt = -1,
-                                       int outputParamCnt = -1);
+inline bool FindBB(CKBehavior *script, std::function<bool(CKBehavior *)> callback,
+                   const char *name = nullptr, bool hierarchically = false, int inputCnt = -1,
+                   int outputCnt = -1, int inputParamCnt = -1, int outputParamCnt = -1);
+inline CKBehavior *FindFirstBB(CKBehavior *script, const char *name = nullptr,
+                               bool hierarchically = false, int inputCnt = -1, int outputCnt = -1,
+                               int inputParamCnt = -1, int outputParamCnt = -1);
 
-    BML_EXPORT CKBehaviorLink *CreateLink(CKBehavior *script, CKBehavior *inBeh, CKBehavior *outBeh,
-                                          int inPos = 0, int outPos = 0, int delay = 0);
-    BML_EXPORT CKBehaviorLink *CreateLink(CKBehavior *script, CKBehavior *inBeh, CKBehaviorIO *out,
-                                          int inPos = 0, int delay = 0);
-    BML_EXPORT CKBehaviorLink *CreateLink(CKBehavior *script, CKBehaviorIO *in, CKBehavior *outBeh,
-                                          int outPos = 0, int delay = 0);
-    BML_EXPORT CKBehaviorLink *CreateLink(CKBehavior *script, CKBehaviorIO *in, CKBehaviorIO *out, int delay = 0);
+inline CKBehaviorLink *CreateLink(CKBehavior *script, CKBehavior *inBeh, CKBehavior *outBeh,
+                                  int inPos = 0, int outPos = 0, int delay = 0);
+inline CKBehaviorLink *CreateLink(CKBehavior *script, CKBehavior *inBeh, CKBehaviorIO *out,
+                                  int inPos = 0, int delay = 0);
+inline CKBehaviorLink *CreateLink(CKBehavior *script, CKBehaviorIO *in, CKBehavior *outBeh,
+                                  int outPos = 0, int delay = 0);
+inline CKBehaviorLink *CreateLink(CKBehavior *script, CKBehaviorIO *in, CKBehaviorIO *out,
+                                  int delay = 0);
 
-    BML_EXPORT CKBehavior *CreateBB(CKBehavior *script, CKGUID guid, bool target = false);
-    BML_EXPORT void InsertBB(CKBehavior *script, CKBehaviorLink *link, CKBehavior *beh, int inPos = 0, int outPos = 0);
+inline CKBehavior *CreateBB(CKBehavior *script, CKGUID guid, bool target = false);
+inline void InsertBB(CKBehavior *script, CKBehaviorLink *link, CKBehavior *beh, int inPos = 0,
+                     int outPos = 0);
 
-    BML_EXPORT CKParameterLocal *CreateLocalParameter(CKBehavior *script, const char *name, CKGUID type);
-    BML_EXPORT CKParameterLocal *CreateParamObject(CKBehavior *script, const char *name, CKGUID guid, CKObject *value);
-    BML_EXPORT CKParameterLocal *CreateParamString(CKBehavior *script, const char *name, const char *value);
-    template<typename T>
-    CKParameterLocal *CreateParamValue(CKBehavior *script, const char *name, CKGUID guid, T value) {
-        CKParameterLocal *param = CreateLocalParameter(script, name, guid);
-        param->SetValue(&value, sizeof(T));
-        return param;
+inline CKParameterLocal *CreateLocalParameter(CKBehavior *script, const char *name, CKGUID type);
+inline CKParameterLocal *CreateParamObject(CKBehavior *script, const char *name, CKGUID guid,
+                                           CKObject *value);
+inline CKParameterLocal *CreateParamString(CKBehavior *script, const char *name, const char *value);
+
+template <typename T>
+CKParameterLocal *CreateParamValue(CKBehavior *script, const char *name, CKGUID guid, T value) {
+    CKParameterLocal *param = CreateLocalParameter(script, name, guid);
+    param->SetValue(&value, sizeof(T));
+    return param;
+}
+
+inline void SetParamObject(CKParameter *param, CKObject *value);
+inline void SetParamString(CKParameter *param, const char *value);
+
+template <typename T> void SetParamValue(CKParameter *param, T value) {
+    param->SetValue(&value, sizeof(T));
+}
+
+inline CKObject *GetParamObject(CKParameter *param);
+inline const char *GetParamString(CKParameter *param);
+
+template <typename T> T GetParamValue(CKParameter *param) {
+    T res;
+    param->GetValue(&res);
+    return res;
+}
+
+inline CKBehaviorLink *FindNextLink(CKBehavior *script, CKBehavior *beh, const char *name = nullptr,
+                                    int inPos = -1, int outPos = -1, int inputCnt = -1,
+                                    int outputCnt = -1, int inputParamCnt = -1,
+                                    int outputParamCnt = -1);
+inline CKBehaviorLink *FindPreviousLink(CKBehavior *script, CKBehavior *beh,
+                                        const char *name = nullptr, int inPos = -1, int outPos = -1,
+                                        int inputCnt = -1, int outputCnt = -1,
+                                        int inputParamCnt = -1, int outputParamCnt = -1);
+inline CKBehavior *FindNextBB(CKBehavior *script, CKBehavior *beh, const char *name = nullptr,
+                              int inPos = -1, int outPos = -1, int inputCnt = -1,
+                              int outputCnt = -1, int inputParamCnt = -1, int outputParamCnt = -1);
+inline CKBehavior *FindPreviousBB(CKBehavior *script, CKBehavior *beh, const char *name = nullptr,
+                                  int inPos = -1, int outPos = -1, int inputCnt = -1,
+                                  int outputCnt = -1, int inputParamCnt = -1,
+                                  int outputParamCnt = -1);
+inline CKBehaviorLink *FindNextLink(CKBehavior *script, CKBehaviorIO *io,
+                                    const char *name = nullptr, int outPos = -1, int inputCnt = -1,
+                                    int outputCnt = -1, int inputParamCnt = -1,
+                                    int outputParamCnt = -1);
+inline CKBehaviorLink *FindPreviousLink(CKBehavior *script, CKBehaviorIO *io,
+                                        const char *name = nullptr, int inPos = -1,
+                                        int inputCnt = -1, int outputCnt = -1,
+                                        int inputParamCnt = -1, int outputParamCnt = -1);
+inline CKBehavior *FindNextBB(CKBehavior *script, CKBehaviorIO *io, const char *name = nullptr,
+                              int outPos = -1, int inputCnt = -1, int outputCnt = -1,
+                              int inputParamCnt = -1, int outputParamCnt = -1);
+inline CKBehavior *FindPreviousBB(CKBehavior *script, CKBehaviorIO *io, const char *name = nullptr,
+                                  int inPos = -1, int inputCnt = -1, int outputCnt = -1,
+                                  int inputParamCnt = -1, int outputParamCnt = -1);
+inline CKBehavior *FindEndOfChain(CKBehavior *script, CKBehavior *beh);
+
+inline void DeleteLink(CKBehavior *script, CKBehaviorLink *link);
+inline void DeleteBB(CKBehavior *script, CKBehavior *beh);
+
+inline bool FindBB(CKBehavior *script, std::function<bool(CKBehavior *)> callback, const char *name,
+                   bool hierarchically, int inputCnt, int outputCnt, int inputParamCnt,
+                   int outputParamCnt) {
+    int cnt = script->GetSubBehaviorCount();
+    for (int i = 0; i < cnt; i++) {
+        CKBehavior *beh = script->GetSubBehavior(i);
+        if (hierarchically && beh->GetSubBehaviorCount() > 0) {
+            if (!FindBB(beh, callback, name, hierarchically, inputCnt, outputCnt, inputParamCnt,
+                        outputParamCnt))
+                return false;
+        }
+
+        if ((!name || !strcmp(beh->GetName(), name)) &&
+            (inputCnt < 0 || beh->GetInputCount() == inputCnt) &&
+            (outputCnt < 0 || beh->GetOutputCount() == outputCnt) &&
+            (inputParamCnt < 0 || beh->GetInputParameterCount() == inputParamCnt) &&
+            (outputParamCnt < 0 || beh->GetOutputParameterCount() == outputParamCnt))
+            if (!callback(beh))
+                return false;
     }
 
-    BML_EXPORT void SetParamObject(CKParameter *param, CKObject *value);
-    BML_EXPORT void SetParamString(CKParameter *param, const char *value);
-    template<typename T>
-    void SetParamValue(CKParameter *param, T value) {
-        param->SetValue(&value, sizeof(T));
+    return true;
+}
+
+inline CKBehavior *FindFirstBB(CKBehavior *script, const char *name, bool hierarchically,
+                               int inputCnt, int outputCnt, int inputParamCnt, int outputParamCnt) {
+    CKBehavior *res = nullptr;
+    FindBB(
+        script,
+        [&res](CKBehavior *beh) {
+            res = beh;
+            return false;
+        },
+        name, hierarchically, inputCnt, outputCnt, inputParamCnt, outputParamCnt);
+    return res;
+}
+
+inline CKBehaviorLink *CreateLink(CKBehavior *script, CKBehavior *inBeh, CKBehavior *outBeh,
+                                  int inPos, int outPos, int delay) {
+    return CreateLink(script, inBeh->GetOutput(inPos), outBeh->GetInput(outPos), delay);
+}
+
+inline CKBehaviorLink *CreateLink(CKBehavior *script, CKBehavior *inBeh, CKBehaviorIO *out,
+                                  int inPos, int delay) {
+    return CreateLink(script, inBeh->GetOutput(inPos), out, delay);
+}
+
+inline CKBehaviorLink *CreateLink(CKBehavior *script, CKBehaviorIO *in, CKBehavior *outBeh,
+                                  int outPos, int delay) {
+    return CreateLink(script, in, outBeh->GetInput(outPos), delay);
+}
+
+inline CKBehaviorLink *CreateLink(CKBehavior *script, CKBehaviorIO *in, CKBehaviorIO *out,
+                                  int delay) {
+    CKBehaviorLink *link =
+        (CKBehaviorLink *)script->GetCKContext()->CreateObject(CKCID_BEHAVIORLINK);
+    link->SetInitialActivationDelay(delay);
+    link->ResetActivationDelay();
+    link->SetInBehaviorIO(in);
+    link->SetOutBehaviorIO(out);
+    script->AddSubBehaviorLink(link);
+    return link;
+}
+
+inline CKBehavior *CreateBB(CKBehavior *script, CKGUID guid, bool target) {
+    CKBehavior *beh = (CKBehavior *)script->GetCKContext()->CreateObject(CKCID_BEHAVIOR);
+    beh->InitFromGuid(guid);
+    if (target)
+        beh->UseTarget();
+    if (script->AddSubBehavior(beh) != CK_OK) {
+        script->GetCKContext()->DestroyObject(beh);
+        return nullptr;
+    }
+    return beh;
+}
+
+inline void InsertBB(CKBehavior *script, CKBehaviorLink *link, CKBehavior *beh, int inPos,
+                     int outPos) {
+    CreateLink(script, beh, link->GetOutBehaviorIO(), outPos);
+    link->SetOutBehaviorIO(beh->GetInput(inPos));
+}
+
+inline CKParameterLocal *CreateLocalParameter(CKBehavior *script, const char *name, CKGUID type) {
+    return script->CreateLocalParameter((CKSTRING)name, type);
+}
+
+inline CKParameterLocal *CreateParamObject(CKBehavior *script, const char *name, CKGUID guid,
+                                           CKObject *value) {
+    return CreateParamValue<CK_ID>(script, name, guid, CKOBJID(value));
+}
+
+inline CKParameterLocal *CreateParamString(CKBehavior *script, const char *name,
+                                           const char *value) {
+    CKParameterLocal *param = CreateLocalParameter(script, name, CKPGUID_STRING);
+    param->SetStringValue((CKSTRING)value);
+    return param;
+}
+
+inline void SetParamObject(CKParameter *param, CKObject *value) {
+    CK_ID obj = CKOBJID(value);
+    SetParamValue(param, obj);
+}
+
+inline void SetParamString(CKParameter *param, const char *value) {
+    param->SetStringValue((CKSTRING)value);
+}
+
+inline CKObject *GetParamObject(CKParameter *param) {
+    return param->GetValueObject();
+}
+
+const char *GetParamString(CKParameter *param) {
+    return static_cast<const char *>(param->GetReadDataPtr());
+}
+
+inline CKBehaviorLink *FindNextLink(CKBehavior *script, CKBehavior *beh, const char *name,
+                                    int inPos, int outPos, int inputCnt, int outputCnt,
+                                    int inputParamCnt, int outputParamCnt) {
+    int linkCnt = script->GetSubBehaviorLinkCount();
+    for (int i = 0; i < linkCnt; i++) {
+        CKBehaviorLink *link = script->GetSubBehaviorLink(i);
+        CKBehaviorIO *in = link->GetInBehaviorIO();
+
+        if (in->GetOwner() == beh && (inPos < 0 || beh->GetOutput(inPos) == in)) {
+            CKBehaviorIO *out = link->GetOutBehaviorIO();
+            CKBehavior *outBeh = out->GetOwner();
+
+            if ((!name || !strcmp(outBeh->GetName(), name)) &&
+                (outPos < 0 || outBeh->GetInput(outPos) == out) &&
+                (inputCnt < 0 || outBeh->GetInputCount() == inputCnt) &&
+                (outputCnt < 0 || outBeh->GetOutputCount() == outputCnt) &&
+                (inputParamCnt < 0 || outBeh->GetInputParameterCount() == inputParamCnt) &&
+                (outputParamCnt < 0 || outBeh->GetOutputParameterCount() == outputParamCnt))
+                return link;
+        }
     }
 
-    BML_EXPORT CKObject *GetParamObject(CKParameter *param);
-    BML_EXPORT const char *GetParamString(CKParameter *param);
-    template<typename T>
-    T GetParamValue(CKParameter *param) {
-        T res;
-        param->GetValue(&res);
-        return res;
+    return nullptr;
+}
+
+inline CKBehaviorLink *FindPreviousLink(CKBehavior *script, CKBehavior *beh, const char *name,
+                                        int inPos, int outPos, int inputCnt, int outputCnt,
+                                        int inputParamCnt, int outputParamCnt) {
+    int linkCnt = script->GetSubBehaviorLinkCount();
+    for (int i = 0; i < linkCnt; i++) {
+        CKBehaviorLink *link = script->GetSubBehaviorLink(i);
+        CKBehaviorIO *out = link->GetOutBehaviorIO();
+
+        if (out->GetOwner() == beh && (outPos < 0 || beh->GetInput(outPos) == out)) {
+            CKBehaviorIO *in = link->GetInBehaviorIO();
+            CKBehavior *inBeh = in->GetOwner();
+
+            if ((!name || !strcmp(inBeh->GetName(), name)) &&
+                (inPos < 0 || inBeh->GetOutput(inPos) == in) &&
+                (inputCnt < 0 || inBeh->GetInputCount() == inputCnt) &&
+                (outputCnt < 0 || inBeh->GetOutputCount() == outputCnt) &&
+                (inputParamCnt < 0 || inBeh->GetInputParameterCount() == inputParamCnt) &&
+                (outputParamCnt < 0 || inBeh->GetOutputParameterCount() == outputParamCnt))
+                return link;
+        }
     }
 
-    BML_EXPORT CKBehaviorLink *FindNextLink(CKBehavior *script, CKBehavior *beh, const char *name = nullptr,
-                                            int inPos = -1, int outPos = -1, int inputCnt = -1, int outputCnt = -1,
-                                            int inputParamCnt = -1, int outputParamCnt = -1);
-    BML_EXPORT CKBehaviorLink *FindPreviousLink(CKBehavior *script, CKBehavior *beh, const char *name = nullptr,
-                                                int inPos = -1, int outPos = -1,int inputCnt = -1, int outputCnt = -1,
-                                                int inputParamCnt = -1, int outputParamCnt = -1);
-    BML_EXPORT CKBehavior *FindNextBB(CKBehavior *script, CKBehavior *beh, const char *name = nullptr,
-                                      int inPos = -1, int outPos = -1, int inputCnt = -1, int outputCnt = -1,
-                                      int inputParamCnt = -1, int outputParamCnt = -1);
-    BML_EXPORT CKBehavior *FindPreviousBB(CKBehavior *script, CKBehavior *beh, const char *name = nullptr,
-                                          int inPos = -1, int outPos = -1, int inputCnt = -1, int outputCnt = -1,
-                                          int inputParamCnt = -1, int outputParamCnt = -1);
-    BML_EXPORT CKBehaviorLink *FindNextLink(CKBehavior *script, CKBehaviorIO *io, const char *name = nullptr,
-                                            int outPos = -1, int inputCnt = -1, int outputCnt = -1,
-                                            int inputParamCnt = -1, int outputParamCnt = -1);
-    BML_EXPORT CKBehaviorLink *FindPreviousLink(CKBehavior *script, CKBehaviorIO *io, const char *name = nullptr,
-                                                int inPos = -1, int inputCnt = -1, int outputCnt = -1,
-                                                int inputParamCnt = -1, int outputParamCnt = -1);
-    BML_EXPORT CKBehavior *FindNextBB(CKBehavior *script, CKBehaviorIO *io, const char *name = nullptr, int outPos = -1,
-                                      int inputCnt = -1, int outputCnt = -1, int inputParamCnt = -1,
-                                      int outputParamCnt = -1);
-    BML_EXPORT CKBehavior *FindPreviousBB(CKBehavior *script, CKBehaviorIO *io, const char *name = nullptr,
-                                          int inPos = -1, int inputCnt = -1, int outputCnt = -1, int inputParamCnt = -1,
-                                          int outputParamCnt = -1);
-    BML_EXPORT CKBehavior *FindEndOfChain(CKBehavior *script, CKBehavior *beh);
+    return nullptr;
+}
 
-    BML_EXPORT void DeleteLink(CKBehavior *script, CKBehaviorLink *link);
-    BML_EXPORT void DeleteBB(CKBehavior *script, CKBehavior *beh);
-};
+inline CKBehavior *FindNextBB(CKBehavior *script, CKBehavior *beh, const char *name, int inPos,
+                              int outPos, int inputCnt, int outputCnt, int inputParamCnt,
+                              int outputParamCnt) {
+    CKBehaviorLink *link = FindNextLink(script, beh, name, inPos, outPos, inputCnt, outputCnt,
+                                        inputParamCnt, outputParamCnt);
+    return link ? link->GetOutBehaviorIO()->GetOwner() : nullptr;
+}
+
+inline CKBehavior *FindPreviousBB(CKBehavior *script, CKBehavior *beh, const char *name, int inPos,
+                                  int outPos, int inputCnt, int outputCnt, int inputParamCnt,
+                                  int outputParamCnt) {
+    CKBehaviorLink *link = FindPreviousLink(script, beh, name, inPos, outPos, inputCnt, outputCnt,
+                                            inputParamCnt, outputParamCnt);
+    return link ? link->GetInBehaviorIO()->GetOwner() : nullptr;
+}
+
+inline CKBehaviorLink *FindNextLink(CKBehavior *script, CKBehaviorIO *io, const char *name,
+                                    int outPos, int inputCnt, int outputCnt, int inputParamCnt,
+                                    int outputParamCnt) {
+    int linkCnt = script->GetSubBehaviorLinkCount();
+    for (int i = 0; i < linkCnt; i++) {
+        CKBehaviorLink *link = script->GetSubBehaviorLink(i);
+        CKBehaviorIO *in = link->GetInBehaviorIO();
+
+        if (in == io) {
+            CKBehaviorIO *out = link->GetOutBehaviorIO();
+            CKBehavior *outBeh = out->GetOwner();
+
+            if ((!name || !strcmp(outBeh->GetName(), name)) &&
+                (outPos < 0 || outBeh->GetInput(outPos) == out) &&
+                (inputCnt < 0 || outBeh->GetInputCount() == inputCnt) &&
+                (outputCnt < 0 || outBeh->GetOutputCount() == outputCnt) &&
+                (inputParamCnt < 0 || outBeh->GetInputParameterCount() == inputParamCnt) &&
+                (outputParamCnt < 0 || outBeh->GetOutputParameterCount() == outputParamCnt))
+                return link;
+        }
+    }
+
+    return nullptr;
+}
+
+inline CKBehaviorLink *FindPreviousLink(CKBehavior *script, CKBehaviorIO *io, const char *name,
+                                        int inPos, int inputCnt, int outputCnt, int inputParamCnt,
+                                        int outputParamCnt) {
+    int linkCnt = script->GetSubBehaviorLinkCount();
+    for (int i = 0; i < linkCnt; i++) {
+        CKBehaviorLink *link = script->GetSubBehaviorLink(i);
+        CKBehaviorIO *out = link->GetOutBehaviorIO();
+
+        if (out == io) {
+            CKBehaviorIO *in = link->GetInBehaviorIO();
+            CKBehavior *inBeh = in->GetOwner();
+
+            if ((!name || !strcmp(inBeh->GetName(), name)) &&
+                (inPos < 0 || inBeh->GetOutput(inPos) == in) &&
+                (inputCnt < 0 || inBeh->GetInputCount() == inputCnt) &&
+                (outputCnt < 0 || inBeh->GetOutputCount() == outputCnt) &&
+                (inputParamCnt < 0 || inBeh->GetInputParameterCount() == inputParamCnt) &&
+                (outputParamCnt < 0 || inBeh->GetOutputParameterCount() == outputParamCnt))
+                return link;
+        }
+    }
+
+    return nullptr;
+}
+
+inline CKBehavior *FindNextBB(CKBehavior *script, CKBehaviorIO *io, const char *name, int outPos,
+                              int inputCnt, int outputCnt, int inputParamCnt, int outputParamCnt) {
+    CKBehaviorLink *link =
+        FindNextLink(script, io, name, outPos, inputCnt, outputCnt, inputParamCnt, outputParamCnt);
+    return link ? link->GetOutBehaviorIO()->GetOwner() : nullptr;
+}
+
+inline CKBehavior *FindPreviousBB(CKBehavior *script, CKBehaviorIO *io, const char *name, int inPos,
+                                  int inputCnt, int outputCnt, int inputParamCnt,
+                                  int outputParamCnt) {
+    CKBehaviorLink *link = FindPreviousLink(script, io, name, inPos, inputCnt, outputCnt,
+                                            inputParamCnt, outputParamCnt);
+    return link ? link->GetInBehaviorIO()->GetOwner() : nullptr;
+}
+
+inline CKBehavior *FindEndOfChain(CKBehavior *script, CKBehavior *beh) {
+    CKBehavior *next;
+    while (true) {
+        next = FindNextBB(script, beh);
+        if (next)
+            beh = next;
+        else
+            break;
+    };
+    return beh;
+}
+
+inline void DeleteLink(CKBehavior *script, CKBehaviorLink *link) {
+    CKBehavior *nop = FindFirstBB(script, "__BML_DisabledLink");
+    if (!nop) {
+        nop = CreateBB(script, CKGUID(0x302561c4, 0xd282980));
+        if (!nop)
+            return;
+        nop->SetName((CKSTRING) "__BML_DisabledLink");
+    }
+    CKBehaviorIO *nopin = nop->GetInput(0), *nopout = nop->GetOutput(0);
+    link->SetInBehaviorIO(nopout);
+    link->SetOutBehaviorIO(nopin);
+}
+
+inline void DeleteBB(CKBehavior *script, CKBehavior *beh) {
+    beh->Activate(false);
+    int linkCnt = script->GetSubBehaviorLinkCount();
+    for (int i = 0; i < linkCnt; i++) {
+        CKBehaviorLink *link = script->GetSubBehaviorLink(i);
+        if (link->GetInBehaviorIO()->GetOwner() == beh ||
+            link->GetOutBehaviorIO()->GetOwner() == beh)
+            DeleteLink(script, link);
+    }
+}
+}; // namespace ScriptHelper
 
 #endif // BML_SCRIPTHELPER_H

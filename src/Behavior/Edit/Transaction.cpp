@@ -89,12 +89,7 @@ Status CKEdit::Transaction::Apply(const Ops &edit) {
 }
 
 Status CKEdit::Transaction::Fail(Status failure) {
-    Status reverted = Transaction(m_Editor, m_Journal).Revert();
-    if (!reverted) {
-        if (!failure.Message.empty())
-            reverted.Message = failure.Message + " " + reverted.Message;
-        return reverted;
-    }
+    m_Journal.RestoreFailure = Transaction(m_Editor, m_Journal).Revert();
     return failure;
 }
 

@@ -63,6 +63,7 @@ private:
     void **m_VTable = nullptr;
     void *m_Region = nullptr;
     std::size_t m_RegionSize = 0;
+    int m_OriginalProtection = 0;
     std::vector<Entry> m_Entries;
 };
 

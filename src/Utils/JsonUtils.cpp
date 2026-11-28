@@ -1,9 +1,6 @@
 #include "JsonUtils.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
+#include "PathUtils.h"
 
 #include <cstdlib>
 #include <utility>
@@ -75,23 +72,8 @@ namespace utils {
 
     JsonDocument JsonDocument::ParseFile(const std::wstring &path, std::string &error) {
         error.clear();
-        HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file == INVALID_HANDLE_VALUE) {
-            error = "Unable to open JSON file";
-            return {};
-        }
-        LARGE_INTEGER size{};
-        if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 || size.QuadPart > static_cast<LONGLONG>(SIZE_MAX)) {
-            CloseHandle(file);
-            error = "Unable to read JSON file";
-            return {};
-        }
-        std::string content(static_cast<size_t>(size.QuadPart), '\0');
-        DWORD read = 0;
-        const BOOL ok = content.empty() ||
-                        ReadFile(file, content.data(), static_cast<DWORD>(content.size()), &read, nullptr);
-        CloseHandle(file);
-        if (!ok || read != content.size()) {
+        std::string content;
+        if (!ReadFileBytesW(path, content)) {
             error = "Unable to read JSON file";
             return {};
         }

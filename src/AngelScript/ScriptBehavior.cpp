@@ -381,6 +381,7 @@ public:
 using GraphResource = OwnedBehaviorResource<Authoring::Graph>;
 using EditResource = OwnedBehaviorResource<Authoring::Edit>;
 using PatchResource = OwnedBehaviorResource<Authoring::Patch>;
+using SubmissionResource = OwnedBehaviorResource<Authoring::Submission>;
 using PlanResource = OwnedBehaviorResource<Authoring::Plan>;
 using ScriptResource = OwnedBehaviorResource<Authoring::Script>;
 using WatchResource = OwnedBehaviorResource<Authoring::Watch>;
@@ -569,6 +570,7 @@ class ScriptBehaviorEditPath;
 class ScriptBehaviorEditOperation;
 class ScriptBehaviorPatch;
 class ScriptBehaviorPlan;
+class ScriptBehaviorSubmission;
 class ScriptBehaviorScript;
 
 class ScriptBehaviorNodePattern final {
@@ -3348,6 +3350,15 @@ public:
     }
     ScriptBehaviorPlan *Plan(const std::string &name,
                              const std::string &script, bool each);
+    ScriptBehaviorSubmission *ApplyGraph(const std::string &name,
+                                         ScriptBehaviorGraph *graph, int ownership) const;
+    ScriptBehaviorSubmission *ApplyGraphWithState(const std::string &name,
+        ScriptBehaviorGraph *graph, int ownership, bool enabled) const;
+    ScriptBehaviorSubmission *ApplyScripts(const std::string &name,
+                                           const std::string &script, int ownership,
+                                           bool each) const;
+    ScriptBehaviorSubmission *ApplyScriptsWithState(const std::string &name,
+        const std::string &script, int ownership, bool each, bool enabled) const;
     ScriptBehaviorScript *CreateScript(CKBeObject *owner,
                                        const std::string &name,
                                        int priority);
@@ -3356,9 +3367,257 @@ public:
     }
 
 private:
+    ScriptBehaviorSubmission *KeepSubmission(
+        Authoring::Result<Authoring::Submission> submitted) const;
     std::shared_ptr<ScriptBehaviorState> m_State;
     std::shared_ptr<EditResource> m_Edit;
 };
+
+class ScriptBehaviorInstallation final : public ScriptRef {
+public:
+    ScriptBehaviorInstallation(std::shared_ptr<ScriptBehaviorState> state,
+                               Authoring::Submission::Installation installation)
+        : m_State(std::move(state)), m_Installation(std::move(installation)) {}
+
+    bool IsValid() const noexcept {
+        return m_State && m_State->Active && static_cast<bool>(m_Installation);
+    }
+    ScriptBehaviorObjectRef *Resolve(ScriptBehaviorEditNode *node) const {
+        if (!IsValid() || !node || !node->IsValid()) {
+            ScriptStringInterop::RaiseActiveException(
+                "Resolve requires a live Behavior Installation and EditNode.");
+            return nullptr;
+        }
+        auto result = m_Installation.Resolve(node->Value());
+        if (!Accept("Resolve installed Behavior Node", result))
+            return nullptr;
+        return NewScriptObject<ScriptBehaviorObjectRef>(
+            "resolved Behavior ObjectRef", m_State, result.Value());
+    }
+    ScriptBehaviorObservedValue *Read(ScriptBehaviorEditPort *port) const {
+        if (!CheckPort(port))
+            return nullptr;
+        auto value = m_Installation.Read(port->Value());
+        if (!Accept("Read installed Behavior value", value))
+            return nullptr;
+        return NewScriptObject<ScriptBehaviorObservedValue>(
+            "observed Behavior value", m_State, value.Take());
+    }
+    bool Set(ScriptBehaviorEditPort *port, const ScriptBehaviorValue &value) const {
+        return CheckPort(port) &&
+            Accept("Set installed Behavior value", m_Installation.Set(port->Value(), value.Value));
+    }
+
+private:
+    bool CheckPort(const ScriptBehaviorEditPort *port) const {
+        if (IsValid() && port && port->IsValid())
+            return true;
+        ScriptStringInterop::RaiseActiveException(
+            "An installation value requires a live Behavior Installation and EditPort.");
+        return false;
+    }
+
+    std::shared_ptr<ScriptBehaviorState> m_State;
+    Authoring::Submission::Installation m_Installation;
+};
+
+class ScriptBehaviorSubmission final : public ScriptRef {
+public:
+    ScriptBehaviorSubmission(std::shared_ptr<ScriptBehaviorState> state,
+                             std::shared_ptr<SubmissionResource> submission)
+        : m_State(std::move(state)), m_Submission(std::move(submission)) {}
+
+    bool IsValid() const noexcept {
+        return m_State && m_State->Active && m_Submission && m_Submission->IsOpen();
+    }
+    int State() const {
+        const auto info = Info();
+        return info ? static_cast<int>(info->State) : -1;
+    }
+    bool RequestedEnabled() const {
+        const auto info = Info();
+        return info && info->RequestedEnabled;
+    }
+    bool SetEnabled(bool enabled) {
+        if (!IsValid()) {
+            ScriptStringInterop::RaiseActiveException("SetEnabled requires a live Behavior Submission.");
+            return false;
+        }
+        return Accept("Set Behavior Submission enabled", m_Submission->Value->SetEnabled(enabled));
+    }
+    bool ReplaceGraph(ScriptBehaviorGraph *graph, ScriptBehaviorEdit *edit) {
+        auto *target = graph ? graph->Value() : nullptr;
+        auto *body = edit ? edit->Value() : nullptr;
+        if (!IsValid() || !target || !body) {
+            ScriptStringInterop::RaiseActiveException("Replace requires a live Submission, Graph and Edit.");
+            return false;
+        }
+        return Accept("Replace Behavior Submission",
+                      m_Submission->Value->Replace(Authoring::On(*target, *body)));
+    }
+    bool ReplaceScripts(const std::string &script, ScriptBehaviorEdit *edit, bool each) {
+        auto *body = edit ? edit->Value() : nullptr;
+        if (!IsValid() || !body) {
+            ScriptStringInterop::RaiseActiveException("Replace requires a live Submission and Edit.");
+            return false;
+        }
+        const auto target = each ? Authoring::Scripts::Each(script) : Authoring::Scripts::One(script);
+        return Accept("Replace Behavior Submission",
+                      m_Submission->Value->Replace(Authoring::On(target, *body)));
+    }
+    bool ReadInstallations(void *array) const {
+        if (!IsValid() || !array) {
+            ScriptStringInterop::RaiseActiveException("ReadInstallations requires a live Submission and output array.");
+            return false;
+        }
+        auto entries = m_Submission->Value->Installations();
+        if (!Accept("List Behavior installations", entries))
+            return false;
+        const auto &api = m_State->Owner->GetRuntimeForFacade().GetApi();
+        if (!api.ArrayResize || !api.ArraySetElementValue ||
+            api.ArrayResize(array, static_cast<CKDWORD>(entries->size())) != CKAS_OK) {
+            ScriptStringInterop::RaiseActiveException("Could not create the Behavior installation list.");
+            return false;
+        }
+        CKDWORD index = 0;
+        for (auto &entry : *entries) {
+            auto *item = NewScriptObject<ScriptBehaviorInstallation>(
+                "Behavior Installation", m_State, std::move(entry));
+            const auto status = item ? api.ArraySetElementValue(array, index, &item) : CKAS_INVALIDARGUMENT;
+            if (item)
+                item->Release();
+            if (status != CKAS_OK) {
+                (void) api.ArrayResize(array, 0);
+                ScriptStringInterop::RaiseActiveException("Could not write the Behavior installation list.");
+                return false;
+            }
+            ++index;
+        }
+        return true;
+    }
+    std::string ApplyError() const {
+        const auto info = Info();
+        return info ? info->ApplyFailure.Message : info.GetStatus().Message;
+    }
+    std::string RestoreError() const {
+        const auto info = Info();
+        return info ? info->RestoreFailure.Message : info.GetStatus().Message;
+    }
+    ScriptBehaviorInstallation *Find(ScriptBehaviorObjectRef *graph) const {
+        if (!IsValid()) {
+            ScriptStringInterop::RaiseActiveException("Find requires a live Behavior Submission.");
+            return nullptr;
+        }
+        auto found = m_Submission->Value->Find(graph ? graph->Value() : BML_ObjectRef{});
+        if (!found && found.GetStatus().Error == Authoring::Error::QueryNotFound)
+            return nullptr;
+        if (!Accept("Find Behavior Installation", found))
+            return nullptr;
+        return NewScriptObject<ScriptBehaviorInstallation>(
+            "Behavior Installation", m_State, found.Take());
+    }
+    bool SetInput(ScriptBehaviorEditPort *port, const ScriptBehaviorValue &value) const {
+        if (!IsValid() || !port || !port->IsValid()) {
+            ScriptStringInterop::RaiseActiveException(
+                "SetInput requires a live Behavior Submission and EditPort.");
+            return false;
+        }
+        return Accept("Set Behavior input", m_Submission->Value->SetInput(port->Value(), value.Value));
+    }
+    int Close() {
+        if (!m_Submission || !m_Submission->IsOpen())
+            return static_cast<int>(Authoring::CloseState::Closed);
+        auto closed = m_Submission->Value->Close();
+        if (!Accept("Close Behavior Submission", closed))
+            return static_cast<int>(Authoring::CloseState::Closing);
+        if (closed.Value() == Authoring::CloseState::Closed)
+            m_Submission->Value.reset();
+        return static_cast<int>(closed.Value());
+    }
+
+private:
+    Authoring::Result<Authoring::SubmissionInfo> Info() const {
+        if (!IsValid())
+            return Authoring::Result<Authoring::SubmissionInfo>::Failure(BML_ERROR_INVALID_HANDLE);
+        return m_Submission->Value->Info();
+    }
+    std::shared_ptr<ScriptBehaviorState> m_State;
+    std::shared_ptr<SubmissionResource> m_Submission;
+};
+
+#pragma push_macro("GetObject")
+#undef GetObject
+void ReadInstallations(asIScriptGeneric *call) try {
+    call->SetReturnByte(false);
+    auto *engine = call->GetEngine();
+    const int typeId = call->GetArgTypeId(0);
+    auto *type = engine->GetTypeInfoById(typeId);
+    auto *element = engine->GetTypeInfoByName("BML::Behavior::Installation");
+    constexpr int handleFlags = asTYPEID_OBJHANDLE | asTYPEID_HANDLETOCONST;
+    if (typeId < 0 || (typeId & handleFlags) || !type || !element ||
+        type->GetSubTypeCount() != 1 || type->GetSubTypeId() != (element->GetTypeId() | asTYPEID_OBJHANDLE) ||
+        type != engine->GetTypeInfoByDecl("array<BML::Behavior::Installation@>")) {
+        ScriptStringInterop::RaiseActiveException(
+            "ReadInstallations expects an output array<BML::Behavior::Installation@>.");
+        return;
+    }
+    auto *submission = static_cast<const ScriptBehaviorSubmission *>(call->GetObject());
+    call->SetReturnByte(submission->ReadInstallations(call->GetArgAddress(0)));
+} catch (const std::bad_alloc &) {
+    ScriptStringInterop::RaiseActiveException("Out of memory reading Behavior installations.");
+} catch (...) {
+    ScriptStringInterop::RaiseActiveException("Could not read Behavior installations.");
+}
+#pragma pop_macro("GetObject")
+
+ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyGraph(
+    const std::string &name, ScriptBehaviorGraph *graph, int ownership) const {
+    return ApplyGraphWithState(name, graph, ownership, true);
+}
+
+ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyGraphWithState(
+    const std::string &name, ScriptBehaviorGraph *graph, int ownership, bool enabled) const {
+    if (!IsValid() || !graph || !graph->Value()) {
+        ScriptStringInterop::RaiseActiveException("Apply requires a live Behavior Edit and Graph.");
+        return nullptr;
+    }
+    auto *session = m_State->GetSession();
+    if (!session)
+        return nullptr;
+    return KeepSubmission(session->Apply(name,
+                                        Authoring::ApplyOptions{static_cast<Authoring::EditOwnership>(ownership), enabled},
+                                        Authoring::On(*graph->Value(), *Value())));
+}
+
+ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyScripts(
+    const std::string &name, const std::string &script, int ownership, bool each) const {
+    return ApplyScriptsWithState(name, script, ownership, each, true);
+}
+
+ScriptBehaviorSubmission *ScriptBehaviorEdit::ApplyScriptsWithState(
+    const std::string &name, const std::string &script, int ownership, bool each, bool enabled) const {
+    if (!IsValid()) {
+        ScriptStringInterop::RaiseActiveException("Apply requires a live Behavior Edit.");
+        return nullptr;
+    }
+    auto *session = m_State->GetSession();
+    if (!session)
+        return nullptr;
+    const auto target = each ? Authoring::Scripts::Each(script) : Authoring::Scripts::One(script);
+    return KeepSubmission(session->Apply(name,
+                                        Authoring::ApplyOptions{static_cast<Authoring::EditOwnership>(ownership), enabled},
+                                        Authoring::On(target, *Value())));
+}
+
+ScriptBehaviorSubmission *ScriptBehaviorEdit::KeepSubmission(
+    Authoring::Result<Authoring::Submission> submitted) const {
+    if (!Accept("Apply Behavior Edit", submitted))
+        return nullptr;
+    auto resource = std::make_shared<SubmissionResource>(submitted.Take());
+    m_State->Keep(resource);
+    return NewScriptObject<ScriptBehaviorSubmission>(
+        "Behavior Submission", m_State, std::move(resource));
+}
 
 class ScriptBehaviorPatch final : public ScriptRef {
 public:

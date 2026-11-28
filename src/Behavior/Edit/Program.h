@@ -383,6 +383,7 @@ public:
     // True once any step anchors on a live ObjectRef, which ties this intent
     // to the world that issued it.
     [[nodiscard]] bool UsesIdentity() const noexcept;
+    [[nodiscard]] bool UsesCallbacks() const noexcept;
 
     // Programs compare by authored graph intent, including nested scopes,
     // fixed Prototype generations, literal values, and callback identity.

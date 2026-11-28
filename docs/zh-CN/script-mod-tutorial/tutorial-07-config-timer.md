@@ -28,7 +28,7 @@ ModLoader/Configs/hello.script.cfg
 
 配置项的完整流程分三步：
 
-1. **声明并设默认值**（`SetDefaultBoolean`）， 告诉 BML "这个配置项是布尔型，默认是 true"
+1. **声明并设默认值**（`DeclareProperty`）， 告诉 BML "这个配置项是布尔型，默认是 true"
 2. **读取当前值**（`GetBoolean`）， BML 返回文件里保存的值，如果文件里没有就返回默认值
 3. **运行时写回**（`SetBoolean`）， 脚本修改了配置，BML 写入文件，下次启动生效
 
@@ -60,7 +60,7 @@ void OnLoad(const BML::ModContext &in ctx) {
 }
 
 private void LoadConfig(const BML::ModContext &in ctx) {
-    BML::Config@ config = ctx.BorrowConfig();
+    BML::Config@ config = ctx.Config();
     if (config is null) {
         ctx.LogWarn("HelloMod config is not available");
         return;
@@ -68,23 +68,22 @@ private void LoadConfig(const BML::ModContext &in ctx) {
 
     config.SetCategoryComment("Hello", "HelloMod settings");
 
-    @messagesEnabledProp = config.GetProperty("Hello", "MessagesEnabled");
-    if (messagesEnabledProp is null) {
-        return;
-    }
-
-    messagesEnabledProp.SetDefaultBoolean(true);
-    messagesEnabledProp.SetComment("Show HelloMod in-game messages.");
+    BML::ConfigPropertyDefinition definition;
+    definition.Category = "Hello";
+    definition.Key = "MessagesEnabled";
+    definition.DefaultValue = BML::ConfigValue(true);
+    definition.Comment = "Show HelloMod in-game messages.";
+    if (config.DeclareProperty(definition, messagesEnabledProp) != BML::ERROR_OK) return;
     messagesEnabled = messagesEnabledProp.GetBoolean(true);
 }
 ```
 
 逐行解读：
 
-- `ctx.BorrowConfig()` ， 借当前 mod 的配置对象。每个 mod 有自己独立的配置空间，不会互相干扰。
+- `ctx.Config()` ， 借当前 mod 的配置对象。每个 mod 有自己独立的配置空间，不会互相干扰。
 - `config.SetCategoryComment("Hello", "HelloMod settings")` ， 在配置文件里创建一个 `[Hello]` 分类，并写上注释。玩家打开 `.cfg` 文件时会看到这个注释，帮助理解这一段是什么。
-- `config.GetProperty("Hello", "MessagesEnabled")` ， 在 `Hello` 分类下取名为 `MessagesEnabled` 的配置项。如果文件里还没有，BML 会新建。
-- `messagesEnabledProp.SetDefaultBoolean(true)` ， 声明默认值。第一次运行时文件里会写入 `MessagesEnabled = true`。
+- `config.DeclareProperty(definition, messagesEnabledProp)` ， 在 `Hello` 分类下取名为 `MessagesEnabled` 的配置项。如果文件里还没有，BML 会新建。
+- `definition.DefaultValue = BML::ConfigValue(true)` ， 声明默认值。第一次运行时文件里会写入 `MessagesEnabled = true`。
 - `messagesEnabledProp.GetBoolean(true)` ， 读取当前值。参数 `true` 是兜底默认值，当配置文件损坏或配置项不存在时返回它。
 
 运行一次后，打开 `ModLoader/Configs/hello.script.cfg`，会看到类似：
@@ -104,8 +103,8 @@ MessagesEnabled = true
 private void ToggleMessages(const BML::ModContext &in ctx) {
     messagesEnabled = !messagesEnabled;
 
-    if (messagesEnabledProp !is null && messagesEnabledProp.IsValid) {
-        messagesEnabledProp.SetBoolean(messagesEnabled);
+    if (messagesEnabledProp !is null && messagesEnabledProp.IsValid()) {
+        messagesEnabledProp.Set(BML::ConfigValue(messagesEnabled));
     }
 
     ctx.LogInfo("HelloMod messages=" + BoolText(messagesEnabled));
@@ -118,7 +117,7 @@ private void ToggleMessages(const BML::ModContext &in ctx) {
 为什么两边都要改？
 
 - 只改 `messagesEnabled` 不调 `SetBoolean`：本次运行里逻辑正确，但重启后丢失修改。
-- 只调 `SetBoolean` 不改 `messagesEnabled`：文件里的值变了，但本次运行里脚本还在用旧值，要到下次启动才生效。
+- 只调 `Set(ConfigValue(...))` 不改 `messagesEnabled`：文件里的值变了，但本次运行里脚本还在用旧值，要到下次启动才生效。
 
 两边同步修改，才能保证"改完立刻生效，下次启动也记住"。
 
@@ -127,47 +126,28 @@ private void ToggleMessages(const BML::ModContext &in ctx) {
 在 `OnHelloCommand` 里增加 `messages` 分支：
 
 ```angelscript
-private void OnHelloCommand(const BML::ModContext &in ctx,
-                            const BML::CommandEvent &in event) {
+private int OnHelloCommand(const BML::ModContext &in ctx,
+                           const BML::CommandInvocation &in call) {
     string action = "status";
-    if (event.ArgCount > 0) {
-        action = event.GetArg(0);
-    }
-
-    if (event.ArgsText == "") {
-        lastCommand = event.CommandName;
-    } else {
-        lastCommand = event.CommandName + " " + event.ArgsText;
-    }
-
-    if (action == "messages") {
-        ToggleMessages(ctx);
-        return;
-    }
-
-    if (action == "toggle") {
-        showWindow = !showWindow;
-        if (messagesEnabled) {
-            BML::UI::AddMessage("HelloMod window toggled by command.");
-        }
-        return;
-    }
-
-    if (messagesEnabled) {
-        BML::UI::AddMessage("Command: " + lastCommand);
-    }
+    if (call.ArgumentCount > 0) call.ReadArgument(0, action);
+    lastCommand = call.InvokedAs + " " + action;
+    if (action == "messages") ToggleMessages(ctx);
+    else if (action == "toggle") showWindow = !showWindow;
+    if (messagesEnabled) BML::UI::AddMessage("Command: " + lastCommand);
+    return 0;
 }
 ```
 
 补全也加上 `messages`：
 
 ```angelscript
-private void CompleteHelloCommand(const BML::ModContext &in ctx,
-                                  const BML::CommandEvent &in event,
-                                  BML::CommandCompletion &inout completions) {
-    completions.Add("status");
-    completions.Add("toggle");
-    completions.Add("messages");
+private int CompleteHelloCommand(const BML::ModContext &in ctx,
+                                 const BML::CommandCompletionRequest &in request,
+                                 const BML::CommandCompletion &in completions) {
+    int code = completions.Add("status");
+    if (code != BML::ERROR_OK) return code;
+    code = completions.Add("toggle");
+    return code == BML::ERROR_OK ? completions.Add("messages") : code;
 }
 ```
 
@@ -227,11 +207,13 @@ private string lastTimer = "not started";
 private void StartTimers(const BML::ModContext &in ctx) {
     // 一次性：1 秒后执行一次
     BML::TimerCallback@ commandCallback = BML::TimerCallback(this.OnCommandTimer);
-    @commandTimer = ctx.SetTimeout(1000.0f, commandCallback, "hello-command");
+    int onceCode = ctx.Timers().SetTimeout(1000.0, commandCallback, commandTimer, "hello-command");
+    if (onceCode != BML::ERROR_OK) return;
 
     // 循环：每 2 秒执行一次
     BML::TimerLoopCallback@ statusCallback = BML::TimerLoopCallback(this.OnStatusTimer);
-    @statusTimer = ctx.SetInterval(2000.0f, statusCallback, "hello-status");
+    int loopCode = ctx.Timers().SetInterval(2000.0, statusCallback, statusTimer, "hello-status");
+    if (loopCode != BML::ERROR_OK) return;
 
     ctx.LogInfo("HelloMod timers started");
 }
@@ -241,20 +223,23 @@ private void StartTimers(const BML::ModContext &in ctx) {
 
 - 第一个参数：时间，单位毫秒。`1000.0f` = 1 秒，`2000.0f` = 2 秒。
 - 第二个参数：回调函数的委托。注意一次性用 `BML::TimerCallback`，循环用 `BML::TimerLoopCallback`，两者签名不同，不能混用。
-- 第三个参数：名字字符串，出现在 `TimerEvent.Name` 里，用于调试日志区分哪个 Timer 触发了。
+- 第三个参数：out TimerRef；第四个参数是名字，出现在 TimerEvent.Read(info) 的 info.Name 中，用于调试日志区分哪个 Timer 触发了。
 
 ### 一次性 Timer 回调
 
 ```angelscript
 private void OnCommandTimer(const BML::ModContext &in ctx,
                             const BML::TimerEvent &in event) {
-    lastTimer = "timeout: " + event.Name;
+    BML::TimerInfo info;
+    if (event.Read(info) != BML::ERROR_OK) return;
+    lastTimer = "timeout: " + info.Name;
     ctx.LogInfo("HelloMod timer " + lastTimer);
-    ctx.ExecuteCommand("hello status");
+    int status = 0;
+    int code = ctx.Commands().ExecuteLine("hello status", status);
 }
 ```
 
-签名要求：返回 `void`，接受 `ModContext` 和 `TimerEvent`。`event.Name` 就是注册时传入的 `"hello-command"`。
+签名要求：返回 `void`，接受 `ModContext` 和 `TimerEvent`。`event.Read(info)` 成功后的 `info.Name` 就是注册时传入的 `"hello-command"`。
 
 执行完后 Timer 自动销毁，不需要手动清理。
 
@@ -263,8 +248,10 @@ private void OnCommandTimer(const BML::ModContext &in ctx,
 ```angelscript
 private bool OnStatusTimer(const BML::ModContext &in ctx,
                            const BML::TimerEvent &in event) {
+    BML::TimerInfo info;
+    if (event.Read(info) != BML::ERROR_OK) return false;
     timerTicks++;
-    lastTimer = "tick " + timerTicks + " from " + event.Name;
+    lastTimer = "tick " + timerTicks + " from " + info.Name;
     ctx.LogInfo("HelloMod timer " + lastTimer);
 
     return timerTicks < 3;
@@ -285,12 +272,12 @@ private bool OnStatusTimer(const BML::ModContext &in ctx,
 有时候需要在回调触发前取消 Timer。比如玩家离开了某个菜单，不需要定时刷新了：
 
 ```angelscript
-if (statusTimer !is null && statusTimer.IsValid) {
+if (statusTimer !is null && statusTimer.IsValid()) {
     statusTimer.Cancel();
 }
 ```
 
-`IsValid` 检查 Timer 是否还活着（已触发完的一次性 Timer，或已返回 `false` 的循环 Timer，`IsValid` 会变成 `false`）。对一个已经结束的 Timer 调用 `Cancel()` 无害，但养成先判断的习惯更安全。
+`IsValid()` 检查 Timer 是否还活着（已触发完的一次性 Timer，或已返回 `false` 的循环 Timer，`IsValid()` 会变成 `false`）。对一个已经结束的 Timer 调用 `Cancel()` 无害，但养成先判断的习惯更安全。
 
 ### 窗口里显示 Timer 状态
 
@@ -354,7 +341,7 @@ ImGui::End();
 | 没有生成 `.cfg` 文件 | 确认 `LoadConfig(ctx)` 在 `OnLoad` 里被调用了 |
 | 命令改了但重启后丢失 | 确认 `SetBoolean` 被调用，检查是否漏写了那一行 |
 | `config is null` | mod 文件名或 id 格式有误，BML 无法创建配置空间 |
-| 配置值读出来总是默认值 | 确认 `SetDefaultBoolean` 在 `GetBoolean` 之前调用 |
+| 配置值读出来总是默认值 | 确认 `DeclareProperty` 在 `GetBoolean` 之前调用 |
 
 ### Timer 问题
 
@@ -381,3 +368,5 @@ ImGui::End();
 这些都是 BML 提供的服务。下一章将离开 BML 自身的 API，进入游戏世界，通过 CK 绑定查找 Ballance 的游戏对象。
 
 下一步：[08 查找对象](tutorial-08-find-objects.md)
+
+首次具体类型声明和异型 SetDefault 可能替换已加载值。要保护旧类型，先 NONE 声明后 Read 检查再迁移。详见[配置参考](ref-commands-config-timer.md)。

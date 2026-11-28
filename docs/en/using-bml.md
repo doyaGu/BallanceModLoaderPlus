@@ -1,82 +1,76 @@
-# Use BML+
+# Install and use BML+
 
-This guide is for players installing the BML+ runtime and mods. It does not
-require a compiler or the BML+ SDK.
+## Match the runtime first
 
-## Requirements
+This guide is for the **Ballanced SDL** branch and a dynamic Player. A matching
+package has `runtime: "sdl"` in its ABI descriptor. Match platform, architecture
+and dynamic host linkage; direct engine/ImGui Mods also match the dependencies'
+compiler/runtime/configuration ABI. An old original-Player archive is not an SDL
+package. Static Player integration is not implemented in this branch.
 
-- BallancePlayer on Windows. The original Ballance player is not supported.
-- The x86 Microsoft Visual C++ 2015–2022 Redistributable.
-- A BML+ release compatible with the mods you intend to use.
+Use a complete matching runtime package. If none is available, follow
+[Contributing](contributing.md) to build one against the exact Ballanced baseline.
+See [Support and validation](validation.md) for tested and untested targets.
 
-Close Player before replacing `BMLPlus.dll`, `AngelScript.dll`, or a native
-mod. Windows cannot safely replace a DLL while the game is using it.
+## Install into the game root
 
-## Install BML+
+Close Player and keep a backup. The root contains `base.cmo`, game resources and
+either `Bin/Player` or a flat `Player` executable (`Player.exe` on Windows).
+Extract the runtime at that root, preserving its directories:
 
-1. Download `BMLPlus-<version>.zip` from
-   [BML+ Releases](https://github.com/doyaGu/BallanceModLoaderPlus/releases).
-2. Extract the complete archive into the Ballance installation directory. Do
-   not create an extra `BMLPlus-<version>` directory around its contents.
-3. Check the resulting layout:
-
-   ```text
-   <Ballance>/
-     Bin/Player.exe
-     BuildingBlocks/BMLPlus.dll
-     BuildingBlocks/AngelScript.dll   # present in script-capable releases
-     ModLoader/
-   ```
-
-4. Start `Bin/Player.exe`.
-5. Confirm that the BML+ version appears at the top of the game window. Open
-   `ModLoader/ModLoader.log` and check that initialization completed without a
-   loader error.
-
-Press `/` to open the BML+ command bar. Run `bml` to print the loader version
-and loaded mods.
-
-## Install mods
-
-Put supported packages in `ModLoader/Mods`:
-
-- A native mod is normally a `.bmodp` DLL or a supported zip package containing
-  the native mod and its files.
-- A script mod is a single `*.mod.as` file, a directory containing exactly one
-  `*.mod.as` entry, or a supported zip package containing exactly one entry.
-- Script mods require the `AngelScript.dll` shipped with the matching BML+
-  release.
-
-Read the mod's own README for dependencies and required files. Do not keep a
-development directory and a zip package with the same mod id in `Mods` at the
-same time. Restart Player after adding a new mod or changing its dependencies.
-
-Use `ModLoader/ModLoader.log` and the `bml` command to confirm that the mod was
-found and loaded. Script authors can also use `script status` and
-`script diag <id>`.
-
-## Files created by BML+
-
-| Path | Purpose |
+| Location | Purpose |
 | --- | --- |
-| `ModLoader/Mods` | Installed native and script mods |
-| `ModLoader/Configs` | BML+ and per-mod configuration |
-| `ModLoader/ModLoader.log` | Loader, dependency, and mod diagnostics |
-| `ModLoader/Fonts` | Bundled and optional fonts used by the BML+ interface |
-| `ModLoader/Themes` | ANSI palettes used by console output |
+| `Managers/BMLPlus.dll` | Windows Loader |
+| `Managers/libBMLPlus.so` / `Managers/libBMLPlus.dylib` | Linux / macOS Loader |
+| `BuildingBlocks/AngelScript.dll`, `libAngelScript.so` or `libAngelScript.dylib` | Matching CKAngelScript plugin, when enabled |
+| `ModLoader/BML.abi.json` | Installed runtime target and extension ABI identity |
+| `ModLoader/Fonts` and `ModLoader/Licenses` | Runtime fonts and dependency notices |
+| `ModLoader/Mods` | Your installed Mods |
+| `ModLoader/Configs` | User configuration, created and preserved by the Loader |
 
-Configuration files are generated on first startup, not distributed in the
-release ZIP. When updating, keep your existing `ModLoader/Configs` directory:
-saved values are preserved, new settings use the code defaults, and removed
-settings disappear on the next save. New defaults do not replace saved values.
-If a configuration cannot be read or parsed, BML+ logs the failure and does not
-overwrite it. Repair the file and restart Player; removing it after making a
-backup resets that Mod's settings to their current defaults.
+Install the files from the package rather than renaming a library to imitate
+another platform. The Loader belongs in **Managers**, not BuildingBlocks. Remove
+an obsolete duplicate Loader from BuildingBlocks. Keep Player's CK2, VxMath and
+SDL; never copy another SDL or SDK engine libraries into the game.
 
-New installations use BML Mono for Latin text and BML Sans SC for Chinese,
-at logical sizes 32 and 30 respectively. Existing font choices are preserved.
-Change them in GUI settings or with the `font` command; `unifont.otf` remains
-available. These fonts affect BML+ text, not the game's own menu font sprites.
+An SDK goes in your development workspace. Its descriptor is
+`share/BML/BML.abi.json`; it is not a second runtime to extract over the game.
+On POSIX keep executable permissions on Player and the supplied tools. macOS
+SDK/runtime CMake performs the specified load-command and ad hoc signature
+fixups; distribution signing and system security approval are separate checks.
+
+Start Player and inspect `ModLoader/ModLoader.log`. Verify BML initialization,
+the intended version/target and the loaded Mod list. A native-only build reports
+script support unavailable; adding a script file cannot enable it.
+
+## Install Mods
+
+- Native: put `Name.bmodp` and **its** `Name.bmodp.abi.json` together in
+  `ModLoader/Mods`, or install a ZIP containing the pair and resources. The same
+  extension names native modules on all three OS families.
+- Script: install one `Name.mod.as`, an entry directory or a ZIP. A directory or ZIP
+  must contain exactly one `*.mod.as` entry; helper files use plain `.as`.
+  Script support and the matching CKAngelScript plugin must be present.
+- Preserve relative resource directories and exact filename case. Do not install
+  editor completion files, compiler caches, a whole SDK or duplicate copies of
+  the same Mod ID.
+
+Old SDL `BMLEntry`/`IMod` binaries require [migration](native-mod-migration.md)
+and rebuilding. Do not bypass a missing/mismatched sidecar by copying another
+Mod's JSON. The Loader checks target/protocol and opted-in extension identities;
+the SDK content hash is diagnostic, not a license to mix engine ABIs.
+
+## Settings, fonts and input
+
+Use the Mod Menu for declared configuration. Preserve `ModLoader/Configs` during
+updates. Text and paths are UTF-8. The built-in ImGui atlas, game menu fonts and
+engine-backed GUI text have separate responsibilities; fonts in `ModLoader/Fonts`
+do not replace every game text path.
+
+The SDL platform backend handles text composition and events. The Windows IME
+implementation retains IMM/TSF support; other platforms may use native candidate
+windows. Focus/composition/fullscreen/controller behavior still needs each
+platform's real acceptance. Use `bml system` and the log for diagnostics.
 
 ## Command line
 
@@ -85,7 +79,8 @@ Press `/` to open the command bar. It accepts shell-style syntax:
 - Words are separated by unquoted spaces. `'...'` is literal, `"..."` keeps
   spaces and allows `$NAME` inside, and `$'...'` resolves escapes such as `\n`
   and `\e`. A backslash escapes only shell characters, so
-  `map load C:\Maps\x.nmo` needs no quoting.
+  `echo C:\Maps\x.nmo` preserves the backslashes. Prefer `/` for portable
+  resource paths and quote paths containing spaces.
 - `a; b` runs both, `a && b` runs `b` only when `a` succeeded, `a || b` only
   when it failed, and `a | b` feeds what `a` printed into `b`. `$?` holds the
   status of the last command. `# ...` is a comment.
@@ -134,77 +129,34 @@ be customised independently in the `CommandBarTheme` category with a
 Dark default. Valid colour values use a palette button in the Mod Menu, and
 theme changes take effect immediately.
 
-## Update BML+
+## Updates and recovery
 
-Manual update is the normal recovery-safe path:
+Use [Updater and doctor](updater-sdl.md). Close Player before update or rollback.
+Channels are target-specific, signed, and preserve user Mods/configuration.
+Doctor is a diagnostic tool, not a substitute for launching the game.
 
-1. Close Player.
-2. Download the new `BMLPlus-<version>.zip`.
-3. Extract it into the Ballance installation directory and allow matching
-   runtime files to be replaced.
-4. Start Player and repeat the version and log checks from the installation
-   section.
+A manual update also uses the matching complete runtime package. Preserve user
+configuration, keep Player's engine/SDL and do not overlay an unrelated SDK.
 
-Do not extract `BMLPlus-Update-<version>.zip` manually. That archive is an
-Updater payload and intentionally omits files that are not updated in place.
+## Uninstall
 
-The optional updater changes BML+ runtime files only. It does not install,
-remove, or update mods and configuration:
-
-```powershell
-Bin\Updater.exe check
-Bin\Updater.exe update
-Bin\Updater.exe doctor
-```
-
-When Player starts but the problem depends on the current renderer, fonts,
-input method, or installed mods, run `bml system` in the command bar and attach
-its output with `ModLoader/ModLoader.log`.
-
-If updater verification fails or the updater itself is old, install the latest
-full manual package once, then try the updater again.
-
-## Uninstall BML+
-
-1. Close Player.
-2. Remove `BuildingBlocks/BMLPlus.dll`.
-3. Remove `BuildingBlocks/AngelScript.dll` only if it was installed with BML+
-   and no other CKAngelScript integration needs it.
-
-Keep `ModLoader` if you want to preserve mods, configuration, maps, and logs.
-Delete that directory only when you intend to remove those files as well.
+Close Player. Remove the Loader from Managers and its owned runtime files.
+Keep `ModLoader` if you want to retain Mods and settings. Remove the script
+plugin only if it is not needed by other game content. Do not remove Player's
+CK2, VxMath or SDL.
 
 ## Troubleshooting
 
-### No BML+ version appears
+| Symptom | Check |
+| --- | --- |
+| No BML startup log | Correct game root and Managers library; wrong OS/architecture; duplicate old Loader |
+| Module rejected | Matching `.bmodp.abi.json`, `bml.mod` protocol, required provider/version and extensions |
+| Missing library / wrong image | Run doctor; inspect the matching runtime, executable permissions and host dependencies |
+| Script unavailable | Runtime descriptor `scripts`, matching BuildingBlocks plugin, `script status` / `script diag <id>` |
+| Resource or include not found | Exact case, relative path, packaged resource and ZIP entry layout |
+| Two SDL instances or broken input | Restore matching Player/SDK deployment; do not bundle a second SDL with the Mod |
+| Interrupted update | Keep the transaction state and use doctor/rollback as described in the updater guide |
 
-- Confirm that `BMLPlus.dll` is directly under `BuildingBlocks`.
-- Confirm that you launched `Bin/Player.exe` from BallancePlayer.
-- Install the x86 Visual C++ 2015–2022 Redistributable.
-- Remove mixed files from older loader installations, then reinstall from one
-  complete BML+ package.
-
-### A native mod does not load
-
-- Confirm that the file uses the `.bmodp` extension or the package format
-  documented by its author.
-- Search `ModLoader/ModLoader.log` for the mod id, a missing dependency, an
-  incompatible BML+ version, or a DLL load error.
-- Test with only that mod and its required dependencies installed.
-
-### A script mod does not load
-
-- Confirm that the matching `BuildingBlocks/AngelScript.dll` exists.
-- Confirm that the package has exactly one `*.mod.as` entry.
-- Run `script status`, then `script diag <id>` and `script logs error`.
-- Remove duplicate directory, single-file, or zip copies of the same mod id.
-
-### The game becomes slow or unstable after installing a mod
-
-- Test with that mod disabled before changing BML+ settings.
-- Re-enable mods one at a time to find a conflict.
-- Attach `ModLoader/ModLoader.log`, the BML+ version, the mod versions, and the
-  steps needed to reproduce the problem when filing an issue.
-
-Report reproducible BML+ problems in the
-[issue tracker](https://github.com/doyaGu/BallanceModLoaderPlus/issues).
+Report the target descriptor, BML/Player versions, log, reproduction steps and
+which package was installed. State what ran on real hardware; a successful
+cross-build alone is not gameplay acceptance.

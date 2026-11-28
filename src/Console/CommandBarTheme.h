@@ -5,8 +5,8 @@
 
 #include "UI/ColorCodec.h"
 
-class IConfig;
-class IProperty;
+class Config;
+class Property;
 
 namespace CommandBarTheme {
 
@@ -47,12 +47,12 @@ class Settings {
 public:
     static constexpr std::size_t RoleCount = 8;
 
-    void Define(IConfig &config);
-    bool Owns(const char *category, const char *key, const IProperty *property) const;
+    void Define(Config &config);
+    bool Owns(const char *category, const char *key, const Property *property) const;
     SyntaxPalette ReadPalette() const;
 
 private:
-    std::array<IProperty *, RoleCount> m_Properties{};
+    std::array<Property *, RoleCount> m_Properties{};
 };
 
 } // namespace CommandBarTheme

@@ -1,23 +1,31 @@
-# Tests
+# SDL tests
 
-`tests/CMakeLists.txt` only sets up the shared GoogleTest target helper and
-connects the suites. Keep a test's source, fixtures, and target declaration in
-the suite that owns it:
+| Area | Scope |
+| --- | --- |
+| `tests/sdk` | Standalone SDK/CLI/ABI contracts and, in a full build, installed SDK consumers |
+| `tests/ck2/sdl` | Real CK2, input and renderer component fixtures with SDL dummy video |
+| `tests/platform` | SDL filesystem, module identity, ABI and script watching |
+| `tests/updater/sdl` | doctor, signatures, HTTPS, transactions, rollback and recovery |
+| `tests/player/sdl` | Installed-SDK Mod in disposable real Player runtimes |
+| `tests/ui` | Default scenario/Session contracts; optional headless ImGui checks |
 
-- `unit/<domain>/`: in-process C++ tests of one implementation domain.
-- `abi/`: C and C++ compile checks, public-header checks, and DLL
-  export baselines.
-- `codegen/`: generated-interface fixtures and code generator checks.
-- `sdk/`: CMake, installed-package, and Native Mod consumer checks.
-- `player/`: probe Mods and scripts for real Player acceptance runs; see
-  [Player tests](player/README.md).
-- `ui/`: headless ImGui checks and visible Player UI automation; see
-  [UI automation](ui/README.md).
-- `smoke/`: installed-game and script smoke assets.
-- `updater/`: updater tests.
+The SDK contracts can run without engine development packages:
 
-Keep existing CTest names when moving tests. The Player acceptance scripts also
-rely on selected artifact directories under `build-dev/tests/`; preserve those
-paths explicitly when changing a suite's CMake directory. The `player/` probe
-flow and `ui/` checkpoint Session have different interfaces and remain
-separate.
+```sh
+cmake -S tests/sdk -B build/sdk-tests
+ctest --test-dir build/sdk-tests --output-on-failure
+```
+
+For the full Loader suite, configure with `-DBML_BUILD_TESTS=ON`, build, then run
+`ctest --test-dir <build> -C Release --output-on-failure`. Use separate build
+directories for `BML_ENABLE_ANGELSCRIPT=ON` and `OFF`. Scenario/Session checks
+are included by default and can also run standalone with
+`cmake -S tests/ui -B build/ui-framework`. Headless Bui automation additionally requires
+`-DBML_BUILD_UI_AUTOMATION=ON`; these checks are not real-game UI acceptance.
+
+See [Player tests](player/README.md), [component tests](ck2/README.md),
+[UI infrastructure](ui/README.md), and the [dated validation record](../docs/en/validation.md).
+Native Player tests need a desktop and matching assets. Respect serial test
+properties; do not start several Player or updater fixtures concurrently.
+Unexecuted platforms remain unverified. Original Windows backend regressions
+belong to its separate release branch.

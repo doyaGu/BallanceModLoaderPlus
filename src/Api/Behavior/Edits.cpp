@@ -68,7 +68,7 @@ int InvokeHook(const CKBehaviorContext *native, void *argument) {
 
     int result;
     {
-        auto invocation = context->LockModInvocation();
+        auto invocation = context->GetModLoader().LockModInvocation();
         result = thunk->Function.Invoke(thunk->Function.State, &wire);
     }
     switch (result) {

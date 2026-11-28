@@ -4,15 +4,16 @@
 #include <string>
 #include <vector>
 
-#include "BML/Bui.h"
+#include "UI/BuiHost.h"
 
-namespace Bui {
+namespace BuiHost {
+    bool DrawButton(ButtonType type, const char *label, bool *selected, ImGuiButtonFlags flags);
     struct ColorPickerArea {
         ImVec2 minimum{};
         ImVec2 maximum{};
     };
 
-    void BlockKeyboardInput(const void *owner);
+    bool BlockKeyboardInput(const void *owner);
     void LockNavigationKeyUntilRelease(ImGuiKey key);
     void UnblockKeyboardAfterRelease(const void *owner);
     void TransitionToScriptAndUnblock(const char *scriptName, const void *owner);

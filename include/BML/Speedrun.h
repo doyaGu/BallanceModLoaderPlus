@@ -27,7 +27,7 @@ BML_BEGIN_CDECLS
 #define BML_SPEEDRUN_INTERFACE_MAJOR 1
 #define BML_SPEEDRUN_INTERFACE_MINOR 0
 
-// ElapsedTime is in milliseconds, and matches IBML::GetSRScore.
+// ElapsedTime is in milliseconds.
 // This is a C struct and has no default member
 // initializer: zero it with BML_SpeedrunTimerState state = {0} in C, or with
 // TimerState state{} in C++.
@@ -49,7 +49,7 @@ typedef struct BML_SpeedrunInterface {
     int (BML_CDECL *SetTimerVisible)(int visible);
 
     // Resumes counting from the current elapsed time rather than from zero. Call
-    // ResetTimer first for a fresh run.
+    // ResetTimer first for a fresh run. Counting resumes on the next CK tick.
     int (BML_CDECL *StartTimer)(void);
 
     // Stops counting and keeps the elapsed time.

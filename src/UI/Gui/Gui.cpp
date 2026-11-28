@@ -1,16 +1,16 @@
-#include "BML/Gui/Gui.h"
+#include "UI/Gui/Gui.h"
 
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "BML/InputHook.h"
+#include "Hooks/InputHook.h"
 #include "BML/Guids/Interface.h"
 
 #include "Loader/ModContext.h"
 #include "UI/Gui/LegacyTextFont.h"
 
-using namespace BGui;
+using namespace BGuiHost;
 
 extern CKMaterial *g_Up;
 extern CKMaterial *g_Over;
@@ -198,7 +198,7 @@ Panel *Gui::AddPanel(const char *name, VxColor color, float xPos, float yPos, fl
     return panel;
 }
 
-Label *Gui::AddTextLabel(const char *name, const char *text, ExecuteBB::FontType font, float xPos, float yPos,
+Label *Gui::AddTextLabel(const char *name, const char *text, BML::GameFont font, float xPos, float yPos,
                          float xSize, float ySize) {
     auto *label = new Label(name);
     label->SetText(text);
@@ -219,7 +219,7 @@ Text *Gui::AddText(const char *name, const char *text, float xPos, float yPos, f
     return txt;
 }
 
-Input *Gui::AddTextInput(const char *name, ExecuteBB::FontType font, float xPos, float yPos,
+Input *Gui::AddTextInput(const char *name, BML::GameFont font, float xPos, float yPos,
                          float xSize, float ySize, std::function<void(CKDWORD)> callback) {
     auto *input = new Input(name);
     input->SetFont(font);
@@ -237,13 +237,13 @@ std::pair<Button *, KeyInput *> Gui::AddKeyButton(const char *name, const char *
                                                   std::function<void(CKDWORD)> callback) {
     Button *bg = AddKeyBgButton(name, yPos, xPos);
     bg->SetText(text);
-    bg->SetAlignment(ALIGN_LEFT);
+    bg->SetAlignment(BML_GUI_ALIGN_LEFT);
     bg->SetZOrder(15);
     bg->SetOffset(Vx2DVector((float)BML_GetRenderContext()->GetWidth() * 0.03f, 0.0f));
     bg->SetCallback([]() {});
 
     auto *button = new KeyInput(name);
-    button->SetFont(ExecuteBB::GAMEFONT_03);
+    button->SetFont(BML::GameFont::Small);
     button->SetPosition(Vx2DVector(xPos + 0.155f, yPos));
     button->SetSize(Vx2DVector(0.1450f, 0.0396f));
     button->SetCallback(std::move(callback));

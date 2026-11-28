@@ -17,7 +17,6 @@ target_include_directories(BuiAutomationTest PRIVATE
         ${BML_SOURCE_DIR}
         ${BML_SOURCE_DIR}/Utils
         ${IMGUI_SOURCE_DIR}
-        ${VIRTOOLS_SDK_INCLUDE_DIR}
         ${imgui_test_engine_SOURCE_DIR}
         ${IMGUI_TEST_ENGINE_DIR}
 )
@@ -32,6 +31,7 @@ target_compile_options(BuiAutomationTest PRIVATE
         $<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->
 )
 target_compile_features(BuiAutomationTest PRIVATE cxx_std_20)
+target_link_libraries(BuiAutomationTest PRIVATE CK2 VxMath)
 set_target_properties(BuiAutomationTest PROPERTIES FOLDER "Tests/UI")
 
 add_test(NAME BuiAutomationTest COMMAND $<TARGET_FILE:BuiAutomationTest>)

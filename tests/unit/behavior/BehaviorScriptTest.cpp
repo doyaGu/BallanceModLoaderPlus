@@ -55,8 +55,10 @@ public:
 
     Status Read(const ScriptIdentity &script, bool &active) override {
         Events.emplace_back("read");
-        if (OnRead)
-            OnRead();
+        // A reentrant callback may unregister itself while it is running.
+        const auto onRead = OnRead;
+        if (onRead)
+            onRead();
         if (!ReadResult)
             return ReadResult;
         active = ActiveRoot == script.Root.Id;

@@ -9,7 +9,7 @@
 #include <variant>
 #include <vector>
 
-#include "BML/IConfig.h"
+#include "Config/Config.h"
 
 #include "Config/ConfigValue.h"
 #include "ModMenu/ModMenuPages.h"
@@ -36,7 +36,7 @@ struct ModMenuSettingDocument {
     ModMenuSettingKey key;
     std::string label;
     std::string description;
-    IProperty::PropertyType type = IProperty::NONE;
+    PropertyType type = PropertyType::NONE;
     ModMenuSettingValue value = 0;
     BML_ConfigPropertyEditor editor = BML_CONFIG_EDITOR_DEFAULT;
     std::vector<std::string> choices;
@@ -76,7 +76,7 @@ struct ModMenuDocument {
 
 struct ModMenuEdit {
     ModMenuSettingKey key;
-    IProperty::PropertyType type = IProperty::NONE;
+    PropertyType type = PropertyType::NONE;
     ModMenuSettingValue baseline = 0;
     ModMenuSettingValue value = 0;
 };
@@ -175,7 +175,7 @@ public:
 
 private:
     struct Draft {
-        IProperty::PropertyType type = IProperty::NONE;
+        PropertyType type = PropertyType::NONE;
         ModMenuSettingValue baseline = 0;
         ModMenuSettingValue value = 0;
         std::uint64_t schemaRevision = 0;

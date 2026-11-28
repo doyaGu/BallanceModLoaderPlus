@@ -56,7 +56,8 @@ namespace BML::Shell {
                 return true;
             if (candidate.size() < prefix.size())
                 return false;
-            return utf8ncasecmp(candidate.c_str(), prefix.c_str(), prefix.size()) == 0;
+            return utf8ncasecmp(reinterpret_cast<const utf8_int8_t *>(candidate.c_str()),
+                                reinterpret_cast<const utf8_int8_t *>(prefix.c_str()), prefix.size()) == 0;
         }
 
         void AddFiltered(std::vector<std::string> &out, const std::vector<std::string> &names,

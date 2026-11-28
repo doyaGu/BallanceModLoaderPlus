@@ -57,7 +57,7 @@ panel toggle   -> 切换显示/隐藏（默认行为）
 保存为 `ModLoader/Mods/PanelMod.mod.as`：
 
 ```angelscript
-[bml.mod id="panel.script" name="Status Panel" version="1.0.0" author="Tutorial" bml="0.3.14" description="Runtime status panel with command toggle"]
+[bml.mod id="panel.script" name="Status Panel" version="1.0.0" author="Tutorial" bml="0.4.0" description="Runtime status panel with command toggle"]
 class PanelMod {
     private CKDataArray@ currentLevel = null;
     private bool showPanel = true;
@@ -71,7 +71,12 @@ class PanelMod {
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
         if (event == BML::GAME_EVENT_START_LEVEL) {
-            @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+            BML::ObjectRef currentLevelRef;
+            CKObject@ currentLevelObject;
+            @currentLevel = null;
+            if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+                BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+                @currentLevel = cast<CKDataArray>(currentLevelObject);
         } else if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL) {
             @currentLevel = null;
         }
@@ -131,20 +136,21 @@ class PanelMod {
         def.Category = "Tutorial";
         def.Enabled = true;
 
-        BML::CommandCallback@ execute = BML::CommandCallback(this.OnPanelCommand);
-        BML::CommandCompletionCallback@ complete = BML::CommandCompletionCallback(this.CompletePanelCommand);
+        BML::CommandExecute@ execute = BML::CommandExecute(this.OnPanelCommand);
+        BML::CommandComplete@ complete = BML::CommandComplete(this.CompletePanelCommand);
 
-        BML::CommandRef@ commandRef = ctx.RegisterCommand(def, execute, complete);
-        if (commandRef is null || !commandRef.IsValid) {
+        BML::CommandRef@ commandRef;
+        int code = ctx.Commands().Register(def, execute, commandRef, complete);
+        if (code != BML::ERROR_OK) {
             ctx.LogInfo("panel command registration failed");
         }
     }
 
-    private void OnPanelCommand(const BML::ModContext &in ctx,
-                                const BML::CommandEvent &in event) {
+    private int OnPanelCommand(const BML::ModContext &in ctx,
+                                const BML::CommandInvocation &in event) {
         string action = "toggle";
-        if (event.ArgCount > 0) {
-            action = event.GetArg(0);
+        if (event.ArgumentCount > 0) {
+            event.ReadArgument(0, action);
         }
 
         if (action == "show") {
@@ -158,15 +164,17 @@ class PanelMod {
             BML::UI::AddMessage(showPanel ? "Panel shown." : "Panel hidden.");
         } else {
             BML::UI::AddMessage("Usage: panel [show|hide|toggle]");
+            return 1;
         }
+        return 0;
     }
 
-    private void CompletePanelCommand(const BML::ModContext &in ctx,
-                                      const BML::CommandEvent &in event,
-                                      BML::CommandCompletion &inout completions) {
+    private int CompletePanelCommand(const BML::ModContext &in ctx,
+                                      const BML::CommandCompletionRequest &in event,
+                                      const BML::CommandCompletion &in completions) {
         completions.Add("show");
         completions.Add("hide");
-        completions.Add("toggle");
+        return completions.Add("toggle");
     }
 
 }
@@ -238,7 +246,12 @@ private void UpdateFps() {
 
 ```angelscript
 if (event == BML::GAME_EVENT_START_LEVEL) {
-    @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+    BML::ObjectRef currentLevelRef;
+    CKObject@ currentLevelObject;
+    @currentLevel = null;
+    if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+        BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+        @currentLevel = cast<CKDataArray>(currentLevelObject);
 } else if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL) {
     @currentLevel = null;
 }
@@ -309,7 +322,7 @@ if (event == BML::GAME_EVENT_START_LEVEL) {
 
 这个面板是你的开发工具。后续章节可以继续往里面加东西：
 
-- **球坐标**：结合第 9 章，用 `ctx.Borrow3dEntityByName` 获取球，`BML::CK::GetPosition` 取坐标，在面板里多显示一行 XYZ
+- **球坐标**：结合第 9 章，用 `BML::Scene::FindObject` 和 `BML::Engine::BorrowObject` 获取球，`BML::CK::GetPosition` 取坐标，在面板里多显示一行 XYZ
 - **关卡计时**：在 `GAME_EVENT_START_LEVEL` 重置一个 `elapsed` 变量，`OnProcess` 里累加 `DeltaTime`，显示经过的秒数
 - **Sector 信息**：根据球的位置判断当前在哪个小节
 - **调试入口**：每次开发新 mod 时，先在面板里加一行显示相关数据，确认值正确后再写正式逻辑

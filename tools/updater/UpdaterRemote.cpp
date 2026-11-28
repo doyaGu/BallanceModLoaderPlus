@@ -4,6 +4,7 @@
 
 #include "JsonUtils.h"
 #include "UpdaterPaths.h"
+#include "UpdaterTarget.h"
 
 namespace bmlupdater {
     namespace {
@@ -82,7 +83,12 @@ namespace bmlupdater {
         if (!channelDoc.IsValid() || !yyjson_is_obj(channelDoc.Root())) {
             return Result::Failure("Unable to parse channel JSON: " + error);
         }
+        if (utils::JsonGetInt(channelDoc.Root(), "schemaVersion", 0) != 2)
+            return Result::Failure("SDL channels require schemaVersion 2");
+        auto targetResult = ReadUpdateTarget(yyjson_obj_get(channelDoc.Root(), "target"), info.target);
+        if (!targetResult.ok) return targetResult;
         const std::string latestVersion = utils::JsonGetString(channelDoc.Root(), "version", "");
+        if (!IsValidUpdateVersion(latestVersion)) return Result::Failure("Invalid channel version");
         const std::string packageUrl = utils::JsonGetString(channelDoc.Root(), "packageUrl", "");
         const std::string manifestUrl = utils::JsonGetString(channelDoc.Root(), "manifestUrl", "");
         if (latestVersion.empty() || packageUrl.empty() || manifestUrl.empty()) {

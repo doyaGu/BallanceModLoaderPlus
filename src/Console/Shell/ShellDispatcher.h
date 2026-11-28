@@ -13,7 +13,7 @@ namespace BML::Shell {
     class OutputSink {
     public:
         virtual ~OutputSink() = default;
-        // One call is one message, the unit IBML::SendIngameMessage works in.
+        // One call is one message, the unit ModContext::SendIngameMessage works in.
         virtual void Write(std::string_view message) = 0;
     };
 

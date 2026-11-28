@@ -51,3 +51,7 @@ add_test(
 )
 set_tests_properties(ImcCompatibilityIntegrationTest PROPERTIES
         LABELS "imc;codegen;compatibility")
+
+add_test(NAME ScriptApiCodegenTest
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ScriptApiCodegenTest.py")
+set_tests_properties(ScriptApiCodegenTest PROPERTIES LABELS "script;codegen")

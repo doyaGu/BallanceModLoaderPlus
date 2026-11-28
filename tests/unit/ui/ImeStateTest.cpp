@@ -3,11 +3,14 @@
 
 #include <gtest/gtest.h>
 
+#ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
 #include <imm.h>
+
+#endif
 
 #include <cstddef>
 #include <cstdint>
@@ -45,6 +48,7 @@ void AppendUtf16(std::vector<std::byte> &bytes, std::u16string_view value) {
     bytes.push_back(std::byte{0});
 }
 
+#ifdef _WIN32
 std::vector<std::byte> MakeCandidateList(
     const std::vector<std::u16string> &items, std::uint32_t selection,
     std::uint32_t pageStart, std::uint32_t pageSize,
@@ -67,8 +71,10 @@ std::vector<std::byte> MakeCandidateList(
     StoreU32(bytes, offsetof(CANDIDATELIST, dwSize), static_cast<std::uint32_t>(bytes.size()));
     return bytes;
 }
+#endif
 } // namespace
 
+#ifdef _WIN32
 TEST(ImePolicyTest, ContextActivationKeepsSystemUiWhenPresentationIsUnowned) {
     const std::intptr_t original =
         ISC_SHOWUICOMPOSITIONWINDOW | ISC_SHOWUICANDIDATEWINDOW;
@@ -79,7 +85,9 @@ TEST(ImePolicyTest, ContextActivationKeepsSystemUiWhenPresentationIsUnowned) {
     EXPECT_FALSE(disposition.replaceLParam);
     EXPECT_FALSE(disposition.suppress);
 }
+#endif
 
+#ifdef _WIN32
 TEST(ImePolicyTest, ContextDeactivationIsNotRewritten) {
     const auto disposition =
         Overlay::Ime::NativePresentation::Decide(
@@ -88,7 +96,9 @@ TEST(ImePolicyTest, ContextDeactivationIsNotRewritten) {
     EXPECT_FALSE(disposition.replaceLParam);
     EXPECT_FALSE(disposition.suppress);
 }
+#endif
 
+#ifdef _WIN32
 TEST(ImePolicyTest, ContextActivationPreservesNonUiFlags) {
     constexpr std::intptr_t privateFlag = 0x10000000;
     static_assert((privateFlag & ISC_SHOWUIALL) == 0);
@@ -100,7 +110,9 @@ TEST(ImePolicyTest, ContextActivationPreservesNonUiFlags) {
     EXPECT_EQ(disposition.lParam & ISC_SHOWUIALL, 0);
     EXPECT_EQ(disposition.lParam & privateFlag, privateFlag);
 }
+#endif
 
+#ifdef _WIN32
 TEST(ImePolicyTest, SuppressesOnlyNativePreeditPresentationWhenOwned) {
     const auto preedit = Overlay::Ime::NativePresentation::Decide(
         WM_IME_COMPOSITION, 0, GCS_COMPSTR, true);
@@ -114,7 +126,9 @@ TEST(ImePolicyTest, SuppressesOnlyNativePreeditPresentationWhenOwned) {
         WM_IME_COMPOSITION, 0, GCS_COMPSTR, false);
     EXPECT_FALSE(unowned.suppress);
 }
+#endif
 
+#ifdef _WIN32
 TEST(ImePolicyTest, SuppressesCandidateNotificationsButNotImeStateChanges) {
     const auto candidate = Overlay::Ime::NativePresentation::Decide(
         WM_IME_NOTIFY, IMN_CHANGECANDIDATE, 0, true);
@@ -124,6 +138,7 @@ TEST(ImePolicyTest, SuppressesCandidateNotificationsButNotImeStateChanges) {
         WM_IME_NOTIFY, IMN_SETOPENSTATUS, 0, true);
     EXPECT_FALSE(openStatus.suppress);
 }
+#endif
 
 TEST(ImeStateTest, ParsesUtf16AndRejectsMalformedLengths) {
     const std::vector<std::byte> text{
@@ -296,6 +311,7 @@ TEST(ImeStateTest, CompositionCursorCannotSplitSurrogatePair) {
     EXPECT_EQ(state.GetSnapshot().cursor, 1u);
 }
 
+#ifdef _WIN32
 TEST(ImeStateTest, ParsesCandidatePageAndNormalizesBounds) {
     const std::vector<std::byte> bytes =
         MakeCandidateList({u"\u4f60\u597d", u"\u62df\u597d",
@@ -311,7 +327,9 @@ TEST(ImeStateTest, ParsesCandidatePageAndNormalizesBounds) {
     EXPECT_EQ(list.pageStart, 1u);
     EXPECT_EQ(list.pageSize, 3u);
 }
+#endif
 
+#ifdef _WIN32
 TEST(ImeStateTest, PreservesCandidatePageCapacityOnPartialFinalPage) {
     const std::vector<std::byte> bytes =
         MakeCandidateList({u"one", u"two", u"three", u"four", u"five"},
@@ -322,6 +340,7 @@ TEST(ImeStateTest, PreservesCandidatePageCapacityOnPartialFinalPage) {
     EXPECT_EQ(list.pageStart, 4u);
     EXPECT_EQ(list.pageSize, 2u);
 }
+#endif
 
 TEST(ImeStateTest, PreservesIndexedCandidatePageMetadata) {
     CandidateListSnapshot list;
@@ -349,6 +368,7 @@ TEST(ImeStateTest, RejectsInvalidIndexedCandidatePagesWithoutChangingState) {
     EXPECT_EQ(list, original);
 }
 
+#ifdef _WIN32
 TEST(ImeStateTest, PreservesCandidateStyleAndRejectsLegacyCodeEntry) {
     CandidateListSnapshot list;
     const std::vector<std::byte> reading =
@@ -360,7 +380,9 @@ TEST(ImeStateTest, PreservesCandidateStyleAndRejectsLegacyCodeEntry) {
         MakeCandidateList({u"ignored"}, 0, 0, 1, 2);
     EXPECT_FALSE(ParseCandidateList(legacyCode, list));
 }
+#endif
 
+#ifdef _WIN32
 TEST(ImeStateTest, RejectsTruncatedAndOutOfRangeCandidateOffsets) {
     std::vector<std::byte> bytes =
         MakeCandidateList({u"\u5019\u88dc"}, 0, 0, 1);
@@ -394,6 +416,7 @@ TEST(ImeStateTest, RejectsTruncatedAndOutOfRangeCandidateOffsets) {
     overlapping[firstTerminatorOffset + 1] = std::byte{0};
     EXPECT_FALSE(ParseCandidateList(overlapping, list));
 }
+#endif
 
 TEST(ImeStateTest, TracksAndClosesMultipleCandidateLists) {
     State state;

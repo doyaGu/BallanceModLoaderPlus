@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "BML/ILogger.h"
+#include "Logging/Logger.h"
 #include "CustomMaps/CustomMapLoad.h"
 #include "Hooks/BehaviorFunctionPatch.h"
 #include "Hooks/HookLifecycle.h"
@@ -36,7 +36,7 @@ void PublishCustomMapResult(ModContext &context, BML_DataShare *share,
                             const CustomMapLoad::Request &request,
                             CustomMapLoad::Outcome outcome) {
     if (!CustomMapLoad::WriteResult(share, request.Attempt, outcome)) {
-        if (ILogger *logger = context.GetLogger())
+        if (Logger *logger = context.GetLogger())
             logger->Error("Failed to publish custom map Object Load result");
     }
     BML_DataShare_Remove(share, CustomMapLoad::RequestKey);
@@ -112,10 +112,9 @@ int HookLifecycle::ObjectLoad(const CKBehaviorContext &behcontext) {
     CKObject *masterobject = beh->GetOutputParameterObject(1);
 
     CKContext *ckContext = modContext->GetCKContext();
-    modContext->BroadcastCallback(&IMod::OnLoadObject,
-                                  callbackName.c_str(), isMap, mastername.c_str(), cid,
-                                  addtoscene, reuseMeshes, reuseMaterials, dynamic, oarray,
-                                  masterobject);
+    modContext->GetModLoader().BroadcastCallback<ModEvent::OnLoadObject>(
+        callbackName.c_str(), isMap, mastername.c_str(), cid, addtoscene, reuseMeshes,
+        reuseMaterials, dynamic, oarray, masterobject);
 
     for (CK_ID *id = oarray->Begin(); ckContext && id != oarray->End(); id++) {
         CKObject *obj = ckContext->GetObject(*id);
@@ -123,7 +122,8 @@ int HookLifecycle::ObjectLoad(const CKBehaviorContext &behcontext) {
             auto *behavior = static_cast<CKBehavior *>(obj);
             if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
                 modContext->BehaviorScriptLoaded(behavior);
-                modContext->BroadcastCallback(&IMod::OnLoadScript, callbackName.c_str(), behavior);
+                modContext->GetModLoader().BroadcastCallback<ModEvent::OnLoadScript>(
+                    callbackName.c_str(), behavior);
             }
         }
     }
@@ -145,7 +145,7 @@ bool HookLifecycle::AttachObjectLoad() {
     const BehaviorFunctionPatchResult result = g_ObjectLoadPatch.Install(
         VT_NARRATIVES_OBJECTLOAD, &HookLifecycle::ObjectLoad);
     if (!result) {
-        if (ILogger *logger = m_Context.GetLogger())
+        if (Logger *logger = m_Context.GetLogger())
             logger->Error("Object Load hook installation failed: %s",
                           BehaviorFunctionPatch::GetErrorName(result.Code));
         return false;
@@ -160,7 +160,7 @@ bool HookLifecycle::DetachObjectLoad() {
 
     const BehaviorFunctionPatchResult result = g_ObjectLoadPatch.Remove();
     if (result.Code == BehaviorFunctionPatchError::OwnershipLost) {
-        if (ILogger *logger = m_Context.GetLogger())
+        if (Logger *logger = m_Context.GetLogger())
             logger->Warn("Object Load hook ownership changed; preserving the current function");
         s_ObjectLoadOwner = nullptr;
         return true;

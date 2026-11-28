@@ -1,7 +1,7 @@
+#include <BML/Mod.hpp>
+#include <BML/Engine.hpp>
+#include <cstdio>
 #include <BML/Gameplay.h>
-#include <BML/IBML.h>
-#include <BML/ILogger.h>
-#include <BML/IMod.h>
 #include <BML/Time.hpp>
 #include <BML/Scene.h>
 #include <BML/Speedrun.h>
@@ -27,28 +27,20 @@ bool IsOkOrUnavailable(int status) {
     return status == BML_OK || status == BML_ERROR_UNAVAILABLE;
 }
 
-class BMLNativeImcSmoke final : public IMod {
+class BMLNativeImcSmoke final : public BML::Mod::Instance {
 public:
-    explicit BMLNativeImcSmoke(IBML *bml) : IMod(bml) {
-        AddDependency("BML");
-        AddOptionalDependency("BMLNativeOptionalDependencySmoke");
+    static BML::Mod::Definition Define(){
+        return {"BMLNativeImcSmoke","BML Native IMC Smoke","1.0.0","BML","Validates BML native IMC interfaces in Player",BML_VERSION,{{"BML","",false},{"BMLNativeOptionalDependencySmoke","",true}}};
     }
-
-    const char *GetID() override { return "BMLNativeImcSmoke"; }
-    const char *GetVersion() override { return "1.0.0"; }
-    const char *GetName() override { return "BML Native IMC Smoke"; }
-    const char *GetAuthor() override { return "BML"; }
-    const char *GetDescription() override { return "Validates BML native IMC interfaces in Player"; }
-    DECLARE_BML_VERSION;
-
-    void OnLoad() override {
+    void OnLoad(const BML::Mod::Context &context) override {
+        m_Context=context;
         m_StateClockPassed = CheckStateAndClock();
         m_UiPassed = CheckUi();
         m_SpeedrunPassed = CheckSpeedrun();
         m_ImcPassed = CheckImc();
     }
 
-    void OnProcess() override {
+    void OnProcess(const BML::Mod::Context &context) override {
         if (m_ExitRequested)
             return;
 
@@ -58,31 +50,33 @@ public:
         const bool scene = CheckScene();
         const bool gameplay = CheckGameplay();
         const bool imc = m_ImcPassed && CheckImcNotice();
-        GetLogger()->Info(
+        Log(
             "BML native IMC smoke: state_clock=%s scene=%s gameplay=%s ui=%s speedrun=%s imc=%s",
             Text(m_StateClockPassed), Text(scene), Text(gameplay), Text(m_UiPassed),
             Text(m_SpeedrunPassed), Text(imc));
         m_Passed = m_StateClockPassed && scene && gameplay && m_UiPassed &&
                    m_SpeedrunPassed && imc;
 
-        GetLogger()->Info("BML native IMC smoke requesting exit");
+        Log("BML native IMC smoke requesting exit");
         m_ExitRequested = true;
-        m_BML->ExitGame();
+        BML::Gameplay::ExitGame(m_Context);
     }
 
-    void OnExitGame() override {
-        GetLogger()->Info("BML native IMC smoke exit callback: received=true passed=%s",
+    void OnExitGame(const BML::Mod::Context &context) override {
+        Log("BML native IMC smoke exit callback: received=true passed=%s",
                           Text(m_Passed));
     }
 
-    void OnUnload() override {
+    void OnUnload(const BML::Mod::Context &context) override {
         (void)m_ImcNotices.Close();
         (void)m_ImcClient.Close();
         (void)m_ImcProvider.Close();
-        GetLogger()->Info("BML native IMC smoke unloaded");
+        Log("BML native IMC smoke unloaded");
     }
 
 private:
+    BML::Mod::Context m_Context;
+    template<class... Args>void Log(const char *format,Args... args){char text[2048];std::snprintf(text,sizeof text,format,args...);(void)m_Context.LogInfo(text);}
     static const char *Text(bool value) { return value ? "true" : "false"; }
 
     bool CheckStateAndClock() {
@@ -93,16 +87,17 @@ private:
             return false;
         }
 
-        if (cheatEnabled != m_BML->IsCheatEnabled() ||
-            !std::isfinite(clock.TimeMs) || !std::isfinite(clock.AbsoluteMs) ||
+        if (!std::isfinite(clock.TimeMs) || !std::isfinite(clock.AbsoluteMs) ||
             !std::isfinite(clock.DeltaMs)) {
             return false;
         }
 
         int highScore = 0;
         const int scoreStatus = BML::Gameplay::ReadHighScore(highScore);
-        if (m_BML->IsPlaying() || m_BML->IsPaused()) {
-            if (scoreStatus != BML_OK || highScore != m_BML->GetHSScore())
+        BML::Gameplay::State state{};
+        if(BML::Gameplay::ReadState(state)!=BML_OK)return false;
+        if (state.Playing || state.Paused) {
+            if (scoreStatus != BML_OK || highScore < 0)
                 return false;
         } else if (scoreStatus != BML_ERROR_UNAVAILABLE) {
             return false;
@@ -117,7 +112,7 @@ private:
         const auto elapsed = std::chrono::steady_clock::now() - start;
         const double seconds = std::chrono::duration<double>(elapsed).count();
         const double callsPerSecond = seconds > 0.0 ? sampleCount / seconds : 0.0;
-        GetLogger()->Info("BML native IMC smoke gameplay read throughput: %.0f calls/s", callsPerSecond);
+        Log("BML native IMC smoke gameplay read throughput: %.0f calls/s", callsPerSecond);
         return true;
     }
 
@@ -135,7 +130,7 @@ private:
         if (BML::Scene::ReadObject({}, invalidInfo) != BML_ERROR_OBJECT_INVALID)
             return false;
 
-        CKContext *context = m_BML->GetCKContext();
+        CKContext *context = BML::Engine::BorrowContext(m_Context).Value();
         if (!context)
             return false;
 
@@ -171,7 +166,7 @@ private:
         const int catalogStatus = BML::Gameplay::ReadCatalog(catalog);
         const int checkpointsStatus = BML::Gameplay::ReadCheckpoints(checkpoints);
         const int resetpointsStatus = BML::Gameplay::ReadResetpoints(resetpoints);
-        GetLogger()->Info(
+        Log(
             "BML native IMC smoke gameplay: level=%d energy=%d catalog=%d checkpoints=%d resetpoints=%d",
             levelStatus, energyStatus, catalogStatus, checkpointsStatus, resetpointsStatus);
         if (levelStatus == BML_ERROR_UNAVAILABLE)
@@ -189,9 +184,9 @@ private:
     }
 
     void LogArraySchema(const char *name) {
-        CKDataArray *array = m_BML->GetArrayByName(name);
+        CKDataArray *array = static_cast<CKDataArray *>(BML::Engine::BorrowContext(m_Context).Value()->GetObjectByNameAndClass((CKSTRING)name,CKCID_DATAARRAY));
         if (!array) {
-            GetLogger()->Info("BML native IMC smoke array %s: missing", name);
+            Log("BML native IMC smoke array %s: missing", name);
             return;
         }
 
@@ -202,7 +197,7 @@ private:
             const char *columnName = array->GetColumnName(column);
             columns += columnName ? columnName : "<null>";
         }
-        GetLogger()->Info("BML native IMC smoke array %s: rows=%d columns=%s",
+        Log("BML native IMC smoke array %s: rows=%d columns=%s",
                           name, array->GetRowCount(), columns.c_str());
     }
 
@@ -302,10 +297,4 @@ private:
 
 } // namespace
 
-BML_MOD_ENTRY(IMod *) BMLEntry(IBML *bml) {
-    return new BMLNativeImcSmoke(bml);
-}
-
-BML_MOD_ENTRY(void) BMLExit(IMod *mod) {
-    delete mod;
-}
+BML_DEFINE_MOD(BMLNativeImcSmoke, BMLNativeImcSmoke::Define)

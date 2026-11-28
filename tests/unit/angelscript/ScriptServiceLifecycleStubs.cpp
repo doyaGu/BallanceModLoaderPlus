@@ -5,17 +5,9 @@
 #include "Console/CommandContext.h"
 #include "Loader/ModContext.h"
 
-IMod::~IMod() = default;
+void ModContext::SendIngameMessage(const char *) {}
 
-ILogger *IMod::GetLogger() {
-    return nullptr;
-}
-
-IConfig *IMod::GetConfig() {
-    return nullptr;
-}
-
-ICommand *ModContext::FindCommand(const char *) const {
+BML::CommandRecord *ModContext::FindCommand(const char *) const {
     return nullptr;
 }
 
@@ -28,7 +20,7 @@ bool ModContext::FindCommandInfo(
     return false;
 }
 
-bool ModContext::SetCommandEnabled(ICommand *, bool) {
+bool ModContext::SetCommandEnabled(const void *, bool) {
     return true;
 }
 
@@ -38,17 +30,7 @@ const char *CKAngelScriptAdapter::StatusName(CKAS_STATUS) {
 
 namespace BML {
 
-bool CommandContext::RegisterCommand(const void *, ICommand *) {
-    return false;
-}
-
-bool CommandContext::RegisterCommand(
-    const void *, ICommand *, CommandInfo) {
-    return false;
-}
-
-bool CommandContext::RegisterCommand(
-    const void *, ICommand *, CommandInfo, std::shared_ptr<void>) {
+bool CommandContext::RegisterCommand(const void *, std::shared_ptr<CommandRecord>) {
     return false;
 }
 
@@ -83,10 +65,6 @@ CommandContext::UnregisterResult CommandContext::UnregisterCommand(const void *,
 
 void CommandContext::UnregisterCommands(const void *) {}
 
-ScriptCommandEventView::ScriptCommandEventView(ScriptCommandEventPhase,
-                                               ICommand *,
-                                               const std::vector<std::string> *) {}
-
 ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *) {}
 
 ScriptCurrentModScope::~ScriptCurrentModScope() = default;
@@ -99,10 +77,6 @@ void ScriptMod::SetLoadFailure(const ScriptDiagnostic &) {}
 
 void ScriptMod::RecordScriptDiagnostic(const ScriptDiagnostic &) {}
 
-bool ScriptMod::UnregisterScriptCommand(const std::string &) {
-    return false;
-}
-
 bool ScriptMod::EnterScriptCall() const {
     return true;
 }
@@ -114,3 +88,17 @@ bool ScriptMod::CanDispatchScriptServiceCallback() {
 void ScriptMod::LeaveScriptCall() const {}
 
 } // namespace BML
+
+// These lifecycle tests have no live Loader context. Access checks fail closed;
+// live owner/thread and runtime retirement checks run in the Player probe.
+ModContextLease::ModContextLease() = default;
+ModContextLease::~ModContextLease() = default;
+BML::ScriptRuntimeAccess::ScriptRuntimeAccess(const BML::ScriptControlTicket &, bool) {}
+NativeMod *ModLoader::FindNativeMod(const ModRecord *) const { return nullptr; }
+bool ModLoader::CanDispatchOwner(const ModRecord *) const { return false; }
+ModRecord *ModLoader::FindMod(const char *) const { return nullptr; }
+BML_ObjectRef BML::ObjectRefs::Issue(CKObject *) noexcept { return {}; }
+CKObject *BML::ObjectRefs::Resolve(BML_ObjectRef) const noexcept { return nullptr; }
+BML_ConfigPropertyHandle BML::Api::ConfigApi::HandleFor(ModRecord &, Property *) const noexcept {
+    return 0;
+}

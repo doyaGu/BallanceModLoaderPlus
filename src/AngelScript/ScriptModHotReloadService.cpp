@@ -1,3 +1,4 @@
+#include "ScriptPathUtils.h"
 #include "ScriptModHotReloadService.h"
 
 #include <algorithm>
@@ -27,7 +28,7 @@ bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
         return false;
     const std::wstring resolvedLeft = utils::ResolvePathW(left);
     const std::wstring resolvedRight = utils::ResolvePathW(right);
-    return _wcsicmp(resolvedLeft.c_str(), resolvedRight.c_str()) == 0;
+    return resolvedLeft == resolvedRight;
 }
 
 std::wstring ScriptEntryStem(const std::wstring &entryPath) {
@@ -35,7 +36,7 @@ std::wstring ScriptEntryStem(const std::wstring &entryPath) {
     constexpr wchar_t suffix[] = L".mod.as";
     constexpr size_t suffixLength = (sizeof(suffix) / sizeof(suffix[0])) - 1;
     if (fileName.size() > suffixLength &&
-        _wcsicmp(fileName.c_str() + fileName.size() - suffixLength, suffix) == 0) {
+        ScriptPathCaseCompare(fileName.c_str() + fileName.size() - suffixLength, suffix) == 0) {
         fileName.resize(fileName.size() - suffixLength);
     }
     return fileName;
@@ -419,7 +420,7 @@ void ScriptModHotReloadService::Process() {
         return;
 
     if (m_AutomaticEnabled) {
-        const std::vector<ScriptFileWatcherWin32::Event> events = m_Watcher.DrainEvents();
+        const std::vector<ScriptFileWatcher::Event> events = m_Watcher.DrainEvents();
         const uint64_t watcherDroppedEvents = m_Watcher.GetDroppedEventCount();
         ScriptModReloadOptions automaticOptions;
         automaticOptions.Automatic = true;
@@ -633,8 +634,9 @@ void ScriptModHotReloadService::RefreshRegisteredModOrder() {
     std::unordered_set<std::string> orderedIds;
     orderedIds.reserve(m_Mods.size());
 
-    for (int i = 0; i < m_Context->GetModCount(); ++i) {
-        auto *scriptMod = dynamic_cast<ScriptMod *>(m_Context->GetMod(i));
+    for (int i = 0; i < m_Context->GetModLoader().GetModCount(); ++i) {
+        auto *registration = m_Context->GetModLoader().GetMod(i);
+        auto *scriptMod = registration ? registration->Script : nullptr;
         if (!scriptMod || !scriptMod->GetID())
             continue;
 
@@ -1065,14 +1067,14 @@ void ScriptModHotReloadService::AddDesiredWatch(std::unordered_map<std::wstring,
         it->second.Recursive = true;
 }
 
-bool ScriptModHotReloadService::EventOverflowCanAffectMod(const ScriptFileWatcherWin32::Event &event,
+bool ScriptModHotReloadService::EventOverflowCanAffectMod(const ScriptFileWatcher::Event &event,
                                                           const ScriptMod *mod) const {
     if (!mod)
         return false;
     return ScriptHotReloadOverflowCanAffectEntry(event, mod->GetEntry());
 }
 
-bool ScriptModHotReloadService::EventLooksRelevant(const ScriptFileWatcherWin32::Event &event,
+bool ScriptModHotReloadService::EventLooksRelevant(const ScriptFileWatcher::Event &event,
                                                    const ScriptMod *mod) const {
     if (!mod)
         return false;
@@ -1093,7 +1095,7 @@ std::vector<ScriptLibraryReloadPackage> ScriptModHotReloadService::GetActiveLibr
 }
 
 std::vector<ScriptLibraryReloadPackage> ScriptModHotReloadService::GetEventAffectedLibraryPackages(
-    const ScriptFileWatcherWin32::Event &event,
+    const ScriptFileWatcher::Event &event,
     const ScriptMod *mod) const {
     std::vector<ScriptLibraryReloadPackage> packages;
     if (!mod)
@@ -1680,7 +1682,7 @@ bool ScriptModHotReloadService::ProcessLibraryReload(PendingLibraryReload &pendi
     return ScriptLibraryReloadOperation(*this, pending).Run();
 }
 
-void ScriptModHotReloadService::PublishNewModRestartRequired(const ScriptFileWatcherWin32::Event &event) {
+void ScriptModHotReloadService::PublishNewModRestartRequired(const ScriptFileWatcher::Event &event) {
     if (event.Overflow || !IsScriptModEntryName(utils::GetFileNameW(event.Path).c_str()))
         return;
 

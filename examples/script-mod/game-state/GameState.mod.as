@@ -3,7 +3,7 @@
          version="1.0.0"
          author="BML+"
          description="Reads level state and the active ball"
-         bml="0.3.14"]
+         bml="0.4.0"]
 class GameStateExample {
     void OnLoad(const BML::ModContext &in ctx) {
         ctx.LogInfo("Game state example loaded; enter a level");
@@ -13,7 +13,8 @@ class GameStateExample {
         if (event != BML::GAME_EVENT_START_LEVEL)
             return;
 
-        if (!ctx.IsInLevel()) {
+        BML::Gameplay::State state;
+        if (BML::Gameplay::ReadState(state) != BML::ERROR_OK || !(state.Playing || state.Paused)) {
             ctx.LogWarn("Start-level event arrived without an active level");
             return;
         }

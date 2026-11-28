@@ -115,6 +115,8 @@ bool ScriptFileWatcherWin32::Watch(const std::wstring &root, bool recursive) {
 
     bool duplicate = false;
     bool registered = false;
+    std::promise<bool> ready;
+    auto started = ready.get_future();
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
         for (const WatchState *existing : m_Watches) {
@@ -126,7 +128,9 @@ bool ScriptFileWatcherWin32::Watch(const std::wstring &root, bool recursive) {
         if (!duplicate) {
             try {
                 m_Watches.reserve(m_Watches.size() + 1);
-                state->Worker = std::thread([this, state] { WorkerLoop(state); });
+                state->Worker = std::thread([this, state, ready = std::move(ready)]() mutable {
+                    WorkerLoop(state, std::move(ready));
+                });
                 m_Watches.push_back(state);
                 registered = true;
             } catch (...) {
@@ -141,7 +145,14 @@ bool ScriptFileWatcherWin32::Watch(const std::wstring &root, bool recursive) {
         StopWatches(failed);
         return duplicate;
     }
-    return true;
+    try {
+        if (started.get())
+            return true;
+    } catch (const std::future_error &) {
+        // The worker exited before it could start the first read.
+    }
+    Unwatch(root);
+    return false;
 }
 
 bool ScriptFileWatcherWin32::Unwatch(const std::wstring &root) {
@@ -195,12 +206,13 @@ uint64_t ScriptFileWatcherWin32::GetDroppedEventCount() const {
     return m_DroppedEvents;
 }
 
-void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
+void ScriptFileWatcherWin32::WorkerLoop(WatchState *state, std::promise<bool> ready) {
     if (!state)
         return;
 
     try {
         std::vector<unsigned char> buffer(64 * 1024);
+        bool firstRead = true;
         while (::WaitForSingleObject(state->StopEvent, 0) == WAIT_TIMEOUT) {
             OVERLAPPED overlapped = {};
             ScopedHandle eventHandle(::CreateEventW(nullptr, TRUE, FALSE, nullptr));
@@ -220,6 +232,10 @@ void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
                                                          nullptr,
                                                          &overlapped,
                                                          nullptr);
+            if (firstRead) {
+                firstRead = false;
+                ready.set_value(started != FALSE);
+            }
             if (!started)
                 break;
 

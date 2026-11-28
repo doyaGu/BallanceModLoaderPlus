@@ -28,8 +28,13 @@ code.
 
 ## Requirements
 
-- A BML+ release built with script support.
-- The matching `BuildingBlocks/AngelScript.dll` from that release.
+- A matching Ballanced SDL dynamic Player and BML+ runtime built with
+  `BML_ENABLE_ANGELSCRIPT=ON`. Native-only builds cannot run script Mods.
+- The runtime’s Loader in `Managers` and CKAngelScript in `BuildingBlocks`.
+  Plugin filenames are `BMLPlus.dll` / `AngelScript.dll` on Windows,
+  `libBMLPlus.so` / `libAngelScript.so` on Linux, and
+  `libBMLPlus.dylib` / `libAngelScript.dylib` on macOS.
+- A writable `ModLoader` directory. See [installation](../using-bml.md).
 - Basic AngelScript class and function syntax. The first Mod does not require
   handles, interfaces, or delegates; learn those when an API first needs them.
 - CKAngelScript documentation when working with Virtools objects, behavior
@@ -43,9 +48,15 @@ cannot start.
 
 Create the project in your normal source workspace:
 
-```bat
-"<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
+```sh
+python "/path/to/BML-SDK/scripts/bml.py" new script yourname.my-mod
+cd MyMod
+python bml.py run --ballance-root "/path/to/game"
 ```
+
+Use Python 3.10+ (`python3` where appropriate). POSIX also supports `./bml`;
+Windows supports `bml.cmd`. Pass the game root containing `base.cmo`, with
+`Bin/Player` or a flat `Player` (`.exe` on Windows).
 
 The command derives a safe class and entry filename from the id and refuses to
 overwrite an existing directory. Copying `templates/script-mod-template`
@@ -57,7 +68,7 @@ manually remains supported. The underlying entry is deliberately small:
          version="1.0.0"
          author="Your Name"
          description="Minimal BML+ script mod"
-         bml="0.3.14"]
+         bml="0.4.0"]
 class HelloScript {
     void OnLoad(const BML::ModContext &in ctx) {
         ctx.LogInfo("Hello Script loaded");
@@ -66,7 +77,7 @@ class HelloScript {
 }
 ```
 
-Run `.\bml run` once without editing the generated source. It deploys a managed
+Run the generated project once without editing its source. It deploys a managed
 copy, starts Player, and keeps later saved changes synchronized. The in-game
 greeting proves that `OnLoad` ran; the `My Mod loaded` line in
 `ModLoader/ModLoader.log` proves which Mod produced it. Together they confirm
@@ -129,14 +140,14 @@ Keep helper files under the owning mod directory. Do not use a shared global
 and source root. For a single-file mod, resources live in the sibling directory
 named after the entry stem, such as `Mods/Foo/Resources` for `Foo.mod.as`.
 
-`.bmodp` is reserved for native DLL mods.
+`.bmodp` is reserved for native shared modules and requires an ABI sidecar on SDL.
 
 ## AngelScript rules used by BML+
 
 - `T@` is a handle. Use `is null` and `!is null` for null and identity checks.
 - Use `@field = handle` when rebinding a handle member.
-- Script classes are reference types. BML+ retains a registered Timer, Command,
-  DataShare request, callback, or delegate until it completes, is cancelled, or
+- Script classes are reference types. BML+ retains registered timer/command delegates,
+  DataShare requests and other managed callbacks until it completes, is cancelled, or
   the mod unloads.
 - Value classes such as event snapshots and definitions are copied by value.
   A method named `Borrow*` still returns a non-owning handle.
@@ -148,8 +159,12 @@ named after the entry stem, such as `Mods/Foo/Resources` for `Foo.mod.as`.
 - Interface signatures must match exactly, including `const`, `&in`, return
   type, and method name.
 
-The `@+` markers in editor declarations document native retention. They do not
-change the syntax used when passing an ordinary script object or delegate.
+The `@+` markers are AngelScript auto-handle annotations at the native binding
+boundary. Pass ordinary handles/delegates normally; use the specific service’s
+registration and release contract rather than inferring ownership from `@+`.
+Use methods such as `ctx.IsValid()` and `input.IsValid()` with parentheses.
+Read-only properties such as `ctx.ReloadPhase` and `KeyboardState.Attached` use
+property syntax. The old duplicate method/property aliases are not registered.
 
 ## Develop and package
 
@@ -160,8 +175,8 @@ use manual reload and are intended for distribution testing.
 
 Run the project-local Developer Workflow:
 
-```bat
-.\bml pack
+```sh
+python bml.py pack
 ```
 
 It writes `dist/MyScriptMod.zip`. `--project`, `--output`, and `--force` remain

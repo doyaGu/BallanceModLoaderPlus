@@ -1,10 +1,12 @@
-[bml.mod id="bml.compile.error.smoke" name="BML AngelScript Compile Error Smoke" version="1.0.0" author="BML" bml="0.3.0" reload="auto" description="Recovered compile error smoke test."]
+[bml.mod id="bml.compile.error.smoke" name="BML AngelScript Compile Error Smoke" version="1.0.0" author="BML" bml="0.4.0" reload="auto" description="Recovered compile error smoke test."]
 class BMLCompileErrorSmokeMod {
   void OnLoad(const BML::ModContext &in ctx) {
     const bool recoveryPhaseOk = ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_RECOVERY;
+    BML::ModRef@ owner; BML::ModInfo info;
+    if (ctx.Owner(owner) != BML::ERROR_OK || owner.Read(info) != BML::ERROR_OK) return;
     ctx.LogInfo("BML failed placeholder recovery phase=" +
                 (recoveryPhaseOk ? "valid" : "unexpected") +
-                " id=" + ctx.ModId);
+                " id=" + info.Definition.Id);
   }
 
   void OnUnload(const BML::ModContext &in ctx) {

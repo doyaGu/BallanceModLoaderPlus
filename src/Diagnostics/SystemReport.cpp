@@ -1,13 +1,10 @@
 #include "Diagnostics/SystemReport.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h>
-#include <winternl.h>
+#include <SDL3/SDL.h>
+#include "Platform/Module.h"
 
 #include <cstdint>
 #include <iomanip>
@@ -33,7 +30,6 @@
 
 namespace BML::Diagnostics {
     namespace {
-        using RtlGetVersionFunction = LONG(WINAPI *)(PRTL_OSVERSIONINFOW);
 
         const char *YesNo(bool value) {
             return value ? "yes" : "no";
@@ -61,19 +57,7 @@ namespace BML::Diagnostics {
         }
 
         std::string WindowsVersion() {
-            RTL_OSVERSIONINFOW version{};
-            version.dwOSVersionInfoSize = sizeof(version);
-            const HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
-            const auto getVersion = ntdll ? reinterpret_cast<RtlGetVersionFunction>(
-                                                ::GetProcAddress(ntdll, "RtlGetVersion")) :
-                                            nullptr;
-            if (!getVersion || getVersion(&version) != 0)
-                return "unknown";
-
-            std::ostringstream output;
-            output << version.dwMajorVersion << '.' << version.dwMinorVersion
-                   << " build " << version.dwBuildNumber;
-            return output.str();
+            return std::string(SDL_GetPlatform()) + " / SDL " + std::to_string(SDL_GetVersion());
         }
 
         std::string ShortHash(const std::wstring &path) {
@@ -98,10 +82,9 @@ namespace BML::Diagnostics {
                 fingerprint.ShortPathAvailable = !shortPath.empty() && shortPath != gameRoot &&
                     utils::TryEncodePathForActiveCodePage(shortPath, encodedPath);
             }
-            fingerprint.PlayerHash = ShortHash(utils::CombinePathW(gameRoot, L"Bin\\Player.exe"));
-            fingerprint.Ck2Hash = ShortHash(utils::CombinePathW(gameRoot, L"Bin\\CK2.dll"));
-            fingerprint.RendererHash = ShortHash(
-                utils::CombinePathW(gameRoot, L"RenderEngines\\CK2_3D.dll"));
+            fingerprint.PlayerHash = ShortHash(utils::GetExecutablePathW());
+            fingerprint.Ck2Hash = ShortHash(utils::Utf8ToUtf16(Platform::ModulePath(reinterpret_cast<const void *>(&CKGetPluginManager))));
+            fingerprint.RendererHash = "pending renderer identification";
             return fingerprint;
         }
 
@@ -119,16 +102,21 @@ namespace BML::Diagnostics {
         }
 
         std::string LocaleName() {
-            wchar_t name[LOCALE_NAME_MAX_LENGTH]{};
-            if (::GetUserDefaultLocaleName(name, LOCALE_NAME_MAX_LENGTH) <= 0)
-                return "unknown";
-            return utils::Utf16ToUtf8(name);
+            int count = 0;
+            SDL_Locale **locales = SDL_GetPreferredLocales(&count);
+            std::string result = "unknown";
+            if (locales && count > 0) {
+                result = locales[0]->language;
+                if (locales[0]->country) result += std::string("-") + locales[0]->country;
+            }
+            SDL_free(locales);
+            return result;
         }
 
         std::string DriverText(const char *text) {
             if (!text || !*text)
                 return "unknown";
-            const std::string converted = utils::Utf16ToUtf8(utils::AnsiToUtf16(text));
+            const std::string converted = text;
             return converted.empty() ? "unknown" : converted;
         }
 
@@ -215,8 +203,7 @@ namespace BML::Diagnostics {
             SystemReportData data;
             data.Runtime.Windows = WindowsVersion();
             data.Locale.Name = LocaleName();
-            data.Locale.AnsiCodePage = ::GetACP();
-            data.Locale.KeyboardLayout = reinterpret_cast<std::uintptr_t>(::GetKeyboardLayout(0));
+            data.Locale.AnsiCodePage = 65001;
             data.Install = GetInstallFingerprint(context.GetDirectory(BML_DIR_GAME));
 
             CKRenderContext *renderContext = context.GetRenderContext();
@@ -237,12 +224,12 @@ namespace BML::Diagnostics {
                 data.Renderer.TextureMaxHeight = driver->Caps3D.MaxTextureHeight;
             }
             if (renderContext) {
-                const HWND window = static_cast<HWND>(renderContext->GetWindowHandle());
+                auto *window = static_cast<SDL_Window *>(renderContext->GetWindowHandle());
                 data.Renderer.DisplayAvailable = true;
                 data.Renderer.Width = renderContext->GetWidth();
                 data.Renderer.Height = renderContext->GetHeight();
                 data.Renderer.Fullscreen = renderContext->IsFullScreen() != FALSE;
-                data.Renderer.Dpi = window ? ::GetDpiForWindow(window) : 0;
+                data.Renderer.Dpi = window ? static_cast<unsigned>(96.0f * SDL_GetWindowDisplayScale(window)) : 0;
             }
 
             if (const UI::FontRuntime *fonts = context.GetUiFontRuntime()) {
@@ -278,7 +265,7 @@ namespace BML::Diagnostics {
 
             data.Ime = Overlay::Ime::Runtime::GetDiagnostics();
             data.Hooks = context.InspectHooks();
-            data.Mods.Count = context.GetModCount();
+            data.Mods.Count = context.GetModLoader().GetModCount();
             data.Mods.Discovered = context.AreModsLoaded();
             data.Mods.Active = context.AreModsInited();
 #if BML_ENABLE_ANGELSCRIPT
@@ -307,13 +294,13 @@ namespace BML::Diagnostics {
         private:
             void AddRuntime() {
                 std::ostringstream line;
-                line << "BML+ " BML_VERSION " (Win32, "
+                line << "BML+ " BML_VERSION " (sdl, "
 #ifdef _DEBUG
                      << "Debug";
 #else
                      << "Release";
 #endif
-                line << "), Windows " << m_Data.Runtime.Windows;
+                line << "), " << m_Data.Runtime.Windows;
                 m_Lines.push_back(line.str());
             }
 
@@ -452,7 +439,7 @@ namespace BML::Diagnostics {
                 std::ostringstream line;
                 line << "Hooks: input=" << YesNo(hooks.Input)
                      << ", object-load=" << YesNo(hooks.ObjectLoad)
-                     << ", physics-order=" << YesNo(hooks.PhysicsPostProcess)
+                     << ", physics-order=default"
                      << ", physicalize=" << YesNo(hooks.Physicalize)
                      << ", render-skip=" << YesNo(hooks.RenderSkip);
                 m_Lines.push_back(line.str());

@@ -1,23 +1,34 @@
 #include "MapScripts.h"
 
-IMod *BMLEntry(IBML *bml) {
-    return new MapScripts(bml);
-}
+BML_DEFINE_MOD(MapScripts, {
+    .Id = "MapScripts",
+    .Name = "Map Scripts",
+    .Version = BML_VERSION,
+    .Author = "Gamepiaynmo",
+    .Description = "Activate callback scripts in maps.",
+    .MinimumLoaderVersion = BML_VERSION,
+})
 
-void BMLExit(IMod *mod) {
-    delete mod;
-}
+void MapScripts::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) {
+    const char *filename = event.Filename.data();
+    const bool isMap = event.IsMap;
+    const char *masterName = event.MasterName.data();
+    const auto filterClass = static_cast<CK_CLASSID>(event.FilterClass);
+    const bool addToScene = event.AddToScene, addtoscene = event.AddToScene,
+               reuseMeshes = event.ReuseMeshes, reuseMaterials = event.ReuseMaterials,
+               dynamic = event.Dynamic;
+    XObjectArray objects;
+    for (auto ref : event.Objects) {
+        auto p = BML::Engine::BorrowObject<CKObject>(m_Context, ref);
+        if (p)
+            objects.PushBack(p.Value()->GetID());
+    }
+    auto *objArray = &objects;
+    auto master = BML::Engine::BorrowObject<CKObject>(m_Context, event.MasterObject);
+    CKObject *masterObj = master ? master.Value() : nullptr;
 
-template<typename T>
-void *func_addr(T func) {
-    return *reinterpret_cast<void **>(&func);
-}
-
-void MapScripts::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                              CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                              XObjectArray *objArray, CKObject *masterObj) {
-#define FILL_MAP(FUNC) \
-    m_MapScripts[func_addr(&MapScripts::FUNC)] = m_BML->GetScriptByName("BML_" #FUNC)
+#define FILL_MAP(FUNC) m_MapScripts.insert_or_assign(#FUNC, \
+    ModSupport::Object(m_Context, ModSupport::Find<CKBehavior>(m_Context, "BML_" #FUNC)))
 
     if (isMap) {
         FILL_MAP(OnPostLoadLevel);
@@ -51,122 +62,74 @@ void MapScripts::OnLoadObject(const char *filename, CKBOOL isMap, const char *ma
 #undef FILL_MAP
 }
 
-#define ACT_SCRIPT(FUNC) { \
-    CKBehavior* script = m_MapScripts[func_addr(&MapScripts::FUNC)]; \
-    if (script != nullptr) { \
-        CKBeObject* obj = script->GetOwner(); \
-        CKScene* scene = m_BML->GetCKContext()->GetCurrentScene(); \
-        scene->Activate(obj, false); \
-        scene->Activate(script, true); \
-    } \
-}
+#define ACT_SCRIPT(FUNC)                                                                           \
+    {                                                                                              \
+        const auto found = m_MapScripts.find(#FUNC); \
+        CKBehavior *script = found == m_MapScripts.end() ? nullptr : found->second.Get();                                                  \
+        if (script != nullptr) {                                                                   \
+            CKBeObject *obj = script->GetOwner();                                                  \
+            CKScene *scene = ModSupport::Engine(m_Context)->GetCurrentScene();                     \
+            scene->Activate(obj, false);                                                           \
+            scene->Activate(script, true);                                                         \
+        }                                                                                          \
+    }
 
-void MapScripts::OnPostLoadLevel() {
-    ACT_SCRIPT(OnPostLoadLevel);
-}
+void MapScripts::OnPostLoadLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnPostLoadLevel); }
 
-void MapScripts::OnStartLevel() {
-    ACT_SCRIPT(OnStartLevel);
-}
+void MapScripts::OnStartLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnStartLevel); }
 
-void MapScripts::OnPreResetLevel() {
-    ACT_SCRIPT(OnPreResetLevel);
-}
+void MapScripts::OnPreResetLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnPreResetLevel); }
 
-void MapScripts::OnPostResetLevel() {
-    ACT_SCRIPT(OnPostResetLevel);
-}
+void MapScripts::OnPostResetLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnPostResetLevel); }
 
-void MapScripts::OnPauseLevel() {
-    ACT_SCRIPT(OnPauseLevel);
-}
+void MapScripts::OnPauseLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnPauseLevel); }
 
-void MapScripts::OnUnpauseLevel() {
-    ACT_SCRIPT(OnUnpauseLevel);
-}
+void MapScripts::OnUnpauseLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnUnpauseLevel); }
 
-void MapScripts::OnPreExitLevel() {
-    ACT_SCRIPT(OnPreExitLevel);
-}
+void MapScripts::OnPreExitLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnPreExitLevel); }
 
-void MapScripts::OnPreNextLevel() {
-    ACT_SCRIPT(OnPreNextLevel);
-}
+void MapScripts::OnPreNextLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnPreNextLevel); }
 
-void MapScripts::OnDead() {
-    ACT_SCRIPT(OnDead);
-}
+void MapScripts::OnDead(const BML::Mod::Context &) { ACT_SCRIPT(OnDead); }
 
-void MapScripts::OnPreEndLevel() {
-    ACT_SCRIPT(OnPreEndLevel);
-}
+void MapScripts::OnPreEndLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnPreEndLevel); }
 
-void MapScripts::OnPostEndLevel() {
-    ACT_SCRIPT(OnPostEndLevel);
-}
+void MapScripts::OnPostEndLevel(const BML::Mod::Context &) { ACT_SCRIPT(OnPostEndLevel); }
 
-void MapScripts::OnCounterActive() {
-    ACT_SCRIPT(OnCounterActive);
-}
+void MapScripts::OnCounterActive(const BML::Mod::Context &) { ACT_SCRIPT(OnCounterActive); }
 
-void MapScripts::OnCounterInactive() {
-    ACT_SCRIPT(OnCounterInactive);
-}
+void MapScripts::OnCounterInactive(const BML::Mod::Context &) { ACT_SCRIPT(OnCounterInactive); }
 
-void MapScripts::OnBallNavActive() {
-    ACT_SCRIPT(OnBallNavActive);
-}
+void MapScripts::OnBallNavActive(const BML::Mod::Context &) { ACT_SCRIPT(OnBallNavActive); }
 
-void MapScripts::OnBallNavInactive() {
-    ACT_SCRIPT(OnBallNavInactive);
-}
+void MapScripts::OnBallNavInactive(const BML::Mod::Context &) { ACT_SCRIPT(OnBallNavInactive); }
 
-void MapScripts::OnCamNavActive() {
-    ACT_SCRIPT(OnCamNavActive);
-}
+void MapScripts::OnCamNavActive(const BML::Mod::Context &) { ACT_SCRIPT(OnCamNavActive); }
 
-void MapScripts::OnCamNavInactive() {
-    ACT_SCRIPT(OnCamNavInactive);
-}
+void MapScripts::OnCamNavInactive(const BML::Mod::Context &) { ACT_SCRIPT(OnCamNavInactive); }
 
-void MapScripts::OnBallOff() {
-    ACT_SCRIPT(OnBallOff);
-}
+void MapScripts::OnBallOff(const BML::Mod::Context &) { ACT_SCRIPT(OnBallOff); }
 
-void MapScripts::OnPreCheckpointReached() {
+void MapScripts::OnPreCheckpointReached(const BML::Mod::Context &) {
     ACT_SCRIPT(OnPreCheckpointReached);
 }
 
-void MapScripts::OnPostCheckpointReached() {
+void MapScripts::OnPostCheckpointReached(const BML::Mod::Context &) {
     ACT_SCRIPT(OnPostCheckpointReached);
 }
 
-void MapScripts::OnLevelFinish() {
-    ACT_SCRIPT(OnLevelFinish);
-}
+void MapScripts::OnLevelFinish(const BML::Mod::Context &) { ACT_SCRIPT(OnLevelFinish); }
 
-void MapScripts::OnGameOver() {
-    ACT_SCRIPT(OnGameOver);
-}
+void MapScripts::OnGameOver(const BML::Mod::Context &) { ACT_SCRIPT(OnGameOver); }
 
-void MapScripts::OnExtraPoint() {
-    ACT_SCRIPT(OnExtraPoint);
-}
+void MapScripts::OnExtraPoint(const BML::Mod::Context &) { ACT_SCRIPT(OnExtraPoint); }
 
-void MapScripts::OnPreSubLife() {
-    ACT_SCRIPT(OnPreSubLife);
-}
+void MapScripts::OnPreSubLife(const BML::Mod::Context &) { ACT_SCRIPT(OnPreSubLife); }
 
-void MapScripts::OnPostSubLife() {
-    ACT_SCRIPT(OnPostSubLife);
-}
+void MapScripts::OnPostSubLife(const BML::Mod::Context &) { ACT_SCRIPT(OnPostSubLife); }
 
-void MapScripts::OnPreLifeUp() {
-    ACT_SCRIPT(OnPreLifeUp);
-}
+void MapScripts::OnPreLifeUp(const BML::Mod::Context &) { ACT_SCRIPT(OnPreLifeUp); }
 
-void MapScripts::OnPostLifeUp() {
-    ACT_SCRIPT(OnPostLifeUp);
-}
+void MapScripts::OnPostLifeUp(const BML::Mod::Context &) { ACT_SCRIPT(OnPostLifeUp); }
 
 #undef ACT_SCRIPT

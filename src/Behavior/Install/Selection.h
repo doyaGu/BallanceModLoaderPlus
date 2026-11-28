@@ -62,7 +62,7 @@ public:
     public:
         virtual ~World() = default;
         virtual Status Install(const PatchKey &patch, const ObjectRef &target,
-                               Epoch epoch, Installation &out) = 0;
+                               Epoch epoch, Installation &out, Status &recovery) = 0;
         virtual Status Close(Installation installation) = 0;
     };
 
@@ -78,7 +78,7 @@ public:
     }
     [[nodiscard]] PlanState State() const noexcept { return m_State; }
     [[nodiscard]] Epoch WorldEpoch() const noexcept { return m_Epoch; }
-    [[nodiscard]] std::size_t Size() const noexcept { return m_Installed.size(); }
+    [[nodiscard]] std::size_t Size() const noexcept;
     [[nodiscard]] bool Contains(const ObjectRef &target) const noexcept;
     [[nodiscard]] std::vector<InstallationInfo> Installations() const;
     [[nodiscard]] bool Retiring() const noexcept { return m_Retiring; }
@@ -105,6 +105,12 @@ private:
     Status Restored(Status status);
     Status Settled();
     void Touch() noexcept;
+    bool Invalidate(Installation installation) noexcept;
+
+    struct Installed {
+        Installation Id;
+        bool Invalid = false;
+    };
 
     PatchKey m_Patch;
     ScriptSelection m_Target;
@@ -114,7 +120,7 @@ private:
     Epoch m_Epoch = 0;
     bool m_Retiring = false;
     std::uint64_t m_Revision = 1;
-    std::map<ObjectRef, Installation, RefLess> m_Installed;
+    std::map<ObjectRef, Installed, RefLess> m_Installed;
     Status m_LastStatus;
     Status m_ApplyFailure;
     Status m_RestoreFailure;
@@ -157,12 +163,16 @@ public:
     // Reports whether Retry would accept the Plan, without changing it.
     [[nodiscard]] Status CanRetry(SelectionId id) const;
     Status Retry(SelectionId id);
+    // Runs a rule at the current safe point when a definition replacement
+    // needs its graph installation result before it can commit.
+    Status ReconcileNow(SelectionId id);
     Status RetireOwner(std::string_view owner);
 
     Status LoadScript(std::string name, ObjectRef script);
     void Remove(ObjectRef script);
     void Remove(const std::vector<ObjectRef> &scripts);
     void RemoveObject(std::uint32_t domain, std::uint32_t slot);
+    void InvalidateInstallation(Installation installation) noexcept;
     Status ResetWorld();
     Status ProcessFrame();
 
@@ -195,6 +205,7 @@ private:
     [[nodiscard]] SelectionId NextId() noexcept;
     [[nodiscard]] Status Ready() const;
     void Mark(std::string_view name) noexcept;
+    Status Reconcile(Record &record);
 
     Epoch m_Epoch = 1;
     SelectionId m_NextId = 1;

@@ -1,180 +1,108 @@
-# 使用 BML+
+# 安装和使用 BML+
 
-本文面向安装 BML+ 运行时和 Mod 的玩家，不需要编译器或 BML+ SDK。
+## 先核对运行时
 
-## 运行要求
+本文对应 **Ballanced SDL** 分支和动态 Player。配套包的 ABI 描述包含
+`runtime: "sdl"`，平台、架构、动态宿主链接方式必须匹配；直接使用 Engine/ImGui 的
+Mod 还需匹配依赖的编译器、运行库和配置 ABI。原版 Player 的旧归档不是 SDL 包。
+本分支尚未实现静态 Player 集成。
 
-- Windows 上的 BallancePlayer。BML+ 不支持原版 Ballance Player。
-- x86 Microsoft Visual C++ 2015–2022 Redistributable。
-- 与准备安装的 Mod 兼容的 BML+ 版本。
+使用匹配的完整运行时包；没有配套包时按[参与开发](contributing.md)从对应 Ballanced
+基线构建。[支持与验证](validation.md)区分已验收和未运行的目标。
 
-替换 `BMLPlus.dll`、`AngelScript.dll` 或原生 Mod 前先关闭 Player。游戏正在使用
-DLL 时，Windows 无法安全替换它。
+## 安装到游戏根目录
 
-## 安装 BML+
+关闭 Player 并备份。根目录包含 `base.cmo`、游戏资源和 `Bin/Player` 或根目录的
+`Player`；Windows 使用 `Player.exe`。在这一层解压运行时并保留目录结构：
 
-1. 从 [BML+ Releases](https://github.com/doyaGu/BallanceModLoaderPlus/releases)
-   下载 `BMLPlus-<version>.zip`。
-2. 将压缩包内的全部文件解压到 Ballance 安装目录。不要在外面额外套一层
-   `BMLPlus-<version>` 目录。
-3. 检查目录结构：
+| 位置 | 用途 |
+| --- | --- |
+| `Managers/BMLPlus.dll` | Windows Loader |
+| `Managers/libBMLPlus.so` / `Managers/libBMLPlus.dylib` | Linux / macOS Loader |
+| `BuildingBlocks/AngelScript.dll`、`libAngelScript.so`、`libAngelScript.dylib` | 启用脚本时的配套 CKAngelScript |
+| `ModLoader/BML.abi.json` | 运行时目标及扩展 ABI 标识 |
+| `ModLoader/Fonts`、`ModLoader/Licenses` | 字体和依赖许可 |
+| `ModLoader/Mods` | 用户安装的 Mod |
+| `ModLoader/Configs` | Loader 创建并保留的用户配置 |
 
-   ```text
-   <Ballance>/
-     Bin/Player.exe
-     BuildingBlocks/BMLPlus.dll
-     BuildingBlocks/AngelScript.dll   # 支持脚本 Mod 的发布包中存在
-     ModLoader/
-   ```
+按包内文件名安装，不要改名假装另一个平台。Loader 在 **Managers**，不是
+BuildingBlocks；移除 BuildingBlocks 中遗留的重复 Loader。CK2、VxMath、SDL 由
+Player 提供，不要把另一份 SDL 或 SDK 引擎库复制进游戏。
 
-4. 启动 `Bin/Player.exe`。
-5. 确认游戏窗口顶部显示 BML+ 版本。打开 `ModLoader/ModLoader.log`，确认初始化
-   完成且没有 Loader 错误。
+SDK 放在开发工作区，描述位于 `share/BML/BML.abi.json`，不能当运行时覆盖游戏。
+POSIX 保留 Player 和工具的可执行权限。macOS SDK/运行时 CMake 完成所需加载路径及
+临时签名修正；发行签名和系统安全许可仍需单独验证。
 
-按 `/` 打开 BML+ 命令栏。输入 `bml` 可以查看 Loader 版本和已加载的 Mod。
+启动 Player 后检查 `ModLoader/ModLoader.log`，确认初始化、目标、版本和 Mod 列表。
+无脚本构建会报告脚本不可用；放入脚本文件不能启用未编译的功能。
 
 ## 安装 Mod
 
-将支持的 Mod 包放入 `ModLoader/Mods`：
+- 原生：把 `Name.bmodp` 与它自己的 `Name.bmodp.abi.json` 一起放进
+  `ModLoader/Mods`，或安装包含二者和资源的 ZIP。各平台统一使用 `.bmodp` 扩展名。
+- 脚本：安装单个 `Name.mod.as`、入口目录或 ZIP。目录/ZIP 须恰有一个
+  `*.mod.as` 入口；辅助源码使用普通 `.as`。需要脚本版 BML 和配套 CKAngelScript。
+- 保留资源相对目录与精确大小写，不安装补全声明、编译缓存、整份 SDK 或重复 Mod ID。
 
-- 原生 Mod 通常是 `.bmodp` DLL，或者包含原生 Mod 及其文件的受支持 zip 包。
-- 脚本 Mod 可以是单个 `*.mod.as` 文件、包含且只包含一个 `*.mod.as` 入口的
-  目录，或者包含且只包含一个入口的受支持 zip 包。
-- 脚本 Mod 需要与当前 BML+ 发布包配套的 `AngelScript.dll`。
+旧 SDL `BMLEntry`/`IMod` 产物需[迁移和重编译](native-mod-migration.md)。不要用别的
+Mod 的 JSON 绕过 ABI 校验。目标、协议、选择的扩展 ABI 是兼容门槛；SDK 内容哈希用于
+诊断，不表示可以混用引擎 ABI。
 
-依赖和附加文件以 Mod 自身的 README 为准。不要在 `Mods` 中同时保留同一 Mod
-id 的开发目录和 zip 包。新增 Mod 或修改依赖后应重启 Player。
+## 配置、字体与输入
 
-通过 `ModLoader/ModLoader.log` 和 `bml` 命令确认 Mod 已被发现并加载。脚本作者
-还可以使用 `script status` 和 `script diag <id>`。
+在 Mod 菜单编辑已声明配置，更新时保留 `ModLoader/Configs`。文本和路径使用 UTF-8。
+内建 ImGui 字体图集、游戏菜单字体和引擎 GUI 文字职责独立，`ModLoader/Fonts` 不是
+所有游戏文字的统一字体替换入口。
 
-## BML+ 创建的文件
+SDL 平台后端负责文本组合与事件；Windows 保留 IMM/TSF，其他平台可使用系统原生
+候选窗。焦点、组合、全屏和手柄仍需各平台实机验收。用 `bml system` 和日志收集诊断。
 
-| 路径 | 用途 |
-| --- | --- |
-| `ModLoader/Mods` | 已安装的原生 Mod 和脚本 Mod |
-| `ModLoader/Configs` | BML+ 与各 Mod 的配置 |
-| `ModLoader/ModLoader.log` | Loader、依赖和 Mod 诊断信息 |
-| `ModLoader/Fonts` | BML+ 界面使用的自带字体和可选字体 |
-| `ModLoader/Themes` | 控制台输出使用的 ANSI 调色板主题 |
+## 控制台
 
-配置文件在首次启动时自动生成，不随发布包提供。升级时保留现有
-`ModLoader/Configs`：已有值保留，新项使用代码默认值，删除的设置在下次保存时移除。
-新版本的默认值不会覆盖已有保存值。配置读取或解析失败时，BML+ 会记录错误并禁止
-覆盖原文件。修复后重启 Player；如需恢复该 Mod 的当前默认值，可先备份再移走它的配置。
+按 `/` 打开命令栏，`help` 查看当前安装可用的命令。支持引号、变量、别名、历史、
+`;`、`&&`、`||` 和管道。`$?` 是上个命令的状态；不要把 shell 状态与 BML API 错误码
+混为一谈。
 
-新安装默认使用 BML Mono 显示西文、BML Sans SC 显示中文，逻辑字号分别为 32 和
-30。已有字体设置不会被覆盖。可在 GUI 配置或 `font` 命令中调整；`unifont.otf`
-仍可选择。这些字体影响 BML+ 的文本，不替换游戏自身的菜单字体贴图。
-
-## 命令行
-
-按 `/` 打开命令栏。它支持下列 shell 风格语法：
-
-- 未加引号的空格分隔单词。`'...'` 按字面保留，`"..."` 保留空格并允许其中的
-  `$NAME`，`$'...'` 解析 `\n`、`\e` 之类的转义。反斜杠只转义 shell 字符，
-  因此 `map load C:\Maps\x.nmo` 不需要加引号。
-- `a; b` 依次运行两者，`a && b` 只在 `a` 成功时运行 `b`，`a || b` 只在失败时
-  运行，`a | b` 把 `a` 的输出交给 `b`。`$?` 是上一条命令的状态。`# ...` 是注释。
-- `set NAME VALUE` 定义本次会话的变量，`set -U NAME VALUE` 跨会话保留，
-  `set -e NAME` 删除，`$NAME` 或 `${NAME}` 插入其值。`$(cmd)` 插入 `cmd` 的输出。
-- `alias name='cmd args'` 为一行的第一个词定义缩写；`alias` 列出全部，
-  `unalias name` 删除一个。别名会持久保存。
-- `history` 给历史行编号；`!!`、`!n`、`!-n`、`!text` 重新执行它们。
-- 管道过滤器：`grep`、`head`、`tail`、`wc`、`sort`、`uniq`、`xargs`。`true`
-  和 `false` 只设置状态，不做别的。
-
-编辑按键：Tab 补全命令、别名、`$` 变量和命令自己的参数，在 `;` 或 `|` 之后同样
-有效。上下方向键遍历历史，保留正在输入的文字并按它过滤。光标后面会出现来自
-历史的灰色建议，按 Right 或 End 接受。Ctrl+R 搜索历史，Ctrl+A 与 Ctrl+E 跳到
-行首行尾，Ctrl+U、Ctrl+K、Ctrl+W 分别剪切到行首、到行尾或一个词，Ctrl+Y 粘贴
-剪切的内容，Ctrl+L 清空消息板。未写完的行（例如没有闭合的引号或末尾的 `&&`）
-会要求再输入一行，而不是直接运行。续行向上扩展，因此补全、搜索或输入法候选栏
-始终位于当前编辑行下方，消息板位于整条命令上方；这些物理行在历史中仍是一条命令。
-
-变量、别名与历史保存在 `ModLoader/CommandBar.shell.json` 和
-`ModLoader/CommandBar.history`。在 `BML.cfg` 中设置 `CommandBar.KeepOpen`
-可以让命令运行后命令栏保持打开。输入 `help` 可以查看当前安装提供的命令。
-
-`CommandBar` 配置分类还提供独立开关，可分别控制语法高亮、Tab 补全及候选栏、
-历史内联建议、Ctrl+R 反向搜索，以及上下方向键的历史导航。关闭命令栏时的定时通知
-和打开命令栏时的历史消息也可以通过 `ShowNotifications` 与 `ShowScrollback` 分别控制。
-这些设置可以在 Mod 菜单中修改，并会立即生效。
-
-命令栏打开时，输入框支持常规的鼠标框选、复制、剪切和粘贴。消息板为只读区域：
-拖动鼠标可以框选历史消息，按 Ctrl+C 会复制不含 ANSI 颜色控制码的纯文本；先点击
-消息板后按 Ctrl+A 可以选择全部历史消息。拖出消息板上边缘或下边缘后，会在继续
-框选的同时自动滚动。点击或框选消息板不会关闭当前命令会话。
-
-语法高亮默认采用 Atom One Dark 配色。可以在 `CommandBarTheme` 分类中用
-`#RRGGBB` 或 `#RRGGBBAA` 分别修改每一种语法角色；格式无效时会回退到该角色的
-One Dark 默认颜色。有效的颜色值在 Mod 菜单中会使用调色盘按钮，主题修改同样会
-立即生效。
-
-## 更新 BML+
-
-手动覆盖是默认且便于恢复的更新方式：
-
-1. 关闭 Player。
-2. 下载新的 `BMLPlus-<version>.zip`。
-3. 解压到 Ballance 安装目录，并允许覆盖同名运行时文件。
-4. 启动 Player，重新检查版本显示和日志。
-
-不要手动解压 `BMLPlus-Update-<version>.zip`。它是 Updater 使用的更新载荷，
-会有意省略不参与原地更新的文件。
-
-可选的 Updater 只修改 BML+ 运行时文件，不会安装、删除或更新 Mod 和配置：
-
-```powershell
-Bin\Updater.exe check
-Bin\Updater.exe update
-Bin\Updater.exe doctor
+```text
+set NAME value
+set -U NAME value
+alias hi='echo hello'
+history
+bml system
+script status
+script diag your.mod.id
 ```
 
-如果 Player 可以启动，但问题与当前渲染器、字体、输入法或已安装 Mod 有关，请在
-命令栏运行 `bml system`，并将输出与 `ModLoader/ModLoader.log` 一起提交。
+Tab 补全，Up/Down 回溯历史，Ctrl+R 搜索；Ctrl+A/E 到行首/行尾，Ctrl+U/K/W 剪切，
+Ctrl+Y 粘贴，Ctrl+L 清除消息板。不完整的引号或尾随 `&&` 会进入续行，整条逻辑命令保留
+物理行布局。消息板可选中和复制，点击消息板不会关闭当前输入。
 
-如果 Updater 校验失败或 Updater 本身太旧，先手动安装一次最新完整包，再重新使用
-Updater。
+变量、别名、历史保存在 `ModLoader/CommandBar.shell.json` 和
+`ModLoader/CommandBar.history`。`BML.cfg` 的 `CommandBar`、`CommandBarTheme`
+控制保留输入、补全、历史建议、滚动消息和配色；颜色使用 `#RRGGBB` / `#RRGGBBAA`。
+更多语法见[英文命令说明](https://doyagu.github.io/BallanceModLoaderPlus/using-bml/#command-line)。
 
-## 卸载 BML+
+## 更新、恢复和卸载
 
-1. 关闭 Player。
-2. 删除 `BuildingBlocks/BMLPlus.dll`。
-3. 只有在 `AngelScript.dll` 随 BML+ 安装且没有其他 CKAngelScript 集成需要它时，
-   才删除 `BuildingBlocks/AngelScript.dll`。
+按 [Updater 和 doctor](updater-sdl.md)执行更新、诊断、回滚。更新或回滚前关闭 Player。
+通道按目标区分并校验签名，保留用户 Mod 和配置；doctor 不能替代游戏启动验收。
+手动更新也必须使用匹配的完整运行时，不用 SDK 覆盖游戏。
 
-如果需要保留 Mod、配置、地图和日志，请保留 `ModLoader`。只有确定要同时清除这些
-数据时才删除整个目录。
+卸载时关闭 Player，移除 Managers 中的 Loader 和它拥有的运行时文件；保留
+`ModLoader` 可以保留 Mod/设置。其他游戏内容依赖脚本插件时不要删除它；不要删除
+Player 的 CK2、VxMath 或 SDL。
 
-## 排查问题
+## 排错
 
-### 没有显示 BML+ 版本
+| 现象 | 检查 |
+| --- | --- |
+| 没有 BML 启动日志 | 根目录、Managers 库、平台/架构、重复旧 Loader |
+| 原生模块被拒绝 | ABI 伴随文件、`bml.mod` 协议、provider 版本、扩展 ABI |
+| 缺库或镜像架构错误 | doctor、运行时包、可执行权限和宿主依赖 |
+| 脚本不可用 | 描述中的 `scripts`、BuildingBlocks 插件、`script status`/`diag` |
+| 找不到资源/include | 文件名大小写、相对路径、归档层级和实际打包资源 |
+| 输入异常或第二份 SDL | 恢复配套 Player/SDK 部署，不随 Mod 放入另一个 SDL |
+| 更新中断 | 保留事务状态，按更新器指南诊断和回滚 |
 
-- 确认 `BMLPlus.dll` 直接位于 `BuildingBlocks`。
-- 确认启动的是 BallancePlayer 的 `Bin/Player.exe`。
-- 安装 x86 Visual C++ 2015–2022 Redistributable。
-- 清理旧 Loader 混装的运行时文件，再从一个完整 BML+ 包重新安装。
-
-### 原生 Mod 没有加载
-
-- 确认文件使用 `.bmodp` 扩展名，或采用作者说明的包格式。
-- 在 `ModLoader/ModLoader.log` 中搜索 Mod id、缺少的依赖、不兼容的 BML+ 版本
-  或 DLL 加载错误。
-- 只保留该 Mod 及其必需依赖进行测试。
-
-### 脚本 Mod 没有加载
-
-- 确认存在配套的 `BuildingBlocks/AngelScript.dll`。
-- 确认包中只有一个 `*.mod.as` 入口。
-- 依次使用 `script status`、`script diag <id>` 和 `script logs error`。
-- 删除同一 Mod id 的重复目录、单文件或 zip 副本。
-
-### 安装 Mod 后变慢或不稳定
-
-- 修改 BML+ 设置前，先禁用该 Mod 复测。
-- 每次只恢复一个 Mod，以定位冲突。
-- 提交问题时附上 `ModLoader/ModLoader.log`、BML+ 版本、Mod 版本和复现步骤。
-
-可稳定复现的 BML+ 问题请提交到
-[Issue Tracker](https://github.com/doyaGu/BallanceModLoaderPlus/issues)。
+反馈时提供目标描述、BML/Player 版本、日志、复现步骤、实际安装的包和实机运行范围。
+交叉编译成功不代表游戏功能验收成功。

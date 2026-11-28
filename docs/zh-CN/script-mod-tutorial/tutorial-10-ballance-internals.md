@@ -46,18 +46,20 @@ Ballance 的运行时由四类文件协作组成。想象成一条流水线，�
 
 ## 为什么"太早"会失败
 
-如果你在 `OnLoad` 里调用 `ctx.Borrow3dEntityByName("Ball")`，结果是 null。因为 `OnLoad` 在游戏启动时执行，那时候 Level_01.NMO 还没加载，球根本不存在。
+如果你在 `OnLoad` 里调用 按名称查找并借用 `Ball`，结果是 null。因为 `OnLoad` 在游戏启动时执行，那时候 Level_01.NMO 还没加载，球根本不存在。
 
 常见的"时机太早"错误：
 
 | 代码位置 | 能找到的对象 | 找不到的对象 |
 | --- | --- | --- |
-| `OnLoad` | 无（关卡对象都不存在） | 球、地板、检查点、DataArray |
-| `OnProcess`（菜单中） | 无 | 同上 |
+| `OnLoad` | 已装入的基础/菜单资源，取决于 Player 初始化阶段 | 尚未加载的当前关卡球、地形、检查点 |
+| `OnProcess`（菜单中） | 基础/菜单资源 | 当前关卡专属对象及有效玩法状态 |
 | `GAME_EVENT_START_LEVEL` | 已创建的关卡对象、组、DataArray | 名字拼错或类型不匹配的对象 |
 | `OnProcess`（关卡中） | 已创建的关卡对象、组、DataArray | 名字拼错或类型不匹配的对象 |
 
-规则：**关卡对象只在关卡运行时存在。** 菜单里、加载画面里，它们都不在。
+规则：**当前关卡专属对象等到关卡加载后再使用。** 不要把这个规则扩展成
+“菜单里没有任何 CK 对象或 DataArray”；基础资源与表对象可能更早存在，存在也不代表
+其中已经有有效的当前关卡状态。
 
 ## 对象命名约定
 
@@ -103,9 +105,11 @@ Level_01.NMO 里的对象遵循 Ballance 的命名约定。上一章已经从 `C
 
 注意 `Sector` 组，Ballance 把每关分成若干小节（Sector），每个小节包含一段连续的地形和机关。第一关有 4 个 Sector。Sector 的划分影响游戏的渲染优化：只有当前 Sector 附近的对象会被渲染，远处的暂时隐藏。
 
-## DataArray：Levelinit 创建的运行时表
+## DataArray：基础数据与运行时状态
 
-除了分组，Levelinit 还创建运行时表格（DataArray）来记录游戏状态。把 DataArray 想象成 Excel 表格，有行有列，每个单元格存一个值。
+除了分组，游戏还用 DataArray 保存基础数据和运行时状态。部分表随基础资源装入，
+Levelinit 等行为负责初始化或填充关卡相关内容。表对象的存在和数据已就绪是两件事。
+DataArray 有行有列，每个单元格按列类型存值。
 
 关卡运行时的核心表格：
 
@@ -117,7 +121,8 @@ Level_01.NMO 里的对象遵循 Ballance 的命名约定。上一章已经从 `C
 | `ResetPoints` | 复活点位置 | 每关不同 | 坐标簿，记录每个复活点的位置 |
 | `IngameParameter` | 游戏参数 | 1 | 设置面板，球速度、摄像机距离等 |
 
-下一章会详细讲怎么用脚本读取这些表。这里先记住：**DataArray 和组一样，只在关卡运行时存在。**
+下一章会讲如何读取这些表。借用后先检查对象、行列数和列名；关卡数据还须检查
+游戏状态，不要根据表名推断它的生命周期。
 
 ## 行为图：原版逻辑的执行层
 
@@ -186,11 +191,21 @@ Gameplay 持续维护
 ```angelscript
 if (event == BML::GAME_EVENT_START_LEVEL) {
     // 验证对象存在
-    CK3dEntity@ ball = ctx.Borrow3dEntityByName("Ball");
+    CK3dEntity@ ball;
+    BML::ObjectRef ballRef;
+    CKObject@ ballObject;
+        if (BML::Scene::FindObject("Ball", CKCID_3DENTITY, ballRef) == BML::ERROR_OK &&
+        BML::Engine::BorrowObject(ctx, ballRef, CKCID_3DENTITY, ballObject) == BML::ERROR_OK)
+        @ball = cast<CK3dEntity>(ballObject);
     ctx.LogInfo("Ball: " + (ball is null ? "null" : "found"));
 
     // 验证 DataArray 存在
-    CKDataArray@ table = ctx.BorrowDataArrayByName("CurrentLevel");
+    CKDataArray@ table;
+    BML::ObjectRef tableRef;
+    CKObject@ tableObject;
+        if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+        BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+        @table = cast<CKDataArray>(tableObject);
     ctx.LogInfo("CurrentLevel: " + (table is null ? "null" : "found"));
 }
 ```
@@ -203,9 +218,14 @@ if (event == BML::GAME_EVENT_START_LEVEL) {
 
 **"我找到了对象但读出来的值很奇怪"**，确认你找的对象名拼写完全正确。Ballance 区分大小写：`P_Ball_Paper_01` 和 `p_ball_paper_01` 是不同的名字。
 
-**"退出关卡后我的 mod 崩溃了"**，你可能在 `OnProcess` 里使用了已经失效的句柄。退出关卡时对象被销毁，之前缓存的句柄变成悬空引用。一定要在 `GAME_EVENT_PRE_EXIT_LEVEL` 里把句柄设为 null，并在使用前检查 `is null`。
+**"退出关卡后我的 mod 崩溃了"**，可能使用了已经删除对象的借用句柄。
+在对象可能删除、切换关卡或世界重置前清空缓存。`is null` 只能判断空句柄，
+不能证明对象还存在；局部借用前重新查找，跨回调身份优先使用 CKAS 可验证引用，
+见[借用规则](ref-modcontext.md#borrow)。
 
-**"AllLevel 表在菜单里也能读到吗？"**，不能。DataArray 和其他关卡对象一样，只在关卡运行时存在。即使是"看起来像全局信息"的 AllLevel，也是由 Levelinit 创建的。
+**"AllLevel 表在菜单里也能读到吗？"**，不能把“未进入关卡”等同于“表一定不存在”。
+它是关卡目录数据，是否已装入取决于当前 Player/世界的资源和初始化阶段。先检查借用、
+行列与布局；需要当前关卡有效状态时仍等 `GAME_EVENT_START_LEVEL`。
 
 ## 下一步预告
 

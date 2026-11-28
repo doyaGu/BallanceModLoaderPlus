@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <sstream>
 
-#include "BML/IBML.h"
+#include "Loader/ModContext.h"
 #include "Console/Shell/ShellIo.h"
 #include "HUD/HUDRuntime.h"
 #include "UI/AnsiPalette.h"
@@ -68,10 +68,10 @@ static std::string JoinArguments(const std::vector<std::string> &args, size_t st
     return utils::JoinString(args, ' ', start);
 }
 
-void HUDCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
+void HUDCommand::Execute(ModContext *bml, const std::vector<std::string> &args) {
     // Basic toggles preserved
     if (args.size() == 2 && (args[1] == "on" || args[1] == "off")) {
-        if (ParseBoolean(args[1])) {
+        if (BML::CommandArguments::ParseBoolean(args[1])) {
             m_HUD->SetMode(m_State);
         } else {
             m_State = m_HUD->GetMode();
@@ -81,7 +81,7 @@ void HUDCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
     if (args.size() == 3 && (args[1] == "title" || args[1] == "fps" || args[1] == "sr")) {
         int state = m_HUD->GetMode();
-        const bool on = ParseBoolean(args[2]);
+        const bool on = BML::CommandArguments::ParseBoolean(args[2]);
         if (args[1] == "title") state = on ? (state | HUD_TITLE) : (state & ~HUD_TITLE);
         else if (args[1] == "fps") state = on ? (state | HUD_FPS) : (state & ~HUD_FPS);
         else if (args[1] == "sr") state = on ? (state | HUD_SR) : (state & ~HUD_SR);
@@ -137,7 +137,8 @@ void HUDCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
         return;
     }
     if (args.size() >= 4 && args[1] == "grid") {
-        const std::string &id = args[2]; int cols = std::max(1, ParseInteger(args[3]));
+        const std::string &id = args[2];
+        int cols = std::max(1, BML::CommandArguments::ParseInteger(args[3]));
         size_t lastDot = id.find_last_of('.'); std::shared_ptr<HUDContainer> c = nullptr;
         if (lastDot == std::string::npos) {
             c = hud.AddGrid(id, cols);
@@ -399,10 +400,20 @@ void HUDCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
             if (what == "scale" && args.size() >= 5) { textElement->SetScale((float) atof(args[4].c_str())); return; }
             if (what == "wrap_px" && args.size() >= 5) { textElement->SetWrapWidthPx((float) atof(args[4].c_str())); return; }
             if (what == "wrap_frac" && args.size() >= 5) { textElement->SetWrapWidthFrac((float) atof(args[4].c_str())); return; }
-            if (what == "tabs" && args.size() >= 5) { textElement->SetTabColumns(std::max(1, ParseInteger(args[4]))); return; }
+            if (what == "tabs" && args.size() >= 5) {
+                textElement->SetTabColumns(
+                    std::max(1, BML::CommandArguments::ParseInteger(args[4])));
+                return;
+            }
         }
-        if (what == "visible" && args.size() >= 5) { e->SetVisible(ParseBoolean(args[4])); return; }
-        if (what == "panel" && args.size() >= 5) { e->EnablePanel(ParseBoolean(args[4])); return; }
+        if (what == "visible" && args.size() >= 5) {
+            e->SetVisible(BML::CommandArguments::ParseBoolean(args[4]));
+            return;
+        }
+        if (what == "panel" && args.size() >= 5) {
+            e->EnablePanel(BML::CommandArguments::ParseBoolean(args[4]));
+            return;
+        }
         if (what == "panel_bg" && args.size() >= 5) {
             ImU32 col;
             if (!ParseColor(args[4], col)) { BML::Shell::Fail(bml, "[hud] invalid panel background color\n"); return; }
@@ -423,7 +434,10 @@ void HUDCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
         auto c = HUDCast<HUDContainer>(e);
         if (c) {
             if (what == "spacing" && args.size() >= 5) { c->SetSpacing((float)atof(args[4].c_str())); return; }
-            if (what == "cols" && args.size() >= 5) { c->SetGridCols(std::max(1, ParseInteger(args[4]))); return; }
+            if (what == "cols" && args.size() >= 5) {
+                c->SetGridCols(std::max(1, BML::CommandArguments::ParseInteger(args[4])));
+                return;
+            }
             if (what == "align_x" && args.size() >= 5) {
                 bool ok = true; const AlignX value = ParseAlignX(args[4], ok);
                 if (!ok) { BML::Shell::Fail(bml, "[hud] invalid horizontal alignment\n"); return; }
@@ -452,7 +466,8 @@ void HUDCommand::Execute(IBML *bml, const std::vector<std::string> &args) {
     BML::Shell::Fail(bml, "Usage: hud <action>; use 'hud help' for commands.\n");
 }
 
-const std::vector<std::string> HUDCommand::GetTabCompletion(IBML *bml, const std::vector<std::string> &args) {
+const std::vector<std::string> HUDCommand::GetTabCompletion(ModContext *bml,
+                                                            const std::vector<std::string> &args) {
     if (args.size() == 2)
         return {"on", "off", "title", "fps", "sr", "add", "text", "set", "del", "list", "get", "vstack", "hstack", "grid", "child", "page", "help", "mv", "rename", "cp", "clone"};
     if (args.size() >= 3 && args[1] == std::string("set"))

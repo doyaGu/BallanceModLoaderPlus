@@ -1,6 +1,6 @@
-#include <BML/ILogger.h>
-#include <BML/IMod.h>
+#include <BML/Mod.hpp>
 #include <BML/Interface.hpp>
+#include <stdexcept>
 
 #include <HelloMod/ValueInterface.h>
 
@@ -14,28 +14,24 @@ int BML_CDECL ReadValue(int input, int *outValue) {
 }
 
 constexpr auto kValueInterface =
-    BML::Interfaces::MakeInterface<HelloModTraits>(
-        BML_HELLOMOD_INTERFACE_MINOR, &ReadValue);
+    BML::Interfaces::MakeInterface<HelloModTraits>(BML_HELLOMOD_INTERFACE_MINOR, &ReadValue);
 
-class HelloMod final : public IMod {
+class HelloMod final : public BML::Mod::Instance {
 public:
-    explicit HelloMod(IBML *bml) : IMod(bml) { AddDependency("BML"); }
-
-    const char *GetID() override { return "__MOD_ID_CPP__"; }
-    const char *GetVersion() override { return "__MOD_VERSION_CPP__"; }
-    const char *GetName() override { return "__MOD_NAME_CPP__"; }
-    const char *GetAuthor() override { return "__MOD_AUTHOR_CPP__"; }
-    const char *GetDescription() override { return "__MOD_DESCRIPTION_CPP__"; }
-    DECLARE_BML_VERSION;
-
-    void OnLoad() override {
+    void OnLoad(const BML::Mod::Context &ctx) override {
         const int status = m_Value.Open(kValueInterface);
-        GetLogger()->Info("Native profile interface provider: publication_status=%d", status);
+        if (status != BML_OK)
+            throw std::runtime_error("Interface publication failed: " + std::to_string(status));
+        (void)ctx.LogInfo(std::string("Native profile interface provider: publication_status=") +
+                    std::to_string(status));
     }
 
-    void OnUnload() override {
+    void OnUnload(const BML::Mod::Context &ctx) override {
         const int status = m_Value.Close();
-        GetLogger()->Info("Native profile interface provider: cleanup_status=%d", status);
+        if (status != BML_OK && status != BML_ERROR_NOT_FOUND)
+            throw std::runtime_error("Registration cleanup failed: " + std::to_string(status));
+        (void)ctx.LogInfo(std::string("Native profile interface provider: cleanup_status=") +
+                    std::to_string(status));
     }
 
 private:
@@ -44,6 +40,12 @@ private:
 
 } // namespace
 
-BML_MOD_ENTRY(IMod *) BMLEntry(IBML *bml) { return new HelloMod(bml); }
-
-BML_MOD_ENTRY(void) BMLExit(IMod *mod) { delete mod; }
+BML_DEFINE_MOD(HelloMod, {
+    .Id = "__MOD_ID_CPP__",
+    .Name = "__MOD_NAME_CPP__",
+    .Version = "__MOD_VERSION_CPP__",
+    .Author = "__MOD_AUTHOR_CPP__",
+    .Description = "__MOD_DESCRIPTION_CPP__",
+    .MinimumLoaderVersion = BML_VERSION,
+    .Dependencies = {{"BML"}},
+})

@@ -42,20 +42,42 @@ bool Selection::RefLess::operator()(const ObjectRef &left,
 }
 
 bool Selection::Contains(const ObjectRef &target) const noexcept {
-    return m_Installed.contains(target);
+    const auto found = m_Installed.find(target);
+    return found != m_Installed.end() && !found->second.Invalid;
+}
+
+std::size_t Selection::Size() const noexcept {
+    return static_cast<std::size_t>(std::count_if(
+        m_Installed.begin(), m_Installed.end(),
+        [](const auto &entry) { return !entry.second.Invalid; }));
 }
 
 std::vector<InstallationInfo> Selection::Installations() const {
     std::vector<InstallationInfo> result;
     result.reserve(m_Installed.size());
-    for (const auto &[target, installation] : m_Installed)
-        result.push_back({target, installation, m_Epoch, m_Revision});
+    for (const auto &[target, installation] : m_Installed) {
+        if (!installation.Invalid)
+            result.push_back({target, installation.Id, m_Epoch, m_Revision});
+    }
     return result;
 }
 
 void Selection::Touch() noexcept {
     m_Revision = m_Revision == (std::numeric_limits<std::uint64_t>::max)()
         ? 1 : m_Revision + 1;
+}
+
+bool Selection::Invalidate(Installation installation) noexcept {
+    for (auto &[target, entry] : m_Installed) {
+        if (entry.Id != installation || entry.Invalid)
+            continue;
+        entry.Invalid = true;
+        Touch();
+        if (!m_Retiring)
+            m_State = PlanState::Reconciling;
+        return true;
+    }
+    return false;
 }
 
 Status Selection::Applied(Status status) {
@@ -81,7 +103,7 @@ Status Selection::Settled() {
 Status Selection::CloseAll(World &world) {
     Status first;
     for (auto item = m_Installed.begin(); item != m_Installed.end();) {
-        Status status = world.Close(item->second);
+        Status status = world.Close(item->second.Id);
         if (!status) {
             if (first ||
                 (first.Code == Error::Busy && status.Code != Error::Busy))
@@ -152,12 +174,13 @@ Status Selection::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
 
     Status closeFailure;
     for (auto item = m_Installed.begin(); item != m_Installed.end();) {
-        if (std::binary_search(targets.begin(), targets.end(), item->first,
+        if (!item->second.Invalid &&
+            std::binary_search(targets.begin(), targets.end(), item->first,
                                RefLess{})) {
             ++item;
             continue;
         }
-        Status status = world.Close(item->second);
+        Status status = world.Close(item->second.Id);
         if (!status) {
             if (closeFailure)
                 closeFailure = std::move(status);
@@ -177,45 +200,45 @@ Status Selection::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
         return Settled();
     }
 
-    std::vector<ObjectRef> added;
+    Status firstFailure;
+    Status recoveryFailure;
     for (const ObjectRef &target : targets) {
         if (m_Installed.contains(target))
             continue;
         Installation installation = 0;
-        Status status = world.Install(m_Patch, target, epoch, installation);
+        Status recovery;
+        Status status = world.Install(m_Patch, target, epoch, installation, recovery);
         if (!status || installation == 0) {
             if (status && installation == 0)
                 status = Failure(Error::InvalidState,
                                   "A Behavior installation has no identity.");
-            (void) Applied(status);
-            Status rollbackFailure;
-            for (auto item = added.rbegin(); item != added.rend(); ++item) {
-                const auto installed = m_Installed.find(*item);
-                if (installed == m_Installed.end())
-                    continue;
-                Status closed = world.Close(installed->second);
-                if (!closed) {
-                    if (rollbackFailure)
-                        rollbackFailure = std::move(closed);
-                    continue;
+            if (firstFailure)
+                firstFailure = std::move(status);
+            if (!recovery) {
+                if (recoveryFailure)
+                    recoveryFailure = std::move(recovery);
+                if (installation) {
+                    m_Installed.emplace(target, Installed{installation, true});
+                    Touch();
                 }
-                m_Installed.erase(installed);
-                Touch();
             }
-            if (!rollbackFailure) {
-                m_State = PlanState::Conflicted;
-                return Restored(std::move(rollbackFailure));
-            }
-            m_State = m_Installed.empty()
-                ? PlanState::Unsatisfied : PlanState::Partial;
-            return status;
+            continue;
         }
-        m_Installed.emplace(target, installation);
+        m_Installed.emplace(target, Installed{installation});
         Touch();
-        added.push_back(target);
+    }
+    if (!recoveryFailure) {
+        (void) Applied(std::move(firstFailure));
+        m_State = PlanState::Conflicted;
+        return Restored(std::move(recoveryFailure));
+    }
+    if (!firstFailure) {
+        m_State = m_Installed.empty() ? PlanState::Unsatisfied : PlanState::Partial;
+        return Applied(std::move(firstFailure));
     }
 
-    m_State = PlanState::Active;
+    m_State = Size() == m_Installed.size()
+        ? PlanState::Active : PlanState::Reconciling;
     return Settled();
 }
 
@@ -476,6 +499,16 @@ Status Selections::Retry(SelectionId id) {
     return {};
 }
 
+Status Selections::ReconcileNow(SelectionId id) {
+    Status status = CanRetry(id);
+    if (!status)
+        return status;
+    if (m_InWorld)
+        return Failure(Error::Busy,
+                       "Behavior Plan reconciliation is already in progress.");
+    return Reconcile(*m_Plans.at(id));
+}
+
 Status Selections::RetireOwner(std::string_view owner) {
     Status ready = Ready();
     if (!ready)
@@ -578,6 +611,17 @@ void Selections::RemoveObject(std::uint32_t domain, std::uint32_t slot) {
     }
 }
 
+void Selections::InvalidateInstallation(Installation installation) noexcept {
+    if (std::this_thread::get_id() != m_Thread)
+        return;
+    for (auto &[id, record] : m_Plans) {
+        if (record->Value.Invalidate(installation)) {
+            record->Dirty = true;
+            return;
+        }
+    }
+}
+
 Status Selections::ResetWorld() {
     Status ready = Ready();
     if (!ready)
@@ -598,6 +642,31 @@ Status Selections::ResetWorld() {
     m_Epoch = m_Epoch == (std::numeric_limits<Epoch>::max)()
         ? 1 : m_Epoch + 1;
     return first;
+}
+
+Status Selections::Reconcile(Record &record) {
+    std::vector<ObjectRef> targets;
+    try {
+        for (const auto &[script, name] : m_Scripts) {
+            if (name == record.Value.Target().Name)
+                targets.push_back(script);
+        }
+    } catch (...) {
+        return record.Value.Applied(Failure(
+            Error::CreateFailed,
+            "The Loader could not form the Behavior Plan target set."));
+    }
+
+    record.Matches = targets.size();
+    // A load or deletion nested in a provider callback marks this rule dirty
+    // for the next safe point rather than being overwritten by this pass.
+    record.Dirty = false;
+    WorldCall call(m_InWorld);
+    Status status = record.Value.Reconcile(
+        std::move(targets), m_Epoch, *record.World);
+    if (!status && record.Value.RestoreFailure().Code == Error::Busy)
+        record.Dirty = true;
+    return status;
 }
 
 Status Selections::ProcessFrame() {
@@ -628,37 +697,7 @@ Status Selections::ProcessFrame() {
             ++item;
             continue;
         }
-        std::vector<ObjectRef> targets;
-        try {
-            for (const auto &[script, name] : m_Scripts) {
-                if (name == record.Value.Target().Name)
-                    targets.push_back(script);
-            }
-        } catch (...) {
-            Status status = Failure(
-                Error::CreateFailed,
-                "The Loader could not form the Behavior Plan target set.");
-            (void) record.Value.Applied(status);
-            if (first)
-                first = status;
-            ++item;
-            continue;
-        }
-
-        record.Matches = targets.size();
-        // Clear the consumed notification before entering the world. A Script
-        // load/remove nested in a provider callback marks it again for the next
-        // safe point instead of being overwritten when this pass returns.
-        record.Dirty = false;
-        Status status;
-        {
-            WorldCall call(m_InWorld);
-            status = record.Value.Reconcile(
-                std::move(targets), m_Epoch, *record.World);
-        }
-        if (!status &&
-            record.Value.RestoreFailure().Code == Error::Busy)
-            record.Dirty = true;
+        Status status = Reconcile(record);
         if (!status && first)
             first = status;
         ++item;

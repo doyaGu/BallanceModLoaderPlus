@@ -3,9 +3,13 @@
 #include <climits>
 #include <cstdint>
 
+#if !BML_RUNTIME_SDL
 #include <windows.h>
+#endif
 
 namespace BML::Api::Behavior {
+
+#if !BML_RUNTIME_SDL
 namespace {
 
 bool IsAscii(std::string_view text) noexcept {
@@ -47,6 +51,8 @@ bool Narrow(const std::wstring &wide, unsigned codePage, bool exact,
 }
 
 } // namespace
+
+#endif
 
 bool IsUtf8(const char *data, std::size_t size) noexcept {
     if (!data && size)
@@ -90,6 +96,21 @@ bool IsUtf8(const char *data, std::size_t size) noexcept {
     return true;
 }
 
+#if BML_RUNTIME_SDL
+std::string NativeText(std::string_view utf8, unsigned codePage) {
+    (void) codePage;
+    return std::string(utf8);
+}
+
+std::string_view Utf8Text(std::string_view native, std::string &storage,
+                          unsigned codePage) {
+    (void) codePage;
+    if (IsUtf8(native.data(), native.size())) return native;
+    storage.clear();
+    return storage;
+}
+
+#else
 std::string NativeText(std::string_view utf8, unsigned codePage) {
     if (IsAscii(utf8) || utf8.size() > static_cast<std::size_t>(INT_MAX))
         return std::string(utf8);
@@ -116,5 +137,7 @@ std::string_view Utf8Text(std::string_view native, std::string &storage,
     }
     return storage;
 }
+
+#endif
 
 } // namespace BML::Api::Behavior

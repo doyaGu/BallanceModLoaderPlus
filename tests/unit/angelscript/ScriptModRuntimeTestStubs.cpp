@@ -2,15 +2,8 @@
 #include "AngelScript/ScriptDiagnostic.h"
 #include "AngelScript/ScriptMod.h"
 
-IMod::~IMod() = default;
 
-ILogger *IMod::GetLogger() {
-    return nullptr;
-}
 
-IConfig *IMod::GetConfig() {
-    return nullptr;
-}
 
 BMLImGuiASCallScope::~BMLImGuiASCallScope() = default;
 

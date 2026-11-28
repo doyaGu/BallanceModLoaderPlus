@@ -1,4 +1,4 @@
-[bml.mod id="bml.shutdown.smoke" name="BML AngelScript Shutdown Smoke" version="0.0.0" author="BML" bml="0.3.0" description="Smoke test for script-triggered clean shutdown."]
+[bml.mod id="bml.shutdown.smoke" name="BML AngelScript Shutdown Smoke" version="0.0.0" author="BML" bml="0.4.0" description="Smoke test for script-triggered clean shutdown."]
 class BMLShutdownSmokeMod {
   bool requestedExit = false;
 
@@ -7,10 +7,9 @@ class BMLShutdownSmokeMod {
       return;
     }
     requestedExit = true;
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
-      logger.Info("BML shutdown smoke requesting exit");
+    if (ctx.IsValid()) {
+      ctx.LogInfo("BML shutdown smoke requesting exit");
     }
-    ctx.ExecuteCommand("exit");
+    { int status; ctx.Commands().ExecuteLine("exit", status); }
   }
 }

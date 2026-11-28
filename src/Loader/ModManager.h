@@ -47,7 +47,8 @@ public:
         if (Function == CKMANAGER_FUNC_PreProcess)
             return -10000; // Low Priority
         else if (Function == CKMANAGER_FUNC_PostProcess)
-            return 10000; // High Priority
+            // The engine's built-in managers, including physics, use priority 0.
+            return DEFAULT_MANAGERFUNC_PRIORITY - 1;
         else
             return 0;
     }

@@ -1,13 +1,12 @@
 void BMLDetachedWorkShouldRun() {}
 
-[bml.mod id="bml.runtime.error.smoke" name="BML AngelScript Runtime Error Smoke" version="0.0.0" author="BML" bml="0.3.0" description="Negative smoke test for script mod runtime diagnostics."]
+[bml.mod id="bml.runtime.error.smoke" name="BML AngelScript Runtime Error Smoke" version="0.0.0" author="BML" bml="0.4.0" description="Negative smoke test for script mod runtime diagnostics."]
 class BMLRuntimeErrorSmokeMod {
   bool firstProcess = true;
 
   void OnLoad(const BML::ModContext &in ctx) {
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
-      logger.Info("BML runtime error smoke loaded");
+    if (ctx.IsValid()) {
+      ctx.LogInfo("BML runtime error smoke loaded");
     }
   }
 

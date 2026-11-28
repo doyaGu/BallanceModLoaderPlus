@@ -1,15 +1,18 @@
+#include "ScriptPathUtils.h"
 #include "ScriptSourceSnapshotBuilder.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cwchar>
 #include <cwctype>
-#include <io.h>
 #include <set>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 #include "Utils/CryptoUtils.h"
 #include "Utils/PathUtils.h"
@@ -24,23 +27,23 @@ bool EndsWithInsensitiveW(const std::wstring &value, const wchar_t *suffix) {
         return false;
     const size_t suffixLength = std::wcslen(suffix);
     return value.size() >= suffixLength &&
-           _wcsicmp(value.c_str() + value.size() - suffixLength, suffix) == 0;
+           ScriptPathCaseCompare(value.c_str() + value.size() - suffixLength, suffix) == 0;
 }
 
 std::wstring FoldPathKeyW(std::wstring path) {
     path = utils::ResolvePathW(path);
-    std::replace(path.begin(), path.end(), L'/', L'\\');
-    std::transform(path.begin(), path.end(), path.begin(), [](wchar_t ch) {
-        return static_cast<wchar_t>(std::towlower(ch));
-    });
     return path;
 }
 
 std::string FoldSectionKey(std::string value) {
     std::replace(value.begin(), value.end(), '\\', '/');
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
+#ifdef _WIN32
+    auto utf16 = utils::Utf8ToUtf16(value);
+    if (!utf16.empty()) {
+        CharLowerBuffW(utf16.data(), static_cast<DWORD>(utf16.size()));
+        return utils::Utf16ToUtf8(utf16);
+    }
+#endif
     return value;
 }
 

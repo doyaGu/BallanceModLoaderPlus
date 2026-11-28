@@ -16,7 +16,7 @@
 #endif
 
 #include "CKAngelScriptAdapter.h"
-#include "Loader/LegacyModVersion.h"
+#include "Loader/ModDefinitionValidation.h"
 #include "Loader/ModContext.h"
 #include "ScriptLibraryRegistry.h"
 #include "ScriptLibraryServices.h"
@@ -84,7 +84,11 @@ uint64_t NowMs() {
 std::string FormatTimestamp(uint64_t timestampMs) {
     const std::time_t seconds = static_cast<std::time_t>(timestampMs / 1000);
     std::tm localTime{};
+#if defined(_WIN32)
     localtime_s(&localTime, &seconds);
+#else
+    localtime_r(&seconds, &localTime);
+#endif
     std::ostringstream stream;
     stream << std::put_time(&localTime, "%H:%M:%S") << '.'
            << std::setw(3) << std::setfill('0') << (timestampMs % 1000);
@@ -656,7 +660,7 @@ void DrawDiagnosticBlock(const char *title, const ScriptDiagnosticSnapshot &diag
 } // namespace
 
 ScriptDevToolsService::ScriptDevToolsService(ModContext *context)
-    : Bui::Window("Script Developer Tools"),
+    : BuiHost::Window("Script Developer Tools"),
       m_Context(context),
       m_EventStore(kEventCapacity) {
     m_Visible = false;
@@ -845,19 +849,21 @@ void ScriptDevToolsService::ClearEvents() {
 ScriptMod *ScriptDevToolsService::FindScriptMod(const std::string &id) const {
     if (!m_Context)
         return nullptr;
-    return dynamic_cast<ScriptMod *>(m_Context->FindMod(id.c_str()));
+    auto *record = m_Context->GetModLoader().FindMod(id.c_str());
+    return record ? record->Script : nullptr;
 }
 
 void ScriptDevToolsService::RefreshSnapshotsIfNeeded(bool force) {
     if (!m_Context)
         return;
 
-    uint64_t observed = static_cast<uint64_t>(m_Context->GetModCount());
+    uint64_t observed = static_cast<uint64_t>(m_Context->GetModLoader().GetModCount());
     auto mixObserved = [&](uint64_t value) {
         observed = observed * 1315423911u + value + 0x9e3779b97f4a7c15ull;
     };
-    for (int i = 0; i < m_Context->GetModCount(); ++i) {
-        auto *mod = dynamic_cast<ScriptMod *>(m_Context->GetMod(i));
+    for (int i = 0; i < m_Context->GetModLoader().GetModCount(); ++i) {
+        auto *record = m_Context->GetModLoader().GetMod(i);
+        auto *mod = record ? record->Script : nullptr;
         if (!mod)
             continue;
         mixObserved(mod->GetModGeneration());
@@ -874,8 +880,9 @@ void ScriptDevToolsService::RefreshSnapshotsIfNeeded(bool force) {
         return;
 
     std::vector<ScriptModSnapshot> snapshots;
-    for (int i = 0; i < m_Context->GetModCount(); ++i) {
-        auto *mod = dynamic_cast<ScriptMod *>(m_Context->GetMod(i));
+    for (int i = 0; i < m_Context->GetModLoader().GetModCount(); ++i) {
+        auto *record = m_Context->GetModLoader().GetMod(i);
+        auto *mod = record ? record->Script : nullptr;
         if (mod) {
             ScriptModSnapshot snapshot = BuildSnapshot(mod);
             snapshot.LoadOrder = static_cast<size_t>(i);
@@ -930,11 +937,14 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
         item.Id = dependency.Id;
         item.MinVersion = dependency.MinVersion.ToString();
         item.Optional = dependency.Optional;
-        IMod *target = m_Context ? m_Context->FindMod(dependency.Id.c_str()) : nullptr;
+        ModRecord *target =
+            m_Context ? m_Context->GetModLoader().FindMod(dependency.Id.c_str()) : nullptr;
         item.Satisfied = dependency.Optional;
         if (!dependency.Optional && target && !IsFailedScriptMod(target)) {
-            item.Satisfied = ParseLegacyModVersion(target->GetVersion()) >=
-                             dependency.MinVersion;
+            BMLVersion version(0, 0, 0);
+            const char *text = target->GetVersion();
+            item.Satisfied =
+                text && ParseModVersion(text, version) && version >= dependency.MinVersion;
         }
         snapshot.Dependencies.push_back(std::move(item));
     }

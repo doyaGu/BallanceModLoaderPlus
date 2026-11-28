@@ -1,20 +1,25 @@
 #ifndef BML_HUD_COMMAND_H
 #define BML_HUD_COMMAND_H
 
-#include "BML/ICommand.h"
+#include "Console/CommandRecord.h"
 
 class HUDRuntime;
 
-class HUDCommand : public ICommand {
+class HUDCommand {
 public:
     explicit HUDCommand(HUDRuntime *hud);
 
-    std::string GetName() override { return "hud"; }
-    std::string GetAlias() override { return ""; }
-    std::string GetDescription() override { return "Commands for HUD."; }
-    bool IsCheat() override { return false; }
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
+    std::string GetName() { return "hud"; }
+
+    std::string GetAlias() { return ""; }
+
+    std::string GetDescription() { return "Commands for HUD."; }
+
+    bool IsCheat() { return false; }
+
+    void Execute(ModContext *bml, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(ModContext *bml,
+                                                    const std::vector<std::string> &args);
 
 private:
     HUDRuntime *m_HUD;

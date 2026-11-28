@@ -5,16 +5,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include "BML/IMod.h"
+#include "Loader/ModVersion.h"
 #include "ScriptSourceSnapshot.h"
 
 namespace BML {
-
-struct ScriptModDependency {
-    std::string Id;
-    BMLVersion MinVersion = BMLVersion(0, 0, 0);
-    bool Optional = false;
-};
 
 struct ScriptModDefinition {
     std::string Id;
@@ -28,7 +22,7 @@ struct ScriptModDefinition {
     std::string ClassNamespace;
     bool Enabled = true;
     std::string ReloadPolicy;
-    std::vector<ScriptModDependency> Dependencies;
+    std::vector<ModDependency> Dependencies;
     std::vector<ScriptLibraryUse> SourceLibraries;
     std::vector<ScriptSourceDependency> SourceDependencies;
     std::vector<ScriptSourceIncludeEdge> SourceIncludeEdges;
@@ -43,7 +37,6 @@ enum class ScriptModReloadPolicy {
 
 ScriptModReloadPolicy ParseScriptModReloadPolicy(const std::string &value);
 const char *ToString(ScriptModReloadPolicy policy);
-bool ParseScriptModVersion(const std::string &value, BMLVersion &version);
 
 struct ScriptMetadataTag {
     std::string Name;

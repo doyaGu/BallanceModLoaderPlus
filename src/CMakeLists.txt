@@ -88,17 +88,23 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Result.hpp
         ${BML_INCLUDE_DIR}/BML/Interface.h
         ${BML_INCLUDE_DIR}/BML/Interface.hpp
-        ${BML_INCLUDE_DIR}/BML/ModInterface.hpp
+        ${BML_INCLUDE_DIR}/BML/Mod.h
+        ${BML_INCLUDE_DIR}/BML/Mod.hpp
+        ${BML_INCLUDE_DIR}/BML/Config.h
+        ${BML_INCLUDE_DIR}/BML/Config.hpp
+        ${BML_INCLUDE_DIR}/BML/Timer.h
+        ${BML_INCLUDE_DIR}/BML/Timer.hpp
+        ${BML_INCLUDE_DIR}/BML/Input.h
+        ${BML_INCLUDE_DIR}/BML/Input.hpp
+        ${BML_INCLUDE_DIR}/BML/Engine.h
+        ${BML_INCLUDE_DIR}/BML/Engine.hpp
+        ${BML_INCLUDE_DIR}/BML/ImGui.h
+        ${BML_INCLUDE_DIR}/BML/ImGui.hpp
+        ${BML_INCLUDE_DIR}/BML/Detail/Api.hpp
         ${BML_INCLUDE_DIR}/BML/BML.h
         ${BML_INCLUDE_DIR}/BML/Command.h
         ${BML_INCLUDE_DIR}/BML/Command.hpp
 
-        ${BML_INCLUDE_DIR}/BML/ILogger.h
-        ${BML_INCLUDE_DIR}/BML/ICommand.h
-        ${BML_INCLUDE_DIR}/BML/IConfig.h
-        ${BML_INCLUDE_DIR}/BML/IMessageReceiver.h
-        ${BML_INCLUDE_DIR}/BML/IBML.h
-        ${BML_INCLUDE_DIR}/BML/IMod.h
         ${BML_INCLUDE_DIR}/BML/DataShare.h
         ${BML_INCLUDE_DIR}/BML/DataShare.hpp
         ${BML_INCLUDE_DIR}/BML/Types.h
@@ -119,21 +125,19 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/ModMenu.hpp
         ${BML_INCLUDE_DIR}/BML/Speedrun.h
 
+        ${BML_INCLUDE_DIR}/BML/Bui/ImGui.hpp
+        ${BML_INCLUDE_DIR}/BML/Gui/Engine.hpp
+        ${BML_INCLUDE_DIR}/BML/Bui.hpp
         ${BML_INCLUDE_DIR}/BML/Bui.h
+        ${BML_INCLUDE_DIR}/BML/Gui.hpp
         ${BML_INCLUDE_DIR}/BML/Gui.h
         ${BML_PUBLIC_GUI_HEADERS}
-        ${BML_INCLUDE_DIR}/BML/InputHook.h
 
-        ${BML_INCLUDE_DIR}/BML/ExecuteBB.h
         ${BML_INCLUDE_DIR}/BML/ScriptHelper.h
         ${BML_INCLUDE_DIR}/BML/Guids.h
         ${BML_PUBLIC_GUID_HEADERS}
 
         ${BML_INCLUDE_DIR}/BML/BMLAll.h
-)
-
-set(BML_ROOT_SOURCES
-        BML.cpp
 )
 
 set(BML_MODS_PRIVATE_HEADERS
@@ -151,8 +155,10 @@ set(BML_MODS_SOURCES
 )
 
 set(BML_LOADER_PRIVATE_HEADERS
-        Loader/LegacyModVersion.h
         Loader/ModContext.h
+        Loader/ModRecord.h
+        Loader/ModVersion.h
+        Loader/ModCallbacks.h
         Loader/ModLoader.h
         Loader/ModInvocationGate.h
         Loader/ModManager.h
@@ -160,10 +166,14 @@ set(BML_LOADER_PRIVATE_HEADERS
 )
 
 set(BML_LOADER_SOURCES
+        Loader/ModRecord.cpp
         Loader/ModContext.cpp
+        Loader/ModInvocationGate.cpp
         Loader/ModLoader.cpp
         Loader/ModManager.cpp
         Loader/NativeModRegistry.cpp
+        Loader/NativeMod.cpp
+        Loader/NativeNotification.cpp
 )
 
 set(BML_API_PRIVATE_HEADERS
@@ -172,7 +182,6 @@ set(BML_API_PRIVATE_HEADERS
         Api/BehaviorApi.h
         Api/BuiltinCapabilities.h
         Api/CommandApi.h
-        Api/ExecuteBBAdapter.h
         Api/InterfaceRegistry.h
         Api/ObjectRefs.h
 )
@@ -185,12 +194,17 @@ set(BML_API_SOURCES
         Api/Behavior/Table.cpp
         Api/Behavior/Text.cpp
         Api/BmlApi.cpp
+        Api/GuiApi.cpp
+        Api/BuiApi.cpp
+        Api/ModApi.cpp
+        Api/ConfigApi.cpp
+        Api/TimerApi.cpp
+        Api/InputApi.cpp
+        Api/InteropApi.cpp
+        Api/GameplayRegistrationApi.cpp
         Api/BuiltinCapabilities.cpp
         Api/CommandApi.cpp
         Api/Errors.cpp
-        Api/ExecuteBB.cpp
-        Api/ExecuteBBAdapter.cpp
-        Api/IMod.cpp
         Api/Interfaces.cpp
         Api/InterfaceRegistry.cpp
         Api/ObjectRefs.cpp
@@ -202,6 +216,7 @@ if (BML_ENABLE_BEHAVIOR_TEST_INTERFACE)
 endif ()
 
 set(BML_DATA_SHARE_PRIVATE_HEADERS
+        DataShare/RefCount.h
         DataShare/DataShare.h
 )
 
@@ -237,6 +252,7 @@ set(BML_CONFIG_SOURCES
 )
 
 set(BML_CONSOLE_PRIVATE_HEADERS
+        Console/CommandRecord.h
         Console/BuiltinCommands.h
         Console/CommandBar.h
         Console/CommandBarTheme.h
@@ -373,12 +389,12 @@ set(BML_UI_PRIVATE_HEADERS
         UI/ColorCodec.h
         UI/FontCommand.h
         UI/Ime/Presentation.h
-        UI/Ime/NativePresentation.h
         UI/Ime/PresentationOwnership.h
         UI/Ime/RailLayout.h
         UI/Ime/Runtime.h
-        UI/Ime/State.h
+        UI/Ime/NativePresentation.h
         UI/Ime/Tsf.h
+        UI/Ime/State.h
         UI/FontRuntime.h
         UI/GameFontCatalog.h
         UI/Gui/LegacyTextFont.h
@@ -396,16 +412,12 @@ set(BML_UI_SOURCES
         UI/ColorCodec.cpp
         UI/FontCommand.cpp
         UI/Ime/Presentation.cpp
-        UI/Ime/NativePresentation.cpp
         UI/Ime/RailLayout.cpp
-        UI/Ime/Runtime.cpp
         UI/Ime/State.cpp
-        UI/Ime/Tsf.cpp
         UI/FontRuntime.cpp
         UI/GameFontCatalog.cpp
         UI/ImGuiStateRecovery.cpp
         UI/Overlay.cpp
-        UI/OverlayPlatformInput.cpp
         UI/PaletteCommand.cpp
         UI/ScriptImGui.cpp
         UI/Gui/Button.cpp
@@ -420,26 +432,19 @@ set(BML_UI_SOURCES
 )
 
 set(BML_HOOK_PRIVATE_HEADERS
+        Hooks/InputHook.h
         Hooks/BehaviorFunctionPatch.h
-        Hooks/CKRasterizer.h
-        Hooks/CKRasterizerEnums.h
-        Hooks/CKRasterizerTypes.h
         Hooks/HookLifecycle.h
         Hooks/InputCursor.h
-        Hooks/Macros.h
         Hooks/RenderHook.h
         Hooks/VTablePatch.h
-        Hooks/VTables.h
 )
 
 set(BML_HOOK_SOURCES
         Hooks/BehaviorFunctionPatch.cpp
         Hooks/HookLifecycle.cpp
-        Hooks/InputHook.cpp
         Hooks/ObjectLoadHook.cpp
         Hooks/PhysicsHook.cpp
-        Hooks/RenderHook.cpp
-        Hooks/VTablePatch.cpp
 )
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
@@ -553,7 +558,6 @@ set(BML_PRIVATE_HEADERS
 )
 
 set(BML_SOURCES
-        ${BML_ROOT_SOURCES}
         ${BML_MODS_SOURCES}
         ${BML_LOADER_SOURCES}
         ${BML_API_SOURCES}
@@ -591,6 +595,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/AngelScriptImGuiBindings.h
             AngelScript/ScriptApiSurface.h
             AngelScript/ScriptBehavior.h
+            AngelScript/ScriptEngineCalls.h
             AngelScript/ScriptBehaviorBindings.inc
             AngelScript/ScriptAngelScriptHandle.h
             AngelScript/ScriptAvailabilityLogLimiter.h
@@ -601,8 +606,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptDevEvents.h
             AngelScript/ScriptDevToolsService.h
             AngelScript/ScriptDiagnostic.h
-            AngelScript/ScriptFacadeAccess.h
-            AngelScript/ScriptFileWatcherWin32.h
             AngelScript/ScriptHookBlockService.h
             AngelScript/ScriptImcRecord.h
             AngelScript/ScriptImcService.h
@@ -613,6 +616,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptMenuPageService.h
             AngelScript/ScriptMod.h
             AngelScript/ScriptModContextView.h
+            AngelScript/ScriptRuntimeScope.h
             AngelScript/ScriptBuiltinFacade.h
             AngelScript/ScriptModDefinition.h
             AngelScript/ScriptModDefinitionBuilder.h
@@ -636,11 +640,17 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptTimerService.h
             AngelScript/generated/BMLImGuiAngelScriptBindings.h
     )
+    if(BML_RUNTIME_SDL)
+        list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherSdl.cpp)
+    else()
+        list(APPEND BML_ANGELSCRIPT_SOURCES AngelScript/ScriptFileWatcherWin32.cpp)
+    endif()
     list(APPEND BML_ANGELSCRIPT_SOURCES
             AngelScript/AngelScriptBindings.cpp
             AngelScript/CKAngelScriptAdapter.cpp
             AngelScript/ScriptApiSurface.cpp
             AngelScript/ScriptBehavior.cpp
+            AngelScript/ScriptEngineCalls.cpp
             AngelScript/ScriptCallbackDispatcher.cpp
             AngelScript/ScriptCallbackEvents.cpp
             AngelScript/ScriptCommandService.cpp
@@ -648,7 +658,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptDevEvents.cpp
             AngelScript/ScriptDevToolsService.cpp
             AngelScript/ScriptDiagnostic.cpp
-            AngelScript/ScriptFileWatcherWin32.cpp
             AngelScript/ScriptFunctionSupport.cpp
             AngelScript/ScriptHookBlockService.cpp
             AngelScript/ScriptImcRecord.cpp
@@ -659,6 +668,8 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptLibraryValidator.cpp
             AngelScript/ScriptMenuPageService.cpp
             AngelScript/ScriptMod.cpp
+            AngelScript/ScriptRuntimeScope.cpp
+            AngelScript/ScriptAuthorApi.cpp
             AngelScript/ScriptModContextView.cpp
             AngelScript/ScriptBuiltinFacade.cpp
             AngelScript/ScriptModDefinition.cpp
@@ -713,7 +724,6 @@ set(IMGUI_HEADERS
         ${IMGUI_SOURCE_DIR}/imstb_rectpack.h
         ${IMGUI_SOURCE_DIR}/imstb_textedit.h
         ${IMGUI_SOURCE_DIR}/imstb_truetype.h
-        ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.h
         ${IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.h
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.h
 )
@@ -724,12 +734,39 @@ set(IMGUI_SOURCES
         ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
         ${IMGUI_SOURCE_DIR}/imgui_demo.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
-        ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp
         ${IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.cpp
 )
 
+if(BML_RUNTIME_SDL)
+    list(APPEND BML_SOURCES BML.cpp
+        Hooks/InputHookSdl.cpp Hooks/InputVTable.h Hooks/InputVTableMsvc.h Hooks/VTablePatchSdl.cpp
+        Hooks/RenderHook.cpp UI/OverlayPlatformInputSdl.cpp UI/ImGuiFileSdl.cpp)
+    list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
+else()
+    list(APPEND BML_SOURCES BMLWin32.cpp
+        Hooks/InputHookWin32.cpp Hooks/VTablePatchWin32.cpp Hooks/RenderHookWin32.cpp
+        UI/OverlayPlatformInputWin32.cpp Diagnostics/SystemReportWin32.cpp)
+    list(REMOVE_ITEM IMGUI_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.cpp)
+    list(APPEND IMGUI_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2_win32.cpp)
+    list(REMOVE_ITEM BML_SOURCES Diagnostics/SystemReport.cpp)
+    list(APPEND IMGUI_SOURCES ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
+endif()
+
+if(WIN32)
+    list(APPEND BML_SOURCES UI/Ime/NativePresentation.cpp UI/Ime/Tsf.cpp)
+    if(BML_RUNTIME_SDL)
+        list(APPEND BML_SOURCES UI/Ime/Runtime.cpp)
+    else()
+        list(APPEND BML_SOURCES UI/Ime/RuntimeWin32.cpp)
+    endif()
+else()
+    list(REMOVE_ITEM BML_SOURCES BML.rc)
+    list(APPEND BML_SOURCES UI/Ime/RuntimeSdl.cpp)
+endif()
+
 add_library(BML SHARED
+        Platform/ModAbi.cpp
         ${BML_SOURCES} ${BML_PUBLIC_HEADERS} ${BML_PRIVATE_HEADERS}
         ${BML_ANGELSCRIPT_PRIVATE_HEADERS}
         ${BML_ANGELSCRIPT_SOURCES}
@@ -737,11 +774,26 @@ add_library(BML SHARED
         ${BML_BUILD_VERSION_HEADER}
 )
 
+# Only the declared C API, CK plugin entry and optional ImGui ABI are exported.
+# Private lifecycle/service vtables are implementation details of this module.
+set_target_properties(BML PROPERTIES
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN TRUE
+)
+
 if (BML_BUILD_UI_AUTOMATION)
     include("${PROJECT_SOURCE_DIR}/tests/ui/PlayerSources.cmake")
 endif ()
 
 target_compile_features(BML PUBLIC cxx_std_20)
+# Header-only wrapper state must remain local even for consumers that create a
+# target directly instead of using bml_add_mod.
+target_compile_options(BML INTERFACE
+    "$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fvisibility=hidden>"
+    "$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fvisibility-inlines-hidden>"
+    "$<$<COMPILE_LANG_AND_ID:C,MSVC>:/utf-8>"
+    "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
 
 target_compile_options(BML PRIVATE
         $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/MP>
@@ -750,10 +802,11 @@ target_compile_options(BML PRIVATE
 target_include_directories(BML
         PUBLIC
         $<BUILD_INTERFACE:${BML_INCLUDE_DIR}>
-        $<BUILD_INTERFACE:${IMGUI_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${BML_ABI_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${IMGUI_SOURCE_DIR}
         ${BML_BUILD_VERSION_DIR}
 )
 
@@ -766,20 +819,37 @@ if (BML_WITH_ANGELSCRIPT)
 endif ()
 
 target_link_libraries(BML
-        PUBLIC
-        VirtoolsSDK::CK2 VirtoolsSDK::VxMath
         PRIVATE
+        BML::CK2 BML::VxMath
         BMLUtils
-        minhook onig imm32 comctl32 ole32 oleaut32 uuid
+        onig
 )
 
+if(BML_RUNTIME_SDL)
+    target_link_libraries(BML PRIVATE SDL3::SDL3)
+else()
+    target_link_libraries(BML PRIVATE minhook)
+endif()
+if(WIN32)
+    target_link_libraries(BML PRIVATE imm32 comctl32 ole32 oleaut32 uuid)
+endif()
+if(APPLE)
+    set_target_properties(BML PROPERTIES INSTALL_RPATH "@loader_path;@loader_path/../Bin")
+elseif(UNIX)
+    set_target_properties(BML PROPERTIES INSTALL_RPATH "$ORIGIN;$ORIGIN/../Bin")
+endif()
+
 add_dependencies(BML BML_BuildVersionHeader)
+if(BML_WITH_ANGELSCRIPT AND BML_BUILD_SCRIPT_RUNTIME AND TARGET CKAngelScript)
+    add_dependencies(BML CKAngelScript)
+endif()
 
 target_compile_definitions(BML
         PUBLIC
-        "$<BUILD_INTERFACE:IMGUI_USER_CONFIG=\"${CMAKE_CURRENT_SOURCE_DIR}/BMLImGuiConfig.h\">"
-        "$<INSTALL_INTERFACE:IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\">"
+        BML_RUNTIME_SDL=${BML_RUNTIME_SDL}
         PRIVATE
+        IMGUI_USER_CONFIG="BMLImGuiConfig.h"
+        BML_BUILD_CONFIGURATION="$<CONFIG>"
         BML_EXPORTS IMGUI_EXPORT
         _WIN32_WINNT=0x0A00 WINVER=0x0A00
         BML_ENABLE_ANGELSCRIPT=$<BOOL:${BML_WITH_ANGELSCRIPT}>
@@ -793,6 +863,29 @@ set_target_properties(BML PROPERTIES
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
+
+install(FILES "${BML_ABI_INCLUDE_DIR}/BML/Abi.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/BML")
+install(FILES "${PROJECT_BINARY_DIR}/abi/$<CONFIG>/BML.abi.json" DESTINATION "${CMAKE_INSTALL_DATADIR}/BML")
+
+add_library(BMLEngine INTERFACE)
+add_library(BML::Engine ALIAS BMLEngine)
+set_target_properties(BMLEngine PROPERTIES EXPORT_NAME Engine
+    INTERFACE_BML_ENGINE_ABI "${BML_ENGINE_ABI_ID}")
+set_property(TARGET BMLEngine APPEND PROPERTY COMPATIBLE_INTERFACE_STRING BML_ENGINE_ABI)
+target_link_libraries(BMLEngine INTERFACE BML BML::CK2 BML::VxMath)
+add_library(BMLImGui INTERFACE)
+add_library(BML::ImGui ALIAS BMLImGui)
+set_target_properties(BMLImGui PROPERTIES EXPORT_NAME ImGui
+    INTERFACE_BML_IMGUI_ABI "${BML_IMGUI_ABI_ID}")
+set_property(TARGET BMLImGui APPEND PROPERTY COMPATIBLE_INTERFACE_STRING BML_IMGUI_ABI)
+target_link_libraries(BMLImGui INTERFACE BML)
+target_include_directories(BMLImGui INTERFACE
+    $<BUILD_INTERFACE:${IMGUI_SOURCE_DIR}> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_compile_definitions(BMLImGui INTERFACE
+    "$<BUILD_INTERFACE:IMGUI_USER_CONFIG=\"${CMAKE_CURRENT_SOURCE_DIR}/BMLImGuiConfig.h\">"
+    "$<INSTALL_INTERFACE:IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\">")
+install(TARGETS BMLEngine BMLImGui EXPORT BMLTargets)
 
 install(TARGETS BML
         EXPORT BMLTargets
@@ -841,12 +934,20 @@ install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfigVersion.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
+        "${PROJECT_SOURCE_DIR}/cmake/BMLDependencyAbi.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/BMLInterface.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/BMLInterfacePackageConfig.cmake.in"
         "${PROJECT_SOURCE_DIR}/cmake/BMLImc.cmake"
-        "${PROJECT_SOURCE_DIR}/cmake/FindVirtoolsSDK.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
 )
+if(NOT BML_RUNTIME_SDL)
+    install(FILES "${PROJECT_SOURCE_DIR}/cmake/FindVirtoolsSDK.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML")
+endif()
+if(BML_RUNTIME STREQUAL "sdl" AND APPLE)
+    install(FILES "${PROJECT_SOURCE_DIR}/cmake/FinalizeSdlMod.cmake"
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML")
+endif()
 
 install(FILES
         "${PROJECT_SOURCE_DIR}/tools/imc_codegen.py"
@@ -859,6 +960,12 @@ install(FILES
         "${PROJECT_SOURCE_DIR}/packaging/sdk/README_zh-CN.md"
         DESTINATION "."
 )
+install(FILES "${PROJECT_SOURCE_DIR}/deps/p256-m/apache-2.0.txt"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/licenses" RENAME p256-m.txt)
+install(FILES "${PROJECT_SOURCE_DIR}/deps/rhash-sha256/COPYING"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/licenses" RENAME rhash-sha256.txt)
+install(FILES "${PROJECT_SOURCE_DIR}/deps/CRYPTO-NOTICES.txt"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/licenses")
 
 install(FILES
         "${PROJECT_SOURCE_DIR}/templates/README.md"
@@ -874,6 +981,8 @@ install(DIRECTORY
 )
 
 install(DIRECTORY
+        "${PROJECT_SOURCE_DIR}/examples/native-c-mod"
+        "${PROJECT_SOURCE_DIR}/examples/native-mod"
         "${PROJECT_SOURCE_DIR}/examples/native-interface-provider"
         "${PROJECT_SOURCE_DIR}/examples/native-interface-consumer"
         DESTINATION "examples"
@@ -884,15 +993,13 @@ install(FILES
         "${PROJECT_SOURCE_DIR}/scripts/bml.py"
         DESTINATION "scripts"
 )
+install(PROGRAMS "${PROJECT_SOURCE_DIR}/scripts/bml" DESTINATION "scripts")
 
-install(FILES
-        "${PROJECT_SOURCE_DIR}/scripts/lib/BMLProject.psm1"
-        DESTINATION "scripts/lib"
-)
 
 install(FILES
         "${PROJECT_SOURCE_DIR}/docs/en/modding.md"
         "${PROJECT_SOURCE_DIR}/docs/en/native-mod-api.md"
+        "${PROJECT_SOURCE_DIR}/docs/en/native-mod-migration.md"
         "${PROJECT_SOURCE_DIR}/docs/en/native-api-routes.md"
         "${PROJECT_SOURCE_DIR}/docs/en/behavior-authoring.md"
         "${PROJECT_SOURCE_DIR}/docs/en/imc-author-guide.md"
@@ -903,6 +1010,7 @@ install(FILES
 install(FILES
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/modding.md"
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/native-mod-api.md"
+        "${PROJECT_SOURCE_DIR}/docs/zh-CN/native-mod-migration.md"
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/native-api-routes.md"
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/behavior-authoring.md"
         "${PROJECT_SOURCE_DIR}/docs/zh-CN/imc-author-guide.md"

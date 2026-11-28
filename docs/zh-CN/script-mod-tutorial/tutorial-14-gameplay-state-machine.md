@@ -148,7 +148,7 @@ Gameplay_SectorManager: 检测到 Activation Phase? == TRUE
 | Cam Nav Off | Gameplay_Ingame | 相机导航 | 锁定相机 |
 
 `BML::GameEvent` 提供关卡开始、死亡、过关等常用生命周期通知。需要直接处理
-Virtools 消息时，可以通过 `ctx.BorrowMessageManager()` 使用 CKAngelScript 公开的
+Virtools 消息时，可以通过 `BML::Engine::BorrowMessageManager(ctx, out)` 使用 CKAngelScript 公开的
 `CKMessageManager` 接口；这是高级引擎集成，必须明确消息类型、接收对象和生命周期。
 GameEvent 与 Virtools 消息并不是一一对应关系。
 
@@ -157,7 +157,7 @@ GameEvent 与 Virtools 消息并不是一一对应关系。
 下面这个脚本每帧读取 IngameParameter 和 CurrentLevel，用 ImGui 显示当前 Gameplay 状态。保存为 `ModLoader/Mods/GameplayMonitor.mod.as`：
 
 ```angelscript
-[bml.mod id="gameplay.monitor" name="Gameplay Monitor" version="1.0.0" author="Tutorial" bml="0.3.14" description="Monitor Gameplay state machine"]
+[bml.mod id="gameplay.monitor" name="Gameplay Monitor" version="1.0.0" author="Tutorial" bml="0.4.0" description="Monitor Gameplay state machine"]
 class GameplayMonitor {
     private CKDataArray@ ingameParam = null;
     private CKDataArray@ currentLevel = null;
@@ -169,8 +169,18 @@ class GameplayMonitor {
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
         if (event == BML::GAME_EVENT_START_LEVEL) {
-            @ingameParam = ctx.BorrowDataArrayByName("IngameParameter");
-            @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+            BML::ObjectRef ingameParamRef;
+            CKObject@ ingameParamObject;
+            @ingameParam = null;
+            if (BML::Scene::FindObject("IngameParameter", CKCID_DATAARRAY, ingameParamRef) == BML::ERROR_OK &&
+                BML::Engine::BorrowObject(ctx, ingameParamRef, CKCID_DATAARRAY, ingameParamObject) == BML::ERROR_OK)
+                @ingameParam = cast<CKDataArray>(ingameParamObject);
+            BML::ObjectRef currentLevelRef;
+            CKObject@ currentLevelObject;
+            @currentLevel = null;
+            if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+                BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+                @currentLevel = cast<CKDataArray>(currentLevelObject);
 
             string ipStatus = (ingameParam is null) ? "not found" : "ok";
             string clStatus = (currentLevel is null) ? "not found" : "ok";
@@ -329,7 +339,12 @@ private bool pointsChanged = false;
 
 void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
     if (event == BML::GAME_EVENT_START_LEVEL) {
-        @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
+        BML::ObjectRef currentLevelRef;
+        CKObject@ currentLevelObject;
+        @currentLevel = null;
+        if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, currentLevelRef) == BML::ERROR_OK &&
+            BML::Engine::BorrowObject(ctx, currentLevelRef, CKCID_DATAARRAY, currentLevelObject) == BML::ERROR_OK)
+            @currentLevel = cast<CKDataArray>(currentLevelObject);
         pointsChanged = false;
     } else if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL ||
                event == BML::GAME_EVENT_PRE_LOAD_LEVEL) {

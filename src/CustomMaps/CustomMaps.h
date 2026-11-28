@@ -15,10 +15,10 @@ class CK2dEntity;
 class CKBehavior;
 class CKContext;
 class CKDataArray;
-class IBML;
-class IConfig;
-class ILogger;
-class IProperty;
+class ModContext;
+class Config;
+class Logger;
+class Property;
 struct BML_DataShare;
 
 namespace CustomMap {
@@ -34,13 +34,12 @@ public:
     CustomMaps(const CustomMaps &) = delete;
     CustomMaps &operator=(const CustomMaps &) = delete;
 
-    void InitConfig(IConfig &config);
+    void InitConfig(Config &config);
     void ApplyConfig();
-    bool OnModifyConfig(const char *category, const char *key, IProperty *property);
+    bool OnModifyConfig(const char *category, const char *key, Property *property);
 
-    void OnLoad(IBML &bml, ILogger &logger,
-                const std::wstring &gameDirectory, const std::wstring &loaderDirectory,
-                const std::wstring &tempDirectory);
+    void OnLoad(ModContext &bml, Logger &logger, const std::wstring &gameDirectory,
+                const std::wstring &loaderDirectory, const std::wstring &tempDirectory);
     void OnUnload();
     void OnLoadObject(const char *filename);
     void OnLoadScript(CKBehavior *script);
@@ -79,9 +78,9 @@ private:
     void ReleaseDataShare();
     void ResetScriptBindings();
 
-    IBML *m_BML = nullptr;
+    ModContext *m_BML = nullptr;
     CKContext *m_CKContext = nullptr;
-    ILogger *m_Logger = nullptr;
+    Logger *m_Logger = nullptr;
     BML_DataShare *m_DataShare = nullptr;
     std::wstring m_MapsDirectory;
     std::unique_ptr<LoadAttempt> m_LoadAttempt;
@@ -93,9 +92,9 @@ private:
     std::unique_ptr<CustomMap::MapCommand> m_Command;
     std::unique_ptr<CustomMap::LevelLoader> m_LevelLoader;
 
-    IProperty *m_LevelNumber = nullptr;
-    IProperty *m_ShowTooltip = nullptr;
-    IProperty *m_MaxDepth = nullptr;
+    Property *m_LevelNumber = nullptr;
+    Property *m_ShowTooltip = nullptr;
+    Property *m_MaxDepth = nullptr;
 
     CK2dEntity *m_LevelButton = nullptr;
     CKBehavior *m_ExitStart = nullptr;

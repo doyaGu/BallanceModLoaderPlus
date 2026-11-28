@@ -1,17 +1,14 @@
 #include "CustomMaps/MapCatalog.h"
 
 #include <algorithm>
-#include <cerrno>
-#include <cstring>
 #include <cwchar>
 #include <filesystem>
-#include <io.h>
-#include <new>
-#include <windows.h>
+#if BML_RUNTIME_SDL
+#include <SDL3/SDL_filesystem.h>
+#endif
+#include "Platform/FileSystemNative.h"
 
-#undef CompareString
-
-#include "BML/ILogger.h"
+#include "Logging/Logger.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
 
@@ -38,7 +35,7 @@ MapEntry::~MapEntry() {
 bool MapEntry::operator<(const MapEntry &rhs) const {
     if (type != rhs.type)
         return type < rhs.type;
-    return utils::CompareString(name, rhs.name) < 0;
+    return utils::CompareLocaleStrings(name, rhs.name) < 0;
 }
 
 MapCatalog::MapCatalog() : m_Root(std::make_unique<MapEntry>(nullptr, MAP_ENTRY_DIR)) {}
@@ -58,23 +55,26 @@ bool MapCatalog::ResolveFile(const std::wstring &mapsDirectory, std::string_view
         return false;
     }
 
-    const std::filesystem::path requested(widePath);
-    if (requested.has_root_path()) {
+    std::replace(widePath.begin(), widePath.end(), L'\\', L'/');
+    if (utils::IsPathRootedW(widePath) || widePath.find(L':') != std::wstring::npos) {
         error = "use a path relative to ModLoader/Maps";
         return false;
     }
-    for (const auto &part : requested) {
-        if (part == L"..") {
+    for (std::size_t begin = 0; begin < widePath.size();) {
+        auto end = widePath.find(L'/', begin);
+        if (end == std::wstring::npos) end = widePath.size();
+        if (widePath.substr(begin, end - begin) == L"..") {
             error = "parent-directory paths are not allowed";
             return false;
         }
+        begin = end + 1;
     }
     if (!IsSupportedFileType(widePath)) {
         error = "only .nmo and .cmo maps can be loaded";
         return false;
     }
 
-    const std::wstring candidate = (std::filesystem::path(mapsDirectory) / requested).wstring();
+    const std::wstring candidate = utils::CombinePathW(mapsDirectory, widePath);
     return ValidateFile(mapsDirectory, candidate, path, error);
 }
 
@@ -86,23 +86,16 @@ bool MapCatalog::ValidateFile(const std::wstring &mapsDirectory, const std::wstr
         error = "only .nmo and .cmo maps can be loaded";
         return false;
     }
-    if (candidate.size() >= MAX_PATH) {
-        error = "the map path is too long";
-        return false;
-    }
-
-    const DWORD attributes = GetFileAttributesW(candidate.c_str());
-    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+    if (!utils::FileExistsW(candidate)) {
         error = "map file was not found";
         return false;
     }
-
     std::wstring filePath;
     if (!utils::TryGetFinalPathInsideRootW(candidate, mapsDirectory, filePath)) {
         error = "the map could not be resolved inside ModLoader/Maps";
         return false;
     }
-    if (filePath.size() >= MAX_PATH || !IsSupportedFileType(filePath)) {
+    if (!IsSupportedFileType(filePath)) {
         error = "the resolved map path is not a supported file";
         return false;
     }
@@ -111,7 +104,9 @@ bool MapCatalog::ValidateFile(const std::wstring &mapsDirectory, const std::wstr
     return true;
 }
 
-bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, ILogger *logger) {
+bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, Logger *logger) {
+    if (path.empty())
+        return false;
     auto newRoot = std::unique_ptr<MapEntry>(new(std::nothrow) MapEntry(nullptr, MAP_ENTRY_DIR));
     if (!newRoot) {
         if (logger)
@@ -122,28 +117,25 @@ bool MapCatalog::Refresh(const std::wstring &path, int maxDepth, ILogger *logger
     newRoot->name = "Maps";
     newRoot->path = path;
 
-    const DWORD attributes = GetFileAttributesW(path.c_str());
-    if (attributes == INVALID_FILE_ATTRIBUTES) {
-        const DWORD error = GetLastError();
-        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) {
-            if (logger) {
-                logger->Error("Failed to inspect maps directory %s: Windows error %lu",
-                              utils::Utf16ToUtf8(path).c_str(),
-                              static_cast<unsigned long>(error));
-            }
+    const auto nativePath = utils::Utf16ToUtf8(path);
+    std::error_code error;
+    const auto status = std::filesystem::status(std::filesystem::u8path(nativePath), error);
+    if (status.type() != std::filesystem::file_type::not_found) {
+        if (error) {
+            if (logger)
+                logger->Error("Failed to inspect maps directory: %s (error %d)", nativePath.c_str(), error.value());
             return false;
         }
-    } else if ((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
-        if (logger)
-            logger->Error("Maps path is not a directory: %s", utils::Utf16ToUtf8(path).c_str());
-        return false;
-    } else {
+        if (!std::filesystem::is_directory(status)) {
+            if (logger)
+                logger->Error("Maps path is not a directory: %s", nativePath.c_str());
+            return false;
+        }
         std::wstring rootPath;
         if (!utils::TryGetFinalPathW(path, rootPath) ||
             ExploreMaps(newRoot.get(), maxDepth, logger, rootPath) == ScanResult::Failure)
             return false;
     }
-
     m_Root = std::move(newRoot);
     return true;
 }
@@ -178,115 +170,53 @@ std::vector<std::string> MapCatalog::ListFiles(std::string_view fragment, std::s
     return paths;
 }
 
-MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, ILogger *logger,
+MapCatalog::ScanResult MapCatalog::ExploreMaps(MapEntry *maps, int depth, Logger *logger,
                                                const std::wstring &rootPath) {
     if (!maps || maps->type != MAP_ENTRY_DIR || maps->path.empty())
         return ScanResult::Failure;
     if (depth <= 0)
         return ScanResult::Success;
 
-    std::wstring searchPath = maps->path;
-    if (searchPath.length() > MAX_PATH) {
-        if (logger)
-            logger->Error("Path too long: %s", utils::Utf16ToUtf8(maps->path).c_str());
-        return ScanResult::Failure;
-    }
-    searchPath.append(L"\\*");
-
-    _wfinddata_t fileinfo = {};
-    const intptr_t handle = _wfindfirst(searchPath.c_str(), &fileinfo);
-    if (handle == -1) {
-        const int error = errno;
-        if (error != ENOENT && logger) {
-            const std::string message = "Failed to explore maps directory " +
-                                        utils::Utf16ToUtf8(maps->path) + ": " + strerror(error);
-            logger->Error("%s", message.c_str());
-        }
-        return error == ENOENT ? ScanResult::Success : ScanResult::Failure;
-    }
-
-    struct FileHandleGuard {
-        intptr_t Handle;
-        ~FileHandleGuard() { if (Handle != -1) _findclose(Handle); }
-    } guard{handle};
-
-    try {
-        do {
-            if (wcscmp(fileinfo.name, L".") == 0 || wcscmp(fileinfo.name, L"..") == 0)
-                continue;
-
-            std::wstring fullPath = maps->path;
-            if (fullPath.length() + wcslen(fileinfo.name) + 2 > MAX_PATH) {
-                if (logger) {
-                    logger->Warn("Skipping file with path too long: %s\\%s",
-                                 utils::Utf16ToUtf8(maps->path).c_str(),
-                                 utils::Utf16ToUtf8(fileinfo.name).c_str());
-                }
-                continue;
-            }
-            fullPath.append(L"\\").append(fileinfo.name);
-
+    auto scanEntry = [&](const std::wstring &filename) {
+        try {
+            const auto name = utils::Utf16ToUtf8(filename);
+            auto path = utils::CombinePathW(maps->path, filename);
             std::wstring finalPath;
-            if (!utils::TryGetFinalPathW(fullPath, finalPath) ||
-                !utils::IsPathInsideRootW(finalPath, rootPath))
-                continue;
-
-            if (wcschr(fileinfo.name, L'\\') || wcschr(fileinfo.name, L'/') ||
-                wcsstr(fileinfo.name, L"..")) {
-                continue;
-            }
-
-            if (fileinfo.attrib & _A_SUBDIR) {
-                auto entry = std::unique_ptr<MapEntry>(new(std::nothrow) MapEntry(maps, MAP_ENTRY_DIR));
-                if (!entry) {
-                    if (logger)
-                        logger->Error("Memory allocation failed for directory entry");
-                    return ScanResult::Failure;
-                }
-                entry->name = utils::Utf16ToUtf8(fileinfo.name);
-                entry->path = fullPath;
-                maps->children.push_back(entry.get());
-                MapEntry *child = entry.release();
-                if (ExploreMaps(child, depth - 1, logger, rootPath) == ScanResult::Failure)
-                    return ScanResult::Failure;
-            } else if (IsSupportedFileType(fileinfo.name) && IsSupportedFileType(finalPath)) {
-                std::wstring filename = fileinfo.name;
-                const size_t dotPos = filename.find_last_of(L'.');
-                if (dotPos != std::wstring::npos)
-                    filename = filename.substr(0, dotPos);
-
-                auto entry = std::unique_ptr<MapEntry>(new(std::nothrow) MapEntry(maps, MAP_ENTRY_FILE));
-                if (!entry) {
-                    if (logger)
-                        logger->Error("Memory allocation failed for file entry");
-                    return ScanResult::Failure;
-                }
-                entry->name = utils::Utf16ToUtf8(filename);
-                entry->path = fullPath;
-                maps->children.push_back(entry.get());
-                entry.release();
-            }
-        } while (_wfindnext(handle, &fileinfo) == 0);
-
-        const int enumerationError = errno;
-        if (enumerationError != ENOENT) {
-            if (logger) {
-                logger->Error("Failed while enumerating maps directory %s: %s",
-                              utils::Utf16ToUtf8(maps->path).c_str(),
-                              strerror(enumerationError));
-            }
-            return ScanResult::Failure;
+            if (!utils::TryGetFinalPathInsideRootW(path, rootPath, finalPath)) return true;
+            const bool dir = utils::DirectoryExistsW(path);
+            if (!dir && (!IsSupportedFileType(path) || !IsSupportedFileType(finalPath))) return true;
+            // Do not recurse through directory links (cycles and repeated subtrees).
+            if (dir && BML::Platform::IsLink(utils::Utf16ToUtf8(path))) return true;
+            auto entry = std::make_unique<MapEntry>(maps, dir ? MAP_ENTRY_DIR : MAP_ENTRY_FILE);
+            entry->name = dir ? name : utils::RemoveExtensionUtf8(name);
+            entry->path = std::move(path);
+            maps->children.push_back(entry.get());
+            auto *child = entry.release();
+            if (dir && ExploreMaps(child, depth - 1, logger, rootPath) == ScanResult::Failure)
+                return false;
+            return true;
+        } catch (...) { return false; }
+    };
+#if BML_RUNTIME_SDL
+    const auto directory = utils::Utf16ToUtf8(maps->path);
+    const bool ok = SDL_EnumerateDirectory(directory.c_str(), [](void *data, const char *, const char *name) {
+        try {
+            const auto &scan = *static_cast<const decltype(scanEntry) *>(data);
+            return scan(utils::Utf8ToUtf16(name)) ? SDL_ENUM_CONTINUE : SDL_ENUM_FAILURE;
+        } catch (...) {
+            return SDL_ENUM_FAILURE;
         }
-    } catch (const std::exception &e) {
-        if (logger)
-            logger->Error("Exception while exploring maps: %s", e.what());
-        return ScanResult::Failure;
-    } catch (...) {
-        if (logger)
-            logger->Error("Unknown exception while exploring maps");
-        return ScanResult::Failure;
+    }, &scanEntry);
+#else
+    std::error_code error;
+    std::filesystem::directory_iterator it(maps->path, error), end;
+    for (; !error && it != end; it.increment(error)) {
+        if (!scanEntry(it->path().filename().native()))
+            return ScanResult::Failure;
     }
-
+    const bool ok = !error;
+#endif
+    if (!ok) return ScanResult::Failure;
     if (!maps->children.empty()) {
         try {
             std::sort(maps->children.begin(), maps->children.end(),

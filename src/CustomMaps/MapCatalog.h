@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-class ILogger;
+class Logger;
 
 enum MapEntryType {
     MAP_ENTRY_DIR,
@@ -42,7 +42,8 @@ public:
     MapCatalog();
 
     MapEntry *GetRoot() const { return m_Root.get(); }
-    bool Refresh(const std::wstring &path, int maxDepth, ILogger *logger);
+
+    bool Refresh(const std::wstring &path, int maxDepth, Logger *logger);
     std::vector<std::string> ListFiles(std::string_view fragment, std::size_t limit) const;
     static bool ResolveFile(const std::wstring &mapsDirectory, std::string_view relativePath,
                             std::wstring &path, std::string &error);
@@ -55,7 +56,7 @@ private:
         Failure,
     };
 
-    static ScanResult ExploreMaps(MapEntry *maps, int depth, ILogger *logger,
+    static ScanResult ExploreMaps(MapEntry *maps, int depth, Logger *logger,
                                   const std::wstring &rootPath);
     static bool IsSupportedFileType(const std::wstring &path);
 

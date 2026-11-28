@@ -70,6 +70,8 @@ public:
 
     bool IsMainThread() const noexcept;
     void SetInvocationGate(ModInvocationGate *invocationGate) noexcept;
+    using OwnerAdmission = bool (*)(void *, const std::string &, bool callback) noexcept;
+    void SetOwnerAdmission(OwnerAdmission, void *) noexcept;
 
     static int ResponseReserve(BML_ImcResponse *response, size_t size, void **outData);
     static int ResponseCommit(BML_ImcResponse *response, size_t size,

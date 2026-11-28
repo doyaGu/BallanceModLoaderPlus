@@ -9,8 +9,8 @@
 
 #include <oniguruma.h>
 
-#include "BML/InputHook.h"
-#include "BML/ILogger.h"
+#include "Hooks/InputHook.h"
+#include "Logging/Logger.h"
 
 #include "StringUtils.h"
 
@@ -22,7 +22,7 @@ MapMenu::~MapMenu() {
     Shutdown();
 }
 
-void MapMenu::Init(const std::wstring &mapsDirectory, ILogger &logger) {
+void MapMenu::Init(const std::wstring &mapsDirectory, Logger &logger) {
     m_State.BindCatalog(mapsDirectory, logger);
     if (!m_Initialized) {
         if (!m_Routes.CreatePage<MapListPage>("Custom Maps", m_State)) {
@@ -43,7 +43,7 @@ bool MapMenu::Open(const std::string &id) {
     if (!m_Routes.HasPage(id))
         return false;
 
-    Bui::BlockKeyboardInput(this);
+    BuiHost::BlockKeyboardInput(this);
     m_PendingRoute = id;
     // Virtools menu callbacks run after ImGui::NewFrame(). Open on the next
     // frame, after the opening key's ImGui ownership has taken effect.
@@ -100,12 +100,12 @@ bool MapMenu::Render() {
 
 void MapMenu::ReleaseInput() {
     if (m_ShuttingDown || m_State.TakeMapLoaded())
-        Bui::UnblockKeyboardAfterRelease(this);
+        BuiHost::UnblockKeyboardAfterRelease(this);
     else
-        Bui::TransitionToScriptAndUnblock("Menu_Start", this);
+        BuiHost::TransitionToScriptAndUnblock("Menu_Start", this);
 }
 
-void MapListPage::OnEnter(Bui::PageEnterReason) {
+void MapListPage::OnEnter(BuiHost::PageEnterReason) {
     m_FocusFirstEntry = true;
 }
 
@@ -120,16 +120,16 @@ void MapListPage::SyncCatalog() {
     m_FocusFirstEntry = true;
 }
 
-Bui::PageAction MapListPage::OnFrame() {
+BuiHost::PageAction MapListPage::OnFrame() {
     SyncCatalog();
-    Bui::Title("Custom Maps", 0.07f);
+    BuiHost::Title("Custom Maps", 0.07f);
 
     MapEntry *maps = m_State.GetCurrentMaps();
     if (!maps || maps->children.empty()) {
         m_Count = 0;
         m_Pagination.Update(0, 10);
     } else {
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, BuiHost::GetMenuColor());
 
         const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
         ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.4f, vpSize.y * 0.18f));
@@ -152,7 +152,7 @@ Bui::PageAction MapListPage::OnFrame() {
                     return *lhs < *rhs;
                 });
             } catch (...) {
-                if (ILogger *logger = m_State.GetLogger())
+                if (Logger *logger = m_State.GetLogger())
                     logger->Error("Failed to sort current directory entries");
             }
         }
@@ -168,7 +168,7 @@ Bui::PageAction MapListPage::OnFrame() {
         const int n = m_Pagination.GetFirstItem();
 
         if (IsSearching()) {
-            Bui::Entries([&](std::size_t index) {
+            BuiHost::Entries([&](std::size_t index) {
                 if (n + index >= m_MapSearchResult.size())
                     return false;
                 if (m_FocusFirstEntry) {
@@ -181,7 +181,7 @@ Bui::PageAction MapListPage::OnFrame() {
             MapEntry *currentMaps = m_State.GetCurrentMaps();
             if (currentMaps) {
                 const auto &entries = currentMaps->children;
-                Bui::Entries([&](std::size_t index) {
+                BuiHost::Entries([&](std::size_t index) {
                     if (n + index >= entries.size())
                         return false;
                     if (m_FocusFirstEntry) {
@@ -194,16 +194,16 @@ Bui::PageAction MapListPage::OnFrame() {
         }
     }
 
-    if (m_Pagination.CanPrevious() && Bui::NavLeft(0.36f, 0.4f)) {
+    if (m_Pagination.CanPrevious() && BuiHost::NavLeft(0.36f, 0.4f)) {
         m_Pagination.Previous();
         m_FocusFirstEntry = true;
     }
-    if (m_Pagination.CanNext() && Bui::NavRight(0.6238f, 0.4f)) {
+    if (m_Pagination.CanNext() && BuiHost::NavRight(0.6238f, 0.4f)) {
         m_Pagination.Next();
         m_FocusFirstEntry = true;
     }
 
-    if (Bui::NavBack()) {
+    if (BuiHost::NavBack()) {
         MapEntry *current = m_State.GetCurrentMaps();
         if (current && current->parent) {
             m_State.SetCurrentMaps(current->parent);
@@ -211,11 +211,11 @@ Bui::PageAction MapListPage::OnFrame() {
             ClearSearch();
             m_FocusFirstEntry = true;
         } else {
-            return Bui::PageAction::Back();
+            return BuiHost::PageAction::Back();
         }
     }
 
-    return Bui::PageAction::None();
+    return BuiHost::PageAction::None();
 }
 
 bool MapListPage::IsSearching() const {
@@ -244,7 +244,7 @@ void MapListPage::OnSearchMaps() {
         if (r != ONIG_NORMAL) {
             char s[ONIG_MAX_ERROR_MESSAGE_LEN];
             onig_error_code_to_str((UChar *) s, r, &einfo);
-            if (ILogger *logger = m_State.GetLogger())
+            if (Logger *logger = m_State.GetLogger())
                 logger->Error("%s", s);
             return;
         }
@@ -278,7 +278,7 @@ void MapListPage::OnSearchMaps() {
                 } else if (r != ONIG_MISMATCH) {
                     char s[ONIG_MAX_ERROR_MESSAGE_LEN];
                     onig_error_code_to_str((UChar *) s, r);
-                    if (ILogger *logger = m_State.GetLogger())
+                    if (Logger *logger = m_State.GetLogger())
                         logger->Error("%s", s);
                 }
 
@@ -301,10 +301,10 @@ void MapListPage::OnSearchMaps() {
         try {
             std::sort(m_MapSearchResult.begin(), m_MapSearchResult.end(), [](const MapEntry *a, const MapEntry *b) {
                 if (a->type != b->type) return a->type < b->type; // MAP_ENTRY_DIR < MAP_ENTRY_FILE
-                return utils::CompareString(a->name, b->name) < 0;
+                return utils::CompareLocaleStrings(a->name, b->name) < 0;
             });
         } catch (...) {
-            if (ILogger *logger = m_State.GetLogger())
+            if (Logger *logger = m_State.GetLogger())
                 logger->Error("Failed to sort search results");
         }
     }
@@ -316,12 +316,12 @@ bool MapListPage::OnDrawEntry(MapEntry *entry, bool *v) {
     ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.8f);
 
     if (entry->type == MAP_ENTRY_FILE) {
-        if (Bui::LevelButton(entry->name.c_str(), v))
+        if (BuiHost::LevelButton(entry->name.c_str(), v))
             (void) m_State.BeginLoad(entry->path);
     } else {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 165, 0, 255)); // Orange Color for directory
 
-        if (Bui::LevelButton(entry->name.c_str(), v)) {
+        if (BuiHost::LevelButton(entry->name.c_str(), v)) {
             m_State.SetCurrentMaps(entry);
             // When entering a folder from search or normal list, reset to first page and clear search
             m_Pagination.Reset();

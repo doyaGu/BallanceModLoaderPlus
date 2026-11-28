@@ -3,13 +3,13 @@
 #include <cstdint>
 #include <utility>
 
-#include "BML/IBML.h"
-#include "BML/ILogger.h"
-#include "BML/IMessageReceiver.h"
+#include "Loader/ModContext.h"
+#include "Logging/Logger.h"
+#include "Loader/ModCallbacks.h"
 
 namespace {
 namespace Behavior = BML::Behavior;
-using Receiver = IMessageReceiver;
+using Receiver = ModContext;
 
 template<void (Receiver::*Method)()>
 Behavior::Hook Callback(Receiver *receiver) {
@@ -188,18 +188,18 @@ Behavior::Edit GameplayEvents(Receiver *receiver,
 }
 } // namespace
 
-void GameEventHooks::OnLoad(IBML &bml, ILogger &logger) {
+void GameEventHooks::OnLoad(ModContext &bml, Logger &logger) {
     m_Receiver = &bml;
     m_Logger = &logger;
     CKMessageManager *messages = bml.GetMessageManager();
     if (!messages) {
-        RejectPlan("the Virtools message manager is unavailable");
+        RejectSubmission("the Virtools message manager is unavailable");
         return;
     }
 
     auto opened = Behavior::Session::Open("BML");
     if (!opened) {
-        RejectPlan(opened.GetStatus().Message.empty()
+        RejectSubmission(opened.GetStatus().Message.empty()
             ? "the Behavior interface is unavailable"
             : opened.GetStatus().Message.c_str());
         return;
@@ -225,41 +225,42 @@ void GameEventHooks::OnLoad(IBML &bml, ILogger &logger) {
         messages->AddMessageType("Game Over"),
         messages->AddMessageType("Level_Finish"));
 
-    auto plan = m_Behavior.Plan(
-        "Game event hooks",
+    auto submission = m_Behavior.Apply(
+        "Game event hooks", Behavior::EditOwnership::Submission,
         Behavior::On(Behavior::Scripts::One("Event_handler"), eventHandler),
         Behavior::On(Behavior::Scripts::One("Gameplay_Ingame"), ingame),
         Behavior::On(Behavior::Scripts::One("Gameplay_Energy"), energy),
         Behavior::On(Behavior::Scripts::One("Gameplay_Events"), events));
-    if (!plan) {
-        RejectPlan(plan.GetStatus().Message.empty()
-            ? "the game-event Plan could not be created"
-            : plan.GetStatus().Message.c_str());
+    if (!submission) {
+        RejectSubmission(submission.GetStatus().Message.empty()
+            ? "the game-event edit could not be applied"
+            : submission.GetStatus().Message.c_str());
         return;
     }
-    m_Plan = plan.Take();
+    m_Submission = submission.Take();
     if (m_Logger)
         m_Logger->Info(
-            "Created the game lifecycle hook Plan");
+            "Submitted the game lifecycle hooks");
 }
 
 void GameEventHooks::OnUnload() {
-    if (m_Plan) {
-        auto closed = m_Plan.Close();
+    if (m_Submission) {
+        auto closed = m_Submission.Close();
         if (!closed && m_Logger) {
             m_Logger->Error(
-                "Failed to restore the game lifecycle hook Plan: %s",
+                "Failed to remove the game lifecycle hooks: %s",
                 closed.GetStatus().Message.empty()
-                    ? "Behavior Plan close failed"
+                    ? "Behavior Submission close failed"
                     : closed.GetStatus().Message.c_str());
         }
     }
+    m_Submission = {};
     m_Behavior.Reset();
     m_Logger = nullptr;
     m_Receiver = nullptr;
 }
 
-void GameEventHooks::RejectPlan(const char *reason) const {
+void GameEventHooks::RejectSubmission(const char *reason) const {
     if (m_Logger) {
         m_Logger->Error("Game event hooks are unavailable: %s",
                         reason ? reason : "unknown reason");

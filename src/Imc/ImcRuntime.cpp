@@ -229,6 +229,9 @@ struct ImcRuntime::State {
     ImcRuntime *Runtime;
     ModInvocationGate CallbackGate;
     ModInvocationGate *InvocationGate;
+    ImcRuntime::OwnerAdmission Admit = nullptr;
+    void *AdmissionContext = nullptr;
+    bool Allows(const std::string &owner,bool callback=true)const noexcept{return !Admit||Admit(AdmissionContext,owner,callback);}
     const std::thread::id MainThread;
     std::atomic<bool> ShuttingDown{false};
     std::atomic<uint64_t> NextMessageId{1};
@@ -638,7 +641,7 @@ struct ImcRuntime::State {
             AddClientRef(entry.Owner);
         }
 
-        if (!entry.Owner->Active.load(std::memory_order_acquire)) {
+        if (!entry.Owner->Active.load(std::memory_order_acquire) || !Allows(entry.Owner->Owner)) {
             ReleaseClientRef(entry.Owner);
             Complete(future, BML_IMC_FUTURE_FAILED,
                      BML_ERROR_IMC_PROVIDER_UNLOADED);
@@ -688,12 +691,15 @@ bool ImcRuntime::IsMainThread() const noexcept {
     return std::this_thread::get_id() == m_State->MainThread;
 }
 
+void ImcRuntime::SetOwnerAdmission(OwnerAdmission admission,void *context) noexcept {m_State->Admit=admission;m_State->AdmissionContext=context;}
+
 void ImcRuntime::SetInvocationGate(ModInvocationGate *invocationGate) noexcept {
     m_State->InvocationGate = invocationGate;
 }
 
 int ImcRuntime::OpenClient(const std::string &ownerId, BML_ImcClient *outClient) {
     auto operation = m_State->LockOperation();
+    if(!m_State->Allows(ownerId,false)){if(outClient)*outClient=nullptr;return BML_ERROR_FROZEN;}
     if (!outClient || ownerId.empty())
         return BML_ERROR_INVALID_PARAMETER;
     *outClient = nullptr;
@@ -806,6 +812,7 @@ int ImcRuntime::RegisterRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
     auto *owned = m_State->AcquireClient(client);
     if (!owned)
         return BML_ERROR_INVALID_HANDLE;
+    if(!m_State->Allows(owned->Owner,false)){m_State->ReleaseClientRef(owned);return BML_ERROR_FROZEN;}
     if (!handler || rpcId == BML_IMC_INVALID_ID ||
         (options && options->Size < BML_IMC_RPC_REGISTRATION_OPTIONS_1_0_SIZE)) {
         m_State->ReleaseClientRef(owned);
@@ -1100,6 +1107,7 @@ int ImcRuntime::FutureOnComplete(BML_ImcClient client, BML_ImcFuture future,
         if (owned) m_State->ReleaseFutureRef(owned);
         return BML_ERROR_INVALID_HANDLE;
     }
+    if(!m_State->Allows(callbackOwner->Owner,false)){m_State->ReleaseClientRef(callbackOwner);m_State->ReleaseFutureRef(owned);return BML_ERROR_FROZEN;}
     if (!callback) {
         m_State->ReleaseClientRef(callbackOwner);
         m_State->ReleaseFutureRef(owned);
@@ -1150,6 +1158,7 @@ int ImcRuntime::Subscribe(BML_ImcClient client, BML_ImcTopicId topicId,
     auto *owned = m_State->AcquireClient(client);
     if (!owned)
         return BML_ERROR_INVALID_HANDLE;
+    if(!m_State->Allows(owned->Owner,false)){m_State->ReleaseClientRef(owned);return BML_ERROR_FROZEN;}
     if (!handler || topicId == BML_IMC_INVALID_ID ||
         (options && options->Size < BML_IMC_SUBSCRIBE_OPTIONS_1_0_SIZE)) {
         m_State->ReleaseClientRef(owned);
@@ -1325,7 +1334,7 @@ int ImcRuntime::Publish(BML_ImcClient client, BML_ImcTopicId topicId,
                     invocation.emplace(m_State->InvocationGate->LockCall());
                 auto operation = m_State->LockOperation();
                 if (subscription->Active.load(std::memory_order_acquire) &&
-                    subscription->Owner->Active.load(std::memory_order_acquire)) {
+                    subscription->Owner->Active.load(std::memory_order_acquire) && m_State->Allows(subscription->Owner->Owner)) {
                     subscription->Handler(topicId, &view, subscription->Userdata);
                     ++delivered;
                 }
@@ -1437,7 +1446,7 @@ void ImcRuntime::Pump(size_t rpcBudget, size_t messageBudgetPerSubscription,
                         invocation.emplace(m_State->InvocationGate->LockCall());
                     auto operation = m_State->LockOperation();
                     if (subscription->Active.load(std::memory_order_acquire) &&
-                        subscription->Owner->Active.load(std::memory_order_acquire))
+                        subscription->Owner->Active.load(std::memory_order_acquire) && m_State->Allows(subscription->Owner->Owner))
                         subscription->Handler(subscription->Topic, &view,
                                               subscription->Userdata);
                 } catch (...) {
@@ -1457,7 +1466,7 @@ void ImcRuntime::Pump(size_t rpcBudget, size_t messageBudgetPerSubscription,
             if (m_State->InvocationGate)
                 invocation.emplace(m_State->InvocationGate->LockCall());
             auto operation = m_State->LockOperation();
-            if (completion->Owner->Active.load(std::memory_order_acquire))
+            if (completion->Owner->Active.load(std::memory_order_acquire) && m_State->Allows(completion->Owner->Owner))
                 completion->Callback(completion->Future->Handle, completion->Userdata);
         } catch (...) {
         }

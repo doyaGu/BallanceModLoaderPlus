@@ -7,6 +7,7 @@
 
 namespace BML::Behavior::Internal::Engine {
 
+#if !BML_RUNTIME_SDL
 // The retail SDK declares these CK2 fields protected and exposes no public
 // accessor for them. This is the one place that reads or writes them.
 
@@ -31,6 +32,10 @@ void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept;
 // The native Link setters reject null. Use only after removing the Link from
 // its surviving source IO's outgoing array; neither old endpoint is read.
 void ClearEndpoints(CKBehaviorLink *link) noexcept;
+
+#else
+void SetParentId(CKBehavior *behavior, CKBehavior *parent) noexcept;
+#endif
 
 // True while CK2 holds the Link in its graph's delayed-link list. CK2 sets
 // bit 0x1 of m_OldFlags when it pushes a delayed activation and clears it

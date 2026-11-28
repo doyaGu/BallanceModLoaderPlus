@@ -157,26 +157,10 @@ bool CommandContext::CommandKeyEqual::operator()(const char *lhs, const std::str
     return EqualsCommandKey(rhs, lhs);
 }
 
-bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd) {
-    if (!registrar || !cmd)
+bool CommandContext::RegisterCommand(const void *registrar, std::shared_ptr<CommandRecord> cmd) {
+    if (!registrar || !cmd || !cmd->ExecuteCallback)
         return false;
-
-    CommandInfo info;
-    info.Name = cmd->GetName();
-    info.Alias = cmd->GetAlias();
-    info.Description = cmd->GetDescription();
-    info.Cheat = cmd->IsCheat();
-    return RegisterCommand(registrar, cmd, std::move(info));
-}
-
-bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info) {
-    return RegisterCommand(registrar, cmd, std::move(info), {});
-}
-
-bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info,
-                                     std::shared_ptr<void> lifetime) {
-    if (!registrar || !cmd)
-        return false;
+    auto &info = cmd->Info;
 
     const std::string name = info.Name;
     if (!IsValidCommandName(name)) {
@@ -209,27 +193,26 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, Comma
     Entry entry;
     entry.Command = cmd;
     entry.Registrar = registrar;
-    entry.Info = std::move(info);
     entry.NameKey = nameKey;
     entry.AliasKey = aliasKey;
-    entry.Lifetime = std::move(lifetime);
 
     try {
-        const auto [nameIt, nameInserted] = m_CommandMap.emplace(nameKey, cmd);
+        const auto [nameIt, nameInserted] = m_CommandMap.emplace(nameKey, cmd.get());
         if (!nameInserted)
             return false;
 
         if (!aliasKey.empty()) {
-            const bool aliasInserted = m_CommandMap.emplace(aliasKey, cmd).second;
+            const bool aliasInserted = m_CommandMap.emplace(aliasKey, cmd.get()).second;
             if (!aliasInserted) {
                 m_CommandMap.erase(nameIt);
                 return false;
             }
         }
 
-        const auto position = std::lower_bound(
-            m_Commands.begin(), m_Commands.end(), name,
-            [](const Entry &item, const std::string &value) { return item.Info.Name < value; });
+        const auto position = std::lower_bound(m_Commands.begin(), m_Commands.end(), name,
+                                               [](const Entry &item, const std::string &value) {
+                                                   return item.Command->Info.Name < value;
+                                               });
         m_Commands.insert(position, std::move(entry));
     } catch (const std::bad_alloc &) {
         m_CommandMap.erase(nameKey);
@@ -273,7 +256,7 @@ CommandContext::UnregisterResult CommandContext::UnregisterCommand(const void *r
 
     auto *cmd = it->second;
     const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
-                                    [cmd](const Entry &item) { return item.Command == cmd; });
+                                    [cmd](const Entry &item) { return item.Command.get() == cmd; });
     if (entry == m_Commands.end())
         return UnregisterResult::InternalError;
     if (!registrar || entry->Registrar != registrar)
@@ -310,13 +293,13 @@ std::size_t CommandContext::GetCommandCount() const {
     return m_Commands.size();
 }
 
-ICommand *CommandContext::GetCommandByIndex(std::size_t index) const {
+CommandRecord *CommandContext::GetCommandByIndex(std::size_t index) const {
     if (index >= m_Commands.size())
         return nullptr;
-    return m_Commands[index].Command;
+    return m_Commands[index].Command.get();
 }
 
-ICommand *CommandContext::GetCommandByName(const char *name) const {
+CommandRecord *CommandContext::GetCommandByName(const char *name) const {
     if (!name || name[0] == '\0')
         return nullptr;
 
@@ -329,21 +312,20 @@ ICommand *CommandContext::GetCommandByName(const char *name) const {
 
 bool CommandContext::AcquireCommand(const char *name, CommandCall &call) const {
     call = {};
-    ICommand *command = GetCommandByName(name);
+    CommandRecord *command = GetCommandByName(name);
     if (!command)
         return false;
 
-    const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
-                                    [command](const Entry &item) {
-                                        return item.Command == command;
-                                    });
+    const auto entry =
+        std::find_if(m_Commands.begin(), m_Commands.end(),
+                     [command](const Entry &item) { return item.Command.get() == command; });
     if (entry == m_Commands.end()) {
         return false;
     }
 
     call.Command = command;
-    call.Info = entry->Info;
-    call.Lifetime = entry->Lifetime;
+    call.Info = entry->Command->Info;
+    call.Lifetime = entry->Command;
     return true;
 }
 
@@ -351,7 +333,7 @@ std::vector<CommandContext::CommandInfo> CommandContext::GetCommandSnapshot() co
     std::vector<CommandInfo> snapshot;
     snapshot.reserve(m_Commands.size());
     for (const Entry &entry : m_Commands)
-        snapshot.push_back(entry.Info);
+        snapshot.push_back(entry.Command->Info);
     return snapshot;
 }
 
@@ -359,35 +341,34 @@ bool CommandContext::GetCommandInfoByIndex(
     std::size_t index, CommandInfo &info) const {
     if (index >= m_Commands.size())
         return false;
-    info = m_Commands[index].Info;
+    info = m_Commands[index].Command->Info;
     return true;
 }
 
 bool CommandContext::GetCommandInfoByName(const char *name, CommandInfo &info) const {
-    ICommand *command = GetCommandByName(name);
+    CommandRecord *command = GetCommandByName(name);
     if (!command)
         return false;
 
-    const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
-                                    [command](const Entry &item) {
-                                        return item.Command == command;
-                                    });
+    const auto entry =
+        std::find_if(m_Commands.begin(), m_Commands.end(),
+                     [command](const Entry &item) { return item.Command.get() == command; });
     if (entry == m_Commands.end())
         return false;
-    info = entry->Info;
+    info = entry->Command->Info;
     return true;
 }
 
-bool CommandContext::SetCommandEnabled(ICommand *command, bool enabled) {
-    if (!command)
+bool CommandContext::SetCommandEnabled(const void *implementation, bool enabled) {
+    if (!implementation)
         return false;
-    const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
-                                    [command](const Entry &item) {
-                                        return item.Command == command;
-                                    });
+    const auto entry =
+        std::find_if(m_Commands.begin(), m_Commands.end(), [implementation](const Entry &item) {
+            return item.Command->UserData == implementation;
+        });
     if (entry == m_Commands.end())
         return false;
-    entry->Info.Enabled = enabled;
+    entry->Command->Info.Enabled = enabled;
     return true;
 }
 

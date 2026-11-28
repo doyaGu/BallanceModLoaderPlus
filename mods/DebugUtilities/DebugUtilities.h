@@ -3,44 +3,38 @@
 #include <string>
 #include <map>
 
-#include <BML/BMLAll.h>
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
-MOD_EXPORT IMod *BMLEntry(IBML *bml);
-MOD_EXPORT void BMLExit(IMod *mod);
-
-class DebugUtilities : public IMod {
+class DebugUtilities : public BML::Mod::Instance {
+    BML::Mod::Context m_Context;
+    ModSupport::Timers m_Timers;
+    BML::Behavior::Session m_Behaviors;
+    std::vector<BML::Command::Registration> m_Commands;
     friend class CommandSector;
-public:
-    explicit DebugUtilities(IBML *bml) : IMod(bml) {}
 
-    const char *GetID() override { return "DebugUtilities"; }
-    const char *GetVersion() override { return "0.3.2"; }
-    const char *GetName() override { return "Debug Utilities"; }
-    const char *GetAuthor() override { return "Gamepiaynmo & Kakuty"; }
-    const char *GetDescription() override { return "Ballance Debug Utilities."; }
-    DECLARE_BML_VERSION;
+  public:
 
-    void OnLoad() override;
-    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
-    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                      XObjectArray *objArray, CKObject *masterObj) override;
-    void OnLoadScript(const char *filename, CKBehavior *script) override;
 
-    void OnProcess() override;
+    void OnLoad(const BML::Mod::Context &) override;
+    void OnModifyConfig(const BML::Mod::Context &, const BML::Mod::ConfigEvent &event) override;
+    void OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjectEvent &event) override;
+    void OnLoadScript(const BML::Mod::Context &, const BML::Mod::LoadScriptEvent &event) override;
 
-    void OnCheatEnabled(bool enable) override;
+    void OnProcess(const BML::Mod::Context &) override;
 
-    void OnStartLevel() override;
-    void OnPreResetLevel() override;
-    void OnPostResetLevel() override;
-    void OnPauseLevel() override;
-    void OnUnpauseLevel() override;
-    void OnPostExitLevel() override;
-    void OnPostNextLevel() override;
-    void OnDead() override;
-    void OnPostEndLevel() override;
-    void OnLevelFinish() override;
+    void OnCheatEnabled(const BML::Mod::Context &, const BML::Mod::CheatEvent &event) override;
+
+    void OnStartLevel(const BML::Mod::Context &) override;
+    void OnPreResetLevel(const BML::Mod::Context &) override;
+    void OnPostResetLevel(const BML::Mod::Context &) override;
+    void OnPauseLevel(const BML::Mod::Context &) override;
+    void OnUnpauseLevel(const BML::Mod::Context &) override;
+    void OnPostExitLevel(const BML::Mod::Context &) override;
+    void OnPostNextLevel(const BML::Mod::Context &) override;
+    void OnDead(const BML::Mod::Context &) override;
+    void OnPostEndLevel(const BML::Mod::Context &) override;
+    void OnLevelFinish(const BML::Mod::Context &) override;
 
     bool IsInLevel() const { return m_InLevel && !m_Paused; }
 
@@ -50,9 +44,11 @@ public:
     int GetSectorCount();
     void SetSector(int index);
 
-private:
+  private:
+    BML::Input::Block m_ChangeBallBlock, m_SummonBlock;
     void OnEditScript_Gameplay_Ingame(CKBehavior *script);
     void OnEditScript_Gameplay_Events(CKBehavior *script);
+    void UpdateBallForceKey(int index, bool enabled);
 
     void OnProcess_Suicide();
     void OnProcess_ChangeBall();
@@ -64,7 +60,6 @@ private:
 
     CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
-    InputHook *m_InputHook = nullptr;
     float m_DeltaTime = 0.0f;
     float m_SpeedTimes = 1.0f;
 
@@ -72,46 +67,46 @@ private:
     bool m_Paused = false;
 
     bool m_SkipRender = false;
-    IProperty* m_SkipRenderKey = nullptr;
+    BML::Config::Property m_SkipRenderKey = {};
 
-    IProperty *m_BallCheat[2] = {};
+    BML::Config::Property m_BallCheat[2] = {};
 
-    IProperty *m_EnableSuicideKey = nullptr;
-    IProperty *m_Suicide = nullptr;
+    BML::Config::Property m_EnableSuicideKey = {};
+    BML::Config::Property m_Suicide = {};
     bool m_SuicideCd = false;
 
-    IProperty *m_ChangeBall[3] = {};
+    BML::Config::Property m_ChangeBall[3] = {};
     int m_ChangeBallCd = 0;
 
-    IProperty *m_SpeedNotification = nullptr;
-    IProperty *m_SpeedupBall = nullptr;
+    BML::Config::Property m_SpeedNotification = {};
+    BML::Config::Property m_SpeedupBall = {};
     bool m_Speedup = false;
 
-    IProperty *m_AddLife = nullptr;
+    BML::Config::Property m_AddLife = {};
     bool m_AddLifeCd = false;
 
-    CKDataArray *m_PhysicsBall = nullptr;
-    CKParameter *m_Force = nullptr;
+    ModSupport::Object<CKDataArray> m_PhysicsBall{m_Context};
+    ModSupport::Object<CKParameter> m_Force{m_Context};
     std::map<std::string, float> m_Forces;
 
-    IProperty *m_ResetBall = nullptr;
-    CKParameterLocal *m_BallForce[2] = {};
-    CKBehavior *m_SetNewBall = nullptr;
+    BML::Config::Property m_ResetBall = {};
+    ModSupport::Object<CKParameterLocal> m_BallForce[2]{ModSupport::Object<CKParameterLocal>{m_Context}, ModSupport::Object<CKParameterLocal>{m_Context}};
+    ModSupport::Object<CKBehavior> m_SetNewBall{m_Context};
 
-    CKParameter *m_CurTrafo = nullptr;
-    CKDataArray *m_CurLevel = nullptr;
-    CKDataArray *m_IngameParam = nullptr;
+    ModSupport::Object<CKParameter> m_CurTrafo{m_Context};
+    ModSupport::Object<CKDataArray> m_CurLevel{m_Context};
+    ModSupport::Object<CKDataArray> m_IngameParam{m_Context};
 
-    CK3dEntity *m_CamOrientRef = nullptr;
-    CK3dEntity *m_CamTarget = nullptr;
-    CKParameter *m_CurSector = nullptr;
-    CKBehavior *m_PhysicsNewBall = nullptr;
-    CKBehavior *m_DynamicPos = nullptr;
+    ModSupport::Object<CK3dEntity> m_CamOrientRef{m_Context};
+    ModSupport::Object<CK3dEntity> m_CamTarget{m_Context};
+    ModSupport::Object<CKParameter> m_CurSector{m_Context};
+    ModSupport::Object<CKBehavior> m_PhysicsNewBall{m_Context};
+    ModSupport::Object<CKBehavior> m_DynamicPos{m_Context};
 
-    IProperty *m_AddBall[4] = {};
+    BML::Config::Property m_AddBall[4] = {};
     int m_CurSel = -1;
-    CK3dEntity *m_CurObj = nullptr;
-    CK3dEntity *m_Balls[4] = {};
+    ModSupport::Object<CK3dEntity> m_CurObj{m_Context};
+    ModSupport::Object<CK3dEntity> m_Balls[4]{ModSupport::Object<CK3dEntity>{m_Context}, ModSupport::Object<CK3dEntity>{m_Context}, ModSupport::Object<CK3dEntity>{m_Context}, ModSupport::Object<CK3dEntity>{m_Context}};
     std::vector<std::pair<int, CK3dEntity *>> m_TempBalls;
-    IProperty *m_MoveKeys[6] = {};
+    BML::Config::Property m_MoveKeys[6] = {};
 };

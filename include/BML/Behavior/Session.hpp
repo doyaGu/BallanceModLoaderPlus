@@ -146,6 +146,13 @@ public:
             : Result<Behavior::Script>::Failure(
                   reference.Code(), reference.GetStatus());
     }
+    // Applies an immutable Edit to live Graphs or to a Script selection.
+    template <class First, class... More>
+    [[nodiscard]] Result<Submission> Apply(
+        std::string_view name, EditOwnership ownership, First &&first, More &&...more) const;
+    template <class First, class... More>
+    [[nodiscard]] Result<Submission> Apply(
+        std::string_view name, ApplyOptions options, First &&first, More &&...more) const;
     // Convenience form for one Script rule. The On(...) overload below retains
     // several rules under one Plan identity.
     [[nodiscard]] Result<Behavior::Plan> Plan(

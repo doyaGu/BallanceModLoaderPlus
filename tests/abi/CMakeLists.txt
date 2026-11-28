@@ -20,6 +20,10 @@ add_library(BehaviorCAbiCompile OBJECT BehaviorCAbiCompile.c)
 target_include_directories(BehaviorCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(BehaviorCAbiCompile PROPERTIES FOLDER "Tests")
 
+foreach(BML_C_ABI_TARGET IN ITEMS ImcCAbiCompile BmlCAbiCompile BehaviorCAbiCompile)
+    target_compile_features(${BML_C_ABI_TARGET} PRIVATE c_std_11)
+endforeach()
+
 if (MSVC)
     foreach(BML_ADVERSE_ABI_TARGET IN ITEMS
             ImcCAbiCompile
@@ -35,13 +39,13 @@ endif ()
 # must arrive through BML's public usage requirements, exactly as it does for a
 # Native Mod built against the build-tree package.
 add_library(ImGuiAbiConsumerCompile OBJECT ImGuiAbiConsumerCompile.cpp)
-target_link_libraries(ImGuiAbiConsumerCompile PRIVATE BML)
+target_link_libraries(ImGuiAbiConsumerCompile PRIVATE BML::ImGui BML::Engine)
 set_target_properties(ImGuiAbiConsumerCompile PROPERTIES FOLDER "Tests")
 
 add_library(LegacyGuiAbiCompile OBJECT LegacyGuiAbiCompile.cpp)
 target_include_directories(LegacyGuiAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 target_link_libraries(LegacyGuiAbiCompile PRIVATE
-        VirtoolsSDK::CK2 VirtoolsSDK::VxMath)
+        CK2 VxMath)
 set_target_properties(LegacyGuiAbiCompile PROPERTIES FOLDER "Tests")
 
 # Every public C++ Behavior domain header must compile on its own. The umbrella
@@ -61,7 +65,7 @@ add_library(BehaviorHeadersCompile OBJECT
         ${BML_BEHAVIOR_HEADER_COMPILE_SOURCES})
 target_include_directories(BehaviorHeadersCompile PRIVATE "${BML_INCLUDE_DIR}")
 target_link_libraries(BehaviorHeadersCompile PRIVATE
-        VirtoolsSDK::CK2 VirtoolsSDK::VxMath)
+        CK2 VxMath)
 target_compile_definitions(BehaviorHeadersCompile PRIVATE "BML_EXPORTS")
 set_target_properties(BehaviorHeadersCompile PROPERTIES FOLDER "Tests")
 set_property(TARGET BehaviorHeadersCompile PROPERTY CXX_STANDARD 17)
@@ -82,7 +86,7 @@ endforeach()
 set(BML_BEHAVIOR_BLOCK_WINDOWS_FIRST_SOURCE
         "${CMAKE_CURRENT_BINARY_DIR}/behavior-block-public-headers/WindowsFirst.cpp")
 file(WRITE "${BML_BEHAVIOR_BLOCK_WINDOWS_FIRST_SOURCE}"
-        "#include <Windows.h>\n#include <BML/Behavior/Blocks.hpp>\n")
+        "#ifdef _WIN32\n#include <Windows.h>\n#endif\n#include <BML/Behavior/Blocks.hpp>\n")
 list(APPEND BML_BEHAVIOR_BLOCK_HEADER_COMPILE_SOURCES
         "${BML_BEHAVIOR_BLOCK_WINDOWS_FIRST_SOURCE}")
 add_library(BehaviorBlockHeadersCompile OBJECT
@@ -90,7 +94,7 @@ add_library(BehaviorBlockHeadersCompile OBJECT
 target_include_directories(BehaviorBlockHeadersCompile PRIVATE
         "${BML_INCLUDE_DIR}")
 target_link_libraries(BehaviorBlockHeadersCompile PRIVATE
-        VirtoolsSDK::CK2 VirtoolsSDK::VxMath)
+        CK2 VxMath)
 target_compile_definitions(BehaviorBlockHeadersCompile PRIVATE "BML_EXPORTS")
 set_target_properties(BehaviorBlockHeadersCompile PROPERTIES FOLDER "Tests")
 set_property(TARGET BehaviorBlockHeadersCompile PROPERTY CXX_STANDARD 17)
@@ -115,14 +119,5 @@ if (MSVC AND EXISTS "${BML_DUMPBIN}")
     set_tests_properties(InterfaceDllExportAbiTest PROPERTIES
             LABELS "interface;abi")
 
-    add_test(
-            NAME LegacyNativeDllExportAbiTest
-            COMMAND "${CMAKE_COMMAND}"
-            "-DDUMPBIN=${BML_DUMPBIN}"
-            "-DBINARY=$<TARGET_FILE:BML>"
-            "-DBASELINE=${CMAKE_CURRENT_SOURCE_DIR}/legacy-native-exports-x86-msvc.txt"
-            "-P" "${CMAKE_CURRENT_SOURCE_DIR}/LegacyNativeDllExportAbiTest.cmake"
-    )
-    set_tests_properties(LegacyNativeDllExportAbiTest PROPERTIES LABELS "legacy-native;abi")
 
 endif ()

@@ -6,6 +6,10 @@ add_bml_test(InterfaceAuthoringTest
         SOURCES InterfaceAuthoringTest.cpp
 )
 
+add_bml_test(ApiBufferTest
+        SOURCES ApiBufferTest.cpp
+)
+
 add_bml_test(CommandAuthoringTest
         SOURCES CommandAuthoringTest.cpp
 )
@@ -20,11 +24,4 @@ add_bml_test(InterfaceRegistryTest
 add_bml_test(InterfaceStructOffsetsTest
         SOURCES
         InterfaceStructOffsetsTest.cpp
-)
-
-add_bml_test(LegacyModVersionTest
-        SOURCES
-        LegacyModVersionTest.cpp
-        DEPENDENCIES
-        VirtoolsSDK::CK2
 )

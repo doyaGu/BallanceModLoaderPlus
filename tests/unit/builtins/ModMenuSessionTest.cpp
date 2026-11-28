@@ -10,19 +10,19 @@ namespace {
     const ModMenuOwner Owner{"sample.mod", 7, 2};
 
     ModMenuSettingDocument BooleanSetting(std::string id, bool value) {
-        return {{Owner, {}, std::move(id)}, {}, {}, IProperty::BOOLEAN, value};
+        return {{Owner, {}, std::move(id)}, {}, {}, PropertyType::BOOLEAN, value};
     }
 
     ModMenuSettingDocument IntegerSetting(std::string id, int value) {
-        return {{Owner, {}, std::move(id)}, {}, {}, IProperty::INTEGER, value};
+        return {{Owner, {}, std::move(id)}, {}, {}, PropertyType::INTEGER, value};
     }
 
     ModMenuSettingDocument KeySetting(std::string id, int value) {
-        return {{Owner, {}, std::move(id)}, {}, {}, IProperty::KEY, value};
+        return {{Owner, {}, std::move(id)}, {}, {}, PropertyType::KEY, value};
     }
 
     ModMenuSettingDocument FloatSetting(std::string id, float value) {
-        return {{Owner, {}, std::move(id)}, {}, {}, IProperty::FLOAT, value};
+        return {{Owner, {}, std::move(id)}, {}, {}, PropertyType::FLOAT, value};
     }
 
     ModMenuDetailsActionDocument CategoryAction(
@@ -138,7 +138,7 @@ TEST(ModMenuSessionTest, BuildsEditsInDeclarationOrderRatherThanEditOrder) {
     EXPECT_EQ(batch.edits[0].key, Key("general", "enabled"));
     EXPECT_EQ(batch.edits[1].key, Key("general", "count"));
     EXPECT_EQ(batch.edits[2].key, Key("input", "shortcut"));
-    EXPECT_EQ(batch.edits[2].type, IProperty::KEY);
+    EXPECT_EQ(batch.edits[2].type, PropertyType::KEY);
     EXPECT_EQ(std::get<int>(batch.edits[2].baseline), 12);
     EXPECT_EQ(std::get<int>(batch.edits[2].value), 20);
 }
@@ -229,7 +229,7 @@ TEST(ModMenuSessionTest, SchemaAndTypeChangesMakeDraftsStale) {
     ASSERT_EQ(session.Edit(Key("general", "count"), 8), ModMenuEditResult::Changed);
 
     ModMenuDocument replacement = MakeDocument(4, 13);
-    CategoryAt(replacement, 0).settings[1].type = IProperty::KEY;
+    CategoryAt(replacement, 0).settings[1].type = PropertyType::KEY;
     ASSERT_TRUE(session.Reconcile(std::move(replacement)));
     EXPECT_EQ(session.GetStatus(), ModMenuSessionStatus::Stale);
 }

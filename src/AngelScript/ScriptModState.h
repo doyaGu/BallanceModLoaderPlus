@@ -4,13 +4,14 @@
 #include <string>
 
 #include "ScriptDiagnostic.h"
+#include "Loader/ModState.h"
 
 namespace BML {
 
 class ScriptModState {
 public:
-    bool IsLoaded() const { return m_Loaded; }
-    bool IsFailed() const { return m_Failed; }
+    bool IsLoaded() const { return m_State.IsLoaded(); }
+    bool IsFailed() const { return m_State.IsFailed(); }
     const ScriptDiagnostic &GetLastDiagnostic() const { return m_LastDiagnostic; }
     const std::string &GetLastDiagnosticText() const { return m_LastDiagnosticText; }
 
@@ -20,8 +21,7 @@ public:
     void ClearFailure();
 
 private:
-    bool m_Loaded = false;
-    bool m_Failed = false;
+    ModState m_State;
     ScriptDiagnostic m_LastDiagnostic;
     std::string m_LastDiagnosticText;
 };

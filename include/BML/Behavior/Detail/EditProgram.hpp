@@ -93,12 +93,6 @@ struct PatchSymbols {
     std::uint32_t HandleLimit = 0;
 };
 
-struct PlanSymbols {
-    std::shared_ptr<EditProgram> Edit;
-    std::uint64_t Binding = 0;
-    std::uint32_t HandleLimit = 0;
-};
-
 struct PatchTarget {
     std::shared_ptr<SessionState> Session;
     BML_ObjectRef Graph{};
@@ -1583,20 +1577,45 @@ struct PlanWire {
 
 } // namespace Detail
 
+inline Result<const Detail::PatchSymbols *> Patch::PublishedSymbols(
+    const std::weak_ptr<Detail::EditProgram> &edit) const {
+    using Found = Result<const Detail::PatchSymbols *>;
+    const auto authored = edit.lock();
+    for (auto it = m_Edits.rbegin(); it != m_Edits.rend(); ++it) {
+        if (it->Edit != authored)
+            continue;
+        // A queued replacement can still fall back. The root symbol exists
+        // in every definition, including edits containing only Ports.
+        const bool hasOlder = std::any_of(std::next(it), m_Edits.rend(),
+            [&](const Detail::PatchSymbols &older) { return older.Edit == authored; });
+        if (hasOlder) {
+            BML_BehaviorNodeRef root{};
+            root.StructSize = sizeof(root);
+            root.Graph = root.Handle = BML_BEHAVIOR_EDIT_GRAPH;
+            root.Binding = it->Binding;
+            auto current = ResolveHandle(root);
+            if (!current) {
+                if (current.GetStatus().Error == Error::QueryNotFound)
+                    continue;
+                return Found::Failure(current.Code(), current.GetStatus());
+            }
+        }
+        return Found::Success(&*it);
+    }
+    return Found::Failure(BML_ERROR_INVALID_PARAMETER);
+}
+
 template <class Handle>
 Result<BML_ObjectRef> Patch::Resolve(const Handle &node) const {
     static_assert(std::is_same_v<std::decay_t<Handle>, Edit::Node>,
                   "A Behavior Patch resolves only an Edit::Node.");
     if (!*this)
         return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
-    const std::owner_less<std::weak_ptr<Detail::EditProgram>> before;
-    const auto symbols = std::find_if(
-        m_Edits.rbegin(), m_Edits.rend(), [&](const Detail::PatchSymbols &item) {
-            return !before(item.Edit, node.m_Edit) &&
-                   !before(node.m_Edit, item.Edit);
-        });
-    if (symbols == m_Edits.rend() || !node.m_Id ||
-        node.m_Id >= symbols->HandleLimit ||
+    const auto binding = PublishedSymbols(node.m_Edit);
+    if (!binding && binding.Code() != BML_ERROR_INVALID_PARAMETER)
+        return Result<BML_ObjectRef>::Failure(binding.Code(), binding.GetStatus());
+    const auto *symbols = binding ? binding.Value() : nullptr;
+    if (!symbols || !node.m_Id || node.m_Id >= symbols->HandleLimit ||
         node.m_Scope >= symbols->HandleLimit) {
         Status status;
         status.Error = Behavior::Error::GraphLocalityInvalid;
@@ -1620,14 +1639,11 @@ Result<BML_BehaviorPortRef> Patch::ResolvePort(const Handle &port) const {
                   "A Behavior Patch reads and writes only an Edit::Port.");
     if (!*this)
         return Result<BML_BehaviorPortRef>::Failure(BML_ERROR_INVALID_HANDLE);
-    const std::owner_less<std::weak_ptr<Detail::EditProgram>> before;
-    const auto symbols = std::find_if(
-        m_Edits.rbegin(), m_Edits.rend(), [&](const Detail::PatchSymbols &item) {
-            return !before(item.Edit, port.m_Edit) &&
-                   !before(port.m_Edit, item.Edit);
-        });
-    if (symbols == m_Edits.rend() || !port.m_Id ||
-        port.m_Id >= symbols->HandleLimit ||
+    const auto binding = PublishedSymbols(port.m_Edit);
+    if (!binding && binding.Code() != BML_ERROR_INVALID_PARAMETER)
+        return Result<BML_BehaviorPortRef>::Failure(binding.Code(), binding.GetStatus());
+    const auto *symbols = binding ? binding.Value() : nullptr;
+    if (!symbols || !port.m_Id || port.m_Id >= symbols->HandleLimit ||
         port.m_Scope >= symbols->HandleLimit) {
         Status status;
         status.Error = Behavior::Error::GraphLocalityInvalid;

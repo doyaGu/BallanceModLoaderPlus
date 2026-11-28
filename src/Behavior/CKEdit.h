@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <memory_resource>
 #include <set>
 #include <thread>
 #include <vector>
@@ -66,6 +67,8 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] PatchState State() const noexcept;
     [[nodiscard]] Status Diagnostic() const;
+    [[nodiscard]] Status ApplyFailure() const;
+    [[nodiscard]] Status RestoreFailure() const;
     [[nodiscard]] std::vector<RevertConflict> Conflicts() const;
 
 private:
@@ -104,6 +107,8 @@ public:
     Status ReadValue(const Patch &patch, Port port, GraphValue &out) const;
     Status WriteValue(const Patch &patch, Port port,
                       const Parameter::Binding &value) const;
+    Status WriteLocals(const std::vector<std::pair<const Patch *, Port>> &writes,
+                       const Parameter::Binding &value) const;
     // Invalidates an installation whose graph is being deleted by CK and
     // closes callback admission immediately. Its journal retains any native
     // objects CK2 skipped until the next safe point retires them.
@@ -172,7 +177,7 @@ private:
     std::unique_ptr<Links> m_Links;
     // Journals that have published, so an Edit can be refused when it names
     // an object another active Patch introduced.
-    std::vector<std::weak_ptr<Patch::Journal>> m_Published;
+    std::pmr::vector<std::weak_ptr<Patch::Journal>> m_Published;
     std::vector<Request> m_Queue;
     [[nodiscard]] bool Deferred() const noexcept;
 

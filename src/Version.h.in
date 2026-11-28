@@ -1,6 +1,6 @@
 // Generated at configure time from src/Version.h.in, so do not edit the copy in
 // include/BML. These are the stable SDK release numbers a Mod is compiled against.
-// DECLARE_BML_VERSION reports them, and the loader uses them for compatibility.
+// Mod definitions declare the minimum loader version they require.
 // To find the version of the running loader, call BML_GetVersion from BML.h.
 #ifndef BML_VERSION_H
 #define BML_VERSION_H

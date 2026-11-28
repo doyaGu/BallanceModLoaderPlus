@@ -6,7 +6,7 @@
 
 class CKSpriteText;
 
-namespace BGui {
+namespace BGuiHost {
 
 std::string ChooseLegacyTextDefaultFace(const std::vector<std::string> &availableFaces);
 void SelectLegacyTextDefaultFace(const std::vector<std::string> &availableFaces);

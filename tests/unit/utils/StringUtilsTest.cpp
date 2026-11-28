@@ -366,6 +366,22 @@ TEST_F(StringUtilsTest, StringConversion) {
     }
 }
 
+TEST_F(StringUtilsTest, StrictUtf8UnicodeScalars) {
+    for (const char *value : {"", "ASCII", "\xC2\x80", "\xDF\xBF", "\xE0\xA0\x80",
+                             "\xED\x9F\xBF", "\xEE\x80\x80", "\xEF\xBF\xBF",
+                             "\xEF\xBF\xBD", "\xF0\x90\x80\x80", "\xF4\x8F\xBF\xBF"}) {
+        EXPECT_TRUE(utils::IsValidUtf8(value));
+    }
+    for (const char *value : {"\x80", "\xFF", "\xC2", "\xC0\xAF", "\xE0\x80\x80",
+                             "\xED\xA0\x80", "\xED\xBF\xBF", "\xF0\x80\x80\x80",
+                             "\xF4\x90\x80\x80", "\xF5\x80\x80\x80", "\xF8\x80\x80\x80\x80"}) {
+        EXPECT_FALSE(utils::IsValidUtf8(value));
+        EXPECT_FALSE(utils::IsValidUtf8(std::string("prefix") + value + "suffix"));
+    }
+    EXPECT_FALSE(utils::IsValidUtf8(std::string("\0", 1)));
+    EXPECT_TRUE(utils::IsValidUtf8(std::string_view{}));
+}
+
 TEST_F(StringUtilsTest, StrictUtf8Utilities) {
     const std::string utf8 = "\xC3\x84pfel";
     EXPECT_TRUE(utils::IsValidUtf8(utf8));
@@ -602,7 +618,7 @@ TEST_F(StringUtilsTest, UnescapeString) {
         EXPECT_EQ("A", utils::UnescapeString("\\u0041"));
 
         // Surrogate pair: U+1D11E MUSICAL SYMBOL G CLEF
-        std::string gclef_utf8 = utils::Utf16ToUtf8(L"\xD834\xDD1E");
+        const std::string gclef_utf8 = "\xF0\x9D\x84\x9E";
         EXPECT_EQ(gclef_utf8, utils::UnescapeString("\\uD834\\uDD1E"));
 
         // Non-BMP via \U
@@ -738,26 +754,26 @@ TEST_F(StringUtilsTest, JoinStringExtras) {
 }
 
 #ifdef _WIN32
-// Windows-only: CompareString behavior and flags
+// Windows-only: CompareLocaleStrings behavior and flags
 TEST_F(StringUtilsTest, CompareStringFlags) {
     using utils::CompareFlags;
 
     // Case-insensitive by flag
-    EXPECT_EQ(0, utils::CompareString(L"apple", L"APPLE", CompareFlags::kLinguisticIgnoreCase));
+    EXPECT_EQ(0, utils::CompareLocaleStrings(L"apple", L"APPLE", CompareFlags::kLinguisticIgnoreCase));
 
     // Width-insensitive: halfwidth vs fullwidth
-    EXPECT_EQ(0, utils::CompareString(L"A", L"\uFF21", CompareFlags::kIgnoreWidth)); // fullwidth 'A'
+    EXPECT_EQ(0, utils::CompareLocaleStrings(L"A", L"\uFF21", CompareFlags::kIgnoreWidth)); // fullwidth 'A'
 
     // Digits as numbers: "a10" > "a2"
-    EXPECT_LT(utils::CompareString(L"a2", L"a10", CompareFlags::kDigitsAsNumbers), 0);
-    EXPECT_GT(utils::CompareString(L"a10", L"a2", CompareFlags::kDigitsAsNumbers), 0);
+    EXPECT_LT(utils::CompareLocaleStrings(L"a2", L"a10", CompareFlags::kDigitsAsNumbers), 0);
+    EXPECT_GT(utils::CompareLocaleStrings(L"a10", L"a2", CompareFlags::kDigitsAsNumbers), 0);
 
     // Default flags combine the three; numeric comparison makes "2" < "10"
-    EXPECT_LT(utils::CompareString(L"\uFF21pple2", L"apple10"), 0);
-    EXPECT_LT(utils::CompareString(L"a2", L"a10"), 0);
+    EXPECT_LT(utils::CompareLocaleStrings(L"\uFF21pple2", L"apple10"), 0);
+    EXPECT_LT(utils::CompareLocaleStrings(L"a2", L"a10"), 0);
 
     // UTF-8 overload mirrors wide one (ASCII scope)
-    EXPECT_EQ(0, utils::CompareString(std::string("Test"), std::string("test"), CompareFlags::kLinguisticIgnoreCase));
+    EXPECT_EQ(0, utils::CompareLocaleStrings(std::string("Test"), std::string("test"), CompareFlags::kLinguisticIgnoreCase));
 }
 #endif
 

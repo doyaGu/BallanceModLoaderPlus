@@ -2,6 +2,7 @@
 #define BML_SCRIPTFILEWATCHERWIN32_H
 
 #include <cstdint>
+#include <future>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -59,7 +60,7 @@ private:
     static bool SameRoot(const std::wstring &left, const std::wstring &right);
     static void StopWatches(std::vector<WatchState *> &watches);
 
-    void WorkerLoop(WatchState *state);
+    void WorkerLoop(WatchState *state, std::promise<bool> ready);
     void PushEvent(const Event &event);
     bool HasOverflowEventLocked(const std::wstring &root, bool recursive) const;
     void ForgetOverflowEventLocked(const Event &event);

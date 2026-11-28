@@ -7,15 +7,16 @@
 
 class CKBehavior;
 class CKContext;
-class IBML;
-class ILogger;
+class ModContext;
+class Logger;
 
 // Owns the "Mods" entry in Ballance's Options menu. The Behavior Patch and
 // the visible menu row are one feature: the row is published only after
 // the Patch is active, and is removed before the Patch is retired.
 class ModsMenuEntry {
 public:
-    void Load(BML::Behavior::Session &behavior, CKBehavior *script, IBML &bml, ILogger &logger);
+    void Load(BML::Behavior::Session &behavior, CKBehavior *script, ModContext &bml,
+              Logger &logger);
     void OnProcess();
     void Unload();
 
@@ -23,12 +24,12 @@ private:
     struct PendingLoad {
         BML::Behavior::Session *Behavior = nullptr;
         CK_ID Script = 0;
-        IBML *Bml = nullptr;
-        ILogger *Logger = nullptr;
+        ModContext *Bml = nullptr;
+        Logger *Log = nullptr;
     };
 
-    void BeginLoad(BML::Behavior::Session &behavior, CKBehavior *script,
-                   IBML &bml, ILogger &logger);
+    void BeginLoad(BML::Behavior::Session &behavior, CKBehavior *script, ModContext &bml,
+                   Logger &logger);
     void ResumePendingLoad();
     void Publish();
     void Restore();
@@ -38,8 +39,8 @@ private:
     void Clear(bool destroyButton);
 
     CKContext *m_Context = nullptr;
-    IBML *m_BML = nullptr;
-    ILogger *m_Logger = nullptr;
+    ModContext *m_BML = nullptr;
+    Logger *m_Logger = nullptr;
     BML::Behavior::Patch m_Patch;
     std::array<CK_ID, 6> m_Items{};
     std::array<float, 6> m_OriginalY{};

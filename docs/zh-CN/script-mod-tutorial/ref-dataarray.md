@@ -3,7 +3,12 @@
 ## 读取 API
 
 ```angelscript
-CKDataArray@ table = ctx.BorrowDataArrayByName("CurrentLevel");
+CKDataArray@ table;
+BML::ObjectRef tableRef;
+CKObject@ tableObject;
+if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+    @table = cast<CKDataArray>(tableObject);
 int BML::CK::GetRowCount(CKDataArray@ table);
 int BML::CK::GetColumnCount(CKDataArray@ table);
 int BML::CK::FindColumn(CKDataArray@ table, const string &in name);
@@ -27,7 +32,12 @@ bool BML::CK::SetBool(CKDataArray@ table, int row, int col, bool value);
 ## 安全读取模板
 
 ```angelscript
-CKDataArray@ table = ctx.BorrowDataArrayByName("CurrentLevel");
+CKDataArray@ table;
+BML::ObjectRef tableRef;
+CKObject@ tableObject;
+if (BML::Scene::FindObject("CurrentLevel", CKCID_DATAARRAY, tableRef) == BML::ERROR_OK &&
+    BML::Engine::BorrowObject(ctx, tableRef, CKCID_DATAARRAY, tableObject) == BML::ERROR_OK)
+    @table = cast<CKDataArray>(tableObject);
 if (table is null) return;
 int rows = BML::CK::GetRowCount(table);
 if (rows <= 0) return;

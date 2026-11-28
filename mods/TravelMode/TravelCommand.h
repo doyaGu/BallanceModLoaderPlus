@@ -1,20 +1,28 @@
 #pragma once
 
-#include "BML/BMLAll.h"
+#include "Common/ModSupport.hpp"
+#include "Common/Commands.hpp"
 
 class TravelMode;
 
-class TravelCommand : public ICommand {
-public:
+class TravelCommand {
+  public:
+    static BML::Command::Definition Define() {
+        BML::Command::Definition d;
+        d.Name = "travel";
+        d.Alias = "";
+        d.Description = "Switch to First-Person Camera.";
+        d.Cheat = false;
+        return d;
+    }
+
     explicit TravelCommand(class TravelMode *mod) : m_Mod(mod) {};
+    void Execute(const BML::Mod::Context &context, const std::vector<std::string> &args);
+    const std::vector<std::string> GetTabCompletion(const BML::Mod::Context &context,
+                                                    const std::vector<std::string> &args) {
+        return {};
+    };
 
-    std::string GetName() override { return "travel"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Switch to First-Person Camera."; };
-    bool IsCheat() override { return false; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
-
-private:
+  private:
     TravelMode *m_Mod;
 };

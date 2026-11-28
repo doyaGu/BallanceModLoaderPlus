@@ -1,12 +1,12 @@
 # Behavior 编写
 
-`BML/Behavior.hpp` 是 Native Mod 使用 Virtools Behavior 的稳定 C++ interface。它能创建和执行使用受支持参数类型的已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。`BML/Behavior.h` 是稳定的 `bml.behavior 1.0` C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。该 interface 只支持 Win32 Native C++ Mod，不支持 Win64。
+`BML/Behavior.hpp` 是 Native Mod 使用 Virtools Behavior 的稳定 C++ interface。它能创建和执行使用受支持参数类型的已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。`BML/Behavior.h` 是稳定的 `bml.behavior 1.0` C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。Native Mod 必须使用匹配宿主平台与 ABI 的 SDL SDK。
 
 `BML::Behavior` 中的领域类型和 `BML/Behavior.h` 中的 1.0 C function table 是公开接口。`BML::Behavior::Detail` 只承载 header-only 实现；Mod 不应直接引用其中的名称，其源码兼容性不作保证。
 
 ### C seam 的位置
 
-`BML/Behavior.h` 是完整的底层 interface，不是 C++ facade 的残缺传输格式。Prototype 查询、Block 执行、Frame 读取、Graph 检查、Watch、Script、Patch 和 Plan 都通过同一张 1.0 function table 提供；C++ facade 也只调用这张表，不使用私有 DLL 入口。因此，一个 C 翻译单元可以在不包含 Virtools header 或 C++ Behavior header 的情况下直接使用它：
+`BML/Behavior.h` 是完整的底层 interface，不是 C++ facade 的残缺传输格式。Prototype 查询、Block 执行、Frame 读取、Graph 检查、Watch、Script、Patch 和 Plan 都通过同一张 1.0 function table 提供；C++ facade 也只调用这张表，不使用私有模块入口。因此，一个 C 翻译单元可以在不包含 Virtools header 或 C++ Behavior header 的情况下直接使用它：
 
 ```c
 #include <BML/Behavior.h>
@@ -38,9 +38,13 @@ static void UseBehavior(void) {
 
 输入字符串和数组只在调用期间借用。Frame、Graph 和 Layout 的变长读取要么写入完整结果，要么只报告所需缓冲区大小。完整 1.0 API 使用 `BML_BEHAVIOR_HAS_1_0` 检查，后续新增成员使用 `BML_IFACE_HAS`。
 
-经过函数表的文本一律是 UTF-8。Loader 把要交给 Virtools 的名称和字符串值转换为引擎当前的代码页，并把它返回的全部文本（包括 status message）转换回 UTF-8。代码页无法表示的文本按原 UTF-8 字节传递。owner、Patch、Plan 名称等 BML 标识始终保持 UTF-8。
+本 SDL 分支的 CK 名称、字符串值、状态消息和函数表文本都使用 UTF-8，不经过 ACP 转换。
+畸形 UTF-8 不按旧代码页解释；owner、Patch、Plan 标识也保持 UTF-8。
 
-这不意味着 BML 提供纯 C 的 Mod 启动协议：现有 Native Mod host 仍由 `IMod` 定义。链接进同一个 Native Mod DLL 的 C 翻译单元或其他语言适配层可以直接调用 C seam，并仍遵守 Mod ownership、game thread、world reset 和 `BML_ObjectRef` 生命周期。它是独立的 Behavior seam，不是脱离 BML Runtime 的独立库。
+纯 C Mod 使用 `BML/Mod.h` 的 `BML_GetModInterface` 启动，C++ 的 `BML_DEFINE_MOD`
+也建立在同一 C 协议上。两者按 Mod 所有权、游戏线程、世界重置和 `BML_ObjectRef`
+寿命规则调用 Behavior 表。Behavior 运行在 BML 内，不是独立引擎库；见
+[原生 API](native-mod-api.md)及 SDK 的 `examples/native-c-mod`。
 
 ## 1. 对象模型
 
@@ -79,9 +83,58 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 
 下文按这个顺序展开：先讲 BB 执行，再讲 graph 读取与创建，最后讲 graph edit 及其生命期。
 
+## 提交图编辑
+
+新 Mod 通过 `Session::Apply(name, ownership, On(target, edit))` 提交 Edit。目标可以是逻辑 Graph 快照，或 `Scripts::One/Each` 选择器。一次精确提交会一起应用到指定的图。发布成功后，图所有的安装分别随各自的目标图存活。Script 选择器对每个匹配实例分别安装，换关后继续生效。提交会分别报告应用错误和恢复错误。发布失败时，Loader 会恢复受影响的图。
+
+所有权决定关闭提交后的行为。
+
+- `EditOwnership::Submission` 会立即停止接收回调，并在安全点撤除安装。包含 Hook 或其他 Mod 回调的 Edit 使用此模式。
+- `EditOwnership::Graph` 让已发布的编辑随图存活。关闭 Script 提交会停止匹配后续实例。排队中的精确编辑会先到达安全点，再释放提交。
+
+通过 `Find(graph)` 精确定位一个当前安装，只有一个匹配时可用 `Find()`。关闭提交或底层安装变化后，原来的引用会失效。`Installation::Read/Set` 访问单个实例。`SetInput` 为 Edit 声明的 Local 设置值，同时更新当前匹配和将来的安装。传入的字面值必须匹配 Local 的声明类型。
+
+```cpp
+namespace Behavior = BML::Behavior;
+
+Behavior::Edit edit;
+auto root = edit.Root();
+auto input = root.AppendLocal("Enabled", CKPGUID_BOOL);
+root.Set(input, true);
+auto result = session.Apply(
+    "My edit", Behavior::EditOwnership::Submission,
+    Behavior::On(Behavior::Scripts::One("Levelinit_build"), edit));
+if (result) {
+    auto submission = result.Take();
+    auto updated = submission.SetInput(input, false);
+    if (updated) {
+        auto installation = submission.Find();
+        if (installation) {
+            auto observed = installation->Read(input);
+            // Use the observed value while this installation is current.
+        }
+    }
+    // Retain the submission for as long as the selection should reconcile.
+}
+```
+
+由提交所有的编辑可以通过 `ApplyOptions{.Enabled = false}` 创建为禁用状态。
+`Submission::SetEnabled(false)` 在安全点恢复当前安装，同时保留定义和输入。
+再次启用会使用同一句柄重新匹配。已启用的 Script 提交可以再次请求启用来重试失败实例，
+健康的安装继续生效。安全点前的关开请求由最后一次请求决定。
+`Replace` 在同一提交上换版，保留未变化的安装前缀。新定义失败时恢复旧定义及其符号和输入。
+`Info()` 同时给出请求的启用状态、实际安装状态以及应用和恢复错误。
+`Installations()` 枚举当前安装，`Installation::Resolve` 将其符号节点解析为对象引用。
+
+AngelScript 使用 `edit.Apply(name, graph, ownership)` 或 `edit.Apply(name, script, ownership, each)`，
+也可选用带显式 `enabled` 参数的重载。C 客户端通过 `BML_BEHAVIOR_HAS_1_1` 检查后调用
+`SubmitEdit`。1.2 提供跨目标绑定的原子输入更新，1.3 增加启停、换版及当前安装查询。
+使用追加的函数前请检查 `BML_IFACE_HAS`。已有的 Patch 和 Plan 入口使用同一套提交与恢复实现。
+
 ## 2. 打开 Session
 
-在 Mod 初始化时打开一个 `Session`：
+在 `OnLoad(const BML::Mod::Context &ctx)` 内打开 `Session`，
+`m_Behavior` 是 Mod 的 `Session` 成员：
 
 ```cpp
 #include <BML/Behavior.hpp>
@@ -89,14 +142,13 @@ using namespace BML::Behavior;
 
 auto opened = Session::Open();
 if (!opened) {
-    GetLogger()->Error("Behavior unavailable: %s",
-                       opened.GetStatus().Message.c_str());
+    (void)ctx.LogError("Behavior unavailable: " + opened.GetStatus().Message);
     return;
 }
 m_Behavior = opened.Take();
 ```
 
-Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 DLL 释放前完成 callback 和 native Behavior 的退役。
+Loader 会核对调用模块，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 模块释放前完成 callback 和 native Behavior 的退役。
 
 `Behavior::Result<T>` 是共用 `BML::Result<T, Behavior::Status>` 的别名，只有诊断信息属于 Behavior。对具名 Result 调用 `Result<T>::Value()` 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 `Take()`。`Take()` 会清空结果中的值，但 `Code()` 和 `GetStatus()` 仍可用于读取诊断。
 
@@ -568,7 +620,7 @@ Node、Link 或 port 时，先前的 Patch 不能先关闭：Close 返回可重�
 `RevertConflict`，直到后来的 Patch 关闭。出于同样的原因，world reset 和 Mod
 unload 按从新到旧的顺序关闭 Patch。
 
-Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。
+Hook callback 在 game thread 执行。异常不会穿过 模块边界；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。
 
 返回 `HookResult::Error` 可以停止这条链：Hook Block 让所有 Out 保持未激活，callback 在下一次激活时照常运行。抛出异常的 callback 返回 `HookResult::Fault`；Loader 把第一个 fault 保留为该 Hook 的 diagnostic，此后不再调用它，Block 把这次激活原样传下去。Hook 或 Watch callback 持有的状态在释放其最后一个引用的那次 Behavior 调用结束时释放，所以它的析构函数可以关闭其他 Behavior 对象。
 
@@ -664,7 +716,7 @@ if (made) {
 }
 ```
 
-这些 adapter 仍返回普通 `Block`，不会绕过统一的 lifecycle、execution 或 teardown。新 Native Mod 不应再使用 legacy ExecuteBB interface。
+这些 adapter 仍返回普通 `Block`，不会绕过统一的 lifecycle、execution 或 teardown。新 Native Mod 不应再使用 已移除的 ExecuteBB 作者接口。
 
 ## 12. 生命周期、错误与性能
 

@@ -16,13 +16,14 @@
 namespace BML::Behavior {
 
 class Edit;
+class Submission;
 
 namespace Detail {
 struct EditProgram;
 struct EditStep;
 struct EditWire;
 struct PatchSymbols;
-struct PlanSymbols;
+using PlanSymbols = PatchSymbols;
 struct PatchTarget;
 struct PlanRule;
 struct PatchWire;
@@ -122,6 +123,8 @@ public:
     // edit program used for it. Busy means the Patch has not reached its safe
     // point yet, so nothing is live to name.
 private:
+    [[nodiscard]] Result<const Detail::PatchSymbols *> PublishedSymbols(
+        const std::weak_ptr<Detail::EditProgram> &edit) const;
     [[nodiscard]] Result<ObjectRef> ResolveHandle(
         const BML_BehaviorNodeRef &node) const;
 
@@ -196,6 +199,7 @@ public:
         friend class Nodes;
         friend class Patch;
         friend class Plan::Instance;
+        friend class Submission;
     };
 
     // The corresponding port on every Node selected by Graph::Each.
@@ -303,6 +307,7 @@ public:
         friend class Edit;
         friend class Patch;
         friend class Plan::Instance;
+        friend class Submission;
         friend class Nodes;
     };
 
@@ -594,6 +599,74 @@ private:
     std::uint32_t m_HandleLimit = 0;
 
     friend class Plan;
+};
+
+enum class EditOwnership : std::uint32_t {
+    Graph = BML_BEHAVIOR_EDIT_OWNED_BY_GRAPH,
+    Submission = BML_BEHAVIOR_EDIT_OWNED_BY_SUBMISSION,
+};
+
+struct ApplyOptions {
+    EditOwnership Ownership = EditOwnership::Submission;
+    bool Enabled = true;
+};
+
+enum class SubmissionState : std::uint32_t {
+    Pending = BML_BEHAVIOR_SUBMISSION_PENDING,
+    Applied = BML_BEHAVIOR_SUBMISSION_APPLIED,
+    Failed = BML_BEHAVIOR_SUBMISSION_FAILED,
+    Disabled = BML_BEHAVIOR_SUBMISSION_DISABLED,
+    Partial = BML_BEHAVIOR_SUBMISSION_PARTIAL,
+    Closing = BML_BEHAVIOR_SUBMISSION_CLOSING,
+    Conflicted = BML_BEHAVIOR_SUBMISSION_CONFLICTED,
+};
+
+struct SubmissionInfo {
+    SubmissionState State = SubmissionState::Pending;
+    Status ApplyFailure;
+    Status RestoreFailure;
+    bool RequestedEnabled = true;
+};
+
+class Submission {
+    struct State;
+public:
+    class Installation {
+    public:
+        Installation() = default;
+        [[nodiscard]] explicit operator bool() const noexcept;
+        [[nodiscard]] ObjectRef Graph() const noexcept { return m_Receipt.Graph; }
+        [[nodiscard]] Result<ObjectRef> Resolve(const Edit::Node &node) const;
+        [[nodiscard]] Result<ObservedValue> Read(const Edit::Port &port) const;
+        [[nodiscard]] Result<void> Set(const Edit::Port &port, const Value &value) const;
+
+    private:
+        Installation(const std::shared_ptr<State> &state, BML_BehaviorInstallation receipt)
+            : m_State(state), m_Receipt(receipt) {}
+
+        std::weak_ptr<State> m_State;
+        BML_BehaviorInstallation m_Receipt{};
+        friend class Submission;
+    };
+
+    Submission() = default;
+    Submission(Submission &&) noexcept = default;
+    Submission &operator=(Submission &&) noexcept = default;
+    [[nodiscard]] explicit operator bool() const noexcept;
+    [[nodiscard]] Result<SubmissionInfo> Info() const;
+    [[nodiscard]] Result<void> SetEnabled(bool enabled);
+    template <class First, class... More>
+    [[nodiscard]] Result<void> Replace(First &&first, More &&...more);
+    [[nodiscard]] Result<std::vector<Installation>> Installations() const;
+    [[nodiscard]] Result<Installation> Find(ObjectRef graph = {}) const;
+    [[nodiscard]] Result<Installation> Find(ObjectRef graph, const Edit::Port &port) const;
+    [[nodiscard]] Result<void> SetInput(const Edit::Port &port, const Value &value) const;
+    [[nodiscard]] Result<CloseState> Close();
+
+private:
+    [[nodiscard]] Result<Installation> FindBinding(ObjectRef graph, std::uint64_t binding) const;
+    std::shared_ptr<State> m_State;
+    friend class Session;
 };
 
 class Scripts {

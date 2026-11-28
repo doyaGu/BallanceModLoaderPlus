@@ -90,8 +90,10 @@ public:
     Hook(Callback callback, void *argument = nullptr)
         : Hook(PlanCallbackState::Static(argument), callback, argument,
                NativeIdentity(callback, argument)) {}
+    Hook(PlanCallbackState state, Callback callback, void *argument = nullptr)
+        : Hook(std::move(state), callback, argument, Identity{}) {}
     Hook(PlanCallbackState state, Callback callback,
-         void *argument = nullptr, Identity identity = {})
+         void *argument, Identity identity)
         : m_Occurrence(callback
               ? std::make_shared<Occurrence>(
                     std::move(state), callback, argument)

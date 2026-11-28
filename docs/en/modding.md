@@ -1,194 +1,131 @@
-# Create mods for BML+
+# Create a Mod
 
-Use a released BML+ SDK to create mods. Building the BML+ repository is only
-necessary when changing the loader, SDK, script host, or bundled services.
+Use an SDL SDK matching your Player. Keep the SDK outside the game and do not
+build against BML's private `src/` headers. Start with a Script Mod when the
+feature fits its APIs; use Native code for native libraries, engine/ImGui
+extensions or a measured performance need.
 
-If you are unsure which route to choose, start with a script mod. It has the
-shortest build-free edit, reload, and diagnosis loop. Move to native code only
-when a concrete requirement needs native hooks, native memory, caller-thread
-RPC handlers, or a performance-critical loop.
-
-## Choose a development route
-
-| Route | Use it when | Main trade-off |
+| Route | Entry | Build/deployment |
 | --- | --- | --- |
-| Script mod | You want quick edit/test cycles, commands, config, UI, gameplay scripting, CKAngelScript engine access, or a generated IMC Client/Provider without C++. | IMC callbacks run on the game thread; scripts should not own unsafe hooks or performance-critical loops. |
-| Native mod | You need C++20, direct Virtools integration, native hooks, caller-thread IMC execution, or tight control over hot-path work. | Requires an MSVC-compatible Win32 build and explicit DLL ABI and lifetime discipline. |
-| Native plugin with a CKAngelScript extension | Scripts must directly use plugin-specific native objects or engine primitives that cannot be represented as IMC records. | The native plugin must register and maintain that script API through CKAngelScript. |
+| Script | `[bml.mod]` class and `BML::ModContext` callbacks | Matching CKAngelScript runtime; `.mod.as`, directory or ZIP |
+| Native C++20 | `BML::Mod::Instance` + `BML_DEFINE_MOD` | Versioned C entry; `.bmodp` + ABI sidecar |
+| Native C11 | `BML_GetModInterface` in `Mod.h` | Same C protocol and sidecar |
+| Native/script service | Generated IMC RPC and Topics | `.imc`, reviewed lock, generated language bindings |
+| Native provider C table | `Interface.hpp`, declared provider dependency | Process-local ABI and provider lifetime |
 
-Do not reproduce CKAngelScript's scene, behavior, component, message, or async
-APIs in a new BML wrapper. Use CKAngelScript for CK/Vx work and BML+ for mod
-identity, lifecycle, configuration, commands, loader UI, and mod-level services.
+`IMod`, `IBML`, `IConfig`, `IProperty`, `ICommand`, `ILogger` and
+`IMessageReceiver` are removed. Old SDL sources use the [migration guide](native-mod-migration.md).
 
-## Start a script mod
+## A single workflow on every platform
 
-1. Create a Script Mod Project in your normal source workspace:
+Python 3.10+ is the common entry. These commands work without shell-specific
+line continuation:
 
-   ```bat
-   "<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
-   ```
-
-   The command infers a readable name and author, creates a valid class and
-   entry filename, and adds the project-local Developer Workflow.
-
-2. Enter the generated directory and run `.\bml run`. The first run asks for
-   the Ballance folder, verifies the Script Mod runtime, deploys a managed copy,
-   starts Player, and prints only this Mod's new log lines.
-3. Keep `bml run` open while editing. Each saved source change is synchronized
-   to the managed copy so Player's normal hot reload remains active.
-4. Run `.\bml pack` to create `dist/<project>.zip`. Test that zip without the
-   managed development copy installed.
-
-An existing directory Script Mod can adopt the same commands without rewriting
-its source: `"<BML-SDK>\scripts\bml.cmd" init --project "C:\path\to\mod"`.
-Move an existing single-file Mod into its own directory first; Player loads that
-directory with the same runtime behavior.
-
-Read the [script mod guide](https://doyagu.github.io/BallanceModLoaderPlus/script-mod/),
-then use its API reference for exact declarations. A script-capable SDK installs
-the same pages under `share/BML/docs/en/script-mod`.
-
-## Start a native mod
-
-1. Open a terminal in the directory where you keep source projects and create
-   a Mod from the SDK template:
-
-   ```bat
-   "<BML-SDK>\scripts\bml.cmd" new native yourname.my-mod
-   ```
-
-   The command creates a working Mod, chooses its readable name from the id, and
-   uses your Git name as the author. You do not need to edit CMake settings.
-
-2. Enter the generated directory and run one development command:
-
-   ```bat
-   .\bml run
-   ```
-
-   The first run asks for the Virtools SDK and Ballance folders. It then selects
-   the newest installed Visual Studio generator, configures Win32,
-   builds and deploys `RelWithDebInfo`, starts Player, and prints this Mod's new
-   log lines after Player exits. The two paths and selected generator are cached
-   in ignored `.bml/settings.json`; later runs need only `.\bml run`. The
-   project-local tool is Python 3.10+; `bml.cmd` is only its Windows launcher.
-3. Edit the source file printed by `new`, then run `.\bml run` again.
-4. The native
-   Mod must link the same MSVC runtime as the loader it runs in, because the
-   native interface passes C++ objects across the DLL boundary. The runtime in
-   `BMLPlus-<version>.zip` is built against the Release MSVC runtime, so a Debug
-   `.bmodp` is not ABI-compatible with it; `RelWithDebInfo` provides debug
-   information while using the compatible runtime. `bml_add_mod` pins the Mod's
-   runtime to the SDK you configured against and fails the configure step on a
-   conflicting `CMAKE_MSVC_RUNTIME_LIBRARY`, so the two cannot drift apart
-   silently.
-   `BMLPlus-SDK-<version>-Debug.zip` is the supported exception. It contains a
-   Debug `bin/BMLPlus.dll` and its `.pdb`, so a Debug Mod is valid as long as
-   you also copy that Debug loader over `BuildingBlocks/BMLPlus.dll`. Keep the
-   loader and every installed native Mod on one side of that line, and go back
-   to the Release loader before testing what you publish.
-5. Before publishing, run `.\bml run --configuration Release`, test that exact
-   artifact, then run `.\bml pack`; it copies the Release `.bmodp` into `dist`.
-   Use the generated README's manual CMake commands only for CI or diagnosing
-   the build itself.
-
-### Use it with an existing native Mod
-
-An existing CMake Mod does not need to be regenerated or rewritten. Run this
-once from the extracted SDK:
-
-```bat
-"<BML-SDK>\scripts\bml.cmd" init owner.existing-mod --project "C:\path\to\mod"
+```text
+python /path/to/sdk/scripts/bml.py new script example.hello
+python /path/to/sdk/scripts/bml.py new native example.native
 ```
 
-`init` reads the target from `bml_add_mod`, reads the version from `project`, and
-adds only `bml.mod.json`, `bml.py`, `bml.cmd`, and ignored local settings. It
-does not change `CMakeLists.txt` or source files. If the target cannot be
-inferred, pass `--target`; if the installed filename differs from the target,
-also pass `--artifact`.
+Run one creation command, enter its generated project directory, then use:
 
-Afterward, `.\bml run` is available, but the existing manual CMake workflow
-remains fully supported. Adopting the helper is optional.
+```text
+python bml.py build --bml-sdk /path/to/sdk
+python bml.py run --bml-sdk /path/to/sdk --ballance-root /path/to/game
+python bml.py pack
+```
 
-### Advanced native starting points
+Linux/macOS also provide executable `scripts/bml` and project `./bml`; Windows
+provides `scripts/bml.cmd` and project `bml.cmd`. Replace `/path/to/...` with your
+own paths and quote paths containing spaces. Native projects need CMake and a
+C++20 compiler. Script projects do not need a native compiler.
 
-Ignore this section for a normal Mod. These options exist only when two Mods
-must call each other:
+The workflow remembers local choices under `.bml/`. `build` prepares the artifact
+without deploying or starting Player; `run` prepares, deploys a managed copy and
+starts Player. Script `run` continues synchronizing saved edits for hot reload.
+A native binary is rebuilt/redeployed for a later Player run, not hot-replaced
+inside the running process. `pack` writes the publishable archive in `dist`.
 
-| Need | Creation option |
-| --- | --- |
-| Let another native Mod call a small C++ API | `--profile interface-provider` |
-| Call that API from a second native Mod | `--profile interface-consumer --provider-id "owner.provider"` |
-| Expose a message-based API that isolates callers from your C++ binary | `--profile imc-provider` |
+`--configuration` chooses a supported SDK configuration; use the SDK's matching
+configuration. `--package-root` appends dependency prefixes; `--generator` selects
+a CMake generator. Core C ABI Mods do not need CK2/ImGui extension headers. Add
+matching dependency development packages when opting into those extensions.
 
-Run `bml help --verbose` to see the complete commands. A provider edits its
-file under `api/`, then runs `.\bml interface update` after an intentional
-compatible API change. BML+ owns the generated headers.
+The game root contains `base.cmo` and either `Bin/Player` or `Player`; Windows
+uses `Player.exe`. Supply that root through the retained `--ballance-root` option,
+not the `Bin` directory. Native deployment checks the SDK/game ABI descriptors.
 
-The SDK CMake entry point is:
+## Existing projects
+
+An existing project can adopt the workflow without replacing its source/CMake:
+
+```text
+python /path/to/sdk/scripts/bml.py init example.existing --project /path/to/project
+```
+
+For a Script directory add `--kind script` when it cannot be inferred. Move a
+single-file Script Mod into its own development directory before adopting the
+helper. Generated project files include `bml.mod.json`, `bml.py`, `bml`, `bml.cmd`
+and ignored local settings. Use `--target` or `--artifact` when Native target or
+filename inference is ambiguous. SDK creation refuses to overwrite a project.
+
+## Manual CMake remains supported
 
 ```cmake
+cmake_minimum_required(VERSION 3.25)
+project(MyMod LANGUAGES CXX)
 find_package(BML CONFIG REQUIRED)
-bml_add_mod(MyMod MyMod.cpp)
+bml_add_mod(MyMod src/MyMod.cpp)
 bml_install_mod(MyMod)
 ```
 
-Read the [native mod API overview](native-mod-api.md) before adding ownership,
-callbacks, UI, or cross-mod services, and
-[Which native API to use](native-api-routes.md) when a capability has more than
-one spelling.
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/sdk -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+cmake --install build --config Release --prefix /path/to/game/ModLoader
+```
 
-## Shared authoring rules
+`bml_add_mod` links the core `BML::BML`, chooses a module for the target OS and
+emits the required ABI sidecar. Add `BML::Engine` and/or `BML::ImGui` explicitly
+for direct CK/Vx/ImGui use. Engine/ImGui imports and their compiler, standard
+library, runtime, configuration and SDL must match Player. Reuse Player's SDL;
+SDK CMake performs any macOS load-command/signature fixup at build time.
 
-- Keep the mod id stable. Other mods use it for dependencies and service
-  ownership.
-- Declare dependencies before load rather than discovering required peers in a
-  per-frame callback.
-- Treat borrowed CK objects as non-owning and revalidate them after level or
-  object changes.
-- Keep per-tick, render, engine-hook, and synchronous RPC work bounded.
-- Log one clear startup line during development and test the release package in
-  a clean `ModLoader/Mods` directory.
-- Document the required BML+, CKAngelScript, native plugin, and dependency
-  versions in the mod README.
+## Samples and advanced profiles
 
-## Choose a communication mechanism
+The SDK installs `examples/native-mod`, `native-c-mod`, `native-interface-provider`,
+`native-interface-consumer` and, when scripting is enabled, `script-mod`.
+The basic C++ example uses `ctx.Config()`, `ctx.Input()`, `ctx.Timers()` and
+`ctx.Commands()`. Service views are non-owning. Registration members express
+ownership; inspect Result values or use `Take()` to report failures through the
+module-local callback barrier.
 
-| Need | Use |
-| --- | --- |
-| A small named scalar or byte value in the same process | DataShare |
-| Typed request/response calls, asynchronous results, Topics, or versioned data between native and/or script mods | A generated IMC interface; either language may consume or provide it |
-| A built-in BML+ runtime, gameplay, event, UI, or speedrun service | The existing typed BML+ API for the selected language |
-| Communication among CKAngelScript runtime scripts or components | CKAngelScript `Message` or `Async` where their execution model fits |
+```text
+python /path/to/sdk/scripts/bml.py new native example.provider --profile interface-provider
+python /path/to/sdk/scripts/bml.py new native example.consumer --profile interface-consumer --provider-id example.provider
+python /path/to/sdk/scripts/bml.py new native example.imc --profile imc-provider
+```
 
-Do not invent a JSON message format or hand-write field identifiers. Define a
-`.imc` interface, let `bml_target_imc_api` generate its C++ and/or AngelScript
-binding, and keep the schema lock with the interface. See [Inter-mod communication](imc.md) and
-[Create a typed IMC API](imc-author-guide.md).
+For native `.bml-interface` schemas, use `python bml.py interface update` for
+intentional compatible changes; `interface check` validates the lock. IMC
+`.imc` locks instead use the configured `bml_update_imc_locks` CMake target. Use [IMC](imc-author-guide.md)
+for ordinary typed Native/Script services, a native C table for process-local
+infrastructure, and a CKAngelScript extension only when scripts need native types
+that cannot be represented by the ordinary services.
 
-Use a CKAngelScript extension only when a script must directly borrow a
-plugin-specific native object or invoke an engine primitive that cannot be
-expressed as typed IMC data. Routine native/script service boundaries should
-use one generated IMC interface instead of maintaining a second hand-written API.
+## Package and verify
 
-## Performance and ownership
+Native CLI `pack` archives the module and sidecar only. Add a project-owned
+resource packaging step for native assets (the in-tree BallSticky/BMLModuls
+packages demonstrate this). Script `pack` includes sources and resources.
 
-BML callbacks and synchronous IMC handlers normally run on the game thread.
-Cache stable lookup results as ids or revalidating references, move preparation
-out of hot callbacks, bound Topic capacities, and monitor dropped messages.
+- Native: keep `Name.bmodp` and `Name.bmodp.abi.json` together, or ZIP both.
+- Script: `.mod.as`, a directory entry or ZIP. Do not include editor API stubs,
+  `.bml`, compiler output, local paths or credentials.
+- Resources: exact case, relative portable paths and UTF-8 text. Prefer `/` in
+  paths; do not assume a case-insensitive host or a two-byte `wchar_t`.
+- Test the packed artifact with the managed development copy removed. Verify
+  required/optional dependencies, input/UI ownership, cleanup, world reset and
+  reloading failures. [Support status](validation.md) is separate from a build pass.
 
-Use a native mod when an operation must patch engine internals, execute a
-high-frequency loop, control native memory, or provide a high-throughput
-service. Keep policy, configuration, and infrequent control calls in script
-when that split makes the mod easier to develop.
-
-## Publish
-
-- Native mods normally publish a `.bmodp` package and must export both
-  `BMLEntry(IBML*)` and `BMLExit(IMod*)`.
-- Script mods publish a single `*.mod.as` file or a zip containing exactly one
-  entry. `.bmodp` is native-only.
-- Test the distributed artifact, not only the working directory or a
-  `RelWithDebInfo` build.
-- Include dependencies, supported versions, installation, configuration, and a
-  useful failure-reporting path in the mod README.
+See [Native API](native-mod-api.md), [Script Mods](script-mod/index.md),
+[Behavior](behavior-authoring.md) and [API routes](native-api-routes.md).

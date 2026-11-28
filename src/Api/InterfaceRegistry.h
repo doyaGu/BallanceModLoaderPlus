@@ -19,7 +19,7 @@ public:
     int Unregister(const std::string &ownerId, const char *interfaceId,
                    std::uint16_t majorVersion);
     int Find(const char *interfaceId, std::uint16_t majorVersion,
-             const void **out) const;
+             const void **out, std::string *owner = nullptr) const;
     std::size_t CleanupOwner(const std::string &ownerId);
 
 private:

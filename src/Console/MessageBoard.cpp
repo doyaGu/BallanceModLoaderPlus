@@ -134,7 +134,7 @@ MessageBoard::ScrollMetrics MessageBoard::ScrollState::GetMetrics(
 // MessageBoard Implementation
 // =============================================================================
 
-MessageBoard::MessageBoard(int size) : Bui::Window("MessageBoard") {
+MessageBoard::MessageBoard(int size) : BuiHost::Window("MessageBoard") {
     if (size < 1) size = 500;
     m_Messages.resize(size);
     Hide();

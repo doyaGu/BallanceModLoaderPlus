@@ -46,7 +46,7 @@ CKAS_STATUS CaptureCkasEnumeration(Function &&function) noexcept {
     }
 }
 
-CKAS_STATUS __cdecl CaptureImportedFunction(const CKAngelScriptImportEntry *entry, void *userData) {
+CKAS_STATUS BML_CDECL CaptureImportedFunction(const CKAngelScriptImportEntry *entry, void *userData) {
     if (!entry || !userData)
         return CKAS_INVALIDARGUMENT;
 
@@ -60,7 +60,7 @@ CKAS_STATUS __cdecl CaptureImportedFunction(const CKAngelScriptImportEntry *entr
     });
 }
 
-CKAS_STATUS __cdecl CaptureBoundImportEdge(const CKAngelScriptBoundImportEdge *edge, void *userData) {
+CKAS_STATUS BML_CDECL CaptureBoundImportEdge(const CKAngelScriptBoundImportEdge *edge, void *userData) {
     if (!edge || !userData)
         return CKAS_INVALIDARGUMENT;
 
@@ -75,7 +75,7 @@ CKAS_STATUS __cdecl CaptureBoundImportEdge(const CKAngelScriptBoundImportEdge *e
     });
 }
 
-CKAS_STATUS __cdecl CaptureIncludeEdge(const CKAngelScriptIncludeEdge *edge, void *userData) {
+CKAS_STATUS BML_CDECL CaptureIncludeEdge(const CKAngelScriptIncludeEdge *edge, void *userData) {
     if (!edge || !userData)
         return CKAS_INVALIDARGUMENT;
 
