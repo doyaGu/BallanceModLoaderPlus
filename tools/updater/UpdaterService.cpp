@@ -286,7 +286,7 @@ namespace bmlupdater {
         UpdateTarget target;
         auto targetResult = ReadRuntimeTarget(m_Context, target);
         if (!targetResult.ok) return targetResult;
-        const std::string channelUrl = config.baseUrl + "/sdl/" + target.platform + "/" +
+        const std::string channelUrl = config.baseUrl + "/" + target.runtime + "/" + target.platform + "/" +
             target.architecture + "/" + target.hostLinkage + "/" + selectedChannel + ".json";
         const std::string signatureUrl = channelUrl + ".sig";
         info.channelUrl = channelUrl;

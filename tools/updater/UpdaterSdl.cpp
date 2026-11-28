@@ -7,13 +7,21 @@
 #include "StringUtils.h"
 #include "Platform/FileSystemNative.h"
 
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL.h>
+#else
+#include <chrono>
+#endif
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <sstream>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#if !BML_RUNTIME_SDL
+#include <TlHelp32.h>
+#endif
 #include <io.h>
 #else
 #include <fcntl.h>
@@ -86,6 +94,7 @@ UpdaterLock::UpdaterLock(const std::wstring &stateRoot) {
     if (!CreateDirectories(stateRoot)) return;
     auto path = JoinPath(stateRoot, L".lock");
     if (BML::Platform::IsLink(PathUtf8(path))) return;
+#if BML_RUNTIME_SDL
     auto *stream = SDL_IOFromFile(PathUtf8(path).c_str(), "ab");
     if (!stream) return;
 #ifdef _WIN32
@@ -103,8 +112,29 @@ UpdaterLock::UpdaterLock(const std::wstring &stateRoot) {
 #endif
     if (locked) m_Stream = stream;
     else SDL_CloseIO(stream);
+#else
+    // Deny other write opens for the life of the transaction.
+    HANDLE handle = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                                OPEN_ALWAYS, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return;
+    BY_HANDLE_FILE_INFORMATION info{};
+    if (GetFileInformationByHandle(handle, &info) &&
+        !(info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)))
+        m_Stream = handle;
+    else
+        CloseHandle(handle);
+#endif
 }
-UpdaterLock::~UpdaterLock() { if (m_Stream) SDL_CloseIO(m_Stream); }
+UpdaterLock::~UpdaterLock() {
+    if (m_Stream) {
+#if BML_RUNTIME_SDL
+        SDL_CloseIO(m_Stream);
+#else
+        CloseHandle(m_Stream);
+#endif
+    }
+}
 
 bool CopyFileAtomic(const std::wstring &from, const std::wstring &to, uint32_t mode, std::string &error,
                     std::string_view expectedHash) {
@@ -112,6 +142,7 @@ bool CopyFileAtomic(const std::wstring &from, const std::wstring &to, uint32_t m
         error = "Unable to copy regular file: " + PathUtf8(from) + " to " + PathUtf8(to);
         return false;
     }
+#if BML_RUNTIME_SDL
     static std::atomic<uint64_t> sequence{0};
     auto temporary = to + L".copy-" + std::to_wstring(BML::Platform::ProcessId()) + L"-" +
                      std::to_wstring(SDL_GetTicksNS()) + L"-" + std::to_wstring(sequence.fetch_add(1));
@@ -137,10 +168,56 @@ bool CopyFileAtomic(const std::wstring &from, const std::wstring &to, uint32_t m
     if (!synced || !SDL_RenamePath(PathUtf8(temporary).c_str(), PathUtf8(to).c_str()) || !SyncDirectory(ParentPath(to))) {
         error = "Unable to publish copy: " + PathUtf8(to) + ": " + SDL_GetError(); return false;
     }
+#else
+    static std::atomic<uint64_t> sequence{0};
+    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto temporary = to + L".copy-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+        std::to_wstring(ticks) + L"-" + std::to_wstring(sequence.fetch_add(1));
+    if (!CopyFileW(from.c_str(), temporary.c_str(), TRUE)) {
+        error = "Unable to copy " + PathUtf8(from) + " (Win32 error " + std::to_string(GetLastError()) + ")";
+        return false;
+    }
+    struct Cleanup {
+        const std::wstring &path;
+        ~Cleanup() {
+            if (PathExists(path)) {
+                std::string ignored;
+                (void)SetFileMode(path, 0600, ignored);
+                DeleteFileW(path.c_str());
+            }
+        }
+    } cleanup{temporary};
+    if (!expectedHash.empty() && utils::Sha256FileHex(temporary) != expectedHash) {
+        error = "Copy hash does not match verified payload: " + PathUtf8(from);
+        return false;
+    }
+    if (!SetFileMode(temporary, 0600, error))
+        return false;
+    HANDLE handle = CreateFileW(temporary.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                                OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        error = "Unable to open temporary copy for flush: " + PathUtf8(temporary);
+        return false;
+    }
+    const bool flushed = FlushFileBuffers(handle) != FALSE;
+    CloseHandle(handle);
+    if (!flushed) {
+        error = "Unable to flush temporary copy: " + PathUtf8(temporary);
+        return false;
+    }
+    if (!SetFileMode(temporary, mode, error))
+        return false;
+    uint32_t code{};
+    if (!BML::Platform::PublishFile(PathUtf8(temporary), PathUtf8(to), true, code)) {
+        error = "Unable to publish copy: " + PathUtf8(to) + " (Win32 error " + std::to_string(code) + ")";
+        return false;
+    }
+#endif
     return true;
 }
 
 Result CheckPlayerStopped() {
+#if BML_RUNTIME_SDL
 #ifdef _WIN32
     const char *args[] = {"tasklist", "/FI", "IMAGENAME eq Player.exe", "/NH", nullptr};
 #else
@@ -168,6 +245,27 @@ Result CheckPlayerStopped() {
             return Result::Failure("Close Player before applying or rolling back an update");
     }
 #endif
+#else
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+        return Result::Failure("Unable to check Player processes");
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    if (!Process32FirstW(snapshot, &entry)) {
+        CloseHandle(snapshot);
+        return Result::Failure("Unable to read Player process list");
+    }
+    do {
+        if (_wcsicmp(entry.szExeFile, L"Player.exe") == 0) {
+            CloseHandle(snapshot);
+            return Result::Failure("Close Player before applying or rolling back an update");
+        }
+    } while (Process32NextW(snapshot, &entry));
+    const auto status = GetLastError();
+    CloseHandle(snapshot);
+    if (status != ERROR_NO_MORE_FILES)
+        return Result::Failure("Unable to read all Player processes");
+#endif
     return Result::Success();
 }
 
@@ -175,7 +273,10 @@ Result CheckUpdaterPaths(const UpdaterContext &context) {
     if (!DirectoryExists(context.gameRoot)) return Result::Failure("Game root does not exist");
     std::wstring resolved;
     std::string error;
-    const auto relative = utils::MakeRelativePathUtf8(PathUtf8(context.updaterStateRoot), PathUtf8(context.gameRoot));
+    auto relative = utils::MakeRelativePathUtf8(PathUtf8(context.updaterStateRoot), PathUtf8(context.gameRoot));
+#ifdef _WIN32
+    std::replace(relative.begin(), relative.end(), '\\', '/');
+#endif
     if (!ResolveUnderRoot(context.gameRoot, utils::Utf8ToUtf16(relative), resolved, error)) return Result::Failure(error);
     for (const auto *path : {L".lock", L"state.json", L"sources.json", L"pending.json", L"installed.manifest.json",
                             L"installed.manifest.json.sig", L"transactions", L"staging", L"downloads"})

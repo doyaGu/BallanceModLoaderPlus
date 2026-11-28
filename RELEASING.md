@@ -1,8 +1,10 @@
-# Releasing the SDL branch
+# Releasing BML+
 
 This runbook describes BML+ 0.4.0 and the tools present in this checkout.
-The runtime is a Ballanced SDL **dynamic** host. Original-Player releases use their own branch;
-static-package updater tests do not provide a working static BML Player.
+The dynamic targets are Ballanced SDL and BallancePlayer Win32. Win32 uses
+`BML_RUNTIME=virtools` with VS 2022 `-A Win32`. Build and stage each target in
+its own directories. Runtime and update archives include the target tuple in
+their names. [Player acceptance](tests/player/README.md)
 
 The [build workflow](.github/workflows/build.yml) currently runs standalone SDK,
 CLI and UI framework contracts on Windows, Linux and macOS. The manually
@@ -39,7 +41,7 @@ are uploaded as workflow artifacts.
 
 ## Native C protocol release gate
 
-The SDL Mod entry is `BML_GetModInterface` (`bml.mod`, major 1). Sidecars use schema
+The native Mod entry is `BML_GetModInterface` (`bml.mod`, major 1). Sidecars use schema
 2. Old SDL `BMLEntry`/`IMod` binaries must be migrated and rebuilt; they are not an
 alternate accepted entry or retained private backend.
 
@@ -57,8 +59,8 @@ handles, world reset, duplicate IDs and incorrect/missing ABI sidecars.
 ## Stage runtime, SDK and Mods separately
 
 Build with the selected configuration and `BML_BUILD_MODS=ON`; build updater tools
-with `BML_BUILD_UPDATER=ON` and the declared libcurl dependency when they are part
-of the delivery. The production signing public key must be the intended key.
+with `BML_BUILD_UPDATER=ON`. The SDL updater uses libcurl and the Win32 Virtools
+updater uses WinHTTP. The production signing public key must be the intended key.
 Test executables with test keys are not production tools.
 
 ```sh

@@ -1,4 +1,11 @@
-find_package(CURL 7.68 REQUIRED)
+if(BML_RUNTIME_SDL)
+    find_package(CURL 7.68 REQUIRED)
+    set(_bml_network UpdaterNetworkCurl.cpp)
+    set(_bml_transport SDL3::SDL3 CURL::libcurl)
+else()
+    set(_bml_network UpdaterNetworkWin32.cpp)
+    set(_bml_transport winhttp)
+endif()
 
 # Publisher tooling owns private-key signing; runtime binaries only verify.
 add_library(BMLUpdateSigning STATIC UpdaterSigning.cpp)
@@ -24,20 +31,21 @@ CACHE STRING "ECDSA P-256 public key Y coordinate for updater manifest verificat
 set(_bml_updater_sources
     UpdaterManifest.cpp UpdaterPathsSdl.cpp UpdaterService.cpp
     UpdaterRemote.cpp UpdaterZip.cpp UpdaterSdl.cpp UpdaterTarget.cpp
-    UpdaterTransactionSdl.cpp UpdaterDoctorSdl.cpp UpdaterNetworkCurl.cpp)
-function(bml_configure_sdl_updater target key_x key_y)
+    UpdaterTransactionSdl.cpp UpdaterDoctorSdl.cpp ${_bml_network})
+function(bml_configure_updater target key_x key_y)
     target_include_directories(${target} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
         "${PROJECT_SOURCE_DIR}/deps/zip/src" PRIVATE "${BML_SOURCE_DIR}")
     target_compile_features(${target} PUBLIC cxx_std_20)
-    target_compile_definitions(${target} PUBLIC BML_RUNTIME_SDL=1
+    target_compile_definitions(${target} PUBLIC BML_RUNTIME_SDL=${BML_RUNTIME_SDL}
+        BML_UPDATER_RUNTIME="${BML_RUNTIME}"
         BML_UPDATER_PLATFORM="${BML_TARGET_PLATFORM}" BML_UPDATER_ARCH="${BML_TARGET_ARCH}"
         BML_UPDATER_PUBLIC_KEY_X="${key_x}" BML_UPDATER_PUBLIC_KEY_Y="${key_y}")
     target_link_libraries(${target} PUBLIC BML_CryptoUtils BML_JsonUtils
-        BML_PathUtils BML_StringUtils zip SDL3::SDL3 CURL::libcurl)
+        BML_PathUtils BML_StringUtils zip ${_bml_transport})
     set_target_properties(${target} PROPERTIES FOLDER Tools)
 endfunction()
 add_library(BMLUpdaterCore STATIC ${_bml_updater_sources})
-bml_configure_sdl_updater(BMLUpdaterCore "${BML_UPDATER_PUBLIC_KEY_X}" "${BML_UPDATER_PUBLIC_KEY_Y}")
+bml_configure_updater(BMLUpdaterCore "${BML_UPDATER_PUBLIC_KEY_X}" "${BML_UPDATER_PUBLIC_KEY_Y}")
 add_executable(Updater main.cpp)
 target_link_libraries(Updater PRIVATE BMLUpdaterCore)
 set_target_properties(Updater PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/Bin")
@@ -58,7 +66,7 @@ if(BML_BUILD_TESTS)
     # A separate binary uses the public P-256 generator point (private key
     # 1) for deterministic signatures. Production keys are never replaced.
     add_library(BMLUpdaterTestCore STATIC ${_bml_updater_sources})
-    bml_configure_sdl_updater(BMLUpdaterTestCore
+    bml_configure_updater(BMLUpdaterTestCore
         "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
         "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5")
     add_executable(UpdaterSdlTestRunner main.cpp)

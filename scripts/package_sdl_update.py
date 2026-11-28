@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package a freshly staged SDL runtime; sign manifests with P-256/P1363."""
+"""Package a freshly staged BML runtime; sign manifests with P-256/P1363."""
 
 import argparse
 import base64
@@ -40,6 +40,25 @@ def sign(payload: bytes, key: Path, signer: str) -> bytes:
     return base64.b64encode(result.stdout) + b"\n"
 
 
+def valid_update_target(target: dict) -> bool:
+    runtime = target["runtime"]
+    platform = target["platform"]
+    architecture = target["architecture"]
+    linkage = target["host_linkage"]
+    if runtime == "virtools":
+        return (platform, architecture, linkage) == ("windows", "x86", "dynamic")
+    return (runtime == "sdl" and platform in {"windows", "linux", "macos"}
+            and architecture in {"x86", "x64", "arm64"} and linkage in {"dynamic", "static"}
+            and (architecture != "x86" or platform == "windows"))
+
+
+def loader_path(target: dict) -> str:
+    if target["runtime"] == "virtools":
+        return "BuildingBlocks/BMLPlus.dll"
+    return {"windows": "Managers/BMLPlus.dll", "linux": "Managers/libBMLPlus.so",
+            "macos": "Managers/libBMLPlus.dylib"}[target["platform"]]
+
+
 def allowed_path(path: str, target: dict) -> bool:
     lower = path.lower()
     if lower in {"updater", "updater.exe", "bin/updater", "bin/updater.exe", "player.ini", "bin/player.ini", "player.log", "bin/player.log"}:
@@ -51,7 +70,7 @@ def allowed_path(path: str, target: dict) -> bool:
     if target["host_linkage"] == "static":
         return path in {"Player", "Player.exe"} or path.startswith(("Bin/", "Managers/", "BuildingBlocks/", "Plugins/", "RenderEngines/"))
     prefix, suffix = {"windows": ("", ".dll"), "linux": ("lib", ".so"), "macos": ("lib", ".dylib")}[target["platform"]]
-    if path in {f"Managers/{prefix}BMLPlus{suffix}", f"BuildingBlocks/{prefix}AngelScript{suffix}"}:
+    if path in {loader_path(target), f"BuildingBlocks/{prefix}AngelScript{suffix}"}:
         return True
     if not path.startswith("Bin/") or "/" in path[4:]:
         return False
@@ -118,11 +137,9 @@ def main() -> int:
     except (OSError, ValueError) as error:
         parser.error(f"Unable to read the staged ABI descriptor: {error}")
     target = {name: abi.get(name) for name in ("runtime", "platform", "architecture", "host_linkage")}
-    if (abi.get("schema") not in (1, 2) or target["runtime"] != "sdl" or target["platform"] not in {"windows", "linux", "macos"}
-            or target["architecture"] not in {"x86", "x64", "arm64"} or target["host_linkage"] not in {"dynamic", "static"}
-            or (target["architecture"] == "x86" and target["platform"] != "windows")
+    if (abi.get("schema") not in (1, 2) or not valid_update_target(target)
             or not re.fullmatch(r"[0-9a-f]{64}", abi.get("sdk_abi", ""))):
-        parser.error("Stage has no valid SDL ABI descriptor")
+        parser.error("Stage has no valid BML ABI descriptor")
     if abi["schema"] == 2 and (abi.get("mod_api") != "bml.mod" or abi.get("mod_api_major") != 1):
         parser.error("Stage has an unsupported native Mod C protocol")
     if abi.get("version") != args.version:
@@ -161,7 +178,7 @@ def main() -> int:
     prefix, suffix = {"windows": ("", ".dll"), "linux": ("lib", ".so"), "macos": ("lib", ".dylib")}[target["platform"]]
     runtime = {"Player.exe", "Bin/Player.exe"} if target["platform"] == "windows" else {"Player", "Bin/Player"}
     if target["host_linkage"] == "dynamic":
-        runtime = {f"Managers/{prefix}BMLPlus{suffix}"}
+        runtime = {loader_path(target)}
     if abi_name not in selected:
         parser.error("Package inventory is missing its ABI descriptor")
     if not runtime.intersection(selected):
@@ -180,12 +197,12 @@ def main() -> int:
         data = abi_data if relative == abi_name else source.read_bytes()
         mode = 0o755 if source.stat().st_mode & 0o111 else 0o644
         files.append((relative, data, mode))
-    label = f"sdl-{target['platform']}-{target['architecture']}-{target['host_linkage']}"
+    label = f"{target['runtime']}-{target['platform']}-{target['architecture']}-{target['host_linkage']}"
     stem = f"BMLPlus-Update-{args.version}-{label}"
     package = output / f"{stem}.zip"
     manifest_path = output / f"{stem}.manifest.json"
     signature_path = manifest_path.with_suffix(".json.sig")
-    channel_path = output / "sdl" / target["platform"] / target["architecture"] / target["host_linkage"] / f"{args.channel}.json"
+    channel_path = output / target["runtime"] / target["platform"] / target["architecture"] / target["host_linkage"] / f"{args.channel}.json"
     paths = [package, manifest_path, signature_path]
     if args.base_url:
         if not args.base_url.startswith("https://") or any(c.isspace() for c in args.base_url):

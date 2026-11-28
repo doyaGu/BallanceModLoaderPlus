@@ -71,6 +71,6 @@ add_subdirectory(unit)
 add_subdirectory(ui)
 
 add_subdirectory(smoke)
-if (BML_BUILD_UPDATER AND BML_RUNTIME_SDL)
+if (BML_BUILD_UPDATER)
     add_subdirectory(updater)
 endif ()

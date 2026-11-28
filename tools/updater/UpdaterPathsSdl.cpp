@@ -3,7 +3,12 @@
 #include "PathUtils.h"
 #include "StringUtils.h"
 #include "Platform/FileSystemNative.h"
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL.h>
+#else
+#include <Windows.h>
+#include <system_error>
+#endif
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -112,8 +117,12 @@ namespace bmlupdater {
     bool DirectoryExists(const std::wstring &path) { return utils::DirectoryExistsW(path); }
     bool RegularFileExists(const std::wstring &path) {
         if (BML::Platform::IsLink(PathUtf8(path))) return false;
+#if BML_RUNTIME_SDL
         SDL_PathInfo info{};
         return SDL_GetPathInfo(PathUtf8(path).c_str(), &info) && info.type == SDL_PATHTYPE_FILE;
+#else
+        return utils::FileExistsW(path);
+#endif
     }
     bool CreateDirectories(const std::wstring &path) {
         return path.empty() || (!BML::Platform::IsLink(PathUtf8(path)) && utils::CreateFileTreeW(path));
@@ -123,24 +132,39 @@ namespace bmlupdater {
         static std::atomic<uint64_t> counter{0};
         for (int attempt = 0; attempt < 8; ++attempt) {
             const auto local = JoinPath(path, L".bml-write-test-" + std::to_wstring(BML::Platform::ProcessId()) +
-                L"-" + std::to_wstring(SDL_GetTicksNS()) + L"-" + std::to_wstring(counter.fetch_add(1)));
+                L"-" + std::to_wstring(std::chrono::steady_clock::now().time_since_epoch().count()) + L"-" + std::to_wstring(counter.fetch_add(1)));
+#if BML_RUNTIME_SDL
             auto *stream = SDL_IOFromFile(PathUtf8(local).c_str(), "wbx");
             if (!stream) continue;
             bool ok = SDL_CloseIO(stream);
             return SDL_RemovePath(PathUtf8(local).c_str()) && ok;
+#else
+            HANDLE file = CreateFileW(local.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                      FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+            if (file != INVALID_HANDLE_VALUE)
+                return CloseHandle(file) != FALSE;
+#endif
         }
         return false;
     }
+    static std::string FileErrorMessage(uint32_t error = BML::Platform::LastFileError()) {
+#if BML_RUNTIME_SDL
+        (void)error;
+        return SDL_GetError();
+#else
+        return std::system_category().message(static_cast<int>(error));
+#endif
+    }
     bool RemoveFileIfPresent(const std::wstring &path, std::string &error) {
         if (!PathExists(path)) return true;
-        if (SDL_RemovePath(PathUtf8(path).c_str()) && SyncDirectory(ParentPath(path))) return true;
-        error = "Unable to remove " + PathUtf8(path) + ": " + SDL_GetError();
+        if (BML::Platform::RemoveFile(PathUtf8(path)) && SyncDirectory(ParentPath(path))) return true;
+        error = "Unable to remove " + PathUtf8(path) + ": " + FileErrorMessage();
         return false;
     }
     bool RemoveDirectoryTree(const std::wstring &path, std::string &error) {
         if (!PathExists(path)) return true;
         if (utils::DeleteDirectoryW(path)) return true;
-        error = "Unable to remove directory " + PathUtf8(path) + ": " + SDL_GetError();
+        error = "Unable to remove directory " + PathUtf8(path) + ": " + FileErrorMessage();
         return false;
     }
     uint64_t FileSize(const std::wstring &path) { auto size = utils::GetFileSizeW(path); return size < 0 ? 0 : static_cast<uint64_t>(size); }
@@ -157,7 +181,7 @@ namespace bmlupdater {
         }
         uint32_t code{};
         if (utils::WriteFileBytesAtomicW(path, {data ? static_cast<const char *>(data) : "", size}, code) && SyncDirectory(ParentPath(path))) return true;
-        error = "Unable to atomically write " + PathUtf8(path) + ": " + SDL_GetError();
+        error = "Unable to atomically write " + PathUtf8(path) + ": " + FileErrorMessage(code);
         return false;
     }
     bool WriteTextFile(const std::wstring &path, std::string_view text, std::string &error) { return WriteBinaryFile(path, text.data(), text.size(), error); }

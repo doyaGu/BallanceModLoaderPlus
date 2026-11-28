@@ -222,7 +222,7 @@ if (BML_BUILD_MODS)
     include("${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake")
     add_subdirectory(mods)
 endif ()
-if (BML_BUILD_UPDATER AND BML_RUNTIME_SDL)
+if (BML_BUILD_UPDATER)
     add_subdirectory(tools/updater)
 endif ()
 

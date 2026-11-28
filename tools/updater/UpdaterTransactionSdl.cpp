@@ -68,7 +68,7 @@ Result LoadJournal(const UpdaterContext &context, const std::wstring &transactio
         if (backup.root == "state") {
             if (backup.path != "state.json" && backup.path != "installed.manifest.json" && backup.path != "installed.manifest.json.sig")
                 return Result::Failure("Invalid rollback metadata path");
-        } else if (!IsAllowedUpdatePath(backup.path, {"sdl", BML_UPDATER_PLATFORM, BML_UPDATER_ARCH, "static"}))
+        } else if (!IsAllowedUpdatePath(backup.path, {BML_UPDATER_RUNTIME, BML_UPDATER_PLATFORM, BML_UPDATER_ARCH, BML_RUNTIME_SDL ? "static" : "dynamic"}))
             return Result::Failure("Forbidden rollback path");
         if (!ResolveUnderRoot(backup.root == "game" ? context.gameRoot : context.updaterStateRoot,
                               utils::Utf8ToUtf16(backup.path), backup.target, error) ||

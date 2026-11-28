@@ -9,6 +9,7 @@ void WriteUpdateTarget(utils::MutableJsonDocument &doc, yyjson_mut_val *root, co
 Result ReadRuntimeTarget(const UpdaterContext &context, UpdateTarget &target);
 Result CheckPackageTarget(const UpdaterContext &context, const UpdaterManifest &manifest);
 bool IsValidUpdateVersion(std::string_view version);
+std::string LoaderPath(const UpdateTarget &target);
 bool IsAllowedUpdatePath(std::string_view path, const UpdateTarget &target);
 std::string ArchivePathKey(std::string_view path);
 }

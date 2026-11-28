@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Archive a staged SDL runtime, installed SDK, and in-tree Mods separately."""
+"""Archive a staged BML runtime, installed SDK, and in-tree Mods separately."""
 
 import argparse
 import json
@@ -8,7 +8,7 @@ import re
 import tempfile
 import zipfile
 
-from package_sdl_update import allowed_path, installed_files, package_source
+from package_sdl_update import allowed_path, installed_files, loader_path, package_source, valid_update_target
 
 
 def archive(path: Path, files: dict[str, Path]) -> None:
@@ -39,14 +39,12 @@ def main() -> int:
                           "macos": ("lib", ".dylib")}[platform]
         version = abi["version"]
         architecture = abi["architecture"]
-        if (abi["runtime"] != "sdl" or abi["host_linkage"] != "dynamic"
-                or architecture not in {"x86", "x64", "arm64"}
-                or (architecture == "x86" and platform != "windows")
+        if (not valid_update_target(abi) or abi["host_linkage"] != "dynamic"
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}", version)):
-            raise ValueError("Expected a versioned dynamic SDL runtime stage")
+            raise ValueError("Expected a versioned dynamic BML runtime stage")
         runtime = {path.relative_to(stage).as_posix(): path
                    for path in installed_files(stage, args.install_manifest)}
-        required = {abi_name, f"Managers/{prefix}BMLPlus{suffix}"}
+        required = {abi_name, loader_path(abi)}
         if abi["scripts"]:
             required.add(f"BuildingBlocks/{prefix}AngelScript{suffix}")
         if required - runtime.keys():
@@ -86,7 +84,7 @@ def main() -> int:
             elif not module.endswith(".bmodp") or f"{path}.abi.json" not in mods:
                 raise ValueError(f"Mod is missing its ABI sidecar: {module}")
 
-        label = f"{version}-sdl-{platform}-{architecture}-dynamic"
+        label = f"{version}-{abi['runtime']}-{platform}-{architecture}-dynamic"
         packages = {
             f"BMLPlus-Runtime-{label}.zip": runtime,
             f"BMLPlus-SDK-{label}.zip": development,

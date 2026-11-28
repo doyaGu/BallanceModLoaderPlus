@@ -226,8 +226,6 @@ namespace bmlupdater {
         }
         std::set<std::string> managed;
         bool hasAbi = false, hasRuntime = false;
-        const std::string prefix = manifest.target.platform == "windows" ? "" : "lib";
-        const std::string suffix = manifest.target.platform == "windows" ? ".dll" : manifest.target.platform == "macos" ? ".dylib" : ".so";
         const std::string player = manifest.target.platform == "windows" ? "Player.exe" : "Player";
         auto preserved = [&](const std::string &path) {
             for (const auto &entry : manifest.preserve) {
@@ -242,7 +240,7 @@ namespace bmlupdater {
             managed.insert(ArchivePathKey(file.path));
             hasAbi |= file.path == "ModLoader/BML.abi.json";
             hasRuntime |= manifest.target.hostLinkage == "static" ? (file.path == player || file.path == "Bin/" + player) :
-                file.path == "Managers/" + prefix + "BMLPlus" + suffix;
+                file.path == LoaderPath(manifest.target);
         }
         if (!hasAbi || !hasRuntime) return Result::Failure("Update must include its ABI descriptor and matching Loader/Player");
         std::set<std::string> removed;

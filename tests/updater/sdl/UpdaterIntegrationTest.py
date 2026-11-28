@@ -39,6 +39,7 @@ def main():
     parser.add_argument("--player-fixture", type=Path, required=True)
     parser.add_argument("--packager", type=Path, required=True)
     parser.add_argument("--signer", type=Path, required=True)
+    parser.add_argument("--runtime", default="sdl")
     parser.add_argument("--platform", required=True)
     parser.add_argument("--architecture", required=True)
     parser.add_argument("--runtime-archive", type=Path,
@@ -51,13 +52,13 @@ def main():
     packager = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(packager)
     signer = str(args.signer.resolve())
-    target = {"runtime": "sdl", "platform": args.platform, "architecture": args.architecture, "host_linkage": "dynamic"}
+    target = {"runtime": args.runtime, "platform": args.platform, "architecture": args.architecture, "host_linkage": "dynamic"}
     prefix, suffix = {"windows": ("", ".dll"), "linux": ("lib", ".so"), "macos": ("lib", ".dylib")}[args.platform]
-    loader_relative = f"Managers/{prefix}BMLPlus{suffix}"
+    loader_relative = packager.loader_path(target)
     player_name = "Player.exe" if args.platform == "windows" else "Player"
     with tempfile.TemporaryDirectory(prefix="bml-updater-https-") as temporary:
         root = Path(temporary).resolve()
-        game = root / "中文 游戏"
+        game = root / ("中文 游戏" if args.runtime == "sdl" else "game")
         stage = root / "staged"
         output = root / "server"
         output.mkdir()
@@ -79,7 +80,7 @@ def main():
         (game / "ModLoader/Mods/user.bmodp").write_bytes(b"user mod")
         stage_abi = {**abi, "version": "v1"}
         put_json(stage / "ModLoader/BML.abi.json", stage_abi)
-        (stage / "Managers").mkdir()
+        (stage / loader_relative).parent.mkdir()
         (stage / loader_relative).write_bytes(args.shared_fixture.read_bytes() + b"new version payload")
         (stage / loader_relative).chmod(0o755)
         (stage / "ModLoader/Fonts").mkdir()
@@ -140,7 +141,7 @@ def main():
                 return run(executable, *command, "--game-root", runtime, env=environment, success=success)
 
             def publish_channel(channel):
-                path = output / "sdl" / target["platform"] / target["architecture"] / target["host_linkage"] / "stable.json"
+                path = output / target["runtime"] / target["platform"] / target["architecture"] / target["host_linkage"] / "stable.json"
                 put_json(path, channel)
                 path.with_suffix(".json.sig").write_bytes(packager.sign(path.read_bytes(), key, signer))
 
@@ -160,7 +161,7 @@ def main():
                 "--signing-key", key, "--signer", signer, "--base-url", base_url)
             package = next(output.glob("*.zip"))
             manifest_path = next(output.glob("*.manifest.json"))
-            channel_path = output / "sdl" / target["platform"] / target["architecture"] / target["host_linkage"] / "stable.json"
+            channel_path = output / target["runtime"] / target["platform"] / target["architecture"] / target["host_linkage"] / "stable.json"
             channel = json.loads(channel_path.read_text())
             original_channel = dict(channel)
             with zipfile.ZipFile(package) as archive:
@@ -231,71 +232,88 @@ def main():
                     assert (game / loader_relative).read_bytes() == before
                 finally:
                     manager.chmod(0o755)
-            updater("configure", base_url)
-            updater("check")
-            assert "/sdl/" in requests[-1]
-            channel["manifestUrl"] = base_url + "/redirect/" + manifest_path.name
-            channel["packageUrl"] = base_url + "/redirect/" + package.name
-            publish_channel(channel)
-            updater("update")
-            assert "same trusted installed version" in updater("check")
-            updater("rollback")
+            if args.runtime == "sdl":
+                updater("configure", base_url)
+                updater("check")
+                assert "/sdl/" in requests[-1]
+                channel["manifestUrl"] = base_url + "/redirect/" + manifest_path.name
+                channel["packageUrl"] = base_url + "/redirect/" + package.name
+                publish_channel(channel)
+                updater("update")
+                assert "same trusted installed version" in updater("check")
+                updater("rollback")
 
-            wrong = {**original_channel, "target": {**target, "architecture": "x64" if target["architecture"] == "arm64" else "arm64"}}
-            publish_channel(wrong)
-            assert "target does not match" in updater("check", success=False)
-            revoked = {**original_channel, "revokedVersions": ["v1"]}
-            publish_channel(revoked)
-            assert "revoked" in updater("check", success=False)
-            revoked = {**original_channel, "revokedManifestHashes": [hashlib.sha256(manifest_path.read_bytes()).hexdigest()]}
-            publish_channel(revoked)
-            assert "revoked" in updater("download", success=False)
-            publish_channel(original_channel)
-            saved = manifest_path.read_bytes()
-            manifest_path.write_bytes(saved + b" ")
-            assert "signature verification failed" in updater("download", success=False)
-            manifest_path.write_bytes(saved)
-            changed = {**original_channel, "packageUrl": base_url + "/downgrade/" + package.name}
-            publish_channel(changed)
-            updater("download", success=False)
-            changed["packageUrl"] = base_url + "/incomplete/" + package.name
-            publish_channel(changed)
-            updater("download", success=False)
-            assert not list((game / "ModLoader/Updater/downloads").rglob("*.download-*"))
-            publish_channel(original_channel)
-            untrusted = dict(env)
-            untrusted.pop("CURL_CA_BUNDLE", None)
-            untrusted.pop("SSL_CERT_FILE", None)
-            updater("check", success=False, environment=untrusted)
-            # A signed channel with an unsigned alteration is rejected.
-            channel_path.write_bytes(channel_path.read_bytes() + b" ")
-            updater("check", success=False)
-            publish_channel(original_channel)
-            archive_bytes = package.read_bytes()
-            package.write_bytes(b"corrupt ZIP")
-            assert "hash does not match" in updater("download", success=False)
-            package.write_bytes(archive_bytes)
-            updater("download")  # An interrupted/failed download can be restarted.
-            # Static packages replace the matching Player as one runtime, and
-            # cannot be applied to a dynamic host.
-            static_game, static_stage = root / "静态 游戏", root / "static-stage"
-            static_abi = {**abi, "host_linkage": "static"}
-            for directory in (static_game, static_stage):
-                put_json(directory / "ModLoader/BML.abi.json", static_abi)
-                (directory / "Bin").mkdir()
-                shutil.copy(args.production_updater, directory / f"Bin/{player_name}")
-            put_json(static_stage / "ModLoader/BML.abi.json", {**static_abi, "version": "v2"})
-            (static_game / "Bin/Player.ini").write_text("user Player settings")
-            assert "doctor passed" in updater("doctor", runtime=static_game)
-            static_out = root / "static-out"
-            run(sys.executable, args.packager, "--stage", static_stage, "--output", static_out, "--version", "v2",
-                "--signing-key", key, "--signer", signer)
-            static_package = next(static_out.glob("*.zip"))
-            updater("verify-local", static_package, success=False)
-            updater("apply-local", static_package, runtime=static_game)
-            updater("rollback", runtime=static_game)
-            assert "installedVersion=v0" in updater("status", runtime=static_game)
-            assert (static_game / "Bin/Player.ini").read_text() == "user Player settings"
+                wrong = {**original_channel, "target": {**target, "architecture": "x64" if target["architecture"] == "arm64" else "arm64"}}
+                publish_channel(wrong)
+                assert "target does not match" in updater("check", success=False)
+                revoked = {**original_channel, "revokedVersions": ["v1"]}
+                publish_channel(revoked)
+                assert "revoked" in updater("check", success=False)
+                revoked = {**original_channel, "revokedManifestHashes": [hashlib.sha256(manifest_path.read_bytes()).hexdigest()]}
+                publish_channel(revoked)
+                assert "revoked" in updater("download", success=False)
+                publish_channel(original_channel)
+                saved = manifest_path.read_bytes()
+                manifest_path.write_bytes(saved + b" ")
+                assert "signature verification failed" in updater("download", success=False)
+                manifest_path.write_bytes(saved)
+                changed = {**original_channel, "packageUrl": base_url + "/downgrade/" + package.name}
+                publish_channel(changed)
+                updater("download", success=False)
+                changed["packageUrl"] = base_url + "/incomplete/" + package.name
+                publish_channel(changed)
+                updater("download", success=False)
+                assert not list((game / "ModLoader/Updater/downloads").rglob("*.download-*"))
+                publish_channel(original_channel)
+                untrusted = dict(env)
+                untrusted.pop("CURL_CA_BUNDLE", None)
+                untrusted.pop("SSL_CERT_FILE", None)
+                updater("check", success=False, environment=untrusted)
+                # A signed channel with an unsigned alteration is rejected.
+                channel_path.write_bytes(channel_path.read_bytes() + b" ")
+                updater("check", success=False)
+                publish_channel(original_channel)
+                archive_bytes = package.read_bytes()
+                package.write_bytes(b"corrupt ZIP")
+                assert "hash does not match" in updater("download", success=False)
+                package.write_bytes(archive_bytes)
+                updater("download")  # An interrupted/failed download can be restarted.
+                # Static packages replace the matching Player as one runtime, and
+                # cannot be applied to a dynamic host.
+                static_game, static_stage = root / "静态 游戏", root / "static-stage"
+                static_abi = {**abi, "host_linkage": "static"}
+                for directory in (static_game, static_stage):
+                    put_json(directory / "ModLoader/BML.abi.json", static_abi)
+                    (directory / "Bin").mkdir()
+                    shutil.copy(args.production_updater, directory / f"Bin/{player_name}")
+                put_json(static_stage / "ModLoader/BML.abi.json", {**static_abi, "version": "v2"})
+                (static_game / "Bin/Player.ini").write_text("user Player settings")
+                assert "doctor passed" in updater("doctor", runtime=static_game)
+                static_out = root / "static-out"
+                run(sys.executable, args.packager, "--stage", static_stage, "--output", static_out, "--version", "v2",
+                    "--signing-key", key, "--signer", signer)
+                static_package = next(static_out.glob("*.zip"))
+                updater("verify-local", static_package, success=False)
+                updater("apply-local", static_package, runtime=static_game)
+                updater("rollback", runtime=static_game)
+                assert "installedVersion=v0" in updater("status", runtime=static_game)
+                assert (static_game / "Bin/Player.ini").read_text() == "user Player settings"
+            else:
+                # WinHTTP validates with the OS trust store. The self-signed
+                # fixture must remain untrusted.
+                updater("configure", base_url)
+                updater("check", success=False)
+                other_stage = root / "sdl-stage"
+                other_target = {**stage_abi, "runtime": "sdl"}
+                put_json(other_stage / "ModLoader/BML.abi.json", other_target)
+                other_loader = other_stage / packager.loader_path(other_target)
+                other_loader.parent.mkdir()
+                shutil.copy2(stage / loader_relative, other_loader)
+                wrong_output = root / "wrong-runtime"
+                run(sys.executable, args.packager, "--stage", other_stage, "--output", wrong_output,
+                    "--version", "v1", "--signing-key", key, "--signer", signer)
+                rejected = updater("apply-local", next(wrong_output.glob("*.zip")), success=False)
+                assert "target does not match" in rejected and (game / loader_relative).read_bytes() == before
             # Component inventory selects owned files from a staged game.
             user_config = stage / "ModLoader/Configs/user.cfg"
             put_json(stage / "ModLoader/BML.abi.json", {**stage_abi, "version": "v3"})
@@ -314,7 +332,7 @@ def main():
             with zipfile.ZipFile(next(selected.glob("*.zip"))) as archive:
                 assert not any("Configs" in name or "Updater" in name for name in archive.namelist())
             if args.runtime_archive and args.player_runtime:
-                install = root / "实际发行包"
+                install = root / ("实际发行包" if args.runtime == "sdl" else "release-installed")
                 shutil.copytree(args.player_runtime, install, symlinks=False)
                 descriptor = install / "ModLoader/BML.abi.json"
                 package_abi = json.loads(descriptor.read_bytes())
@@ -348,7 +366,7 @@ def main():
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
-    print("SDL updater integration passed: signed local/HTTPS updates, TLS, redirects, revocation, target rejection, permissions, rollback and static-package routing.")
+    print(f"{args.runtime} updater integration passed")
     return 0
 
 

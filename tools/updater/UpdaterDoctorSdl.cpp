@@ -1,10 +1,17 @@
+#include "Platform/PeImage.h"
 #include "UpdaterDoctor.h"
 #include "UpdaterPaths.h"
 #include "UpdaterSdl.h"
 #include "UpdaterTarget.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL.h>
+#else
+#include "Platform/FileSystemNative.h"
+#include <Windows.h>
+#include <cstdio>
+#endif
 #include <array>
 #include <memory>
 
@@ -16,10 +23,18 @@ uint32_t Word(const unsigned char *p, bool big = false) {
 }
 } // namespace
 bool IsCompatibleBinary(const std::wstring &path, const UpdateTarget &target, bool executable) {
+    if (target.platform == "windows")
+        return BML::Platform::MatchesPeImage(path, target.architecture, executable);
+    std::array<unsigned char, 4096> bytes{};
+#if BML_RUNTIME_SDL
     std::unique_ptr<SDL_IOStream, decltype(&SDL_CloseIO)> file(SDL_IOFromFile(PathUtf8(path).c_str(), "rb"), SDL_CloseIO);
     if (!file) return false;
-    std::array<unsigned char, 4096> bytes{};
     const auto size = SDL_ReadIO(file.get(), bytes.data(), bytes.size());
+#else
+    std::unique_ptr<std::FILE, decltype(&std::fclose)> file(_wfopen(path.c_str(), L"rb"), std::fclose);
+    if (!file) return false;
+    const auto size = std::fread(bytes.data(), 1, bytes.size(), file.get());
+#endif
     if (size < 64) return false;
     if (target.platform == "linux") {
         const uint32_t machine = bytes[18] | (uint32_t(bytes[19]) << 8);
@@ -29,15 +44,6 @@ bool IsCompatibleBinary(const std::wstring &path, const UpdateTarget &target, bo
         return bytes[0] == 0x7f && bytes[1] == 'E' && bytes[2] == 'L' && bytes[3] == 'F' &&
             bytes[5] == 1 && bytes[4] == (target.architecture == "x86" ? 1 : 2) && machine == expected &&
             bytes[17] == 0 && typeMatches;
-    }
-    if (target.platform == "windows") {
-        const auto offset = Word(bytes.data() + 0x3c);
-        if (bytes[0] != 'M' || bytes[1] != 'Z' || offset > size - 26 || Word(bytes.data() + offset) != 0x4550) return false;
-        const auto machine = bytes[offset + 4] | (uint32_t(bytes[offset + 5]) << 8);
-        const auto magic = bytes[offset + 24] | (uint32_t(bytes[offset + 25]) << 8);
-        const bool dll = (bytes[offset + 23] & 0x20) != 0;
-        return machine == (target.architecture == "arm64" ? 0xaa64 : target.architecture == "x64" ? 0x8664 : 0x14c) &&
-            magic == (target.architecture == "x86" ? 0x10b : 0x20b) && dll != executable;
     }
     const auto expected = target.architecture == "arm64" ? 0x100000cu : 0x1000007u;
     const auto magic = Word(bytes.data(), true);
@@ -50,8 +56,14 @@ bool IsCompatibleBinary(const std::wstring &path, const UpdateTarget &target, bo
             if (Word(entry, true) != expected) continue;
             const uint64_t offset = stride == 32 ? (uint64_t(Word(entry + 8, true)) << 32) | Word(entry + 12, true) : Word(entry + 8, true);
             std::array<unsigned char, 16> header{};
-            if (offset > INT64_MAX || SDL_SeekIO(file.get(), static_cast<int64_t>(offset), SDL_IO_SEEK_SET) < 0 ||
+            if (offset > INT64_MAX) return false;
+#if BML_RUNTIME_SDL
+            if (SDL_SeekIO(file.get(), static_cast<int64_t>(offset), SDL_IO_SEEK_SET) < 0 ||
                 SDL_ReadIO(file.get(), header.data(), header.size()) != header.size()) return false;
+#else
+            if (_fseeki64(file.get(), static_cast<int64_t>(offset), SEEK_SET) != 0 ||
+                std::fread(header.data(), 1, header.size(), file.get()) != header.size()) return false;
+#endif
             const auto sliceMagic = Word(header.data(), true);
             const bool big = sliceMagic == 0xfeedfacf;
             return (sliceMagic == 0xfeedfacf || sliceMagic == 0xcffaedfe) && Word(header.data() + 4, big) == expected &&
@@ -81,12 +93,14 @@ Result RunDoctorChecks(const UpdaterContext &context, std::vector<std::string> &
     UpdateTarget target;
     auto result = ReadRuntimeTarget(context, target);
     if (!result.ok) { diagnostics.push_back("runtime.abi=invalid"); return result; }
-    diagnostics.push_back("runtime.target=sdl/" + target.platform + "/" + target.architecture + "/" + target.hostLinkage);
+    diagnostics.push_back("runtime.target=" + target.runtime + "/" + target.platform + "/" + target.architecture + "/" + target.hostLinkage);
     bool healthy = true;
+#if BML_RUNTIME_SDL
     const auto sdlVersion = SDL_GetVersion();
     diagnostics.push_back("runtime.sdlVersion=" + std::to_string(SDL_VERSIONNUM_MAJOR(sdlVersion)) + "." +
         std::to_string(SDL_VERSIONNUM_MINOR(sdlVersion)) + "." + std::to_string(SDL_VERSIONNUM_MICRO(sdlVersion)));
     healthy &= sdlVersion >= SDL_VERSIONNUM(3, 4, 8);
+#endif
     const auto player = FindPlayer(context.gameRoot);
     healthy &= CheckBinary(diagnostics, "player", player, target, true);
     const bool executable = !player.empty() && IsExecutableFile(player);
@@ -105,7 +119,7 @@ Result RunDoctorChecks(const UpdaterContext &context, std::vector<std::string> &
         healthy &= CheckBinary(diagnostics, "ck2", JoinPath(bin, prefix + L"CK2" + suffix), target);
         healthy &= CheckBinary(diagnostics, "vxmath", JoinPath(bin, prefix + L"VxMath" + suffix), target);
         healthy &= CheckBinary(diagnostics, "render", JoinPath(context.gameRoot, L"RenderEngines/" + prefix + L"CK2_3D" + suffix), target);
-        healthy &= CheckBinary(diagnostics, "bml", JoinPath(context.gameRoot, L"Managers/" + prefix + L"BMLPlus" + suffix), target);
+        healthy &= CheckBinary(diagnostics, "bml", JoinPath(context.gameRoot, utils::Utf8ToUtf16(LoaderPath(target))), target);
         const bool scripts = abi.IsValid() && utils::JsonGetBool(abi.Root(), "scripts", true);
         diagnostics.push_back(std::string("runtime.scripts=") + (scripts ? "enabled" : "disabled"));
         if (scripts) healthy &= CheckBinary(diagnostics, "angelscript", JoinPath(context.gameRoot, L"BuildingBlocks/" + prefix + L"AngelScript" + suffix), target);
@@ -116,7 +130,7 @@ Result RunDoctorChecks(const UpdaterContext &context, std::vector<std::string> &
         for (const auto &name : utils::ListFilesW(JoinPath(context.gameRoot, directory), L"*")) {
             const auto lower = ToLowerAscii(PathUtf8(name));
             if (lower.starts_with("bmlplus") || lower.starts_with("libbmlplus") || lower == "bml.dll") {
-                if (target.hostLinkage == "static" || std::wstring_view(directory) != L"Managers" || name != prefix + L"BMLPlus" + suffix) mixed = true;
+                if (target.hostLinkage == "static" || PathUtf8(std::wstring(directory) + L"/" + name) != LoaderPath(target)) mixed = true;
             }
         }
     }
@@ -131,7 +145,19 @@ Result RunDoctorChecks(const UpdaterContext &context, std::vector<std::string> &
     const bool pending = PathExists(JoinPath(context.updaterStateRoot, L"pending.json"));
     diagnostics.push_back(std::string("transaction.pending=") + (pending ? "true; run rollback" : "false"));
     healthy &= !pending;
+#if BML_RUNTIME_SDL
     diagnostics.push_back("path.encoding=UTF-8");
+#else
+    const auto page = GetACP();
+    std::string encoded;
+    const auto shortPath = BML::Platform::ShortPath(context.gameRoot);
+    const bool direct = BML::Platform::EncodePathForCodePage(context.gameRoot, page, encoded);
+    const bool fallback = !shortPath.empty() && BML::Platform::EncodePathForCodePage(shortPath, page, encoded);
+    diagnostics.push_back("path.acp=" + std::to_string(page));
+    diagnostics.push_back(std::string("path.ansiCompatible=") + (direct ? "true" : "false"));
+    diagnostics.push_back(std::string("path.shortFallback=") + (direct ? "not-needed" : fallback ? "available" : "unavailable"));
+    healthy &= direct || fallback;
+#endif
     return healthy ? Result::Success("doctor passed") : Result::Failure("doctor found incompatible or missing requirements");
 }
 }

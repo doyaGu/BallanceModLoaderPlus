@@ -7,6 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     get_filename_component(_bml_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
     set(PROJECT_SOURCE_DIR "${_bml_root}")
     set(BML_SOURCE_DIR "${_bml_root}/src")
+    set(BML_RUNTIME sdl)
     set(BML_RUNTIME_SDL TRUE)
     add_compile_definitions(BML_RUNTIME_SDL=1)
     set(BML_BUILD_TESTS TRUE)
@@ -67,7 +68,7 @@ add_test(NAME BMLUpdaterSdlIntegrationTest
         --production-updater "${_bml_production_updater}"
         --shared-fixture "$<TARGET_FILE:BMLUpdaterDoctorBinaryFixture>"
         --player-fixture "$<TARGET_FILE:BMLUpdaterPlayerFixture>"
-        --platform "${BML_TARGET_PLATFORM}" --architecture "${BML_TARGET_ARCH}"
+        --runtime "${BML_RUNTIME}" --platform "${BML_TARGET_PLATFORM}" --architecture "${BML_TARGET_ARCH}"
         --packager "${PROJECT_SOURCE_DIR}/scripts/package_sdl_update.py"
         --signer "$<TARGET_FILE:BMLUpdateSigner>" ${_bml_runtime_test_args})
 set_tests_properties(BMLUpdaterSdlIntegrationTest PROPERTIES LABELS "updater;sdl;network;integration" TIMEOUT 180 RUN_SERIAL TRUE)

@@ -10,7 +10,12 @@
 #include "PathUtils.h"
 #include "StringUtils.h"
 #include "Platform/FileSystemNative.h"
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL.h>
+#else
+#include <process.h>
+#endif
+#include <chrono>
 #include "UpdaterSigning.h"
 #include <zip.h>
 #include <cstdlib>
@@ -21,7 +26,9 @@
 #ifndef _WIN32
 #include <unistd.h>
 #endif
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL_main.h>
+#endif
 
 using namespace bmlupdater;
 namespace {
@@ -79,7 +86,7 @@ std::string Sign(std::string_view text) {
     return base64;
 }
 std::string Abi(const UpdateTarget &target, const char *version = "v0") {
-    return "{\"schema\":1,\"runtime\":\"sdl\",\"platform\":\"" + target.platform +
+    return "{\"schema\":1,\"runtime\":\"" + target.runtime + "\",\"platform\":\"" + target.platform +
         "\",\"architecture\":\"" + target.architecture + "\",\"host_linkage\":\"" + target.hostLinkage +
         "\",\"sdk_abi\":\"" + std::string(64, 'a') + "\",\"configuration\":\"Debug\",\"scripts\":false,\"version\":\"" + version + "\"}";
 }
@@ -110,14 +117,13 @@ std::string Binary(const UpdateTarget &target, bool executable, const std::strin
 class UpdaterSdlTest : public ::testing::Test {
 protected:
     std::wstring root, game, package, loader;
-    UpdateTarget target{"sdl", BML_UPDATER_PLATFORM, BML_UPDATER_ARCH, "dynamic"};
+    UpdateTarget target{BML_UPDATER_RUNTIME, BML_UPDATER_PLATFORM, BML_UPDATER_ARCH, "dynamic"};
     std::unique_ptr<UpdaterService> service;
     void SetUp() override {
-        root = JoinPath(utils::GetTempPathW(), L"bml-updater-测试-" + std::to_wstring(BML::Platform::ProcessId()) + L"-" + std::to_wstring(SDL_GetTicksNS()));
+        root = JoinPath(utils::GetTempPathW(), L"bml-updater-测试-" + std::to_wstring(BML::Platform::ProcessId()) + L"-" + std::to_wstring(std::chrono::steady_clock::now().time_since_epoch().count()));
         game = JoinPath(root, L"中文 游戏");
         Put(JoinPath(game, L"ModLoader/BML.abi.json"), Abi(target));
-        loader = utils::Utf8ToUtf16("Managers/" + std::string(target.platform == "windows" ? "BMLPlus.dll" :
-            target.platform == "macos" ? "libBMLPlus.dylib" : "libBMLPlus.so"));
+        loader = utils::Utf8ToUtf16(LoaderPath(target));
         service = std::make_unique<UpdaterService>(UpdaterContext{game, {}});
     }
     void TearDown() override { std::string error; EXPECT_TRUE(RemoveDirectoryTree(root, error)) << error; }
@@ -166,6 +172,7 @@ protected:
     }
     void InterruptTransaction(std::string_view action) {
         // The worker must mutate this fixture even on platforms that re-exec.
+#if BML_RUNTIME_SDL
         const auto gamePath = PathUtf8(game);
         const auto packagePath = PathUtf8(package);
         const char *arguments[]{testExecutable.c_str(), action.data(),
@@ -175,6 +182,16 @@ protected:
         ASSERT_TRUE(process) << SDL_GetError();
         int exitCode = 0;
         ASSERT_TRUE(SDL_WaitProcess(process.get(), true, &exitCode)) << SDL_GetError();
+#else
+        const auto executable = utils::Utf8ToUtf16(testExecutable);
+        const auto executableArg = L"\"" + executable + L"\"";
+        const auto actionArg = utils::Utf8ToUtf16(std::string(action));
+        const auto gameArg = L"\"" + game + L"\"";
+        const auto packageArg = L"\"" + package + L"\"";
+        const wchar_t *arguments[]{executableArg.c_str(), actionArg.c_str(),
+                                   gameArg.c_str(), packageArg.c_str(), nullptr};
+        const auto exitCode = _wspawnv(_P_WAIT, executable.c_str(), arguments);
+#endif
         ASSERT_EQ(exitCode, InterruptedExitCode);
     }
 };
@@ -408,7 +425,7 @@ TEST_F(UpdaterSdlTest, CaseDistinctPathsRemainDistinctOnCaseSensitiveFilesystems
 #endif
 }
 
-int main(int argc, char **argv) {
+static int RunTests(int argc, char **argv) {
     if (argc == 4 && (argv[1] == InterruptApply || argv[1] == InterruptRollback)) {
         try {
             return RunInterruptedTransaction(argv[1], argv[2], argv[3]);
@@ -422,3 +439,18 @@ int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+#if BML_RUNTIME_SDL
+int main(int argc, char **argv) { return RunTests(argc, argv); }
+#else
+int wmain(int argc, wchar_t **argv) {
+    std::vector<std::string> utf8;
+    for (int i = 0; i < argc; ++i)
+        utf8.push_back(utils::Utf16ToUtf8(argv[i]));
+    std::vector<char *> arguments;
+    for (auto &arg : utf8)
+        arguments.push_back(arg.data());
+    arguments.push_back(nullptr);
+    return RunTests(argc, arguments.data());
+}
+#endif

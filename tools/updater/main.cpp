@@ -4,7 +4,6 @@
 #include "PathUtils.h"
 #include "UpdaterPaths.h"
 #include "StringUtils.h"
-#include <SDL3/SDL.h>
 
 #ifndef _WIN32
 #define BML_UPDATER_COMMAND "Updater"
@@ -100,7 +99,7 @@ namespace {
     }
 
     void PrintUsage() {
-        std::cout << "SDL updater: --game-root <directory> selects a standard or flat runtime.\n";
+        std::cout << "--game-root <directory> selects a standard or flat runtime.\n";
         std::cout <<
             "BML+ Updater\n"
             "\n"
@@ -370,7 +369,7 @@ namespace {
 }
 
 namespace {
-int RunSdlCli(int argc, wchar_t **argv) {
+int RunUpdaterCli(int argc, wchar_t **argv) {
     std::cout.setf(std::ios::unitbuf);
     auto context = bmlupdater::CreateDefaultContext();
     std::vector<wchar_t *> arguments;
@@ -388,7 +387,7 @@ int RunSdlCli(int argc, wchar_t **argv) {
 #ifdef _WIN32
 int wmain(int argc, wchar_t **argv) {
     SetConsoleOutputCP(CP_UTF8);
-    return RunSdlCli(argc, argv);
+    return RunUpdaterCli(argc, argv);
 }
 #else
 int main(int argc, char **argv) {
@@ -399,6 +398,6 @@ int main(int argc, char **argv) {
         wide.push_back(utils::Utf8ToUtf16(argv[i]));
     }
     for (auto &argument : wide) arguments.push_back(argument.data());
-    return RunSdlCli(argc, arguments.data());
+    return RunUpdaterCli(argc, arguments.data());
 }
 #endif

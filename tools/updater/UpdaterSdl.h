@@ -1,7 +1,9 @@
 #pragma once
 
 #include "UpdaterTypes.h"
+#if BML_RUNTIME_SDL
 #include <SDL3/SDL_iostream.h>
+#endif
 
 namespace bmlupdater {
 // Native operations here cover only permissions, locking and durable directory
@@ -26,6 +28,10 @@ public:
     UpdaterLock &operator=(const UpdaterLock &) = delete;
     explicit operator bool() const { return m_Stream != nullptr; }
 private:
+#if BML_RUNTIME_SDL
     SDL_IOStream *m_Stream{};
+#else
+    void *m_Stream{};
+#endif
 };
 }
