@@ -316,8 +316,8 @@ void DebugUtilities::ChangeBallSpeed(float times) {
                           ->GetRealSource();
 
             for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                std::string ballName;
-                if (!BML::Platform::ReadDataArrayString(m_PhysicsBall.Get(), i, 0, ballName) || ballName.empty())
+                const char *ballName = ModSupport::StringCell(*m_PhysicsBall.Get(), i, 0);
+                if (!ballName || !*ballName)
                     continue;
                 float force;
                 m_PhysicsBall->GetElementValue(i, 7, &force);
@@ -339,8 +339,8 @@ void DebugUtilities::ChangeBallSpeed(float times) {
             }
 
             for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                std::string ballName;
-                if (!BML::Platform::ReadDataArrayString(m_PhysicsBall.Get(), i, 0, ballName) || ballName.empty())
+                const char *ballName = ModSupport::StringCell(*m_PhysicsBall.Get(), i, 0);
+                if (!ballName || !*ballName)
                     continue;
                 auto iter = m_Forces.find(ballName);
                 if (iter != m_Forces.end()) {
@@ -600,8 +600,8 @@ void DebugUtilities::OnProcess_ResetBall() {
                 CKDataArray *ph = ModSupport::Find<CKDataArray>(m_Context, "PH");
                 for (int i = 0; i < ph->GetRowCount(); i++) {
                     CKBOOL set = true;
-                    std::string name;
-                    if (BML::Platform::ReadDataArrayString(ph, i, 1, name) && name == "P_Extra_Point")
+                    const char *name = ModSupport::StringCell(*ph, i, 1);
+                    if (name && std::string_view(name) == "P_Extra_Point")
                         ph->SetElementValue(i, 4, &set);
                 }
 

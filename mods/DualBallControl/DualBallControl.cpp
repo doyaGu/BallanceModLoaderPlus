@@ -76,10 +76,11 @@ void DualBallControl::OnLoadObject(const BML::Mod::Context &,
     if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
         CKDataArray *physBall = ModSupport::Find<CKDataArray>(m_Context, "Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
-            std::string ballName;
-            if (!BML::Platform::ReadDataArrayString(physBall, i, 0, ballName) || ballName.empty())
+            const char *name = ModSupport::StringCell(*physBall, i, 0);
+            if (!name || !*name)
                 continue;
-            CK3dObject *ballObj = ModSupport::Find<CK3dObject>(m_Context, ballName.c_str());
+            const std::string ballName(name);
+            CK3dObject *ballObj = ModSupport::Find<CK3dObject>(m_Context, name);
             m_Balls.push_back(ballObj);
 
             CKDependencies dep;

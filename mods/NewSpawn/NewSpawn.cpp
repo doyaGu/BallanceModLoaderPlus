@@ -127,10 +127,12 @@ void NewSpawn::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadObjec
     if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
         CKDataArray *physBall = ModSupport::Find<CKDataArray>(m_Context, "Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
-            SpiritBall ball;
-            if (!BML::Platform::ReadDataArrayString(physBall, i, 0, ball.name) || ball.name.empty())
+            const char *name = ModSupport::StringCell(*physBall, i, 0);
+            if (!name || !*name)
                 continue;
-            ball.obj = ModSupport::Find<CK3dObject>(m_Context, ball.name.c_str());
+            SpiritBall ball;
+            ball.name = name;
+            ball.obj = ModSupport::Find<CK3dObject>(m_Context, name);
 
             CKDependencies dep;
             dep.Resize(40);
@@ -321,8 +323,8 @@ void NewSpawn::OnProcess(const BML::Mod::Context &) {
         CKDataArray *ph = ModSupport::Find<CKDataArray>(m_Context, "PH");
         for (int i = 0; i < ph->GetRowCount(); i++) {
             CKBOOL set = true;
-            std::string name;
-            if (BML::Platform::ReadDataArrayString(ph, i, 1, name) && name == "P_Extra_Point")
+            const char *name = ModSupport::StringCell(*ph, i, 1);
+            if (name && std::string_view(name) == "P_Extra_Point")
                 ph->SetElementValue(i, 4, &set);
         }
 

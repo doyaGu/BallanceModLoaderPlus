@@ -89,5 +89,15 @@ template <class T>
     return code == BML_OK ? Result<T *>::Success(static_cast<T *>(value))
                           : Result<T *>::Failure(code);
 }
+
+// The name uses the engine's encoding. The returned object is borrowed.
+template <class T>
+[[nodiscard]] T *FindObjectByName(CKContext &context, const char *name) {
+    static_assert(std::is_base_of_v<CKObject, T>);
+    if (!name)
+        return nullptr;
+    return static_cast<T *>(context.GetObjectByNameAndClass(
+        const_cast<char *>(name), Detail::Class<T>::Value));
+}
 } // namespace BML::Engine
 #endif

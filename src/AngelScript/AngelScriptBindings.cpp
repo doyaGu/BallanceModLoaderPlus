@@ -1,4 +1,3 @@
-#include "Platform/CKDataArrayText.h"
 #include "Api/Behavior/Text.h"
 #include "BML/Gameplay.h"
 #include "AngelScriptBindings.h"
@@ -16,6 +15,8 @@
 #include "Logging/Logger.h"
 
 #if BML_ENABLE_ANGELSCRIPT
+
+#include "Api/BuiltinCapabilities.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -683,7 +684,7 @@ static std::string BMLAS_CK_GetDataArrayString(CKDataArray *array,
                                                int column,
                                                const std::string &defaultValue) {
     std::string native;
-    if (!BML::Platform::ReadDataArrayString(array, row, column, native))
+    if (!BML::Api::ReadDataArrayText(array, row, column, native))
         return defaultValue;
     std::string utf8;
     return std::string(BML::Api::Behavior::Utf8Text(native, utf8));

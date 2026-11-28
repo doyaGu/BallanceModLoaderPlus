@@ -1,4 +1,3 @@
-#include "Platform/CKDataArrayText.h"
 #ifndef BML_MODS_COMMON_MODSUPPORT_HPP
 #define BML_MODS_COMMON_MODSUPPORT_HPP
 
@@ -36,8 +35,16 @@ inline CKRenderContext *Render(const Context &c) {
 }
 
 template <class T> T *Find(const Context &c, const char *name) {
-    return static_cast<T *>(
-        Engine(c)->GetObjectByNameAndClass((CKSTRING)name, BML::Engine::Detail::Class<T>::Value));
+    return BML::Engine::FindObjectByName<T>(*Engine(c), name);
+}
+
+// The string is borrowed from a CKARRAYTYPE_STRING cell.
+inline const char *StringCell(CKDataArray &array, int row, int column) {
+    if (row < 0 || row >= array.GetRowCount() || column < 0 || column >= array.GetColumnCount() ||
+        array.GetColumnType(column) != CKARRAYTYPE_STRING)
+        return nullptr;
+    CKSTRING text = nullptr;
+    return array.GetElementValue(row, column, &text) ? text : nullptr;
 }
 
 inline BML::Gameplay::State GameState() {

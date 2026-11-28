@@ -143,10 +143,12 @@ void SpiritTrail::OnLoadObject(const BML::Mod::Context &, const BML::Mod::LoadOb
     if (ModSupport::ResourceIs(filename, "3D Entities\\Balls.nmo")) {
         CKDataArray *physBall = ModSupport::Find<CKDataArray>(m_Context, "Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
-            SpiritBall ball(m_Context);
-            if (!BML::Platform::ReadDataArrayString(physBall, i, 0, ball.name) || ball.name.empty())
+            const char *name = ModSupport::StringCell(*physBall, i, 0);
+            if (!name || !*name)
                 continue;
-            ball.obj = ModSupport::Find<CK3dObject>(m_Context, ball.name.c_str());
+            SpiritBall ball(m_Context);
+            ball.name = name;
+            ball.obj = ModSupport::Find<CK3dObject>(m_Context, name);
 
             CKDependencies dep;
             dep.Resize(40);
